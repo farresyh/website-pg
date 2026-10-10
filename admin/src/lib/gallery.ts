@@ -2,10 +2,9 @@ import { apiFetch, apiUpload } from "@/lib/api-client";
 
 /**
  * IMG-1/IMG-2 (docs/prd.md §15 "Image Gallery" row) — Image Gallery. No FK
- * from Game/HeroSlide to a gallery image: an admin uploads here,
- * copies the resulting `url`, and pastes it into `EditGameModal` /
- * the Hero Slide modal's existing `image_url` field — same as
- * pasting any externally-hosted URL today, just uploaded here first.
+ * from Game/HeroSlide to a gallery image: an admin uploads here, then
+ * `ImageUrlInput` writes the picked image's `url` into the form's
+ * existing text field — same as pasting any externally-hosted URL.
  */
 export interface GalleryImage {
   id: number;

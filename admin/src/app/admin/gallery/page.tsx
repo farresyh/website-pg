@@ -3,10 +3,9 @@
 /**
  * IMG-1/IMG-2 (docs/prd.md §14/§15 backlog) — Image Gallery: upload
  * (drag-drop or file picker), grid view, search, preview, copy URL,
- * delete. Feeds `Game.image_url` / `HeroSlide.image_url`, both
- * currently plain-paste text inputs — an admin uploads here, then
- * copies the resulting URL into either modal (no direct link between
- * the two; see GalleryImageController's doc comment for why).
+ * delete. The image URL fields (`ImageUrlInput`) pick from here; there is
+ * no FK between an image and what uses it (see GalleryImageController's
+ * doc comment for why).
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";

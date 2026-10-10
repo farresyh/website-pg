@@ -685,7 +685,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. The voucher path was live-tested 2026-10-06 (a failed order's Issue Voucher code arrived on WhatsApp), along with the status card and not-found reply; their throttles are silent and leave no trace (§16 item 69). Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14) | ADR-116 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
 | Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private) — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. **2026-09-14: found the restore-test had failed 14/14 since go-live** (managed-MySQL GTID privilege gap) **and its alert never reached an inbox** (`MAIL_MAILER=log`) — both fixed and **re-verified live same day**: a manual "Backup Now" landed on `r2_backups` with `status=success`/`restore_test_passed=1`, the first success ever recorded | ADR-039, ADR-095 |
-| Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-modal picker still not wired (paste URL) | ADR-095 |
+| Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-form picker (`ImageUrlInput`, 2026-10-10) on Edit Game, Hero Slide and the two SEO OG-image fields; the URL stays a plain text field | ADR-095 |
 | SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage. **ADR-120 (live 2026-10-08):** tokens in every SEO field, per-brand canonical origin (canonical/sitemap/robots/llms/JSON-LD), all packages in HTML, Product `offers` + `aggregateRating`, fact line, admin FAQ + `FAQPage` | ADR-029, ADR-042, ADR-120 |
 | Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 (Telegram) dropped and its fields removed 2026-10-10. Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this | ADR-028, 089 |
 | Developer Tools (DEV-1..2) | ✅ Live — `/middleware/developer-tools`, all 5 adapter methods, typed-DTO editor, dry-run default. Same screen as MUI-11 | ADR-054 |
@@ -726,8 +726,6 @@ code and production on 2026-10-09; re-verify before building.
 
 **A. Buildable now: code, no new design** (in suggested order)
 1. **66** Combo admin: leg-attempt history view.
-2. **6** Leftover: gallery in-modal picker. (SET-9 Telegram dropped
-   2026-10-10, fields removed.)
 
 **B. Needs a short grill / ADR addendum first**
 - **66** Combo edit-composition UI — needs an ADR-094 addendum (the
@@ -834,10 +832,10 @@ code and production on 2026-10-09; re-verify before building.
    **deliberately removed** at the Cloudflare cutover; HMAC is the intended
    auth layer, so there is nothing to re-add (see the 2026-09-25 entry in
    `docs/build-log-archive.md`).
-6. Small unbuilt scope, none blocking: the gallery in-modal picker (paste-URL
-   today), and the
+6. Small unbuilt scope, none blocking: only the
    reseller-family audit's item A3 (per-tier rate limit on the Reseller
    API/Bot — a deliberately deferred design call from the 2026-09-10 audit).
+   The gallery in-form picker and SET-9 Telegram (dropped) closed 2026-10-10.
    Closed parts (ORD-5 export, `AggregateRating`, ADR-090 palettes, theme
    preview tokens) are in `docs/build-log*.md`.
 49. **Detect a proxied affiliate domain on "Check now"** (ADR-060 follow-up).
