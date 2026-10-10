@@ -1,6 +1,6 @@
 # ADR-083: Internal Accounting & Financial Reconciliation — Supplier Funding Ledger, CHIP Settlement Reconciliation, and a Monthly Accounting Summary for an external SaaS
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-10):** In force; the 2026-10-10 addendum reshapes the Envelope Ledger (design only). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted, **PR-1 built 2026-09-11** (`feature/adr-083-supplier-funding-ledger`, PR to `staging` — see `docs/build-log.md`), **supplier-fee + correction-mechanism addendum built 2026-09-15**; PR-2 built 2026-09-19 ([ADR-110](./ADR-110-chip-integration-hardening.md) PR-B). **UI/correction-scope addendum grilled + built 2026-09-28** (`feature/2026-09-28-adr083-accounting-ui`, off `staging`, not yet merged) — see that entry below. **Envelope Ledger + Transaction Register/System Health completeness addendum, re-grilling decision 11, grilled + built 2026-09-28** (`feature/2026-09-28-adr083-envelope-ledger-and-register-gaps`, merged `staging`→`main` same day) — **plus a same-day follow-up round** (rename/archive an envelope, a Money In/Out badge per category, an Allocate-over-estimate soft warning, a Transaction Register frontend type-label gap, a CSV void-status column, Monthly Summary tooltips + an `InfoTooltip` left-edge-clipping fix — `fix/2026-09-28-envelope-ledger-clarity-fixes`, off `staging`, not yet merged) — see the second 2026-09-28 entry below. **External accounting review addendum, built 2026-09-30** (`fix/2026-09-30-accounting-audit-fixes`, off `staging`) — a second LLM (trained specifically on accounting) audited the live `/admin/accounting` screens at the founder's request; findings verified line-by-line against this codebase + real production data before any code changed — see that entry below. **External accounting review, Bucket C addendum, grilled + built 2026-09-30** (`feature/2026-09-30-adr083-envelope-ledger-paidby-wallet-line`, off `staging`) — the 4 real-trade-off items from the same review, grilled before building; a 5th item (a test/internal order flag) was grilled and deliberately **parked**, not built — see that entry below. First drafted with the founder 2026-09-09; **fully re-grilled and materially reshaped 2026-09-10** (`/mattpocock-skills:grilling`, 6 rounds / 26 questions) after a stress-test against the codebase and the live CHIP / supplier APIs. The first draft (a self-contained corporate accounting system: per-order FIFO COGS, a polled "CHIP Settlement/Payout API", `expenses` / `marketing_budgets` / `capital_injections` / `capital_repayments` tables, a Malaysian-bank-statement reconciliation engine, Gemini-Vision receipt parsing, a bespoke Investor Dashboard, a 4-PR build) was found to be **over-scoped for a solo-run pre-launch business and built on two facts that do not hold** — see Context §1–2. This entry is the reshaped design. Scheduled for 2 PRs. **This fills in ADR-070 (RESERVED).**
 
@@ -202,3 +202,135 @@ Related: [[project_pekangame_no_external_customers_yet_2026_09_25]], the first 2
 3. **The reviewer question waits for a trigger**, not a draft now: §16 item 74 — ask before the first non-zero tier fee (revenue vs contra-commission, e-Invoice).
 
 **🟢 BUILT 2026-10-08** (`feature/2026-10-08-item63-llm-views-tier-fee`), with ADR-087's same-day addendum.
+
+### 2026-10-10 addendum — Envelope Ledger reshape: postings, director loans, month close
+
+**Status:** Accepted 2026-10-10, design only, not built. Grilled with the founder (`/mattpocock-skills:grilling`, Q1–Q27), then stress-tested against accounting practice (MPERS) and a code-trace pass against real code and read-only production data. Build tracked as `prd.md` §16 item 78.
+
+**Context.**
+- An external review by another LLM (ChatGPT) of the founder's bank statements and receipts, 15 Sep–6 Oct, found that the Envelope Ledger could not answer three questions: how much the company owes each director, whether a month's profit had already been allocated, and where the money in an envelope physically sits. The review is kept outside the repo, in `kedairuncitsoloz-assets/Accounting/`.
+- Verified in code:
+  - `paid_from` on a `DirectorRepayment` names the account that paid, not the person repaid, so no per-director loan balance can be derived.
+  - A multi-envelope action (splitting one inflow, moving between envelopes) is several unrelated entries. Nothing checks their sum, and voiding one leaves its siblings.
+  - `allocateMonthlyProfit()` has no period check, `period_label` is free text, and `BudgetEnvelopeController::index()` builds the period from UTC `Carbon::now()`. On 1 November it labels and references November, not the October being closed.
+- Production on 2026-10-10: 0 envelope entries, 35 orders, 5 supplier transfers, 4 CHIP settlements. Pre-launch, so the founder opened the whole accounting design to challenge. Reshaping the schema costs no data migration.
+
+**Decisions.**
+
+*Principle*
+1. **An envelope is an allocation ("what this money is for"), never a location.** Supplier top-ups, CHIP payouts and transfers between the founder's own accounts never touch an envelope. Each event is recorded once, in its own module. Recording a DigiFlazz top-up against Capital Rolling as well would make capital look spent when it has only moved. Still not double-entry (2026-09-28 second addendum, decision 1).
+
+*A. Postings: one action, one header, many lines (Q2, Q6, Q16)*
+
+2. **A new `budget_envelope_postings` header; `budget_envelope_entries` become its lines.** This follows the `SupplierTransfer` → `SupplierLedgerEntry` shape. The receipt, date, reference and void live on the header. A void reverses every line of the posting in one transaction, under the same `lockForUpdate()` double-void guard as today. `BudgetEnvelope::balanceSen()` stays `SUM(amount_sen)`.
+3. **Posting types and their invariants**, enforced in `BudgetEnvelopeService` as the only writer:
+
+   | Type | Lines | Invariant | Counterparty |
+   | --- | --- | --- | --- |
+   | `funding` | 1+ positive | lines sum = amount; fund type `loan` or `share_capital` | required |
+   | `profit_allocation` | 1+, any sign | written only by month close (decision 9); lines sum = the closed month's operating profit | — |
+   | `transfer` | 2+ | lines sum = 0; at least one out and one in | — |
+   | `expense` | exactly 1 negative | sub-category: Advertising, Software, Professional fees, Salary, Other | — |
+   | `director_paid_expense` | 2, same envelope | one `+X` loan line and one `−X` expense line; net 0 | required |
+   | `repayment` | 1 negative | blocked above the counterparty's loan balance | required |
+   | `distribution` | 1 negative | dividend | required |
+
+   `Capital Repayment` is dropped (a share-capital reduction is a rare legal process; add it when one happens). `Capital Injection` becomes `funding` with `fund_type = share_capital`. The ambiguous label could be read as equity when the money is a loan.
+4. **An expense hits one envelope.** A split expense is two postings.
+5. **A negative envelope balance is allowed, with a warning and a red balance.** A real expense must always be recordable; refusing it leaves the record incomplete. The red balance prompts a `transfer`.
+6. **An envelope can be archived only at a zero balance** (Q17). Today it can be archived holding money, which hides that money from the active grid.
+
+*B. Director loans (Q3, Q4, Q7)*
+
+7. **The counterparty is the `PaidFrom` enum, renamed `Luqman` → `Lokman`** (the founder confirmed the spelling; no production row holds `luqman`). A loan balance per director = Σ `funding(loan)` + Σ `director_paid_expense` − Σ `repayment`, computed, never stored.
+8. **A director paying a company expense personally is a loan plus an expense** (`director_paid_expense`). The envelope nets to zero because company cash did not move; the director's loan balance rises. This **revises the 2026-09-30 second addendum, decision 3**, which recorded only the later repayment.
+
+*C. Month close, on the Monthly Summary page (Q9–Q12, Q14, Q15, Q18, Q19)*
+
+9. **`accounting_period_closes`, one row per KL month.**
+   - Months close in order, only once they have ended in KL time.
+   - The first month is September 2026: the founder treats LWF GROUP SDN BHD as owning the 15 Sep RM500 loan, although it was incorporated on 23 Sep.
+   - The close is the only writer of `profit_allocation`.
+   - The Envelope Ledger's "Allocate Monthly Profit" button and `allocateMonthlyProfit()` are removed.
+10. **The close allocates the month's operating profit exactly, never more or less.** A loss month allocates negatively, normally against Capital Rolling. This **revises the 2026-09-28 second addendum, decision 4** ("never assert a net profit figure; soft warning only"). Without an exact allocation, the cash equation (decision 13) can never balance, and a loss month leaves envelopes above real cash.
+11. **Operating profit**, for the closed month (`MonthlyAccountingSummaryService`):
+
+    | Line | Note |
+    | --- | --- |
+    | + Sales revenue (`RecognisedRevenue`) | unchanged |
+    | + Membership revenue | unchanged |
+    | − COGS (`cost_price`) | unchanged |
+    | + Supplier prepaid FX variance true-up | turns the indicative cost into the real cost; the rate is the weighted average **as of month end** (Q24), not the whole history, so a closed month stops moving on every new transfer |
+    | + Payment processing gain/(loss) | settlements keyed on `date_to` (Q22, built 2026-10-10) |
+    | − Bank/transfer fees | unchanged |
+    | − Affiliate commission | unchanged |
+    | + Affiliate tier fees | unchanged |
+    | + Voucher breakage | remaining balance of a voucher whose `expires_at` falls in the month (Q21) |
+    | − Goodwill vouchers issued | Path A only (no `order_id`, not a merge target) |
+    | ± Supplier manual adjustments | non-void `MANUAL_ADJUSTMENT` only (Q26) |
+
+    Two things are deliberately excluded:
+    - **Compensation vouchers (Path B).** These are a liability, not an expense (Q20). The customer's cash was already received and is kept (ADR-004). The Monthly Summary already classes the line as a liability (2026-09-28 addendum, decision 11). Only the rough estimate subtracted it, and that understates profit by the voucher amount for good: RM13.18 across the 5 production vouchers.
+    - **Envelope expenses.** They already reduced their envelope when recorded. Subtracting them here again would count them twice (Q9).
+
+    The close screen shows three figures:
+    - operating profit, which is the figure allocated;
+    - "manual expenses (Envelope)" for the month, by sub-category, also added to the Monthly Summary as an information line (Q19);
+    - the net, for information only.
+12. **Snapshot and drift (Q10).**
+    - The close stores the operating profit it allocated.
+    - If the live figure for a closed month changes later (late webhook, resend, a settlement uploaded afterwards), the difference is shown and carried into the next close as a "prior-month adjustment". A past row is never rewritten.
+    - Only the latest close can be reopened. Reopening is append-only: it voids the close and its allocation posting, with a reason.
+13. **The cash equation ("where is the money"), as of the last KL day of the month (Q13, Q25, Q26, T1).**
+
+    | Assets | Claims |
+    | --- | --- |
+    | Cash-account balances (typed snapshot) | Σ envelopes |
+    | Supplier prepaid (supplier ledger, MYR at the month-end rate; `TOPUP` dated by `transferred_on`) | Reseller wallet balances |
+    | CHIP paid but not settled, minus an estimated CHIP fee (RM1 per transaction) | Affiliate earnings not yet withdrawn |
+    | | Affiliate withdrawals approved but not yet paid (ledger debits at approve, cash leaves at complete) |
+    | | Vouchers outstanding |
+    | | Orders paid but not yet delivered or compensated |
+
+    - Gap = assets − claims.
+    - A gap above RM1 needs a written note to close. It never blocks the close (Q14), because a hard block invites a fake balancing entry.
+    - A second, internal check: Σ envelopes = Σ loan balances + share capital + Σ allocated profit − Σ expenses − Σ distributions. It catches a posting booked under the wrong type.
+14. **Cash accounts are a small editable list (name only, no account numbers), snapshotted at every close** (Q11).
+    - Until the LWF bank account opens there is one: "Held by Farres (mixed)". Its figure is the tagged PekanGame portion, not a statement balance (Q15). The per-bank breakdown stays in the review workpaper outside the system.
+    - When the LWF account opens, the mixed account is moved to zero by a transfer and archived.
+
+*Changes to neighbouring modules*
+
+15. **`supplier_transfers.transferred_on`** (Q23): the date the money left the bank, from the transfer receipt. The 5 existing rows are backfilled from `created_at`. Month assignment and the supplier as-of balance use it instead of the row's `created_at`. A transfer in transit across a month end shows up as a gap with a note; there is no second date field.
+16. **`LedgerEntry` gets the same model-layer append-only guard** as `SupplierLedgerEntry` and `BudgetEnvelopeEntry` (`booted()` throws on update/delete) (T3). The as-of figures in decision 13 depend on that history. The code-trace found no writer that updates or deletes a ledger row, so behaviour does not change.
+17. **The platform-owner "Request Withdrawal" button and the "Available balance" header are removed from `/admin/withdrawals`** (Q27).
+    - The screen keeps its real job: reviewing affiliate withdrawal requests.
+    - Money leaving to a director goes only through `repayment` or `distribution`.
+    - Production has 0 withdrawals of any kind. The platform balance it showed is understated by the compensation-voucher debits; see the separate findings below.
+
+**Rationale.**
+- **One header type replaces three mechanisms.** Split funding, allocation and transfer would otherwise each need their own grouping, void path and tests. With one header, every multi-line invariant lives in one service, and one void covers all of them.
+- **Matches accounting practice for a private company (MPERS).** A director's loan is a liability ("amount due to director"). A director-paid expense is an expense plus that liability. Cash held in a director's account is "amount due from director". Customer prepayments and compensation vouchers are liabilities, and voucher breakage is income. Immaterial prior-period changes are recognised in the current period.
+- **Every line of the equation can be computed as of a past date.**
+  - `ledger_entries.created_at`, `supplier_ledger_entries.created_at` (with `transferred_on` for top-ups), `chip_settled_transactions.settled_on` and `orders.paid_at`/`delivered_at` cover most lines.
+  - The compensation date comes from the voucher or the wallet-refund row.
+  - Voucher balances are rebuilt from `voucher_redemptions`; a restore carries only `updated_at`, but it changes once.
+  - Breakage is dated by `expires_at`. Expiry is lazy, the status never flips, and `revoked` is never written.
+- **Not double-entry.** No journal, trial balance or balance sheet. The equation is a reconciliation check over figures other modules already own. The official books stay with the founder's monthly journal and the year-end accountant.
+
+**Consequences to track.**
+- The founder hands the accountant the decision 8 change (director-paid expenses) and the pre-incorporation treatment of the RM500 (decision 9). The internal record follows the founder's choice. The company's statutory books are the accountant's call.
+- The removed "Allocate Monthly Profit" flow had a soft warning only. Allocation now depends on the operating-profit formula being right, so any new Monthly Summary line must say which side of decision 11 it falls on.
+- `envelopes/page.tsx` is already 622 lines. The build splits it into components before adding posting forms. `entries()` loses its per-row `is_voided` query: void status comes from the posting header.
+- Build in two PRs, test-first, with invariant tests for every row of decision 3 and for both identities in decision 13:
+  - **PR-1:** decisions 1–8, 15 and 16. Add the concurrency suite if a new lock appears.
+  - **PR-2:** decisions 9–14 and 17.
+
+**Out of scope.**
+- The internal test-order flag (§16 item 55). It stays a separate addendum after this build. Its open question, whether an order can be tagged after its month is closed, now depends on decision 12.
+- Matching bank lines to CHIP payouts: still manual (decision 11 of the original).
+
+**Separate findings from the same trace** (not decided here; each has a §16 item):
+- **Compensation vouchers debit the platform ledger** (`VoucherService::issue()` writes `voucher_issued` for Path B as well as Path A). The redemption order still credits its full `order_profit`, so the platform balance is understated by every compensation voucher (RM13.18 in production). `WithdrawalController` is the only reader of that balance. Reports, Dashboard and Customer Analytics read `order_profit` only. Needs an ADR-024 addendum, plus a founder-approved reversing entry for the 5 existing rows (§16 item 79).
+- **A voucher merge counts twice and can revive an expired voucher.** The merge target is a new `Voucher` row, so `voucherLiabilityIssued()` counts the merged amount again. `merge()` checks `status = active` but not `expires_at`, so an expired voucher (whose breakage a closed month may already show) can come back with a new expiry. Production has 0 merges. Needs an ADR-036 addendum (§16 item 80).
+- **Built the same day:** settlements spanning a month end counted in no month (PR #388, merged to `staging`).
