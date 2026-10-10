@@ -4,7 +4,7 @@ namespace App\Http\Requests\Admin;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class VoidBudgetEnvelopeEntryRequest extends FormRequest
+class VoidBudgetEnvelopePostingRequest extends FormRequest
 {
     public function authorize(): bool
     {

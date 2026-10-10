@@ -757,9 +757,10 @@ Route::middleware('auth:sanctum')->group(function () {
         // Rename and/or archive/reactivate — never a hard delete, see UpdateBudgetEnvelopeRequest's own doc comment.
         Route::patch('/envelopes/{budgetEnvelope}', [BudgetEnvelopeController::class, 'update']);
         Route::get('/envelopes/{budgetEnvelope}/entries', [BudgetEnvelopeController::class, 'entries']);
-        Route::post('/envelopes/{budgetEnvelope}/entries', [BudgetEnvelopeController::class, 'storeEntry']);
-        Route::post('/envelope-entries/{entry}/void', [BudgetEnvelopeController::class, 'voidEntry']);
-        Route::get('/envelope-entries/{entry}/receipt', [BudgetEnvelopeController::class, 'downloadReceipt']);
+        // ADR-083 2026-10-10 addendum: every action is one posting with typed lines.
+        Route::post('/envelope-postings', [BudgetEnvelopeController::class, 'storePosting']);
+        Route::post('/envelope-postings/{posting}/void', [BudgetEnvelopeController::class, 'voidPosting']);
+        Route::get('/envelope-postings/{posting}/receipt', [BudgetEnvelopeController::class, 'downloadReceipt']);
     });
 
     // ADR-058 58b (RES-1..6) — admin Affiliate Management. Same
