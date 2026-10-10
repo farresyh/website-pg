@@ -1140,3 +1140,19 @@ succeeded.
   endpoint answered 200 with database, queue and horizon true when checked.
 - Not verified from here: the UptimeRobot dashboard was not opened. Error tracking
   (Sentry) is still not set up.
+
+## 2026-10-10 — §16 item 77: `next` 16.3.8 security bump (admin, storefront, reseller)
+
+- `npm install next@^16.3.8` pulled 16.4.0 (a minor), so it was re-pinned to
+  16.3.8; `package.json` keeps `^16.3.8`, the lockfiles pin the exact version.
+  `npm audit fix` (no `--force`) then moved `sharp` to 0.35.5 and
+  `source-map-js` in the three apps.
+- `npm audit --omit=dev`: 0 vulnerabilities in all three. The remaining
+  `npm audit` highs are dev-only (eslint's `braces`).
+- docs-site: `sharp` pinned to 0.35.5, plus a plain `audit fix`. The 4 highs are
+  gone; 11 moderates remain (`postcss-selector-parser` under Starlight).
+  `npm audit fix --force` would downgrade `@astrojs/starlight` to 0.21.5 and
+  `starlight-openapi`, so it was not run.
+- Verified: `tsc`, `lint`, `build` clean in admin, storefront, reseller;
+  docs-site builds (18 pages); e2e 6/6; the built storefront serves `/icon`
+  as a 512x512 PNG and `/_next/image` answers 400 for a missing file.
