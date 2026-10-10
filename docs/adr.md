@@ -50,7 +50,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-025](./adr/ADR-025-supplier-price-sync-sanity-guard.md) | Supplier price-sync sanity guard — floor + swing checks on Gamevion's incoming price | In force | 2026-08-21 |
 | [ADR-026](./adr/ADR-026-delivery-side-reconciliation-ord-10.md) | Delivery-side reconciliation (ORD-10) — `NeedsReview` state for ambiguous Gamevion order-creation failures | In force | 2026-09-16 |
 | [ADR-027](./adr/ADR-027-vip-membership.md) | VIP Membership — Costco-style spend-quota subscription, email+OTP lightweight identity, member pricing | In force | 2026-09-22 |
-| [ADR-028](./adr/ADR-028-platform-reseller-settings.md) | Platform & Reseller Settings — reseller-scoped branding vs. platform-wide config split | In force | 2026-10-02 |
+| [ADR-028](./adr/ADR-028-platform-reseller-settings.md) | Platform & Reseller Settings — reseller-scoped branding vs. platform-wide config split | In force | 2026-10-10 |
 | [ADR-029](./adr/ADR-029-seo-management.md) | SEO Management — reseller-scoped SEO settings, redirects, and per-game wiring | In force; decision 8 revised by ADR-120 | 2026-10-08 |
 | [ADR-030](./adr/ADR-030-digiflazz-supplier-integration.md) | Digiflazz supplier integration — buyer-role adapter, prepaid games only | In force; decision 2 modified by ADR-067, rc table reopened by ADR-098/102 | 2026-09-03 |
 | [ADR-031](./adr/ADR-031-multi-supplier-routing.md) | Multi-supplier routing — `SupplierAdapterFactory` + one-Package-one-supplier | In force |  |
