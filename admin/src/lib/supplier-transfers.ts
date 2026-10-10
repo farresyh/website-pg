@@ -28,6 +28,8 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
 export interface SupplierTransfer {
   id: number;
   supplier_id: number;
+  /** ADR-083 2026-10-10 addendum, decision 15 — the KL day the money left the bank (Y-m-d). */
+  transferred_on: string;
   source_channel: "wise" | "airwallex" | "bank";
   /** 2026-09-30 addendum — which real account funded this, shared PaidFrom enum with the Envelope Ledger's paid_from. */
   paid_by: string | null;
@@ -108,6 +110,8 @@ export function getSupplierTransfers(token: string, supplierId: number, filters:
 }
 
 export interface RecordSupplierTransferValues {
+  /** Y-m-d, from the transfer receipt — required. */
+  transferred_on: string;
   source_channel: "wise" | "airwallex" | "bank";
   paid_by?: string;
   amount_myr_sent: number;
@@ -122,6 +126,7 @@ export interface RecordSupplierTransferValues {
 
 export function recordSupplierTransfer(token: string, supplierId: number, values: RecordSupplierTransferValues) {
   const formData = new FormData();
+  formData.append("transferred_on", values.transferred_on);
   formData.append("source_channel", values.source_channel);
   if (values.paid_by) formData.append("paid_by", values.paid_by);
   formData.append("amount_myr_sent", String(values.amount_myr_sent));
@@ -168,6 +173,7 @@ export function voidSupplierTransfer(token: string, transferId: number, reason: 
 
 /** 2026-09-28 addendum — "Edit Details": a metadata-only correction (RM sent/fee/channel/reference/receipt), never the FX ledger amounts. Only send the fields actually changed — the backend diffs against the current row and rejects a true no-op. */
 export interface CorrectSupplierTransferValues {
+  transferred_on?: string;
   source_channel?: "wise" | "airwallex" | "bank";
   paid_by?: string;
   amount_myr_sent?: number;
@@ -179,6 +185,7 @@ export interface CorrectSupplierTransferValues {
 
 export function correctSupplierTransfer(token: string, transferId: number, values: CorrectSupplierTransferValues) {
   const formData = new FormData();
+  if (values.transferred_on) formData.append("transferred_on", values.transferred_on);
   if (values.source_channel) formData.append("source_channel", values.source_channel);
   if (values.paid_by !== undefined) formData.append("paid_by", values.paid_by);
   if (values.amount_myr_sent !== undefined) formData.append("amount_myr_sent", String(values.amount_myr_sent));

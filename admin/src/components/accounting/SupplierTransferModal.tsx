@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
 import { getSupplierTransfers, recordSupplierTransfer, type SupplierFundingLedger } from "@/lib/supplier-transfers";
 import type { Supplier } from "@/lib/suppliers";
+import { todayInKL } from "@/lib/date-range";
 
 interface Props {
   isOpen: boolean;
@@ -50,6 +51,7 @@ function formatForeign(amount: string, currency: string): string {
 function Content({ token, supplier }: Omit<Props, "isOpen" | "onClose">) {
   const [ledger, setLedger] = useState<SupplierFundingLedger | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [transferredOn, setTransferredOn] = useState(todayInKL());
   const [sourceChannel, setSourceChannel] = useState<"wise" | "airwallex" | "bank">("wise");
   const [paidBy, setPaidBy] = useState("");
   const [amountMyr, setAmountMyr] = useState("");
@@ -89,6 +91,7 @@ function Content({ token, supplier }: Omit<Props, "isOpen" | "onClose">) {
     setSubmitting(true);
     try {
       await recordSupplierTransfer(token, supplier.id, {
+        transferred_on: transferredOn,
         source_channel: sourceChannel,
         paid_by: paidBy || undefined,
         amount_myr_sent: amountSen,
@@ -147,6 +150,11 @@ function Content({ token, supplier }: Omit<Props, "isOpen" | "onClose">) {
           Record a capital transfer into this supplier&apos;s account — the actual amounts off the transfer receipt, not an estimate.
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="transfer_date">Transfer date</Label>
+            <Input id="transfer_date" type="date" value={transferredOn} onChange={(e) => setTransferredOn(e.target.value)} max={todayInKL()} required />
+            <p className="mt-1 text-theme-xs text-gray-400">The day the money left the bank, from the receipt — not today if you&apos;re recording it late.</p>
+          </div>
           <div>
             <Label htmlFor="transfer_channel">Sent via</Label>
             <select

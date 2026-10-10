@@ -4,151 +4,322 @@ namespace App\Services\Accounting;
 
 use App\Models\BudgetEnvelope;
 use App\Models\BudgetEnvelopeEntry;
+use App\Models\BudgetEnvelopePosting;
 use App\Services\Report\ReportService;
-use Carbon\CarbonInterface;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 /**
- * ADR-083 2026-09-28 "Envelope Ledger" addendum — the sole writer of
- * `budget_envelope_entries`. `recordEntry()` is the normal path;
- * `voidEntry()` is the only correction path (never an edit/delete —
- * `BudgetEnvelopeEntry` enforces this at the model layer);
- * `allocateMonthlyProfit()` is the once-a-month "allocate profit"
- * action, a thin wrapper writing one `MonthlyProfitAllocation` entry
- * per chosen envelope in a single transaction.
+ * ADR-083 Envelope Ledger, reshaped by the 2026-10-10 addendum (decisions
+ * 2–8): the sole writer of `budget_envelope_postings` and their lines.
+ * `post()` records one action and enforces its type's invariants;
+ * `void()` is the only correction path (a reversal posting, never an edit).
+ * An envelope is an allocation, never a location (decision 1): supplier
+ * top-ups and CHIP payouts never come through here.
  */
 final class BudgetEnvelopeService
 {
     /**
-     * Stores the optional receipt first, then the entry — one
-     * transaction, so a failed insert never leaves an orphan receipt
-     * file. `$amountSen` is signed by the caller (the controller/form
-     * request validates it against the category's typical sign as a
-     * soft warning, never a hard block — see
-     * `BudgetEnvelopeEntryCategory::typicalSign()`).
+     * @param  list<array{budget_envelope_id: int, amount_sen: int}>  $lines  signed — positive into the envelope, negative out
      */
-    /**
-     * 2026-09-30 addendum: `$transactionDate` (the day money actually
-     * moved, defaults to today when omitted — an entry recorded days
-     * after the fact shouldn't silently claim it happened today),
-     * `$paidFrom` (which real account funded it — `PaidFrom`, optional),
-     * `$referenceNo` (optional free text — a bank reference, invoice
-     * number, etc.).
-     */
-    public function recordEntry(
-        BudgetEnvelope $envelope,
-        BudgetEnvelopeEntryCategory $category,
-        int $amountSen,
+    public function post(
+        EnvelopePostingType $type,
+        array $lines,
+        string $transactionDate,
         string $description,
-        ?UploadedFile $receipt,
         int $adminUserId,
-        ?CarbonInterface $transactionDate = null,
-        ?PaidFrom $paidFrom = null,
+        ?PaidFrom $counterparty = null,
+        ?FundType $fundType = null,
+        ?ExpenseCategory $expenseCategory = null,
         ?string $referenceNo = null,
-    ): BudgetEnvelopeEntry {
-        return DB::transaction(function () use ($envelope, $category, $amountSen, $description, $receipt, $adminUserId, $transactionDate, $paidFrom, $referenceNo) {
-            $receiptPath = $receipt !== null
-                ? $receipt->store('accounting/budget-envelopes', config('filesystems.accounting_disk'))
-                : null;
+        ?UploadedFile $receipt = null,
+    ): BudgetEnvelopePosting {
+        $lines = array_map(fn (array $l) => ['budget_envelope_id' => (int) $l['budget_envelope_id'], 'amount_sen' => (int) $l['amount_sen']], $lines);
+        $this->assertHeader($type, $counterparty, $fundType, $expenseCategory);
+        $this->assertLines($type, $lines);
 
-            return BudgetEnvelopeEntry::query()->create([
-                'budget_envelope_id' => $envelope->id,
-                'category' => $category->value,
-                'amount_sen' => $amountSen,
-                // A KL calendar date — `now()` alone is UTC and dated an
-                // entry typed before 08:00 KL to the previous day.
-                'transaction_date' => ($transactionDate ?? now(ReportService::TIMEZONE))->toDateString(),
-                'description' => $description,
-                'paid_from' => $paidFrom?->value,
-                'reference_no' => $referenceNo,
-                'receipt_path' => $receiptPath,
-                'created_by' => $adminUserId,
-            ]);
-        });
-    }
+        $receiptPath = null;
 
-    /**
-     * The only correction path — never edits/deletes the original
-     * (model-enforced). Posts a new entry with the exact negated
-     * amount, `reverses_entry_id` pointing back at the original, so
-     * `BudgetEnvelope::balanceSen()`'s plain `SUM(amount_sen)` always
-     * nets it out automatically. An already-voided entry (one that
-     * already has a reversal pointing at it) cannot be voided again —
-     * checked inside the lock to close a concurrent-double-void race.
-     */
-    public function voidEntry(BudgetEnvelopeEntry $entry, string $reason, int $adminUserId): BudgetEnvelopeEntry
-    {
-        return DB::transaction(function () use ($entry, $reason, $adminUserId) {
-            $locked = BudgetEnvelopeEntry::query()->whereKey($entry->id)->lockForUpdate()->firstOrFail();
+        try {
+            return DB::transaction(function () use ($type, $lines, $transactionDate, $description, $adminUserId, $counterparty, $fundType, $expenseCategory, $referenceNo, $receipt, &$receiptPath) {
+                $envelopes = $this->lockEnvelopes();
 
-            $alreadyVoided = BudgetEnvelopeEntry::query()->where('reverses_entry_id', $locked->id)->exists();
-            if ($alreadyVoided) {
-                throw ValidationException::withMessages([
-                    'entry' => ['This entry has already been voided.'],
-                ]);
+                foreach ($lines as $line) {
+                    if (! ($envelopes->get($line['budget_envelope_id'])?->is_active ?? false)) {
+                        $this->reject('lines', 'An archived envelope cannot take a new posting — reactivate it first.');
+                    }
+                }
+
+                $amount = $this->headerAmount($type, $lines);
+
+                if ($type === EnvelopePostingType::Repayment) {
+                    $owed = $this->loanBalanceSen($counterparty);
+                    if ($amount > $owed) {
+                        $this->reject('lines', sprintf('This repays RM%s, but the company only owes %s RM%s.', number_format($amount / 100, 2), $counterparty->label(), number_format($owed / 100, 2)));
+                    }
+                }
+
+                $receiptPath = $receipt?->store('accounting/budget-envelopes', config('filesystems.accounting_disk'));
+
+                return $this->write($type, $amount, $lines, $transactionDate, $description, $adminUserId, $counterparty, $fundType, $expenseCategory, $referenceNo, $receiptPath);
+            });
+        } catch (\Throwable $e) {
+            // The write rolled back — don't leave an orphan receipt behind. A storage error here must not replace $e.
+            if ($receiptPath !== null) {
+                rescue(fn () => Storage::disk(config('filesystems.accounting_disk'))->delete($receiptPath));
             }
 
-            return BudgetEnvelopeEntry::query()->create([
-                'budget_envelope_id' => $locked->budget_envelope_id,
-                'category' => BudgetEnvelopeEntryCategory::Adjustment->value,
-                'amount_sen' => -$locked->amount_sen,
-                // Dated with the entry it cancels, so any date filter nets
-                // the pair to zero — never a reversal outside the period.
-                'transaction_date' => ($locked->transaction_date ?? $locked->created_at->setTimezone(ReportService::TIMEZONE))->toDateString(),
-                'description' => "Void: {$reason} (reversing entry #{$locked->id})",
-                'reverses_entry_id' => $locked->id,
-                'void_reason' => $reason,
-                'created_by' => $adminUserId,
-            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Posts the exact negation of every line, dated with the posting it
+     * cancels so any date filter nets the pair to zero. The original stays,
+     * untouched. A posting is reversed at most once (also a unique index),
+     * and a reversal is never itself reversed — re-record the posting instead.
+     */
+    public function void(BudgetEnvelopePosting $posting, string $reason, int $adminUserId): BudgetEnvelopePosting
+    {
+        return DB::transaction(function () use ($posting, $reason, $adminUserId) {
+            $this->lockEnvelopes();
+            $locked = BudgetEnvelopePosting::query()->with('lines')->whereKey($posting->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->reverses_posting_id !== null) {
+                $this->reject('posting', 'A void reversal cannot itself be voided — record the posting again instead.');
+            }
+
+            if (BudgetEnvelopePosting::query()->where('reverses_posting_id', $locked->id)->exists()) {
+                $this->reject('posting', 'This posting has already been voided.');
+            }
+
+            if ($this->loanEffect($locked->type, $locked->fund_type, $locked->amount_sen) > 0) {
+                $owed = $this->loanBalanceSen($locked->counterparty);
+                if ($owed < $locked->amount_sen) {
+                    $this->reject('posting', sprintf('Voiding this would leave the company owing %s a negative amount (RM%s owed now) — void the repayment first.', $locked->counterparty->label(), number_format($owed / 100, 2)));
+                }
+            }
+
+            return $this->write(
+                $locked->type,
+                -$locked->amount_sen,
+                $locked->lines->map(fn (BudgetEnvelopeEntry $l) => ['budget_envelope_id' => $l->budget_envelope_id, 'amount_sen' => -$l->amount_sen])->all(),
+                $locked->transaction_date->toDateString(),
+                "Void: {$reason} (reversing posting #{$locked->id})",
+                $adminUserId,
+                $locked->counterparty,
+                $locked->fund_type,
+                $locked->expense_category,
+                null,
+                null,
+                reversesPostingId: $locked->id,
+                voidReason: $reason,
+            );
         });
     }
 
     /**
-     * "Allocate Monthly Profit" — the founder manually decides how
-     * much of this month's net profit goes to which envelope (never an
-     * automatic formula, a deliberate decision from the founder's own
-     * grilling session). `$allocations` is `[budget_envelope_id =>
-     * amount_sen]`, every value must be positive. One
-     * `MonthlyProfitAllocation` entry per envelope, all in one
-     * transaction.
+     * Decision 7: what the company owes one director, computed from postings,
+     * never stored. A reversal carries a negated amount, so it nets itself out.
+     */
+    public function loanBalanceSen(PaidFrom $director): int
+    {
+        return (int) BudgetEnvelopePosting::query()
+            ->where('counterparty', $director->value)
+            ->get(['type', 'fund_type', 'amount_sen'])
+            ->sum(fn (BudgetEnvelopePosting $p) => $this->loanEffect($p->type, $p->fund_type, $p->amount_sen));
+    }
+
+    /** @return array<string, int> keyed by director value, every director present */
+    public function loanBalances(): array
+    {
+        return collect(PaidFrom::directors())
+            ->mapWithKeys(fn (PaidFrom $d) => [$d->value => $this->loanBalanceSen($d)])
+            ->all();
+    }
+
+    /**
+     * PR-1 keeps the manual monthly action; the month close (ADR-083
+     * 2026-10-10 addendum, decision 9, PR-2) replaces it.
      *
-     * @param  array<int, int>  $allocations
-     * @return list<BudgetEnvelopeEntry>
+     * @param  array<int, int>  $allocations  [budget_envelope_id => amount_sen]
      */
-    public function allocateMonthlyProfit(array $allocations, string $periodLabel, int $adminUserId): array
+    public function allocateMonthlyProfit(array $allocations, string $periodLabel, int $adminUserId): BudgetEnvelopePosting
     {
-        return DB::transaction(function () use ($allocations, $periodLabel, $adminUserId) {
-            $entries = [];
-
-            foreach ($allocations as $envelopeId => $amountSen) {
-                $envelope = BudgetEnvelope::query()->findOrFail($envelopeId);
-
-                $entries[] = $this->recordEntry(
-                    $envelope,
-                    BudgetEnvelopeEntryCategory::MonthlyProfitAllocation,
-                    $amountSen,
-                    "Monthly profit allocation — {$periodLabel}",
-                    null,
-                    $adminUserId,
-                );
-            }
-
-            return $entries;
-        });
+        return $this->post(
+            EnvelopePostingType::ProfitAllocation,
+            collect($allocations)->map(fn (int $amount, int $id) => ['budget_envelope_id' => $id, 'amount_sen' => $amount])->values()->all(),
+            now(ReportService::TIMEZONE)->toDateString(),
+            "Monthly profit allocation — {$periodLabel}",
+            $adminUserId,
+        );
     }
 
-    public function downloadReceipt(BudgetEnvelopeEntry $entry)
+    public function downloadReceipt(BudgetEnvelopePosting $posting)
     {
-        if ($entry->receipt_path === null) {
+        if ($posting->receipt_path === null) {
             abort(404);
         }
 
         return Storage::disk(config('filesystems.accounting_disk'))->download(
-            $entry->receipt_path,
-            "budget-envelope-entry-{$entry->id}-receipt",
+            $posting->receipt_path,
+            "envelope-posting-{$posting->id}-receipt",
         );
+    }
+
+    /** How this posting moves its counterparty's loan balance. */
+    private function loanEffect(EnvelopePostingType $type, ?FundType $fundType, int $amountSen): int
+    {
+        return match (true) {
+            $type === EnvelopePostingType::Funding && $fundType === FundType::Loan,
+            $type === EnvelopePostingType::DirectorPaidExpense => $amountSen,
+            $type === EnvelopePostingType::Repayment => -$amountSen,
+            default => 0,
+        };
+    }
+
+    /**
+     * The header's own size: what came in, moved, or went out. Signed only
+     * for a profit allocation (a loss month allocates negatively, PR-2).
+     *
+     * @param  list<array{budget_envelope_id: int, amount_sen: int}>  $lines
+     */
+    private function headerAmount(EnvelopePostingType $type, array $lines): int
+    {
+        $amounts = array_column($lines, 'amount_sen');
+
+        return match ($type) {
+            EnvelopePostingType::Funding, EnvelopePostingType::ProfitAllocation => array_sum($amounts),
+            EnvelopePostingType::Transfer, EnvelopePostingType::DirectorPaidExpense => array_sum(array_filter($amounts, fn (int $a) => $a > 0)),
+            EnvelopePostingType::Expense, EnvelopePostingType::Repayment, EnvelopePostingType::Distribution => -$amounts[0],
+        };
+    }
+
+    private function assertHeader(EnvelopePostingType $type, ?PaidFrom $counterparty, ?FundType $fundType, ?ExpenseCategory $expenseCategory): void
+    {
+        if ($type->requiresCounterparty() && $counterparty === null) {
+            $this->reject('counterparty', 'Choose the director this belongs to.');
+        }
+        if (! $type->requiresCounterparty() && $counterparty !== null) {
+            $this->reject('counterparty', "A {$type->label()} has no counterparty.");
+        }
+        if ($counterparty === PaidFrom::CompanyAccount) {
+            $this->reject('counterparty', 'The counterparty must be a director, not the company account.');
+        }
+
+        $isFunding = $type === EnvelopePostingType::Funding;
+        if ($isFunding && $fundType === null) {
+            $this->reject('fund_type', 'Choose whether this is a loan or share capital.');
+        }
+        if (! $isFunding && $fundType !== null) {
+            $this->reject('fund_type', 'Only funding has a fund type.');
+        }
+
+        if ($type->requiresExpenseCategory() && $expenseCategory === null) {
+            $this->reject('expense_category', 'Choose an expense category.');
+        }
+        if (! $type->requiresExpenseCategory() && $expenseCategory !== null) {
+            $this->reject('expense_category', "A {$type->label()} has no expense category.");
+        }
+    }
+
+    /** @param list<array{budget_envelope_id: int, amount_sen: int}> $lines */
+    private function assertLines(EnvelopePostingType $type, array $lines): void
+    {
+        $amounts = array_column($lines, 'amount_sen');
+        $envelopeIds = array_column($lines, 'budget_envelope_id');
+        $positive = array_filter($amounts, fn (int $a) => $a > 0);
+        $negative = array_filter($amounts, fn (int $a) => $a < 0);
+
+        if ($lines === [] || in_array(0, $amounts, true)) {
+            $this->reject('lines', 'Every line needs a non-zero amount.');
+        }
+
+        // A director-paid expense is the one shape that hits the same envelope twice.
+        if ($type !== EnvelopePostingType::DirectorPaidExpense && count(array_unique($envelopeIds)) !== count($envelopeIds)) {
+            $this->reject('lines', 'Each envelope can appear only once in a posting.');
+        }
+
+        $ok = match ($type) {
+            EnvelopePostingType::Funding => count($negative) === 0,
+            EnvelopePostingType::ProfitAllocation => true,
+            EnvelopePostingType::Transfer => count($lines) >= 2 && $positive !== [] && $negative !== [] && array_sum($amounts) === 0,
+            EnvelopePostingType::Expense, EnvelopePostingType::Repayment, EnvelopePostingType::Distribution => count($lines) === 1 && $negative !== [],
+            EnvelopePostingType::DirectorPaidExpense => count($lines) === 2
+                && $envelopeIds[0] === $envelopeIds[1]
+                && count($positive) === 1 && count($negative) === 1
+                && array_sum($amounts) === 0,
+        };
+
+        if (! $ok) {
+            $this->reject('lines', match ($type) {
+                EnvelopePostingType::Funding => 'Funding only adds money to envelopes.',
+                EnvelopePostingType::ProfitAllocation => '',
+                EnvelopePostingType::Transfer => 'A transfer takes money out of at least one envelope and puts the same total into another.',
+                EnvelopePostingType::DirectorPaidExpense => 'A director-paid expense is one envelope, the same amount in (the loan) and out (the expense).',
+                default => "A {$type->label()} takes money out of exactly one envelope.",
+            });
+        }
+    }
+
+    /**
+     * One global lock over every envelope serialises all postings, so a
+     * repayment's "is it within the loan balance" check can't race another
+     * posting for the same director.
+     *
+     * ponytail: global lock — a founder-only screen with a handful of
+     * postings a month. Lock per counterparty if this ever becomes busy.
+     *
+     * @return Collection<int, BudgetEnvelope>
+     */
+    private function lockEnvelopes(): Collection
+    {
+        return BudgetEnvelope::query()->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+    }
+
+    /** @param list<array{budget_envelope_id: int, amount_sen: int}> $lines */
+    private function write(
+        EnvelopePostingType $type,
+        int $amount,
+        array $lines,
+        string $transactionDate,
+        string $description,
+        int $adminUserId,
+        ?PaidFrom $counterparty,
+        ?FundType $fundType,
+        ?ExpenseCategory $expenseCategory,
+        ?string $referenceNo,
+        ?string $receiptPath,
+        ?int $reversesPostingId = null,
+        ?string $voidReason = null,
+    ): BudgetEnvelopePosting {
+        $posting = BudgetEnvelopePosting::query()->create([
+            'type' => $type->value,
+            'amount_sen' => $amount,
+            'transaction_date' => $transactionDate,
+            'description' => $description,
+            'counterparty' => $counterparty?->value,
+            'fund_type' => $fundType?->value,
+            'expense_category' => $expenseCategory?->value,
+            'reference_no' => $referenceNo,
+            'receipt_path' => $receiptPath,
+            'reverses_posting_id' => $reversesPostingId,
+            'void_reason' => $voidReason,
+            'created_by' => $adminUserId,
+        ]);
+
+        foreach ($lines as $line) {
+            $posting->lines()->create($line);
+        }
+
+        return $posting->load('lines');
+    }
+
+    private function reject(string $key, string $message): never
+    {
+        throw ValidationException::withMessages([$key => [$message]]);
     }
 }

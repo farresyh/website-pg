@@ -8,6 +8,7 @@ use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\SupplierTransferCorrection;
 use App\Services\Accounting\SupplierFundingService;
+use App\Services\Report\ReportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -55,6 +56,7 @@ class SupplierTransferControllerTest extends TestCase
         $supplier = $this->makeSupplier();
 
         $response = $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise',
             'amount_myr_sent' => 100000, // RM 1,000.00
             'fee_myr' => 250,
@@ -93,6 +95,7 @@ class SupplierTransferControllerTest extends TestCase
         $supplier = $this->makeSupplier();
 
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise',
             'paid_by' => 'farres',
             'amount_myr_sent' => 100000,
@@ -112,6 +115,7 @@ class SupplierTransferControllerTest extends TestCase
         $supplier = $this->makeSupplier();
 
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise',
             'amount_myr_sent' => 100000, // RM 1,000.00
             'currency' => 'IDR',
@@ -129,6 +133,7 @@ class SupplierTransferControllerTest extends TestCase
         $supplier = $this->makeSupplier();
 
         $response = $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'bank',
             'amount_myr_sent' => 50000,
             'currency' => 'IDR',
@@ -148,6 +153,7 @@ class SupplierTransferControllerTest extends TestCase
         $supplier = $this->makeSupplier();
 
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise',
             'amount_myr_sent' => 0,
             'currency' => 'IDR',
@@ -161,6 +167,7 @@ class SupplierTransferControllerTest extends TestCase
         $supplier = $this->makeSupplier();
 
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'paypal',
             'amount_myr_sent' => 50000,
             'currency' => 'IDR',
@@ -173,6 +180,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise',
             'amount_myr_sent' => 50000,
             'currency' => 'IDR',
@@ -193,6 +201,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise',
             'amount_myr_sent' => 50000,
             'currency' => 'IDR',
@@ -211,6 +220,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise',
             'amount_myr_sent' => 50000,
             'currency' => 'IDR',
@@ -234,6 +244,7 @@ class SupplierTransferControllerTest extends TestCase
         $supplier = $this->makeSupplier();
 
         $response = $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise',
             'amount_myr_sent' => 19889, // RM 198.89
             'fee_myr' => 670, // RM 6.70, Wise's own fee
@@ -267,6 +278,7 @@ class SupplierTransferControllerTest extends TestCase
         $supplier = $this->makeSupplier();
 
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise',
             'amount_myr_sent' => 100000,
             'currency' => 'IDR',
@@ -281,6 +293,7 @@ class SupplierTransferControllerTest extends TestCase
         $supplier = $this->makeSupplier();
 
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise',
             'amount_myr_sent' => 19889,
             'currency' => 'IDR',
@@ -299,6 +312,7 @@ class SupplierTransferControllerTest extends TestCase
         $supplier = $this->makeSupplier();
 
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise',
             'amount_myr_sent' => 19889,
             'currency' => 'IDR',
@@ -314,6 +328,7 @@ class SupplierTransferControllerTest extends TestCase
         $admin = $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise',
             'amount_myr_sent' => 19889,
             'currency' => 'IDR',
@@ -351,6 +366,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
         ])->assertCreated();
         $transfer = SupplierTransfer::query()->firstOrFail();
@@ -364,6 +380,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
         ])->assertCreated();
         $transfer = SupplierTransfer::query()->firstOrFail();
@@ -378,6 +395,7 @@ class SupplierTransferControllerTest extends TestCase
         $admin = $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR',
             'amount_foreign_received' => 832672, 'supplier_fee' => 15000,
         ])->assertCreated();
@@ -415,6 +433,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR',
             'amount_foreign_received' => 832672, 'supplier_fee' => 15000, // net 817,672
         ])->assertCreated();
@@ -437,6 +456,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
         ])->assertCreated();
         $transfer = SupplierTransfer::query()->firstOrFail();
@@ -450,6 +470,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
         ])->assertCreated();
         $transfer = SupplierTransfer::query()->firstOrFail();
@@ -475,6 +496,7 @@ class SupplierTransferControllerTest extends TestCase
         $admin = $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
         ])->assertCreated();
         $stale = SupplierTransfer::query()->firstOrFail();
@@ -504,6 +526,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
         ])->assertCreated();
         $transfer = SupplierTransfer::query()->firstOrFail();
@@ -514,12 +537,65 @@ class SupplierTransferControllerTest extends TestCase
         $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/void", ['reason' => 'x'])->assertForbidden();
     }
 
+    /**
+     * ADR-083 2026-10-10 addendum, decision 15: the day the money left the
+     * bank is required and stored as typed, independent of when the row
+     * was recorded.
+     */
+    public function test_store_records_transferred_on_and_requires_it(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $payload = ['source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672];
+
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", $payload)
+            ->assertUnprocessable()->assertJsonValidationErrors('transferred_on');
+
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [...$payload, 'transferred_on' => now(ReportService::TIMEZONE)->addDay()->toDateString()])
+            ->assertUnprocessable()->assertJsonValidationErrors('transferred_on');
+
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [...$payload, 'transferred_on' => '2026-09-15'])
+            ->assertCreated()->assertJsonPath('transfer.transferred_on', '2026-09-15');
+    }
+
+    public function test_correct_edits_transferred_on(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
+            'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
+        ])->assertCreated();
+        $transfer = SupplierTransfer::query()->firstOrFail();
+
+        $this->postJson("/api/accounting/supplier-transfers/{$transfer->id}/correct", [
+            'transferred_on' => '2026-09-30',
+            'reason' => 'Wise receipt shows 30 Sep',
+        ])->assertCreated()
+            ->assertJsonPath('transfer.transferred_on', '2026-09-30')
+            ->assertJsonPath('correction.changes.transferred_on', ['2026-10-01', '2026-09-30']);
+    }
+
+    /** ADR-083 2026-10-10 addendum, decision 7: the director is Lokman; the old spelling is gone. */
+    public function test_paid_by_accepts_lokman_and_rejects_the_old_spelling(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $payload = ['transferred_on' => '2026-10-01', 'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672];
+
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [...$payload, 'paid_by' => 'luqman'])
+            ->assertUnprocessable()->assertJsonValidationErrors('paid_by');
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [...$payload, 'paid_by' => 'lokman'])
+            ->assertCreated()->assertJsonPath('transfer.paid_by', 'lokman');
+    }
+
     /** 2026-09-30 addendum — paid_by is correctable via "Edit Details" too (recordCorrection()'s $allowed list). */
     public function test_correct_edits_paid_by(): void
     {
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'paid_by' => 'farres', 'amount_myr_sent' => 19889, 'currency' => 'IDR',
             'amount_foreign_received' => 832672,
         ])->assertCreated();
@@ -546,6 +622,7 @@ class SupplierTransferControllerTest extends TestCase
         $supplier = $this->makeSupplier();
         $fake = Storage::fake('local');
         $this->post("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR',
             'amount_foreign_received' => 832672,
             'receipt' => UploadedFile::fake()->create('old.pdf', 50, 'application/pdf'),
@@ -573,6 +650,7 @@ class SupplierTransferControllerTest extends TestCase
         $admin = $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR',
             'amount_foreign_received' => 832672, 'reference_no' => 'WISE-TYPO',
         ])->assertCreated();
@@ -612,6 +690,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR',
             'amount_foreign_received' => 832672,
         ])->assertCreated();
@@ -636,6 +715,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR',
             'amount_foreign_received' => 832672,
         ])->assertCreated();
@@ -659,6 +739,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
         ])->assertCreated();
         $transfer = SupplierTransfer::query()->firstOrFail();
@@ -682,6 +763,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
         ])->assertCreated();
         $transfer = SupplierTransfer::query()->firstOrFail();
@@ -705,6 +787,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
         ])->assertCreated();
         $transfer = SupplierTransfer::query()->firstOrFail();
@@ -722,6 +805,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
         ])->assertCreated();
         $transfer = SupplierTransfer::query()->firstOrFail();
@@ -735,6 +819,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
         ])->assertCreated();
         $transfer = SupplierTransfer::query()->firstOrFail();
@@ -750,6 +835,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
         ])->assertCreated();
         $transfer = SupplierTransfer::query()->firstOrFail();
@@ -768,10 +854,12 @@ class SupplierTransferControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
         ])->assertCreated();
         $active = SupplierTransfer::query()->firstOrFail();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 50000, 'currency' => 'IDR', 'amount_foreign_received' => 1850000,
         ])->assertCreated();
         $voided = SupplierTransfer::query()->where('id', '!=', $active->id)->firstOrFail();
@@ -786,12 +874,31 @@ class SupplierTransferControllerTest extends TestCase
         $this->assertSame($voided->id, $voidedOnly->json('transfers.data.0.id'));
     }
 
+    /** Decision 15: the history's date filter and order follow the day the money moved, not the day it was typed in. */
+    public function test_index_date_filter_uses_transferred_on(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->makeSupplier();
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-09-15',
+            'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
+        ])->assertCreated();
+
+        $september = $this->getJson("/api/accounting/suppliers/{$supplier->id}/transfers?from=2026-09-01&to=2026-09-30")->assertOk();
+        $this->assertCount(1, $september->json('transfers.data'));
+
+        $today = now(ReportService::TIMEZONE)->toDateString();
+        $recordedDay = $this->getJson("/api/accounting/suppliers/{$supplier->id}/transfers?from={$today}&to={$today}")->assertOk();
+        $this->assertCount(0, $recordedDay->json('transfers.data'));
+    }
+
     /** index()'s transfer history nests each transfer's own corrections, so an admin sees the full story in one place. */
     public function test_index_includes_each_transfers_adjustments(): void
     {
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
         ])->assertCreated();
         $transfer = SupplierTransfer::query()->firstOrFail();

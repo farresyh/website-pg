@@ -1,18 +1,14 @@
 "use client";
 
 /**
- * ADR-083 2026-09-28 "Envelope Ledger" addendum — discretionary,
- * director-controlled budget tracking (Capital Rolling, Marketing
- * Budget, Maintenance/Operations, Company Savings), added by
- * re-grilling ADR-083 decision 11 ("the platform does not model
- * equity, capital or drawings"). Deliberately not a double-entry
- * engine — categorized, append-only entries with a running balance per
- * envelope, "beginner friendly" by explicit founder request: amounts
- * are always typed as a plain positive magnitude, the category itself
- * decides whether it credits or debits (see `typical_sign`).
+ * ADR-083 Envelope Ledger (2026-09-28 addendum), reshaped by the
+ * 2026-10-10 addendum: each action is one posting with lines into or out
+ * of envelopes, and the company's loan balance per director is computed
+ * from those postings. An envelope is an allocation — what money is for —
+ * never where it sits: supplier top-ups and CHIP payouts are recorded in
+ * their own modules, never here. Not a double-entry engine.
  */
 
-import { todayInKL } from "@/lib/date-range";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -23,97 +19,41 @@ import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import {
-  getBudgetEnvelopes,
   createBudgetEnvelope,
-  updateBudgetEnvelope,
+  downloadEnvelopeExport,
+  formatRm,
   getBudgetEnvelopeEntries,
-  recordBudgetEnvelopeEntry,
-  voidBudgetEnvelopeEntry,
-  allocateMonthlyProfit,
-  downloadBudgetEnvelopeEntryReceipt,
+  getBudgetEnvelopes,
+  updateBudgetEnvelope,
   type BudgetEnvelope,
-  type BudgetEnvelopeCategory,
   type BudgetEnvelopeEntry,
-  type PaidFromOption,
+  type BudgetEnvelopeIndex,
 } from "@/lib/budget-envelopes";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
-
-function formatRm(sen: number): string {
-  const negative = sen < 0;
-  const formatted = `RM ${(Math.abs(sen) / 100).toFixed(2)}`;
-  return negative ? `(${formatted})` : formatted;
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString("en-MY", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-const SUMMARY_LINE_LABELS: Record<string, string> = {
-  sales_revenue_sen: "Sales revenue",
-  membership_revenue_sen: "Membership revenue",
-  cogs_sen: "COGS",
-  payment_processing_gain_loss_sen: "Payment processing net gain/(loss)",
-  supplier_prepaid_topup_sen: "Supplier prepaid — top-up",
-  // 2026-09-30 fix: two keys forPeriod() already returned were missing
-  // here, falling back to the raw snake_case key on screen.
-  bank_transfer_fees_sen: "Bank / transfer fees",
-  supplier_prepaid_fx_variance_sen: "Supplier prepaid — FX variance true-up",
-  affiliate_commission_expense_sen: "Affiliate commission expense",
-  affiliate_tier_fees_sen: "Affiliate tier fees (from earnings, no cash)",
-  voucher_liability_issued_sen: "Voucher liability issued",
-  reseller_wallet_balance_sen: "Reseller wallet balance (current, not month-end)",
-};
+import { PostingForm } from "@/components/accounting/envelopes/PostingForm";
+import { EntriesTable } from "@/components/accounting/envelopes/EntriesTable";
+import { AllocateProfitForm } from "@/components/accounting/envelopes/AllocateProfitForm";
 
 export default function EnvelopeLedgerPage() {
   const router = useRouter();
   const session = useClientSession();
   const token = session?.token ?? null;
 
-  const [envelopes, setEnvelopes] = useState<BudgetEnvelope[]>([]);
-  const [categories, setCategories] = useState<BudgetEnvelopeCategory[]>([]);
-  const [paidFromOptions, setPaidFromOptions] = useState<PaidFromOption[]>([]);
-  const [monthSummary, setMonthSummary] = useState<Record<string, number>>({});
-  const [monthLabel, setMonthLabel] = useState("");
-  const [monthRoughPlEstimateSen, setMonthRoughPlEstimateSen] = useState(0);
+  const [index, setIndex] = useState<BudgetEnvelopeIndex | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [entries, setEntries] = useState<BudgetEnvelopeEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [downloading, setDownloading] = useState<number | null>(null);
 
   const [newEnvelopeName, setNewEnvelopeName] = useState("");
   const [showNewEnvelope, setShowNewEnvelope] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
-
-  const [showRecordForm, setShowRecordForm] = useState(false);
-  const [category, setCategory] = useState("");
-  const [amount, setAmount] = useState("");
-  const [transactionDate, setTransactionDate] = useState("");
-  const [description, setDescription] = useState("");
-  const [paidFrom, setPaidFrom] = useState("");
-  const [referenceNo, setReferenceNo] = useState("");
-  const [direction, setDirection] = useState<"in" | "out">("out");
-  const [receipt, setReceipt] = useState<File | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  const [showAllocate, setShowAllocate] = useState(false);
-  const [allocationAmounts, setAllocationAmounts] = useState<Record<number, string>>({});
-  const [allocating, setAllocating] = useState(false);
-
-  const [voidingId, setVoidingId] = useState<number | null>(null);
-  const [voidReason, setVoidReason] = useState("");
+  const [panel, setPanel] = useState<"record" | "allocate" | null>(null);
 
   function loadIndex(t: string) {
     return getBudgetEnvelopes(t)
       .then((data) => {
-        setEnvelopes(data.envelopes);
-        setCategories(data.categories);
-        setPaidFromOptions(data.paid_from_options);
-        setMonthSummary(data.current_month_summary);
-        setMonthLabel(data.current_month_label);
-        setMonthRoughPlEstimateSen(data.current_month_rough_pl_estimate_sen);
+        setIndex(data);
         setSelectedId((current) => current ?? data.envelopes.find((e) => e.is_active)?.id ?? data.envelopes[0]?.id ?? null);
       })
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load envelopes."));
@@ -123,6 +63,12 @@ export default function EnvelopeLedgerPage() {
     return getBudgetEnvelopeEntries(t, envelopeId)
       .then((data) => setEntries(data.entries))
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load entries."));
+  }
+
+  async function reload() {
+    if (!token) return;
+    setError(null);
+    await Promise.all([loadIndex(token), selectedId ? loadEntries(token, selectedId) : Promise.resolve()]);
   }
 
   useEffect(() => {
@@ -139,168 +85,59 @@ export default function EnvelopeLedgerPage() {
     if (token && selectedId) loadEntries(token, selectedId);
   }, [token, selectedId]);
 
+  const envelopes = index?.envelopes ?? [];
   const selectedEnvelope = envelopes.find((e) => e.id === selectedId) ?? null;
-  const selectedCategory = categories.find((c) => c.value === category) ?? null;
+
+  async function run(action: () => Promise<unknown>, fallback: string) {
+    if (!token) return;
+    setError(null);
+    try {
+      await action();
+      await reload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : fallback);
+    }
+  }
 
   async function handleCreateEnvelope(e: React.FormEvent) {
     e.preventDefault();
     if (!token || !newEnvelopeName.trim()) return;
-    setError(null);
-    try {
+    await run(async () => {
       await createBudgetEnvelope(token, newEnvelopeName.trim());
       setNewEnvelopeName("");
       setShowNewEnvelope(false);
-      await loadIndex(token);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not create envelope.");
-    }
+    }, "Could not create envelope.");
   }
 
   async function handleRename(e: React.FormEvent) {
     e.preventDefault();
     if (!token || !selectedEnvelope || !renameValue.trim()) return;
-    setError(null);
-    try {
+    await run(async () => {
       await updateBudgetEnvelope(token, selectedEnvelope.id, { name: renameValue.trim() });
       setRenaming(false);
-      await loadIndex(token);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not rename this envelope.");
-    }
+    }, "Could not rename this envelope.");
   }
 
-  /** Never a hard delete — see updateBudgetEnvelope's own doc comment. Archiving just hides it from the active list; its entry history stays fully visible/exportable. */
-  async function handleToggleArchive(envelope: BudgetEnvelope) {
+  /** Never a hard delete. Archiving needs a zero balance; the backend explains if not. */
+  function handleToggleArchive(envelope: BudgetEnvelope) {
     if (!token) return;
-    setError(null);
-    try {
-      await updateBudgetEnvelope(token, envelope.id, { is_active: !envelope.is_active });
-      await loadIndex(token);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not update this envelope.");
-    }
+    return run(() => updateBudgetEnvelope(token, envelope.id, { is_active: !envelope.is_active }), "Could not update this envelope.");
   }
 
-  async function handleRecordEntry(e: React.FormEvent) {
-    e.preventDefault();
-    if (!token || !selectedEnvelope || !selectedCategory) return;
-    setError(null);
-
-    const amountSen = Math.round(parseFloat(amount) * 100);
-    if (!Number.isFinite(amountSen) || amountSen < 1) {
-      setError("Enter a valid amount (RM).");
-      return;
-    }
-    if (!description.trim()) {
-      setError("Enter a description.");
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      await recordBudgetEnvelopeEntry(token, selectedEnvelope.id, {
-        category,
-        amount_sen: amountSen,
-        transaction_date: transactionDate || undefined,
-        description: description.trim(),
-        direction: selectedCategory.typical_sign === "either" ? direction : undefined,
-        paid_from: paidFrom || undefined,
-        reference_no: referenceNo.trim() || undefined,
-        receipt,
-      });
-      setCategory("");
-      setAmount("");
-      setTransactionDate("");
-      setDescription("");
-      setPaidFrom("");
-      setReferenceNo("");
-      setReceipt(null);
-      setShowRecordForm(false);
-      await Promise.all([loadIndex(token), loadEntries(token, selectedEnvelope.id)]);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleVoid(entryId: number) {
-    if (!token || !selectedEnvelope || !voidReason.trim()) {
-      setError("Enter a reason to void this entry.");
-      return;
-    }
-    setError(null);
-    try {
-      await voidBudgetEnvelopeEntry(token, entryId, voidReason.trim());
-      setVoidingId(null);
-      setVoidReason("");
-      await Promise.all([loadIndex(token), loadEntries(token, selectedEnvelope.id)]);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not void this entry.");
-    }
-  }
-
-  async function handleAllocate(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleExport() {
     if (!token) return;
-    setError(null);
-
-    const allocations = Object.entries(allocationAmounts)
-      .map(([envelopeId, rm]) => ({ budget_envelope_id: Number(envelopeId), amount_sen: Math.round(parseFloat(rm) * 100) }))
-      .filter((a) => Number.isFinite(a.amount_sen) && a.amount_sen > 0);
-
-    if (allocations.length === 0) {
-      setError("Enter at least one envelope's allocation amount.");
-      return;
-    }
-
-    setAllocating(true);
     try {
-      await allocateMonthlyProfit(token, { period_label: monthLabel, allocations });
-      setAllocationAmounts({});
-      setShowAllocate(false);
-      await loadIndex(token);
-      if (selectedId) await loadEntries(token, selectedId);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not allocate profit.");
-    } finally {
-      setAllocating(false);
-    }
-  }
-
-  async function handleDownloadReceipt(entryId: number) {
-    if (!token) return;
-    setDownloading(entryId);
-    try {
-      await downloadBudgetEnvelopeEntryReceipt(token, entryId, `envelope-entry-${entryId}-receipt`);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Download failed.");
-    } finally {
-      setDownloading(null);
-    }
-  }
-
-  async function handleExportClick() {
-    if (!token) return;
-    const response = await fetch(`${API_BASE_URL}/api/accounting/envelopes/export`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!response.ok) {
+      await downloadEnvelopeExport(token);
+    } catch {
       setError("Export failed.");
-      return;
     }
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "envelope-ledger.csv";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
   }
 
-  if (!token) {
-    return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
+  if (!token || !index) {
+    return <p className="text-sm text-gray-500 dark:text-gray-400">{error ?? "Loading…"}</p>;
   }
+
+  const owedTotal = index.loan_balances.reduce((sum, b) => sum + b.balance_sen, 0);
 
   return (
     <div>
@@ -308,10 +145,10 @@ export default function EnvelopeLedgerPage() {
         <div>
           <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Envelope Ledger</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Capital, marketing, maintenance and dividends — money in and out, so an auditor can see exactly what every ringgit was for.
+            What the company&apos;s money is set aside for. Supplier top-ups and CHIP payouts move money between places, not between envelopes, so they are never recorded here.
           </p>
         </div>
-        <button type="button" onClick={() => void handleExportClick()} className="whitespace-nowrap text-theme-sm text-brand-500 hover:underline">
+        <button type="button" onClick={() => void handleExport()} className="whitespace-nowrap text-theme-sm text-brand-500 hover:underline">
           Export CSV →
         </button>
       </div>
@@ -320,7 +157,7 @@ export default function EnvelopeLedgerPage() {
         <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>
       )}
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {envelopes.filter((e) => e.is_active).map((envelope) => (
           <button
             key={envelope.id}
@@ -333,9 +170,25 @@ export default function EnvelopeLedgerPage() {
             }`}
           >
             <p className="text-theme-xs text-gray-500 dark:text-gray-400">{envelope.name}</p>
-            <p className="mt-1 text-xl font-semibold text-gray-800 dark:text-white/90">{formatRm(envelope.balance_sen)}</p>
+            <p className={`mt-1 text-xl font-semibold ${envelope.balance_sen < 0 ? "text-error-600 dark:text-error-400" : "text-gray-800 dark:text-white/90"}`}>
+              {formatRm(envelope.balance_sen)}
+            </p>
+            {envelope.balance_sen < 0 && <p className="mt-1 text-theme-xs text-error-600 dark:text-error-400">Over budget — transfer money in.</p>}
           </button>
         ))}
+      </div>
+
+      <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+        <p className="text-theme-xs font-medium text-gray-600 dark:text-gray-400">
+          Owed to directors (loans, and expenses they paid themselves) — <span className="font-mono">{formatRm(owedTotal)}</span>
+        </p>
+        <div className="mt-2 flex flex-wrap gap-x-8 gap-y-1 text-theme-sm">
+          {index.loan_balances.map((b) => (
+            <span key={b.counterparty} className="text-gray-700 dark:text-gray-300">
+              {b.label}: <span className="font-mono font-medium">{formatRm(b.balance_sen)}</span>
+            </span>
+          ))}
+        </div>
       </div>
 
       <div className="mb-6 flex items-center gap-4">
@@ -399,222 +252,27 @@ export default function EnvelopeLedgerPage() {
               </form>
             )}
             <div className="flex gap-2">
-              <Button size="small" variant="outlined" onClick={() => setShowAllocate((v) => !v)}>
+              <Button size="small" variant="outlined" onClick={() => setPanel((p) => (p === "allocate" ? null : "allocate"))}>
                 Allocate Monthly Profit
               </Button>
-              <Button size="small" onClick={() => setShowRecordForm((v) => !v)}>
-                {showRecordForm ? "Cancel" : "Record Entry"}
+              <Button size="small" onClick={() => setPanel((p) => (p === "record" ? null : "record"))}>
+                {panel === "record" ? "Cancel" : "Record"}
               </Button>
             </div>
           </div>
 
-          {showAllocate && (
-            <form onSubmit={handleAllocate} className="mb-6 space-y-3 rounded-lg border border-gray-200 p-4 dark:border-gray-800">
-              <p className="text-theme-xs font-medium text-gray-600 dark:text-gray-400">
-                {monthLabel} — reference figures from the Monthly Summary (not a single derived &quot;net profit&quot; — you decide the split).
-              </p>
-              <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-theme-xs sm:grid-cols-4">
-                {Object.entries(monthSummary).map(([key, value]) => (
-                  <div key={key}>
-                    <span className="text-gray-400">{SUMMARY_LINE_LABELS[key] ?? key}</span>
-                    <p className="font-mono text-gray-700 dark:text-gray-300">{formatRm(value)}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {envelopes.filter((e) => e.is_active).map((envelope) => (
-                  <div key={envelope.id}>
-                    <Label htmlFor={`alloc_${envelope.id}`}>{envelope.name} (RM)</Label>
-                    <Input
-                      id={`alloc_${envelope.id}`}
-                      value={allocationAmounts[envelope.id] ?? ""}
-                      onChange={(e) => setAllocationAmounts((cur) => ({ ...cur, [envelope.id]: e.target.value }))}
-                      placeholder="0.00"
-                    />
-                  </div>
-                ))}
-              </div>
-              {(() => {
-                const totalSen = Object.values(allocationAmounts).reduce((sum, v) => {
-                  const n = Math.round(parseFloat(v || "0") * 100);
-                  return sum + (Number.isFinite(n) ? n : 0);
-                }, 0);
-                const overEstimate = totalSen > monthRoughPlEstimateSen;
-
-                return (
-                  <div className={`rounded-lg px-3 py-2 text-theme-xs ${overEstimate ? "bg-warning-50 text-warning-600 dark:bg-warning-500/15 dark:text-warning-400" : "bg-gray-50 text-gray-500 dark:bg-white/[0.02] dark:text-gray-400"}`}>
-                    Total being allocated: <span className="font-mono font-medium">{formatRm(totalSen)}</span>
-                    {" — "}rough P&amp;L estimate for {monthLabel} (unaudited): <span className="font-mono font-medium">{formatRm(monthRoughPlEstimateSen)}</span>
-                    {overEstimate && " — this allocation is more than the rough estimate above. Still fine if you're allocating from profit built up in earlier months, but double-check the amounts first."}
-                  </div>
-                );
-              })()}
-              <div className="flex justify-end">
-                <Button type="submit" size="small" disabled={allocating}>{allocating ? "Saving…" : "Allocate"}</Button>
-              </div>
-            </form>
+          {panel === "allocate" && <AllocateProfitForm token={token} index={index} onAllocated={async () => { setPanel(null); await reload(); }} />}
+          {panel === "record" && (
+            <PostingForm
+              key={selectedEnvelope.id}
+              token={token}
+              index={index}
+              defaultEnvelopeId={selectedEnvelope.is_active ? selectedEnvelope.id : null}
+              onRecorded={async () => { setPanel(null); await reload(); }}
+            />
           )}
 
-          {showRecordForm && (
-            <form onSubmit={handleRecordEntry} className="mb-6 space-y-3 rounded-lg border border-gray-200 p-4 dark:border-gray-800">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <Label htmlFor="entry_category">Category</Label>
-                  <select
-                    id="entry_category"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-theme-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:text-white/90"
-                    required
-                  >
-                    <option value="">Select a category</option>
-                    {categories.map((c) => (
-                      <option key={c.value} value={c.value}>{c.label}</option>
-                    ))}
-                  </select>
-                  {selectedCategory && selectedCategory.typical_sign !== "either" && (
-                    <Tag severity={selectedCategory.typical_sign === "positive" ? "success" : "danger"} className="mt-1.5">
-                      {selectedCategory.typical_sign === "positive" ? "Money in — adds to the balance" : "Money out — subtracts from the balance"}
-                    </Tag>
-                  )}
-                </div>
-                <div>
-                  <Label htmlFor="entry_amount">Amount (RM)</Label>
-                  <Input id="entry_amount" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="50.00" required />
-                </div>
-                {selectedCategory?.typical_sign === "either" && (
-                  <div>
-                    <Label htmlFor="entry_direction">Direction</Label>
-                    <select
-                      id="entry_direction"
-                      value={direction}
-                      onChange={(e) => setDirection(e.target.value as "in" | "out")}
-                      className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-theme-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:text-white/90"
-                    >
-                      <option value="in">Money in</option>
-                      <option value="out">Money out</option>
-                    </select>
-                  </div>
-                )}
-                <div>
-                  <Label htmlFor="entry_transaction_date">Transaction date</Label>
-                  <Input id="entry_transaction_date" type="date" value={transactionDate} onChange={(e) => setTransactionDate(e.target.value)} max={todayInKL()} />
-                  <span className="mt-1 block text-theme-xs text-gray-400">The day money actually moved — defaults to today if left blank.</span>
-                </div>
-                <div>
-                  <Label htmlFor="entry_paid_from">Paid from</Label>
-                  <select
-                    id="entry_paid_from"
-                    value={paidFrom}
-                    onChange={(e) => setPaidFrom(e.target.value)}
-                    className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-theme-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:text-white/90"
-                  >
-                    <option value="">Not specified</option>
-                    {paidFromOptions.map((p) => (
-                      <option key={p.value} value={p.value}>{p.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="sm:col-span-2">
-                  <Label htmlFor="entry_description">Description</Label>
-                  <Input id="entry_description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Facebook Ads — September" required />
-                </div>
-                <div>
-                  <Label htmlFor="entry_reference_no">Reference number</Label>
-                  <Input id="entry_reference_no" value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="Optional — invoice/bank reference" />
-                </div>
-                <div>
-                  <Label htmlFor="entry_receipt">Receipt</Label>
-                  <input
-                    id="entry_receipt"
-                    type="file"
-                    accept=".jpg,.jpeg,.png,.pdf"
-                    onChange={(e) => setReceipt(e.target.files?.[0] ?? null)}
-                    className="block w-full text-theme-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-theme-xs dark:text-gray-400 dark:file:bg-gray-800"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <Button type="submit" size="small" disabled={submitting}>{submitting ? "Recording…" : "Record Entry"}</Button>
-              </div>
-            </form>
-          )}
-
-          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
-            <div className="max-w-full overflow-x-auto">
-              <table className="w-full text-left text-theme-sm">
-                <thead className="bg-gray-50 dark:bg-gray-900">
-                  <tr>
-                    <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</th>
-                    <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">Category</th>
-                    <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">Amount</th>
-                    <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">Description</th>
-                    <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">By</th>
-                    <th className="px-4 py-2 text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {entries.map((entry) => {
-                    const isReversal = entry.reverses_entry_id !== null;
-                    return (
-                      <tr key={entry.id} className={entry.is_voided ? "opacity-60" : undefined}>
-                        <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
-                          {entry.transaction_date ?? formatDate(entry.created_at)}
-                          {entry.transaction_date && (
-                            <span className="block text-theme-xs text-gray-400">recorded {formatDate(entry.created_at)}</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 text-gray-700 dark:text-gray-300">
-                          {entry.category_label}
-                          {entry.is_voided && <Tag severity="danger" className="ml-2">Voided</Tag>}
-                          {isReversal && <Tag severity="warn" className="ml-2">Void reversal</Tag>}
-                        </td>
-                        <td className={`px-4 py-2 font-medium ${entry.amount_sen < 0 ? "text-error-600 dark:text-error-400" : "text-success-600 dark:text-success-400"} ${entry.is_voided ? "line-through" : ""}`}>
-                          {entry.amount_sen > 0 ? "+" : ""}{formatRm(entry.amount_sen)}
-                        </td>
-                        <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
-                          {entry.description}
-                          {(entry.paid_from_label || entry.reference_no) && (
-                            <span className="block text-theme-xs text-gray-400">
-                              {entry.paid_from_label}
-                              {entry.paid_from_label && entry.reference_no && " · "}
-                              {entry.reference_no && `Ref: ${entry.reference_no}`}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{entry.created_by ?? "—"}</td>
-                        <td className="px-4 py-2">
-                          <div className="flex items-center gap-2">
-                            {entry.has_receipt && (
-                              <Button type="button" size="small" variant="outlined" disabled={downloading === entry.id} onClick={() => handleDownloadReceipt(entry.id)}>
-                                {downloading === entry.id ? "…" : "Receipt"}
-                              </Button>
-                            )}
-                            {!entry.is_voided && !isReversal && (
-                              <Button type="button" size="small" variant="outlined" onClick={() => { setVoidingId(voidingId === entry.id ? null : entry.id); setVoidReason(""); }}>
-                                {voidingId === entry.id ? "Cancel" : "Void…"}
-                              </Button>
-                            )}
-                          </div>
-                          {voidingId === entry.id && (
-                            <div className="mt-2 flex items-center gap-2">
-                              <Input value={voidReason} onChange={(e) => setVoidReason(e.target.value)} placeholder="Reason (required)" className="w-56" />
-                              <Button type="button" size="small" severity="danger" onClick={() => handleVoid(entry.id)}>Void Entirely</Button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {entries.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="px-4 py-6 text-center text-gray-400">No entries recorded yet.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <EntriesTable token={token} entries={entries} onChanged={reload} onError={setError} />
         </>
       )}
     </div>

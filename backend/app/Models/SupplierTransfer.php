@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Accounting\PaidFrom;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -19,6 +20,7 @@ class SupplierTransfer extends Model
 {
     protected $fillable = [
         'supplier_id',
+        'transferred_on',
         'source_channel',
         'paid_by',
         'amount_myr_sent',
@@ -40,8 +42,9 @@ class SupplierTransfer extends Model
         'amount_foreign_received' => 'decimal:4',
         'supplier_fee' => 'decimal:4',
         'effective_rate' => 'decimal:8',
+        'transferred_on' => 'date:Y-m-d',
         'voided_at' => 'datetime',
-        'paid_by' => \App\Services\Accounting\PaidFrom::class,
+        'paid_by' => PaidFrom::class,
     ];
 
     public function supplier(): BelongsTo
