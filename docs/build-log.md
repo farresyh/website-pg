@@ -1252,3 +1252,27 @@ creates a voucher from a sandbox order (`settle()` is reachable only through
 **Verified.** Full backend suite 2708/2708; admin `tsc` and eslint clean.
 Not verified in a browser: the admin page change is label and tooltip text only.
 Prod effect: none expected (5 vouchers, RM13.18, all failed-order).
+
+---
+
+## 2026-10-11 — InfoTooltip clipped inside `overflow-hidden` cards (admin)
+
+**What was wrong.** The founder's screenshots: on Monthly Summary the last rows'
+(i) popovers were cut off. `InfoTooltip` rendered `absolute` inside the table
+card, which has `overflow-hidden`, and the last rows have no room below. The
+longer tooltips added by the item 75 PR made it worse.
+
+**Fix (`fix/info-tooltip-portal`).** `admin/src/components/dashboard/InfoTooltip.tsx`
+now renders the popover in a portal with `position: fixed`, placed from the
+icon's rect: below the icon, flipped above when the viewport has no room,
+clamped to the left and right edges, closed on scroll or resize. One component,
+so Dashboard KPI cards, the funnel chart and Monthly Summary are all fixed.
+No new dependency; first `createPortal` in `admin/`.
+
+**Verified live** (local production build, Playwright, `getComputedStyle` +
+bounding boxes): Monthly Summary rows "Admin-issued vouchers", "Manual expenses
+(Envelope)" and "Operating profit" at 1280px light and dark, and at 390px
+(Operating profit flips above, Manual expenses now shows its full text past the
+card edge); Dashboard's first three KPI tooltips. Every box inside the
+viewport; popover colours match the old classes (dark: bg rgb(34,31,27)).
+`tsc` and eslint clean. Not tested: the funnel chart's own (i) icon.
