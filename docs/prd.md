@@ -746,9 +746,6 @@ code and production on 2026-10-09; re-verify before building.
   get the accountant's monthly document list first.
 
 **C. Founder actions (no code)**
-- **78** Record the real September postings (the 15 Sep RM500 director loan,
-  expenses) in the Envelope Ledger, then close September 2026 on the
-  Monthly Summary; then a read-only check of the close.
 - **11** External uptime monitor on `https://api.pekangame.space/api/health`.
 - **71** SEO › FAQ click-through (5 FAQs exist on prod) and GSC recheck
   around 2026-10-22.
@@ -991,7 +988,8 @@ code and production on 2026-10-09; re-verify before building.
 78. **Envelope Ledger reshape — [ADR-083](./adr/ADR-083-internal-accounting-financial-reconciliation.md)'s
     2026-10-10 addendum. Designed, grilled and stress-tested. PR-1 (#390) and
     PR-2 (#391) built 2026-10-10 and live via release #393 the same day
-    (build-log). Code done; open only for the founder's first close.**
+    (build-log). Done: the founder closed September 2026 on 2026-10-10 and the
+    read-only check passed (build-log, same day).**
     - **PR-1:** one posting header with typed lines (funding / transfer /
       expense / director-paid expense / repayment / distribution), per-director
       loan balances, `supplier_transfers.transferred_on`, and an append-only
@@ -1002,9 +1000,9 @@ code and production on 2026-10-09; re-verify before building.
       also removes the platform-owner withdrawal (button and endpoint).
     - Production had 0 envelope entries on 2026-10-10, so no data migration was
       needed; the release migrated cleanly.
-    - Left: the founder records the real September postings
-      (the 15 Sep RM500 loan, expenses) and closes September 2026 on prod; then
-      a read-only check of the close's figures and gap.
+    - September 2026 is closed on prod: 25 postings, operating profit RM 4.64,
+      gap -RM 10.94 (a cutover difference, noted at the close). The October
+      close may show the same gap.
 79. **Compensation vouchers debit the platform ledger — needs an ADR-024
     addendum.**
     - `VoucherService::issue()` writes `voucher_issued` for a failed-order
