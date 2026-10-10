@@ -40,7 +40,7 @@ enum EnvelopePostingType: string
         return $this === self::Expense || $this === self::DirectorPaidExpense;
     }
 
-    /** Recorded by an admin on the Envelope Ledger; a profit allocation only comes from the allocate action. */
+    /** Recorded by an admin on the Envelope Ledger; a profit allocation only comes from a month close (`MonthCloseService`). */
     public function isManual(): bool
     {
         return $this !== self::ProfitAllocation;

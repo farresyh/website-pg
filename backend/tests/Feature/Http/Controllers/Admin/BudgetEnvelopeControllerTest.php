@@ -4,8 +4,6 @@ namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
 use App\Models\BudgetEnvelope;
-use App\Models\LedgerEntry;
-use App\Services\Ledger\LedgerOwnerType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -81,20 +79,6 @@ class BudgetEnvelopeControllerTest extends TestCase
         $this->assertSame(['loan', 'share_capital'], collect($response->json('fund_types'))->pluck('value')->all());
         $this->assertContains('professional_fees', collect($response->json('expense_categories'))->pluck('value')->all());
         $this->assertSame(50000, collect($response->json('loan_balances'))->firstWhere('counterparty', 'lokman')['balance_sen']);
-    }
-
-    /** ADR-083 2026-10-08 addendum: a tier fee adds to the rough estimate (kept until month close replaces it, PR-2). */
-    public function test_rough_pl_estimate_adds_this_months_affiliate_tier_fees(): void
-    {
-        $this->actAsSuperAdmin();
-        LedgerEntry::query()->create([
-            'owner_type' => LedgerOwnerType::Affiliate->value, 'owner_id' => 1, 'type' => 'affiliate_tier_fee',
-            'amount' => -1500, 'reference_type' => 'affiliate_subscription', 'reference_id' => 1,
-        ]);
-
-        $response = $this->getJson('/api/accounting/envelopes')->assertOk();
-
-        $this->assertSame(1500, $response->json('current_month_rough_pl_estimate_sen'));
     }
 
     public function test_can_create_and_rename_an_envelope_and_names_stay_unique(): void
@@ -207,25 +191,17 @@ class BudgetEnvelopeControllerTest extends TestCase
         $this->assertCount(0, $this->getJson("/api/accounting/envelopes/{$rolling->id}/entries?from={$today}&to={$today}")->json('entries'));
     }
 
-    public function test_allocate_monthly_profit_writes_one_posting_across_envelopes(): void
+    /** ADR-083 2026-10-10 addendum, decision 9: only a month close allocates profit. */
+    public function test_profit_cannot_be_allocated_from_the_envelope_ledger(): void
     {
         $this->actAsSuperAdmin();
         $rolling = $this->envelope('Capital Rolling');
-        $marketing = $this->envelope('Marketing Budget');
 
-        $response = $this->postJson('/api/accounting/envelopes/allocate-monthly-profit', [
-            'period_label' => 'September 2026',
-            'allocations' => [
-                ['budget_envelope_id' => $rolling->id, 'amount_sen' => 500000],
-                ['budget_envelope_id' => $marketing->id, 'amount_sen' => 200000],
-            ],
-        ])->assertCreated();
-
-        $response->assertJsonPath('posting.type', 'profit_allocation');
-        $response->assertJsonPath('posting.amount_sen', 700000);
-        $this->assertCount(2, $response->json('posting.lines'));
-        $this->assertSame(500000, $rolling->fresh()->balanceSen());
-        $this->assertSame(200000, $marketing->fresh()->balanceSen());
+        $this->postJson('/api/accounting/envelopes/allocate-monthly-profit', ['allocations' => []])->assertMethodNotAllowed();
+        $this->postJson('/api/accounting/envelope-postings', [
+            'type' => 'profit_allocation', 'transaction_date' => '2026-09-30', 'description' => 'x',
+            'lines' => [['budget_envelope_id' => $rolling->id, 'amount_sen' => 500]],
+        ])->assertUnprocessable()->assertJsonValidationErrors('type');
     }
 
     /** The export keeps both a voided posting's lines and their reversal — never a silently vanished original. */
