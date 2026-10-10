@@ -273,17 +273,29 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $this->assertSame(30000 - 5000 + 10000, $summary['reseller_wallet_balance_sen']);
     }
 
-    public function test_voucher_liability_issued_sums_vouchers_created_in_period(): void
+    public function test_failed_order_credit_issued_counts_only_vouchers_tied_to_an_order(): void
     {
-        $voucher = Voucher::query()->create([
-            'affiliate_id' => $this->primaryAffiliate()->id, 'code' => 'TESTVCH1', 'customer_email' => 'a@example.com',
-            'amount' => 500, 'remaining' => 500, 'status' => 'active', 'reason' => 'test',
-        ]);
-        $voucher->forceFill(['created_at' => '2026-09-10 00:00:00'])->save();
+        $order = Order::factory()->create();
+        $this->voucher(['order_id' => $order->id, 'amount' => 500]); // Path B
+        $this->voucher(['amount' => 200]); // Path A — the admin-issued line, not this one
+
+        $this->assertSame(500, $this->service()->forPeriod(2026, 9)['failed_order_credit_issued_sen']);
+    }
+
+    public function test_a_merge_result_is_not_new_credit_in_either_issued_line(): void
+    {
+        $order = Order::factory()->create();
+        $a = $this->voucher(['order_id' => $order->id, 'amount' => 1000, 'remaining' => 0, 'status' => 'merged']);
+        $b = $this->voucher(['amount' => 400, 'remaining' => 0, 'status' => 'merged']);
+        $target = $this->voucher(['amount' => 1400]);
+        foreach ([$a, $b] as $source) {
+            VoucherMerge::query()->create(['source_voucher_id' => $source->id, 'target_voucher_id' => $target->id, 'reason' => 'merge']);
+        }
 
         $summary = $this->service()->forPeriod(2026, 9);
 
-        $this->assertSame(500, $summary['voucher_liability_issued_sen']);
+        $this->assertSame(1000, $summary['failed_order_credit_issued_sen']);
+        $this->assertSame(400, $summary['admin_issued_vouchers_sen']);
     }
 
     /**
@@ -405,7 +417,7 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $this->assertSame(300, $this->service()->forPeriod(2026, 9)['voucher_breakage_sen']);
     }
 
-    public function test_goodwill_vouchers_are_path_a_only_never_compensation_or_a_merge_result(): void
+    public function test_admin_issued_vouchers_are_path_a_only_never_compensation_or_a_merge_result(): void
     {
         $this->voucher(['amount' => 200]); // Path A
         $order = Order::factory()->create();
@@ -414,8 +426,8 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $target = $this->voucher(['amount' => 400]);
         VoucherMerge::query()->create(['source_voucher_id' => $source->id, 'target_voucher_id' => $target->id, 'reason' => 'merge']);
 
-        // The merge source was itself Path A goodwill when issued.
-        $this->assertSame(200 + 400, $this->service()->forPeriod(2026, 9)['goodwill_vouchers_issued_sen']);
+        // The merge source was itself Path A when issued.
+        $this->assertSame(200 + 400, $this->service()->forPeriod(2026, 9)['admin_issued_vouchers_sen']);
     }
 
     public function test_supplier_manual_adjustments_convert_at_the_month_end_rate_and_skip_voided_transfers(): void
@@ -464,7 +476,7 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         ]);
         $failed = Order::factory()->create(['paid_at' => '2026-09-15 10:00:00', 'delivery_status' => DeliveryStatus::Failed]);
         $this->voucher(['order_id' => $failed->id, 'amount' => 3000]); // Path B
-        $this->voucher(['amount' => 200]); // goodwill
+        $this->voucher(['amount' => 200]); // admin-issued
         $this->voucher(['remaining' => 50, 'expires_at' => '2026-09-20 00:00:00'], '2026-08-01 00:00:00'); // breakage
         LedgerEntry::query()->forceCreate([
             'owner_type' => LedgerOwnerType::Affiliate->value, 'owner_id' => 1, 'type' => 'affiliate_tier_fee',
@@ -475,7 +487,7 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
 
         // The drawdown costs exactly cost_price at the blended rate, so no FX true-up.
         $this->assertSame(10000 - 9000 + 70 + 50 - 200, $summary['operating_profit_sen']);
-        $this->assertSame(3000 + 200, $summary['voucher_liability_issued_sen']);
+        $this->assertSame(3000, $summary['failed_order_credit_issued_sen']);
     }
 
     public function test_envelope_manual_expenses_are_shown_by_category_and_never_in_operating_profit(): void

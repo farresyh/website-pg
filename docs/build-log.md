@@ -1221,3 +1221,34 @@ succeeded.
 - Deploy note: for the minutes between the Vercel deploy and the Forge deploy, the
   new admin's Save Platform Settings can 422 against the old backend (the old
   request rule requires `telegram_notifications_enabled`). Nothing else is affected.
+
+---
+
+## 2026-10-11 — §16 item 75: the two "issued" voucher lines split (and half of item 80)
+
+**What shipped (branch `fix/voucher-issued-lines`).** The Monthly Summary's
+"Voucher liability issued" summed every voucher. It is now two lines, split by
+how the voucher was issued: **Admin-issued vouchers (no order)** (was "Goodwill
+vouchers issued"; still a profit cost) and **Failed-order store credit issued**
+(information only). Keys renamed `admin_issued_vouchers_sen` and
+`failed_order_credit_issued_sen`; readers were the service, the admin summary
+page, `accounting-summary.ts` and two test files (grepped, no export or API
+consumer elsewhere).
+
+**Why.** The external reviewer's answer to item 75 asked for the split. The
+founder asked to drop the word "goodwill" (a Campaign is a `PromoCode`, ADR-118,
+costed per order, so "marketing" would collide with it).
+
+**Found on the way.** `voucherLiabilityIssued()` had no merge exclusion while
+the goodwill line did, so a merge counted the merged amount again. The new
+failed-order line counts `order_id IS NOT NULL`, which a merge result never has,
+so it is closed by construction. Red first: the merge test failed 700 vs 500
+before the query changed. Item 80's revive-an-expired-voucher half is still open.
+
+**Checked, not changed.** No `is_test` filter on the failed-order line: no path
+creates a voucher from a sandbox order (`settle()` is reachable only through
+`Admin\OrderController`, which 404s on `is_test`).
+
+**Verified.** Full backend suite 2708/2708; admin `tsc` and eslint clean.
+Not verified in a browser: the admin page change is label and tooltip text only.
+Prod effect: none expected (5 vouchers, RM13.18, all failed-order).

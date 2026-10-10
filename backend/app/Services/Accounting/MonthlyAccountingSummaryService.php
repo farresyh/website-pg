@@ -55,9 +55,9 @@ final class MonthlyAccountingSummaryService
             'affiliate_commission_expense_sen' => $this->affiliateCommissionExpense($from, $toExclusive),
             'affiliate_tier_fees_sen' => $this->affiliateTierFees($from, $toExclusive),
             'voucher_breakage_sen' => $this->voucherBreakage($from, $toExclusive),
-            'goodwill_vouchers_issued_sen' => $this->goodwillVouchersIssued($from, $toExclusive),
+            'admin_issued_vouchers_sen' => $this->adminIssuedVouchers($from, $toExclusive),
             'supplier_manual_adjustments_sen' => $this->supplierManualAdjustments($from, $toExclusive),
-            'voucher_liability_issued_sen' => $this->voucherLiabilityIssued($from, $toExclusive),
+            'failed_order_credit_issued_sen' => $this->failedOrderCreditIssued($from, $toExclusive),
             'reseller_wallet_balance_sen' => $this->resellerWalletBalance(),
             'envelope_manual_expenses_sen' => array_sum($this->envelopeExpensesByCategory($year, $month)),
         ];
@@ -86,7 +86,7 @@ final class MonthlyAccountingSummaryService
             - $lines['affiliate_commission_expense_sen']
             + $lines['affiliate_tier_fees_sen']
             + $lines['voucher_breakage_sen']
-            - $lines['goodwill_vouchers_issued_sen']
+            - $lines['admin_issued_vouchers_sen']
             + $lines['supplier_manual_adjustments_sen'];
     }
 
@@ -146,11 +146,11 @@ final class MonthlyAccountingSummaryService
     }
 
     /**
-     * Decision 11 — goodwill (ADR-004 Path A: no source order) is an
-     * expense when issued. A merge target is not new goodwill: its sources
+     * Decision 11 — a voucher an admin issues with no source order
+     * (ADR-004 Path A) is an expense when issued. A merge target is not a new voucher: its sources
      * were already counted when they were issued.
      */
-    private function goodwillVouchersIssued(Carbon $from, Carbon $toExclusive): int
+    private function adminIssuedVouchers(Carbon $from, Carbon $toExclusive): int
     {
         return (int) Voucher::query()
             ->whereNull('order_id')
@@ -395,9 +395,16 @@ final class MonthlyAccountingSummaryService
             ->sum('amount');
     }
 
-    private function voucherLiabilityIssued(Carbon $from, Carbon $toExclusive): int
+    /**
+     * Store credit issued for a failed or partial order (ADR-004 Path B):
+     * the customer already paid, so this is a liability, not an expense.
+     * Tied to an order, which a merge result never is, so a merge is not
+     * counted as new credit.
+     */
+    private function failedOrderCreditIssued(Carbon $from, Carbon $toExclusive): int
     {
         return (int) Voucher::query()
+            ->whereNotNull('order_id')
             ->where('created_at', '>=', $from)
             ->where('created_at', '<', $toExclusive)
             ->sum('amount');
