@@ -1184,3 +1184,22 @@ succeeded.
   Games page, rebuilt): after the slow response landed the list showed 0 rows
   instead of 5. The new code keeps 5. Both bugs reproduce on the old code and
   are gone on the new.
+
+## 2026-10-10 — §16 item 6 (part): gallery picker in the image URL forms
+
+- New `admin/src/components/gallery/ImageUrlInput.tsx`: the existing URL text
+  field plus a "Choose from gallery" button that opens a dialog with the
+  gallery grid (debounced search, paging, current image highlighted). Picking
+  writes the image's `url` into the field. No FK was added (ADR-095), so the
+  delete-references check keeps working and a pasted external URL still works.
+- Wired into Edit Game, Hero Slide, SEO › Settings (default OG image) and
+  SEO › Game (OG image). Frontend only; reuses `listGalleryImages`.
+- Verified on a local production build (Playwright, real API): in Edit Game the
+  picker opens over the open modal, the outer modal stays open, picking fills
+  the field; search for a non-matching term empties the grid; Hero Slide and
+  SEO › Settings fill the field too. `tsc`, `lint`, `build` clean.
+- Not verified: thumbnails render. Locally the production CSP (`img-src`) blocks
+  the dev image host, so images are broken on the existing Gallery page too; it
+  is the same `<img>`. SEO › Game was not clicked through (same component).
+  Picker-closes-after-pick was only checked on Edit Game by screenshot.
+- The two test images uploaded for this were deleted again from the dev gallery.

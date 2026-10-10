@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Input, inputVariants } from "@/components/ui/input";
 import { SimpleSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { ImageUrlInput } from "@/components/gallery/ImageUrlInput";
 import { Tabs, TabsIndicator, TabsList, TabsPanel, TabsPanels, TabsTab } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type { Game, UpdateGameValues } from "@/lib/games";
@@ -192,7 +193,7 @@ function EditGameFields({
                 </div>
                 <div>
                   <Label htmlFor="game_image_url">Image URL (optional)</Label>
-                  <Input id="game_image_url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
+                  <ImageUrlInput id="game_image_url" value={imageUrl} onChange={setImageUrl} />
                   <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                     Recommended 800×500px (16:10) — matches the product card&apos;s image ratio.
                   </p>
