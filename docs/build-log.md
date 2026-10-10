@@ -1162,6 +1162,10 @@ succeeded.
   a slow in-flight `search=zzz` response that lands after the box was cleared
   no longer replaces the full list (5 rows stay 5). `tsc`, `lint`, `build`,
   admin `npm test` clean.
-- Not verified: the Reports custom-date inputs in a browser (same hook,
-  not clicked through); and the stale case was not reproduced on the old
-  code, so it is proven to hold now, not proven to have failed before.
+- Reports custom dates, typed digit by digit into the from box: the old code
+  sent 4 rounds of the six report requests (`0002-…`, `0020-…`, `0202-…`,
+  `2026-…`); the new code sends one round, `2026-01-01`.
+- Stale response, same slow `search=zzz` test on the old code (`staging`
+  Games page, rebuilt): after the slow response landed the list showed 0 rows
+  instead of 5. The new code keeps 5. Both bugs reproduce on the old code and
+  are gone on the new.
