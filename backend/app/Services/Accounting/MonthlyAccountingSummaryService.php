@@ -115,9 +115,11 @@ final class MonthlyAccountingSummaryService
 
     /**
      * ADR-083 decision 7 — "Σ transaction_fee charged − Σ CHIP Fee
-     * actual", from every settlement batch whose window falls inside
-     * this month (a batch is typically weekly, per this ADR's own
-     * recommended cadence — several may fall inside one month).
+     * actual", from every settlement batch whose window ends inside this
+     * month (a batch is typically weekly, per this ADR's own recommended
+     * cadence — several may fall inside one month). Keyed on `date_to`
+     * alone: requiring the whole window inside the month made a batch
+     * that crosses a month end count in neither month.
      * `matched_fee_sen` (not the old `expected_fee_sen`, dropped by this
      * ADR's own same-day addendum) sums our own fee assumption ONLY for
      * the transactions each settlement actually matched — the same fix
@@ -128,7 +130,7 @@ final class MonthlyAccountingSummaryService
         $totals = PaymentSettlement::query()
             // Settlement windows are KL calendar dates, so compare against
             // the KL dates, not the UTC instants' dates.
-            ->where('date_from', '>=', $from->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
+            ->where('date_to', '>=', $from->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
             ->where('date_to', '<', $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
             ->selectRaw('COALESCE(SUM(matched_fee_sen), 0) as matched_fee, COALESCE(SUM(file_fee_sen), 0) as file_fee')
             ->first();

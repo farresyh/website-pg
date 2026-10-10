@@ -86,6 +86,24 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $this->assertSame(0, $this->service()->forPeriod(2026, 11)['payment_processing_gain_loss_sen']);
     }
 
+    /**
+     * A weekly batch that crosses a month end used to fail both months'
+     * "starts and ends inside" filter and count nowhere. It belongs to the
+     * month of its last day, once.
+     */
+    public function test_settlement_batch_spanning_a_month_end_counts_once_in_the_month_it_ends(): void
+    {
+        PaymentSettlement::query()->create([
+            'date_from' => '2026-09-28', 'date_to' => '2026-10-04',
+            'matched_gross_sen' => 0, 'matched_fee_sen' => 300, 'matched_net_sen' => 0,
+            'file_gross_sen' => 0, 'file_fee_sen' => 250, 'file_net_sen' => 0,
+            'status' => 'pending', 'original_filename' => 'span.xlsx',
+        ]);
+
+        $this->assertSame(0, $this->service()->forPeriod(2026, 9)['payment_processing_gain_loss_sen']);
+        $this->assertSame(50, $this->service()->forPeriod(2026, 10)['payment_processing_gain_loss_sen']);
+    }
+
     /** ADR-094 decision 41 — a settled partial delivery counts what it kept and only its delivered legs' cost. */
     public function test_a_settled_partial_delivery_counts_its_kept_revenue_and_delivered_cost(): void
     {
