@@ -917,3 +917,59 @@ code, so future sessions follow correct instructions.
 - **Verified.** New test in `MonthlyAccountingSummaryServiceTest` (red: Oct
   showed 0 instead of 50, then green); full `php artisan test` 2676 passed;
   pint clean. No migration.
+
+## 2026-10-10 — Envelope Ledger reshape PR-1: postings, director loans, transfer date (item 78, ADR-083 addendum)
+
+- **What.** ADR-083 2026-10-10 addendum, decisions 1–8, 15 and 16.
+  - **Postings.** One `budget_envelope_postings` header per action over
+    signed lines in `budget_envelope_entries`. Types: funding (loan /
+    share capital), transfer, expense, director-paid expense, repayment,
+    distribution, and profit allocation (still the manual monthly action
+    until PR-2).
+  - **The service is the only writer** (`BudgetEnvelopeService`). It
+    enforces each type's line shape and required fields, caps a repayment
+    at the director's computed loan balance, and voids a whole posting by
+    reversal (unique `reverses_posting_id`). It refuses a void that would
+    leave a loan below zero. All writes go under one envelope lock
+    (`ponytail:` comment, founder-only volume).
+  - **Archiving** an envelope needs a zero balance.
+  - **`supplier_transfers.transferred_on`** is required, correctable via
+    Edit Details, and drives the Monthly Summary top-up/fee lines, the
+    Transaction Register row date and range, and the Funding History
+    filter. Existing rows were backfilled from `created_at` as a KL date.
+  - **`PaidFrom`:** Luqman is renamed Lokman.
+  - **`LedgerEntry`** is append-only at the model layer.
+  - **Admin:** one Record form, an "Owed to directors" card, red
+    over-budget balances, and labelled director-paid-expense lines. The
+    envelopes page is split into PostingForm / EntriesTable /
+    AllocateProfitForm (it was 622 lines).
+- **Migration guard.** The reshape migration throws if
+  `budget_envelope_entries` holds pre-posting rows. It will not guess
+  whether an old "capital injection" was a loan or share capital.
+  Production had 0 entries and 0 `luqman` rows (re-checked read-only
+  2026-10-10). **Don't record Envelope Ledger entries on production before
+  this releases**, or the deploy's migration will stop. The local dev DB
+  held a 2-row tinker test pair (net RM0) from an older session; it was
+  cleared so the migration could run there.
+- **Verified.**
+  - 21 new service invariant tests (every decision-3 row, void,
+    loan-balance edges).
+  - The controller test file was rewritten for the new endpoints, plus new
+    `transferred_on` / Lokman / register / summary tests.
+  - New tests were red first (the `transferred_on` set: 4 failed, 2
+    errored; the envelope set: 30 of 32), then green.
+  - Full `php artisan test`: 2691 passed.
+  - On real MySQL: the concurrency suite passed 30/30 (it migrates up and
+    down each test, so it covers both new migrations and their `down()`).
+    112 accounting tests passed via a temp config. `SHOW INDEX` confirms a
+    standalone index on every new FK.
+  - Admin `tsc`, `eslint` and `next build` are clean.
+  - Live browser (built admin + `artisan serve`, local dev DB): RM500
+    Lokman loan split Rolling 300 / Ops 200 → owed RM500. Tune Talk RM20
+    expense. Repaying RM600 rejected with "only owes … RM500.00".
+    Farres-paid RM17.52 → owed RM517.52, envelope net 0. Voiding the RM20
+    expense put Ops back to RM200, with the original struck through.
+    Supplier Funding modal shows the transfer date. Test data cleared
+    afterwards.
+- **Gotcha hit.** A test helper named `post()` clashed with Laravel's HTTP
+  `post()` and fataled the suite; it was renamed `record()`.
