@@ -60,6 +60,7 @@ class SupplierTransferController extends Controller
 
         $transfer = $this->funding->recordTransfer(
             $supplier,
+            $data['transferred_on'],
             $data['source_channel'],
             $data['amount_myr_sent'],
             $data['fee_myr'] ?? 0,

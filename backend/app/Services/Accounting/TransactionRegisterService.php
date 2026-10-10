@@ -15,10 +15,12 @@ use App\Models\Withdrawal;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Report\ReportService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use App\Services\Withdrawal\WithdrawalStatus;
 use Carbon\CarbonInterface;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Carbon;
 
 /**
  * ADR-083 decision 9 (+ 2026-09-28 addenda): the "nothing is ever lost"
@@ -187,11 +189,13 @@ final class TransactionRegisterService
     {
         return SupplierTransfer::query()
             ->with('supplier')
-            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
-            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
+            // ADR-083 2026-10-10 addendum, decision 15: dated by the KL day
+            // the money left the bank, as a UTC instant like every other row.
+            ->when($from, fn ($q) => $q->where('transferred_on', '>=', $from->copy()->setTimezone(ReportService::TIMEZONE)->toDateString()))
+            ->when($toExclusive, fn ($q) => $q->where('transferred_on', '<', $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->toDateString()))
             ->get()
             ->map(fn (SupplierTransfer $transfer) => [
-                'date' => $transfer->created_at->toIso8601String(),
+                'date' => Carbon::parse($transfer->transferred_on->toDateString(), ReportService::TIMEZONE)->utc()->toIso8601String(),
                 'type' => 'supplier_transfer',
                 'reference' => $transfer->reference_no ?? "Transfer #{$transfer->id}",
                 'description' => 'Supplier top-up — '.($transfer->supplier?->name ?? 'unknown supplier'),

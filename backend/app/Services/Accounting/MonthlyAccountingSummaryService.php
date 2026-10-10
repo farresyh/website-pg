@@ -152,8 +152,8 @@ final class MonthlyAccountingSummaryService
     {
         return (int) SupplierTransfer::query()
             ->whereNull('voided_at')
-            ->where('created_at', '>=', $from)
-            ->where('created_at', '<', $toExclusive)
+            ->where('transferred_on', '>=', $from->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
+            ->where('transferred_on', '<', $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
             ->sum('amount_myr_sent');
     }
 
@@ -166,8 +166,8 @@ final class MonthlyAccountingSummaryService
     {
         return (int) SupplierTransfer::query()
             ->whereNull('voided_at')
-            ->where('created_at', '>=', $from)
-            ->where('created_at', '<', $toExclusive)
+            ->where('transferred_on', '>=', $from->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
+            ->where('transferred_on', '<', $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
             ->sum('fee_myr');
     }
 

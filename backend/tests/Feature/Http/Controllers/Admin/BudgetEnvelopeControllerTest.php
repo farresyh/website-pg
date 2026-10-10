@@ -181,7 +181,7 @@ class BudgetEnvelopeControllerTest extends TestCase
             'amount_sen' => 3000000,
             'transaction_date' => '2026-09-15',
             'description' => 'Modal Lokman untuk rolling capital',
-            'paid_from' => 'luqman',
+            'paid_from' => 'lokman',
             'reference_no' => 'BANK-REF-42',
         ])->assertCreated();
 
@@ -190,13 +190,13 @@ class BudgetEnvelopeControllerTest extends TestCase
         // entries() listing endpoint is what hand-formats this to a
         // plain date for display, asserted separately below.
         $this->assertStringStartsWith('2026-09-15', $response->json('entry.transaction_date'));
-        $response->assertJsonPath('entry.paid_from', 'luqman');
+        $response->assertJsonPath('entry.paid_from', 'lokman');
         $response->assertJsonPath('entry.reference_no', 'BANK-REF-42');
 
         // entries() hand-formats transaction_date as a plain date, unlike storeEntry()'s raw-model response above.
         $listed = collect($this->getJson("/api/accounting/envelopes/{$envelope->id}/entries")->json('entries'))->firstWhere('reference_no', 'BANK-REF-42');
         $this->assertSame('2026-09-15', $listed['transaction_date']);
-        $this->assertSame('Luqman (personal)', $listed['paid_from_label']);
+        $this->assertSame('Lokman (personal)', $listed['paid_from_label']);
     }
 
     /** Omitting transaction_date defaults it to today, never leaves it null — an entry always has a real date. */
@@ -274,7 +274,7 @@ class BudgetEnvelopeControllerTest extends TestCase
         $response = $this->postJson("/api/accounting/envelopes/{$envelope->id}/entries", [
             'category' => BudgetEnvelopeEntryCategory::DirectorRepayment->value,
             'amount_sen' => 300000,
-            'description' => 'Repaying Luqman for pre-capital spending',
+            'description' => 'Repaying Lokman for pre-capital spending',
             'paid_from' => 'company_account',
         ])->assertCreated();
 

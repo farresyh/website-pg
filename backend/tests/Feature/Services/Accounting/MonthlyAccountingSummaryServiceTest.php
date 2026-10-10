@@ -182,12 +182,14 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
 
         $transfer = SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 20000, 'fee_myr' => 500,
             'currency' => 'MYR', 'amount_foreign_received' => '19500.0000',
         ]);
         $transfer->forceFill(['created_at' => '2026-09-05 00:00:00'])->save();
 
         $voided = SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 99999, 'fee_myr' => 0,
             'currency' => 'MYR', 'amount_foreign_received' => '99999.0000', 'voided_at' => now(),
         ]);
@@ -203,11 +205,36 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $this->assertSame(500, $summary['bank_transfer_fees_sen']);
     }
 
+    /**
+     * ADR-083 2026-10-10 addendum, decision 15: a transfer typed in on
+     * 2 Oct for money that left the bank on 30 Sep belongs to September.
+     */
+    public function test_supplier_topup_and_fee_follow_transferred_on_not_the_recording_time(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+
+        $transfer = SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-30',
+            'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 20000, 'fee_myr' => 500,
+            'currency' => 'MYR', 'amount_foreign_received' => '19500.0000',
+        ]);
+        $transfer->forceFill(['created_at' => '2026-10-02 02:00:00'])->save();
+
+        $september = $this->service()->forPeriod(2026, 9);
+        $october = $this->service()->forPeriod(2026, 10);
+
+        $this->assertSame(20000, $september['supplier_prepaid_topup_sen']);
+        $this->assertSame(500, $september['bank_transfer_fees_sen']);
+        $this->assertSame(0, $october['supplier_prepaid_topup_sen']);
+        $this->assertSame(0, $october['bank_transfer_fees_sen']);
+    }
+
     public function test_bank_transfer_fees_excludes_voided(): void
     {
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
 
         $voided = SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 99999, 'fee_myr' => 777,
             'currency' => 'MYR', 'amount_foreign_received' => '99999.0000', 'voided_at' => now(),
         ]);
@@ -266,10 +293,12 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
 
         SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 100000, 'fee_myr' => 0,
             'currency' => 'IDR', 'amount_foreign_received' => '100.0000',
         ]);
         SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 200000, 'fee_myr' => 0,
             'currency' => 'IDR', 'amount_foreign_received' => '100.0000',
         ]);

@@ -26,6 +26,7 @@ class SupplierTransferTest extends TestCase
         $supplier = $this->makeSupplier();
 
         $transfer = SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id,
             'source_channel' => 'wise',
             'amount_myr_sent' => 100000, // RM 1,000.00
@@ -49,6 +50,7 @@ class SupplierTransferTest extends TestCase
         $supplier = $this->makeSupplier();
 
         $transfer = SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id,
             'source_channel' => 'bank',
             'amount_myr_sent' => 50000,
@@ -64,6 +66,7 @@ class SupplierTransferTest extends TestCase
         $supplier = $this->makeSupplier();
 
         $transfer = SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id,
             'source_channel' => 'wise',
             'amount_myr_sent' => 100000,
@@ -82,6 +85,7 @@ class SupplierTransferTest extends TestCase
         $supplier = $this->makeSupplier();
 
         $transfer = SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id,
             'source_channel' => 'wise',
             'amount_myr_sent' => 19889,
@@ -99,6 +103,7 @@ class SupplierTransferTest extends TestCase
         $supplier = $this->makeSupplier();
 
         $transfer = SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id,
             'source_channel' => 'wise',
             'amount_myr_sent' => 100000,
@@ -114,6 +119,7 @@ class SupplierTransferTest extends TestCase
     {
         $supplier = $this->makeSupplier();
         $transfer = SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id,
             'source_channel' => 'wise',
             'amount_myr_sent' => 19889,

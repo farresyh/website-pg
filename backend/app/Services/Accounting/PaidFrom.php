@@ -16,7 +16,7 @@ namespace App\Services\Accounting;
 enum PaidFrom: string
 {
     case Farres = 'farres';
-    case Luqman = 'luqman';
+    case Lokman = 'lokman';
     case Wheng = 'wheng';
     case CompanyAccount = 'company_account';
 
@@ -24,7 +24,7 @@ enum PaidFrom: string
     {
         return match ($this) {
             self::Farres => 'Farres (personal)',
-            self::Luqman => 'Luqman (personal)',
+            self::Lokman => 'Lokman (personal)',
             self::Wheng => 'Wheng (personal)',
             self::CompanyAccount => 'Company account',
         };

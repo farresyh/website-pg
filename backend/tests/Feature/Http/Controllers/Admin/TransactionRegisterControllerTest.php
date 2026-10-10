@@ -310,6 +310,7 @@ class TransactionRegisterControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->supplier();
         SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id,
             'source_channel' => 'wise',
             'amount_myr_sent' => 100000,
@@ -402,6 +403,7 @@ class TransactionRegisterControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->supplier();
         SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 100000,
             'currency' => 'IDR', 'amount_foreign_received' => '3700000.0000', 'reference_no' => 'WISE-CSV-1',
         ]);
@@ -430,10 +432,12 @@ class TransactionRegisterControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->supplier();
         SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 10000, 'fee_myr' => 500,
             'currency' => 'IDR', 'amount_foreign_received' => '370000.0000', 'reference_no' => 'WISE-KEEP',
         ]);
         $voided = SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 99999, 'fee_myr' => 0,
             'currency' => 'IDR', 'amount_foreign_received' => '999990.0000', 'reference_no' => 'WISE-VOIDED',
         ]);
@@ -456,6 +460,7 @@ class TransactionRegisterControllerTest extends TestCase
         $supplier = $this->supplier();
         for ($i = 1; $i <= 3; $i++) {
             SupplierTransfer::query()->create([
+                'transferred_on' => '2026-09-05',
                 'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 10000 * $i,
                 'currency' => 'IDR', 'amount_foreign_received' => '100000.0000', 'reference_no' => "WISE-PAGE-{$i}",
             ]);
@@ -506,6 +511,7 @@ class TransactionRegisterControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->supplier();
         SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 100000,
             'currency' => 'IDR', 'amount_foreign_received' => '3700000.0000', 'reference_no' => 'WISE-TYPEFILTER',
         ]);
@@ -528,6 +534,7 @@ class TransactionRegisterControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->supplier();
         $transfer = SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 100000,
             'currency' => 'IDR', 'amount_foreign_received' => '3700000.0000', 'reference_no' => 'WISE-VOIDVIS',
         ]);
@@ -541,12 +548,35 @@ class TransactionRegisterControllerTest extends TestCase
         $this->assertSame(-100000, $row['net_sen']);
     }
 
+    /** ADR-083 2026-10-10 addendum, decision 15: a transfer row is dated, and range-filtered, by the day the money left the bank. */
+    public function test_supplier_transfer_row_is_dated_by_transferred_on(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->supplier();
+        $transfer = SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-30',
+            'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 100000,
+            'currency' => 'IDR', 'amount_foreign_received' => '3700000.0000', 'reference_no' => 'WISE-LATE',
+        ]);
+        $transfer->forceFill(['created_at' => '2026-10-02 02:00:00'])->save();
+
+        $september = collect($this->getJson('/api/accounting/transactions?from=2026-09-01&to=2026-09-30')->assertOk()->json('data'));
+        $row = $september->firstWhere('reference', 'WISE-LATE');
+        $this->assertNotNull($row);
+        // Midnight KL on 30 Sep, as a UTC instant like every other row's date.
+        $this->assertSame('2026-09-29T16:00:00+00:00', $row['date']);
+
+        $october = collect($this->getJson('/api/accounting/transactions?from=2026-10-01&to=2026-10-31')->assertOk()->json('data'));
+        $this->assertNull($october->firstWhere('reference', 'WISE-LATE'));
+    }
+
     /** A MANUAL_ADJUSTMENT/VOID_REVERSAL entry against a transfer gets its own row, dated at its own created_at — not the original transfer's date, and not invisible (the bug this addendum fixes). */
     public function test_index_includes_a_supplier_adjustment_row_dated_at_its_own_created_at(): void
     {
         $this->actAsSuperAdmin();
         $supplier = $this->supplier();
         $transfer = SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 100000,
             'currency' => 'IDR', 'amount_foreign_received' => '3700000.0000', 'reference_no' => 'WISE-ADJVIS',
         ]);
@@ -578,6 +608,7 @@ class TransactionRegisterControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $supplier = $this->supplier();
         $transfer = SupplierTransfer::query()->create([
+            'transferred_on' => '2026-09-05',
             'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 100000,
             'currency' => 'IDR', 'amount_foreign_received' => '3700000.0000',
         ]);
