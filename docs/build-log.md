@@ -1035,3 +1035,27 @@ code, so future sessions follow correct instructions.
   status shades are not defined in `globals.css`; they silently render
   inherited colour. The new components use the theme-aware
   `*-surface`/`*-ink` tokens instead.
+
+## 2026-10-10 — Docs sync after the Envelope Ledger reshape (item 78)
+
+- **Why.** Before releasing #390/#391, every doc was checked for text the
+  reshape made untrue.
+- **Changed.**
+  - ADR-083 banner and addendum status no longer say "design only"; the
+    banner and index row record that decision 17 retires the platform
+    withdrawal. ADR-061's banner and index row mark its decision 7
+    (`('platform', null)` withdrawn from `/admin`) as retired by it.
+  - PRD §6.10 / §7.4 describe withdrawals as Affiliate requests; §15
+    Withdrawals row notes the removal (staging); §14 lists what is on
+    `staging` but not `main` (it still said `staging` = `main` apart from
+    #386); item 78 records both PRs merged and what is left after the
+    release; items 79/80 say why neither changes an envelope figure; the
+    glossary pins Envelope, Posting, Director loan balance, Operating
+    profit, Month close, Prior-month adjustment, Cash equation / gap.
+  - The Monthly Summary's FX true-up tooltip said "not a cash gain or
+    loss"; it is now part of operating profit, so the copy says so.
+- **Checked, no change needed:** no backend code reads the platform ledger
+  balance any more (every remaining reader reads `order_profit` only);
+  earlier ADR-083 decisions (FX rate over the whole history, manual
+  allocation) are overridden by the addendum under the file's own
+  "later addendum overrides" rule.

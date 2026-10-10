@@ -83,7 +83,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-058](./adr/ADR-058-reseller-authentication-admin-reseller.md) | Reseller authentication + admin Reseller Management (RES-1..6) | In force | 2026-09-29 |
 | [ADR-059](./adr/ADR-059-reseller-portal.md) | Reseller portal — `reseller/` app, earnings ledger, withdrawals, self-service storefront config | In force | 2026-09-26 |
 | [ADR-060](./adr/ADR-060-multi-tenant-branded-storefront-custom-domain.md) | Multi-tenant branded storefront + custom-domain infrastructure (decision 3 reversed: Vercel-native custom domains, NOT Cloudflare for SaaS) | In force | 2026-10-02 |
-| [ADR-061](./adr/ADR-061-every-storefront-is-a-reseller.md) | Every storefront is a Reseller — abolish the platform-owner special-case | In force | 2026-08-31 |
+| [ADR-061](./adr/ADR-061-every-storefront-is-a-reseller.md) | Every storefront is a Reseller — abolish the platform-owner special-case | In force; decision 7's platform withdrawal retired by ADR-083 (2026-10-10) | 2026-08-31 |
 | [ADR-062](./adr/ADR-062-rebrand-the-primary-storefront-to-pekangame.md) | Rebrand the primary storefront to "PekanGame" | In force | 2026-09-01 |
 | [ADR-063](./adr/ADR-063-storefront-visual-system-replacement.md) | Storefront visual system replacement — light neo-brutalist "Digital Architect" world | In force |  |
 | [ADR-064](./adr/ADR-064-storefront-per-surface-redesign-component.md) | Storefront per-surface redesign + component rebuild | In force | 2026-09-19 |
@@ -105,7 +105,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-080](./adr/ADR-080-membership-per-brand.md) | Membership × per-brand — close the `/membership` surface consistently on a membership-disabled brand | In force |  |
 | [ADR-081](./adr/ADR-081-affiliate-storefront-theme-presets.md) | Affiliate storefront theme presets — a curated fixed set, NOT the THM-1..4 custom theme system | In force |  |
 | [ADR-082](./adr/ADR-082-public-facing-review-display.md) | Public-facing review display — homepage marquee + per-game reviews on the product page | In force |  |
-| [ADR-083](./adr/ADR-083-internal-accounting-financial-reconciliation.md) | Internal Accounting & Financial Reconciliation — Supplier Funding Ledger, CHIP Settlement Reconciliation, and a Monthly Accounting Summary for an external SaaS | In force; 2026-10-10 addendum reshapes the Envelope Ledger (postings, director loans, month close) | 2026-10-10 |
+| [ADR-083](./adr/ADR-083-internal-accounting-financial-reconciliation.md) | Internal Accounting & Financial Reconciliation — Supplier Funding Ledger, CHIP Settlement Reconciliation, and a Monthly Accounting Summary for an external SaaS | In force; 2026-10-10 addendum reshapes the Envelope Ledger (postings, director loans, month close) and retires the platform withdrawal | 2026-10-10 |
 | [ADR-084](./adr/ADR-084-reseller-api.md) | Reseller API — developer documentation site, plus the surface hardening that must land first | In force | 2026-09-29 |
 | [ADR-086](./adr/ADR-086-reports-restructure.md) | Reports restructure — dimensional rebuild-from-scratch audit + grouped-SQL rewrite | In force; PR-3 closure (no chart library) reversed by ADR-104 | 2026-09-21 |
 | [ADR-087](./adr/ADR-087-admin-reports-llm-assistant.md) | Admin Reports LLM Assistant — Gemini-backed, curated read-only SQL views, additive to the Reports tabs | In force | 2026-10-08 |
