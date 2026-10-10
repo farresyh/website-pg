@@ -620,7 +620,9 @@ equation #391, which also removes the platform-owner withdrawal), the
 settlement month-span fix #388, the admin package-order tiebreak #387 and
 docs #386/#389/#392. A read-only check after the deploy: 0 postings, 0
 closes, September 2026 closable with operating profit RM 4.64. `staging` =
-`main` after this release.
+`main` after this release. Since then (2026-10-10, same day): the founder
+recorded the September postings and closed September 2026 (25 postings,
+operating profit RM 4.64, gap -RM 10.94), and the read-only check passed.
 
 **Release 2026-10-09 (`staging`→`main`, PR #385), deploy verified.** The
 server runs `6db0470`; migration batch 35 Ran (`orders.placed_via`, backfill
@@ -746,7 +748,6 @@ code and production on 2026-10-09; re-verify before building.
   get the accountant's monthly document list first.
 
 **C. Founder actions (no code)**
-- **11** External uptime monitor on `https://api.pekangame.space/api/health`.
 - **71** GSC recheck around 2026-10-22 (Pages report: duplicate / canonical
   reasons, indexed vs not indexed).
 - **75** Ask the external reviewer which vouchers the Monthly Summary's
@@ -781,20 +782,16 @@ code and production on 2026-10-09; re-verify before building.
    DuitNow QR / `fpx_b2b1` are later phases.
 10. **MFA** — admin (AUTH-7) and `affiliate_users` both descoped; revisit before
     the partner portal's withdrawal balances get meaningful.
-11. **No external uptime monitor / error tracking (Sentry).** ADR-019's accepted
-    deferral — a real operational risk once real traffic exists. Since
-    2026-09-29 `/api/health` reports DB + Redis + **Horizon liveness** (503 if
-    any is down), but nothing external polls it yet; Horizon's own LongWait
-    alert (Plunk) can't fire if Horizon itself is dead. Point an uptime
-    monitor (UptimeRobot/Better Stack) at `https://api.pekangame.space/api/health`.
-    **Partial progress 2026-09-30:** DigitalOcean's own free Droplet
-    monitoring (`do-agent`) installed on `pekangame-prod-lwf` (founder-run via
-    DO's Launch Console, root/sudo required), plus two resource alerts
-    (Memory and Disk Utilization, both >80% for 5 min, emailing the founder)
-    — covers resource-exhaustion visibility on the droplet itself. The
-    external-uptime-of-the-API-endpoint gap (UptimeRobot/Better Stack style)
-    is still open; this only covers the box's own CPU/memory/disk, not
-    whether `api.pekangame.space` itself is reachable from outside.
+11. **External uptime monitor added 2026-10-10 (founder-reported, UptimeRobot on
+    `https://api.pekangame.space/api/health`); error tracking (Sentry) is still
+    not set up.** ADR-019's accepted deferral. Since 2026-09-29 `/api/health`
+    reports DB + Redis + **Horizon liveness** (503 if any is down), which is what
+    the monitor polls; Horizon's own LongWait alert (Plunk) can't fire if Horizon
+    itself is dead, so the external poll covers that. Also since 2026-09-30:
+    DigitalOcean's free Droplet monitoring (`do-agent`) on `pekangame-prod-lwf`,
+    with Memory and Disk alerts (both >80% for 5 min, emailing the founder).
+    Not independently verified: the UptimeRobot dashboard was not opened, so
+    confirm the monitor is green and its alert reaches the founder.
 
 ## Polish (not blocking)
 
@@ -834,7 +831,8 @@ code and production on 2026-10-09; re-verify before building.
     hook (`bootstrap/app.php`) for every code, not per code.
 
 4. **Bot-host capacity (+$20/mo resize)** — resize only when capacity actually
-   calls for it. OpenWA now shares `pekangame-prod-lwf` with the API
+   calls for it. It is also the moment to revisit the OpenWA engine (item 59:
+   Baileys stays until then). OpenWA now shares `pekangame-prod-lwf` with the API
    (ADR-114). The old `allow 127.0.0.1` nginx block on the bot webhook was
    **deliberately removed** at the Cloudflare cutover; HMAC is the intended
    auth layer, so there is nothing to re-add (see the 2026-09-25 entry in

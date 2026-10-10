@@ -1132,3 +1132,11 @@ succeeded.
 - Read-only check of the live storefront: `pekangame.com` carries `FAQPage`
   JSON-LD with all 5 FAQs and no literal `{store_name}`.
 - Left: the GSC canonical/duplicate recheck around 2026-10-22 (founder).
+
+## 2026-10-10 — §16 item 11: external uptime monitor added (founder-reported)
+
+- The founder added an UptimeRobot HTTP monitor on
+  `https://api.pekangame.space/api/health` (5-minute interval, email alert). The
+  endpoint answered 200 with database, queue and horizon true when checked.
+- Not verified from here: the UptimeRobot dashboard was not opened. Error tracking
+  (Sentry) is still not set up.
