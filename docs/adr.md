@@ -127,7 +127,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-103](./adr/ADR-103-combo-order-per-leg-independence.md) | Combo order per-leg `reference_number` independence | In force | 2026-09-17 |
 | [ADR-104](./adr/ADR-104-admin-panel-visual-redesign.md) | Admin panel visual redesign — retire TailAdmin token layer, adopt "PekanGame Admin" design system | In force | 2026-10-09 |
 | [ADR-105](./adr/ADR-105-order-resend-profit-recompute-correctness.md) | Order resend profit-recompute correctness — reconcile against the order's own frozen snapshot, not the target package's live pricing | In force | 2026-10-06 |
-| [ADR-106](./adr/ADR-106-durable-delivery-attempt-audit-record.md) | Durable delivery-attempt audit record — every fulfillment attempt gets its own immutable row, not just resends | In force | 2026-09-21 |
+| [ADR-106](./adr/ADR-106-durable-delivery-attempt-audit-record.md) | Durable delivery-attempt audit record — every fulfillment attempt gets its own immutable row, not just resends | In force | 2026-10-12 |
 | [ADR-107](./adr/ADR-107-combo-order-profit-reconciliation-on-retry.md) | Combo order profit reconciliation on retry + partial-delivery voucher accuracy | In force | 2026-09-17 |
 | [ADR-108](./adr/ADR-108-orders-list-correctness-need-action-compensation.md) | Orders list correctness (Need Action + compensation-tag decluttering) + toolbar overhaul (Source/Game/date-range/Columns/Export) | In force | 2026-10-09 |
 | [ADR-109](./adr/ADR-109-game-info-modal-card.md) | Game info modal card — customer-facing description/important-notes popup + admin-editable per-game instant-delivery badge | In force | 2026-10-08 |
