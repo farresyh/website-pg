@@ -1293,3 +1293,37 @@ Swept PRD, ADR index and ADRs for claims the session made untrue.
 - Remaining "goodwill" in code is free-text voucher reasons in tests only.
 Not changed: item 80's open half (revive an expired voucher), item 75's
 accountant question (expense at issue vs at redemption).
+
+---
+
+## 2026-10-12 — Combo Order Detail: per-leg attempt history (item 66, admin only)
+
+**Bug proved first (red test):** a combo's legs each write an `initial` row to
+`order_resend_attempts` (ADR-106 addendum, 2026-09-21). `DeliveryLogsTable`
+took the first `initial` row as the order's "Initial Delivery" and filtered
+every other `initial` row out, so with 3 legs two attempts vanished and the
+third was mislabelled as the order's own.
+
+**Fix (frontend only, no backend change):** the log-building logic moved
+verbatim into `admin/src/lib/delivery-log-entries.ts` so `npm test` can reach
+it. The order-level log now ignores rows with an `order_delivery_leg_id`;
+`groupLegAttempts()` groups them per leg and `ComboLegBreakdown` shows them in
+an "Attempt history per leg" section (failed / needs_review legs open by
+default). `retry` rows are labelled Retry (they showed as "Resend Delivery").
+
+**Production check (read-only):** only 2 combo orders exist (ids 7 and 28,
+5 legs) and 0 leg attempt rows — both predate `cf44991` (2026-09-21), so the
+section says "no attempts recorded" for them. `PG-B2BL0G1YDMVS` is order 28.
+
+**Admin actions for a stuck combo (read from code):** all at order level, none
+per leg. Retry Delivery retries failed legs only (ADR-094 decision 29), Confirm
+Failed flips unresolved legs (decision 31), Mark as Delivered is hidden for
+combos, compensation is by formula (decision 33). `NeedsReviewBanner` still
+reads `order.supplier`, which a combo has none of (item 66 follow-up).
+
+**Verified live:** local production build, Playwright, API response patched
+with a 3-leg combo (no DB writes): leg 2 opened with 2 attempts, others
+collapsed, logs show only order-level rows. 6 `npm test` pass, `tsc` and eslint
+clean. Not checked: dark mode, 390px width, a real combo order with leg
+attempts (none exist yet).
+
