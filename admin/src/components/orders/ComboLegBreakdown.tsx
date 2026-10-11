@@ -20,7 +20,8 @@ import {
   DataTableCell,
 } from "@/components/ui/datatable";
 import { Tag } from "@/components/ui/tag";
-import type { OrderDeliveryLeg } from "@/lib/orders";
+import type { OrderDeliveryLeg, OrderResendAttempt } from "@/lib/orders";
+import { groupLegAttempts, legAttemptLabel } from "@/lib/delivery-log-entries";
 
 function severityFor(status: OrderDeliveryLeg["status"]): "success" | "danger" | "warn" | "info" | "review" {
   switch (status) {
@@ -39,8 +40,18 @@ function severityFor(status: OrderDeliveryLeg["status"]): "success" | "danger" |
   }
 }
 
-export default function ComboLegBreakdown({ legs }: { legs: OrderDeliveryLeg[] }) {
+function attemptDetail(a: OrderResendAttempt): string | null {
+  if (a.note) return a.note;
+  const r = a.supplier_response;
+  if (r && typeof r.message === "string") return r.message;
+  if (r && r.rc !== undefined) return `rc: ${String(r.rc)}`;
+  return null;
+}
+
+export default function ComboLegBreakdown({ legs, attempts = [] }: { legs: OrderDeliveryLeg[]; attempts?: OrderResendAttempt[] }) {
   if (legs.length === 0) return null;
+
+  const byLeg = groupLegAttempts(attempts);
 
   return (
     <div className="mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-surface dark:border-gray-800">
@@ -97,6 +108,42 @@ export default function ComboLegBreakdown({ legs }: { legs: OrderDeliveryLeg[] }
             </DataTableTable>
           </DataTableTableContainer>
         </DataTable>
+      </div>
+
+      {/* Each leg's own attempts (ADR-106 addendum 2026-09-21), oldest first. A leg that needs attention opens by default. */}
+      <div className="space-y-2 border-t border-gray-100 p-6 pt-4 dark:border-gray-800">
+        <h3 className="text-theme-sm font-medium text-ink">Attempt history per leg</h3>
+        {legs.map((leg) => {
+          const list = byLeg.get(leg.id) ?? [];
+          const needsAttention = leg.status === "failed" || leg.status === "needs_review";
+
+          return (
+            <details key={leg.id} open={needsAttention} className="rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800">
+              <summary className="cursor-pointer text-theme-sm text-ink">
+                Leg #{leg.leg_number} · {leg.component_package?.name ?? "—"} · {list.length === 0 ? "no attempts recorded" : `${list.length} attempt${list.length === 1 ? "" : "s"}`}
+              </summary>
+              {list.length === 0 ? (
+                <p className="mt-2 text-theme-xs text-ink-muted">Nothing recorded for this leg — orders made before 21 Sep 2026 did not keep leg history.</p>
+              ) : (
+                <ul className="mt-2 space-y-2">
+                  {list.map((a) => (
+                    <li key={a.id} className="text-theme-xs text-ink-muted">
+                      <span className="text-ink">{new Date(a.created_at).toLocaleString()}</span> · {legAttemptLabel(a.attempt_type)} · {a.triggered_by ?? "System (Auto)"} ·{" "}
+                      <Tag dot severity={severityFor(a.outcome === "success" ? "delivered" : a.outcome === "pending" ? "pending" : "failed")}>{a.outcome}</Tag>
+                      {attemptDetail(a) && <div className="mt-0.5">{attemptDetail(a)}</div>}
+                      {a.supplier_response && (
+                        <details className="mt-1">
+                          <summary className="cursor-pointer">Raw supplier response</summary>
+                          <pre className="mt-1 overflow-x-auto rounded-lg bg-subtle p-3 font-mono text-xs text-ink">{JSON.stringify(a.supplier_response, null, 2)}</pre>
+                        </details>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </details>
+          );
+        })}
       </div>
     </div>
   );
