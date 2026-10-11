@@ -1319,7 +1319,9 @@ section says "no attempts recorded" for them. `PG-B2BL0G1YDMVS` is order 28.
 per leg. Retry Delivery retries failed legs only (ADR-094 decision 29), Confirm
 Failed flips unresolved legs (decision 31), Mark as Delivered is hidden for
 combos, compensation is by formula (decision 33). `NeedsReviewBanner` still
-reads `order.supplier`, which a combo has none of (item 66 follow-up).
+reads `order.supplier`, which a combo has none of. Founder's call 2026-10-12:
+no combo-aware banner or per-leg "what to do" line; not tracked, revisit only if
+a real stuck combo order confuses an admin.
 
 **Verified live:** local production build, Playwright, API response patched
 with a 3-leg combo (no DB writes): leg 2 opened with 2 attempts, others
