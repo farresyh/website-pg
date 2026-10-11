@@ -727,9 +727,8 @@ code and production on 2026-10-09; re-checked 2026-10-11 against git (77, 76,
 closed"). Re-verify before building.
 
 **A. Buildable now: code, no new design** (in suggested order)
-1. **66** Combo Order Detail, second PR (proposed, not yet approved): a combo-aware
-   `NeedsReviewBanner` (it reads `order.supplier`, which a combo order does not
-   have) and a one-line "what to do" per leg. Frontend only.
+Nothing left. Item 66's history view closed 2026-10-12 (#404); its
+edit-composition half is in B.
 
 **B. Needs a short grill / ADR addendum first**
 - **66** Combo edit-composition UI — needs an ADR-094 addendum (the
