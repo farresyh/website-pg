@@ -710,7 +710,7 @@ edit-composition half is in B.
 
 **C. Founder actions (no code)**
 - **11** Sentry (error tracking) is still not set up. UptimeRobot on
-  `/api/health` confirmed green 2026-10-12; its alert delivery is untested.
+  `/api/health` confirmed green and its alert delivery tested 2026-10-12.
 - **71** GSC recheck around 2026-10-22.
 
 **D. Waiting on a trigger: don't build early**
@@ -763,8 +763,8 @@ edit-composition half is in B.
     DigitalOcean's free Droplet monitoring (`do-agent`) on `pekangame-prod-lwf`,
     with Memory and Disk alerts (both >80% for 5 min, emailing the founder).
     Founder confirmed the monitor green on 2026-10-12 (100% over 7 and 30 days,
-    5-minute checks, up 1d 17h). Not tested: that its alert actually reaches the
-    founder (use the monitor's Test Notification).
+    5-minute checks, up 1d 17h). The founder's Test Notification reached them the
+    same day.
 
 13. **ADR-085 candidate** — self-serve reseller signup (payment risk, KYC, auto
     tier-assignment). Needs its own ADR + grill; ADR-084 assumes invite-only.
