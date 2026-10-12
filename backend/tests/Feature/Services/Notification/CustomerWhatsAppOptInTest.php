@@ -122,21 +122,27 @@ class CustomerWhatsAppOptInTest extends TestCase
         $this->assertStringContainsString('voucher for the full amount', $message);
     }
 
-    public function test_the_same_card_is_not_repeated_within_30_minutes_unless_the_status_changes(): void
+    public function test_every_message_with_the_order_number_gets_a_card_even_when_nothing_changed(): void
     {
         $order = $this->order(['delivery_status' => DeliveryStatus::Processing->value]);
 
         $this->inbound("order {$order->order_number} dah sampai ke?");
         $this->inbound("hello? order {$order->order_number}");
+        $this->inbound("Salam, saya nak resit order {$order->order_number} di WhatsApp.");
+
+        $this->assertSame(3, CustomerNotification::query()->where('event', 'status_card')->where('status', 'queued')->count());
+        Queue::assertPushed(SendCustomerWhatsAppJob::class, 3);
+    }
+
+    public function test_a_redelivered_webhook_for_the_same_message_is_answered_once(): void
+    {
+        $order = $this->order();
+
+        $this->inbound("order {$order->order_number}", data: ['id' => 'wamid-1']);
+        $this->inbound("order {$order->order_number}", data: ['id' => 'wamid-1']);
+
         $this->assertSame(1, CustomerNotification::query()->count());
-
-        $order->update(['delivery_status' => DeliveryStatus::Delivered->value]);
-        $this->inbound("order {$order->order_number}");
-        $this->assertSame(2, CustomerNotification::query()->count());
-
-        $this->travel(31)->minutes();
-        $this->inbound("order {$order->order_number}");
-        $this->assertSame(3, CustomerNotification::query()->count());
+        Queue::assertPushed(SendCustomerWhatsAppJob::class, 1);
     }
 
     public function test_any_sender_with_the_order_number_gets_the_card_since_it_holds_only_track_page_data(): void
@@ -149,20 +155,18 @@ class CustomerWhatsAppOptInTest extends TestCase
         $this->assertSame('60199999999', WhatsappContact::query()->sole()->phone);
     }
 
-    public function test_a_mistyped_order_number_gets_a_not_found_reply_at_most_every_10_minutes(): void
+    public function test_every_mistyped_order_number_gets_a_not_found_reply(): void
     {
         $this->inbound('order pg-typo12345');
         $this->inbound('sorry, PG-TYPO67890');
 
-        $reply = CustomerNotification::query()->sole();
-        $this->assertSame('order_not_found', $reply->event);
-        $this->assertStringContainsString("We couldn't find order PG-TYPO12345", $reply->message);
-        $this->assertStringContainsString('payment receipt sent to your email', $reply->message);
+        $replies = CustomerNotification::query()->oldest('id')->get();
+        $this->assertCount(2, $replies);
+        $this->assertSame(['order_not_found', 'order_not_found'], $replies->pluck('event')->all());
+        $this->assertStringContainsString("We couldn't find order PG-TYPO12345", $replies[0]->message);
+        $this->assertStringContainsString("We couldn't find order PG-TYPO67890", $replies[1]->message);
+        $this->assertStringContainsString('payment receipt sent to your email', $replies[0]->message);
         $this->assertSame(1, WhatsappContact::query()->count()); // they wrote first: still opted in
-
-        $this->travel(11)->minutes();
-        $this->inbound('PG-TYPO67890');
-        $this->assertSame(2, CustomerNotification::query()->count());
     }
 
     public function test_the_awaiting_payment_card_leaves_later_steps_open(): void
