@@ -731,3 +731,43 @@ cache behaviour itself, which needs a real second upload on a deployed build.
 After release, verify on staging/prod by re-uploading a logo and looking at the
 admin preview, the storefront header and the tab icon (favicons are cached
 hardest by browsers, so allow for that).
+
+## 2026-10-12 — WhatsApp order-number messages are always answered (item 69, staging only)
+
+On `fix/whatsapp-status-card-reply-every-time`. Not released.
+
+**Problem.** The status-card throttle (30 min) and the not-found throttle
+(10 min) in `CustomerNotificationService` were `Cache::add` calls that returned
+before any row was written: no reply, no trace for admin. Prod showed it on
+2026-10-05 (three order-number messages in four minutes, one card). The
+throttle was also set before the row write, so a failed write plus an OpenWA
+webhook retry would be swallowed (read from code, not reproduced).
+
+**Investigation (read-only).** Prod `customer_notifications`: 11 rows, 2 numbers,
+all founder tests, no failed jobs, nothing stuck. OpenWA `customer-support`
+session: 21 direct messages from 5 chats (two unknown numbers wrote on
+2026-10-07 and nothing records it in Laravel), ~360 group messages ignored by
+design. The founder's chatbot project, same checks: busiest 10-minute window for
+one chat was 3 order-number messages across six months.
+
+**Fix.** Both `Cache::add` throttles and their two constants removed; every
+order-number message gets a card or a not-found reply. Retry safety already came
+from the `dedupe_key` (inbound message id). A `ponytail:` comment on
+`orderStatusCard()` records the ceiling. Decision record: ADR-116 2026-10-12
+addendum.
+
+**Tests.** The two tests that asserted silence were rewritten (three messages
+give three cards; two typos give two replies) and failed first. New test: the
+same message id delivered twice gives one row. Notification suite 28 green, full
+fast suite 2711 green, Pint clean.
+
+**Gotchas.**
+- The admin label map in `RefundInformationCards.tsx` has a dead `optin_reply`
+  key, but `start_reply`, `stop_reply` and `order_not_found` have no order id,
+  so they never show on the order page. Nothing to fix; left alone.
+- Horizon `LongWait` cannot see a send flood, because delayed jobs do not count
+  as waiting.
+
+**Not verified.** The real behaviour on WhatsApp. It needs a deployed build:
+after release, send the same order number from a test phone to the CS number
+several times and expect a card each time.

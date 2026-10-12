@@ -605,6 +605,11 @@ in the admin and partner-portal preview, the storefront header and the tab icon
 alone. Not yet checked in a browser on a deployed build; check after the next
 `staging`→`main` release.
 
+Also on `staging`, not live (2026-10-12): the WhatsApp status card and the
+"order not found" reply are now sent on every order-number message; the
+silent repeat throttles are removed (item 69, ADR-116 2026-10-12 addendum).
+Needs a real-phone check on a deployed build after release.
+
 **Release 2026-10-10 (PR #393).** Envelope Ledger reshape (item 78: postings,
 director loans, month close, cash equation; removes the platform-owner
 withdrawal), the settlement month-span fix #388, the admin package-order
@@ -656,7 +661,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500. **2026-10-04 (ADR-024 addendum, live via #354):** a lost voucher or member-quota reservation now fails the checkout closed (Failed order, coded 422 `checkout_closed`, link never handed out) on every path, including idempotent replay; admin "Voucher Paid" reads the redemption | ADR-024, 035, 036 |
 | Customer Analytics (ANL-1..5) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. WhatsApp renewal reminder still deferred (§16 item 64; the vendor question is settled by ADR-116's OpenWA `customer-support` session) | ADR-027, 055, 068, 080 |
-| Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. The voucher path was live-tested 2026-10-06 (a failed order's Issue Voucher code arrived on WhatsApp), along with the status card and not-found reply; their throttles are silent and leave no trace (§16 item 69). Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14) | ADR-116 |
+| Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. The voucher path was live-tested 2026-10-06 (a failed order's Issue Voucher code arrived on WhatsApp), along with the status card and not-found reply; their throttles are silent and leave no trace (§16 item 69). Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14). **2026-10-12 (staging, not live):** every order-number message now gets a card or a not-found reply; the silent repeat throttles are removed (§16 item 69) | ADR-116 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
 | Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private) — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. **2026-09-14: found the restore-test had failed 14/14 since go-live** (managed-MySQL GTID privilege gap) **and its alert never reached an inbox** (`MAIL_MAILER=log`) — both fixed and **re-verified live same day**: a manual "Backup Now" landed on `r2_backups` with `status=success`/`restore_test_passed=1`, the first success ever recorded | ADR-039, ADR-095 |
 | Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-form picker (`ImageUrlInput`, live via #406, 2026-10-12) on Edit Game, Hero Slide and the two SEO OG-image fields; the URL stays a plain text field | ADR-095 |
@@ -709,7 +714,6 @@ edit-composition half is in B.
 - **6 / A3** Per-tier rate limit on the Reseller API/Bot.
 - **64** Membership renewal reminder over WhatsApp (ADR-068's deferred half).
 - **66** Combo edit-composition UI (needs an ADR-094 addendum).
-- **69** WhatsApp silent throttles (ADR-116 addendum).
 - **79** Compensation vouchers debit the platform ledger (ADR-024 addendum).
 - **80** Voucher merge can revive an expired voucher (ADR-036 addendum).
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
@@ -735,6 +739,7 @@ edit-composition half is in B.
 - **73** Reseller API rejection logging, on an integrator issue.
 - **74** Ask the external reviewer, before the first non-zero affiliate tier
   fee.
+- **82** Customer-support inbound log and CS-agent inputs, with the CS-agent ADR.
 
 **E. New features: after the backlog** (each needs its own ADR + grill)
 - **13** Self-serve reseller signup.
@@ -885,26 +890,6 @@ edit-composition half is in B.
 
 66. **Combo edit-composition UI, deliberately deferred** (§15 Combo row): no edit-composition UI (delete and recreate only). Needs an ADR-094 addendum first: the paid-but-not-yet-fulfilled window, and 3 readers use the live `components->first()->supplier`. Until then: create a new combo and deactivate the old one. The per-leg attempt history and each component's supplier SKU are already shown (live via #406); orders before 2026-09-21 have no leg attempt rows.
 
-69. **WhatsApp status-card and not-found throttles are silent — founder may
-    reconsider replying every time** (found in the 2026-10-06 smoke test;
-    founder's call 2026-10-06: small, after item 63). A second message with the same order number within 30
-    minutes (same order + status, ADR-116 addendum decision 3), or a second
-    unknown order number within 10 minutes, gets no reply, and the throttle
-    returns before a `customer_notifications` row is written, so admin can't
-    see why. A customer who taps "Send Receipt to WhatsApp" right after
-    "Contact Support" gets silence. Options:
-    - (a) reply every time, keeping only a per-phone abuse cap (e.g. N cards
-      per 10 min) whose overflow writes a `skipped` row with the reason;
-    - (b) keep the throttles, record a `skipped` "throttled" row, shorten the
-      same-card window;
-    - (c) as is.
-    Weigh: replies to a customer who wrote first are not capped by OpenWA's
-    `SEND_PACING` and carry little ban risk, but every card goes through the
-    one paced `whatsapp` worker (10–30 s gap), so an unbounded sender could
-    delay other customers' voucher messages — hence a cap stays in (a).
-    A "support vs updates" split was already rejected (addendum decision 1).
-    Needs an ADR-116 addendum before building.
-
 71. **GSC recheck around 2026-10-22** (Pages report: duplicate / canonical reasons, indexed vs not indexed). ADR-120 went live 2026-10-08 (#369); the admin SEO › FAQ click-through was done by the founder on 2026-10-10. Founder-deferred: GA4, default OG image, Bing.
 
 72. **Reseller Bot price ceiling — optional `max=` token on `.order`**
@@ -992,8 +977,23 @@ edit-composition half is in B.
     - Before the grill: get the accountant's own monthly document list, so
       the pack follows what they actually ask for.
 
+82. **Customer-support inbound log and CS-agent design inputs — waiting on the
+    CS-agent ADR.** Found while closing item 69 (2026-10-12). Laravel keeps no
+    record of inbound messages: a stranger's message that carries no order
+    number (two such numbers wrote on 2026-10-07) leaves a trace only in
+    OpenWA's `data/openwa.sqlite`, which has no retention and is not backed up.
+    That table also holds ~360 group messages the session was never meant to
+    act on. A log of direct messages needs its own retention and privacy
+    decision. Inputs for the CS-agent ADR from the founder's chatbot project
+    (`/Project/chatbot`, read 2026-10-12): escalation to an admin group with
+    `!reply` / `!solved`, a per-chat `ai` / `admin` / `paused` mode, a 10 s
+    per-chat debounce that merges rapid messages, and image OCR for order
+    numbers. That chatbot raises an admin alert on every unknown order number
+    with no cap, so any escalation built here needs one.
+
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
+- **69** 2026-10-12: the WhatsApp status card and the "order not found" reply are now sent on every order-number message; the 30-minute and 10-minute `Cache::add` throttles are gone (ADR-116 2026-10-12 addendum). No per-number cap, by the founder's call and the chatbot project's six months of data (worst 10-minute window: 3 messages). Staging only until a release. Details: build-log 2026-10-12.
 - **66 (history view)** 2026-10-12: a combo's per-leg attempt history shows under each leg on Order Detail; leg `initial` rows no longer swallow each other in the order log (red test first). Admin only. Edit-composition stays open (B). Live via #406 (2026-10-12). Details: build-log 2026-10-12.
 - **75** 2026-10-11: the Monthly Summary's "voucher liability issued" split into "Admin-issued vouchers (no order)" (profit cost, was "Goodwill") and "Failed-order store credit issued" (information only); a merge result is in neither (ADR-083 2026-10-11 addendum, build-log). The accountant still owns expense-at-issue vs at-redemption. Live via #406 (2026-10-12).
 - **76** 2026-10-10: server-side search is debounced (300 ms) and stale-guarded on `/admin/orders`, `/admin/games`, `/admin/seo/games`, `/admin/gallery`, Middleware Sandbox and Product Manager, plus Reports' custom dates. Two shared admin hooks: `useDebouncedValue`, `useLatestRequest`. Admin only; the other apps have no affected search. Live via #406 (2026-10-12).
