@@ -18,7 +18,7 @@ Laravel-specific, loaded only when working inside `backend/`.
 - **Supplier and payment integrations are behind adapters** —
   `SupplierAdapter` (`GamevionAdapter` and `DigiflazzAdapter` are the two
   real, production-wired implementations — ADR-030/067; only Digiflazz is
-  funded/live since 2026-09-24, Gamevion stays integrated but unfunded; resolved per-order
+  funded/live (funded 2026-09-15; Gamevion deliberately left unfunded 2026-09-24), Gamevion stays integrated but unfunded; resolved per-order
   by `supplier_id` via `SupplierAdapterFactory`, ADR-031) and `PaymentGateway`
   (`ChipGateway` is the one real implementation since ADR-022's 2026-09-01
   addendum removed Xendit; still resolved per-channel via
@@ -30,7 +30,8 @@ Laravel-specific, loaded only when working inside `backend/`.
   `VoucherService::redeem()`, `OrderFulfillmentService::fulfill()`, all
   `DB::transaction()` + `lockForUpdate()`, each backed by a
   `tests/Concurrency/*ConcurrencyTest.php` that spawns a second real process
-  (`DatabaseMigrations`, not `RefreshDatabase` — see AGENTS.md's gotcha).
+  (`DatabaseMigrations`, not `RefreshDatabase`: the latter wraps a test in one
+  uncommitted transaction, so the spawned process would never see seeded data).
   Follow this pattern for any new code that touches balance or delivery
   state under possible concurrent access (e.g. duplicate webhook delivery).
 - **Fulfillment is queued, never inline on the request/webhook thread**
@@ -83,7 +84,7 @@ Laravel-specific, loaded only when working inside `backend/`.
 ## Build & Test
 
 ```bash
-composer run dev                                          # serve + horizon + pail + vite together (needs local Redis — ADR-048)
+composer run dev                                          # serve + horizon + reverb + pulse + pail + vite together (needs local Redis — ADR-048)
 php artisan test                                           # fast suite (sqlite, no Docker)
 docker compose up -d && php artisan test -c phpunit.concurrency.xml  # concurrency suite, needs real MySQL
 php artisan app:chip-smoke-test                             # hits the real CHIP API (test-mode key; no separate sandbox URL)
