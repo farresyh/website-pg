@@ -40,3 +40,7 @@ Two other directions were considered and rejected this session before landing on
 **Decision.** `merge()` rejects the whole merge if any source has `expires_at` in the past, with the same `InvalidVoucherException` → 422 path as a non-active source. Decision 4 is unchanged: the admin still sets the new expiry freely for unexpired sources, including extending it, since that is a deliberate choice on credit that is still live.
 
 **Not changed.** No status backfill to `expired` (the admin index's "Expired" count reads `status = 'expired'` and so stays 0; a separate display issue). The admin selection checkbox still offers an expired-but-`active` voucher; the server rejects it.
+
+### Cross-reference (2026-10-12) — decision 5's ledger premise is narrower now
+
+Decision 5 says each source's liability "already sits correctly in the ledger via the sources' own original `voucher_issued` debits". Since ADR-024's 2026-10-12 addendum (PRD §16 item 79), only an admin-issued source has that debit. A compensation source never had a cost to book, so it has none. Decision 5's conclusion is unchanged: a merge writes no ledger row, and the platform ledger stays right for any mix of sources.
