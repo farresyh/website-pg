@@ -837,3 +837,21 @@ yet. Nothing written to production.
 **After the release.** Re-run that SELECT read-only. It must show 4 reversals and
 no unreversed compensation debit. Forge migrates before the new code is live, so an
 admin settlement in those seconds could leave one more debit.
+
+---
+
+## 2026-10-13 — Docs sync after #412 / #413 (docs only)
+
+Swept PRD and ADRs for claims items 79 and 80 made untrue.
+- PRD glossary, Voucher Merge: the "liability already booked by each source"
+  reason now says an admin-issued source's cost was booked at issuance and a
+  compensation source never debits; an expired source cannot be merged.
+- ADR-024 decision 2: inline pointer to its 2026-10-12 addendum (only an
+  admin-issued voucher is debited at issuance).
+- ADR-036: cross-reference that decision 5's "sources' original debits"
+  premise now covers admin-issued sources only; its conclusion is unchanged.
+- ADR-083: the item 80 "revive half stays open" line now points to the closing
+  addendum.
+Checked, still true: ADR-094 decision 34 and ADR-104 R8 (they reason about the
+voucher liability, not the ledger row), ADR-002's dedupe list, `backend/AGENTS.md`.
+`main` is still release #406; #412 and #413 are on `staging` only.
