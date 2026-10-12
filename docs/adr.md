@@ -58,7 +58,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-033](./adr/ADR-033-foreign-currency-supplier-pricing.md) | Foreign-currency supplier pricing — FX-rate conversion at sync time | In force | 2026-09-29 |
 | [ADR-034](./adr/ADR-034-storefront-best-price-selection.md) | Storefront best-price selection — `packages.denomination` | In force |  |
 | [ADR-035](./adr/ADR-035-voucher-path-a-double-submission-guard.md) | Voucher Path A double-submission guard — idempotency key, mirroring checkout | In force |  |
-| [ADR-036](./adr/ADR-036-voucher-merge.md) | Voucher Merge — admin-triggered consolidation into a new code, no ledger write | In force |  |
+| [ADR-036](./adr/ADR-036-voucher-merge.md) | Voucher Merge — admin-triggered consolidation into a new code, no ledger write | In force | 2026-10-12 |
 | [ADR-037](./adr/ADR-037-staging-production-git-branch-model-staging.md) | Staging/production git branch model + staging environment infra | In force || 2026-09-01 |
 | [ADR-038](./adr/ADR-038-admin-ui-component-library.md) | Admin UI component library — adopt PrimeReact (Tailwind mode), opportunistic migration off hand-rolled TailAdmin primitives | In force | 2026-08-26 |
 | [ADR-039](./adr/ADR-039-database-backups.md) | Database backups — app-level, host-agnostic backup/restore mechanism (BAK-1..5) | In force || 2026-09-14 |

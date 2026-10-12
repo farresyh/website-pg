@@ -106,6 +106,13 @@ final class VoucherService
                 if ($voucher->status !== 'active') {
                     throw new InvalidVoucherException("Voucher {$voucher->code} is not active and cannot be merged.");
                 }
+
+                // §16 item 80: expiry is `expires_at` alone (status stays
+                // `active`), and a closed month may already have booked
+                // this credit as breakage — never hand it back.
+                if ($voucher->expires_at !== null && $voucher->expires_at->isPast()) {
+                    throw new InvalidVoucherException("Voucher {$voucher->code} has expired and cannot be merged.");
+                }
             }
 
             $this->assertSameCustomer($vouchers);

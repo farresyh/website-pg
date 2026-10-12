@@ -771,3 +771,28 @@ fast suite 2711 green, Pint clean.
 **Not verified.** The real behaviour on WhatsApp. It needs a deployed build:
 after release, send the same order number from a test phone to the CS number
 several times and expect a card each time.
+
+---
+
+## 2026-10-12 — §16 item 80: a voucher merge rejects an expired source
+
+**What shipped (branch `fix/voucher-merge-expired`).** `VoucherService::merge()`
+now refuses the whole merge (422 on `voucher_ids`) when any source voucher's
+`expires_at` is in the past. ADR-036 2026-10-12 addendum.
+
+**Why.** Nothing ever sets a voucher's `status` to `expired`; expiry is
+`expires_at` alone, so an expired voucher still reads `active`. `merge()`
+checked status only, so expired credit, possibly already booked as breakage by
+a closed month, came back under a new expiry. The double-count half of item 80
+was closed with item 75 (2026-10-11).
+
+**Red first.** `test_rejects_merging_an_expired_voucher` got 201 before the
+fix. Full backend suite 2712/2712 after. Concurrency suite not run: the lock
+and the order of checks inside it are unchanged. No migration, no frontend
+change. The admin merge modal already shows the server's error message (the
+same path as a non-active source). No browser check.
+
+**Noticed, not changed.** The admin voucher index's "Expired" stat counts
+`status = 'expired'`, which nothing writes, so it always shows 0. The merge
+checkbox still offers an expired-but-`active` voucher; the server rejects it.
+Production effect: none expected (0 merges on 2026-10-10).
