@@ -28,7 +28,8 @@ use Illuminate\Validation\ValidationException;
  *   never threshold-gated — the amount is bounded by what the customer
  *   actually paid (ORD-9 principle applied to refunds), not an open
  *   admin choice.
- * Both debit the 'platform' ledger at issuance (type=voucher_issued).
+ * Only Path A debits the 'platform' ledger at issuance (type=voucher_issued);
+ * Path B is the customer's own cash already held (ADR-024 2026-10-12 addendum).
  * MVP has no Affiliate model yet, so affiliate-wallet issuance (the
  * founder's other stated option) is Phase 2.
  */
