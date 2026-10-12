@@ -9,8 +9,8 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * ADR-039 decision 7: `Log::critical()` plus an email to every admin
- * user on any failed backup run — not gated on `SET-9`'s Telegram
- * sender, which isn't built yet. Shared by the raw
+ * user on any failed backup run. (There is no Telegram sender; the
+ * SET-9 fields were removed 2026-10-10.) Shared by the raw
  * BackupHasFailed/CleanupHasFailed spatie events
  * (App\Listeners\Backup\LogAndAlertBackupFailure) and by
  * `App\Console\Commands\Backup\RunBackupCommand` for the restore-test-

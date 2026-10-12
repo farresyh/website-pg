@@ -42,7 +42,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-017](./adr/ADR-017-order-resend-delivery.md) | Order Resend Delivery — same-game package swap + live price reconciliation | In force; decisions 2/4 revised by ADR-105 (2026-10-06) | 2026-10-06 |
 | [ADR-018](./adr/ADR-018-sandbox-test-orders.md) | Sandbox Test Orders — a middleware-only tool for exercising the real Order lifecycle without touching real data or real money | In force | 2026-07-30 |
 | [ADR-019](./adr/ADR-019-second-pass-resilience-security-audit.md) | Second-pass resilience & security audit — reconciling ADR-014 against real code, docs restructure | In force; cache deferral closed by ADR-077 | 2026-09-29 |
-| [ADR-020](./adr/ADR-020-production-host.md) | Production host — DigitalOcean Basic Droplet + Managed MySQL, Docker Compose, Cloudflare-fronted | Partly superseded by ADR-066 (Forge deploy, Vercel frontends) | 2026-09-05 |
+| [ADR-020](./adr/ADR-020-production-host.md) | Production host — DigitalOcean Basic Droplet + Managed MySQL, Docker Compose, Cloudflare-fronted | Partly superseded by ADR-066 (Forge deploy, Vercel frontends) | 2026-10-10 |
 | [ADR-021](./adr/ADR-021-next-session-priority-re-sequencing.md) | Next-session priority re-sequencing — payment reconciliation before deployment infra | In force | 2026-07-30 |
 | [ADR-022](./adr/ADR-022-multi-gateway-payment-strategy.md) | Multi-gateway payment strategy — CHIP for Malaysia-local, Xendit retained for international + split-payment | In force as CHIP-only; Xendit decisions reversed by its own 2026-09-01 addendum | 2026-09-01 |
 | [ADR-023](./adr/ADR-023-playwright-e2e-policy.md) | Playwright E2E policy — golden-path scope, growth triggers, and suite-hygiene rules | In force | 2026-08-21 |
@@ -50,7 +50,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-025](./adr/ADR-025-supplier-price-sync-sanity-guard.md) | Supplier price-sync sanity guard — floor + swing checks on Gamevion's incoming price | In force | 2026-08-21 |
 | [ADR-026](./adr/ADR-026-delivery-side-reconciliation-ord-10.md) | Delivery-side reconciliation (ORD-10) — `NeedsReview` state for ambiguous Gamevion order-creation failures | In force | 2026-09-16 |
 | [ADR-027](./adr/ADR-027-vip-membership.md) | VIP Membership — Costco-style spend-quota subscription, email+OTP lightweight identity, member pricing | In force | 2026-09-22 |
-| [ADR-028](./adr/ADR-028-platform-reseller-settings.md) | Platform & Reseller Settings — reseller-scoped branding vs. platform-wide config split | In force | 2026-10-02 |
+| [ADR-028](./adr/ADR-028-platform-reseller-settings.md) | Platform & Reseller Settings — reseller-scoped branding vs. platform-wide config split | In force | 2026-10-10 |
 | [ADR-029](./adr/ADR-029-seo-management.md) | SEO Management — reseller-scoped SEO settings, redirects, and per-game wiring | In force; decision 8 revised by ADR-120 | 2026-10-08 |
 | [ADR-030](./adr/ADR-030-digiflazz-supplier-integration.md) | Digiflazz supplier integration — buyer-role adapter, prepaid games only | In force; decision 2 modified by ADR-067, rc table reopened by ADR-098/102 | 2026-09-03 |
 | [ADR-031](./adr/ADR-031-multi-supplier-routing.md) | Multi-supplier routing — `SupplierAdapterFactory` + one-Package-one-supplier | In force |  |
@@ -67,7 +67,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-042](./adr/ADR-042-seo-module-scope-widened.md) | SEO module scope widened — structured data, scripts manager, crawler/robots management, sitemap & overview panels, per-game SEO UX | In force | 2026-10-08 |
 | [ADR-043](./adr/ADR-043-.md) | `llms.txt` — auto-generated AI/LLM-context route | In force | 2026-08-22 |
 | [ADR-044](./adr/ADR-044-zod-runtime-schema-validation-at-the-admin.md) | Zod runtime schema validation at the admin/storefront API boundary | In force |  |
-| [ADR-045](./adr/ADR-045-admin-dashboard.md) | Admin Dashboard — DASH-1..6, `orders.delivered_at`, and a per-metric self-documenting `definition` convention | In force |  |
+| [ADR-045](./adr/ADR-045-admin-dashboard.md) | Admin Dashboard — DASH-1..6, `orders.delivered_at`, and a per-metric self-documenting `definition` convention | In force | 2026-10-11 |
 | [ADR-046](./adr/ADR-046-supplier-management-screen.md) | Supplier Management screen — trimmed to config/health (SUPP-1/CRUD/SUPP-5), `Supplier.api_config` becomes the live credential source, per-supplier/per-game bulk deactivation | In force | 2026-09-24 |
 | [ADR-047](./adr/ADR-047-realtime-broadcasting.md) | Realtime broadcasting — Laravel Reverb + Echo, replacing application-level polling | In force | 2026-09-28 |
 | [ADR-048](./adr/ADR-048-queue-driver-migration-to-redis-plus-horizon.md) | Queue driver migration to Redis, plus Horizon + Pulse — reverses ADR-014 decision #1 / ADR-020 decision #3's "queue stays on `database`" | In force | 2026-09-29 |
@@ -97,7 +97,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-072](./adr/ADR-072-reseller-system-split.md) | Reseller-system split — `Affiliate` (whitelabel) vs `Reseller` (prepaid wallet), full rename, shared portal architecture | In force | 2026-09-04 |
 | [ADR-073](./adr/ADR-073-reseller-wallet.md) | Reseller wallet — fee-less tiers, prepaid-deposit ledger, order-placement contract, profit booking, delivery-failure handling | In force | 2026-10-04 |
 | [ADR-074](./adr/ADR-074-reseller-api-channel.md) | Reseller API channel — per-tenant API keys, order-placement/status endpoints | In force | 2026-10-08 |
-| [ADR-075](./adr/ADR-075-reseller-bot-channel.md) | Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology | In force | 2026-10-02 |
+| [ADR-075](./adr/ADR-075-reseller-bot-channel.md) | Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology | In force | 2026-10-10 |
 | [ADR-076](./adr/ADR-076-reseller-bot-v2.md) | Reseller Bot v2 — two-stage order-completion messaging, `.trackorder`/`.checkid`/`.info`, reply styling | In force | 2026-09-06 |
 | [ADR-077](./adr/ADR-077-storefront-read-path.md) | Storefront read-path — Redis cache cutover, eviction policy, invalidation fan-out, propagation freshness | In force |  |
 | [ADR-078](./adr/ADR-078-custom-domain-storefront-gaps.md) | Custom-domain storefront gaps — dynamic CORS, edge-cache staleness, membership-toggle visibility | In force | 2026-09-08 |
@@ -105,7 +105,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-080](./adr/ADR-080-membership-per-brand.md) | Membership × per-brand — close the `/membership` surface consistently on a membership-disabled brand | In force |  |
 | [ADR-081](./adr/ADR-081-affiliate-storefront-theme-presets.md) | Affiliate storefront theme presets — a curated fixed set, NOT the THM-1..4 custom theme system | In force |  |
 | [ADR-082](./adr/ADR-082-public-facing-review-display.md) | Public-facing review display — homepage marquee + per-game reviews on the product page | In force |  |
-| [ADR-083](./adr/ADR-083-internal-accounting-financial-reconciliation.md) | Internal Accounting & Financial Reconciliation — Supplier Funding Ledger, CHIP Settlement Reconciliation, and a Monthly Accounting Summary for an external SaaS | In force; 2026-10-10 addendum reshapes the Envelope Ledger (postings, director loans, month close) and retires the platform withdrawal | 2026-10-10 |
+| [ADR-083](./adr/ADR-083-internal-accounting-financial-reconciliation.md) | Internal Accounting & Financial Reconciliation — Supplier Funding Ledger, CHIP Settlement Reconciliation, and a Monthly Accounting Summary for an external SaaS | In force; 2026-10-10 addendum reshapes the Envelope Ledger (postings, director loans, month close) and retires the platform withdrawal; 2026-10-11 addendum splits the two voucher-issued lines | 2026-10-11 |
 | [ADR-084](./adr/ADR-084-reseller-api.md) | Reseller API — developer documentation site, plus the surface hardening that must land first | In force | 2026-09-29 |
 | [ADR-086](./adr/ADR-086-reports-restructure.md) | Reports restructure — dimensional rebuild-from-scratch audit + grouped-SQL rewrite | In force; PR-3 closure (no chart library) reversed by ADR-104 | 2026-09-21 |
 | [ADR-087](./adr/ADR-087-admin-reports-llm-assistant.md) | Admin Reports LLM Assistant — Gemini-backed, curated read-only SQL views, additive to the Reports tabs | In force | 2026-10-08 |
@@ -127,7 +127,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-103](./adr/ADR-103-combo-order-per-leg-independence.md) | Combo order per-leg `reference_number` independence | In force | 2026-09-17 |
 | [ADR-104](./adr/ADR-104-admin-panel-visual-redesign.md) | Admin panel visual redesign — retire TailAdmin token layer, adopt "PekanGame Admin" design system | In force | 2026-10-09 |
 | [ADR-105](./adr/ADR-105-order-resend-profit-recompute-correctness.md) | Order resend profit-recompute correctness — reconcile against the order's own frozen snapshot, not the target package's live pricing | In force | 2026-10-06 |
-| [ADR-106](./adr/ADR-106-durable-delivery-attempt-audit-record.md) | Durable delivery-attempt audit record — every fulfillment attempt gets its own immutable row, not just resends | In force | 2026-09-21 |
+| [ADR-106](./adr/ADR-106-durable-delivery-attempt-audit-record.md) | Durable delivery-attempt audit record — every fulfillment attempt gets its own immutable row, not just resends | In force | 2026-10-12 |
 | [ADR-107](./adr/ADR-107-combo-order-profit-reconciliation-on-retry.md) | Combo order profit reconciliation on retry + partial-delivery voucher accuracy | In force | 2026-09-17 |
 | [ADR-108](./adr/ADR-108-orders-list-correctness-need-action-compensation.md) | Orders list correctness (Need Action + compensation-tag decluttering) + toolbar overhaul (Source/Game/date-range/Columns/Export) | In force | 2026-10-09 |
 | [ADR-109](./adr/ADR-109-game-info-modal-card.md) | Game info modal card — customer-facing description/important-notes popup + admin-editable per-game instant-delivery badge | In force | 2026-10-08 |

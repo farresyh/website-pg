@@ -121,7 +121,7 @@ The code-trace also found that **Reports "Sales" and Accounting "Sales revenue" 
 - weekly margin averaging (R3)
 
 **Consequence to track.**
-- `MonthlyAccountingSummaryService::voucherLiabilityIssued()` sums **all** vouchers, Path A included, while the Transaction Register and Dashboard count Path B only. Prod has no Path A voucher yet (5 vouchers, all compensation), so no figure is wrong today. Which definition the accounting line should use is a question for the external reviewer. PRD §16 item 75, not part of this build.
+- `MonthlyAccountingSummaryService::voucherLiabilityIssued()` sums **all** vouchers, Path A included, while the Transaction Register and Dashboard count Path B only. Prod has no Path A voucher yet (5 vouchers, all compensation), so no figure is wrong today. Which definition the accounting line should use is a question for the external reviewer. PRD §16 item 75, not part of this build. (Resolved 2026-10-11: the line was split in two, ADR-083 2026-10-11 addendum.)
 - R17 zero-fills every day from the first paid order. About 1,100 rows after 3 years is fine. Move bucketing server-side if that becomes slow.
 - R15's current-attribute bucketing: if an affiliate's `is_owned` ever flips, history moves with it.
 - Reseller portal ordering, if ever built, needs a `reseller_portal` `placed_via` value at its call site. The required `OrderDraft` argument forces that decision.

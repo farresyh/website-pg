@@ -29,6 +29,8 @@ import { Tag } from "@/components/ui/tag";
 import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useLatestRequest } from "@/hooks/useLatestRequest";
 import { ApiError } from "@/lib/api-client";
 import { type OrderListItem, type OrderPage, type OrderDetail } from "@/lib/orders";
 import {
@@ -79,12 +81,14 @@ export default function SandboxOrdersPage() {
   const session = useClientSession();
 
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
+  const beginListLoad = useLatestRequest();
   const [pageNumber, setPageNumber] = useState(1);
   // Adjusted during render, not in an effect — see orders/page.tsx for
   // why (resets pagination to 1 whenever the search term changes).
-  const [paginationSearchKey, setPaginationSearchKey] = useState(search);
-  if (paginationSearchKey !== search) {
-    setPaginationSearchKey(search);
+  const [paginationSearchKey, setPaginationSearchKey] = useState(debouncedSearch);
+  if (paginationSearchKey !== debouncedSearch) {
+    setPaginationSearchKey(debouncedSearch);
     setPageNumber(1);
   }
   const [page, setPage] = useState<OrderPage | null>(null);
@@ -99,9 +103,10 @@ export default function SandboxOrdersPage() {
 
   async function refreshList() {
     if (!session) return;
-    listSandboxOrders(session.token, { search: search || undefined, page: pageNumber })
-      .then(setPage)
-      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load test orders."));
+    const isLatest = beginListLoad();
+    listSandboxOrders(session.token, { search: debouncedSearch || undefined, page: pageNumber })
+      .then((p) => isLatest() && setPage(p))
+      .catch((err: unknown) => isLatest() && setError(err instanceof ApiError ? err.message : "Could not load test orders."));
   }
 
   async function openOrder(token: string, id: number) {
@@ -167,7 +172,7 @@ export default function SandboxOrdersPage() {
   useEffect(() => {
     refreshList();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, search, pageNumber]);
+  }, [session, debouncedSearch, pageNumber]);
 
   if (selected) {
     return (

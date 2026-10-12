@@ -32,6 +32,8 @@ import { Tag } from "@/components/ui/tag";
 import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useLatestRequest } from "@/hooks/useLatestRequest";
 import { ApiError } from "@/lib/api-client";
 import {
   type Game,
@@ -273,6 +275,8 @@ export default function GamesPage() {
 
   const [games, setGames] = useState<Game[] | null>(null);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
+  const beginListLoad = useLatestRequest();
   const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
   const [error, setError] = useState<string | null>(null);
 
@@ -292,12 +296,13 @@ export default function GamesPage() {
   // unfiltered regardless of the list view's own search/status filter.
   const [reorderGamesList, setReorderGamesList] = useState<Game[] | null>(null);
 
-  async function refreshGames(token: string) {
-    try {
-      setGames(await listGames(token, { search: search || undefined, status: status === "all" ? undefined : status }));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load games.");
-    }
+  function refreshGames(token: string) {
+    const isLatest = beginListLoad();
+    return listGames(token, { search: debouncedSearch || undefined, status: status === "all" ? undefined : status })
+      .then((list) => isLatest() && setGames(list))
+      .catch((err: unknown) => {
+        if (isLatest()) setError(err instanceof ApiError ? err.message : "Could not load games.");
+      });
   }
 
   async function openGame(token: string, game: Game) {
@@ -322,13 +327,9 @@ export default function GamesPage() {
   useEffect(() => {
     if (!session) return;
 
-    listGames(session.token, { search: search || undefined, status: status === "all" ? undefined : status })
-      .then(setGames)
-      .catch((err: unknown) => {
-        setError(err instanceof ApiError ? err.message : "Could not load games.");
-      });
-     
-  }, [session, search, status]);
+    refreshGames(session.token);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, debouncedSearch, status]);
 
   useEffect(() => {
     if (!session) return;

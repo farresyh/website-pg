@@ -21,9 +21,6 @@ class PlatformSettings extends Model
         'vip_spend_threshold_sen',
         'maintenance_mode',
         'maintenance_message',
-        'telegram_notifications_enabled',
-        'telegram_bot_token',
-        'telegram_chat_id',
         'membership_enabled',
         'whatsapp_notifications_enabled',
     ];
@@ -31,7 +28,6 @@ class PlatformSettings extends Model
     protected $casts = [
         'vip_spend_threshold_sen' => 'integer',
         'maintenance_mode' => 'boolean',
-        'telegram_notifications_enabled' => 'boolean',
         'membership_enabled' => 'boolean',
         'whatsapp_notifications_enabled' => 'boolean',
     ];

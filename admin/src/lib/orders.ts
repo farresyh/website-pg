@@ -76,7 +76,9 @@ export interface OrderListItem {
  */
 export interface OrderResendAttempt {
   id: number;
-  attempt_type: "initial" | "resend" | "manual_confirm";
+  // ADR-106 addendum (2026-09-21): set for a combo leg's own attempt, null for an order-level one.
+  order_delivery_leg_id?: number | null;
+  attempt_type: "initial" | "retry" | "resend" | "manual_confirm";
   package: { id: number; name: string; supplier_package_ref?: string } | null;
   cost_price_sen: number;
   standard_selling_price_sen: number;

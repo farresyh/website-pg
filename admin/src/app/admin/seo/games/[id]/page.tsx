@@ -8,6 +8,7 @@ import Link from "next/link";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ImageUrlInput } from "@/components/gallery/ImageUrlInput";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
@@ -143,7 +144,7 @@ export default function GameSeoEditPage() {
           <div className="flex items-end gap-3">
             <div className="flex-1">
               <Label htmlFor="seo_og_image">OG image URL</Label>
-              <Input id="seo_og_image" value={game.seo_og_image ?? ""} onChange={(e) => setGame({ ...game, seo_og_image: e.target.value })} />
+              <ImageUrlInput id="seo_og_image" value={game.seo_og_image ?? ""} onChange={(url) => setGame({ ...game, seo_og_image: url })} />
             </div>
             <Button
               type="button"

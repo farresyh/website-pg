@@ -147,3 +147,11 @@ Pure infra work from here, no further grilling needed — a `/wizard`-guided ses
 - **DNSSEC deferred (2026-09-06, founder's call).** Would need enabling at Cloudflare then pasting the DS record at the Vercel registrar; a mismatch or propagation gap takes the domain dark for DNSSEC-validating resolvers (Google, Quad9, many ISPs), and the marginal gain over "Cloudflare is the authoritative NS + TLS + CAA + origin lock" doesn't justify a rushed end-of-session step. Worth doing later as its own careful task — for a payments domain it's the right long-term posture.
 
 **ADR-060's own custom-hostname code PR is now unblocked** — it builds on this clean Cloudflare-fronted infra.
+
+### 2026-10-10 addendum — DNSSEC enabled; DB connection encrypted
+
+**Status:** Accepted (founder, 2026-10-10). Overrides the 2026-09-06 "DNSSEC deferred" note (§16 item 9).
+
+- **DNSSEC is on** for `pekangame.space` (registered at Vercel, DS record added by hand) and `pekangame.com` (Cloudflare Registrar, DS added automatically). Both zones validate (`ad` flag) on 1.1.1.1, 8.8.8.8 and 9.9.9.9. One resolver answered SERVFAIL for a moment when the `.space` DS first appeared, then cleared by itself. The deferral's risk (a DS mismatch takes the domain dark for validating resolvers) was handled by adding the DS from Cloudflare's own values and checking `dig` before and after.
+- **The DB link was not encrypted.** The earlier "VPC-private + TLS" claim was wrong: on 2026-10-10 the production app's `Ssl_cipher` was empty. `.env` now sets `MYSQL_ATTR_SSL_CA` to the cluster's CA (`/home/forge/api.pekangame.space/ca-certificate.crt`, a self-signed Project CA valid to 2036). The app's session reports TLSv1.3, and the server certificate is checked against that CA.
+- **Consequence to track.** The CA file sits at the site root beside `.env`, so a deploy does not remove it. If the DB cluster is ever rebuilt it gets a new CA: download it again from the DigitalOcean database page, replace the file, then `config:cache` and `horizon:terminate`. A wrong path stops the app reaching the DB.

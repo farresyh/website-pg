@@ -32,6 +32,8 @@ import { Tag } from "@/components/ui/tag";
 import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useLatestRequest } from "@/hooks/useLatestRequest";
 import { ApiError } from "@/lib/api-client";
 import {
   type SupplierProduct,
@@ -209,6 +211,8 @@ export default function ProductManagerPage() {
   const [categories, setCategories] = useState<SupplierProductCategory[] | null>(null);
   const [games, setGames] = useState<Game[]>([]);
   const [categorySearch, setCategorySearch] = useState("");
+  const debouncedCategorySearch = useDebouncedValue(categorySearch);
+  const beginCategoriesLoad = useLatestRequest();
   const [supplierFilter, setSupplierFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -220,12 +224,19 @@ export default function ProductManagerPage() {
   const [linkingCategory, setLinkingCategory] = useState<SupplierProductCategory | null>(null);
   const [promoting, setPromoting] = useState<SupplierProduct | null>(null);
 
-  async function refreshCategories(token: string) {
-    try {
-      setCategories(await listSupplierProductCategories(token, { search: categorySearch || undefined }));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load categories.");
-    }
+  /** Reloads the group list; resolves to it, or null when it failed or a newer load superseded this one. */
+  function refreshCategories(token: string): Promise<SupplierProductCategory[] | null> {
+    const isLatest = beginCategoriesLoad();
+    return listSupplierProductCategories(token, { search: debouncedCategorySearch || undefined })
+      .then((list) => {
+        if (!isLatest()) return null;
+        setCategories(list);
+        return list;
+      })
+      .catch((err: unknown) => {
+        if (isLatest()) setError(err instanceof ApiError ? err.message : "Could not load categories.");
+        return null;
+      });
   }
 
   async function openCategory(token: string, category: SupplierProductCategory) {
@@ -267,25 +278,19 @@ export default function ProductManagerPage() {
   useEffect(() => {
     if (!session) return;
 
-    listSupplierProductCategories(session.token, { search: categorySearch || undefined })
-      .then(setCategories)
-      .catch((err: unknown) => {
-        setError(err instanceof ApiError ? err.message : "Could not load categories.");
-      });
-     
-  }, [session, categorySearch]);
+    refreshCategories(session.token);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, debouncedCategorySearch]);
 
   async function handleLinkSubmit(values: LinkCategoryValues) {
     if (!session || !linkingCategory) return;
     await linkSupplierProductCategory(session.token, values);
     setLinkingCategory(null);
-    await refreshCategories(session.token);
 
     // Re-open the category so it immediately shows as linked, instead
     // of the admin having to click it again.
-    const refreshed = await listSupplierProductCategories(session.token, { search: categorySearch || undefined });
-    setCategories(refreshed);
-    const reopened = refreshed.find((c) => sameGroup(c, linkingCategory));
+    const refreshed = await refreshCategories(session.token);
+    const reopened = refreshed?.find((c) => sameGroup(c, linkingCategory));
     if (reopened) await openCategory(session.token, reopened);
   }
 
@@ -299,9 +304,8 @@ export default function ProductManagerPage() {
       validation_rules: rules,
     });
 
-    const refreshed = await listSupplierProductCategories(session.token, { search: categorySearch || undefined });
-    setCategories(refreshed);
-    const reopened = refreshed.find((c) => sameGroup(c, selected));
+    const refreshed = await refreshCategories(session.token);
+    const reopened = refreshed?.find((c) => sameGroup(c, selected));
     if (reopened) setSelected(reopened);
   }
 

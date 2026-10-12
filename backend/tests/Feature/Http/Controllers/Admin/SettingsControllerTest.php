@@ -190,7 +190,7 @@ class SettingsControllerTest extends TestCase
         $this->assertSame($ids, AffiliateFooterSettings::query()->first()->footer_game_ids);
     }
 
-    public function test_update_platform_persists_maintenance_and_telegram_fields(): void
+    public function test_update_platform_persists_maintenance_fields(): void
     {
         $this->actingAsSuperAdmin();
 
@@ -198,16 +198,12 @@ class SettingsControllerTest extends TestCase
             'maintenance_mode' => true,
             'maintenance_message' => 'Back soon',
             'vip_spend_threshold_sen' => 500000,
-            'telegram_notifications_enabled' => true,
-            'telegram_bot_token' => 'abc123',
-            'telegram_chat_id' => '-100999',
         ]);
 
         $response->assertOk();
         $this->assertDatabaseHas('platform_settings', [
             'maintenance_mode' => true,
             'vip_spend_threshold_sen' => 500000,
-            'telegram_notifications_enabled' => true,
         ]);
     }
 
@@ -218,7 +214,6 @@ class SettingsControllerTest extends TestCase
         $response = $this->putJson('/api/settings/platform', [
             'maintenance_mode' => false,
             'vip_spend_threshold_sen' => 750000,
-            'telegram_notifications_enabled' => false,
         ]);
 
         $response->assertOk();

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ImageUrlInput } from "@/components/gallery/ImageUrlInput";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
@@ -111,10 +112,10 @@ export default function SeoGlobalSettingsPage() {
             </div>
             <div className="sm:col-span-2">
               <Label htmlFor="default_og_image">Default OG image URL</Label>
-              <Input
+              <ImageUrlInput
                 id="default_og_image"
                 value={settings.default_og_image ?? ""}
-                onChange={(e) => setSettings({ ...settings, default_og_image: e.target.value })}
+                onChange={(url) => setSettings({ ...settings, default_og_image: url })}
               />
             </div>
           </div>

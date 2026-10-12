@@ -35,7 +35,7 @@ Existing state this builds on: `Supplier.balance` is a single `decimal:2` column
 
 7. **CHIP settlement reconciliation by `.xlsx` ingest (no API):** a `payment_settlements` table (keyed on the file's settlement date / range: `expected_gross`, `expected_fee`, `expected_net`, `actual_bank_amount` nullable, `status` `pending` / `matched` / `variance`, `variance_note`) plus an admin "CHIP Settlements" screen. Between settlements the expected net is `Σ (total_charged_sen − transaction_fee)` over every CHIP inflow in the window — retail orders, membership subscriptions and reseller wallet top-ups alike (voucher-paid and reseller-wallet orders that never touched CHIP are excluded from the expectation but stay in the Register). Farres uploads CHIP's settlement `.xlsx`; a parser (`openspout/openspout`, iterating every non-"Summary" sheet, keyed on **column names not indices**) matches each row to our record by `Transaction ID` ↔ `payment_ref` with `Reference` ↔ `order_number` as the cross-check, and produces an exception list: our-record-paid-but-not-settled, settled-but-unmatched, and per-day `Σ CHIP net` vs `Σ expected` vs the manually-entered bank figure. The file's per-transaction `Fee` column is the real CHIP MDR — the "payment processing gain/(loss)" line in the summary is `Σ transaction_fee charged − Σ CHIP Fee actual`.
 
-8. **Monthly Accounting Summary screen** — read-only admin, one period at a time, listing the journal lines Farres copies into the SaaS: Sales revenue (`Σ selling_price` delivered), Membership revenue, COGS (`Σ cost_price` delivered), Payment processing net gain/(loss), Supplier prepaid — top-up (`Σ amount_myr_sent + fee_myr`), Supplier prepaid — FX variance true-up (decision 5), Affiliate commission expense (`Σ affiliate_profit` accrued), Voucher liability issued. Reseller wallet movements and affiliate withdrawal payouts are entered by Farres directly from bank / portal data, not from this screen.
+8. **Monthly Accounting Summary screen** — read-only admin, one period at a time, listing the journal lines Farres copies into the SaaS: Sales revenue (`Σ selling_price` delivered), Membership revenue, COGS (`Σ cost_price` delivered), Payment processing net gain/(loss), Supplier prepaid — top-up (`Σ amount_myr_sent + fee_myr`), Supplier prepaid — FX variance true-up (decision 5), Affiliate commission expense (`Σ affiliate_profit` accrued), Voucher liability issued (split into two lines on 2026-10-11, see that addendum). Reseller wallet movements and affiliate withdrawal payouts are entered by Farres directly from bank / portal data, not from this screen.
 
 9. **Transaction Register** — read-only admin screen plus CSV export, one row per money-moving event (every order with gross / fee / cost / net / supplier / currency, every `supplier_transfers` row, every `REFUND`, every voucher issuance). This is the "nothing is ever lost" artifact the year-end professional works from.
 
@@ -266,7 +266,7 @@ Related: [[project_pekangame_no_external_customers_yet_2026_09_25]], the first 2
     | − Affiliate commission | unchanged |
     | + Affiliate tier fees | unchanged |
     | + Voucher breakage | remaining balance of a voucher whose `expires_at` falls in the month (Q21) |
-    | − Goodwill vouchers issued | Path A only (no `order_id`, not a merge target) |
+    | − Admin-issued vouchers (no order) | Path A only (no `order_id`, not a merge target) |
     | ± Supplier manual adjustments | non-void `MANUAL_ADJUSTMENT` only (Q26) |
 
     Two things are deliberately excluded:
@@ -332,5 +332,19 @@ Related: [[project_pekangame_no_external_customers_yet_2026_09_25]], the first 2
 
 **Separate findings from the same trace** (not decided here; each has a §16 item):
 - **Compensation vouchers debit the platform ledger** (`VoucherService::issue()` writes `voucher_issued` for Path B as well as Path A). The redemption order still credits its full `order_profit`, so the platform balance is understated by every compensation voucher (RM13.18 in production). `WithdrawalController` is the only reader of that balance. Reports, Dashboard and Customer Analytics read `order_profit` only. Needs an ADR-024 addendum, plus a founder-approved reversing entry for the 5 existing rows (§16 item 79).
-- **A voucher merge counts twice and can revive an expired voucher.** The merge target is a new `Voucher` row, so `voucherLiabilityIssued()` counts the merged amount again. `merge()` checks `status = active` but not `expires_at`, so an expired voucher (whose breakage a closed month may already show) can come back with a new expiry. Production has 0 merges. Needs an ADR-036 addendum (§16 item 80).
+- **A voucher merge counts twice and can revive an expired voucher.** The merge target is a new `Voucher` row, so `voucherLiabilityIssued()` counts the merged amount again (counting half fixed 2026-10-11, see that addendum). `merge()` checks `status = active` but not `expires_at`, so an expired voucher (whose breakage a closed month may already show) can come back with a new expiry. Production has 0 merges. Needs an ADR-036 addendum (§16 item 80).
 - **Built the same day:** settlements spanning a month end counted in no month (PR #388, merged to `staging`).
+
+### 2026-10-11 addendum — the two "issued" voucher lines (§16 item 75)
+
+**Context.** The Monthly Summary's "Voucher liability issued" summed every voucher, so a merge result counted the merged amount again, and Path A and Path B were mixed under a name that only fits Path B. The external reviewer's answer to item 75 was to split the line. Goodwill also read as a campaign cost, but a Campaign (ADR-118) is a `PromoCode`, costed per order, never a `Voucher`.
+
+**Decision.**
+1. Two lines, split by how the voucher was issued, not by purpose: **Admin-issued vouchers (no order)** (was "Goodwill vouchers issued", key `admin_issued_vouchers_sen`, still subtracted in operating profit, unchanged) and **Failed-order store credit issued** (was "Voucher liability issued", key `failed_order_credit_issued_sen`, information only, outside operating profit).
+2. The second line now counts `order_id IS NOT NULL` only. A merge result has `order_id = null`, so it falls out of both lines by construction. This closes the double count half of item 80; the revive-an-expired-voucher half stays open.
+3. No "total issued" line. It would be the sum of the two and invite a reader to add it to profit. The same credit also sits in the cash equation's "Vouchers customers can still spend" (`CashPositionService::vouchersOutstanding()`), which stays the one definition of what is outstanding.
+4. The accountant owns the policy. Whether admin-issued vouchers are expensed at issue (decision 11, unchanged) or at redemption is still the accountant's call and would change the profit formula, not just labels.
+
+**Not changed.** The `is_test` filter. No path creates a voucher from a sandbox order (`settle()` is only reachable through `Admin\OrderController`, which 404s on `is_test`), so the failed-order line does not need it. Add it if a sandbox settle path is ever built.
+
+**Consequence to track.** Prod: 5 vouchers, RM13.18, all failed-order, so the failed-order line is unchanged today and the admin-issued line is RM0.

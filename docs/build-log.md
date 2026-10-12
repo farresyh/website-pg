@@ -1059,3 +1059,273 @@ code, so future sessions follow correct instructions.
   earlier ADR-083 decisions (FX rate over the whole history, manual
   allocation) are overridden by the addendum under the file's own
   "later addendum overrides" rule.
+
+## 2026-10-10 — Release #393 (staging → main): #386–#392
+
+Founder-requested release, merged 2026-10-10 (`218f0d8`). Ships the Envelope
+Ledger reshape (item 78: #390 postings and director loans, #391 month close,
+cash equation and removal of the platform withdrawal), the settlement
+month-span fix #388, the admin package-order tiebreak #387 and docs
+#386/#389/#392. CI on `main` all green, `playwright` included; the deploy job
+succeeded.
+
+- **Pre-release check (prod, read-only):** `budget_envelope_entries` 0 rows
+  (the reshape migration's guard would pass), 5 `supplier_transfers` to
+  backfill, 0 withdrawals, server on `6db0470`.
+- **Verified on prod after the deploy (read-only tinker):**
+  - The box serves `218f0d8`; `/up` returns 200.
+  - All three 2026-10-10 migrations are `Ran`.
+  - `transferred_on` on all 5 transfers equals their KL recording date
+    (14, 15, 15, 19, 21 Sep); 0 null.
+  - `cash_accounts` holds "Held by Farres (mixed)"; 0 postings, 0 closes.
+  - September 2026 preview: closable, operating profit RM 4.64. Position
+    before any posting: supplier prepaid RM 570.05, reseller wallets
+    RM 347.96, affiliate earnings RM 0.15, vouchers outstanding RM 0.97,
+    CHIP unsettled 0, undelivered orders 0; envelope identity agrees.
+- **Next (founder):** record the real September postings, then close
+  September 2026 (§16 item 78, list C).
+
+---
+
+## 2026-10-10 — §16 list C: item 59 decided (Baileys stays), item 78 verified (docs only)
+
+- **Item 59.** Prod read-only: OpenWA `ENGINE_TYPE=baileys`; box 3.9 GB RAM
+  (2.1 GB used, 1.8 GB available), OpenWA about 230 MB. The founder chose to
+  keep Baileys until the droplet is upgraded. ADR-075 2026-10-10 addendum
+  records the reasons and the triggers; item 59 now waits with item 4.
+- **Item 78, read-only check of the September close (prod).** Operating profit
+  recomputed live equals the closed RM 4.64 (drift 0, every `profit_lines` entry
+  the same). The cash equation recomputes to the stored gap of -RM 10.94, which
+  the founder's note explains (two pre-15-Sep CHIP payouts, RM 0.94 + RM 10.00).
+  Envelope identity (headers) equals the line sum, RM 312.34; hand check
+  RM 500 − RM 192.30 expenses + RM 4.64 = RM 312.34. 0 expense postings
+  without a receipt. The RM 17.52 expense dated 5 Oct sits outside September.
+  Expect the October close to show the same -RM 10.94 unless explained again.
+
+## 2026-10-10 — §16 item 9 done: DNSSEC on both domains, DB connection on TLS
+
+- **DNSSEC.** Enabled in Cloudflare for `pekangame.space` and `pekangame.com`.
+  `.space`: DS (key tag 2371, algorithm 13, SHA-256) added at the Vercel registrar
+  (team JW Brothers); visible at the registry about 5 minutes later. `.com`: Cloudflare
+  Registrar added the DS itself. After: `ad` flag on 1.1.1.1, 8.8.8.8, 9.9.9.9 for both
+  domains; API health 200, storefront 200, docs 200, bot 200, admin and reseller 307.
+  One resolver answered SERVFAIL for a moment when the `.space` DS first showed up.
+- **DB TLS, before.** Prod `.env` had no `MYSQL_ATTR_SSL_CA`. From the app, `SHOW SESSION
+  STATUS LIKE 'Ssl_cipher'` was empty, so the link to the managed MySQL (VPC host
+  `private-…`) was unencrypted. PRD's "VPC-private + TLS" was wrong.
+- **What ran on prod.** The CA (`ca-certificate.crt`, 1 certificate, no private key,
+  checksum equal to the founder's download) was copied to
+  `~/api.pekangame.space/`. A standalone PHP test first: without the CA `tls=NONE`, with
+  CA + server-certificate check TLSv1.3. Then the founder ran: `.env` copy to
+  `.env.bak-before-dbtls` (mode 600), one appended line `MYSQL_ATTR_SSL_CA=…`,
+  `config:cache`, `horizon:terminate`, `pulse:restart`.
+- **After (read-only, from the app).** config has the CA path; `Ssl_version` TLSv1.3,
+  `Ssl_cipher` TLS_AES_256_GCM_SHA384; 36 orders readable; `/api/health` 200 with
+  database, queue and horizon true; Horizon running. `.env` differs from the backup by
+  that one line only.
+- **Left (founder).** `.env.bak-before-dbtls` holds the DB password: delete it once the
+  change has run clean for a few days.
+
+## 2026-10-10 — §16 item 71: FAQ click-through done (docs only)
+
+- Founder checked SEO › FAQ in the admin: editing works, `{store_name}` works.
+- Read-only check of the live storefront: `pekangame.com` carries `FAQPage`
+  JSON-LD with all 5 FAQs and no literal `{store_name}`.
+- Left: the GSC canonical/duplicate recheck around 2026-10-22 (founder).
+
+## 2026-10-10 — §16 item 11: external uptime monitor added (founder-reported)
+
+- The founder added an UptimeRobot HTTP monitor on
+  `https://api.pekangame.space/api/health` (5-minute interval, email alert). The
+  endpoint answered 200 with database, queue and horizon true when checked.
+- Not verified from here: the UptimeRobot dashboard was not opened. Error tracking
+  (Sentry) is still not set up.
+
+## 2026-10-10 — §16 item 77: `next` 16.3.8 security bump (admin, storefront, reseller)
+
+- `npm install next@^16.3.8` pulled 16.4.0 (a minor), so it was re-pinned to
+  16.3.8; `package.json` keeps `^16.3.8`, the lockfiles pin the exact version.
+  `npm audit fix` (no `--force`) then moved `sharp` to 0.35.5 and
+  `source-map-js` in the three apps.
+- `npm audit --omit=dev`: 0 vulnerabilities in all three. The remaining
+  `npm audit` highs are dev-only (eslint's `braces`).
+- docs-site: `sharp` pinned to 0.35.5, plus a plain `audit fix`. The 4 highs are
+  gone; 11 moderates remain (`postcss-selector-parser` under Starlight).
+  `npm audit fix --force` would downgrade `@astrojs/starlight` to 0.21.5 and
+  `starlight-openapi`, so it was not run.
+- Verified: `tsc`, `lint`, `build` clean in admin, storefront, reseller;
+  docs-site builds (18 pages); e2e 6/6; the built storefront serves `/icon`
+  as a 512x512 PNG and `/_next/image` answers 400 for a missing file.
+## 2026-10-10 — §16 item 76: debounced, stale-guarded server-side search (admin)
+
+- Two shared hooks in `admin/src/hooks/`: `useDebouncedValue` (300 ms) and
+  `useLatestRequest` (a per-list guard; `begin()` returns an `isLatest()`
+  check). The input binds to the raw state; every fetch and every
+  "back to page 1" reset binds to the debounced value.
+- Why a guard on top of the debounce: a list is reloaded from several paths,
+  not just the filter effect. `/admin/orders` has four (filter effect, manual
+  Refresh, Reverb push, resume hook), and Games, Gallery and Product Manager
+  also reload after a mutation. All of them now go through one guarded loader
+  per list, so the newest request wins whichever path fired it. The Orders
+  push listener's deps still exclude the filters (2026-09-28 addendum).
+- Pages: orders, games, seo/games, gallery, sandbox, product-manager.
+  Reports' custom from/to are debounced before they reach `resolveDateRange`
+  (`useReport()` already had its own guard). Product Manager's two inline
+  re-fetches after link/checkout-input now reuse `refreshCategories()`.
+- Verified on a local production build (Playwright, real API): typing
+  "PUBG" fast sends 1 request, not 4; typing 9 characters in Orders sends 1;
+  a slow in-flight `search=zzz` response that lands after the box was cleared
+  no longer replaces the full list (5 rows stay 5). `tsc`, `lint`, `build`,
+  admin `npm test` clean.
+- Reports custom dates, typed digit by digit into the from box: the old code
+  sent 4 rounds of the six report requests (`0002-…`, `0020-…`, `0202-…`,
+  `2026-…`); the new code sends one round, `2026-01-01`.
+- Stale response, same slow `search=zzz` test on the old code (`staging`
+  Games page, rebuilt): after the slow response landed the list showed 0 rows
+  instead of 5. The new code keeps 5. Both bugs reproduce on the old code and
+  are gone on the new.
+
+## 2026-10-10 — §16 item 6 (part): gallery picker in the image URL forms
+
+- New `admin/src/components/gallery/ImageUrlInput.tsx`: the existing URL text
+  field plus a "Choose from gallery" button that opens a dialog with the
+  gallery grid (debounced search, paging, current image highlighted). Picking
+  writes the image's `url` into the field. No FK was added (ADR-095), so the
+  delete-references check keeps working and a pasted external URL still works.
+- Wired into Edit Game, Hero Slide, SEO › Settings (default OG image) and
+  SEO › Game (OG image). Frontend only; reuses `listGalleryImages`.
+- Verified on a local production build (Playwright, real API): in Edit Game the
+  picker opens over the open modal, the outer modal stays open, picking fills
+  the field; search for a non-matching term empties the grid; Hero Slide and
+  SEO › Settings fill the field too. `tsc`, `lint`, `build` clean.
+- Not verified: thumbnails render. Locally the production CSP (`img-src`) blocks
+  the dev image host, so images are broken on the existing Gallery page too; it
+  is the same `<img>`. SEO › Game was not clicked through (same component).
+  Picker-closes-after-pick was only checked on Edit Game by screenshot.
+- The two test images uploaded for this were deleted again from the dev gallery.
+## 2026-10-10 — §16 item 6 (part): Telegram settings removed (SET-9 dropped)
+
+- Founder decision: no Telegram sender. Removed the `telegram_notifications_enabled`,
+  `telegram_bot_token` and `telegram_chat_id` columns (migration
+  `2026_10_10_210000_drop_telegram_columns_from_platform_settings_table`), the
+  model fillable/cast, the `UpdatePlatformSettingsRequest` rules, the admin
+  "Telegram ops notifications" card and the TypeScript types. `telegram_contact_link`
+  (the customer-facing contact link) is untouched. ADR-028 addendum, same day.
+- Read-only production check first: 2 `platform_settings` rows, no token, no chat
+  id, none enabled, so the drop loses nothing. (The table has 2 rows although the
+  model is read as a singleton; not looked into here.)
+- Verified: local dev DB migrated, rolled back and migrated again; backend
+  suite 2707/2707; `tsc` and `lint` clean; on a local production build the
+  Platform Settings tab has no Telegram card and Save Platform Settings returns
+  200 with no telegram fields in the request.
+- Deploy note: for the minutes between the Vercel deploy and the Forge deploy, the
+  new admin's Save Platform Settings can 422 against the old backend (the old
+  request rule requires `telegram_notifications_enabled`). Nothing else is affected.
+
+---
+
+## 2026-10-11 — §16 item 75: the two "issued" voucher lines split (and half of item 80)
+
+**What shipped (branch `fix/voucher-issued-lines`).** The Monthly Summary's
+"Voucher liability issued" summed every voucher. It is now two lines, split by
+how the voucher was issued: **Admin-issued vouchers (no order)** (was "Goodwill
+vouchers issued"; still a profit cost) and **Failed-order store credit issued**
+(information only). Keys renamed `admin_issued_vouchers_sen` and
+`failed_order_credit_issued_sen`; readers were the service, the admin summary
+page, `accounting-summary.ts` and two test files (grepped, no export or API
+consumer elsewhere).
+
+**Why.** The external reviewer's answer to item 75 asked for the split. The
+founder asked to drop the word "goodwill" (a Campaign is a `PromoCode`, ADR-118,
+costed per order, so "marketing" would collide with it).
+
+**Found on the way.** `voucherLiabilityIssued()` had no merge exclusion while
+the goodwill line did, so a merge counted the merged amount again. The new
+failed-order line counts `order_id IS NOT NULL`, which a merge result never has,
+so it is closed by construction. Red first: the merge test failed 700 vs 500
+before the query changed. Item 80's revive-an-expired-voucher half is still open.
+
+**Checked, not changed.** No `is_test` filter on the failed-order line: no path
+creates a voucher from a sandbox order (`settle()` is reachable only through
+`Admin\OrderController`, which 404s on `is_test`).
+
+**Verified.** Full backend suite 2708/2708; admin `tsc` and eslint clean.
+Not verified in a browser: the admin page change is label and tooltip text only.
+Prod effect: none expected (5 vouchers, RM13.18, all failed-order).
+
+---
+
+## 2026-10-11 — InfoTooltip clipped inside `overflow-hidden` cards (admin)
+
+**What was wrong.** The founder's screenshots: on Monthly Summary the last rows'
+(i) popovers were cut off. `InfoTooltip` rendered `absolute` inside the table
+card, which has `overflow-hidden`, and the last rows have no room below. The
+longer tooltips added by the item 75 PR made it worse.
+
+**Fix (`fix/info-tooltip-portal`).** `admin/src/components/dashboard/InfoTooltip.tsx`
+now renders the popover in a portal with `position: fixed`, placed from the
+icon's rect: below the icon, flipped above when the viewport has no room,
+clamped to the left and right edges, closed on scroll or resize. One component,
+so Dashboard KPI cards, the funnel chart and Monthly Summary are all fixed.
+No new dependency; first `createPortal` in `admin/`.
+
+**Verified live** (local production build, Playwright, `getComputedStyle` +
+bounding boxes): Monthly Summary rows "Admin-issued vouchers", "Manual expenses
+(Envelope)" and "Operating profit" at 1280px light and dark, and at 390px
+(Operating profit flips above, Manual expenses now shows its full text past the
+card edge); Dashboard's first three KPI tooltips. Every box inside the
+viewport; popover colours match the old classes (dark: bg rgb(34,31,27)).
+`tsc` and eslint clean. Not tested: the funnel chart's own (i) icon.
+
+---
+
+## 2026-10-11 — Docs sync after #401 / #402 (docs only)
+
+Swept PRD, ADR index and ADRs for claims the session made untrue.
+- PRD §14: "`staging` = `main` after this release" was only true at the #393
+  release; it now points at `git log origin/main..origin/staging` (31 commits
+  ahead on 2026-10-11, not live).
+- PRD §16 "Next up": re-check note (77, 76, 75, gallery picker and Telegram
+  closed); item 66's history view is the only item left in A.
+- ADR-083: pointers on the two older lines that name the old "Voucher liability
+  issued" and the merge double count, to the 2026-10-11 addendum.
+- ADR-045: addendum for the InfoTooltip portal; index row date set.
+- Remaining "goodwill" in code is free-text voucher reasons in tests only.
+Not changed: item 80's open half (revive an expired voucher), item 75's
+accountant question (expense at issue vs at redemption).
+
+---
+
+## 2026-10-12 — Combo Order Detail: per-leg attempt history (item 66, admin only)
+
+**Bug proved first (red test):** a combo's legs each write an `initial` row to
+`order_resend_attempts` (ADR-106 addendum, 2026-09-21). `DeliveryLogsTable`
+took the first `initial` row as the order's "Initial Delivery" and filtered
+every other `initial` row out, so with 3 legs two attempts vanished and the
+third was mislabelled as the order's own.
+
+**Fix (frontend only, no backend change):** the log-building logic moved
+verbatim into `admin/src/lib/delivery-log-entries.ts` so `npm test` can reach
+it. The order-level log now ignores rows with an `order_delivery_leg_id`;
+`groupLegAttempts()` groups them per leg and `ComboLegBreakdown` shows them in
+an "Attempt history per leg" section (failed / needs_review legs open by
+default). `retry` rows are labelled Retry (they showed as "Resend Delivery").
+
+**Production check (read-only):** only 2 combo orders exist (ids 7 and 28,
+5 legs) and 0 leg attempt rows — both predate `cf44991` (2026-09-21), so the
+section says "no attempts recorded" for them. `PG-B2BL0G1YDMVS` is order 28.
+
+**Admin actions for a stuck combo (read from code):** all at order level, none
+per leg. Retry Delivery retries failed legs only (ADR-094 decision 29), Confirm
+Failed flips unresolved legs (decision 31), Mark as Delivered is hidden for
+combos, compensation is by formula (decision 33). `NeedsReviewBanner` still
+reads `order.supplier`, which a combo has none of. Founder's call 2026-10-12:
+no combo-aware banner or per-leg "what to do" line; not tracked, revisit only if
+a real stuck combo order confuses an admin.
+
+**Verified live:** local production build, Playwright, API response patched
+with a 3-leg combo (no DB writes): leg 2 opened with 2 attempts, others
+collapsed, logs show only order-level rows. 6 `npm test` pass, `tsc` and eslint
+clean. Not checked: dark mode, 390px width, a real combo order with leg
+attempts (none exist yet).
+
