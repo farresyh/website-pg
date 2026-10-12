@@ -610,6 +610,12 @@ Also on `staging`, not live (2026-10-12): the WhatsApp status card and the
 silent repeat throttles are removed (item 69, ADR-116 2026-10-12 addendum).
 Needs a real-phone check on a deployed build after release.
 
+Also on `staging`, not live (2026-10-12): a voucher merge rejects an expired
+source (item 80, #412), and only an admin-issued voucher debits the platform
+ledger (item 79). **The next release runs a ledger migration on production**
+that appends 4 reversals (+RM13.18). Afterwards, run its SELECT read-only to
+confirm (build-log 2026-10-12).
+
 **Release 2026-10-10 (PR #393).** Envelope Ledger reshape (item 78: postings,
 director loans, month close, cash equation; removes the platform-owner
 withdrawal), the settlement month-span fix #388, the admin package-order
@@ -658,7 +664,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Orders Management (ORD-1..11) | ✅ Live — checkout + fulfillment, Resend (same-game swap, one resend seam, ADR-105), ORD-10 reconciliation, async `pending`, manual "Check from Supplier/Gateway" (ADR-096), one compensation guard `isAlreadyCompensated()` (ADR-102/103), restore-only voucher (ADR-024), six KPI cards (ADR-092), ADR-104 reskin, ADR-108 toolbar (Need Action excludes compensated, Source/Game/date filters, Columns, 2-sheet Excel export with earned profit) and a Failed pill (#385). Detail: build-log + ADRs | ADR-017, 024, 026, 032, 092, 096, 102, 103, 104, 105, 108 |
 | Reports (RPT-1..4) | 🟢 Live — redesigned per ADR-104 (2026-10-08 addendum R1–R21 + 2026-10-09 R8 addendum), live via #385 (2026-10-09). 7 tabs on Recharts. **Paid sales** (money collected, net of wallet refunds, `Order::netSalesSql()`) with a **Bridge to Accounting** to recognised revenue from one `RecognisedRevenue` seam shared with the Monthly Summary. Ledger-sourced profit, `paid_at` scoping, KL days. **Failed & compensated** per delivery status plus outstanding store credit. Compare period on every tab, sales by channel + API vs Bot (`orders.placed_via`), Delivery by game. CSV/PDF carry Paid / Wallet refund / Paid sales. Default range All time. LLM assistant at `/admin/reports/assistant` (ADR-087, `super_admin`) matches the page. History: ADR-086 grouped-SQL rewrite, ADR-088 unified date filter | ADR-086, 087, 088, 104 |
 | Withdrawals (WTH-1..5) | ✅ Live. Maker-checker threshold RM 2,000 (`WITHDRAWAL_MAKER_CHECKER_THRESHOLD_SEN`). **Live via #393 (2026-10-10):** the platform-owner request (button, "Available balance", `POST /api/withdrawals`) is removed; the screen reviews Affiliate requests only | ADR-059, ADR-083 |
-| Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500. **2026-10-04 (ADR-024 addendum, live via #354):** a lost voucher or member-quota reservation now fails the checkout closed (Failed order, coded 422 `checkout_closed`, link never handed out) on every path, including idempotent replay; admin "Voucher Paid" reads the redemption. **2026-10-12 (ADR-036 addendum, item 80), staging only:** a merge rejects an expired source voucher | ADR-024, 035, 036 |
+| Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500. **2026-10-04 (ADR-024 addendum, live via #354):** a lost voucher or member-quota reservation now fails the checkout closed (Failed order, coded 422 `checkout_closed`, link never handed out) on every path, including idempotent replay; admin "Voucher Paid" reads the redemption. **2026-10-12 (ADR-036 addendum, item 80), staging only:** a merge rejects an expired source voucher. **2026-10-12 (ADR-024 addendum, item 79), staging only:** only an admin-issued voucher debits the platform ledger; a migration reverses the 4 old compensation-voucher debits on release | ADR-024, 035, 036 |
 | Customer Analytics (ANL-1..5) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. WhatsApp renewal reminder still deferred (§16 item 64; the vendor question is settled by ADR-116's OpenWA `customer-support` session) | ADR-027, 055, 068, 080 |
 | Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. The voucher path was live-tested 2026-10-06 (a failed order's Issue Voucher code arrived on WhatsApp), along with the status card and not-found reply; their throttles are silent and leave no trace (§16 item 69). Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14). **2026-10-12 (staging, not live):** every order-number message now gets a card or a not-found reply; the silent repeat throttles are removed (§16 item 69) | ADR-116 |
@@ -714,7 +720,6 @@ edit-composition half is in B.
 - **6 / A3** Per-tier rate limit on the Reseller API/Bot.
 - **64** Membership renewal reminder over WhatsApp (ADR-068's deferred half).
 - **66** Combo edit-composition UI (needs an ADR-094 addendum).
-- **79** Compensation vouchers debit the platform ledger (ADR-024 addendum).
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
   the accountant's monthly document list first.
 
@@ -739,6 +744,8 @@ edit-composition half is in B.
 - **74** Ask the external reviewer, before the first non-zero affiliate tier
   fee.
 - **82** Customer-support inbound log and CS-agent inputs, with the CS-agent ADR.
+- **83** Give back an admin voucher's ledger debit on revoke/expiry, with the
+  first admin-issued voucher.
 
 **E. New features: after the backlog** (each needs its own ADR + grill)
 - **13** Self-serve reseller signup.
@@ -908,24 +915,6 @@ edit-composition half is in B.
     reduction of commission expense, and whether it needs an e-Invoice to
     the affiliate. Both tiers are RM0 today (1 entry ever, RM0.00).
 
-79. **Compensation vouchers debit the platform ledger — needs an ADR-024
-    addendum.**
-    - `VoucherService::issue()` writes `voucher_issued` for a failed-order
-      (Path B) voucher too. The order that redeems it still credits full
-      `order_profit`, so the platform balance is understated by every
-      compensation voucher (RM13.18 across 5 rows on 2026-10-10).
-    - No screen reads that balance any more: its one reader, the platform
-      withdrawal, was removed by item 78 PR-2 (#391). The other platform
-      ledger readers (Reports, Customer Analytics, Transaction Register,
-      Order earned profit) filter `order_profit` only, and the two
-      `voucher_issued` mentions in `ReportService` and
-      `TransactionRegisterService` read the `vouchers` table, not these ledger
-      rows (re-checked against code 2026-10-12). So this is data hygiene, not
-      a wrong figure on any screen.
-    - The fix: stop the Path B debit going forward, plus a founder-approved
-      reversing entry for the existing rows.
-    - Found by the item 78 code-trace.
-
 81. **Month-end pack for the external accountant — needs an ADR-083
     addendum (grill first).**
     - The founder's goal (2026-10-10): the accounting pages are a record
@@ -978,8 +967,18 @@ edit-composition half is in B.
     numbers. That chatbot raises an admin alert on every unknown order number
     with no cap, so any escalation built here needs one.
 
+83. **An admin-issued voucher's ledger debit is never given back — waiting on
+    the first admin-issued voucher** (ADR-024 2026-10-12 addendum, founder's
+    call). A revoked or expired admin voucher keeps its full `voucher_issued`
+    debit, so the platform ledger understates by its unspent part. No screen
+    reads that balance, and the Monthly Summary already carries breakage.
+    Production had 0 admin-issued vouchers on 2026-10-12. Grill revoke and
+    expiry together (expiry needs a scheduled job) when one exists.
+
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
+- **79** 2026-10-12: a compensation voucher (issued for an order) no longer debits the platform ledger; only an admin-issued voucher does, matching `Voucher::scopeCompensation()` (ADR-024 2026-10-12 addendum). The 4 old debits (RM13.18) get one reasoned reversal each from a migration that runs on release. Staging only until a release. Details: build-log 2026-10-12.
+- **80** 2026-10-12: a voucher merge rejects an expired source (ADR-036 2026-10-12 addendum, #412). Staging only until a release.
 - **69** 2026-10-12: the WhatsApp status card and the "order not found" reply are now sent on every order-number message; the 30-minute and 10-minute `Cache::add` throttles are gone (ADR-116 2026-10-12 addendum). No per-number cap, by the founder's call and the chatbot project's six months of data (worst 10-minute window: 3 messages). Staging only until a release. Details: build-log 2026-10-12.
 - **66 (history view)** 2026-10-12: a combo's per-leg attempt history shows under each leg on Order Detail; leg `initial` rows no longer swallow each other in the order log (red test first). Admin only. Edit-composition stays open (B). Live via #406 (2026-10-12). Details: build-log 2026-10-12.
 - **75** 2026-10-11: the Monthly Summary's "voucher liability issued" split into "Admin-issued vouchers (no order)" (profit cost, was "Goodwill") and "Failed-order store credit issued" (information only); a merge result is in neither (ADR-083 2026-10-11 addendum, build-log). The accountant still owns expense-at-issue vs at-redemption. Live via #406 (2026-10-12).
