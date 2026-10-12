@@ -140,6 +140,25 @@ class SettingsControllerTest extends TestCase
         Storage::disk(config('filesystems.gallery_disk'))->assertMissing("affiliate-favicons/{$primary->id}.webp");
     }
 
+    /** A re-upload overwrites the same R2 path, so the URL itself must change or browsers keep the old image. */
+    public function test_re_uploading_the_logo_and_favicon_changes_their_urls(): void
+    {
+        Storage::fake(config('filesystems.gallery_disk'));
+        $this->actingAsSuperAdmin();
+
+        $logo = $this->post('/api/settings/branding/logo', ['image' => UploadedFile::fake()->image('a.png', 900, 300)])->json('logo_url');
+        $favicon = $this->post('/api/settings/branding/favicon', ['image' => UploadedFile::fake()->image('a.png', 512, 512)])->json('favicon_url');
+
+        $this->travel(2)->minutes();
+
+        $newLogo = $this->post('/api/settings/branding/logo', ['image' => UploadedFile::fake()->image('b.png', 900, 300)])->json('logo_url');
+        $newFavicon = $this->post('/api/settings/branding/favicon', ['image' => UploadedFile::fake()->image('b.png', 512, 512)])->json('favicon_url');
+
+        $this->assertNotSame($logo, $newLogo);
+        $this->assertNotSame($favicon, $newFavicon);
+        $this->assertStringContainsString('affiliate-logos/', $newLogo);
+    }
+
     public function test_update_footer_sanitizes_legal_content_and_keeps_the_store_name_token_raw(): void
     {
         $this->actingAsSuperAdmin();

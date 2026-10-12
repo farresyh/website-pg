@@ -699,3 +699,35 @@ Three read-only audits (PRD, ADR index vs files, everything else), then applied:
   built); Digiflazz funding date; `composer run dev` also starts reverb and
   pulse; `reseller/AGENTS.md` Herd URL is `https`; the stock `admin/README.md`
   and `backend/README.md` deleted.
+
+## 2026-10-12 — Logo/favicon preview kept showing the old image after a re-upload (fix, staging only)
+
+**Symptom (founder).** In admin Settings → Store Branding and the partner
+portal's Branding tab, replacing a saved logo or favicon left the preview on
+the old image.
+
+**Cause.** Both upload paths write a fixed object path
+(`affiliate-logos/{id}.webp`, `affiliate-favicons/{id}.webp`), so a re-upload
+overwrites the file but `logo_url`/`favicon_url` stay byte-identical. The CDN
+(`cdn.pekangame.space`, checked read-only) sends no `Cache-Control` and
+Cloudflare reports `DYNAMIC`, so each browser keeps its own copy by heuristic
+freshness. The storefront has the same flaw: its data refreshes at once
+(`forgetCache` → `NextRevalidation::purge()`), but `Logo.tsx` is a plain `<img>`
+on the same URL and `/icon` proxies the same favicon URL. A second trap:
+re-saving the same path is not a dirty attribute, so Eloquent skips the UPDATE
+and `updated_at` never moves.
+
+**Fix (one seam, backend only).** `AffiliateBranding::replaceImage()` is now
+the only writer of an uploaded `logo_path`/`favicon_path` (four callers: admin
+and partner-portal controllers, logo and favicon) and sets `updated_at`
+explicitly; the `logo_url`/`favicon_url` accessors append `?v={updated_at}`.
+The CDN serves `?v=` URLs (200 `image/webp`). Any other branding save also bumps
+the version, which costs one refetch. No migration, no storage change.
+
+**Tests.** Two new feature tests (admin logo + favicon, partner-portal logo)
+re-upload two minutes apart and assert the URL changed; both fail without the
+fix. Full fast suite 2710 green, Pint clean. Not checked in a browser: the
+cache behaviour itself, which needs a real second upload on a deployed build.
+After release, verify on staging/prod by re-uploading a logo and looking at the
+admin preview, the storefront header and the tab icon (favicons are cached
+hardest by browsers, so allow for that).

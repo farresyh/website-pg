@@ -106,6 +106,20 @@ class BrandingControllerTest extends TestCase
         ]);
     }
 
+    public function test_re_uploading_the_logo_changes_its_url(): void
+    {
+        Storage::fake(config('filesystems.gallery_disk'));
+        $affiliate = $this->affiliate();
+        $url = fn () => $this->withToken($this->tokenFor($affiliate))->post('/api/affiliate/storefront/branding/logo', [
+            'image' => UploadedFile::fake()->image('logo.png', 900, 900),
+        ])->json('branding.logo_url');
+
+        $first = $url();
+        $this->travel(2)->minutes();
+
+        $this->assertNotSame($first, $url());
+    }
+
     public function test_logo_upload_rejects_a_non_image(): void
     {
         Storage::fake(config('filesystems.gallery_disk'));
