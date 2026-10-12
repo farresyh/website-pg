@@ -598,6 +598,13 @@ fix and the combo per-leg attempt history (66). The founder confirmed the
 Monthly Summary voucher lines and the order-log leg history on prod.
 `staging` = `main` at that moment.
 
+**On `staging`, not live (2026-10-12).** The logo/favicon re-upload fix (#409):
+uploaded images now carry `?v={updated_at}` so a replaced logo or favicon shows
+in the admin and partner-portal preview, the storefront header and the tab icon
+(backend only, no migration). Docs-only #407 and #408 are also on `staging`
+alone. Not yet checked in a browser on a deployed build; check after the next
+`staging`→`main` release.
+
 **Release 2026-10-10 (PR #393).** Envelope Ledger reshape (item 78: postings,
 director loans, month close, cash equation; removes the platform-owner
 withdrawal), the settlement month-span fix #388, the admin package-order
