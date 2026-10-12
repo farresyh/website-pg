@@ -713,8 +713,8 @@ code and production on 2026-10-09 and re-checked against git on 2026-10-12.
 Re-verify before building.
 
 **A. Buildable now: code, no new design**
-Nothing left. Item 66's history view closed 2026-10-12 (#404); its
-edit-composition half is in B.
+- **84** Admin voucher list treats an expired voucher as active (admin
+  display only, no money path).
 
 **B. Needs a short grill / ADR addendum first**
 - **6 / A3** Per-tier rate limit on the Reseller API/Bot.
@@ -974,6 +974,18 @@ edit-composition half is in B.
     reads that balance, and the Monthly Summary already carries breakage.
     Production had 0 admin-issued vouchers on 2026-10-12. Grill revoke and
     expiry together (expiry needs a scheduled job) when one exists.
+
+84. **Admin voucher list treats an expired voucher as active** (found with
+    item 80, 2026-10-12). Nothing ever sets a voucher's `status` to `expired`;
+    expiry is `expires_at` alone (checkout and merge both check it). So in
+    `VoucherController::index()` the "Expired" stat counts `status = 'expired'`
+    and is always 0, the "Active" stat counts and sums expired vouchers too,
+    and `/admin/vouchers` shows them with an Active pill and a merge checkbox
+    (the server rejects the merge since #412). Fix: derive "expired" from
+    `expires_at` in the stats, the pill and the checkbox. Do not backfill
+    `status`: the Monthly Summary's breakage reads `expires_at`. Production on
+    2026-10-12: no voucher has an `expires_at`, so every figure is correct
+    today.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 

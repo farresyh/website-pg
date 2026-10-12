@@ -855,3 +855,6 @@ Swept PRD and ADRs for claims items 79 and 80 made untrue.
 Checked, still true: ADR-094 decision 34 and ADR-104 R8 (they reason about the
 voucher liability, not the ledger row), ADR-002's dedupe list, `backend/AGENTS.md`.
 `main` is still release #406; #412 and #413 are on `staging` only.
+Added §16 item 84 (founder, 2026-10-13): the admin voucher list's "Expired"
+stat, "Active" stat, pill and merge checkbox ignore `expires_at`. Display only;
+no production voucher has an expiry today.
