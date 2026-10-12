@@ -282,7 +282,7 @@ Requests come from Affiliates, through their portal (ADR-059). The platform owne
 | **SET-5** | Admin can configure store contact links (WhatsApp/Telegram) | **MVP** |
 | **SET-6** | Admin can toggle maintenance mode with custom message | **MVP** |
 | **SET-7** | Admin can toggle payment gateway with custom disabled message | **MVP** |
-| **SET-8** | Admin can configure notification settings (email toggles) | **MVP** |
+| **SET-8** | ~~Admin can configure notification settings (email toggles)~~ | **❌ Dropped, 2026-10-12** (YAGNI, ADR-116 decision 10). The customer already gets CHIP's own payment email on purchase, so no email toggle is needed. The one switch that exists is `whatsapp_notifications_enabled` (ADR-116) |
 | **SET-9** | ~~Admin can configure Telegram bot integration~~ | **Dropped 2026-10-10** (ADR-028 addendum) — no sender was ever built; ops alerts go by Plunk email |
 | **SET-10** | Admin can configure footer content and social media links | **MVP** |
 | **SET-11** | Admin can configure transaction fee rate (percentage + flat component) per payment method, matching the gateway's current published rates (e.g. FPX/DuitNow ≈ flat-only; Cards/e-wallets ≈ percentage + flat) — never hardcoded in application code. Written against Xendit's rate card; the gateway is CHIP since ADR-022's 2026-09-01 cutover, `payment_methods` table unchanged | **MVP** |
@@ -519,8 +519,6 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 **Still open:**
 
-- What is the SLA for supplier APIs? Should there be alerts if response time exceeds threshold (ties into circuit-breaker tuning)?
-- Per-supplier, per-game audit: which games/suppliers actually support pre-payment validation vs. order-time-only? Needs to be catalogued during supplier onboarding, not assumed.
 - Blacklist data source: internal chargeback history only, or also manually curated from known fraud reports? Needs a policy for false-positive appeal.
 - MFA for `affiliate_users` (was `reseller_users`) — deferred with the same reasoning as the admin MFA gap (ADR-058 consequence note); resolve before the partner portal's withdrawal screen carries meaningful balances.
 - Multi-region payment routing (Malaysia → CHIP, other countries → a 2nd gateway, auto by country) — founder want. **Superseded for now** by the CHIP-only cutover (ADR-022, 2026-09-01): the `PaymentGatewayFactory` seam is kept, but a real 2nd gateway is only revisited when cross-border selling is real. Xendit (the original candidate) is deleted.
@@ -551,7 +549,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 - **Dry Run :** Testing mode for API calls without creating real orders or deducting balance.
 - **Stuck Order :** Order that is "paid" but not yet "delivered" beyond a threshold (e.g. 5 minutes).
 - **Multi-Tenant :** Architecture where a single system instance serves multiple affiliates (tenants) with data isolation. Schema-ready from MVP (ADR-003); feature-exposed in Phase 2.
-- **xenPlatform :** Xendit's product for platform/marketplace businesses — sub-account creation and automatic payment splitting between platform and merchants. ~~Deferred to Phase 2 (ADR-001).~~ **Dropped entirely, 2026-08-30 ([ADR-059](./adr/ADR-059-reseller-portal.md) decision 6):** the platform will not use xenPlatform at all — all customer money (platform-owner and every affiliate storefront) is collected into one company CHIP account, and affiliate payout is a manual bank transfer via the existing WTH-1..5 flow. The ledger, not the gateway, is the source of truth for who is owed what (ADR-022 decision 2). Kept in this glossary only so the term isn't mistaken for a live plan.
+- **xenPlatform :** Xendit's sub-account payment-splitting product. Never adopted ([ADR-059](./adr/ADR-059-reseller-portal.md) decision 6): the platform collects all money in one CHIP account and the ledger does the split. Founder, 2026-10-12: its fee is too high and no other platform that splits payments was found, so it is not planned.
 - **Blacklist :** Internal, platform-owned list of player IDs/contacts blocked from ordering due to prior fraud/chargeback history, independent of any supplier-side blacklist (ADR-007).
 - **Method Key :** A stable identifier for a real-world payment method (e.g. `tng`, `fpx_maybank2u`, `grabpay`) independent of which `PaymentGateway` processes it — distinct from `channel_code` (gateway-specific, unique per `payment_methods` row) and `category` (coarser grouping like `fpx`/`ewallet` that legitimately holds several different active methods at once). Exists so at most one gateway's row for the same customer-facing method can be active at a time (ADR-022's newest addendum).
 - **Voucher Merge :** An admin-triggered, opt-in action that consolidates two or more of one customer's active vouchers into a single new code, sized to the sources' combined `remaining` (not their original `amount`). The sources are voided (`status = 'merged'`, `remaining = 0`) — never deleted — and no `ledger_entries` row is written, since the liability was already booked once by each source's own original issuance. Distinct from *redemption* (spending a voucher at checkout) and from Path B's *restore* (giving a reserved amount back to `remaining`) — a merge never happens automatically and is never part of the checkout flow itself (ADR-036).
@@ -711,8 +709,8 @@ edit-composition half is in B.
   the accountant's monthly document list first.
 
 **C. Founder actions (no code)**
-- **11** Confirm the UptimeRobot monitor on `/api/health` is green and its
-  alert reaches you; Sentry is still not set up.
+- **11** Sentry (error tracking) is still not set up. UptimeRobot on
+  `/api/health` confirmed green 2026-10-12; its alert delivery is untested.
 - **71** GSC recheck around 2026-10-22.
 
 **D. Waiting on a trigger: don't build early**
@@ -743,10 +741,7 @@ edit-composition half is in B.
 4. **Bot-host capacity (+$20/mo resize)** — resize only when capacity actually
    calls for it. It is also the moment to revisit the OpenWA engine (item 59:
    Baileys stays until then). OpenWA now shares `pekangame-prod-lwf` with the API
-   (ADR-114). The old `allow 127.0.0.1` nginx block on the bot webhook was
-   **deliberately removed** at the Cloudflare cutover; HMAC is the intended
-   auth layer, so there is nothing to re-add (see the 2026-09-25 entry in
-   `docs/build-log-archive.md`).
+   (ADR-114).
 6. Small unbuilt scope, none blocking: only the
    reseller-family audit's item A3 (per-tier rate limit on the Reseller
    API/Bot — a deliberately deferred design call from the 2026-09-10 audit).
@@ -767,8 +762,9 @@ edit-composition half is in B.
     itself is dead, so the external poll covers that. Also since 2026-09-30:
     DigitalOcean's free Droplet monitoring (`do-agent`) on `pekangame-prod-lwf`,
     with Memory and Disk alerts (both >80% for 5 min, emailing the founder).
-    Not independently verified: the UptimeRobot dashboard was not opened, so
-    confirm the monitor is green and its alert reaches the founder.
+    Founder confirmed the monitor green on 2026-10-12 (100% over 7 and 30 days,
+    5-minute checks, up 1d 17h). Not tested: that its alert actually reaches the
+    founder (use the monitor's Test Notification).
 
 13. **ADR-085 candidate** — self-serve reseller signup (payment risk, KYC, auto
     tier-assignment). Needs its own ADR + grill; ADR-084 assumes invite-only.
