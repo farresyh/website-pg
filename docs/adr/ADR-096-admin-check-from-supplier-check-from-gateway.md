@@ -2,7 +2,7 @@
 
 > **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
-**Status:** Accepted — grilled 2026-09-15 on `feature/adr-096-manual-poll-buttons` (not yet built as of this entry).
+**Status:** Accepted — grilled 2026-09-15 on `feature/adr-096-manual-poll-buttons` (not yet built as of this entry; current build status: [`prd.md` §15](../prd.md)).
 
 **Context:**
 

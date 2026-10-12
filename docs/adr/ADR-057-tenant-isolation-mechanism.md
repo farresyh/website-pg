@@ -1,6 +1,8 @@
 # ADR-057: Tenant isolation mechanism — `BelongsToReseller` trait + Eloquent global scope, retrofitted before any reseller-scoped endpoint
 
 > **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+>
+> **Terminology:** written before [ADR-072](./ADR-072-reseller-system-split.md); "Reseller" in this file means today's **Affiliate** (whitelabel storefront owner).
 
 **Status:** Accepted — built + merged 2026-08-30 (design grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056).
 
