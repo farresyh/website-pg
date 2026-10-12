@@ -11,6 +11,7 @@ use App\Models\Package;
 use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Models\Voucher;
+use App\Models\VoucherMerge;
 use App\Models\VoucherRedemption;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
@@ -787,6 +788,30 @@ class VoucherControllerTest extends TestCase
         ]);
 
         $response->assertUnprocessable();
+    }
+
+    /**
+     * §16 item 80 — an expired voucher keeps `status = active` (expiry is
+     * `expires_at` alone), so the status check let it through and the merge
+     * handed lost credit back under a new expiry.
+     */
+    public function test_rejects_merging_an_expired_voucher(): void
+    {
+        $a = $this->makeVoucher();
+        $b = $this->makeVoucher(['expires_at' => now()->subDay()]);
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $response = $this->postJson('/api/vouchers/merge', [
+            'voucher_ids' => [$a->id, $b->id],
+            'reason' => 'Attempted merge with an expired voucher',
+            'expires_at' => now()->addMonth()->toDateString(),
+        ]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors('voucher_ids');
+        $this->assertSame('active', $a->fresh()->status);
+        $this->assertSame('active', $b->fresh()->status);
+        $this->assertSame(0, VoucherMerge::query()->count());
     }
 
     public function test_rejects_a_merge_with_fewer_than_two_vouchers(): void
