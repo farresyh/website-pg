@@ -5,6 +5,7 @@
 **Status:** Accepted — grilled (`/mattpocock-skills:grilling`) with the founder 2026-09-30, five rounds. **PR-B1 (#323) and PR-B2 (#324) both built 2026-09-30** and released `staging`→`main` the same day (#325). The switch is ON and was live-tested by the founder. Read the two addenda at the end of this entry before building on it:
 - The **build addendum's items 1–2 are superseded** by the **post-live-test addendum**: the order number is the opt-in, and there is one timeline status card.
 - That follow-up is **#326**, released to `main` 2026-10-01 via #332.
+- The **2026-10-12 addendum** removes the repeat throttles (post-live-test addendum decision 3 and its 10-minute not-found rule).
 
 **Context:** the 2026-09-28 audit (M-11) found no customer order notification of any kind. PRD §7.1 step 11 (notify on delivery, invite a review) and §7.5 step 4 (the customer receives their voucher code) were specified but never built. The sharp edge is §7.5: a customer whose order fails gets a store-credit voucher (ADR-004), but the code is never sent anywhere and the track-order page doesn't show it, so the refund only reaches the customer if an admin contacts them by hand.
 
@@ -146,3 +147,58 @@ first, and the order number already proves that.
    payment. Get Updates is hidden until the order is paid, and on a failure.
    Its label is "Notify Me on WhatsApp" while waiting and "Send Receipt to
    WhatsApp" once delivered. The card heading and body follow the state.
+
+### 2026-10-12 addendum — every order-number message is answered; the repeat throttles are removed (PRD §16 item 69)
+
+**Context.** The post-live-test addendum added two repeat throttles: no repeat of
+the same status card to a number within 30 minutes (decision 3), and one "not
+found" reply per number every 10 minutes (decision 1). Both were a
+`Cache::add` that returned before any `customer_notifications` row was written.
+Read-only prod check, 2026-10-12:
+- On 2026-10-05 the founder's test number sent the order number three times
+  within four minutes and got one card. Two messages 26 seconds apart and one
+  later got silence, with no row for admin to see.
+- The throttle was set before the row was written. If the write failed once and
+  OpenWA retried the webhook, the retry hit the throttle: silence, no trace.
+  Read from code; not reproduced in prod.
+- The inbound message id is already the `dedupe_key`, so a retried webhook
+  never double-sends. The throttle was a second, weaker mechanism.
+- Prod scale: 11 `customer_notifications` rows, 2 numbers, all founder tests.
+  No real customer has used the channel yet.
+
+**Decision.**
+1. Every message carrying an order number gets the status card, even when
+   nothing changed. This replaces decision 3 of the post-live-test addendum.
+2. A mistyped order number gets the "not found" reply every time. This replaces
+   the 10-minute rule in decision 1 of that addendum.
+3. No per-number cap, by the founder's call. Evidence: the founder's chatbot
+   project (`/Project/chatbot`, an OpenWA-based KeroxShop support bot, snapshot
+   to 2026-09-14) answers every `ORD-` message without a limit. Over six months
+   it saw 4,137 direct messages from 448 chats, 144 of them with an order
+   number, and the busiest 10-minute window for one chat held 3. Limits of that
+   evidence: it is a snapshot, not live prod, and a different business with
+   more traffic.
+4. Retry safety stays on the `dedupe_key` (inbound message id). A new test
+   delivers the same message twice and expects one row.
+5. Unchanged: STOP is never undone by an order-number message, a number that
+   sent STOP still gets a card when it writes first, receipts and vouchers are
+   not affected.
+
+**Rationale.** Silence on a direct question is worse than a repeated card, and
+the throttle's only real job (protecting the one paced lane from a flood) is not
+a risk at this volume. Removing it also closes the retry hole.
+
+**Consequence to track.**
+- **No tripwire.** Horizon's `LongWait` (600 s on `redis:whatsapp`) cannot see a
+  flood: sends are dispatched with a delay and a delayed job does not count as
+  waiting. **Revisit when** a voucher or receipt arrives much later than usual,
+  or admin sees many identical `status_card` rows for one number. Then add
+  either a DB count of recent replies per number or a guard that skips a reply
+  when `whatsapp:next-send-slot` is too far ahead. Either can be added without
+  changing stored data.
+- Considered and not built: the chatbot's 10-second per-chat debounce (would
+  merge rapid duplicates, but is in-process state and adds a fixed delay),
+  escalation to an admin group, a per-chat AI/admin/paused mode, and image OCR
+  for order numbers. They belong to the CS-agent ADR (PRD §16 item 82).
+- The admin order page already shows every row as a card, so repeated cards
+  will appear there. Grouping them is not built; do it if the page gets noisy.
