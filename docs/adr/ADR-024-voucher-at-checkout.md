@@ -142,3 +142,26 @@ The full-cover path (M-6) already failed closed on the voucher, but still decrem
 **Consequence to track.**
 - A failed-closed order is a visible `Failed` row with `voucher_id` or `membership_id` set and no matching reservation. A burst of these from one customer is an abuse signal (logged at warning: "Checkout reservation lost — order failed closed").
 - Item 63's unconditional CHIP Paid write is a separate fix; this addendum does not depend on it, because Paid-after-Failed already routes to NeedsReview.
+
+### 2026-10-12 addendum — only an admin-issued voucher debits the platform ledger (PRD §16 item 79)
+
+**Status:** Accepted. Grilled with the founder (S1, S2, option (a)) and stress-tested against code and production before any code changed.
+
+**Context.** Decision 2 says a voucher's "full liability is already booked once, at issuance". `VoucherService::issue()` did that for every voucher, including a compensation voucher (Path B, issued for a failed or partially delivered order). But a compensation voucher is the customer's own cash, already received. Example, production order 9: the customer paid RM4.72, delivery failed, and a RM3.72 voucher was issued. The order that later redeemed it credited its full `order_profit` (correct), and the RM3.72 debit was a cost the platform never bore. On a partial delivery it was a double count: `OrderSettlementService` already nets the cash share out of `platform_profit` (ADR-094 decision 35). The rest of the system already says this. `Voucher::scopeCompensation()` (ADR-104 R11, "customer cash held, not a marketing promise") is the definition Dashboard, the Transaction Register, Reports and the Monthly Summary use. A failed Reseller wallet order's `wallet_refund` never touched the platform ledger either. Only the ledger disagreed. Production on 2026-10-12: 5 vouchers, all compensation, debits totalling −RM13.18 (one RM0); 0 admin-issued vouchers; 0 merges.
+
+**Code-trace pass.**
+- Writers of `voucher_issued`: `issue()` only, called by `VoucherController::store()` (Path A; `CreateVoucherRequest` has no `order_id`) and `OrderSettlementService::settle()` (always passes `orderId`). `merge()` creates its target directly and writes no ledger row. So `order_id` is a clean discriminator.
+- Readers: no code reads the platform ledger balance or `voucher_issued` ledger rows since the platform withdrawal was removed (#391). Every platform-ledger reader filters `order_profit` or `membership_fee` (Reports, Dashboard, Customer Analytics, Transaction Register, `Order` earned profit, Monthly Summary, LLM report views). `CashPositionService` reads Affiliate and ResellerWallet only. The two `voucher_issued` labels in reports read the `vouchers` table.
+- Bases: Standard, Member and Affiliate orders redeem vouchers through the same `order_profit` path; ResellerWallet orders use no voucher.
+
+**Decisions.**
+1. **`issue()` debits the platform ledger only when `orderId` is null** (an admin-issued voucher). This replaces decision 2's "every voucher". Admin-issued vouchers keep being a cost at issue, as in ADR-083 decision 11.
+2. **One invariant test across every way a voucher is made**: admin issue, full failure, partial delivery, merge. Only the admin-issued voucher's amount reaches `voucher_issued`.
+3. **Old debits get one reasoned reversal each, never edited or deleted** (ADR-002 append-only). Same type `voucher_issued`, opposite amount taken from the debit row, a `reason`, and `idempotency_key = item79-reversal:voucher:{id}` (a unique index, so at most once). The ADR-105 order-15 correction set the convention. Delivered by a migration that runs on release (founder's S1), written with the query builder so it never depends on later app code. Zero-amount debits are skipped. The reversal is dated when it runs, not backdated.
+4. **Not changed (founder's option (a)):** a revoked or expired admin-issued voucher keeps its full debit. No screen reads the balance, the Monthly Summary already carries breakage, and production has none. PRD §16 item 83 waits for the first admin-issued voucher.
+
+**Rejected.** (i) Debit at issue, then credit back at redemption for compensation vouchers: two rows that cancel. (ii) Cost at redemption (reduce `order_profit`): six readers change, and it hangs on the accountant's open item 75 question; this fix does not, since it touches compensation vouchers only. (iii) Drop the debit entirely: admin vouchers would then be wrong. (iv) A voucher "kind" column: a second source of truth next to `order_id`.
+
+**Consequence to track.**
+- Forge migrates before the new code goes live. An admin settling an order in those seconds would get one more old-style debit that the migration missed. After the release, run the migration's SELECT read-only: it must return no row without an `item79-reversal` key. If one appears, a single reversal needs the founder's go-ahead.
+- The platform ledger now reads as: Σ `order_profit` + Σ `membership_fee` − admin-issued voucher cost. It is not the P&L; the Monthly Summary is.

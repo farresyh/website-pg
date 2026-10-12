@@ -122,7 +122,8 @@ class OrderSettlementServiceTest extends TestCase
         $this->assertSame(300, $fresh->affiliate_profit);
         $this->assertSame(300, $this->ledgerSum('order_profit', 'platform'));
         $this->assertSame(300, $this->ledgerSum('order_profit', 'affiliate'));
-        $this->assertSame(-1600, $this->ledgerSum('voucher_issued', 'platform'));
+        // Item 79: the 1600 is already netted out of platform_profit above — no second debit.
+        $this->assertSame(0, $this->ledgerSum('voucher_issued', 'platform'));
 
         // Compensation never changes the status (decision 29).
         $this->assertSame(DeliveryStatus::PartiallyDelivered, $fresh->delivery_status);
@@ -146,6 +147,33 @@ class OrderSettlementServiceTest extends TestCase
         $this->assertSame(600, $order->fresh()->platform_profit); // (5000 − 2000) − 2400
         $this->assertSame(600, $this->ledgerSum('order_profit', 'platform'));
         $this->assertSame(0, Voucher::query()->count());
+    }
+
+    /**
+     * §16 item 79 (ADR-024 2026-10-12 addendum) — the invariant across every
+     * way a voucher is made: only an admin-issued voucher (no order) debits
+     * the platform ledger. A compensation voucher is the customer's own cash
+     * already held, and a partial delivery's profit already nets it out.
+     */
+    public function test_only_admin_issued_vouchers_debit_the_platform_ledger(): void
+    {
+        $failed = Order::factory()->create([
+            'payment_status' => PaymentStatus::Paid, 'delivery_status' => DeliveryStatus::Failed,
+            'selling_price' => 1500, 'voucher_discount' => 0, 'transaction_fee' => 50, 'final_amount' => 1550,
+        ]);
+        $admin = app(VoucherService::class)->issue(
+            customerEmail: $failed->customer_email, amount: 700, reason: 'Goodwill', expiresAt: null,
+            createdBy: $this->adminId, approvedBy: null, affiliateId: $failed->affiliate_id, customerPhone: $failed->customer_phone,
+        );
+
+        $fullFailure = $this->service()->settle($failed, $this->adminId)->voucher;
+        $this->service()->settle($this->partialComboOrder(), $this->adminId);
+        app(VoucherService::class)->merge([$admin->id, $fullFailure->id], 'Consolidate', $this->adminId, null);
+
+        $this->assertSame(1, LedgerEntry::query()->where('type', 'voucher_issued')->count());
+        $this->assertSame(-700, $this->ledgerSum('voucher_issued', 'platform'));
+        // The partial delivery's own profit (5000 − 2000 − 2400 − 300) is the platform's whole earning.
+        $this->assertSame(300 - 700, app(LedgerService::class)->balance(LedgerOwnerType::Platform, null));
     }
 
     /** u = 1 reproduces the pre-addendum Failed path exactly: cash share as Y, X fully restored, no profit. */

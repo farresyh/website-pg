@@ -14,8 +14,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
- * ADR-024. issue() books the voucher's full liability once, at
- * creation (a `voucher_issued` debit) — preview()/redeem()/commit()/
+ * ADR-024. issue() books an admin-issued voucher's full cost once, at
+ * creation (a `voucher_issued` debit; a compensation voucher books none,
+ * 2026-10-12 addendum) — preview()/redeem()/commit()/
  * restore() never write a `ledger_entries` row themselves; they only
  * move bookkeeping about which part of that already-booked liability
  * is currently spent.
@@ -72,7 +73,13 @@ final class VoucherService
                 'approved_by' => $approvedBy,
             ]);
 
-            $this->ledger->credit(LedgerOwnerType::Platform, null, -$amount, 'voucher_issued', 'voucher', $voucher->id, $createdBy);
+            // ADR-024 2026-10-12 addendum (§16 item 79): only an admin-issued
+            // voucher is a platform cost. A compensation voucher (issued for
+            // an order, `Voucher::scopeCompensation()`) is the customer's own
+            // cash already held, so it never debits the platform ledger.
+            if ($orderId === null) {
+                $this->ledger->credit(LedgerOwnerType::Platform, null, -$amount, 'voucher_issued', 'voucher', $voucher->id, $createdBy);
+            }
 
             return $voucher;
         });
@@ -82,8 +89,8 @@ final class VoucherService
      * ADR-036 — admin-triggered, opt-in consolidation of two or more
      * active vouchers belonging to the same customer into one new
      * code. Mirrors restore()'s no-ledger-write shape deliberately:
-     * the combined liability already sits correctly in the ledger via
-     * the sources' own original `voucher_issued` debits (decision 5)
+     * the combined cost already sits correctly in the ledger via the
+     * admin-issued sources' own `voucher_issued` debits (decision 5)
      * — issue() is never called here, so no double-booking, and no
      * reversal either since nothing is being un-booked.
      *

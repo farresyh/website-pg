@@ -796,3 +796,44 @@ same path as a non-active source). No browser check.
 `status = 'expired'`, which nothing writes, so it always shows 0. The merge
 checkbox still offers an expired-but-`active` voucher; the server rejects it.
 Production effect: none expected (0 merges on 2026-10-10).
+
+---
+
+## 2026-10-12 — §16 item 79: compensation vouchers stop debiting the platform ledger
+
+**What shipped (branch `fix/compensation-voucher-ledger`).** `VoucherService::issue()`
+writes the platform `voucher_issued` debit only for an admin-issued voucher (no
+`order_id`). A compensation voucher is the customer's own cash already held, the
+same definition as `Voucher::scopeCompensation()`. Migration
+`2026_10_12_000000_reverse_compensation_voucher_platform_debits` appends one
+reasoned reversal per old compensation debit (`idempotency_key
+item79-reversal:voucher:{id}`). ADR-024 2026-10-12 addendum.
+
+**Why.** The redeeming order already credits its full `order_profit`, so the debit
+was a cost the platform never bore. On a partial delivery it was a double count,
+because `platform_profit` already nets out the cash share. Platform ledger in
+production was RM15.51; it should be RM28.69. No screen read it (#391 removed the
+only reader), so no figure on screen was wrong.
+
+**Grill + stress test (founder, this session).** S1: reversal via a migration on
+release. S2: `order_id` decides. (a): revoked/expired admin vouchers keep their
+debit for now, now §16 item 83. Stress test: nine scenarios traced (full failure,
+paid-with-voucher failure, full-cover failure, partial, affiliate brand, expiry,
+merge A+B, wallet refund, admin voucher). Every writer and reader of
+`voucher_issued` grepped. Four alternatives rejected (ADR addendum).
+
+**Red first.** The new invariant test (admin issue + full failure + partial + merge)
+failed with 3 debit rows instead of 1. The migration test failed before the file
+existed. Three tests that asserted the old debit were changed (settlement service,
+combo, settlement concurrency).
+
+**Verified.** Fast suite 2714/2714. Concurrency suite 30/30 on MySQL, after dropping
+the stale `llm_report_*` views (`backend/AGENTS.md` gotcha 8). The migration and
+settlement tests on MySQL: 9/9. Local dev DB migrated: 1 compensation debit
+reversed, net 0. Production dry run of the migration's SELECT (read-only): exactly
+vouchers 1, 2, 4 and 5, −1318 sen; voucher 3 is RM0 and skipped; no `item79` key
+yet. Nothing written to production.
+
+**After the release.** Re-run that SELECT read-only. It must show 4 reversals and
+no unreversed compensation debit. Forge migrates before the new code is live, so an
+admin settlement in those seconds could leave one more debit.
