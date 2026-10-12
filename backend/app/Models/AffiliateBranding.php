@@ -55,16 +55,43 @@ class AffiliateBranding extends Model
      */
     protected function logoUrl(): Attribute
     {
-        return Attribute::get(fn (): ?string => $this->logo_path === null
-            ? null
-            : Storage::disk(config('filesystems.gallery_disk'))->url($this->logo_path));
+        return Attribute::get(fn (): ?string => $this->versionedUrl($this->logo_path));
     }
 
     /** ADR-089: same derive-at-read-time convention as `logoUrl`. */
     protected function faviconUrl(): Attribute
     {
-        return Attribute::get(fn (): ?string => $this->favicon_path === null
-            ? null
-            : Storage::disk(config('filesystems.gallery_disk'))->url($this->favicon_path));
+        return Attribute::get(fn (): ?string => $this->versionedUrl($this->favicon_path));
+    }
+
+    /**
+     * Saves a logo/favicon upload. The path is fixed per affiliate, so a
+     * re-upload leaves `logo_path`/`favicon_path` unchanged and Eloquent
+     * would skip the UPDATE; `updated_at` is set explicitly so `?v=` moves.
+     *
+     * @param  'logo_path'|'favicon_path'  $column
+     */
+    public function replaceImage(string $column, string $path): void
+    {
+        $this->{$column} = $path;
+        $this->updated_at = now();
+        $this->save();
+    }
+
+    /**
+     * A re-upload overwrites the same fixed path, so the bare URL never
+     * changes and browsers keep showing the old image. `?v=` follows
+     * `updated_at`, which every logo/favicon save moves. A save of any other
+     * branding field also bumps it, which only costs one refetch.
+     */
+    private function versionedUrl(?string $path): ?string
+    {
+        if ($path === null) {
+            return null;
+        }
+
+        $url = Storage::disk(config('filesystems.gallery_disk'))->url($path);
+
+        return $this->updated_at === null ? $url : $url.'?v='.$this->updated_at->timestamp;
     }
 }

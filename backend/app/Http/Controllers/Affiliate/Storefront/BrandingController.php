@@ -111,8 +111,7 @@ class BrandingController extends Controller
         // A logo upload before the identity form is ever saved must not
         // write a NULL store_name (it is NOT NULL on the table).
         $branding->store_name ??= $affiliate->business_name;
-        $branding->logo_path = $path;
-        $branding->save();
+        $branding->replaceImage('logo_path', $path);
 
         $this->flushBrandCaches($affiliate->id);
 
@@ -153,8 +152,7 @@ class BrandingController extends Controller
 
         $branding = AffiliateBranding::withoutAffiliateScope()->firstOrNew(['affiliate_id' => $affiliate->id]);
         $branding->store_name ??= $affiliate->business_name;
-        $branding->favicon_path = $path;
-        $branding->save();
+        $branding->replaceImage('favicon_path', $path);
 
         $this->flushBrandCaches($affiliate->id);
 

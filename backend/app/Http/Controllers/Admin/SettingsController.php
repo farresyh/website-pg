@@ -71,8 +71,7 @@ class SettingsController extends Controller
         $path = $this->images->ingest($request->file('image'), "affiliate-logos/{$affiliate->id}.webp", self::LOGO_MAX_EDGE);
 
         $branding = $this->brandingFor($affiliate);
-        $branding->logo_path = $path;
-        $branding->save();
+        $branding->replaceImage('logo_path', $path);
         BrandingController::forgetCache($affiliate->id);
 
         return response()->json($branding);
@@ -100,8 +99,7 @@ class SettingsController extends Controller
         $path = $this->images->ingest($request->file('image'), "affiliate-favicons/{$affiliate->id}.webp", self::FAVICON_MAX_EDGE);
 
         $branding = $this->brandingFor($affiliate);
-        $branding->favicon_path = $path;
-        $branding->save();
+        $branding->replaceImage('favicon_path', $path);
         BrandingController::forgetCache($affiliate->id);
 
         return response()->json($branding);
