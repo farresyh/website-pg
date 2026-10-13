@@ -1,8 +1,8 @@
-@props(['storeName' => 'PekanGame', 'logoUrl' => null])
+@props(['storeName' => 'PekanGame', 'logoUrl' => null, 'storeUrl' => null])
 <x-mail::layout>
 {{-- Header --}}
 <x-slot:header>
-<x-mail::header :url="config('app.url')" :storeName="$storeName" :logoUrl="$logoUrl">
+<x-mail::header :url="$storeUrl ?? config('app.url')" :storeName="$storeName" :logoUrl="$logoUrl">
 {{ $storeName }}
 </x-mail::header>
 </x-slot:header>

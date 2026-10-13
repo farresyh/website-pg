@@ -858,3 +858,47 @@ voucher liability, not the ledger row), ADR-002's dedupe list, `backend/AGENTS.m
 Added §16 item 84 (founder, 2026-10-13): the admin voucher list's "Expired"
 stat, "Active" stat, pill and merge checkbox ignore `expires_at`. Display only;
 no production voucher has an expiry today.
+
+---
+
+## 2026-10-13 — §16 item 64: membership renewal-reminder emails
+
+On `feature/membership-renewal-reminder`. Staging only until a release.
+
+Grilled with the founder (15 questions), then stress-tested against the code;
+recorded as the ADR-068 2026-10-13 addendum. Production at the time: 2 members
+(1 active, ending 24 Oct MYT), 0 opted-in WhatsApp numbers for them. A
+membership has no phone number, so phase 1 is email; WhatsApp is designed and
+parked as item 85.
+
+- **Reminders:** `app:send-membership-reminders`, daily 10:00 MYT.
+  `MembershipReminderService` picks `before` (from H-3) and `after` (H+1 to
+  H+7) by Malaysia-day windows, so a missed day is caught next day. Eligible:
+  the brand is `active`, not deleted, and `membershipEnabledEffective()`.
+  `membership_reminders` has a unique (membership, kind, expires_at): one per
+  period, and a renewal (which always moves `expires_at`) starts a new pair.
+  `SendMembershipReminderJob` re-checks before sending (skips if renewed),
+  retries 3 times, then records `failed`. A row still `queued` an hour later
+  is re-dispatched. `--dry-run` lists without sending.
+- **Admin:** a "Renewal Reminders" table on `/admin/membership/{id}`.
+- **Fixed on the way (stress test):**
+  - The email header logo was 75×50 for every brand: the theme's fixed
+    75×75 merged with the header's inline `max-height: 50px`. Now sized by
+    height. Checked in a rendered email (50×50 from a 512×512 source).
+  - The membership receipt printed `expires_at` in UTC, a day early for any
+    expiry after 16:00 UTC (the founder's own member showed 23 Oct on the
+    receipt, 24 Oct in the admin). `Membership::expiresOn()` gives the MYT day;
+    the receipt and the reminder use it.
+  - The email header linked to `config('app.url')`, the API host. Email and
+    WhatsApp now share `BrandIdentity` (name, logo, canonical origin), so the
+    header and the receipt's new "Manage membership" button link to the
+    brand's storefront. Name fallback is now store name, then business name
+    (as the storefront header); production's two brands both have a store
+    name, so nothing customer-visible changes.
+- **Tests:** 11 for the command and job (incl. the UTC-vs-MYT H-3 boundary),
+  BrandIdentity, the receipt date and link, the admin reminders list, Horizon
+  queue coverage. Backend 2731/2731. Admin `tsc`, `lint`, `build` clean; the
+  reminders table checked on a built admin in light and dark.
+- **Not run locally:** the MySQL concurrency suite (Docker was not running);
+  CI's `backend-concurrency` job runs the new migration on MySQL 8.4.
+- **After the release:** run the dry-run read-only on production.

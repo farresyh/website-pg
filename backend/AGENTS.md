@@ -56,7 +56,10 @@ Laravel-specific, loaded only when working inside `backend/`.
   per-brand wording and pacing (the one-worker `whatsapp` lane). A new
   customer-facing event is a new method there. Compare or send a phone
   number only through `App\Support\PhoneNumber`, since stored
-  `customer_phone` is raw customer input and is never rewritten.
+  `customer_phone` is raw customer input and is never rewritten. The one
+  email exception is membership (OTP, receipt, renewal reminder): a member
+  is identified by email, so those go through `PlunkMailer`. Both channels
+  take the brand from `App\Support\BrandIdentity`.
 - **Public API responses never leak internal financial fields** —
   `cost_price`, `standard_selling_price`, `platform_profit`, `affiliate_profit`,
   `supplier_response`, `payment_ref` stay out of any customer-facing

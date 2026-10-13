@@ -4,6 +4,7 @@ namespace Tests\Feature\Services\Notification;
 
 use App\Jobs\SendCustomerWhatsAppJob;
 use App\Models\AdminUser;
+use App\Models\AffiliateBranding;
 use App\Models\CustomerNotification;
 use App\Models\Order;
 use App\Models\PlatformSettings;
@@ -40,6 +41,8 @@ class CustomerWhatsAppOptInTest extends TestCase
             'services.openwa.cs_session_id' => 'cs-session',
             'services.openwa.cs_api_key' => 'cs-key',
         ]);
+        // The platform brand's store name, as on production; without it the name falls back to business_name.
+        AffiliateBranding::withoutAffiliateScope()->create(['affiliate_id' => $this->primaryAffiliate()->id, 'store_name' => 'PekanGame']);
         PlatformSettings::current()->update(['whatsapp_notifications_enabled' => true]);
         Queue::fake();
     }

@@ -3,8 +3,6 @@
 namespace App\Services\Notification;
 
 use App\Jobs\SendCustomerWhatsAppJob;
-use App\Models\Affiliate;
-use App\Models\AffiliateBranding;
 use App\Models\CustomerNotification;
 use App\Models\Order;
 use App\Models\PlatformSettings;
@@ -12,6 +10,7 @@ use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Models\WhatsappContact;
 use App\Services\Order\DeliveryStatus;
+use App\Support\BrandIdentity;
 use App\Support\PhoneNumber;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -326,14 +325,9 @@ final class CustomerNotificationService
     /** @return array{name: string, host: string} */
     private function brand(int $affiliateId): array
     {
-        $name = AffiliateBranding::withoutAffiliateScope()->where('affiliate_id', $affiliateId)->value('store_name');
+        $brand = BrandIdentity::of($affiliateId);
 
-        // ADR-120: the same origin the storefront's canonical tags use.
-        $origin = Affiliate::withTrashed()->find($affiliateId)?->canonicalOrigin()
-            ?? (string) config('services.storefront.url');
-        $host = parse_url($origin, PHP_URL_HOST);
-
-        return ['name' => $name ?: 'PekanGame', 'host' => (string) $host];
+        return ['name' => $brand->name, 'host' => $brand->host()];
     }
 
     private function firstName(?string $name): string

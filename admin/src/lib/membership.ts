@@ -171,10 +171,25 @@ export interface MemberCheckoutAttempt {
   channel_code: string;
 }
 
+export type MemberReminderStatus = "queued" | "sent" | "failed" | "skipped";
+
+/** ADR-068 2026-10-13 addendum: one renewal-reminder email (H-3 `before`, H+1 `after`). */
+export interface MemberReminder {
+  id: number;
+  kind: "before" | "after";
+  period_ends_at: string;
+  status: MemberReminderStatus;
+  attempts: number;
+  error: string | null;
+  sent_at: string | null;
+  created_at: string | null;
+}
+
 export interface MembershipDetail {
   member: MembershipListItem & { member_since: string | null };
   fee_payments: MemberFeePayment[];
   checkout_attempts: MemberCheckoutAttempt[];
+  reminders: MemberReminder[];
   orders_summary: {
     count: number;
     total_spent_sen: number;

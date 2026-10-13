@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\Reseller\SendResellerBotReplyJob;
 use App\Jobs\SendMembershipReceiptJob;
+use App\Jobs\SendMembershipReminderJob;
 use App\Listeners\Reseller\SendResellerBotOrderNotification;
 use App\Services\OpenWa\OpenWaClient;
 use Illuminate\Support\Arr;
@@ -71,6 +72,13 @@ class HorizonQueueCoverageTest extends TestCase
     public function test_send_membership_receipt_job_lands_on_a_supervised_queue(): void
     {
         $queue = (new SendMembershipReceiptJob(1, 'subscription', 100))->queue ?? 'default';
+
+        $this->assertContains($queue, $this->supervisedQueues());
+    }
+
+    public function test_send_membership_reminder_job_lands_on_a_supervised_queue(): void
+    {
+        $queue = (new SendMembershipReminderJob(1))->queue ?? 'default';
 
         $this->assertContains($queue, $this->supervisedQueues());
     }

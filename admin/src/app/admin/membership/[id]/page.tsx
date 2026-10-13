@@ -6,7 +6,8 @@
  * the member's current state, its fee-payment history (each linked to
  * the ledger entry it booked), its self-serve checkout attempts
  * *including the pending/failed ones the flat registry can't show* (the
- * support gap this view exists for), and a member-orders summary.
+ * support gap this view exists for), its renewal-reminder emails (ADR-068
+ * 2026-10-13 addendum), and a member-orders summary.
  *
  * ADR-038: PrimeReact-Tailwind only (Tag / DataTable), no old TailAdmin
  * primitives.
@@ -36,6 +37,7 @@ import {
   formatMemberDate,
   type MembershipDetail,
   type MemberCheckoutAttemptStatus,
+  type MemberReminderStatus,
 } from "@/lib/membership";
 
 const attemptSeverity: Record<MemberCheckoutAttemptStatus, "success" | "info" | "danger" | "secondary"> = {
@@ -44,6 +46,15 @@ const attemptSeverity: Record<MemberCheckoutAttemptStatus, "success" | "info" | 
   failed: "danger",
   expired: "secondary",
 };
+
+const reminderSeverity: Record<MemberReminderStatus, "success" | "info" | "danger" | "secondary"> = {
+  sent: "success",
+  queued: "info",
+  failed: "danger",
+  skipped: "secondary",
+};
+
+const reminderKind = { before: "Before end (H-3)", after: "After end (H+1)" } as const;
 
 const BACK = (
   <Link href="/admin/membership" className="text-theme-sm text-brand-500 hover:underline">
@@ -117,7 +128,7 @@ export default function MemberDetailPage() {
     );
   }
 
-  const { member, fee_payments, checkout_attempts, orders_summary } = detail;
+  const { member, fee_payments, checkout_attempts, reminders, orders_summary } = detail;
 
   return (
     <div>
@@ -237,6 +248,54 @@ export default function MemberDetailPage() {
             </DataTable>
             {checkout_attempts.length === 0 && (
               <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No self-serve attempts.</p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Renewal Reminders */}
+      <section className="mb-6">
+        <h2 className="mb-1 text-base font-semibold text-gray-800 dark:text-white/90">Renewal Reminders</h2>
+        <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
+          Emails sent 3 days before and 1 day after each period ends (Malaysia dates).{" "}
+          <span className="font-medium">Skipped</span> means the member renewed first or the brand stopped taking
+          renewals.
+        </p>
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+          <div className="max-w-full overflow-x-auto">
+            <DataTable data={reminders} dataKey="id">
+              <DataTableTableContainer>
+                <DataTableTable>
+                  <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                    <DataTableTHeadRow>
+                      <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Reminder</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Period ends</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Sent</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Error</DataTableTHeadCell>
+                    </DataTableTHeadRow>
+                  </DataTableTHead>
+                  <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {({ item }) => {
+                      const r = item as unknown as MembershipDetail["reminders"][number];
+                      return (
+                        <DataTableRow key={r.id}>
+                          <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{reminderKind[r.kind]}</DataTableCell>
+                          <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatMemberDate(r.period_ends_at)}</DataTableCell>
+                          <DataTableCell className="px-5 py-4 text-theme-sm">
+                            <Tag severity={reminderSeverity[r.status]}>{r.status}</Tag>
+                          </DataTableCell>
+                          <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatMemberDate(r.sent_at)}</DataTableCell>
+                          <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{r.error ?? "—"}</DataTableCell>
+                        </DataTableRow>
+                      );
+                    }}
+                  </DataTableTBody>
+                </DataTableTable>
+              </DataTableTableContainer>
+            </DataTable>
+            {reminders.length === 0 && (
+              <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No reminders sent yet.</p>
             )}
           </div>
         </div>

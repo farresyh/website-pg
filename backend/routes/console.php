@@ -3,6 +3,7 @@
 use App\Jobs\SyncSupplierPricesJob;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
+use App\Services\Report\ReportService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -151,6 +152,15 @@ Schedule::command('app:reset-membership-cycles')
 Schedule::command('app:reconcile-pending-membership-payments')
     ->daily()
     ->name('membership-payment-reconciliation')
+    ->withoutOverlapping();
+
+// ADR-068 2026-10-13 addendum — renewal-reminder emails (H-3 and H+1).
+// 10:00 Malaysia time, after the 08:00 MYT cycle reset; the selection
+// reads expires_at, not status, so the order between them doesn't matter.
+Schedule::command('app:send-membership-reminders')
+    ->dailyAt('10:00')
+    ->timezone(ReportService::TIMEZONE)
+    ->name('membership-renewal-reminders')
     ->withoutOverlapping();
 
 // ADR-056 — same inert-until-real-cron pattern as above. Collects the

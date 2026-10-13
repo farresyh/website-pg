@@ -1,6 +1,6 @@
 # ADR-068: Self-serve membership subscription payment — customer pays for a tier through the CHIP checkout, membership auto-created on webhook (ADR-027 Phase 7, payment half)
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-13):** In force; the 2026-10-13 addendum adds the renewal reminders. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-09-03, grilled with the founder this session via `/mattpocock-skills:grilling` (17 questions over three rounds), before any code touched. **Design only — no code exists yet.** Completes [ADR-027](./ADR-027-vip-membership.md)'s deferred "Phase 7" — the **payment half only**; the WhatsApp renewal-reminder half stays deferred, vendor still unpicked. Reuses the CHIP `PaymentGateway` seam (ADR-001 / ADR-022 / `backend/AGENTS.md`) and the `MembershipFeeService::recordFeePaid()` single-seam that ADR-027's 2026-08-29 Phase 6.5 addendum (decision Q12) built for exactly this caller. Folds in two member-identity-correctness fixes surfaced by the first real production member order `PG-PYAYMRYNUYV0` (see the secondary section).
 
@@ -143,3 +143,38 @@
 - Tests: 3 in `Admin\MembershipControllerTest` (state + fee payments + failed-attempt visibility + `ledger_entry_id` non-null; self-serve source label; `super_admin` gate). Backend **1223/1223** fast; admin `tsc` / `lint` / `build` clean. Migration applied to the local dev DB.
 
 **ADR-068's payment half is complete** (PR-0..3 merged). Still deferred: the WhatsApp renewal-reminder half (vendor unpicked) and the founder's real fee/quota/discount numbers.
+
+### 2026-10-13 addendum — the renewal-reminder half (PRD §16 item 64)
+
+**Status:** Accepted, 2026-10-13. Grilled with the founder (15 questions, four rounds), then stress-tested against the code before any build. Fills this ADR's deferred WhatsApp renewal-reminder half. The original blocker (no WhatsApp vendor) is gone (ADR-116's OpenWA `customer-support` session), but the grill moved phase 1 to email: a membership is keyed on email + brand (ADR-027 addendum decision 27, ADR-061 decision 5) and has no phone number, and production on 2026-10-13 had 2 members and 0 opted-in WhatsApp numbers for them.
+
+**Context:** a membership is a one-off CHIP payment for 30 days. There is no auto-renew, so a member who forgets simply lapses. Self-serve renewal exists (`/membership`, this ADR's payment half). `memberships.expires_at` is written only by `MembershipFeeService` (create, `applyTransition` renewal, reactivation), and every write moves it, so `expires_at` identifies one paid-through period.
+
+**Decision — phase 1, email (build now):**
+1. **Channel: email through Plunk**, the channel the membership receipt and OTP already use. English, matching the receipt.
+2. **Timing: two reminders per paid-through period, `before` at H-3 and `after` at H+1**, counted in Malaysia dates (`Asia/Kuala_Lumpur`), never UTC. `expires_at` is stored in UTC, so a member ending 2026-10-24 MYT reads 2026-10-23 in UTC.
+3. **Windows, not exact days**, so a missed scheduler day is caught the next day. `before`: MYT today ≥ expiry date − 3 and `expires_at` still in the future. `after`: MYT today ≥ expiry date + 1, and at most 7 days past the expiry date. A member who lapsed before this shipped, or more than 7 days ago, gets nothing.
+4. **Daily at 10:00 MYT**, `withoutOverlapping()`. It reads `expires_at`, never `status`, so it does not depend on the 08:00 MYT `app:reset-membership-cycles` flip.
+5. **Eligible brands:** the affiliate is `active`, not soft-deleted, and `membershipEnabledEffective()` (global + brand switch). A suspended, deactivated or deleted brand's storefront answers 404 (`ResolveStorefrontBrand`), so its members would get a dead link. No new toggle: switching membership off stops the reminders.
+6. **Complimentary (RM0) members are reminded too.** The email states the current plan's fee; renewing is a normal paid renewal.
+7. **One reminder per `(membership_id, kind, expires_at)`**, enforced by a unique index on a new `membership_reminders` table (`membership_id`, `kind` before|after, `expires_at`, `status` queued|sent|failed|skipped, `attempts`, `error`, `sent_at`). Renewing moves `expires_at`, so the next period is reminded afresh. The send job re-checks before sending: if `expires_at` changed, the membership is active again (for `after`), or the brand is no longer eligible, the row is marked `skipped`.
+8. **Retries:** the send job tries 3 times with backoff, then marks the row `failed` with the error. Unlike the receipt (best-effort, logged and swallowed), a reminder has its own status row, so a failure is visible. Known ceiling: if Plunk accepted the email but the response timed out, the retry sends it a second time. Accepted at this scale.
+9. **Content:** subject "Your {Tier} membership ends on {date}" / "Your {Tier} membership has ended". Body: tier, end date (MYT), the plan's renewal fee (`fee_sen`, display only), and a button to `https://{brand origin}/membership`. No unsubscribe link in v1: a service notice to a paying member, not marketing.
+10. **Admin:** the member detail page (`/admin/membership/{id}`) gains a read-only "Reminders" list (date, kind, status, error).
+11. **`app:send-membership-reminders --dry-run`** lists who would be emailed without sending, for a read-only production check.
+
+**Decision — shared seams fixed in the same change (stress test, 2026-10-13):**
+12. **One member-facing date format, in MYT.** `SendMembershipReceiptJob` formatted `expires_at` in UTC, so the receipt showed a date one day early for any expiry after 16:00 UTC. The receipt and the reminder now share one formatter.
+13. **One brand identity for customer messages.** `PlunkMailer::brandingFor()` (name, logo) and `CustomerNotificationService::brand()` (name, host via `Affiliate::canonicalOrigin()`) were two lookups of the same thing. They become one source returning name, logo and origin. The receipt gains a real link to the brand's `/membership` page.
+14. **Email header logo.** The mail theme's `.logo { width: 75px; height: 75px }` merged with the header's inline `max-height: 50px` and rendered every brand's logo at 75×50, squashed. The logo is now sized by height with automatic width. WebP logos in email clients that lack WebP (Outlook desktop) are a separate item, only if the fixed render still looks wrong.
+
+**Decision — phase 2, WhatsApp (designed, build on trigger):**
+15. **Trigger:** ≥10 active members, or the founder sees members not renewing despite the email, whichever comes first.
+16. **Both channels:** email stays; WhatsApp is added, not a replacement.
+17. **Phone number, opt-out model:** an optional WhatsApp field in the subscribe panel (above Payment Method) and on the `/membership` dashboard, so existing members can add one. Filling it is consent; the copy under it says reminders go to this number and STOP stops them. The number is shown back in full international format to catch typos. Stored as `memberships.whatsapp_phone`. Rejected: guessing a phone from the member's past orders (inaccurate) and a `wa.me` START-token opt-in (proves ownership, but few members would do it).
+18. **Two stop words:** `STOP` keeps today's meaning (all optional messages for that number, receipts and reminders). New `STOP RENEW` stops membership reminders only, stored on the membership, so receipts continue; it applies to every membership carrying that number. `START RENEW`, or re-entering the number, turns them back on. Each WhatsApp reminder ends "Reply STOP RENEW to stop membership reminders."
+19. WhatsApp reminders queue through `CustomerNotificationService` (pacing, dedupe, kill switch), which gains a nullable `membership_id`. The member detail page gains a "WhatsApp" stat card: active / STOP RENEW / STOP (all) / no number.
+
+**Rationale:** email is the channel the membership identity already proves, so phase 1 guesses nothing. Window-based selection plus a unique key makes the job safe to miss a day and safe to run twice. Fixing the date, brand and logo seams once means the receipt and the reminder cannot drift.
+
+**Consequence to track:** a member who renews after the `before` reminder is never sent `after` for that period. A Plunk outage longer than the job's retries leaves `failed` rows to read on the member page; there is no separate alert at this scale.
