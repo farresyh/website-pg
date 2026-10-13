@@ -1071,3 +1071,31 @@ Docs pass before closing the session:
   the ADR index, `AGENTS.md` files and the docs site: none left. ADR-074's
   original decision 4 and PR-E note still say "keyed on the API key"; per the
   ADR file rules, its 2026-10-13 addendum overrides them.
+
+## 2026-10-13 — Item 90: one shared Malaysia timezone constant; timezone audit
+
+On `fix/shared-malaysia-timezone`. Staging-only until a release.
+
+- **What.** `App\Support\MalaysiaTime::TIMEZONE` is the one home for
+  `'Asia/Kuala_Lumpur'`. The copies in `ReportService`, `DashboardService`,
+  `CustomerAnalyticsService`, `AffiliateEarningsService` and
+  `PeriodComparison` are gone, and every reader (vouchers, accounting,
+  form requests, scheduler, the `transferred_on` migration, the demo
+  seeder, tests) points at it. Admin: `KL_TIMEZONE` in `lib/date-range.ts`;
+  the dashboard's own `kl_today()` folded into `todayInKL()`. No behaviour
+  change. The SQL day buckets keep their `'+08:00'` offset (MySQL
+  `CONVERT_TZ` needs an offset without the tz tables). Tests that pin
+  `'Asia/Kuala_Lumpur'` as a literal were left as is, on purpose.
+- **Verify.** Fast suite 2745/2745. Admin `tsc` + `eslint` clean.
+- **Timezone audit (founder's ask, read-only).** Swept the backend
+  (scheduler, date filters, emails, WhatsApp, CSV/PDF/Excel, SQL) and the
+  four frontends for Malaysia-day logic still on UTC. Reports, Dashboard,
+  Customer Analytics, Accounting, the Orders filter, vouchers, membership
+  emails and reminders, exports and the affiliate dashboard already use
+  Malaysia time. Found two real bugs, logged as §16 items 91 (hero-slide
+  schedule shifts 8 hours per edit; no prod slide has a schedule) and 92
+  (Request Logs filter on UTC days). Cosmetic: the stale-FX alert prints a
+  UTC time unlabelled; the email footer year is the UTC year. Not bugs:
+  `->daily()` jobs run 08:00 MYT and the backup 02:00 UTC (10:00 MYT);
+  frontend dates render in the viewer's browser timezone; Digiflazz cutoffs
+  are Asia/Jakarta on purpose.

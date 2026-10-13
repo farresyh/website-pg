@@ -723,7 +723,8 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
 #416. Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- **90** One shared Malaysia-timezone constant instead of five copies.
+- **91** Admin hero-slide schedule shifts 8 hours on every edit.
+- **92** Request Logs date filter cuts days at UTC midnight.
 
 **B. Needs a short grill / ADR addendum first**
 - **66** Combo edit-composition UI (needs an ADR-094 addendum).
@@ -998,16 +999,22 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
     nullable per-`Reseller` override read by the two limiters, set from the
     admin reseller page.
 
-90. **One shared Malaysia-timezone constant** (found 2026-10-13, item 88).
-    `'Asia/Kuala_Lumpur'` is typed in `ReportService`,
-    `CustomerAnalyticsService`, `AffiliateEarningsService`,
-    `PeriodComparison` and `DashboardService` (plus `todayInKL()` in the
-    admin). Accounting and vouchers read `ReportService::TIMEZONE`, so a
-    voucher depends on the Reports service for a constant. Move it to one
-    `App\Support` home and point every reader at it. No behaviour change.
+91. **Admin hero-slide schedule shifts 8 hours on every edit** (found
+    2026-10-13, timezone audit). `HeroSlideModal` saves the
+    `datetime-local` value as UTC correctly, but loads it back by slicing
+    the UTC ISO string, so 10:00 MYT shows as 02:00 and a re-save stores
+    02:00 MYT. No production slide has `starts_at`/`ends_at` (read-only
+    check 2026-10-13), so nothing is wrong yet.
+
+92. **Request Logs date filter cuts days at UTC midnight** (found
+    2026-10-13, timezone audit). `RequestLogController` compares the raw
+    `YYYY-MM-DD` against the UTC `created_at`: "from" starts at 08:00 MYT
+    and "to" ends at 08:00 MYT that day. Use the same Malaysia-day bounds
+    as the Orders filter.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
+- **90** 2026-10-13: one shared Malaysia timezone constant, `App\Support\MalaysiaTime::TIMEZONE` (admin: `KL_TIMEZONE` in `lib/date-range.ts`), replacing the five copies; vouchers and accounting no longer read it from `ReportService`. No behaviour change. Staging only until a release. Details: build-log 2026-10-13.
 - **88** 2026-10-13: a typed voucher expiry date is valid through the end of that Malaysia day (stored 23:59:59 MYT), date-only input with a native picker, today in Malaysia the earliest date (ADR-024 2026-10-13 addendum). No production voucher had an expiry. Staging only until a release. Details: build-log 2026-10-13.
 - **6 / A3** 2026-10-13: the Reseller API is limited per Reseller account, not per key, in two buckets (orders 60/min, reads 120/min); per-tier limits closed as not wanted; Bot unchanged (ADR-074 2026-10-13 addendum). The override is item 89. Staging only until a release. Details: build-log 2026-10-13.
 - **87** 2026-10-13: the founder deleted the two old `.env` backups on the prod box (`.env.bak-before-dbtls`, `.env.bak-2026-09-30-doadmin-least-privilege`; both held the DB password). Verified read-only: only `.env` remains in the site root.
