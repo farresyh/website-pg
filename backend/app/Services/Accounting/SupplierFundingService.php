@@ -8,7 +8,7 @@ use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\SupplierTransferCorrection;
-use App\Services\Report\ReportService;
+use App\Support\MalaysiaTime;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\UploadedFile;
@@ -437,8 +437,8 @@ final class SupplierFundingService
             ->with(['adjustments', 'corrections'])
             // ADR-083 2026-10-10 addendum, decision 15: the day the money
             // moved, a KL calendar date — not when the row was typed in.
-            ->when($from, fn ($q) => $q->where('transferred_on', '>=', $from->copy()->setTimezone(ReportService::TIMEZONE)->toDateString()))
-            ->when($toExclusive, fn ($q) => $q->where('transferred_on', '<', $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->toDateString()))
+            ->when($from, fn ($q) => $q->where('transferred_on', '>=', $from->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString()))
+            ->when($toExclusive, fn ($q) => $q->where('transferred_on', '<', $toExclusive->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString()))
             ->when($voided === true, fn ($q) => $q->whereNotNull('voided_at'))
             ->when($voided === false, fn ($q) => $q->whereNull('voided_at'))
             ->orderByDesc('transferred_on')

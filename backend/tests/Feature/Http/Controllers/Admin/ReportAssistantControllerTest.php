@@ -13,9 +13,9 @@ use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\PricingBasis;
-use App\Services\Report\ReportService;
 use App\Services\ReportAssistant\Gemini\FakeGeminiClient;
 use App\Services\ReportAssistant\Gemini\GeminiClient;
+use App\Support\MalaysiaTime;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -239,7 +239,7 @@ class ReportAssistantControllerTest extends TestCase
 
         $planPrompt = $fake->calls[0]['systemPrompt'];
         $this->assertStringContainsString('SQLite', $planPrompt);
-        $this->assertStringContainsString((string) now(ReportService::TIMEZONE)->format('Y-m-d'), $planPrompt);
+        $this->assertStringContainsString((string) now(MalaysiaTime::TIMEZONE)->format('Y-m-d'), $planPrompt);
         $this->assertStringContainsString('date_trunc', $planPrompt);
     }
 

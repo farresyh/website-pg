@@ -7,7 +7,7 @@ use App\Models\VoucherMerge;
 use App\Models\VoucherRedemption;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
-use App\Services\Report\ReportService;
+use App\Support\MalaysiaTime;
 use App\Support\PhoneNumber;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -110,7 +110,7 @@ final class VoucherService
      */
     private static function endOfMalaysiaDay(?string $date): ?Carbon
     {
-        return $date === null ? null : Carbon::createFromFormat('!Y-m-d', $date, ReportService::TIMEZONE)->setTime(23, 59, 59)->utc();
+        return $date === null ? null : Carbon::createFromFormat('!Y-m-d', $date, MalaysiaTime::TIMEZONE)->setTime(23, 59, 59)->utc();
     }
 
     public function merge(array $voucherIds, string $reason, int $mergedBy, ?string $expiresAt): Voucher

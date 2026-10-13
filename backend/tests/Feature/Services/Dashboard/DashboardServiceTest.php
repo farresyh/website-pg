@@ -18,6 +18,7 @@ use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
+use App\Support\MalaysiaTime;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -495,7 +496,7 @@ class DashboardServiceTest extends TestCase
 
     public function test_hourly_activity_groups_by_hour_of_day_in_kl_timezone(): void
     {
-        $today = CarbonImmutable::now(DashboardService::TIMEZONE)->startOfDay();
+        $today = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->startOfDay();
 
         $order = $this->order();
         DB::table('orders')->where('id', $order->id)->update([
@@ -511,7 +512,7 @@ class DashboardServiceTest extends TestCase
 
     public function test_hourly_activity_counts_created_orders_regardless_of_payment_status(): void
     {
-        $today = CarbonImmutable::now(DashboardService::TIMEZONE)->startOfDay();
+        $today = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->startOfDay();
 
         $order = $this->order(['payment_status' => PaymentStatus::Failed->value, 'paid_at' => null]);
         DB::table('orders')->where('id', $order->id)->update([
@@ -525,7 +526,7 @@ class DashboardServiceTest extends TestCase
 
     public function test_hourly_activity_excludes_test_orders(): void
     {
-        $today = CarbonImmutable::now(DashboardService::TIMEZONE)->startOfDay();
+        $today = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->startOfDay();
 
         $order = $this->order(['is_test' => true]);
         DB::table('orders')->where('id', $order->id)->update([

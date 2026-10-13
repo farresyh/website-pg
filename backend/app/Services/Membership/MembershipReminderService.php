@@ -5,7 +5,7 @@ namespace App\Services\Membership;
 use App\Models\Affiliate;
 use App\Models\Membership;
 use App\Models\MembershipReminder;
-use App\Services\Report\ReportService;
+use App\Support\MalaysiaTime;
 
 /**
  * Decides which renewal reminder a membership is due for (ADR-068
@@ -74,7 +74,7 @@ final class MembershipReminderService
             return null;
         }
 
-        $today = now()->setTimezone(ReportService::TIMEZONE)->startOfDay();
+        $today = now()->setTimezone(MalaysiaTime::TIMEZONE)->startOfDay();
         $endsOn = $membership->expiresOn();
 
         if ($membership->expires_at->isFuture()) {

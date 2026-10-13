@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use App\Services\Membership\MembershipStatus;
-use App\Services\Report\ReportService;
+use App\Support\MalaysiaTime;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -87,6 +87,6 @@ class Membership extends Model
      */
     public function expiresOn(): ?CarbonImmutable
     {
-        return $this->expires_at?->toImmutable()->setTimezone(ReportService::TIMEZONE)->startOfDay();
+        return $this->expires_at?->toImmutable()->setTimezone(MalaysiaTime::TIMEZONE)->startOfDay();
     }
 }

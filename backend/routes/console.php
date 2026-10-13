@@ -3,7 +3,7 @@
 use App\Jobs\SyncSupplierPricesJob;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
-use App\Services\Report\ReportService;
+use App\Support\MalaysiaTime;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -159,7 +159,7 @@ Schedule::command('app:reconcile-pending-membership-payments')
 // reads expires_at, not status, so the order between them doesn't matter.
 Schedule::command('app:send-membership-reminders')
     ->dailyAt('10:00')
-    ->timezone(ReportService::TIMEZONE)
+    ->timezone(MalaysiaTime::TIMEZONE)
     ->name('membership-renewal-reminders')
     ->withoutOverlapping();
 
