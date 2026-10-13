@@ -39,9 +39,9 @@ class EnsureResellerApiKey
      */
     public function handle(Request $request, Closure $next): Response
     {
-        // Wave 3 PR-B: the `reseller-api` limiter keys on the raw token, so
-        // each made-up key got a fresh bucket. Failed auth is counted per
-        // IP here instead — 20/min, then 429 until the minute is up.
+        // Wave 3 PR-B: the account limiters run after this middleware
+        // (ADR-074 2026-10-13 addendum), so failed auth is counted per IP
+        // here instead — 20/min, then 429 until the minute is up.
         // Pre-release review (2026-09-29): the lockout only applies to
         // requests that fail auth — a valid key from a locked-out IP (a
         // reseller's one stale worker, a shared NAT) still goes through.

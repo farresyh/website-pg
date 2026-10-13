@@ -975,3 +975,45 @@ The founder merged #418 (item 84 + docs audit) into `staging` and deleted the
 two `.env` backups on the prod box. Read-only `ls -la ~/api.pekangame.space/`
 afterwards: only `.env` (mode 664, owner `forge`) remains. #418 is on `staging`
 only until the next release.
+
+## 2026-10-13 — §16 item 6 / A3: Reseller API rate limit per account, two buckets
+
+On `fix/reseller-api-rate-limit-per-account`. Staging only until a release.
+Design: ADR-074 2026-10-13 addendum (grilled, then stress-tested against the
+code and Laravel's `SortedMiddleware`).
+
+- **What changed.** The one `reseller-api` limiter (60/min per raw bearer
+  token, run before auth) became two named limiters keyed on the Reseller:
+  `reseller-api-orders` on `POST /v1/orders` (60/min) and
+  `reseller-api-reads` on every `GET` (120/min). `EnsureResellerApiKey` is
+  pinned ahead of `ThrottleRequests` in the priority list, next to ADR-080's
+  pin. Bot untouched.
+- **Gotcha proved, not assumed.** With the pin removed, all 5 new tests fail:
+  the `api` group's `SubstituteBindings` makes Laravel hoist the throttle above
+  the auth middleware, whatever order the route lists them in. `route:list`
+  shows the declared order, not the sorted one, so it can't show this.
+- **Tests.** New `ResellerApiRateLimitTest` (5): keys of one account share the
+  order bucket; reads never block orders and the reverse; accounts are
+  isolated; revoke-and-reissue keeps the bucket. Red first (4 of 5; isolation
+  already held per key). The old 60/min limit had no test at all. Fast suite
+  2738/2738.
+- **Live check.** Local `php artisan serve` + `curl` with a temporary key
+  (deleted afterwards): 120 reads then 429 with `X-RateLimit-Limit: 120` and
+  `Retry-After`; 60 order POSTs still allowed after the read bucket was spent,
+  then 429 `RATE_LIMITED`; a bogus key 401.
+- **Docs site (v1.5.0).** `rate-limits.md` rewritten (per account, two
+  buckets, the `X-RateLimit-*` headers, a 429 on an order means not placed).
+  Full read of all 11 pages against the code, which corrected:
+  `first-order.md` said the price "follows the supplier's cost… about hourly"
+  (shows the cost structure; prod syncs every 30 min), now "Prices can change
+  whenever PekanGame updates its catalogue"; the poll/webhook bullets there
+  and the webhooks page description now include `partially_delivered`;
+  `authentication.md` notes all keys share the limits; `wallet.md` dropped
+  "If your pricing changes, PekanGame will tell you in advance" (it meant the
+  tier, per `badfe1b`; the founder removed the promise since only admins set
+  a tier) and points to the price-change guidance instead. No ADR/PRD/internal
+  reference was found in the pages or the generated spec. `openapi.json`
+  changes only in `info.version`.
+- **Production read (read-only) for the grill:** 4 tiers, 2 resellers, 2 live
+  API keys (reseller #1, last used 2026-09-09), 0 API orders ever, 8 Bot
+  orders.

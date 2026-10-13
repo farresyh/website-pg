@@ -5,6 +5,7 @@ use App\Http\Middleware\AllowActiveCustomDomainCors;
 use App\Http\Middleware\EnsureAccountType;
 use App\Http\Middleware\EnsureAdminRole;
 use App\Http\Middleware\EnsureBrandMembershipEnabled;
+use App\Http\Middleware\EnsureResellerApiKey;
 use App\Http\Middleware\ResolveStorefrontBrand;
 use App\Http\Middleware\SetAffiliateContext;
 use Illuminate\Foundation\Application;
@@ -135,6 +136,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prependToPriorityList(
             before: ThrottleRequests::class,
             prepend: EnsureBrandMembershipEnabled::class,
+        );
+        // Same trap for the Reseller API (ADR-074 2026-10-13 addendum): its
+        // limiters key on the Reseller that EnsureResellerApiKey resolves,
+        // so auth must run before the throttle.
+        $middleware->prependToPriorityList(
+            before: ThrottleRequests::class,
+            prepend: EnsureResellerApiKey::class,
         );
     })
     ->withExceptions(function (Exceptions $exceptions): void {

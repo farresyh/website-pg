@@ -87,9 +87,9 @@ Content-Type: application/json
 
 ### Prices change — send `max_price_sen`
 
-Your price follows the supplier's cost, which PekanGame syncs from the supplier
-regularly (about hourly), so a `price_sen` you read earlier may no longer be current. You are
-always charged the **current** price at the moment of the order:
+Prices can change whenever PekanGame updates its catalogue, so a `price_sen`
+you read earlier may no longer be current. You are always charged the
+**current** price at the moment of the order:
 
 - current price ≤ `max_price_sen` → the order goes through at the current
   price (lower, if it has dropped);
@@ -153,9 +153,10 @@ the undelivered share. Do not infer a refund from the status alone.
 Delivery is asynchronous. Two ways to learn the outcome:
 
 - **Poll** `GET /v1/orders/{order_number}` until `delivery_status`
-  is `delivered` or `failed`.
-- **Webhook** — register an endpoint once and receive a signed `order.delivered`
-  / `order.failed` callback. See [Delivery notifications](/webhooks/).
+  is `delivered`, `failed` or `partially_delivered`.
+- **Webhook** — register an endpoint once and receive a signed
+  `order.delivered` / `order.failed` / `order.partially_delivered` callback.
+  See [Delivery notifications](/webhooks/).
 
 ```http
 GET /v1/orders/PG-7QK2M9X4RJ

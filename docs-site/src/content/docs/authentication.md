@@ -24,6 +24,7 @@ the whole credential — keep it server-side, never ship it in a browser or app.
   hash — nobody can recover it later, so copy it immediately.
 - You can hold **up to 5 active keys** per account. Use separate keys per
   integration or environment so you can revoke one without disrupting the rest.
+  All of them share your account's [rate limits](/rate-limits/).
 - Manage keys yourself in the partner portal under **API Keys**, or ask
   PekanGame support.
 

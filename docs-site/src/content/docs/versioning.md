@@ -32,6 +32,14 @@ The version number on this documentation (shown in the API Reference) is the
 
 ## Changelog
 
+### 2026-10 — v1.5.0
+
+- Rate limits are now **per account**, not per API key, in two buckets:
+  orders (`POST /v1/orders`, 60 per minute) and reads (every `GET`, 120 per
+  minute). All your keys share them, and polling no longer uses up the
+  capacity you need to place orders. See [Rate limits](/rate-limits/).
+- The response shape and the `429 RATE_LIMITED` error are unchanged.
+
 ### 2026-10 — v1.4.0
 
 - `POST /v1/orders` accepts an optional `max_price_sen`. If your current
