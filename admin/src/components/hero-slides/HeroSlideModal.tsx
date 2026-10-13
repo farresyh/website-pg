@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ImageUrlInput } from "@/components/gallery/ImageUrlInput";
 import type { HeroSlide, SaveHeroSlideValues } from "@/lib/hero-slides";
+import { isoToKlInput, klInputToIso } from "@/lib/date-range";
 
 interface HeroSlideModalProps {
   isOpen: boolean;
@@ -43,15 +44,6 @@ function senToRm(sen: number | null): string {
   return sen != null ? (sen / 100).toFixed(2) : "";
 }
 
-/** `starts_at`/`ends_at` <-> <input type="datetime-local"> (no timezone suffix). */
-function isoToLocalInput(iso: string | null): string {
-  if (!iso) return "";
-  return iso.slice(0, 16);
-}
-function localInputToIso(value: string): string | null {
-  return value ? new Date(value).toISOString() : null;
-}
-
 function HeroSlideFields({
   onClose,
   onSubmit,
@@ -70,8 +62,8 @@ function HeroSlideFields({
   const [secondaryCtaHref, setSecondaryCtaHref] = useState(slide?.secondary_cta_href ?? "");
   const [isActive, setIsActive] = useState(slide?.is_active ?? true);
   const [sortOrder, setSortOrder] = useState(String(slide?.sort_order ?? nextSortOrder));
-  const [startsAt, setStartsAt] = useState(isoToLocalInput(slide?.starts_at ?? null));
-  const [endsAt, setEndsAt] = useState(isoToLocalInput(slide?.ends_at ?? null));
+  const [startsAt, setStartsAt] = useState(isoToKlInput(slide?.starts_at ?? null));
+  const [endsAt, setEndsAt] = useState(isoToKlInput(slide?.ends_at ?? null));
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -94,8 +86,8 @@ function HeroSlideFields({
         secondary_cta_href: secondaryCtaHref || null,
         is_active: isActive,
         sort_order: parseInt(sortOrder, 10) || 0,
-        starts_at: localInputToIso(startsAt),
-        ends_at: localInputToIso(endsAt),
+        starts_at: klInputToIso(startsAt),
+        ends_at: klInputToIso(endsAt),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -225,7 +217,7 @@ function HeroSlideFields({
               Active
             </label>
             <div>
-              <Label htmlFor="slide_starts_at">Starts at (optional)</Label>
+              <Label htmlFor="slide_starts_at">Starts at, Malaysia time (optional)</Label>
               <input
                 id="slide_starts_at"
                 type="datetime-local"
@@ -235,7 +227,7 @@ function HeroSlideFields({
               />
             </div>
             <div>
-              <Label htmlFor="slide_ends_at">Ends at (optional)</Label>
+              <Label htmlFor="slide_ends_at">Ends at, Malaysia time (optional)</Label>
               <input
                 id="slide_ends_at"
                 type="datetime-local"

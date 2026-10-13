@@ -35,6 +35,7 @@ import {
 } from "@/lib/hero-slides";
 import HeroSlideModal from "@/components/hero-slides/HeroSlideModal";
 import { Switch } from "@/components/ui/switch";
+import { KL_TIMEZONE } from "@/lib/date-range";
 
 export default function HeroSlidesPage() {
   const router = useRouter();
@@ -151,9 +152,9 @@ export default function HeroSlidesPage() {
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
                           {slide.starts_at || slide.ends_at ? (
                             <>
-                              {slide.starts_at ? new Date(slide.starts_at).toLocaleDateString() : "—"}
+                              {slide.starts_at ? new Date(slide.starts_at).toLocaleDateString("en-MY", { timeZone: KL_TIMEZONE }) : "—"}
                               {" → "}
-                              {slide.ends_at ? new Date(slide.ends_at).toLocaleDateString() : "—"}
+                              {slide.ends_at ? new Date(slide.ends_at).toLocaleDateString("en-MY", { timeZone: KL_TIMEZONE }) : "—"}
                             </>
                           ) : (
                             "Always on"

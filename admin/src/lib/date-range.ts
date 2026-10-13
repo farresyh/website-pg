@@ -23,6 +23,17 @@ export const DATE_RANGE_PRESETS: { value: DateRangePreset; label: string }[] = [
 export const KL_TIMEZONE = "Asia/Kuala_Lumpur";
 
 /**
+ * `<input type="datetime-local">` <-> UTC ISO, the input always read as
+ * Malaysia time (fixed UTC+8, no DST) whatever the browser's timezone.
+ */
+export function klInputToIso(value: string): string | null {
+  return value ? new Date(`${value}:00+08:00`).toISOString() : null;
+}
+export function isoToKlInput(iso: string | null): string {
+  return iso ? new Date(Date.parse(iso) + 8 * 3_600_000).toISOString().slice(0, 16) : "";
+}
+
+/**
  * Today's calendar date in KL_TIMEZONE ('YYYY-MM-DD'). Uses `Intl` (the
  * `en-CA` locale formats as YYYY-MM-DD) rather than a date library.
  */

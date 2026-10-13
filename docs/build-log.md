@@ -1099,3 +1099,35 @@ On `fix/shared-malaysia-timezone`. Staging-only until a release.
   `->daily()` jobs run 08:00 MYT and the backup 02:00 UTC (10:00 MYT);
   frontend dates render in the viewer's browser timezone; Digiflazz cutoffs
   are Asia/Jakarta on purpose.
+
+## 2026-10-13 — Items 91 + 92: hero-slide schedule and Request Logs filter on Malaysia time; FX alert and email footer
+
+On `fix/timezone-hero-slide-request-logs` (stacked on item 90's branch, for
+`KL_TIMEZONE`). Staging-only until a release.
+
+- **91.** `HeroSlideModal` loaded `starts_at`/`ends_at` by slicing the UTC
+  ISO string, so 10:00 MYT showed as 02:00 and a re-save moved it 8 hours
+  back. New `klInputToIso` / `isoToKlInput` in `admin/src/lib/date-range.ts`
+  read the `datetime-local` input as Malaysia time (fixed +08:00) whatever
+  the browser's timezone; labels say "Malaysia time". The list's Schedule
+  column now formats in `KL_TIMEZONE` too.
+- **92.** `RequestLogController` compared the raw `YYYY-MM-DD` with the UTC
+  `created_at`. It now validates `date_format:Y-m-d` and uses
+  `ReportService::dateRangeFromDates()`, the Orders filter's Malaysia-day
+  bounds.
+- **Cosmetic, from the same audit.** The stale-FX alert email (IDR->MYR,
+  sent to every active admin when the stored rate is over 48 h old) now
+  states the stored rate's time in Malaysia time ("13 Oct 2026, 11:30
+  MYT"), not an unlabelled UTC time. It has never fired in production (0
+  log lines; read-only check 2026-10-13). The email footer's © year is the
+  Malaysia year (both markdown mail layouts).
+- **Tests.** Red first: `CurrencyRateServiceTest` +1 (the MYT time in the
+  alert). `RequestLogControllerTest` +2 (13 Oct boundary rows
+  at 00:00 and 23:59:59 MYT; a non-date `from` is 422).
+  `admin/src/lib/date-range.test.ts` (2), run under `TZ` New York, Kuala
+  Lumpur and UTC. Fast suite 2748/2748. Admin `npm test` 8/8, `tsc` +
+  `eslint` clean.
+- **Live check.** Built admin + local API, Playwright with the browser in
+  New York and then Kuala Lumpur: a slide stored 2026-10-20 02:00 UTC opens
+  as `2026-10-20T10:00`, and Save leaves the DB at 02:00 UTC both times.
+  The test slide was deleted afterwards.

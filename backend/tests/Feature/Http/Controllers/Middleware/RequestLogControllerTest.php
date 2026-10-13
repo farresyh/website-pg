@@ -79,6 +79,27 @@ class RequestLogControllerTest extends TestCase
         $this->assertSame($match->id, $body['data'][0]['id']);
     }
 
+    public function test_index_date_filter_uses_malaysia_days(): void
+    {
+        $this->actingAsAdmin();
+        $at = fn (string $utc) => tap($this->log(), fn ($row) => $row->forceFill(['created_at' => $utc])->save());
+        $at('2026-10-12 15:59:59'); // 12 Oct 23:59:59 MYT
+        $first = $at('2026-10-12 16:00:00'); // 13 Oct 00:00 MYT
+        $last = $at('2026-10-13 15:59:59'); // 13 Oct 23:59:59 MYT
+        $at('2026-10-13 16:00:00'); // 14 Oct 00:00 MYT
+
+        $ids = collect($this->getJson('/api/middleware/request-logs?from=2026-10-13&to=2026-10-13')->assertOk()->json('data'))->pluck('id')->sort()->values()->all();
+
+        $this->assertSame([$first->id, $last->id], $ids);
+    }
+
+    public function test_index_rejects_a_non_date_filter(): void
+    {
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/middleware/request-logs?from=yesterday')->assertUnprocessable();
+    }
+
     public function test_show_returns_the_stored_already_redacted_payload_unchanged(): void
     {
         $this->actingAsAdmin();
