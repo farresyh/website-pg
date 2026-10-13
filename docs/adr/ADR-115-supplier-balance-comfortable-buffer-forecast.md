@@ -1,6 +1,6 @@
 # ADR-115: Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold (design only, build parked)
 
-> **Standing (2026-10-09):** Parked (designed). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-13):** Parked (designed); the 2026-10-13 addendum adds a low-balance email alert to the build scope, revising decision 8. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Parked — grilled 2026-09-28 (`/mattpocock-skills:grilling`, 3 rounds), fully designed and decided below, **build deliberately deferred**. No automatic trigger to start building (decision 10) — the founder will say when.
 
@@ -40,3 +40,36 @@ Two facts, checked against real code before grilling further:
 - If an `is_test_order` flag (or equivalent) is ever built for other reasons, revisit decision 1 — an automatic trigger (e.g. "N real orders in the last 30 days") becomes possible and may be preferable to a manual call.
 - The 60-day trailing window and p90 percentile (decision 4) are defaults recorded here, not proven against real data (none exists yet) — treat them, like the rest of this design, as fully re-arguable once real spend data actually exists to tune against, not just numbers to tweak in isolation.
 - If Gamevion is ever re-funded/re-activated (reversing the 2026-09-24 launch-gate retirement this ADR's scope decision 2 relies on), this ADR's single-supplier scope needs revisiting.
+
+### 2026-10-13 addendum — a low-balance email alert joins the build scope (revises decision 8)
+
+**Context.** The 2026-10-13 docs audit found PRD §9 promising an admin
+notification for low supplier balance that does not exist. Checked on prod
+(read-only, 2026-10-13): Digiflazz, the only live supplier, has no
+`api_config['low_balance_threshold']` set, so even the existing
+`Log::warning` in `app:refresh-supplier-balances` never fires. The Dashboard
+chip is the only signal, and only if someone opens the Dashboard.
+
+**Decision (founder, 2026-10-13).**
+1. Decision 8's "no external push" is revised: when this ADR is built, the
+   same build adds one email alert to every active admin when the polled
+   balance crosses the buffer (the learned figure, or the manual cold-start
+   number from decision 6).
+2. It goes through the existing ops-alert path, `BackupFailureAlerter`
+   (Plunk, with its own `$area`), throttled like the stale-FX alert (at most
+   once a day per supplier).
+3. Still no auto-action: no automatic top-up, no checkout blocking.
+4. Not built ahead of the rest of this ADR. The trigger is unchanged
+   (decision 1: the founder says when).
+
+**Rationale.** Decision 8 rejected email because of the `MAIL_MAILER=log`
+history. That reason no longer holds: since 2026-09-14 ops alerts go through
+`PlunkMailer`, not Laravel's `Mail::`, the same path that delivers the
+membership OTP and receipts to real customers. With Digiflazz the only live
+supplier, an unnoticed empty balance fails every order.
+
+**Consequence to track.** Settle at build time (grill): the throttle, whether
+a recovery ("back above the buffer") mail is wanted, and the manual
+cold-start number for Digiflazz. Until then, setting Digiflazz's
+`low_balance_threshold` would at least make today's log warning fire; it
+still reaches nobody without a log reader.

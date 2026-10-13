@@ -468,7 +468,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
   - A circuit breaker trips per-supplier after repeated failures, preventing cascading timeouts from a down supplier blocking the whole delivery queue.
   - Dashboard must remain accessible even when one supplier is down.
   - The system never relies solely on a supplier webhook/callback for final state — a scheduled reconciliation job independently confirms order and payment status (ORD-10, PAY-3).
-- **Error Handling :** All supplier API errors must be logged with full request/response payload, credentials and excess PII redacted. Admin receives notifications for critical failures (stuck orders, low supplier balance, tripped circuit breaker).
+- **Error Handling :** All supplier API errors must be logged with full request/response payload, credentials and excess PII redacted. Admins are emailed (Plunk, every active admin) for a failed backup, a long Horizon queue wait and a stale FX rate. Stuck orders, supplier balance and circuit-breaker state are monitored on the Dashboard (System Health), not pushed. A low-supplier-balance email is designed with item 28 (ADR-115 2026-10-13 addendum), not built.
 - **Data Privacy :** Player IDs and customer personal data (including validation-response data such as in-game nickname/country) must be handled securely, retained only as long as operationally needed, and never over-logged. No logging of raw credentials. Admin action audit trails, including impersonation.
 - **Backup & Recovery :** Automatic daily backup, 7 daily / 4 weekly / 6 monthly retention (ADR-039, ADR-095). Manual backup via admin panel. Backups must be downloadable.
 - **Multi-language :** Storefront supports multiple languages (English + local language). Admin panel is single language (English).
@@ -707,7 +707,7 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
 **D. Waiting on a trigger: don't build early**
 - **4** Bot-host resize, when capacity calls for it.
 - **10** MFA, before the partner portal's withdrawal balances grow.
-- **28** Supplier buffer forecast (ADR-115), once real order volume exists.
+- **28** Supplier buffer forecast plus a low-balance email alert (ADR-115), once real order volume exists.
 - **49** Detect a proxied affiliate domain, when an affiliate hits it.
 - **53** Parallel scheduler reconcile, if a slow CHIP lookup delays delivery.
 - **55** Test-order flag, with item 28 at real volume.
@@ -797,7 +797,11 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
     funding-drift chip), cold-start falls back to the founder's own
     manual threshold. No automatic trigger to start building — the
     founder will say when, typically once real (non-testing) order
-    volume exists.
+    volume exists. **2026-10-13 addendum:** the build also adds a
+    low-balance email to every active admin through the ops-alert path
+    (`BackupFailureAlerter`, Plunk), throttled once a day per supplier, when
+    the balance crosses the buffer. Today nothing alerts: Digiflazz has no
+    `low_balance_threshold` on prod, so even the log warning never fires.
 
 49. **Detect a proxied affiliate domain on "Check now"** (ADR-060 follow-up).
     The DNS setup guide is built (2026-10-02, `DomainSetupGuide.tsx`, EN/BM,

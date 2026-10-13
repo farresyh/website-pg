@@ -635,8 +635,11 @@ index Standing (wording differs, meaning matches), the root/backend AGENTS
 facts (Laravel 13, PHP 8.4, Next 16.3.8, Astro 7, deploy gated on every CI
 job except `playwright`).
 
-Left for the founder (needs a decision, not a doc edit): PRD §9 says the
-admin is notified of stuck orders, low supplier balance and a tripped circuit
-breaker. Today only backups, Horizon long-wait and a stale FX rate email the
-admins; low balance is a log line plus the Dashboard chip, and stuck orders
-and the breaker are Dashboard-only.
+PRD §9 said the admin is notified of stuck orders, low supplier balance and
+a tripped circuit breaker. Today only backups, Horizon long-wait and a stale
+FX rate email the admins; the rest is Dashboard-only. Founder's call: §9 now
+states that, and a low-balance email joins §16 item 28's build scope as an
+ADR-115 2026-10-13 addendum (revising decision 8, whose `MAIL_MAILER=log`
+reason no longer holds since ops alerts go through Plunk). Found on prod
+(read-only): Digiflazz has no `low_balance_threshold`, so today's
+low-balance log warning never fires.
