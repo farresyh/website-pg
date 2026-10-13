@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -31,6 +32,27 @@ class Voucher extends Model
         'remaining' => 'integer',
         'expires_at' => 'datetime',
     ];
+
+    /**
+     * Expiry is `expires_at` alone: nothing ever sets `status` to
+     * `expired` (§16 item 84). Checkout, merge and the admin list all ask
+     * this, so the rule lives once. `status` is deliberately not
+     * backfilled — the Monthly Summary's breakage reads `expires_at`.
+     */
+    public function isExpired(): bool
+    {
+        return $this->expires_at !== null && $this->expires_at->isPast();
+    }
+
+    /**
+     * What the admin list shows: `expired` for an active voucher past its
+     * expiry, otherwise the stored status. Admin-only — appended by
+     * `Admin\VoucherController`, never on a customer-facing payload.
+     */
+    protected function displayStatus(): Attribute
+    {
+        return Attribute::get(fn (): string => $this->status === 'active' && $this->isExpired() ? 'expired' : $this->status);
+    }
 
     /**
      * ADR-024 decision #2 — every checkout that spent this voucher

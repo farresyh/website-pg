@@ -11,8 +11,9 @@ Laravel-specific, loaded only when working inside `backend/`.
   `CheckoutTotalService`, never hand-rolled inline.
 - **Balances are ledger-only, never a mutable column** (ADR-002) —
   `App\Services\Ledger\LedgerService` is the sole writer to `ledger_entries`.
-  Anything that moves money (withdrawal approval, voucher issuance, order
-  profit) goes through it.
+  Anything that moves money (withdrawal approval, an admin-issued voucher,
+  order profit) goes through it. A compensation voucher (issued for an
+  order) writes no ledger row (ADR-024 2026-10-12 addendum).
 - **No cash refunds, ever** (ADR-004) — a failed/refundable order becomes a
   store-credit `Voucher`, not a reversed payment.
 - **Supplier and payment integrations are behind adapters** —

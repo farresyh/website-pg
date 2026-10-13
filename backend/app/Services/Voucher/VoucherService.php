@@ -117,7 +117,7 @@ final class VoucherService
                 // §16 item 80: expiry is `expires_at` alone (status stays
                 // `active`), and a closed month may already have booked
                 // this credit as breakage — never hand it back.
-                if ($voucher->expires_at !== null && $voucher->expires_at->isPast()) {
+                if ($voucher->isExpired()) {
                     throw new InvalidVoucherException("Voucher {$voucher->code} has expired and cannot be merged.");
                 }
             }
@@ -398,7 +398,7 @@ final class VoucherService
             throw new InvalidVoucherException($genericMessage);
         }
 
-        if ($voucher->expires_at !== null && $voucher->expires_at->isPast()) {
+        if ($voucher->isExpired()) {
             throw new InvalidVoucherException($genericMessage);
         }
 

@@ -146,7 +146,7 @@
 
 ### 2026-10-13 addendum — the renewal-reminder half (PRD §16 item 64)
 
-**Status:** Accepted, 2026-10-13. Grilled with the founder (15 questions, four rounds), then stress-tested against the code before any build. Fills this ADR's deferred WhatsApp renewal-reminder half. The original blocker (no WhatsApp vendor) is gone (ADR-116's OpenWA `customer-support` session), but the grill moved phase 1 to email: a membership is keyed on email + brand (ADR-027 addendum decision 27, ADR-061 decision 5) and has no phone number, and production on 2026-10-13 had 2 members and 0 opted-in WhatsApp numbers for them.
+**Status:** Accepted, 2026-10-13. Grilled with the founder (15 questions, four rounds), then stress-tested against the code before any build. Fills this ADR's deferred WhatsApp renewal-reminder half, and revises [ADR-027](./ADR-027-vip-membership.md)'s 2026-08-29 addendum decision 28 (reminders on WhatsApp only, deliberately not email). The original blocker (no WhatsApp vendor) is gone (ADR-116's OpenWA `customer-support` session), but the grill moved phase 1 to email: a membership is keyed on email + brand (ADR-027 addendum decision 27, ADR-061 decision 5) and has no phone number, and production on 2026-10-13 had 2 members and 0 opted-in WhatsApp numbers for them.
 
 **Context:** a membership is a one-off CHIP payment for 30 days. There is no auto-renew, so a member who forgets simply lapses. Self-serve renewal exists (`/membership`, this ADR's payment half). `memberships.expires_at` is written only by `MembershipFeeService` (create, `applyTransition` renewal, reactivation), and every write moves it, so `expires_at` identifies one paid-through period.
 

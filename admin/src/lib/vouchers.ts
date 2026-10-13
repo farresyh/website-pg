@@ -15,6 +15,8 @@ export interface Voucher {
   amount: number;
   remaining: number;
   status: VoucherStatus;
+  /** §16 item 84: `expired` for an active voucher past `expires_at`; use this for display and merge eligibility. */
+  display_status: VoucherStatus;
   expires_at: string | null;
   reason: string;
   created_by: number;

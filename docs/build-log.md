@@ -924,3 +924,45 @@ the Forge `deploy` job and the four Vercel production builds green. Prod
 **Still by hand:** #409 logo re-upload in a browser; #411 the same order
 number sent several times from a real phone to the CS number. After 21 Oct:
 member #2's `before` row should read `sent` on the admin member page.
+
+---
+
+## 2026-10-13 — §16 item 84 (expired voucher shown as expired) and a docs audit
+
+On `fix/admin-voucher-list-expiry`. Staging only until a release.
+
+**Founder checks after release #416.** #411 (a card on every repeat, real
+phone), #409 (a re-uploaded logo shows at once) and the unsquashed email logo:
+all confirmed by the founder.
+
+**Item 84.** Expiry is `expires_at` alone; `status` stays `active`. Tracing
+every reader found the "usable" rule inline in three places (checkout,
+merge, and the admin list, which lacked the expiry half) and two more
+display readers (the order page's Refund cards, and the Issue Voucher response
+the order page merges into its state).
+- `Voucher::isExpired()` is the one rule; `VoucherService` checkout and merge
+  use it.
+- `display_status` (`expired` for an active voucher past its expiry) is
+  appended only on admin responses: the list (stats, pill, merge checkbox),
+  the detail, the order detail's two vouchers and the Issue Voucher result.
+  The Revoke button still follows the stored status (revoking an expired
+  voucher stays allowed). `status` is not backfilled.
+- Tests: list stats + `display_status` + stored status untouched; order detail
+  `paid_with_voucher.display_status`; Issue Voucher response. Backend
+  2733/2733; admin `tsc`/`lint`/`build`; a built admin showed an expired dev
+  voucher with the `expired` pill, no merge checkbox, and Active 1 / Expired 1.
+
+**Docs audit (current state and contradictions).**
+- PRD §14 hand checks done; §15 Vouchers, Customer notifications and Settings
+  rows no longer say "staging only" for #409/#411/#412/#413; §16 dates refreshed,
+  the duplicate item 6 entry removed, item 84 closed.
+- ADR-027's addendum decision 28 (renewal reminders on WhatsApp only, not
+  email) contradicted ADR-068's 2026-10-13 addendum. ADR-027's Standing (file
+  and index) and the ADR-068 addendum now cross-reference.
+- `foundation-security.md` and `backend/AGENTS.md` said every voucher issuance
+  writes a ledger row; since item 79 only an admin-issued voucher does.
+- Glossary: Voucher Expiry, Membership Renewal Reminder.
+- New §16 item 87 (founder): two `.env` backups on the prod box hold the DB
+  password, one of them mode 664 (read-only `ls`, 2026-10-13).
+- New §16 item 88: a typed voucher expiry date ends at 08:00 MYT that day
+  (midnight UTC); no production voucher has an expiry yet.
