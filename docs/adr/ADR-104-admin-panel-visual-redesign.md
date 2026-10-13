@@ -148,7 +148,7 @@ See `docs/build-log-archive.md`, 2026-10-08 (PR-B).
 - **R6 "View failed orders":** Orders had no Failed status filter (Need action excludes compensated orders, so it is a different list). The founder chose to add one; it is recorded as ADR-108's 2026-10-09 addendum, and the button opens `/admin/orders?status=failed`.
 - **Membership share figures** are labelled "member + standard", not "paid orders": on prod, reseller-wallet (7) and affiliate (4) orders have their own `pricing_basis` and sit outside that tab.
 
-See `docs/build-log.md`, 2026-10-09.
+See `docs/build-log-archive.md`, 2026-10-09.
 
 ### 2026-10-09 addendum — R8 revised after a pre-release money audit
 
