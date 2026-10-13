@@ -1008,7 +1008,10 @@ code and Laravel's `SortedMiddleware`).
   (shows the cost structure; prod syncs every 30 min), now "Prices can change
   whenever PekanGame updates its catalogue"; the poll/webhook bullets there
   and the webhooks page description now include `partially_delivered`;
-  `authentication.md` notes all keys share the limits. No ADR/PRD/internal
+  `authentication.md` notes all keys share the limits; `wallet.md` dropped
+  "If your pricing changes, PekanGame will tell you in advance" (it meant the
+  tier, per `badfe1b`; the founder removed the promise since only admins set
+  a tier) and points to the price-change guidance instead. No ADR/PRD/internal
   reference was found in the pages or the generated spec. `openapi.json`
   changes only in `info.version`.
 - **Production read (read-only) for the grill:** 4 tiers, 2 resellers, 2 live

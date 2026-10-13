@@ -55,4 +55,6 @@ or `partially_delivered` after the refund.
 The `price_sen` on every catalogue row and every order is **your price** for
 that package, in sen. The price you see in `GET /v1/catalog` and the amount
 debited when you place the order are computed the same way, so they cannot
-drift. If your pricing changes, PekanGame will tell you in advance.
+drift. Package prices can change at any time, so re-read the catalogue and
+send `max_price_sen` with each order — see
+[Prices change](/first-order/#prices-change--send-max_price_sen).
