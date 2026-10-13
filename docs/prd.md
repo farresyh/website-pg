@@ -583,6 +583,18 @@ any analysis that needs the distinction must judge each order (corrected
 2026-09-30, see `docs/build-log-archive.md`). The older "no external customers" line
 was wrong from at least then on.
 
+**Payments are switched off on purpose.** All three payment methods (FPX, FPX
+Business, DuitNow QR) have been inactive in admin since 2026-10-07, the
+founder's choice (confirmed 2026-10-13). Until they are re-enabled, storefront
+checkout and the reseller wallet's self-serve top-up can't be paid; wallet
+orders against an existing balance still work.
+
+**Unreleased on `staging` (2026-10-13):** #418 (item 84, expired vouchers
+shown as expired), #420 (item 6/A3, Reseller API per-account rate limits,
+docs site v1.5.0) and #421 (item 88, voucher expiry through the Malaysia
+day), plus docs #417/#419. No migration. They go live with the next
+`staging`→`main` release.
+
 **Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
 hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
 `cdn.` stay on `pekangame.space`.
@@ -1008,7 +1020,7 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
 - **75** 2026-10-11: the Monthly Summary's "voucher liability issued" split into "Admin-issued vouchers (no order)" (profit cost, was "Goodwill") and "Failed-order store credit issued" (information only); a merge result is in neither (ADR-083 2026-10-11 addendum, build-log). The accountant still owns expense-at-issue vs at-redemption. Live via #406 (2026-10-12).
 - **76** 2026-10-10: server-side search is debounced (300 ms) and stale-guarded on `/admin/orders`, `/admin/games`, `/admin/seo/games`, `/admin/gallery`, Middleware Sandbox and Product Manager, plus Reports' custom dates. Two shared admin hooks: `useDebouncedValue`, `useLatestRequest`. Admin only; the other apps have no affected search. Live via #406 (2026-10-12).
 - **77** 2026-10-10: `next` 16.3.5 → 16.3.8 in admin, storefront and reseller (the critical `next/og` RCE and the `next/image` SSRF); `npm audit --omit=dev` is now 0 in all three. docs-site: `sharp` 0.35.5 and a lockfile fix, no high left. Remaining: dev-only eslint `braces` (3 apps) and 11 moderate in docs-site (`postcss-selector-parser` under Starlight); both need `npm audit fix --force`, which downgrades Starlight, so left. Live via #406 (2026-10-12).
-- **6 (part)** 2026-10-10: the admin gallery in-form picker (#399) and the SET-9 Telegram removal (#400; the migration drops three columns, ADR-028 addendum). Live via #406 (2026-10-12). Remaining: A3 per-tier rate limit (B).
+- **6 (part)** 2026-10-10: the admin gallery in-form picker (#399) and the SET-9 Telegram removal (#400; the migration drops three columns, ADR-028 addendum). Live via #406 (2026-10-12). A3 closed 2026-10-13 (above).
 - **78** 2026-10-10: Envelope Ledger reshape (ADR-083 addendum) — postings with typed lines, director loans, month close and the cash equation; the platform-owner withdrawal removed. PR-1 #390 and PR-2 #391, live via #393 the same day; September 2026 closed on prod (operating profit RM 4.64). Details: build-log 2026-10-10.
 - **9** 2026-10-10: DB TLS (TLSv1.3 with the cluster CA, `MYSQL_ATTR_SSL_CA`) and DNSSEC on `pekangame.space` and `pekangame.com` (ADR-020 2026-10-10 addendum). DuitNow QR / `fpx_b2b1` are later phases.
 - **65** 2026-10-09: Reports redesign (ADR-104 R1–R21 + the 2026-10-09 R8 addendum) — 7 tabs on Recharts, Paid sales with a Bridge to Accounting (= Monthly Summary), Failed & compensated per delivery status, Compare on every tab, sales by channel + `orders.placed_via`, an Orders Failed pill (ADR-108 addendum), export with Paid sales. A pre-release money audit reconciled every figure against prod. Live via #385; verified on prod the same night.
