@@ -1,6 +1,6 @@
 <?php
 
-use App\Services\Report\ReportService;
+use App\Support\MalaysiaTime;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Carbon;
@@ -25,7 +25,7 @@ return new class extends Migration
 
         DB::table('supplier_transfers')->orderBy('id')->each(function (object $row) {
             DB::table('supplier_transfers')->where('id', $row->id)->update([
-                'transferred_on' => Carbon::parse($row->created_at, 'UTC')->setTimezone(ReportService::TIMEZONE)->toDateString(),
+                'transferred_on' => Carbon::parse($row->created_at, 'UTC')->setTimezone(MalaysiaTime::TIMEZONE)->toDateString(),
             ]);
         });
 

@@ -15,6 +15,7 @@ use App\Services\Membership\MembershipStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\PricingBasis;
+use App\Support\MalaysiaTime;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
 
@@ -78,7 +79,7 @@ class ReportDemoSeeder extends Seeder
         $ordersCreated = 0;
 
         for ($daysAgo = 94; $daysAgo >= 0; $daysAgo--) {
-            $day = CarbonImmutable::now('Asia/Kuala_Lumpur')->subDays($daysAgo);
+            $day = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->subDays($daysAgo);
             // Busier on recent days, quieter further back — a flat line is a boring demo.
             $ordersToday = random_int(0, $daysAgo > 60 ? 2 : ($daysAgo > 20 ? 4 : 6));
 

@@ -10,6 +10,7 @@ use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PlacedVia;
 use App\Services\Report\ReportService;
+use App\Support\MalaysiaTime;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -122,8 +123,8 @@ class ReportChannelAndDeliveryTest extends TestCase
 
         [$from, $toExclusive] = (new ReportService)->trendRange(null, null, null);
 
-        $this->assertSame(now(ReportService::TIMEZONE)->subDays(40)->toDateString(), $from->setTimezone(ReportService::TIMEZONE)->toDateString());
-        $this->assertSame(now(ReportService::TIMEZONE)->addDay()->toDateString(), $toExclusive->setTimezone(ReportService::TIMEZONE)->toDateString());
+        $this->assertSame(now(MalaysiaTime::TIMEZONE)->subDays(40)->toDateString(), $from->setTimezone(MalaysiaTime::TIMEZONE)->toDateString());
+        $this->assertSame(now(MalaysiaTime::TIMEZONE)->addDay()->toDateString(), $toExclusive->setTimezone(MalaysiaTime::TIMEZONE)->toDateString());
     }
 
     public function test_trend_range_with_no_orders_is_just_today(): void

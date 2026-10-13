@@ -3,7 +3,7 @@
 namespace App\Services\Order;
 
 use App\Models\Order;
-use App\Services\Report\ReportService;
+use App\Support\MalaysiaTime;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use OpenSpout\Common\Entity\Cell;
@@ -43,7 +43,7 @@ final class OrdersWorkbook
     private function columns(): array
     {
         $rm = fn (?int $sen): ?float => $sen === null ? null : $sen / 100;
-        $kl = fn ($at) => $at?->copy()->setTimezone(ReportService::TIMEZONE)->format('Y-m-d H:i');
+        $kl = fn ($at) => $at?->copy()->setTimezone(MalaysiaTime::TIMEZONE)->format('Y-m-d H:i');
 
         return [
             ['header' => 'Order #', 'value' => fn (Order $o) => $o->order_number, 'meaning' => 'Order number.', 'use' => 'Reference'],
@@ -161,7 +161,7 @@ final class OrdersWorkbook
 
         $add(new Row([new StringCell('Orders export — how to read this workbook', $title)]));
         $text('Scope', $scope);
-        $text('Generated (KL)', now(ReportService::TIMEZONE)->format('Y-m-d H:i'));
+        $text('Generated (KL)', now(MalaysiaTime::TIMEZONE)->format('Y-m-d H:i'));
         $text('Orders in this export', (string) $rowCount);
         $text('Every figure below is a formula over the "Orders" sheet — click a cell to see exactly what is added and subtracted. Totals count paid orders only.');
         $add(new Row([]));

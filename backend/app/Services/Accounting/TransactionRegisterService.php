@@ -18,6 +18,7 @@ use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use App\Services\Withdrawal\WithdrawalStatus;
+use App\Support\MalaysiaTime;
 use Carbon\CarbonInterface;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -191,11 +192,11 @@ final class TransactionRegisterService
             ->with('supplier')
             // ADR-083 2026-10-10 addendum, decision 15: dated by the KL day
             // the money left the bank, as a UTC instant like every other row.
-            ->when($from, fn ($q) => $q->where('transferred_on', '>=', $from->copy()->setTimezone(ReportService::TIMEZONE)->toDateString()))
-            ->when($toExclusive, fn ($q) => $q->where('transferred_on', '<', $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->toDateString()))
+            ->when($from, fn ($q) => $q->where('transferred_on', '>=', $from->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString()))
+            ->when($toExclusive, fn ($q) => $q->where('transferred_on', '<', $toExclusive->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString()))
             ->get()
             ->map(fn (SupplierTransfer $transfer) => [
-                'date' => Carbon::parse($transfer->transferred_on->toDateString(), ReportService::TIMEZONE)->utc()->toIso8601String(),
+                'date' => Carbon::parse($transfer->transferred_on->toDateString(), MalaysiaTime::TIMEZONE)->utc()->toIso8601String(),
                 'type' => 'supplier_transfer',
                 'reference' => $transfer->reference_no ?? "Transfer #{$transfer->id}",
                 'description' => 'Supplier top-up — '.($transfer->supplier?->name ?? 'unknown supplier'),

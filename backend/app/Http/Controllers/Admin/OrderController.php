@@ -22,6 +22,7 @@ use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentReconciliationService;
 use App\Services\Report\ReportService;
 use App\Services\Supplier\SupplierAdapterFactory;
+use App\Support\MalaysiaTime;
 use App\Support\ManualCheckCooldown;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -204,7 +205,7 @@ class OrderController extends Controller
      */
     private function todayKl(): array
     {
-        $today = now(ReportService::TIMEZONE)->toDateString();
+        $today = now(MalaysiaTime::TIMEZONE)->toDateString();
 
         return app(ReportService::class)->dateRangeFromDates($today, $today);
     }
@@ -226,7 +227,7 @@ class OrderController extends Controller
         $path = tempnam(sys_get_temp_dir(), 'orders-export-');
         $workbook->write($query, $path, $this->exportScope($request));
 
-        return response()->download($path, 'orders-'.now(ReportService::TIMEZONE)->format('Y-m-d-His').'.xlsx', [
+        return response()->download($path, 'orders-'.now(MalaysiaTime::TIMEZONE)->format('Y-m-d-His').'.xlsx', [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ])->deleteFileAfterSend();
     }

@@ -12,6 +12,7 @@ import { type CompensationBlock, getDeliveryByGame, getFailedCompensated, getOrd
 import { GameIcon, Pending, ReportCard, ReportTable, ShareBar, useReport, type ReportTabProps } from "../ReportKit";
 import { OrderStatusFunnelChart } from "../OrderStatusFunnelChart";
 import { formatRm } from "../format";
+import { KL_TIMEZONE } from "@/lib/date-range";
 
 function Stat({ label, value, sub, strong = false }: { label: string; value: string; sub?: string; strong?: boolean }) {
   return (
@@ -155,7 +156,7 @@ export function OrdersTab(props: ReportTabProps) {
                   strong
                   label="Outstanding store credit"
                   value={formatRm(fc.outstanding_store_credit)}
-                  sub={`Unused, unexpired compensation vouchers, as of ${new Date(fc.outstanding_store_credit_as_of).toLocaleString("en-MY", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kuala_Lumpur" })}. Not limited to this date range.`}
+                  sub={`Unused, unexpired compensation vouchers, as of ${new Date(fc.outstanding_store_credit_as_of).toLocaleString("en-MY", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: KL_TIMEZONE })}. Not limited to this date range.`}
                 />
               </dl>
               <Link href="/admin/vouchers" className="text-theme-xs font-medium text-cyan-ink hover:underline">

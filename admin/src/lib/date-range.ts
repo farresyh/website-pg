@@ -19,14 +19,15 @@ export const DATE_RANGE_PRESETS: { value: DateRangePreset; label: string }[] = [
   { value: "custom", label: "Custom range" },
 ];
 
+/** The business's own timezone — matches the backend's `MalaysiaTime::TIMEZONE`. */
+export const KL_TIMEZONE = "Asia/Kuala_Lumpur";
+
 /**
- * Today's calendar date in Asia/Kuala_Lumpur ('YYYY-MM-DD') — matches
- * `ReportService::TIMEZONE`. Uses `Intl` (the `en-CA` locale formats as
- * YYYY-MM-DD) rather than a date library, since this is the only place
- * `admin/` needs KL-anchored "today" client-side.
+ * Today's calendar date in KL_TIMEZONE ('YYYY-MM-DD'). Uses `Intl` (the
+ * `en-CA` locale formats as YYYY-MM-DD) rather than a date library.
  */
 export function todayInKL(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kuala_Lumpur" }).format(new Date());
+  return new Intl.DateTimeFormat("en-CA", { timeZone: KL_TIMEZONE }).format(new Date());
 }
 
 /**

@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\PaymentStatus;
+use App\Support\MalaysiaTime;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
@@ -28,8 +29,6 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
  */
 final class AffiliateEarningsService
 {
-    private const TIMEZONE = 'Asia/Kuala_Lumpur';
-
     public function __construct(private readonly LedgerService $ledger) {}
 
     /**
@@ -102,7 +101,7 @@ final class AffiliateEarningsService
      */
     public function dashboardStats(Affiliate $affiliate): array
     {
-        $nowKl = CarbonImmutable::now(self::TIMEZONE);
+        $nowKl = CarbonImmutable::now(MalaysiaTime::TIMEZONE);
         $todayStartUtc = $nowKl->startOfDay()->setTimezone('UTC');
         $monthStartUtc = $nowKl->startOfMonth()->setTimezone('UTC');
 

@@ -9,6 +9,7 @@ use App\Models\Reseller;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Support\MalaysiaTime;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -64,8 +65,6 @@ use Illuminate\Support\Collection;
  */
 final class CustomerAnalyticsService
 {
-    public const TIMEZONE = 'Asia/Kuala_Lumpur';
-
     private const FREQUENT_ORDERS_THRESHOLD = 20;
 
     private const DORMANT_AFTER_DAYS = 60;
@@ -163,7 +162,7 @@ final class CustomerAnalyticsService
                 'segment_label' => $segment?->label() ?? '—',
                 'orders_count' => $display['orders_count'],
                 'total_spent' => $display['total_spent'],
-                'last_order_at' => $display['last_order_at']->setTimezone(self::TIMEZONE)->toIso8601String(),
+                'last_order_at' => $display['last_order_at']->setTimezone(MalaysiaTime::TIMEZONE)->toIso8601String(),
                 // ADR-049 addendum — always the LIFETIME wallet_reseller_id
                 // (from $agg, never $display), same "identity is a lifetime
                 // fact, figures are period-scoped" split the segment above
@@ -255,7 +254,7 @@ final class CustomerAnalyticsService
                 'total_orders' => $totalOrders,
                 'total_spent' => $totalSpent,
                 'avg_order_value' => (int) round($totalSpent / $totalOrders),
-                'customer_since' => $firstOrderAt->setTimezone(self::TIMEZONE)->toDateString(),
+                'customer_since' => $firstOrderAt->setTimezone(MalaysiaTime::TIMEZONE)->toDateString(),
             ],
             'profit_analysis' => [
                 'total_revenue' => (int) $delivered->sum(fn (Order $o) => $o->final_amount - $o->cashCompensationSen()),
@@ -305,7 +304,7 @@ final class CustomerAnalyticsService
                 return [
                     'id' => $order->id,
                     'order_number' => $order->order_number,
-                    'paid_at' => $order->paid_at->setTimezone(self::TIMEZONE)->toIso8601String(),
+                    'paid_at' => $order->paid_at->setTimezone(MalaysiaTime::TIMEZONE)->toIso8601String(),
                     'package_name' => $order->package?->name ?? 'Unknown Package',
                     'source_name' => $sourceName,
                     'final_amount' => $order->final_amount,
@@ -327,12 +326,12 @@ final class CustomerAnalyticsService
      */
     private function monthlyTrend(Collection $orders): array
     {
-        $windowStart = CarbonImmutable::now(self::TIMEZONE)->subMonths(11)->startOfMonth();
+        $windowStart = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->subMonths(11)->startOfMonth();
 
         $byMonth = [];
 
         foreach ($orders as $order) {
-            $paidAtKl = CarbonImmutable::parse($order->paid_at)->setTimezone(self::TIMEZONE);
+            $paidAtKl = CarbonImmutable::parse($order->paid_at)->setTimezone(MalaysiaTime::TIMEZONE);
 
             if ($paidAtKl->lt($windowStart)) {
                 continue;
@@ -349,7 +348,7 @@ final class CustomerAnalyticsService
         foreach ($byMonth as $month => $total) {
             $rows[] = [
                 'month' => $month,
-                'label' => CarbonImmutable::createFromFormat('Y-m-d', $month.'-01', self::TIMEZONE)->format('M'),
+                'label' => CarbonImmutable::createFromFormat('Y-m-d', $month.'-01', MalaysiaTime::TIMEZONE)->format('M'),
                 'total_spent' => $total,
             ];
         }

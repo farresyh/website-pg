@@ -11,6 +11,7 @@ use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
+use App\Support\MalaysiaTime;
 use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
@@ -233,7 +234,7 @@ final class SettlementReconciliationService
      */
     public function paidButNotSettledBefore(Carbon $toExclusive): array
     {
-        $klDay = $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->toDateString();
+        $klDay = $toExclusive->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString();
 
         return $this->unsettled(null, $toExclusive, ChipSettledTransaction::query()->where('settled_on', '<', $klDay)->pluck('transaction_id')->all());
     }

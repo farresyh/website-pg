@@ -11,6 +11,7 @@ use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
+use App\Support\MalaysiaTime;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -35,7 +36,7 @@ class ReportServiceTest extends TestCase
     /** ADR-086 filter-unification follow-up — dailyTrend() now takes an explicit range, no more "last N days" built in. */
     private function lastNDaysRange(int $days): array
     {
-        $todayKl = CarbonImmutable::now(ReportService::TIMEZONE)->startOfDay();
+        $todayKl = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->startOfDay();
 
         return [$todayKl->subDays($days - 1)->setTimezone('UTC'), $todayKl->addDay()->setTimezone('UTC')];
     }
@@ -156,7 +157,7 @@ class ReportServiceTest extends TestCase
 
     public function test_daily_trend_attributes_todays_late_night_order_to_today_kl(): void
     {
-        $todayKl = CarbonImmutable::now(ReportService::TIMEZONE)->startOfDay();
+        $todayKl = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->startOfDay();
         $lateNight = $todayKl->addHours(23)->addMinutes(30);
 
         $this->order(['final_amount' => 1500, 'paid_at' => $lateNight->setTimezone('UTC')]);
@@ -463,7 +464,7 @@ class ReportServiceTest extends TestCase
         (new LedgerService)->credit('platform', null, 100, 'order_profit', 'order', $order->id);
         (new LedgerService)->credit('affiliate', $affiliate->id, 20, 'order_profit', 'order', $order->id);
 
-        $todayKl = CarbonImmutable::now(ReportService::TIMEZONE)->startOfDay()->toDateString();
+        $todayKl = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->startOfDay()->toDateString();
         [$from, $to] = $this->lastNDaysRange(7);
         $rows = collect($this->reports->dailyTrend($from, $to, null));
         $today = $rows->firstWhere('date', $todayKl);

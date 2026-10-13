@@ -14,6 +14,7 @@ use App\Services\CustomerAnalytics\CustomerSegment;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Support\MalaysiaTime;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\PartialComboOrders;
@@ -427,7 +428,7 @@ class CustomerAnalyticsServiceTest extends TestCase
     /**
      * 2026-10-01 fix: was built on `CarbonImmutable::now()` (app default
      * UTC, `config('app.timezone')`), but `monthlyTrend()` buckets a
-     * `paid_at` by converting it to `CustomerAnalyticsService::TIMEZONE`
+     * `paid_at` by converting it to `MalaysiaTime::TIMEZONE`
      * (Asia/Kuala_Lumpur) first. Near KL midnight (16:00 UTC), those two
      * clocks disagree about which month "now" is in — an order the test
      * wrote as UTC-"today" can land in KL-tomorrow's month once the
@@ -439,7 +440,7 @@ class CustomerAnalyticsServiceTest extends TestCase
      */
     public function test_monthly_trend_buckets_by_paid_month(): void
     {
-        $now = CarbonImmutable::now(CustomerAnalyticsService::TIMEZONE);
+        $now = CarbonImmutable::now(MalaysiaTime::TIMEZONE);
 
         $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-1', 'final_amount' => 1000, 'paid_at' => $now->subMonths(1)->startOfMonth()->addDays(5)]);
         $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-2', 'final_amount' => 500, 'paid_at' => $now->subMonths(1)->startOfMonth()->addDays(10)]);

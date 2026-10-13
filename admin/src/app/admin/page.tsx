@@ -24,6 +24,7 @@ import { ConversionFunnelChart } from "@/components/dashboard/ConversionFunnelCh
 import { HourlyActivityChart } from "@/components/dashboard/HourlyActivityChart";
 import { HorizontalBarList } from "@/components/reports/HorizontalBarList";
 import { formatRm, toRm } from "@/components/reports/format";
+import { KL_TIMEZONE, todayInKL } from "@/lib/date-range";
 import {
   getDashboardSummary,
   getDashboardHealth,
@@ -48,18 +49,12 @@ interface Admin {
 
 const HEALTH_POLL_MS = 60_000;
 
-function kl_today(): string {
-  // Asia/Kuala_Lumpur "today" as YYYY-MM-DD — matches the backend's own
-  // day boundary for the day-selector's default.
-  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
-}
-
 function lastSevenDays(): string[] {
   const days: string[] = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    days.push(d.toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" }));
+    days.push(d.toLocaleDateString("en-CA", { timeZone: KL_TIMEZONE }));
   }
   return days;
 }
@@ -76,7 +71,7 @@ export default function AdminDashboardPage() {
   const [funnel, setFunnel] = useState<DashboardFunnel | null>(null);
   const [topGames, setTopGames] = useState<DashboardTopGames | null>(null);
   const [hourly, setHourly] = useState<DashboardHourlyActivity | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>(kl_today());
+  const [selectedDate, setSelectedDate] = useState<string>(todayInKL());
   const [sectionError, setSectionError] = useState<string | null>(null);
 
   useEffect(() => {
