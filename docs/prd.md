@@ -725,8 +725,6 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
 - **11** Sentry (error tracking) is still not set up. UptimeRobot on
   `/api/health` confirmed green and its alert delivery tested 2026-10-12.
 - **71** GSC recheck around 2026-10-22.
-- **87** Delete the two old `.env` backups on the prod box (they hold the DB
-  password).
 
 **D. Waiting on a trigger: don't build early**
 - **4** Bot-host resize, when capacity calls for it.
@@ -983,13 +981,6 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
     real email client still shows the logo badly: emit a PNG copy in the one
     shared image-ingest step both logo uploads use.
 
-87. **Old `.env` backups on the prod box** (found 2026-10-13, read-only
-    `ls`). `~/api.pekangame.space/.env.bak-before-dbtls` (2026-10-08, mode
-    600; build-log 2026-10-10 said to delete it after a few clean days) and
-    `.env.bak-2026-09-30-doadmin-least-privilege` (mode 664, group-readable).
-    Both hold the DB password. The DB-TLS change has run clean since 2026-10-08.
-    Founder runs: `ssh pekangame-prod-lwf 'rm ~/api.pekangame.space/.env.bak-before-dbtls ~/api.pekangame.space/.env.bak-2026-09-30-doadmin-least-privilege'`.
-
 88. **Voucher expiry date ends at 08:00 MYT, not end of day** (found
     2026-10-13 tracing item 84). Create and Merge take `expires_at` as
     `YYYY-MM-DD`; Laravel stores midnight UTC, which is 08:00 on that day in
@@ -1003,7 +994,8 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
-- **84** 2026-10-13: the admin voucher list, voucher detail and order Refund cards show an active voucher past `expires_at` as expired (`display_status`); the stats split active/expired by it and an expired voucher can't be ticked for merge. `Voucher::isExpired()` is now the one expiry rule (checkout and merge use it). `status` is not backfilled. Staging only until a release. Details: build-log 2026-10-13.
+- **87** 2026-10-13: the founder deleted the two old `.env` backups on the prod box (`.env.bak-before-dbtls`, `.env.bak-2026-09-30-doadmin-least-privilege`; both held the DB password). Verified read-only: only `.env` remains in the site root.
+- **84** 2026-10-13: the admin voucher list, voucher detail and order Refund cards show an active voucher past `expires_at` as expired (`display_status`); the stats split active/expired by it and an expired voucher can't be ticked for merge. `Voucher::isExpired()` is now the one expiry rule (checkout and merge use it). `status` is not backfilled. Staging only until a release (#418 merged 2026-10-13). Details: build-log 2026-10-13.
 - **64** 2026-10-13: membership renewal-reminder emails at H-3 and H+1, in Malaysia days, one per period (`membership_reminders`), listed on the admin member page (ADR-068 2026-10-13 addendum). The same change fixes the squashed email logo, the receipt's day-early end date and its missing link, and makes email and WhatsApp share one brand lookup. WhatsApp reminders are item 85. Live via #416 (2026-10-13). Details: build-log 2026-10-13.
 - **79** 2026-10-12: a compensation voucher (issued for an order) no longer debits the platform ledger; only an admin-issued voucher does, matching `Voucher::scopeCompensation()` (ADR-024 2026-10-12 addendum). The 4 old debits (RM13.18) get one reasoned reversal each from a migration that runs on release. Live via #416 (2026-10-13). Details: build-log 2026-10-12.
 - **80** 2026-10-12: a voucher merge rejects an expired source (ADR-036 2026-10-12 addendum, #412). Live via #416 (2026-10-13).

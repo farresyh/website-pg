@@ -966,3 +966,12 @@ the order page merges into its state).
   password, one of them mode 664 (read-only `ls`, 2026-10-13).
 - New §16 item 88: a typed voucher expiry date ends at 08:00 MYT that day
   (midnight UTC); no production voucher has an expiry yet.
+
+---
+
+## 2026-10-13 — §16 item 87 closed (founder), #418 merged
+
+The founder merged #418 (item 84 + docs audit) into `staging` and deleted the
+two `.env` backups on the prod box. Read-only `ls -la ~/api.pekangame.space/`
+afterwards: only `.env` (mode 664, owner `forge`) remains. #418 is on `staging`
+only until the next release.
