@@ -643,3 +643,46 @@ ADR-115 2026-10-13 addendum (revising decision 8, whose `MAIL_MAILER=log`
 reason no longer holds since ops alerts go through Plunk). Found on prod
 (read-only): Digiflazz has no `low_balance_threshold`, so today's
 low-balance log warning never fires.
+
+## 2026-10-13 — Item 93: combo prices stale after reactivation (fix)
+
+On `fix/combo-price-stale-after-reactivation`. Staging-only until a release.
+
+- **Found** during the item-66 audit (read-only prod): 8 active combos (plus
+  1 inactive) had a stored `cost_price` / `standard_selling_price` that no
+  longer matched their components. Combo 1494: RM626.18 stored vs RM623.43
+  live. Its timeline: cascade-deactivated 2026-10-12 20:00 UTC, component
+  costs moved in the 2026-10-13 03:30 sync, cascade-reactivated 08:30 with no
+  recompute. 82 combo cascade-reactivations since 2026-09-24, so the cycle is
+  routine. Today's direction overcharged slightly; a cost rise would sell
+  below real cost, and the checkout below-cost guard compares with the same
+  stale stored cost.
+- **Every writer traced.** Component price writers: Price Sync propagation
+  and `PendingPriceChangeController::approve()` (both called
+  `recomputeForComponentChange()`, which skipped inactive combos),
+  `PackageController::updateMarkup()` (no combo hook at all; it also accepted
+  a markup on a combo itself), bulk markup (already recomputed every combo).
+  Reactivation sites all route through `cascadeReactivate()` /
+  `cascadeReactivateForComponents()`.
+- **Fix** (ADR-094 2026-10-13 addendum): one `recomputeAndLog()`;
+  `recomputeForComponentChange()` covers inactive combos; both cascades
+  reprice before reactivating; `updateMarkup` reprices a component's combos
+  and rejects a combo (422); bulk markup reuses `recomputeAndLog()`. Admin:
+  the Markup cell is read-only on a combo row, and a component markup update
+  refetches the list so its combos show their new price.
+- **Data:** migration `2026_10_13_100000_recompute_stale_combo_prices`
+  recomputes every combo once on deploy (idempotent, one `PriceChangeLog`
+  row per repriced combo, catalog caches dropped). Expected on prod: 9
+  combos repriced (the 8 active above plus inactive 1277), nothing else.
+- **Tests.** Red first: `ComboPricingServiceTest` +3 (the old "ignores an
+  inactive combo" test asserted the bug and was replaced),
+  `PackageControllerTest` +2, `StaleComboPriceRecomputeMigrationTest` (run
+  twice). Fast suite 2753/2753. Admin `tsc` + `eslint` clean.
+- **Live check.** Local dev DB migrated (its one combo already current, no
+  change; a second `migrate` ran nothing). Built admin + local API,
+  Playwright: the combo row shows "20.00%" as text, and a component markup
+  of 50% moved the combo to RM 9.76 (2 × 4.88) without a reload; restored to
+  20% (RM 7.80). Gotcha: local Redis was down (Docker not running), so a
+  cache flush made the PATCH 500 after its commit; re-run with
+  `CACHE_STORE=array ... php artisan serve --no-reload` (backend/AGENTS.md
+  gotchas 3 and 5).

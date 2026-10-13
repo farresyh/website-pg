@@ -1,6 +1,6 @@
 # ADR-094: Combo Package — assembling several existing catalog Packages into one opaque, sellable SKU above a game's native max denomination
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-13):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted ("building" is as of 2026-09-14; current build status: [`prd.md` §15](../prd.md)) — grilled 2026-09-13, multiple rounds + a dedicated stress-test pass. **UNPARKED 2026-09-14** (decision 17's trigger explicitly overridden by the founder — see the 2026-09-14 addendum after Consequence to track). **Phases 1-4 shipped 2026-09-14/15** (PR #202-205 + Phase 4, all merged to `staging`) — data model, pricing/Price Sync cadence, the fulfillment engine (decisions 7-11) for both suppliers (Gamevion sync, Digiflazz async per-leg webhook/poll), and the admin UI (composition CRUD, leg breakdown, partial-delivery voucher, churn guards) are all done and test-covered. Full backend suite **1922/1922** green. **Phase 4 shipped 2026-09-15** (admin UI) — combo composition CRUD (`/admin/games`'s "Create Combo…" button + a combo row's own Edit → override markup/price, composition shown read-only, no edit-composition decision was ever recorded so delete-and-recreate is the only path to change it), Order-detail leg breakdown (decision 12 — `ComboLegBreakdown`, empty/no-op for every ordinary order), Issue Voucher custom-amount input for a genuine partial-delivery `needs_review` order (decision 9 — `Order::isPartialComboDelivery()`/`suggestedPartialVoucherAmount()`, distinguishes a real Delivered+Failed split from ordinary leg-level ambiguity, which stays blocked exactly as ADR-026 decision 4c always intended), and decision 13's admin-manual deactivate-cascade warn (client-side confirm from already-loaded `active_combo_dependents`, server-side `acknowledge_cascade` backstop, reuses Price Sync's own `ComboPricingService::cascadeDeactivate()`) + decision 22's no-auto-reactivation block (a combo can't reactivate while any component is inactive; reactivating a component never cascades a dependent combo back on). **Decision 21 (supplier-drift warn) was found to have no current UI trigger** — no admin screen edits an already-promoted Package's `supplier_id` at all (`UpdatePackageRequest` only accepts `name`) — so nothing was built for it; revisit only if a supplier-reassign screen is ever added. **Decision 14 verified 2026-09-15, same day, no new branch — confirmed already satisfied, not built new.** A founder question ("does combo need its own SKU?") led to a full code audit of all 5 consuming channels (storefront `CheckoutController`, Affiliate — same codebase, Reseller `ResellerApi\OrderController`/`ResellerBotService` via `resolveByCode()`, Reseller Portal). Found: **none of them special-case `is_combo` at all** — every one resolves a `Package` generically (by `package_id` or denomination-based `resolveByCode()`) and hands it to the same `Order::create()` + `OrderFulfillmentService::fulfill()` path a native SKU uses, exactly because decision 2 (denomination is the identity) and decision 7 (a generic leg-engine branch) were built to slot into these paths unmodified rather than requiring a new integration per channel. Every response shape (`CheckoutController`'s own reply, `TrackOrderController::customerSafePayload()`, `ResellerOrderPayload`, the Bot's `ResellerBotReplyFormatter`) was already narrow-shaped before this ADR existed, so decision 12's opacity requirement was never at risk either. **Reseller Portal carries no order-placement surface of its own** (confirmed by grep — zero catalog/order calls anywhere in `reseller/`; it's account management + order history only, matching decision 14's own parenthetical, which never actually names Portal as an order-creation entry point). New test `Adr094ComboConsumingChannelsTest` (backend, 3 tests) proves this by actually placing and fulfilling a real combo order through each of the 3 real entry points (storefront checkout, Reseller API, Reseller Bot) and asserting zero leakage on every response along the way — not just reading the code. All 3 pass on first write, no code change needed to make them pass. Full backend suite **1925/1925** green.
 
@@ -199,3 +199,41 @@ The trace also confirmed a live over-compensation bug on the retail side: `store
 - **Found during the trace, not part of this decision** (tracked in the PR):
   - The storefront `StatusBadge` already leaks a raw `NEEDS_REVIEW` label to customers.
   - `refundNotice()` used `selling_price` as the refund amount.
+
+### 2026-10-13 addendum — a combo's stored price stays current while it is off and when it comes back (bug fix; decision 6 restated)
+
+**Context.** Found on prod during the item-66 audit (read-only, 2026-10-13):
+8 active combos sold at a stored price that no longer matched their
+components (e.g. combo 1494: RM626.18 stored, RM623.43 live). Timeline for
+1494: cascade-deactivated 2026-10-12 20:00 UTC, its components' costs moved
+in the 03:30 sync, cascade-reactivated 08:30, price never recomputed. Two
+causes: `recomputeForComponentChange()` skipped inactive combos (Price Sync
+still updates an inactive component's cost), and `cascadeReactivate()` /
+`cascadeReactivateForComponents()` flipped `is_active` without recomputing.
+A third writer bypassed the seam: `PackageController::updateMarkup()` moved
+a component's `standard_selling_price` without repricing its combos, and the
+same endpoint accepted a markup typed on a combo itself, which the next
+recompute silently undid. The checkout below-cost guard could not catch a
+loss, because it compares with the combo's equally stale stored cost.
+
+**Decision.**
+1. Decision 6 holds for every combo, active or not: a component price change
+   (Price Sync, an approved `PendingPriceChange`, a component markup edit)
+   recomputes every combo using that component.
+2. A combo is recomputed before the reactivation cascade puts it back on
+   sale (both cascade methods).
+3. Every combo recompute that moves a price writes a `PriceChangeLog` row
+   through one method, `ComboPricingService::recomputeAndLog()`; the bulk
+   markup path uses it too.
+4. A markup typed on a combo is rejected (422); its price comes from its
+   components or its override (decision 5). The admin Markup cell is
+   read-only on a combo row.
+5. A migration recomputes every combo once on deploy (idempotent, logged),
+   so the combos already stale are corrected by the release, not a hand
+   patch. It calls `ComboPricingService` on purpose: copying the pricing
+   rules into SQL would be a second pricing implementation.
+
+**Also found (no change).** Decision 21's warn-and-acknowledge on editing a
+component's `supplier_id` was never built, and no endpoint edits a
+package's `supplier_id`, so the same-supplier invariant cannot drift today
+(prod: no mixed-supplier combo, 2026-10-13).
