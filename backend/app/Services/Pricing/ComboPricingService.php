@@ -90,6 +90,32 @@ final class ComboPricingService
         return $changed;
     }
 
+    /**
+     * recompute(), plus a `PriceChangeLog` row when the price actually
+     * moved, so every combo repricing shows in the Sync Details modal
+     * (`PriceSyncController::details()`) instead of being silent.
+     */
+    public function recomputeAndLog(Package $combo, ?int $priceSyncRunId): bool
+    {
+        $oldCostPrice = $combo->cost_price;
+        $oldSellingPrice = $combo->standard_selling_price;
+
+        if (! $this->recompute($combo)) {
+            return false;
+        }
+
+        PriceChangeLog::query()->create([
+            'price_sync_run_id' => $priceSyncRunId,
+            'package_id' => $combo->id,
+            'old_cost_price' => $oldCostPrice,
+            'new_cost_price' => $combo->cost_price,
+            'old_standard_selling_price' => $oldSellingPrice,
+            'new_standard_selling_price' => $combo->standard_selling_price,
+        ]);
+
+        return true;
+    }
+
     /** Current cost from live component prices — never the combo's own stored `cost_price`, which only moves on recompute(). */
     public function componentCost(Package $combo): int
     {
@@ -100,11 +126,14 @@ final class ComboPricingService
 
     /**
      * Decision 6: called whenever a component's `cost_price` actually
-     * changed — Price Sync's own propagation and an admin approving a
-     * flagged `PendingPriceChange` are both real "component cost
-     * changed" events, so both call this. Recomputes every active
-     * combo referencing the component and, for each one whose price
-     * actually moved, writes a `PriceChangeLog` row — reusing the
+     * changed — Price Sync's own propagation, an admin approving a
+     * flagged `PendingPriceChange` and an admin changing a component's
+     * markup are all real "component price changed" events, so all
+     * call this. Recomputes every combo referencing the component,
+     * active or not: Price Sync updates an inactive component's cost
+     * too, and an inactive combo skipped here used to come back on sale
+     * at its old price (found on prod 2026-10-13). For each one whose
+     * price actually moved, writes a `PriceChangeLog` row — reusing the
      * exact table/mechanism the Sync Details modal already renders
      * (`PriceSyncController::details()`), rather than inventing a
      * parallel "combo recomputed" surface.
@@ -115,19 +144,8 @@ final class ComboPricingService
     {
         $affectedGameIds = collect();
 
-        $component->partOfCombos()->where('is_active', true)->get()->each(function (Package $combo) use ($priceSyncRunId, $affectedGameIds) {
-            $oldCostPrice = $combo->cost_price;
-            $oldSellingPrice = $combo->standard_selling_price;
-
-            if ($this->recompute($combo)) {
-                PriceChangeLog::query()->create([
-                    'price_sync_run_id' => $priceSyncRunId,
-                    'package_id' => $combo->id,
-                    'old_cost_price' => $oldCostPrice,
-                    'new_cost_price' => $combo->cost_price,
-                    'old_standard_selling_price' => $oldSellingPrice,
-                    'new_standard_selling_price' => $combo->standard_selling_price,
-                ]);
+        $component->partOfCombos()->get()->each(function (Package $combo) use ($priceSyncRunId, $affectedGameIds) {
+            if ($this->recomputeAndLog($combo, $priceSyncRunId)) {
                 $affectedGameIds->push($combo->game_id);
             }
         });
@@ -215,6 +233,8 @@ final class ComboPricingService
                     return;
                 }
 
+                // Never back on sale at a price stored before it went off.
+                $this->recomputeAndLog($combo, $priceSyncRunId);
                 $combo->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
 
                 PackageReactivationLog::query()->create([
@@ -355,6 +375,8 @@ final class ComboPricingService
                     return;
                 }
 
+                // Same as cascadeReactivate(): repriced before it is sellable.
+                $this->recomputeAndLog($combo, $priceSyncRunId);
                 $combo->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
 
                 PackageReactivationLog::query()->create([

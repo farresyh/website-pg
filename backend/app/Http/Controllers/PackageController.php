@@ -99,17 +99,26 @@ class PackageController extends Controller
      * Founder revision, 2026-07-25: recomputes and stores
      * `standard_selling_price` from the new markup — matches the legacy
      * reference system's inline "Markup % + Update" row pattern
-     * (legacy-reference-notes.md), not a full edit form.
+     * (legacy-reference-notes.md), not a full edit form. A combo's
+     * default price is the sum of its components' selling prices, so
+     * the combos using this package are repriced with it.
      */
-    public function updateMarkup(UpdatePackageMarkupRequest $request, Package $package, PackageMarkupService $markup): JsonResponse
+    public function updateMarkup(UpdatePackageMarkupRequest $request, Package $package, PackageMarkupService $markup, ComboPricingService $comboPricing): JsonResponse
     {
         $markupPercent = (float) $request->validated('markup_percent');
 
-        $package->update([
-            'markup_percent' => $markupPercent,
-            'standard_selling_price' => $markup->calculateStandardSellingPrice($package->cost_price, $markupPercent),
-        ]);
-        GameController::forgetPackagesCache($package->game_id);
+        $gameIds = DB::transaction(function () use ($package, $markup, $markupPercent, $comboPricing) {
+            $package->update([
+                'markup_percent' => $markupPercent,
+                'standard_selling_price' => $markup->calculateStandardSellingPrice($package->cost_price, $markupPercent),
+            ]);
+
+            return $comboPricing->recomputeForComponentChange($package, priceSyncRunId: null);
+        });
+
+        foreach ($gameIds->push($package->game_id)->unique() as $gameId) {
+            GameController::forgetPackagesCache($gameId);
+        }
 
         return response()->json($package);
     }

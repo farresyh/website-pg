@@ -135,6 +135,43 @@ class PackageControllerTest extends TestCase
             ->assertUnprocessable();
     }
 
+    private function comboOf(Package $component): Package
+    {
+        $combo = Package::query()->create([
+            'game_id' => $component->game_id, 'name' => 'Combo Pack', 'denomination' => 0,
+            'cost_price' => 421, 'standard_selling_price' => 500, 'markup_percent' => 18.76,
+            'is_active' => true, 'is_combo' => true,
+        ]);
+        $combo->components()->attach($component->id, ['quantity' => 2, 'sort_order' => 0]);
+
+        return $combo;
+    }
+
+    /** A combo's default price is the sum of its components' selling prices, so a component markup moves it. */
+    public function test_update_markup_on_a_component_reprices_its_combos(): void
+    {
+        $component = $this->package(['cost_price' => 421]);
+        $combo = $this->comboOf($component);
+        $this->actingAsAdmin();
+
+        $this->patchJson("/api/packages/{$component->id}/markup", ['markup_percent' => 15])->assertOk();
+
+        $combo->refresh();
+        $this->assertSame(842, $combo->cost_price);
+        $this->assertSame(968, $combo->standard_selling_price); // 2 x 484
+    }
+
+    /** A combo is priced from its components (or its own override), never from a markup typed on it. */
+    public function test_update_markup_rejects_a_combo(): void
+    {
+        $combo = $this->comboOf($this->package());
+        $this->actingAsAdmin();
+
+        $this->patchJson("/api/packages/{$combo->id}/markup", ['markup_percent' => 50])
+            ->assertUnprocessable()->assertJsonValidationErrors('markup_percent');
+        $this->assertSame(500, $combo->refresh()->standard_selling_price);
+    }
+
     public function test_update_status_toggles_active_inline(): void
     {
         $package = $this->package(['is_active' => true]);
