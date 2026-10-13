@@ -35,10 +35,9 @@ class EnsureResellerApiKeyTest extends TestCase
     }
 
     /**
-     * Wave 3 PR-B: the `reseller-api` limiter keys on the raw bearer
-     * token, so every made-up key got its own fresh 60/min bucket — a
-     * key-guessing flood was effectively unthrottled. Failed auth now
-     * counts per IP: 20/min, then 429 for the rest of the minute.
+     * Wave 3 PR-B: a key-guessing flood never reaches the per-account
+     * limiters (they need a resolved Reseller), so failed auth counts
+     * per IP: 20/min, then 429 for the rest of the minute.
      */
     public function test_repeated_invalid_keys_from_one_ip_are_rate_limited(): void
     {
