@@ -17,6 +17,7 @@ import { Times as CloseIcon } from "@primeicons/react/times";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { todayInKL } from "@/lib/date-range";
 import type { MergeVouchersValues, Voucher } from "@/lib/vouchers";
 
 interface MergeVouchersModalProps {
@@ -94,8 +95,9 @@ function MergeVouchersFields({ vouchers, onClose, onSubmit }: Omit<MergeVouchers
           <Input id="reason" value={reason} onChange={(e) => setReason(e.target.value)} required />
         </div>
         <div>
-          <Label htmlFor="expires_at">Expiry (optional)</Label>
-          <Input id="expires_at" type="text" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} placeholder="YYYY-MM-DD" />
+          {/* ADR-024 2026-10-13 addendum: valid through the end of this Malaysia day. */}
+          <Label htmlFor="expires_at">Valid until (optional)</Label>
+          <Input id="expires_at" type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} min={todayInKL()} />
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-2">

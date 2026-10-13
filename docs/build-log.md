@@ -1017,3 +1017,39 @@ code and Laravel's `SortedMiddleware`).
 - **Production read (read-only) for the grill:** 4 tiers, 2 resellers, 2 live
   API keys (reseller #1, last used 2026-09-09), 0 API orders ever, 8 Bot
   orders.
+
+## 2026-10-13 — §16 item 88: a voucher's typed expiry date lasts the whole Malaysia day
+
+On `fix/voucher-expiry-end-of-day-myt`. Staging only until a release.
+Design: ADR-024 2026-10-13 addendum (grilled, stress-tested).
+
+- **Bug.** `2026-11-01` was stored as midnight UTC (08:00 MYT), so checkout
+  refused the voucher from 08:00 on the day WhatsApp called its last. Now it
+  is stored as 23:59:59 MYT (`2026-11-01 15:59:59` UTC) by one helper,
+  `VoucherService::endOfMalaysiaDay()`, used by issue and merge.
+- **Gotcha (stress test).** Eloquent writes a Carbon's own wall-clock time:
+  a Kuala Lumpur `23:59:59` saved as-is is read back as UTC, 8 hours late.
+  The helper calls `->utc()`; test 1 pins the stored string.
+- **Validation.** `date_format:Y-m-d` + `after_or_equal:` today in Malaysia,
+  the supplier-transfer request's pattern. Laravel's `today` is UTC and would
+  take yesterday's Malaysia date before 08:00 MYT; a test runs at 02:00 MYT.
+- **Admin.** Create and Merge modals: native `<input type="date"
+  min={todayInKL()}>`, label "Valid until". The calendar icon was nearly
+  invisible in dark mode (all 17 admin date inputs); one scoped
+  `.dark input[type="date"] { color-scheme: dark; }` in `globals.css` fixes
+  them all, confirmed by screenshot + `getComputedStyle` (`colorScheme:
+  dark`).
+- **WhatsApp line** formats the date in Malaysia time explicitly (it was right
+  only because 15:59 UTC falls on the same day).
+- **Tests.** New `VoucherExpiryTest` (7): stored value, usable at 23:00 MYT and
+  expired at 00:00 MYT next day, merge, today-in-Malaysia at 02:00 MYT, plain
+  date only, WhatsApp "Valid until: 1 Nov 2026", breakage month. Red first
+  (5 of 7; WhatsApp and breakage were already right by coincidence). Fast
+  suite 2745/2745. Admin `tsc` + `eslint` clean.
+- **Live check.** Built admin + local API, Playwright in the Kuala Lumpur
+  timezone: the modal's input is `type=date`, `min=2026-10-13`; a voucher
+  created with 1 Nov is stored `2026-11-01 15:59:59` and its View panel reads
+  "Expires 1 Nov 2026, 11:59 pm". (The local dev DB keeps that RM 5 test
+  voucher, reason "Item 88 local check".)
+- **Found:** the Malaysia timezone string is copied in five services; logged
+  as §16 item 90 (A).
