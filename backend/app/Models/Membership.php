@@ -74,6 +74,11 @@ class Membership extends Model
         return $this->hasMany(MembershipFeeRecord::class);
     }
 
+    public function reminders(): HasMany
+    {
+        return $this->hasMany(MembershipReminder::class);
+    }
+
     /**
      * The calendar day the membership ends, in Malaysia time. `expires_at`
      * is UTC, so formatting it directly shows the day before for any

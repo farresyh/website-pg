@@ -8,6 +8,7 @@ use App\Models\Affiliate;
 use App\Models\Membership;
 use App\Models\MembershipCheckoutAttempt;
 use App\Models\MembershipFeeRecord;
+use App\Models\MembershipReminder;
 use App\Models\Order;
 use App\Services\Membership\MembershipFeeService;
 use App\Services\Order\PaymentStatus;
@@ -143,6 +144,22 @@ class MembershipController extends Controller
                 'channel_code' => $attempt->channel_code,
             ]);
 
+        // ADR-068 2026-10-13 addendum, decision 10. Two per 30-day period, so 24 is about a year.
+        $reminders = $membership->reminders()
+            ->orderByDesc('id')
+            ->limit(24)
+            ->get()
+            ->map(fn (MembershipReminder $reminder) => [
+                'id' => $reminder->id,
+                'kind' => $reminder->kind,
+                'period_ends_at' => $reminder->expires_at->toIso8601String(),
+                'status' => $reminder->status,
+                'attempts' => $reminder->attempts,
+                'error' => $reminder->error,
+                'sent_at' => $reminder->sent_at?->toIso8601String(),
+                'created_at' => $reminder->created_at?->toIso8601String(),
+            ]);
+
         $memberOrders = Order::query()
             ->where('membership_id', $membership->id)
             ->where('payment_status', PaymentStatus::Paid->value)
@@ -160,6 +177,7 @@ class MembershipController extends Controller
             ],
             'fee_payments' => $feePayments,
             'checkout_attempts' => $attempts,
+            'reminders' => $reminders,
             'orders_summary' => [
                 'count' => (int) ($memberOrders->count ?? 0),
                 'total_spent_sen' => (int) ($memberOrders->total_spent_sen ?? 0),

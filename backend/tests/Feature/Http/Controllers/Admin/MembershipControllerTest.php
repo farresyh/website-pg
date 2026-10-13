@@ -7,6 +7,7 @@ use App\Models\Affiliate;
 use App\Models\Membership;
 use App\Models\MembershipCheckoutAttempt;
 use App\Models\MembershipPlan;
+use App\Models\MembershipReminder;
 use App\Services\Membership\MembershipFeeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -255,6 +256,31 @@ class MembershipControllerTest extends TestCase
         $this->getJson("/api/memberships/{$membership->id}")
             ->assertOk()
             ->assertJsonPath('fee_payments.0.source', 'Self-serve');
+    }
+
+    /** ADR-068 2026-10-13 addendum, decision 10: the member page lists renewal reminders. */
+    public function test_show_lists_renewal_reminders_newest_first(): void
+    {
+        $this->actingAsSuperAdmin();
+        $plan = $this->tier1();
+        $membership = Membership::query()->create([
+            'affiliate_id' => $this->brand->id, 'email' => 'r@example.com', 'membership_plan_id' => $plan->id,
+            'status' => 'active', 'cycle_started_at' => now(), 'quota_remaining_sen' => 1, 'expires_at' => now()->addDay(),
+        ]);
+        $membership->reminders()->create([
+            'kind' => MembershipReminder::KIND_BEFORE, 'expires_at' => now()->subDays(29), 'status' => MembershipReminder::STATUS_SENT, 'attempts' => 1, 'sent_at' => now()->subDays(32),
+        ]);
+        $membership->reminders()->create([
+            'kind' => MembershipReminder::KIND_BEFORE, 'expires_at' => now()->addDay(), 'status' => MembershipReminder::STATUS_FAILED, 'attempts' => 3, 'error' => 'Plunk down',
+        ]);
+
+        $this->getJson("/api/memberships/{$membership->id}")
+            ->assertOk()
+            ->assertJsonCount(2, 'reminders')
+            ->assertJsonPath('reminders.0.status', 'failed')
+            ->assertJsonPath('reminders.0.error', 'Plunk down')
+            ->assertJsonPath('reminders.1.kind', 'before')
+            ->assertJsonPath('reminders.1.status', 'sent');
     }
 
     public function test_show_requires_super_admin(): void
