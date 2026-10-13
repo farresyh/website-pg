@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Middleware;
 
 use App\Http\Controllers\Controller;
 use App\Models\SupplierRequestLog;
+use App\Services\Report\ReportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -33,13 +34,14 @@ class RequestLogController extends Controller
             $query->where('outcome', $request->query('outcome'));
         }
 
-        if ($request->filled('from')) {
-            $query->where('created_at', '>=', $request->query('from'));
-        }
-
-        if ($request->filled('to')) {
-            $query->where('created_at', '<=', $request->query('to'));
-        }
+        // Malaysia calendar days, the same bounds as the Orders filter.
+        $dates = $request->validate([
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d'],
+        ]);
+        [$from, $toExclusive] = app(ReportService::class)->dateRangeFromDates($dates['from'] ?? null, $dates['to'] ?? null);
+        $query->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive));
 
         return response()->json($query->paginate($perPage)->withQueryString());
     }
