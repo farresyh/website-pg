@@ -553,6 +553,8 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 - **Blacklist :** Internal, platform-owned list of player IDs/contacts blocked from ordering due to prior fraud/chargeback history, independent of any supplier-side blacklist (ADR-007).
 - **Method Key :** A stable identifier for a real-world payment method (e.g. `tng`, `fpx_maybank2u`, `grabpay`) independent of which `PaymentGateway` processes it — distinct from `channel_code` (gateway-specific, unique per `payment_methods` row) and `category` (coarser grouping like `fpx`/`ewallet` that legitimately holds several different active methods at once). Exists so at most one gateway's row for the same customer-facing method can be active at a time (ADR-022's newest addendum).
 - **Voucher Merge :** An admin-triggered, opt-in action that consolidates two or more of one customer's active vouchers into a single new code, sized to the sources' combined `remaining` (not their original `amount`). The sources are voided (`status = 'merged'`, `remaining = 0`) — never deleted — and no `ledger_entries` row is written, since a merge creates no new cost: an admin-issued source's cost was booked at its own issuance, and a compensation source is customer cash that never debits the ledger (ADR-024 2026-10-12 addendum). An expired source cannot be merged (ADR-036 2026-10-12 addendum). Distinct from *redemption* (spending a voucher at checkout) and from Path B's *restore* (giving a reserved amount back to `remaining`) — a merge never happens automatically and is never part of the checkout flow itself (ADR-036).
+- **Voucher Expiry :** A voucher is expired when `expires_at` is set and past (`Voucher::isExpired()`). Nothing sets `status` to `expired`; the stored status stays `active`. Checkout and merge refuse it, and admin screens show it as expired through `display_status` (§16 item 84). The Monthly Summary's breakage reads `expires_at` too.
+- **Membership Renewal Reminder :** An email to a member 3 days before (`before`) and 1 day after (`after`) their paid-through date, counted in Malaysia days, one of each per paid-through period (`membership_reminders`). Not marketing; no unsubscribe. WhatsApp reminders are designed, not built (ADR-068 2026-10-13 addendum, §16 item 85).
 - **Customer (Customer Analytics) :** Not a stored entity — a derived grouping of `Order` rows by `customer_email`, computed at query time. This does not reopen ADR-011 (guest checkout, no `Customer` model/login); it's the same field Reports already surfaces as `latest_order.customer_email`, now used as a grouping key (ADR-049).
 - **Standard Selling Price :** The platform owner's own guest/non-member retail price — `cost_price × (1 + package.markup_percent)`. Renamed from `reseller_cost_price` 2026-08-29 (migration shipped) once its usage was recognized as never affiliate-specific — see Affiliate Wholesale Tier below and [ADR-027](./adr/ADR-027-vip-membership.md).
 - **Affiliate Wholesale Tier :** A paid, admin-CRUD-managed row in `affiliate_membership_tiers` that an affiliate subscribes to monthly to unlock a lower `cost_price`-based wholesale rate for their own purchases from the platform. Fully independent of consumer VIP Membership (ADR-027) — no membership feature exists on any *third-party* affiliate storefront, and an affiliate's tier is never derived from anything their own downstream customers do. An unpaid or lapsed affiliate (past a ~3-day grace period) falls back to Standard Selling Price, the same price a guest pays — not a shutdown, just the walk-in rate, self-correcting on payment. Backend built ([ADR-056](./adr/ADR-056-reseller-wholesale-pricing-subscription-tiers.md), 2026-08-30): `affiliate_membership_tiers` + `affiliate_subscriptions`, `PricingService::calculateForAffiliate()`, `AffiliateTierFeeService` + grace/lapse state machine, `ChargeAffiliateTierFeesCommand`. Admin CRUD shipped ADR-058 58b. Live in checkout via ADR-060. Renamed from "Reseller Wholesale Tier" (and `calculateForReseller()`) 2026-09-04, [ADR-072](./adr/ADR-072-reseller-system-split.md) PR-A.
@@ -608,9 +610,9 @@ date and `BrandIdentity` fixes (item 64). Both migrations Ran on prod: item
 79's appended 4 reversals (platform ledger 1551 → 2869 sen, as predicted), and
 `membership_reminders` exists. The reminder dry-run lists nobody on
 2026-10-13, as expected: the one active member ends 24 Oct (MYT) and becomes
-due on 21 Oct. Still to check by hand: #409 (re-upload a logo, look at the
-admin preview, storefront header, tab icon) and #411 (send an order number
-several times from a real phone). `staging` = `main` at that moment.
+due on 21 Oct. The founder checked #409 (a re-uploaded logo shows at once) and #411 (a card
+on every repeat from a real phone) and the unsquashed email logo the same
+day. `staging` = `main` at that moment.
 
 **Release 2026-10-10 (PR #393).** Envelope Ledger reshape (item 78: postings,
 director loans, month close, cash equation; removes the platform-owner
@@ -660,15 +662,15 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Orders Management (ORD-1..11) | ✅ Live — checkout + fulfillment, Resend (same-game swap, one resend seam, ADR-105), ORD-10 reconciliation, async `pending`, manual "Check from Supplier/Gateway" (ADR-096), one compensation guard `isAlreadyCompensated()` (ADR-102/103), restore-only voucher (ADR-024), six KPI cards (ADR-092), ADR-104 reskin, ADR-108 toolbar (Need Action excludes compensated, Source/Game/date filters, Columns, 2-sheet Excel export with earned profit) and a Failed pill (#385). Detail: build-log + ADRs | ADR-017, 024, 026, 032, 092, 096, 102, 103, 104, 105, 108 |
 | Reports (RPT-1..4) | 🟢 Live — redesigned per ADR-104 (2026-10-08 addendum R1–R21 + 2026-10-09 R8 addendum), live via #385 (2026-10-09). 7 tabs on Recharts. **Paid sales** (money collected, net of wallet refunds, `Order::netSalesSql()`) with a **Bridge to Accounting** to recognised revenue from one `RecognisedRevenue` seam shared with the Monthly Summary. Ledger-sourced profit, `paid_at` scoping, KL days. **Failed & compensated** per delivery status plus outstanding store credit. Compare period on every tab, sales by channel + API vs Bot (`orders.placed_via`), Delivery by game. CSV/PDF carry Paid / Wallet refund / Paid sales. Default range All time. LLM assistant at `/admin/reports/assistant` (ADR-087, `super_admin`) matches the page. History: ADR-086 grouped-SQL rewrite, ADR-088 unified date filter | ADR-086, 087, 088, 104 |
 | Withdrawals (WTH-1..5) | ✅ Live. Maker-checker threshold RM 2,000 (`WITHDRAWAL_MAKER_CHECKER_THRESHOLD_SEN`). **Live via #393 (2026-10-10):** the platform-owner request (button, "Available balance", `POST /api/withdrawals`) is removed; the screen reviews Affiliate requests only | ADR-059, ADR-083 |
-| Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500. **2026-10-04 (ADR-024 addendum, live via #354):** a lost voucher or member-quota reservation now fails the checkout closed (Failed order, coded 422 `checkout_closed`, link never handed out) on every path, including idempotent replay; admin "Voucher Paid" reads the redemption. **2026-10-12 (ADR-036 addendum, item 80), staging only:** a merge rejects an expired source voucher. **2026-10-12 (ADR-024 addendum, item 79), staging only:** only an admin-issued voucher debits the platform ledger; a migration reverses the 4 old compensation-voucher debits on release | ADR-024, 035, 036 |
+| Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), Path A double-submit key, Voucher Merge. Maker-checker RM 500. **2026-10-04 (ADR-024 addendum, live via #354):** a lost voucher or member-quota reservation now fails the checkout closed (Failed order, coded 422 `checkout_closed`, link never handed out) on every path, including idempotent replay; admin "Voucher Paid" reads the redemption. **2026-10-12 (ADR-036 addendum, item 80):** a merge rejects an expired source voucher. **2026-10-12 (ADR-024 addendum, item 79):** only an admin-issued voucher debits the platform ledger; the 4 old compensation-voucher debits were reversed on release (live via #416, 2026-10-13, verified on prod). **2026-10-13 (item 84):** expiry stays `expires_at` alone; the admin list, detail and order Refund cards show an active voucher past it as expired (`display_status`), and it can't be ticked for merge | ADR-024, 035, 036 |
 | Customer Analytics (ANL-1..5) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. Renewal-reminder emails at H-3 and H+1 (Malaysia days), listed on the admin member page (item 64, live via #416 2026-10-13). WhatsApp reminders designed, waiting on a trigger (§16 item 85) | ADR-027, 055, 068, 080 |
-| Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. The voucher path was live-tested 2026-10-06 (a failed order's Issue Voucher code arrived on WhatsApp), along with the status card and not-found reply; their throttles are silent and leave no trace (§16 item 69). Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14). **2026-10-12 (staging, not live):** every order-number message now gets a card or a not-found reply; the silent repeat throttles are removed (§16 item 69) | ADR-116 |
+| Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. The voucher path was live-tested 2026-10-06 (a failed order's Issue Voucher code arrived on WhatsApp), along with the status card and not-found reply. Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14). **2026-10-12 (§16 item 69):** every order-number message gets a card or a not-found reply; the silent repeat throttles are removed (live via #416; the founder confirmed on a real phone 2026-10-13) | ADR-116 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
 | Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private) — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. **2026-09-14: found the restore-test had failed 14/14 since go-live** (managed-MySQL GTID privilege gap) **and its alert never reached an inbox** (`MAIL_MAILER=log`) — both fixed and **re-verified live same day**: a manual "Backup Now" landed on `r2_backups` with `status=success`/`restore_test_passed=1`, the first success ever recorded | ADR-039, ADR-095 |
 | Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-form picker (`ImageUrlInput`, live via #406, 2026-10-12) on Edit Game, Hero Slide and the two SEO OG-image fields; the URL stays a plain text field | ADR-095 |
 | SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage. **ADR-120 (live 2026-10-08):** tokens in every SEO field, per-brand canonical origin (canonical/sitemap/robots/llms/JSON-LD), all packages in HTML, Product `offers` + `aggregateRating`, fact line, admin FAQ + `FAQPage` | ADR-029, ADR-042, ADR-120 |
-| Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 (Telegram) dropped and its fields removed (live via #406, 2026-10-12). Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this | ADR-028, 089 |
+| Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 (Telegram) dropped and its fields removed (live via #406, 2026-10-12). Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this. A re-upload shows at once (`?v=` on the URL, #409, live via #416; founder-checked 2026-10-13) | ADR-028, 089 |
 | Developer Tools (DEV-1..2) | ✅ Live — `/middleware/developer-tools`, all 5 adapter methods, typed-DTO editor, dry-run default. Same screen as MUI-11 | ADR-054 |
 | Blacklist / Fraud (FRAUD-1..4) | ✅ Live — `BlacklistService` + `CheckoutVelocityGuard` wired into checkout; `/admin/blacklist` screen. `foundation-security.md` §4 fully checked | ADR-007 |
 | Middleware Panel (MID-1..13, MUI-1..11) | ✅ Live — sync/matching/catalog (Product Manager), price sync + FX, player validation, test orders, request logging, supplier credentials, landing page. MUI-4 (export) dropped | ADR-051, 052 |
@@ -692,8 +694,8 @@ for the 2026-09-17 audit that found two dark-mode token bugs).
 
 # 16. Open Items & Backlog
 
-**Restructured 2026-10-12; re-checked against git the same day: `main` =
-`staging` after release #406.** This list holds only **open** items. "Next up"
+**Restructured 2026-10-12; re-checked against git and production on
+2026-10-13, after release #416.** This list holds only **open** items. "Next up"
 is the one place they are sorted, one line each; "Details" holds each item's
 full text once, by number. Everything closed is one line under "Recently
 closed", pointing to where the full story lives (`docs/build-log.md` /
@@ -705,14 +707,15 @@ against real code or production before building on it.
 
 **Founder's rule (2026-10-08): clear the backlog below before any new
 feature.** Every open item sorted by what it needs to finish. Verified against
-code and production on 2026-10-09 and re-checked against git on 2026-10-12.
-Re-verify before building.
+code and production on 2026-10-09; re-checked on 2026-10-13 after release
+#416. Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- **84** Admin voucher list treats an expired voucher as active (admin
-  display only, no money path).
+- None.
 
 **B. Needs a short grill / ADR addendum first**
+- **88** A voucher's typed expiry date ends at 08:00 MYT that day, not at its
+  end (no production voucher has an expiry yet).
 - **6 / A3** Per-tier rate limit on the Reseller API/Bot.
 - **66** Combo edit-composition UI (needs an ADR-094 addendum).
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
@@ -722,6 +725,8 @@ Re-verify before building.
 - **11** Sentry (error tracking) is still not set up. UptimeRobot on
   `/api/health` confirmed green and its alert delivery tested 2026-10-12.
 - **71** GSC recheck around 2026-10-22.
+- **87** Delete the two old `.env` backups on the prod box (they hold the DB
+  password).
 
 **D. Waiting on a trigger: don't build early**
 - **4** Bot-host resize, when capacity calls for it.
@@ -759,13 +764,6 @@ Re-verify before building.
    calls for it. It is also the moment to revisit the OpenWA engine (item 59:
    Baileys stays until then). OpenWA now shares `pekangame-prod-lwf` with the API
    (ADR-114).
-6. Small unbuilt scope, none blocking: only the
-   reseller-family audit's item A3 (per-tier rate limit on the Reseller
-   API/Bot — a deliberately deferred design call from the 2026-09-10 audit).
-   The gallery in-form picker and SET-9 Telegram (dropped) closed 2026-10-10.
-   Closed parts (ORD-5 export, `AggregateRating`, ADR-090 palettes, theme
-   preview tokens) are in `docs/build-log*.md`.
-
 6. **Per-tier rate limit on the Reseller API/Bot** (reseller-family audit item A3, a deliberately deferred design call from the 2026-09-10 audit). Today one 60/min limit per key (`AppServiceProvider` `reseller-api`). Closed parts (ORD-5 export, `AggregateRating`, ADR-090 palettes, theme preview tokens, the gallery in-form picker, SET-9 Telegram) are in `docs/build-log*.md`.
 
 10. **MFA** — admin (AUTH-7) and `affiliate_users` both descoped; revisit before
@@ -969,18 +967,6 @@ Re-verify before building.
     Production had 0 admin-issued vouchers on 2026-10-12. Grill revoke and
     expiry together (expiry needs a scheduled job) when one exists.
 
-84. **Admin voucher list treats an expired voucher as active** (found with
-    item 80, 2026-10-12). Nothing ever sets a voucher's `status` to `expired`;
-    expiry is `expires_at` alone (checkout and merge both check it). So in
-    `VoucherController::index()` the "Expired" stat counts `status = 'expired'`
-    and is always 0, the "Active" stat counts and sums expired vouchers too,
-    and `/admin/vouchers` shows them with an Active pill and a merge checkbox
-    (the server rejects the merge since #412). Fix: derive "expired" from
-    `expires_at` in the stats, the pill and the checkbox. Do not backfill
-    `status`: the Monthly Summary's breakage reads `expires_at`. Production on
-    2026-10-12: no voucher has an `expires_at`, so every figure is correct
-    today.
-
 85. **Membership renewal reminder on WhatsApp — designed, waiting on a
     trigger** (ADR-068 2026-10-13 addendum, decisions 15-19). Trigger: 10 active
     members, or the founder sees members not renewing despite the email,
@@ -997,8 +983,27 @@ Re-verify before building.
     real email client still shows the logo badly: emit a PNG copy in the one
     shared image-ingest step both logo uploads use.
 
+87. **Old `.env` backups on the prod box** (found 2026-10-13, read-only
+    `ls`). `~/api.pekangame.space/.env.bak-before-dbtls` (2026-10-08, mode
+    600; build-log 2026-10-10 said to delete it after a few clean days) and
+    `.env.bak-2026-09-30-doadmin-least-privilege` (mode 664, group-readable).
+    Both hold the DB password. The DB-TLS change has run clean since 2026-10-08.
+    Founder runs: `ssh pekangame-prod-lwf 'rm ~/api.pekangame.space/.env.bak-before-dbtls ~/api.pekangame.space/.env.bak-2026-09-30-doadmin-least-privilege'`.
+
+88. **Voucher expiry date ends at 08:00 MYT, not end of day** (found
+    2026-10-13 tracing item 84). Create and Merge take `expires_at` as
+    `YYYY-MM-DD`; Laravel stores midnight UTC, which is 08:00 on that day in
+    Malaysia. `isExpired()` compares the instant, so a voucher "valid until
+    1 Nov" (the WhatsApp line formats the UTC date) is refused from 08:00 on
+    1 Nov. Production 2026-10-13: no voucher has an `expires_at`. Decide what
+    a typed date means (recommended: valid through the end of that Malaysia
+    day, stored as 23:59:59 MYT), then fix it where the date enters
+    (`CreateVoucherRequest` / `MergeVouchersRequest` → `VoucherService`).
+    The Monthly Summary breakage month reads the same column, so check it.
+
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
+- **84** 2026-10-13: the admin voucher list, voucher detail and order Refund cards show an active voucher past `expires_at` as expired (`display_status`); the stats split active/expired by it and an expired voucher can't be ticked for merge. `Voucher::isExpired()` is now the one expiry rule (checkout and merge use it). `status` is not backfilled. Staging only until a release. Details: build-log 2026-10-13.
 - **64** 2026-10-13: membership renewal-reminder emails at H-3 and H+1, in Malaysia days, one per period (`membership_reminders`), listed on the admin member page (ADR-068 2026-10-13 addendum). The same change fixes the squashed email logo, the receipt's day-early end date and its missing link, and makes email and WhatsApp share one brand lookup. WhatsApp reminders are item 85. Live via #416 (2026-10-13). Details: build-log 2026-10-13.
 - **79** 2026-10-12: a compensation voucher (issued for an order) no longer debits the platform ledger; only an admin-issued voucher does, matching `Voucher::scopeCompensation()` (ADR-024 2026-10-12 addendum). The 4 old debits (RM13.18) get one reasoned reversal each from a migration that runs on release. Live via #416 (2026-10-13). Details: build-log 2026-10-12.
 - **80** 2026-10-12: a voucher merge rejects an expired source (ADR-036 2026-10-12 addendum, #412). Live via #416 (2026-10-13).
