@@ -52,7 +52,7 @@ final class SendMembershipReceiptJob implements ShouldQueue
         }
 
         $tier = $membership->membershipPlan->name;
-        $expires = $membership->expires_at->toFormattedDayDateString();
+        $expires = $membership->expiresOn()->toFormattedDayDateString();
 
         $amountLine = $this->amountSen > 0
             ? 'Amount paid: RM'.number_format($this->amountSen / 100, 2)

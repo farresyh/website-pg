@@ -46,6 +46,8 @@ class CustomerWhatsAppNotificationTest extends TestCase
             'services.openwa.notification_gap_min_seconds' => 10,
             'services.openwa.notification_gap_max_seconds' => 30,
         ]);
+        // The platform brand's store name, as on production; without it the name falls back to business_name.
+        AffiliateBranding::withoutAffiliateScope()->create(['affiliate_id' => $this->primaryAffiliate()->id, 'store_name' => 'PekanGame']);
         PlatformSettings::current()->update(['whatsapp_notifications_enabled' => true]);
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
     }

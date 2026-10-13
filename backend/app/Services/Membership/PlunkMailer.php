@@ -3,7 +3,7 @@
 namespace App\Services\Membership;
 
 use App\Models\Affiliate;
-use App\Models\AffiliateBranding;
+use App\Support\BrandIdentity;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Mail\Markdown;
 use Illuminate\Support\Facades\Http;
@@ -46,23 +46,20 @@ final class PlunkMailer
     }
 
     /**
-     * `Affiliate` has no `branding` relation (every existing caller —
-     * BrandingController, SettingsController, GalleryImageController —
-     * queries `AffiliateBranding` directly), and `AffiliateBranding`
-     * carries the ADR-057 tenant `AffiliateScope`, so a plain query
-     * would come back empty outside the affiliate guard (a queue job,
-     * this mailer). `withoutAffiliateScope()` is the same escape hatch
-     * those existing callers already use.
+     * The brand an email carries: name, logo, and the storefront origin
+     * the header and buttons link to (`BrandIdentity`, ADR-068 2026-10-13
+     * addendum decision 13). A null affiliate gets the platform brand.
+     *
+     * @return array{storeName: string, logoUrl: ?string, storeUrl: string}
      */
     public function brandingFor(?Affiliate $affiliate): array
     {
-        $branding = $affiliate === null
-            ? null
-            : AffiliateBranding::withoutAffiliateScope()->where('affiliate_id', $affiliate->id)->first();
+        $brand = BrandIdentity::of($affiliate?->id);
 
         return [
-            'storeName' => $branding?->store_name ?? 'PekanGame',
-            'logoUrl' => $branding?->logo_url,
+            'storeName' => $brand->name,
+            'logoUrl' => $brand->logoUrl,
+            'storeUrl' => $brand->origin,
         ];
     }
 

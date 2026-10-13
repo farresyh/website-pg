@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Services\Membership\MembershipStatus;
+use App\Services\Report\ReportService;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -70,5 +72,16 @@ class Membership extends Model
     public function feeRecords(): HasMany
     {
         return $this->hasMany(MembershipFeeRecord::class);
+    }
+
+    /**
+     * The calendar day the membership ends, in Malaysia time. `expires_at`
+     * is UTC, so formatting it directly shows the day before for any
+     * expiry after 16:00 UTC. Every member-facing date and the reminder
+     * windows use this (ADR-068 2026-10-13 addendum, decisions 2 and 12).
+     */
+    public function expiresOn(): ?CarbonImmutable
+    {
+        return $this->expires_at?->toImmutable()->setTimezone(ReportService::TIMEZONE)->startOfDay();
     }
 }
