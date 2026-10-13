@@ -652,7 +652,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Admin Dashboard (DASH-1..6) | ✅ Live — KPIs, System Health, funnel, top games, hourly activity | ADR-045 |
 | Money core (Pricing, Ledger, Voucher, Order status, idempotency) | ✅ Live — full service layer, concurrency-proven. The most mature part of the codebase | ADR-002 |
 | Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end. PR #273's invite/session and compensation visibility fixes, plus ADR-112's role-aware shell, dashboard recent orders, and responsive Orders presentation, shipped in PRs #273, #275 and #276, released to `main` via #278 (2026-09-24) | ADR-056–061, 078, 112 |
-| Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live — prepaid wallet (admin manual credit + self-serve CHIP top-up), one order-placement contract (`ResellerOrderPlacementService`), `reseller_code`/`catalog_code`, REST API v1.4.0 (keys, IP allowlist, delivery webhook, optional `max_price_sen`), WhatsApp Bot (OpenWA), shared role-aware portal (ADR-112), per-game player-input contract (ADR-097), own queue lane (ADR-048). Real customer orders run on this channel. Detail: build-log + ADRs | ADR-072–076, 084, 091, 093, 112, 048, 097 |
+| Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live — prepaid wallet (admin manual credit + self-serve CHIP top-up), one order-placement contract (`ResellerOrderPlacementService`), `reseller_code`/`catalog_code`, REST API v1.5.0 (keys, IP allowlist, delivery webhook, optional `max_price_sen`, per-account rate limits: orders 60/min and reads 120/min, ADR-074 2026-10-13 addendum, staging only until a release), WhatsApp Bot (OpenWA), shared role-aware portal (ADR-112), per-game player-input contract (ADR-097), own queue lane (ADR-048). Real customer orders run on this channel. Detail: build-log + ADRs | ADR-072–076, 084, 091, 093, 112, 048, 097 |
 | Supplier Adapter (ADAPT-1..4) | ✅ Digiflazz live (the only funded supplier). Gamevion is integrated but deliberately unfunded (2026-09-24). Per-supplier circuit breaker, `SupplierAdapterFactory` routing, async delivery state machine + poll backstop, inbound webhooks (HMAC). **ADR-097 PR-1 + PR-2 built 2026-09-16** — Digiflazz `customer_no` separator moves per-game (was wrongly supplier-wide); per-game Zone ID picklist replaces free text, with the same presence+value-validation now shared (`CheckoutInputValidator`) across storefront, Reseller API, and Bot. Both PRs live. **ADR-098 built 2026-09-16** — `SupplierResponse::$transactionAlreadyFormed` (supplier-agnostic) routes a non-retriable Digiflazz `rc` (Terbentuk Transaksi=Ya, 20 codes) or Gamevion `duplicate_reference` straight to `needs_review`, closing a real gap in the async webhook/poll finalize path a plain `Failed` resend could never resolve (later refined by ADR-102). **2026-09-29:** the breaker also counts `createOrder`/`checkStatus` timeouts (`listProducts` excluded). For a replay-safe supplier (Digiflazz), an ambiguous outcome now goes to Pending with a same-ref poll instead of NeedsReview (ADR-102 addendum). Live | ADR-006, 030–032, 067, 069, 097, 098, 102 |
 | Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). `fpx` active; `fpx_b2b1` / `duitnow_qr` seeded inactive (later phases). Xendit deleted (archived). **ADR-110 PR-A built 2026-09-19** — `overdue`/`expired`/`blocked` now map to `Failed` (were silently stuck `Pending` forever); every purchase now sets `due`+`due_strict` so CHIP itself closes it after 30 min. **PR-C built 2026-09-19** — credentials moved to encrypted `payment_gateways` DB row + `/middleware/payment-gateways` admin screen, binding is DB-first; the founder completed the cutover 2026-09-24, and the `.env` fallback is kept deliberately (§16 Parked). **PR-B built 2026-09-19** — CHIP settlement `.xlsx` reconciliation + Monthly Accounting Summary, fills ADR-083 PR-2 (see §16 item 12). All three ADR-110 PRs now built | ADR-022, ADR-110 |
 | Games & Packages (GAME-1..11) | 🟢 Live — GAME-1..11 all shipped (list/detail, markup %, activate/deactivate, delete, bulk markup via `/admin/settings`, SEO fields via `/admin/seo/games`, drag-drop reorder via `/admin/games`'s "Reorder Games", folded with the storefront's Quick Top-Up widget). GAME-12 dropped, 2026-09-13 (dead requirement, see §16). **2026-10-02:** package delete now blocks a package with order history or live combo-component usage instead of silently orphaning order history or crashing with a raw DB error (ADR-119) | ADR-029, ADR-119 |
@@ -716,7 +716,6 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
 **B. Needs a short grill / ADR addendum first**
 - **88** A voucher's typed expiry date ends at 08:00 MYT that day, not at its
   end (no production voucher has an expiry yet).
-- **6 / A3** Per-tier rate limit on the Reseller API/Bot.
 - **66** Combo edit-composition UI (needs an ADR-094 addendum).
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
   the accountant's monthly document list first.
@@ -748,6 +747,8 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
   or when members don't renew despite the email.
 - **86** Email logo as PNG, if an email client still shows the WebP logo badly
   after the 2026-10-13 sizing fix.
+- **89** Per-reseller Reseller API rate-limit override, when a reseller asks
+  for more than 60 orders / 120 reads a minute.
 
 **E. New features: after the backlog** (each needs its own ADR + grill)
 - **13** Self-serve reseller signup.
@@ -762,8 +763,6 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
    calls for it. It is also the moment to revisit the OpenWA engine (item 59:
    Baileys stays until then). OpenWA now shares `pekangame-prod-lwf` with the API
    (ADR-114).
-6. **Per-tier rate limit on the Reseller API/Bot** (reseller-family audit item A3, a deliberately deferred design call from the 2026-09-10 audit). Today one 60/min limit per key (`AppServiceProvider` `reseller-api`). Closed parts (ORD-5 export, `AggregateRating`, ADR-090 palettes, theme preview tokens, the gallery in-form picker, SET-9 Telegram) are in `docs/build-log*.md`.
-
 10. **MFA** — admin (AUTH-7) and `affiliate_users` both descoped; revisit before
     the partner portal's withdrawal balances get meaningful.
 
@@ -992,8 +991,17 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
     (`CreateVoucherRequest` / `MergeVouchersRequest` → `VoucherService`).
     The Monthly Summary breakage month reads the same column, so check it.
 
+89. **Per-reseller Reseller API rate-limit override — waiting on a request**
+    (ADR-074 2026-10-13 addendum, decision 3). The limits are one pair for
+    every account (orders 60/min, reads 120/min, `AppServiceProvider`). The
+    public docs say "contact PekanGame" if they are too low; until a reseller
+    does, a deploy that changes the number is the answer. When one asks: a
+    nullable per-`Reseller` override read by the two limiters, set from the
+    admin reseller page.
+
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
+- **6 / A3** 2026-10-13: the Reseller API is limited per Reseller account, not per key, in two buckets (orders 60/min, reads 120/min); per-tier limits closed as not wanted; Bot unchanged (ADR-074 2026-10-13 addendum). The override is item 89. Staging only until a release. Details: build-log 2026-10-13.
 - **87** 2026-10-13: the founder deleted the two old `.env` backups on the prod box (`.env.bak-before-dbtls`, `.env.bak-2026-09-30-doadmin-least-privilege`; both held the DB password). Verified read-only: only `.env` remains in the site root.
 - **84** 2026-10-13: the admin voucher list, voucher detail and order Refund cards show an active voucher past `expires_at` as expired (`display_status`); the stats split active/expired by it and an expired voucher can't be ticked for merge. `Voucher::isExpired()` is now the one expiry rule (checkout and merge use it). `status` is not backfilled. Staging only until a release (#418 merged 2026-10-13). Details: build-log 2026-10-13.
 - **64** 2026-10-13: membership renewal-reminder emails at H-3 and H+1, in Malaysia days, one per period (`membership_reminders`), listed on the admin member page (ADR-068 2026-10-13 addendum). The same change fixes the squashed email logo, the receipt's day-early end date and its missing link, and makes email and WhatsApp share one brand lookup. WhatsApp reminders are item 85. Live via #416 (2026-10-13). Details: build-log 2026-10-13.
