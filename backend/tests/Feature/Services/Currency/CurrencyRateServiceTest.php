@@ -7,6 +7,7 @@ use App\Services\Backup\BackupFailureAlerter;
 use App\Services\Currency\CurrencyRateService;
 use App\Services\Currency\CurrencyRateUnavailableException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -85,6 +86,19 @@ class CurrencyRateServiceTest extends TestCase
         $service->rate('IDR', 'MYR');
         $this->travel(16)->minutes(); // past the fallback cache, inside the alert throttle
         $service->rate('IDR', 'MYR');
+    }
+
+    public function test_the_stale_alert_states_the_stored_rate_time_in_malaysia_time(): void
+    {
+        $this->travelTo(Carbon::parse('2026-10-16 03:00:00', 'UTC'));
+        CurrencyRate::query()->create([
+            'from' => 'IDR', 'to' => 'MYR', 'rate' => 0.000230, 'source' => 'open.er-api.com', 'fetched_at' => Carbon::parse('2026-10-13 03:30:00', 'UTC'),
+        ]);
+        Http::fake(['open.er-api.com/*' => Http::response(['message' => 'Server error'], 500)]);
+        $this->mock(BackupFailureAlerter::class)
+            ->shouldReceive('alert')->once()->withArgs(fn ($context, $message) => str_contains($message, '13 Oct 2026, 11:30 MYT'));
+
+        (new CurrencyRateService)->rate('IDR', 'MYR');
     }
 
     public function test_a_recent_fallback_does_not_alert(): void
