@@ -735,6 +735,7 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
 - **24** Wallet pending top-up resume/cancel.
 - **25** Portal "needs attention" aggregate.
 - **57** Marketing Campaigns (ADR-118, designed).
+- **94** Best-selling products per game in Reports.
 
 ## Details
 
@@ -970,6 +971,23 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
     does, a deploy that changes the number is the answer. When one asks: a
     nullable per-`Reseller` override read by the two limiters, set from the
     admin reseller page.
+
+94. **Best-selling products per game in Reports — new feature, needs an
+    ADR-104 addendum** (founder, 2026-10-13). Reports has a per-game breakdown
+    only; nothing shows which product inside a game sells most (package names
+    appear only per order in the export and per customer in Customer
+    Analytics). Count by what the customer bought, not by SKU: the key is
+    game + `denomination`, else `catalog_code`, else the package name; the
+    label is the storefront's display name. Why not `package_id` or name:
+    on prod (2026-10-13) 520 groups of active native packages share a game
+    and denomination (several supplier SKUs, one storefront entry), 29 of 32
+    paid orders sit on such a package, a resend swap rewrites
+    `orders.package_id` to the SKU sent, a combo is named differently from a
+    native package of the same total and gets a new row per version under
+    item 66's proposed "edit = replace" design, and names drift (3
+    denomination groups differ only by spelling). For the grill: an
+    optional drill-down per SKU/combo version, and whether to snapshot the
+    product key on the order at checkout so a resend swap can't move it.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
