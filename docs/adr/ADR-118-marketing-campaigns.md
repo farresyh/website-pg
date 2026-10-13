@@ -1,6 +1,6 @@
 # ADR-118: Marketing Campaigns — multi-use KOL discount codes, separate from `Voucher`
 
-> **Standing (2026-10-09):** Accepted, design only (not built). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-09):** Accepted (design). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-10-02, grilled across four rounds via `/mattpocock-skills:grilling`, plus a dedicated adversarial stress-test pass that caught and corrected two real design flaws before any code was written (decisions 9 and 11 below). Build not started.
 

@@ -1,5 +1,5 @@
-@props(['code', 'storeName' => 'PekanGame', 'logoUrl' => null])
-<x-mail::message :storeName="$storeName" :logoUrl="$logoUrl">
+@props(['code', 'storeName' => 'PekanGame', 'logoUrl' => null, 'storeUrl' => null])
+<x-mail::message :storeName="$storeName" :logoUrl="$logoUrl" :storeUrl="$storeUrl">
 # Your verification code
 
 Here is your verification code to sign in:

@@ -105,7 +105,7 @@ cd e2e && npm test   # Playwright golden paths (ADR-023, 6 specs) — boots its 
 | Doc | What's in it |
 | --- | --- |
 | `docs/prd.md` | Full product spec (§1–13), the current-state headline (§14), a coarse per-feature tracker (§15) and the live backlog (§16) — check §15 first for "how much of X is actually built" |
-| `docs/build-log.md` | Chronological record of what shipped and why, 2026-10-06 onward; older entries in `docs/build-log-archive.md` |
+| `docs/build-log.md` | Chronological record of what shipped and why, 2026-10-09 onward; older entries in `docs/build-log-archive.md` |
 | `docs/adr.md` + `docs/adr/` | Architecture Decision Log — `adr.md` is the index (one row per decision, with its Standing), each decision is its own file in `docs/adr/`. Every non-trivial trade-off, numbered, with context/rationale, stress-tested before being accepted. The source of truth for *why* |
 | `docs/foundation-security.md` | Actionable security checklist derived from the ADRs |
 | `docs/legacy-reference-notes.md` | Notes from studying a prior/reference system — read as reference material, not as facts about this codebase |

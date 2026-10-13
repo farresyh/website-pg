@@ -1,6 +1,6 @@
 # ADR-115: Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold (design only, build parked)
 
-> **Standing (2026-10-09):** Parked (designed, build deferred by founder). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-09):** Parked (designed). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Parked — grilled 2026-09-28 (`/mattpocock-skills:grilling`, 3 rounds), fully designed and decided below, **build deliberately deferred**. No automatic trigger to start building (decision 10) — the founder will say when.
 

@@ -3,8 +3,6 @@
 namespace App\Services\Notification;
 
 use App\Jobs\SendCustomerWhatsAppJob;
-use App\Models\Affiliate;
-use App\Models\AffiliateBranding;
 use App\Models\CustomerNotification;
 use App\Models\Order;
 use App\Models\PlatformSettings;
@@ -12,6 +10,7 @@ use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Models\WhatsappContact;
 use App\Services\Order\DeliveryStatus;
+use App\Support\BrandIdentity;
 use App\Support\PhoneNumber;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -49,11 +48,7 @@ final class CustomerNotificationService
 
     public const EVENT_ORDER_NOT_FOUND = 'order_not_found';
 
-    private const NOT_FOUND_REPEAT_SECONDS = 600;
-
     private const SLOT_KEY = 'whatsapp:next-send-slot';
-
-    private const STATUS_CARD_REPEAT_SECONDS = 1800;
 
     /**
      * ADR-116 decision 4: the order just became Delivered. A receipt goes out
@@ -76,19 +71,20 @@ final class CustomerNotificationService
      * ADR-116 2026-09-30 addendum: any message carrying a valid order number
      * gets that order's status card back, whichever button sent it or even if
      * it was typed by hand. The card holds only what the public track-order
-     * page shows, so it goes to whoever sent the number. The same card isn't
-     * repeated to the same number within 30 minutes unless the order's status
-     * changed, so a support chat that keeps quoting the order number isn't
-     * flooded.
+     * page shows, so it goes to whoever sent the number.
+     *
+     * Every message is answered, even when the card is unchanged (ADR-116
+     * 2026-10-12 addendum). A retried webhook is already safe: the dedupe key
+     * is the inbound message id.
+     *
+     * ponytail: no per-number cap. Ceiling: a scripted flood would queue
+     * behind the one paced lane and delay voucher messages (Horizon's LongWait
+     * does not see delayed jobs). Add a DB count or a next-send-slot guard if
+     * that is ever observed.
      */
     public function orderStatusCard(Order $order, string $phone, string $inboundMessageId): void
     {
         if (! $this->inScope($order)) {
-            return;
-        }
-
-        $throttleKey = "whatsapp:status-card:{$phone}:{$order->id}:{$order->payment_status->value}:{$order->delivery_status->value}";
-        if (! Cache::add($throttleKey, true, self::STATUS_CARD_REPEAT_SECONDS)) {
             return;
         }
 
@@ -104,16 +100,11 @@ final class CustomerNotificationService
 
     /**
      * ADR-116 addendum: the message quoted an order number we don't have,
-     * usually a typo. No brand (there's no order to take it from), and at most
-     * one reply per number every 10 minutes so a run of wrong guesses doesn't
-     * become a run of replies.
+     * usually a typo. No brand (there's no order to take it from). Answered
+     * every time, so a customer who corrects the typo always gets a reply.
      */
     public function orderNotFound(string $orderNumber, string $phone, string $inboundMessageId): void
     {
-        if (! Cache::add("whatsapp:order-not-found:{$phone}", true, self::NOT_FOUND_REPEAT_SECONDS)) {
-            return;
-        }
-
         $this->queue(
             event: self::EVENT_ORDER_NOT_FOUND,
             dedupeKey: self::EVENT_ORDER_NOT_FOUND.':message:'.$inboundMessageId,
@@ -334,14 +325,9 @@ final class CustomerNotificationService
     /** @return array{name: string, host: string} */
     private function brand(int $affiliateId): array
     {
-        $name = AffiliateBranding::withoutAffiliateScope()->where('affiliate_id', $affiliateId)->value('store_name');
+        $brand = BrandIdentity::of($affiliateId);
 
-        // ADR-120: the same origin the storefront's canonical tags use.
-        $origin = Affiliate::withTrashed()->find($affiliateId)?->canonicalOrigin()
-            ?? (string) config('services.storefront.url');
-        $host = parse_url($origin, PHP_URL_HOST);
-
-        return ['name' => $name ?: 'PekanGame', 'host' => (string) $host];
+        return ['name' => $brand->name, 'host' => $brand->host()];
     }
 
     private function firstName(?string $name): string

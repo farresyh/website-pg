@@ -1434,7 +1434,8 @@ class OrderFulfillmentServiceComboTest extends TestCase
         }
         $this->assertSame(DeliveryStatus::Failed, OrderDeliveryLeg::query()->where('order_id', $order->id)->where('leg_number', 2)->value('status'));
         $this->assertSame(2, LedgerEntry::query()->where('type', 'order_profit')->count());
-        $this->assertSame(1, LedgerEntry::query()->where('type', 'voucher_issued')->count());
+        // Item 79: a compensation voucher never debits the platform ledger.
+        $this->assertSame(0, LedgerEntry::query()->where('type', 'voucher_issued')->count());
     }
 
     /** ADR-094 decision 29 — Retry from PartiallyDelivered re-attempts the failed leg only. */

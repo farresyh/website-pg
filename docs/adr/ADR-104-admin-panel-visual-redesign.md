@@ -131,7 +131,7 @@ The code-trace also found that **Reports "Sales" and Accounting "Sales revenue" 
 - The Compare mode is an explicit `?compare=previous|month_to_date` on `/reports/summary`, chosen by the page from its preset (dates alone can't tell "This month" from a "Last 7 days" starting on the 1st).
 - The Bridge's "not recognised" line nets the new `Order::walletRefundSql()` from `selling_price` (`netSalesSql()` now composes it). Computing `selling_price - final_amount` overflowed MySQL's unsigned columns, which sqlite did not catch.
 
-See `docs/build-log.md`, 2026-10-08.
+See `docs/build-log-archive.md`, 2026-10-08.
 
 **Build note, 2026-10-08 — PR-B (frontend foundation) built** on `feature/2026-10-08-reports-pr-b`, as designed, with four implementation choices:
 - `OrderStatusFunnelChart` is plain HTML, not Recharts: the mockup's form (a share bar and labelled bar rows) needs no axes or scales. The trend charts are Recharts, as stacked panels with one y-scale each.
@@ -139,7 +139,7 @@ See `docs/build-log.md`, 2026-10-08.
 - `chart-negative` now aliases `danger-ink` (it has a dark value), matching the artifact's `tokens.json`. It was a fixed hex, filed as "inherits light", and had no reader yet.
 - Compare is wired end to end on Overview's KPI cards only; the other tabs take it in PR-C with the rest of R13 Phase 1.
 
-See `docs/build-log.md`, 2026-10-08 (PR-B).
+See `docs/build-log-archive.md`, 2026-10-08 (PR-B).
 
 **Build note, 2026-10-09 — PR-C (the 7 tabs) built** on `feature/2026-10-09-reports-pr-c`, as designed, with these choices and findings:
 - **Default range stays All time** (founder, 2026-10-09: the whole-business view matters more than matching the mockup's Last 30 days). Compare stays disabled on All time per R12.

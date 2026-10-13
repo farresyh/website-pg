@@ -1,5 +1,5 @@
-@props(['tier', 'opening', 'amountLine', 'expires', 'storeName' => 'PekanGame', 'logoUrl' => null])
-<x-mail::message :storeName="$storeName" :logoUrl="$logoUrl">
+@props(['tier', 'opening', 'amountLine', 'expires', 'storeName' => 'PekanGame', 'logoUrl' => null, 'storeUrl' => null])
+<x-mail::message :storeName="$storeName" :logoUrl="$logoUrl" :storeUrl="$storeUrl">
 # {{ $tier }} Membership Receipt
 
 {{ $opening }}
@@ -7,9 +7,9 @@
 **{{ $amountLine }}**  
 Active through: **{{ $expires }}**
 
-<x-mail::panel>
-You can manage your membership at any time by visiting your account's Membership page on the storefront.
-</x-mail::panel>
+<x-mail::button :url="$storeUrl.'/membership'">
+Manage membership
+</x-mail::button>
 
 Thanks,<br>
 {{ $storeName }}

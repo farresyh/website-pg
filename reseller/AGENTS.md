@@ -47,7 +47,7 @@ reseller-guard endpoint, not just a hidden nav tab.
 ## Env
 
 - `NEXT_PUBLIC_API_URL` — Laravel backend base URL (e.g.
-  `http://kedairuncit-backend.test` or `http://127.0.0.1:8000`).
+  `https://kedairuncit-backend.test` or `http://127.0.0.1:8000`).
 - `NEXT_PUBLIC_PRIMEUI_LICENSE_KEY` — the founder's free PrimeUI
   "Community" tier key (same value as `admin/`; verification runs
   client-side so it must be `NEXT_PUBLIC_`). See `admin/`'s

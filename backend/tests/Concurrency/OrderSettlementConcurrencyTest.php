@@ -78,8 +78,10 @@ class OrderSettlementConcurrencyTest extends TestCase
         $this->assertSame(400, $x->fresh()->remaining);
         $this->assertSame(400, VoucherRedemption::query()->where('order_id', $order->id)->value('restored_amount'));
 
-        // Ledger: one voucher_issued, one order_profit pair.
-        $this->assertSame(1, LedgerEntry::query()->where('type', 'voucher_issued')->count());
+        // Ledger: one order_profit pair; a compensation voucher writes no
+        // voucher_issued row (item 79), so the voucher count above is the
+        // once-only proof.
+        $this->assertSame(0, LedgerEntry::query()->where('type', 'voucher_issued')->count());
         $this->assertSame(2, LedgerEntry::query()->where('type', 'order_profit')->where('reference_id', $order->id)->count());
         $this->assertSame(600, (int) LedgerEntry::query()->where('type', 'order_profit')->where('owner_type', 'platform')->sum('amount'));
     }
