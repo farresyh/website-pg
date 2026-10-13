@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Voucher;
 
+use App\Services\Report\ReportService;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -27,7 +28,9 @@ class MergeVouchersRequest extends FormRequest
             'voucher_ids' => ['required', 'array', 'min:2'],
             'voucher_ids.*' => ['required', 'integer', 'distinct', 'exists:vouchers,id'],
             'reason' => ['required', 'string', 'max:1000'],
-            'expires_at' => ['nullable', 'date', 'after:now'],
+            // ADR-024 2026-10-13 addendum: a date, valid through that Malaysia
+            // day (VoucherService); today in Malaysia is the earliest.
+            'expires_at' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:'.now(ReportService::TIMEZONE)->toDateString()],
         ];
     }
 }
