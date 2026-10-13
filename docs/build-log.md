@@ -1053,3 +1053,21 @@ Design: ADR-024 2026-10-13 addendum (grilled, stress-tested).
   voucher, reason "Item 88 local check".)
 - **Found:** the Malaysia timezone string is copied in five services; logged
   as §16 item 90 (A).
+
+## 2026-10-13 — #420 and #421 merged; docs consistency pass
+
+The founder merged #420 (item 6/A3) and #421 (item 88) into `staging`. Not
+live: `origin/main..origin/staging` holds #417–#421 (code: #418, #420, #421;
+no migration).
+
+Docs pass before closing the session:
+- PRD §14 now records the unreleased `staging` set, and that all three
+  payment methods are inactive since 2026-10-07 by the founder's choice
+  (confirmed 2026-10-13; read-only prod check the same day: `fpx`,
+  `fpx_b2b1`, `duitnow_qr` all `is_active = 0`, last wallet top-up attempt
+  2026-09-20, one order in the past 7 days, paid from a wallet).
+- §16 "Recently closed": the item 6 (part) line no longer says A3 remains.
+- Checked for stale rate-limit or voucher-expiry statements across `docs/`,
+  the ADR index, `AGENTS.md` files and the docs site: none left. ADR-074's
+  original decision 4 and PR-E note still say "keyed on the API key"; per the
+  ADR file rules, its 2026-10-13 addendum overrides them.
