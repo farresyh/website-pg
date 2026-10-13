@@ -902,3 +902,25 @@ parked as item 85.
 - **Not run locally:** the MySQL concurrency suite (Docker was not running);
   CI's `backend-concurrency` job runs the new migration on MySQL 8.4.
 - **After the release:** run the dry-run read-only on production.
+
+---
+
+## 2026-10-13 — Release #416 (`staging`→`main`): #407–#415
+
+Founder asked to merge #415 and release. Merged as `d7e5fd5`; CI (all jobs),
+the Forge `deploy` job and the four Vercel production builds green. Prod
+`current/` is at `d7e5fd5`; Horizon running.
+
+**Production evidence (read-only, before → after):**
+- Item 79 migration: compensation debits on vouchers 1, 2, 4, 5 (−1318 sen)
+  with 0 `item79-reversal` keys and platform ledger 1551 sen → 4 keys,
+  platform ledger 2869 sen (+1318, as predicted). The original debits stay
+  (append-only); each now has its reversal.
+- Item 64: `membership_reminders` did not exist → `2026_10_13_000000` Ran.
+  `app:send-membership-reminders --dry-run` lists nobody today. Member #2 ends
+  2026-10-24 MYT, so `kindDue()` is null until 21 Oct; member #1 (ended 2 Oct)
+  is past the 7-day window. `schedule:list` shows `0 2 * * *` UTC (10:00 MYT).
+
+**Still by hand:** #409 logo re-upload in a browser; #411 the same order
+number sent several times from a real phone to the CS number. After 21 Oct:
+member #2's `before` row should read `sent` on the admin member page.
