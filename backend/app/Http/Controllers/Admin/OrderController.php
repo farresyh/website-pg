@@ -803,6 +803,10 @@ class OrderController extends Controller
             'customerNotifications' => fn ($query) => $query->select(['id', 'order_id', 'event', 'phone', 'status', 'attempts', 'error', 'sent_at', 'created_at'])->oldest(),
         ]);
 
+        // §16 item 84: the Refund cards show `display_status` (expiry is `expires_at` alone).
+        $order->voucher?->append('display_status');
+        $order->paidWithVoucher?->append('display_status');
+
         return response()->json([
             ...$order->toArray(),
             // ADR-073 decision 7: computed, not a stored column — lets

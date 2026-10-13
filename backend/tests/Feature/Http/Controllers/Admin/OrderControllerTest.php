@@ -2044,7 +2044,30 @@ class OrderControllerTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('paid_with_voucher.code', 'KRS-PAID-WITH')
-            ->assertJsonPath('paid_with_voucher.remaining', 300);
+            ->assertJsonPath('paid_with_voucher.remaining', 300)
+            ->assertJsonPath('paid_with_voucher.display_status', 'active');
+    }
+
+    /** §16 item 84: the Refund cards show an expired voucher as expired, not active. */
+    public function test_show_marks_a_voucher_past_its_expiry_as_expired(): void
+    {
+        $this->actingAsAdmin();
+        $paidWith = Voucher::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'code' => 'KRS-LAPSED',
+            'customer_email' => 'buyer@example.com',
+            'amount' => 500,
+            'remaining' => 300,
+            'status' => 'active',
+            'expires_at' => now()->subDay(),
+            'reason' => 'test',
+        ]);
+        $order = $this->order(['voucher_id' => $paidWith->id]);
+
+        $this->getJson("/api/orders/{$order->id}")
+            ->assertOk()
+            ->assertJsonPath('paid_with_voucher.status', 'active')
+            ->assertJsonPath('paid_with_voucher.display_status', 'expired');
     }
 
     /** ADR-102 decision 12 — show() mirrors the same three badge booleans index() exposes, so OrderDetail's shape (extending the list's) is never inconsistent between the two endpoints. */

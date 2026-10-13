@@ -95,9 +95,9 @@ export default function VouchersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [revokingId, setRevokingId] = useState<number | null>(null);
 
-  // ADR-036 — only active vouchers are ever selectable (enforced by
-  // the checkbox itself, below); the server is still the real guard
-  // on same-customer/active-status.
+  // ADR-036 — only active, unexpired vouchers are ever selectable
+  // (enforced by the checkbox itself, below, via `display_status`); the
+  // server is still the real guard on same-customer/active/expiry.
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
 
@@ -236,7 +236,7 @@ export default function VouchersPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div>
               <p className="text-theme-xs text-gray-500 dark:text-gray-400">Status</p>
-              <Tag severity={statusSeverity[voucher.status]}>{voucher.status}</Tag>
+              <Tag severity={statusSeverity[voucher.display_status]}>{voucher.display_status}</Tag>
             </div>
             <div>
               <p className="text-theme-xs text-gray-500 dark:text-gray-400">Brand</p>
@@ -446,7 +446,7 @@ export default function VouchersPage() {
                     return (
                       <DataTableRow key={v.id}>
                         <DataTableCell className="px-5 py-4">
-                          {v.status === "active" && (
+                          {v.display_status === "active" && (
                             <input
                               type="checkbox"
                               checked={selectedIds.includes(v.id)}
@@ -472,7 +472,7 @@ export default function VouchersPage() {
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(v.amount)}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(v.remaining)}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <Tag severity={statusSeverity[v.status]}>{v.status}</Tag>
+                          <Tag severity={statusSeverity[v.display_status]}>{v.display_status}</Tag>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <div className="flex items-center gap-3">

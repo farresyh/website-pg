@@ -222,6 +222,34 @@ class VoucherControllerTest extends TestCase
         $response->assertJsonPath('stats.total_issued.total', 1_000);
     }
 
+    /**
+     * §16 item 84: expiry is `expires_at` alone (status stays `active`), so
+     * the list must derive "expired" from it: stats, and `display_status`
+     * for the pill and the merge checkbox. The stored status is untouched.
+     */
+    public function test_index_treats_an_active_voucher_past_its_expiry_as_expired(): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+        $live = $this->makeVoucher(['remaining' => 700]);
+        $lapsed = $this->makeVoucher(['remaining' => 400, 'expires_at' => now()->subMinute()]);
+        $this->makeVoucher(['remaining' => 300, 'expires_at' => now()->addDay()]);
+        $this->makeVoucher(['remaining' => 0, 'status' => 'exhausted', 'expires_at' => now()->subDay()]);
+
+        $response = $this->getJson('/api/vouchers')->assertOk();
+
+        $response->assertJsonPath('stats.active.count', 2)
+            ->assertJsonPath('stats.active.total', 1_000)
+            ->assertJsonPath('stats.expired.count', 1)
+            ->assertJsonPath('stats.expired.total', 400);
+        $byId = collect($response->json('vouchers'))->keyBy('id');
+        $this->assertSame('active', $byId[$live->id]['display_status']);
+        $this->assertSame('expired', $byId[$lapsed->id]['display_status']);
+        $this->assertSame('active', $byId[$lapsed->id]['status']);
+        $this->assertSame('active', $lapsed->fresh()->status);
+
+        $this->getJson("/api/vouchers/{$lapsed->id}")->assertOk()->assertJsonPath('voucher.display_status', 'expired');
+    }
+
     public function test_admin_can_issue_a_voucher_for_a_failed_order_without_threshold_check(): void
     {
         $order = $this->makeOrder();
@@ -233,6 +261,7 @@ class VoucherControllerTest extends TestCase
         $response->assertJsonPath('restored_only', false);
         $response->assertJsonPath('voucher.amount', 1000); // final_amount(1090) - transaction_fee(90)
         $response->assertJsonPath('voucher.customer_email', 'buyer@example.com');
+        $response->assertJsonPath('voucher.display_status', 'active'); // the order page merges this into its Refund cards
         $this->assertDatabaseHas('vouchers', ['order_id' => $order->id, 'amount' => 1000]);
     }
 
