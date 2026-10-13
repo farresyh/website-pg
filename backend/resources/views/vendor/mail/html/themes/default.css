@@ -111,12 +111,12 @@ img {
 
 /* Logo */
 
+/* Sized by height only so any logo keeps its own aspect ratio. */
 .logo {
-    height: 75px;
+    height: 50px;
     margin-top: 15px;
     margin-bottom: 10px;
-    max-height: 75px;
-    width: 75px;
+    width: auto;
 }
 
 /* Body */
