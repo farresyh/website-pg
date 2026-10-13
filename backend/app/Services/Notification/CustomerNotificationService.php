@@ -11,6 +11,7 @@ use App\Models\VoucherRedemption;
 use App\Models\WhatsappContact;
 use App\Services\Order\DeliveryStatus;
 use App\Support\BrandIdentity;
+use App\Support\MalaysiaTime;
 use App\Support\PhoneNumber;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -219,7 +220,7 @@ final class CustomerNotificationService
         ];
 
         if ($voucher->expires_at !== null) {
-            $lines[] = 'Valid until: '.$voucher->expires_at->format('j M Y');
+            $lines[] = 'Valid until: '.$voucher->expires_at->timezone(MalaysiaTime::TIMEZONE)->format('j M Y');
         }
 
         $lines[] = '';

@@ -93,3 +93,19 @@ Live-verified against the same real wallet order from the walkthrough above (`co
 *Consequence to track.* An integrator that auto-retries at `current_price_sen` has no ceiling at all; the docs say so. Revisit the Bot `max=` token if a Bot reseller complains about a price they didn't see.
 
 **🟢 BUILT 2026-10-08** (`feature/2026-10-08-reseller-api-max-price`): `PriceAboveMaxException`, `ResellerApiException::priceChanged()`, `PlaceOrderRequest` rule, API docs v1.4.0. +6 tests; fast suite green.
+
+### 2026-10-13 addendum — rate limit per Reseller account, two buckets (§16 item 6 / audit A3)
+
+*Context.* Decision 4 shipped as one 60/min bucket keyed on the raw bearer token, because the limiter ran before `EnsureResellerApiKey` and the token was the only identifier. ADR-073 decision 9 asked for a per-`Reseller`-account bucket. Per key, an account multiplied its limit by its key count (portal cap 5 active keys, admin issue uncapped), and a revoke-and-reissue got a fresh bucket. One bucket for all five endpoints also let read polling starve order placement. The 2026-09-10 audit (A3) titled this "per-tier", and deferred it until real traffic. Production 2026-10-13: 4 tiers, 2 resellers, 2 live keys, 0 API orders ever, 8 Bot orders. Grilled and stress-tested with the founder. Digiflazz's buyer docs were the reference: separate limits per endpoint kind (price list, transaction, status), nothing per tier, rate-limit refusals as a business `rc` inside a 200 (rc 85, which still forms a transaction).
+
+*Decisions.*
+1. **Keyed on the Reseller account**, never the key or IP. Every key of an account shares it. `throttle:*` now runs after `EnsureResellerApiKey`, which is pinned ahead of `ThrottleRequests` in the middleware priority list (`bootstrap/app.php`). Without the pin, Laravel hoists the throttle above it, past the `api` group's `SubstituteBindings` — the same trap ADR-080 hit with `membership.enabled`. The limiter throws if no Reseller is on the request, so a lost pin fails every test instead of silently falling back.
+2. **Two buckets, named limiters on the routes:** `reseller-api-orders` (`POST /v1/orders`, 60/min) and `reseller-api-reads` (every `GET`, 120/min). An idempotent replay counts. The numbers are a safe guess, not a measurement: orders keep today's 60 so no integrator loses capacity.
+3. **No per-tier limits — closed, not deferred.** A tier is a pricing concept (`markup_percent`); capacity is a different axis. If one reseller needs more, the lever is a per-Reseller override (§16 item 89), not the tier.
+4. **Rejections after the key resolves (`IP_NOT_ALLOWED`, `RESELLER_INACTIVE`) are not counted** in the 20/min per-IP auth-failure bucket. Proposed in the grill, dropped in the stress test: the hash lookup and the `last_used_ip` stamp both happen before those checks, so counting them saves nothing and would turn a truthful 403 into a misleading 429 for a misconfigured allowlist. Same cost class as the invalid-key flood accepted on 2026-09-29.
+5. **Bot unchanged.** It is already per account (`reseller-bot:{id}` 60/min, `.checkid` 10, `.topupbaki` 5), and API and Bot keep separate budgets.
+6. **Contract unchanged.** `429 RATE_LIMITED` + `Retry-After`; `X-RateLimit-Limit` / `-Remaining` now documented. Docs revision v1.5.0.
+
+*Rejected.* A per-key bucket with a key cap (still multiplies, adds a rule); one bucket per account (polling still starves orders); a `bucket` field in the 429 body (contract change for no integrator need); Digiflazz's 200-with-`rc` refusal.
+
+*Consequence to track.* Fixed one-minute windows allow a burst of up to twice the limit across a boundary — accepted. The public numbers in `docs-site/src/content/docs/rate-limits.md` are hand-written and have no drift guard (Scramble does not carry limits); the limiter comment points there. Build the item 89 override when the first reseller asks for more.

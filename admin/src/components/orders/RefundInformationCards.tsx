@@ -178,7 +178,7 @@ export default function RefundInformationCards({ order }: { order: OrderDetail }
             { label: "Voucher Code", value: order.voucher.code },
             { label: "Original Amount", value: formatRm(order.voucher.amount) },
             { label: "Remaining", value: formatRm(order.voucher.remaining) },
-            { label: "Status", value: order.voucher.status },
+            { label: "Status", value: order.voucher.display_status },
             { label: "Created", value: new Date(order.voucher.created_at).toLocaleString() },
           ]}
         />
@@ -205,7 +205,7 @@ export default function RefundInformationCards({ order }: { order: OrderDetail }
           fields={[
             { label: "Voucher Code", value: order.paid_with_voucher?.code ?? "—" },
             { label: "Amount Restored", value: order.voucher_redemption?.restored_amount != null ? formatRm(order.voucher_redemption.restored_amount) : "—" },
-            { label: "Status", value: order.paid_with_voucher?.status ?? "—" },
+            { label: "Status", value: order.paid_with_voucher?.display_status ?? "—" },
           ]}
         />
       )}

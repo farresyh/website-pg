@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\CustomerAnalytics\CustomerAnalyticsService;
 use App\Services\CustomerAnalytics\CustomerSegment;
 use App\Services\Report\ReportService;
+use App\Support\MalaysiaTime;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -75,7 +76,7 @@ class CustomerAnalyticsController extends Controller
             $this->resellerId($request),
         );
 
-        $filename = 'customer-analytics-'.now()->setTimezone(CustomerAnalyticsService::TIMEZONE)->format('Y-m-d').'.csv';
+        $filename = 'customer-analytics-'.now()->setTimezone(MalaysiaTime::TIMEZONE)->format('Y-m-d').'.csv';
 
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');

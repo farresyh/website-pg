@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Voucher;
 
+use App\Support\MalaysiaTime;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -36,7 +37,9 @@ class CreateVoucherRequest extends FormRequest
             // exceeds any real single-order compensation amount.
             'amount' => ['required', 'integer', 'min:1', 'max:1000000'],
             'reason' => ['required', 'string', 'max:1000'],
-            'expires_at' => ['nullable', 'date', 'after:now'],
+            // ADR-024 2026-10-13 addendum: a date, valid through that Malaysia
+            // day (VoucherService); today in Malaysia is the earliest.
+            'expires_at' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:'.now(MalaysiaTime::TIMEZONE)->toDateString()],
             // ADR-035: client-generated once per CreateVoucherModal open
             // (CreateVoucherModal.tsx), unchanged across a resubmit of
             // that same attempt — mirrors CreateCheckoutRequest's own

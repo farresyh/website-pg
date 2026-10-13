@@ -6,8 +6,8 @@ use App\Models\AdminUser;
 use App\Models\ReportAssistantAuditLog;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Pricing\PricingBasis;
-use App\Services\Report\ReportService;
 use App\Services\ReportAssistant\Gemini\GeminiClient;
+use App\Support\MalaysiaTime;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -128,7 +128,7 @@ final class ReportAssistantService
      */
     private function dialectNote(string $driver): string
     {
-        $today = now(ReportService::TIMEZONE)->toDateTimeString();
+        $today = now(MalaysiaTime::TIMEZONE)->toDateTimeString();
         $engine = $driver === 'sqlite' ? 'SQLite' : 'MySQL';
 
         return "Today's date/time in Asia/Kuala_Lumpur is {$today}. SQL dialect: {$engine}. "

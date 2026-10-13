@@ -6,7 +6,7 @@ use App\Services\Accounting\EnvelopePostingType;
 use App\Services\Accounting\ExpenseCategory;
 use App\Services\Accounting\FundType;
 use App\Services\Accounting\PaidFrom;
-use App\Services\Report\ReportService;
+use App\Support\MalaysiaTime;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -29,7 +29,7 @@ class StoreBudgetEnvelopePostingRequest extends FormRequest
         return [
             'type' => ['required', 'string', Rule::in($manualTypes)],
             // KL today — the app clock is UTC (item 63). Required: a back-dated entry must never silently claim today.
-            'transaction_date' => ['required', 'date_format:Y-m-d', 'before_or_equal:'.now(ReportService::TIMEZONE)->toDateString()],
+            'transaction_date' => ['required', 'date_format:Y-m-d', 'before_or_equal:'.now(MalaysiaTime::TIMEZONE)->toDateString()],
             'description' => ['required', 'string', 'max:1000'],
             'counterparty' => ['nullable', 'string', Rule::in(array_map(fn (PaidFrom $p) => $p->value, PaidFrom::directors()))],
             'fund_type' => ['nullable', 'string', Rule::enum(FundType::class)],

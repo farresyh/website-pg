@@ -22,7 +22,7 @@
 {{-- Footer --}}
 <x-slot:footer>
 <x-mail::footer>
-© {{ date('Y') }} {{ $storeName }}. {{ __('All rights reserved.') }}
+© {{ now(\App\Support\MalaysiaTime::TIMEZONE)->year }} {{ $storeName }}. {{ __('All rights reserved.') }}
 </x-mail::footer>
 </x-slot:footer>
 </x-mail::layout>

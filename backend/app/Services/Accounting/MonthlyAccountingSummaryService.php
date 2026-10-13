@@ -13,6 +13,7 @@ use App\Models\Voucher;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Report\ReportService;
+use App\Support\MalaysiaTime;
 use Illuminate\Support\Carbon;
 
 /**
@@ -100,7 +101,7 @@ final class MonthlyAccountingSummaryService
      */
     public static function monthBounds(int $year, int $month): array
     {
-        $monthStart = Carbon::create($year, $month, 1, 0, 0, 0, ReportService::TIMEZONE);
+        $monthStart = Carbon::create($year, $month, 1, 0, 0, 0, MalaysiaTime::TIMEZONE);
 
         return [$monthStart->copy()->setTimezone('UTC'), $monthStart->copy()->addMonthNoOverflow()->setTimezone('UTC')];
     }
@@ -184,7 +185,7 @@ final class MonthlyAccountingSummaryService
     /** The KL calendar date of the last day before an exclusive UTC bound. */
     private static function klLastDay(Carbon $toExclusive): string
     {
-        return $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->subDay()->toDateString();
+        return $toExclusive->copy()->setTimezone(MalaysiaTime::TIMEZONE)->subDay()->toDateString();
     }
 
     /**
@@ -257,8 +258,8 @@ final class MonthlyAccountingSummaryService
         $totals = PaymentSettlement::query()
             // Settlement windows are KL calendar dates, so compare against
             // the KL dates, not the UTC instants' dates.
-            ->where('date_to', '>=', $from->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
-            ->where('date_to', '<', $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
+            ->where('date_to', '>=', $from->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
+            ->where('date_to', '<', $toExclusive->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
             ->selectRaw('COALESCE(SUM(matched_fee_sen), 0) as matched_fee, COALESCE(SUM(file_fee_sen), 0) as file_fee')
             ->first();
 
@@ -279,8 +280,8 @@ final class MonthlyAccountingSummaryService
     {
         return (int) SupplierTransfer::query()
             ->whereNull('voided_at')
-            ->where('transferred_on', '>=', $from->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
-            ->where('transferred_on', '<', $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
+            ->where('transferred_on', '>=', $from->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
+            ->where('transferred_on', '<', $toExclusive->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
             ->sum('amount_myr_sent');
     }
 
@@ -293,8 +294,8 @@ final class MonthlyAccountingSummaryService
     {
         return (int) SupplierTransfer::query()
             ->whereNull('voided_at')
-            ->where('transferred_on', '>=', $from->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
-            ->where('transferred_on', '<', $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->toDateString())
+            ->where('transferred_on', '>=', $from->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
+            ->where('transferred_on', '<', $toExclusive->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
             ->sum('fee_myr');
     }
 

@@ -67,6 +67,11 @@
   --p-text-hover-muted-color: var(--p-surface-600);
 }
 
+/* Native date pickers draw a dark calendar icon unless told the page is dark. */
+.dark input[type="date"] {
+  color-scheme: dark;
+}
+
 .dark {
   --p-primary-color: var(--p-primary-400);
   --p-primary-contrast-color: var(--p-surface-900);

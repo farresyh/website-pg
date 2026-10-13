@@ -46,10 +46,10 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-021](./adr/ADR-021-next-session-priority-re-sequencing.md) | Next-session priority re-sequencing — payment reconciliation before deployment infra | In force | 2026-07-30 |
 | [ADR-022](./adr/ADR-022-multi-gateway-payment-strategy.md) | Multi-gateway payment strategy — CHIP for Malaysia-local, Xendit retained for international + split-payment | In force as CHIP-only; Xendit decisions reversed by its own 2026-09-01 addendum || 2026-09-02 |
 | [ADR-023](./adr/ADR-023-playwright-e2e-policy.md) | Playwright E2E policy — golden-path scope, growth triggers, and suite-hygiene rules | In force | 2026-08-21 |
-| [ADR-024](./adr/ADR-024-voucher-at-checkout.md) | Voucher-at-Checkout — redemption timing, wallet model, and admin visibility | In force | 2026-10-12 |
+| [ADR-024](./adr/ADR-024-voucher-at-checkout.md) | Voucher-at-Checkout — redemption timing, wallet model, and admin visibility | In force | 2026-10-13 |
 | [ADR-025](./adr/ADR-025-supplier-price-sync-sanity-guard.md) | Supplier price-sync sanity guard — floor + swing checks on Gamevion's incoming price | In force | 2026-08-21 |
 | [ADR-026](./adr/ADR-026-delivery-side-reconciliation-ord-10.md) | Delivery-side reconciliation (ORD-10) — `NeedsReview` state for ambiguous Gamevion order-creation failures | In force | 2026-09-16 |
-| [ADR-027](./adr/ADR-027-vip-membership.md) | VIP Membership — Costco-style spend-quota subscription, email+OTP lightweight identity, member pricing | In force | 2026-09-22 |
+| [ADR-027](./adr/ADR-027-vip-membership.md) | VIP Membership — Costco-style spend-quota subscription, email+OTP lightweight identity, member pricing | In force; decision 28 (WhatsApp-only reminders) revised by ADR-068 2026-10-13 | 2026-09-22 |
 | [ADR-028](./adr/ADR-028-platform-reseller-settings.md) | Platform & Reseller Settings — reseller-scoped branding vs. platform-wide config split | In force | 2026-10-10 |
 | [ADR-029](./adr/ADR-029-seo-management.md) | SEO Management — reseller-scoped SEO settings, redirects, and per-game wiring | In force; decision 8 revised by ADR-120 | 2026-10-08 |
 | [ADR-030](./adr/ADR-030-digiflazz-supplier-integration.md) | Digiflazz supplier integration — buyer-role adapter, prepaid games only | In force; decision 2 modified by ADR-067, rc table reopened by ADR-098/102 | 2026-09-03 |
@@ -96,7 +96,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-071](./adr/ADR-071-storefront-perceived-performance.md) | Storefront perceived-performance — loading states, prefetchable routes, tag-based revalidation, and mobile buy-flow layout fixes | In force | 2026-09-24 |
 | [ADR-072](./adr/ADR-072-reseller-system-split.md) | Reseller-system split — `Affiliate` (whitelabel) vs `Reseller` (prepaid wallet), full rename, shared portal architecture | In force | 2026-09-04 |
 | [ADR-073](./adr/ADR-073-reseller-wallet.md) | Reseller wallet — fee-less tiers, prepaid-deposit ledger, order-placement contract, profit booking, delivery-failure handling | In force || 2026-09-04 |
-| [ADR-074](./adr/ADR-074-reseller-api-channel.md) | Reseller API channel — per-tenant API keys, order-placement/status endpoints | In force | 2026-10-08 |
+| [ADR-074](./adr/ADR-074-reseller-api-channel.md) | Reseller API channel — per-tenant API keys, order-placement/status endpoints | In force | 2026-10-13 |
 | [ADR-075](./adr/ADR-075-reseller-bot-channel.md) | Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology | In force | 2026-10-10 |
 | [ADR-076](./adr/ADR-076-reseller-bot-v2.md) | Reseller Bot v2 — two-stage order-completion messaging, `.trackorder`/`.checkid`/`.info`, reply styling | In force || 2026-09-14 |
 | [ADR-077](./adr/ADR-077-storefront-read-path.md) | Storefront read-path — Redis cache cutover, eviction policy, invalidation fan-out, propagation freshness | In force |  |

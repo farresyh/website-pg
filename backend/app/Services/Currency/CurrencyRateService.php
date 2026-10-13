@@ -4,6 +4,7 @@ namespace App\Services\Currency;
 
 use App\Models\CurrencyRate;
 use App\Services\Backup\BackupFailureAlerter;
+use App\Support\MalaysiaTime;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Throwable;
@@ -85,7 +86,7 @@ final class CurrencyRateService
             && Cache::add("currency_rate_stale_alert:{$from}:{$to}", true, 86400)) {
             app(BackupFailureAlerter::class)->alert(
                 "{$from}->{$to} FX rate is stale",
-                "The live FX API has been failing. Prices are using the stored rate from {$last->fetched_at->toDateTimeString()} ({$last->fetched_at->diffForHumans()}).",
+                "The live FX API has been failing. Prices are using the stored rate from {$last->fetched_at->copy()->setTimezone(MalaysiaTime::TIMEZONE)->format('j M Y, H:i')} MYT ({$last->fetched_at->diffForHumans()}).",
                 'FX',
             );
         }

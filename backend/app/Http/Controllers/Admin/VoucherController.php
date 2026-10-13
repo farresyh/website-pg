@@ -45,13 +45,18 @@ class VoucherController extends Controller
         $vouchers = Voucher::query()
             ->with('affiliate:id,business_name')
             ->orderBy('created_at', 'desc')
-            ->get();
+            ->get()
+            ->each->append('display_status');
+
+        // §16 item 84: active vs expired by `display_status`, since expiry is `expires_at` alone.
+        $active = $vouchers->where('display_status', 'active');
+        $expired = $vouchers->where('display_status', 'expired');
 
         return response()->json([
             'stats' => [
                 'active' => [
-                    'count' => $vouchers->where('status', 'active')->count(),
-                    'total' => (int) $vouchers->where('status', 'active')->sum('remaining'),
+                    'count' => $active->count(),
+                    'total' => (int) $active->sum('remaining'),
                 ],
                 'total_issued' => [
                     'count' => $vouchers->count(),
@@ -62,8 +67,8 @@ class VoucherController extends Controller
                     'total' => (int) $vouchers->sum(fn (Voucher $v) => $v->amount - $v->remaining),
                 ],
                 'expired' => [
-                    'count' => $vouchers->where('status', 'expired')->count(),
-                    'total' => (int) $vouchers->where('status', 'expired')->sum('remaining'),
+                    'count' => $expired->count(),
+                    'total' => (int) $expired->sum('remaining'),
                 ],
             ],
             'vouchers' => $vouchers,
@@ -100,7 +105,7 @@ class VoucherController extends Controller
         $committed = $voucher->redemptions->where('status', 'committed')->count();
 
         return response()->json([
-            'voucher' => $voucher,
+            'voucher' => $voucher->append('display_status'),
             'stats' => [
                 'original' => $voucher->amount,
                 'remaining' => $voucher->remaining,
@@ -241,7 +246,7 @@ class VoucherController extends Controller
 
         return response()->json([
             'restored_only' => $result->voucher === null,
-            'voucher' => $result->voucher,
+            'voucher' => $result->voucher?->append('display_status'),
         ], 201);
     }
 

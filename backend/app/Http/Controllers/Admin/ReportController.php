@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Affiliate;
 use App\Services\Report\ReportService;
+use App\Support\MalaysiaTime;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -229,8 +230,8 @@ class ReportController extends Controller
             return 'All time';
         }
 
-        $fromKl = $from->setTimezone(ReportService::TIMEZONE)->toDateString();
-        $toKl = $toExclusive->subDay()->setTimezone(ReportService::TIMEZONE)->toDateString();
+        $fromKl = $from->setTimezone(MalaysiaTime::TIMEZONE)->toDateString();
+        $toKl = $toExclusive->subDay()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString();
 
         return $fromKl === $toKl ? $fromKl : "{$fromKl}_to_{$toKl}";
     }

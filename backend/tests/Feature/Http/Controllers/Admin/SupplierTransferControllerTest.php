@@ -8,7 +8,7 @@ use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\SupplierTransferCorrection;
 use App\Services\Accounting\SupplierFundingService;
-use App\Services\Report\ReportService;
+use App\Support\MalaysiaTime;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -551,7 +551,7 @@ class SupplierTransferControllerTest extends TestCase
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", $payload)
             ->assertUnprocessable()->assertJsonValidationErrors('transferred_on');
 
-        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [...$payload, 'transferred_on' => now(ReportService::TIMEZONE)->addDay()->toDateString()])
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [...$payload, 'transferred_on' => now(MalaysiaTime::TIMEZONE)->addDay()->toDateString()])
             ->assertUnprocessable()->assertJsonValidationErrors('transferred_on');
 
         $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [...$payload, 'transferred_on' => '2026-09-15'])
@@ -887,7 +887,7 @@ class SupplierTransferControllerTest extends TestCase
         $september = $this->getJson("/api/accounting/suppliers/{$supplier->id}/transfers?from=2026-09-01&to=2026-09-30")->assertOk();
         $this->assertCount(1, $september->json('transfers.data'));
 
-        $today = now(ReportService::TIMEZONE)->toDateString();
+        $today = now(MalaysiaTime::TIMEZONE)->toDateString();
         $recordedDay = $this->getJson("/api/accounting/suppliers/{$supplier->id}/transfers?from={$today}&to={$today}")->assertOk();
         $this->assertCount(0, $recordedDay->json('transfers.data'));
     }

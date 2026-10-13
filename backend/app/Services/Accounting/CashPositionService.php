@@ -14,8 +14,8 @@ use App\Models\Withdrawal;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
-use App\Services\Report\ReportService;
 use App\Services\Withdrawal\WithdrawalStatus;
+use App\Support\MalaysiaTime;
 use Illuminate\Support\Carbon;
 
 /**
@@ -46,7 +46,7 @@ final class CashPositionService
     public function asOf(int $year, int $month, int $pendingAllocationSen = 0): array
     {
         [, $toExclusive] = MonthlyAccountingSummaryService::monthBounds($year, $month);
-        $lastDay = $toExclusive->copy()->setTimezone(ReportService::TIMEZONE)->subDay()->toDateString();
+        $lastDay = $toExclusive->copy()->setTimezone(MalaysiaTime::TIMEZONE)->subDay()->toDateString();
         $unsettled = $this->settlements->paidButNotSettledBefore($toExclusive);
 
         return [

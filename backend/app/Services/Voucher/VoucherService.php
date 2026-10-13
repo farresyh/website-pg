@@ -7,9 +7,11 @@ use App\Models\VoucherMerge;
 use App\Models\VoucherRedemption;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Support\MalaysiaTime;
 use App\Support\PhoneNumber;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -67,7 +69,7 @@ final class VoucherService
                 'amount' => $amount,
                 'remaining' => $amount,
                 'status' => 'active',
-                'expires_at' => $expiresAt,
+                'expires_at' => self::endOfMalaysiaDay($expiresAt),
                 'reason' => $reason,
                 'created_by' => $createdBy,
                 'approved_by' => $approvedBy,
@@ -100,6 +102,17 @@ final class VoucherService
      * new voucher's `order_id` stays null: a merge has no single
      * source order to attribute to.
      */
+    /**
+     * ADR-024 2026-10-13 addendum (§16 item 88): a typed expiry date means
+     * "valid through the end of that Malaysia day". Stored in UTC
+     * explicitly: Eloquent writes a Carbon's own wall-clock time, so a
+     * Kuala Lumpur instance saved as-is would read back 8 hours late.
+     */
+    private static function endOfMalaysiaDay(?string $date): ?Carbon
+    {
+        return $date === null ? null : Carbon::createFromFormat('!Y-m-d', $date, MalaysiaTime::TIMEZONE)->setTime(23, 59, 59)->utc();
+    }
+
     public function merge(array $voucherIds, string $reason, int $mergedBy, ?string $expiresAt): Voucher
     {
         return DB::transaction(function () use ($voucherIds, $reason, $mergedBy, $expiresAt) {
@@ -117,7 +130,7 @@ final class VoucherService
                 // §16 item 80: expiry is `expires_at` alone (status stays
                 // `active`), and a closed month may already have booked
                 // this credit as breakage — never hand it back.
-                if ($voucher->expires_at !== null && $voucher->expires_at->isPast()) {
+                if ($voucher->isExpired()) {
                     throw new InvalidVoucherException("Voucher {$voucher->code} has expired and cannot be merged.");
                 }
             }
@@ -136,7 +149,7 @@ final class VoucherService
                 'amount' => $totalRemaining,
                 'remaining' => $totalRemaining,
                 'status' => 'active',
-                'expires_at' => $expiresAt,
+                'expires_at' => self::endOfMalaysiaDay($expiresAt),
                 'reason' => $reason,
                 'created_by' => $mergedBy,
                 'approved_by' => null,
@@ -398,7 +411,7 @@ final class VoucherService
             throw new InvalidVoucherException($genericMessage);
         }
 
-        if ($voucher->expires_at !== null && $voucher->expires_at->isPast()) {
+        if ($voucher->isExpired()) {
             throw new InvalidVoucherException($genericMessage);
         }
 

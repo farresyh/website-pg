@@ -13,6 +13,7 @@ use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\PricingBasis;
+use App\Support\MalaysiaTime;
 use App\Support\PeriodComparison;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -60,8 +61,6 @@ use Illuminate\Support\Facades\DB;
  */
 final class ReportService
 {
-    public const TIMEZONE = 'Asia/Kuala_Lumpur';
-
     /**
      * Resolves RPT-3's year/month filter into a [from, toExclusive) UTC
      * instant pair ready to feed into paid_at comparisons. Null year
@@ -79,7 +78,7 @@ final class ReportService
             return [null, null];
         }
 
-        $start = CarbonImmutable::create($year, $month ?? 1, 1, 0, 0, 0, self::TIMEZONE);
+        $start = CarbonImmutable::create($year, $month ?? 1, 1, 0, 0, 0, MalaysiaTime::TIMEZONE);
         $end = $month !== null ? $start->addMonth() : $start->addYear();
 
         return [$start->setTimezone('UTC'), $end->setTimezone('UTC')];
@@ -99,11 +98,11 @@ final class ReportService
     public function dateRangeFromDates(?string $fromDate, ?string $toDate): array
     {
         $from = $fromDate !== null
-            ? CarbonImmutable::createFromFormat('Y-m-d', $fromDate, self::TIMEZONE)->startOfDay()->setTimezone('UTC')
+            ? CarbonImmutable::createFromFormat('Y-m-d', $fromDate, MalaysiaTime::TIMEZONE)->startOfDay()->setTimezone('UTC')
             : null;
 
         $toExclusive = $toDate !== null
-            ? CarbonImmutable::createFromFormat('Y-m-d', $toDate, self::TIMEZONE)->startOfDay()->addDay()->setTimezone('UTC')
+            ? CarbonImmutable::createFromFormat('Y-m-d', $toDate, MalaysiaTime::TIMEZONE)->startOfDay()->addDay()->setTimezone('UTC')
             : null;
 
         return [$from, $toExclusive];
@@ -121,12 +120,12 @@ final class ReportService
      */
     public function trendRange(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
-        $todayKl = CarbonImmutable::now(self::TIMEZONE)->startOfDay();
+        $todayKl = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->startOfDay();
 
         if ($from === null) {
             $firstPaidAt = $this->scopedOrders(null, $toExclusive, $affiliateId)->min('paid_at');
             $from = ($firstPaidAt !== null
-                ? CarbonImmutable::parse($firstPaidAt, 'UTC')->setTimezone(self::TIMEZONE)->startOfDay()
+                ? CarbonImmutable::parse($firstPaidAt, 'UTC')->setTimezone(MalaysiaTime::TIMEZONE)->startOfDay()
                 : $todayKl)->setTimezone('UTC');
         }
 
@@ -160,7 +159,7 @@ final class ReportService
             'latest_order' => $latest ? [
                 'id' => $latest->id,
                 'order_number' => $latest->order_number,
-                'paid_at' => $latest->paid_at?->setTimezone(self::TIMEZONE)->toIso8601String(),
+                'paid_at' => $latest->paid_at?->setTimezone(MalaysiaTime::TIMEZONE)->toIso8601String(),
                 'customer_email' => $latest->customer_email,
                 'final_amount' => $latest->final_amount,
             ] : null,
@@ -229,8 +228,8 @@ final class ReportService
 
         return [
             'previous_range' => [
-                'from' => $prevFrom->setTimezone(self::TIMEZONE)->toDateString(),
-                'to' => $prevTo->setTimezone(self::TIMEZONE)->subDay()->toDateString(),
+                'from' => $prevFrom->setTimezone(MalaysiaTime::TIMEZONE)->toDateString(),
+                'to' => $prevTo->setTimezone(MalaysiaTime::TIMEZONE)->subDay()->toDateString(),
             ],
             'previous' => $previous,
             'changes' => $changes($previous),
@@ -316,8 +315,8 @@ final class ReportService
         $salesByDate = $this->salesByGroup($this->scopedOrders($from, $toExclusive, $affiliateId), $this->dayBucketExpr('paid_at'));
         $profitByDate = $this->profitByGroup($from, $toExclusive, $affiliateId, $this->dayBucketExpr('orders.paid_at'));
 
-        $startKl = $from->setTimezone(self::TIMEZONE)->startOfDay();
-        $endKlExclusive = $toExclusive->setTimezone(self::TIMEZONE)->startOfDay();
+        $startKl = $from->setTimezone(MalaysiaTime::TIMEZONE)->startOfDay();
+        $endKlExclusive = $toExclusive->setTimezone(MalaysiaTime::TIMEZONE)->startOfDay();
 
         $rows = [];
         $cursor = $startKl;
@@ -879,7 +878,7 @@ final class ReportService
 
             return [
                 'order_number' => $order->order_number,
-                'paid_at' => $order->paid_at?->setTimezone(self::TIMEZONE)->toDateTimeString(),
+                'paid_at' => $order->paid_at?->setTimezone(MalaysiaTime::TIMEZONE)->toDateTimeString(),
                 'customer_email' => $order->customer_email,
                 'affiliate_name' => $order->affiliate?->business_name,
                 'game_name' => $order->game?->name,

@@ -526,14 +526,22 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(10)->by((string) ($request->bearerToken() ?? $request->ip()));
         });
 
-        // ADR-074 decision 4 — the Reseller API channel's own throttle
-        // bucket, keyed on the API key itself (not IP): an external
-        // reseller's own system may be shared infrastructure behind one
-        // IP, and the auth boundary hasn't run yet at this point in the
-        // pipeline (this limiter fires before EnsureResellerApiKey), so
-        // the raw bearer token is the only identifier available.
-        RateLimiter::for('reseller-api', function (Request $request) {
-            return Limit::perMinute(60)->by((string) ($request->bearerToken() ?? $request->ip()));
-        });
+        // ADR-074 decision 4 + its 2026-10-13 addendum — the Reseller API
+        // is limited per Reseller account (every key shares it, so a new
+        // key never buys more), never per IP (a reseller may sit behind
+        // shared infrastructure). Two buckets so read polling can't
+        // starve order placement. These run after EnsureResellerApiKey
+        // (pinned in bootstrap/app.php); invalid keys are limited there,
+        // per IP. Public numbers: docs-site/src/content/docs/rate-limits.md.
+        RateLimiter::for('reseller-api-orders', fn (Request $request) => Limit::perMinute(60)->by(self::resellerApiBucket($request)));
+        RateLimiter::for('reseller-api-reads', fn (Request $request) => Limit::perMinute(120)->by(self::resellerApiBucket($request)));
+    }
+
+    private static function resellerApiBucket(Request $request): string
+    {
+        $reseller = $request->attributes->get('reseller')
+            ?? throw new \LogicException('Reseller API limiter ran before EnsureResellerApiKey.');
+
+        return 'reseller:'.$reseller->id;
     }
 }

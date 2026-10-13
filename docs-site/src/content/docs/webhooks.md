@@ -1,6 +1,6 @@
 ---
 title: Delivery notifications
-description: Register a webhook to receive signed order.delivered / order.failed / order.refunded events.
+description: Register a webhook to receive signed order.delivered / order.failed / order.partially_delivered / order.refunded events.
 ---
 
 Instead of polling every order, you can register **one webhook endpoint** and

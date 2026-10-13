@@ -5,7 +5,7 @@ namespace App\Services\Accounting;
 use App\Models\AccountingPeriodClose;
 use App\Models\BudgetEnvelope;
 use App\Models\CashAccount;
-use App\Services\Report\ReportService;
+use App\Support\MalaysiaTime;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -160,7 +160,7 @@ final class MonthCloseService
         if ($start < self::FIRST_PERIOD) {
             return 'Month closes start from '.Carbon::parse(self::FIRST_PERIOD)->format('F Y').'.';
         }
-        if (Carbon::now(ReportService::TIMEZONE)->toDateString() < Carbon::create($year, $month, 1)->addMonthNoOverflow()->toDateString()) {
+        if (Carbon::now(MalaysiaTime::TIMEZONE)->toDateString() < Carbon::create($year, $month, 1)->addMonthNoOverflow()->toDateString()) {
             return self::label($year, $month).' has not ended yet (Kuala Lumpur time).';
         }
         if ($this->activeClose($year, $month) !== null) {

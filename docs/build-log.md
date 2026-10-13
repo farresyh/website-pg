@@ -902,3 +902,232 @@ parked as item 85.
 - **Not run locally:** the MySQL concurrency suite (Docker was not running);
   CI's `backend-concurrency` job runs the new migration on MySQL 8.4.
 - **After the release:** run the dry-run read-only on production.
+
+---
+
+## 2026-10-13 — Release #416 (`staging`→`main`): #407–#415
+
+Founder asked to merge #415 and release. Merged as `d7e5fd5`; CI (all jobs),
+the Forge `deploy` job and the four Vercel production builds green. Prod
+`current/` is at `d7e5fd5`; Horizon running.
+
+**Production evidence (read-only, before → after):**
+- Item 79 migration: compensation debits on vouchers 1, 2, 4, 5 (−1318 sen)
+  with 0 `item79-reversal` keys and platform ledger 1551 sen → 4 keys,
+  platform ledger 2869 sen (+1318, as predicted). The original debits stay
+  (append-only); each now has its reversal.
+- Item 64: `membership_reminders` did not exist → `2026_10_13_000000` Ran.
+  `app:send-membership-reminders --dry-run` lists nobody today. Member #2 ends
+  2026-10-24 MYT, so `kindDue()` is null until 21 Oct; member #1 (ended 2 Oct)
+  is past the 7-day window. `schedule:list` shows `0 2 * * *` UTC (10:00 MYT).
+
+**Still by hand:** #409 logo re-upload in a browser; #411 the same order
+number sent several times from a real phone to the CS number. After 21 Oct:
+member #2's `before` row should read `sent` on the admin member page.
+
+---
+
+## 2026-10-13 — §16 item 84 (expired voucher shown as expired) and a docs audit
+
+On `fix/admin-voucher-list-expiry`. Staging only until a release.
+
+**Founder checks after release #416.** #411 (a card on every repeat, real
+phone), #409 (a re-uploaded logo shows at once) and the unsquashed email logo:
+all confirmed by the founder.
+
+**Item 84.** Expiry is `expires_at` alone; `status` stays `active`. Tracing
+every reader found the "usable" rule inline in three places (checkout,
+merge, and the admin list, which lacked the expiry half) and two more
+display readers (the order page's Refund cards, and the Issue Voucher response
+the order page merges into its state).
+- `Voucher::isExpired()` is the one rule; `VoucherService` checkout and merge
+  use it.
+- `display_status` (`expired` for an active voucher past its expiry) is
+  appended only on admin responses: the list (stats, pill, merge checkbox),
+  the detail, the order detail's two vouchers and the Issue Voucher result.
+  The Revoke button still follows the stored status (revoking an expired
+  voucher stays allowed). `status` is not backfilled.
+- Tests: list stats + `display_status` + stored status untouched; order detail
+  `paid_with_voucher.display_status`; Issue Voucher response. Backend
+  2733/2733; admin `tsc`/`lint`/`build`; a built admin showed an expired dev
+  voucher with the `expired` pill, no merge checkbox, and Active 1 / Expired 1.
+
+**Docs audit (current state and contradictions).**
+- PRD §14 hand checks done; §15 Vouchers, Customer notifications and Settings
+  rows no longer say "staging only" for #409/#411/#412/#413; §16 dates refreshed,
+  the duplicate item 6 entry removed, item 84 closed.
+- ADR-027's addendum decision 28 (renewal reminders on WhatsApp only, not
+  email) contradicted ADR-068's 2026-10-13 addendum. ADR-027's Standing (file
+  and index) and the ADR-068 addendum now cross-reference.
+- `foundation-security.md` and `backend/AGENTS.md` said every voucher issuance
+  writes a ledger row; since item 79 only an admin-issued voucher does.
+- Glossary: Voucher Expiry, Membership Renewal Reminder.
+- New §16 item 87 (founder): two `.env` backups on the prod box hold the DB
+  password, one of them mode 664 (read-only `ls`, 2026-10-13).
+- New §16 item 88: a typed voucher expiry date ends at 08:00 MYT that day
+  (midnight UTC); no production voucher has an expiry yet.
+
+---
+
+## 2026-10-13 — §16 item 87 closed (founder), #418 merged
+
+The founder merged #418 (item 84 + docs audit) into `staging` and deleted the
+two `.env` backups on the prod box. Read-only `ls -la ~/api.pekangame.space/`
+afterwards: only `.env` (mode 664, owner `forge`) remains. #418 is on `staging`
+only until the next release.
+
+## 2026-10-13 — §16 item 6 / A3: Reseller API rate limit per account, two buckets
+
+On `fix/reseller-api-rate-limit-per-account`. Staging only until a release.
+Design: ADR-074 2026-10-13 addendum (grilled, then stress-tested against the
+code and Laravel's `SortedMiddleware`).
+
+- **What changed.** The one `reseller-api` limiter (60/min per raw bearer
+  token, run before auth) became two named limiters keyed on the Reseller:
+  `reseller-api-orders` on `POST /v1/orders` (60/min) and
+  `reseller-api-reads` on every `GET` (120/min). `EnsureResellerApiKey` is
+  pinned ahead of `ThrottleRequests` in the priority list, next to ADR-080's
+  pin. Bot untouched.
+- **Gotcha proved, not assumed.** With the pin removed, all 5 new tests fail:
+  the `api` group's `SubstituteBindings` makes Laravel hoist the throttle above
+  the auth middleware, whatever order the route lists them in. `route:list`
+  shows the declared order, not the sorted one, so it can't show this.
+- **Tests.** New `ResellerApiRateLimitTest` (5): keys of one account share the
+  order bucket; reads never block orders and the reverse; accounts are
+  isolated; revoke-and-reissue keeps the bucket. Red first (4 of 5; isolation
+  already held per key). The old 60/min limit had no test at all. Fast suite
+  2738/2738.
+- **Live check.** Local `php artisan serve` + `curl` with a temporary key
+  (deleted afterwards): 120 reads then 429 with `X-RateLimit-Limit: 120` and
+  `Retry-After`; 60 order POSTs still allowed after the read bucket was spent,
+  then 429 `RATE_LIMITED`; a bogus key 401.
+- **Docs site (v1.5.0).** `rate-limits.md` rewritten (per account, two
+  buckets, the `X-RateLimit-*` headers, a 429 on an order means not placed).
+  Full read of all 11 pages against the code, which corrected:
+  `first-order.md` said the price "follows the supplier's cost… about hourly"
+  (shows the cost structure; prod syncs every 30 min), now "Prices can change
+  whenever PekanGame updates its catalogue"; the poll/webhook bullets there
+  and the webhooks page description now include `partially_delivered`;
+  `authentication.md` notes all keys share the limits; `wallet.md` dropped
+  "If your pricing changes, PekanGame will tell you in advance" (it meant the
+  tier, per `badfe1b`; the founder removed the promise since only admins set
+  a tier) and points to the price-change guidance instead. No ADR/PRD/internal
+  reference was found in the pages or the generated spec. `openapi.json`
+  changes only in `info.version`.
+- **Production read (read-only) for the grill:** 4 tiers, 2 resellers, 2 live
+  API keys (reseller #1, last used 2026-09-09), 0 API orders ever, 8 Bot
+  orders.
+
+## 2026-10-13 — §16 item 88: a voucher's typed expiry date lasts the whole Malaysia day
+
+On `fix/voucher-expiry-end-of-day-myt`. Staging only until a release.
+Design: ADR-024 2026-10-13 addendum (grilled, stress-tested).
+
+- **Bug.** `2026-11-01` was stored as midnight UTC (08:00 MYT), so checkout
+  refused the voucher from 08:00 on the day WhatsApp called its last. Now it
+  is stored as 23:59:59 MYT (`2026-11-01 15:59:59` UTC) by one helper,
+  `VoucherService::endOfMalaysiaDay()`, used by issue and merge.
+- **Gotcha (stress test).** Eloquent writes a Carbon's own wall-clock time:
+  a Kuala Lumpur `23:59:59` saved as-is is read back as UTC, 8 hours late.
+  The helper calls `->utc()`; test 1 pins the stored string.
+- **Validation.** `date_format:Y-m-d` + `after_or_equal:` today in Malaysia,
+  the supplier-transfer request's pattern. Laravel's `today` is UTC and would
+  take yesterday's Malaysia date before 08:00 MYT; a test runs at 02:00 MYT.
+- **Admin.** Create and Merge modals: native `<input type="date"
+  min={todayInKL()}>`, label "Valid until". The calendar icon was nearly
+  invisible in dark mode (all 17 admin date inputs); one scoped
+  `.dark input[type="date"] { color-scheme: dark; }` in `globals.css` fixes
+  them all, confirmed by screenshot + `getComputedStyle` (`colorScheme:
+  dark`).
+- **WhatsApp line** formats the date in Malaysia time explicitly (it was right
+  only because 15:59 UTC falls on the same day).
+- **Tests.** New `VoucherExpiryTest` (7): stored value, usable at 23:00 MYT and
+  expired at 00:00 MYT next day, merge, today-in-Malaysia at 02:00 MYT, plain
+  date only, WhatsApp "Valid until: 1 Nov 2026", breakage month. Red first
+  (5 of 7; WhatsApp and breakage were already right by coincidence). Fast
+  suite 2745/2745. Admin `tsc` + `eslint` clean.
+- **Live check.** Built admin + local API, Playwright in the Kuala Lumpur
+  timezone: the modal's input is `type=date`, `min=2026-10-13`; a voucher
+  created with 1 Nov is stored `2026-11-01 15:59:59` and its View panel reads
+  "Expires 1 Nov 2026, 11:59 pm". (The local dev DB keeps that RM 5 test
+  voucher, reason "Item 88 local check".)
+- **Found:** the Malaysia timezone string is copied in five services; logged
+  as §16 item 90 (A).
+
+## 2026-10-13 — #420 and #421 merged; docs consistency pass
+
+The founder merged #420 (item 6/A3) and #421 (item 88) into `staging`. Not
+live: `origin/main..origin/staging` holds #417–#421 (code: #418, #420, #421;
+no migration).
+
+Docs pass before closing the session:
+- PRD §14 now records the unreleased `staging` set, and that all three
+  payment methods are inactive since 2026-10-07 by the founder's choice
+  (confirmed 2026-10-13; read-only prod check the same day: `fpx`,
+  `fpx_b2b1`, `duitnow_qr` all `is_active = 0`, last wallet top-up attempt
+  2026-09-20, one order in the past 7 days, paid from a wallet).
+- §16 "Recently closed": the item 6 (part) line no longer says A3 remains.
+- Checked for stale rate-limit or voucher-expiry statements across `docs/`,
+  the ADR index, `AGENTS.md` files and the docs site: none left. ADR-074's
+  original decision 4 and PR-E note still say "keyed on the API key"; per the
+  ADR file rules, its 2026-10-13 addendum overrides them.
+
+## 2026-10-13 — Item 90: one shared Malaysia timezone constant; timezone audit
+
+On `fix/shared-malaysia-timezone`. Staging-only until a release.
+
+- **What.** `App\Support\MalaysiaTime::TIMEZONE` is the one home for
+  `'Asia/Kuala_Lumpur'`. The copies in `ReportService`, `DashboardService`,
+  `CustomerAnalyticsService`, `AffiliateEarningsService` and
+  `PeriodComparison` are gone, and every reader (vouchers, accounting,
+  form requests, scheduler, the `transferred_on` migration, the demo
+  seeder, tests) points at it. Admin: `KL_TIMEZONE` in `lib/date-range.ts`;
+  the dashboard's own `kl_today()` folded into `todayInKL()`. No behaviour
+  change. The SQL day buckets keep their `'+08:00'` offset (MySQL
+  `CONVERT_TZ` needs an offset without the tz tables). Tests that pin
+  `'Asia/Kuala_Lumpur'` as a literal were left as is, on purpose.
+- **Verify.** Fast suite 2745/2745. Admin `tsc` + `eslint` clean.
+- **Timezone audit (founder's ask, read-only).** Swept the backend
+  (scheduler, date filters, emails, WhatsApp, CSV/PDF/Excel, SQL) and the
+  four frontends for Malaysia-day logic still on UTC. Reports, Dashboard,
+  Customer Analytics, Accounting, the Orders filter, vouchers, membership
+  emails and reminders, exports and the affiliate dashboard already use
+  Malaysia time. Found two real bugs, logged as §16 items 91 (hero-slide
+  schedule shifts 8 hours per edit; no prod slide has a schedule) and 92
+  (Request Logs filter on UTC days). Cosmetic: the stale-FX alert prints a
+  UTC time unlabelled; the email footer year is the UTC year. Not bugs:
+  `->daily()` jobs run 08:00 MYT and the backup 02:00 UTC (10:00 MYT);
+  frontend dates render in the viewer's browser timezone; Digiflazz cutoffs
+  are Asia/Jakarta on purpose.
+
+## 2026-10-13 — Items 91 + 92: hero-slide schedule and Request Logs filter on Malaysia time; FX alert and email footer
+
+On `fix/timezone-hero-slide-request-logs` (stacked on item 90's branch, for
+`KL_TIMEZONE`). Staging-only until a release.
+
+- **91.** `HeroSlideModal` loaded `starts_at`/`ends_at` by slicing the UTC
+  ISO string, so 10:00 MYT showed as 02:00 and a re-save moved it 8 hours
+  back. New `klInputToIso` / `isoToKlInput` in `admin/src/lib/date-range.ts`
+  read the `datetime-local` input as Malaysia time (fixed +08:00) whatever
+  the browser's timezone; labels say "Malaysia time". The list's Schedule
+  column now formats in `KL_TIMEZONE` too.
+- **92.** `RequestLogController` compared the raw `YYYY-MM-DD` with the UTC
+  `created_at`. It now validates `date_format:Y-m-d` and uses
+  `ReportService::dateRangeFromDates()`, the Orders filter's Malaysia-day
+  bounds.
+- **Cosmetic, from the same audit.** The stale-FX alert email (IDR->MYR,
+  sent to every active admin when the stored rate is over 48 h old) now
+  states the stored rate's time in Malaysia time ("13 Oct 2026, 11:30
+  MYT"), not an unlabelled UTC time. It has never fired in production (0
+  log lines; read-only check 2026-10-13). The email footer's © year is the
+  Malaysia year (both markdown mail layouts).
+- **Tests.** Red first: `CurrencyRateServiceTest` +1 (the MYT time in the
+  alert). `RequestLogControllerTest` +2 (13 Oct boundary rows
+  at 00:00 and 23:59:59 MYT; a non-date `from` is 422).
+  `admin/src/lib/date-range.test.ts` (2), run under `TZ` New York, Kuala
+  Lumpur and UTC. Fast suite 2748/2748. Admin `npm test` 8/8, `tsc` +
+  `eslint` clean.
+- **Live check.** Built admin + local API, Playwright with the browser in
+  New York and then Kuala Lumpur: a slide stored 2026-10-20 02:00 UTC opens
+  as `2026-10-20T10:00`, and Save leaves the DB at 02:00 UTC both times.
+  The test slide was deleted afterwards.

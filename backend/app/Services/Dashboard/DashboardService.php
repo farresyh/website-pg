@@ -14,6 +14,7 @@ use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
+use App\Support\MalaysiaTime;
 use App\Support\PeriodComparison;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -32,8 +33,6 @@ use Illuminate\Support\Facades\Queue;
  */
 final class DashboardService
 {
-    public const TIMEZONE = ReportService::TIMEZONE;
-
     /**
      * The delivery-critical order lanes this screen monitors (ADR-045
      * decision 9; lanes per the ADR-048 2026-09-29 addendum) — see
@@ -310,7 +309,7 @@ final class DashboardService
      */
     public function hourlyActivity(string $date): array
     {
-        $dayStartKl = CarbonImmutable::createFromFormat('Y-m-d', $date, self::TIMEZONE)->startOfDay();
+        $dayStartKl = CarbonImmutable::createFromFormat('Y-m-d', $date, MalaysiaTime::TIMEZONE)->startOfDay();
         $dayEndKl = $dayStartKl->addDay();
 
         $orders = Order::query()
@@ -322,7 +321,7 @@ final class DashboardService
         $countByHour = array_fill(0, 24, 0);
 
         foreach ($orders as $order) {
-            $hour = (int) $order->created_at->setTimezone(self::TIMEZONE)->format('G');
+            $hour = (int) $order->created_at->setTimezone(MalaysiaTime::TIMEZONE)->format('G');
             $countByHour[$hour]++;
         }
 
@@ -360,7 +359,7 @@ final class DashboardService
      */
     private function dayRangeUtc(int $daysAgo): array
     {
-        $startKl = CarbonImmutable::now(self::TIMEZONE)->startOfDay()->subDays($daysAgo);
+        $startKl = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->startOfDay()->subDays($daysAgo);
 
         return [$startKl->setTimezone('UTC'), $startKl->addDay()->setTimezone('UTC')];
     }
@@ -375,7 +374,7 @@ final class DashboardService
      */
     private function rollingWindowUtc(int $days, int $offsetDays = 0): array
     {
-        $toExclusiveKl = CarbonImmutable::now(self::TIMEZONE)->startOfDay()->addDay()->subDays($offsetDays);
+        $toExclusiveKl = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->startOfDay()->addDay()->subDays($offsetDays);
         $fromKl = $toExclusiveKl->subDays($days);
 
         return [$fromKl->setTimezone('UTC'), $toExclusiveKl->setTimezone('UTC')];

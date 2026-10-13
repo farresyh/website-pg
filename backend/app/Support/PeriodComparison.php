@@ -11,8 +11,6 @@ use Carbon\CarbonImmutable;
  */
 final class PeriodComparison
 {
-    private const TIMEZONE = 'Asia/Kuala_Lumpur';
-
     /**
      * @return array{pct: float|null, direction: 'up'|'down'|'flat'|'new'}
      */
@@ -62,8 +60,8 @@ final class PeriodComparison
      */
     public static function previousRange(CarbonImmutable $from, CarbonImmutable $toExclusive, bool $monthToDate): array
     {
-        $fromKl = $from->setTimezone(self::TIMEZONE);
-        $toKl = $toExclusive->setTimezone(self::TIMEZONE);
+        $fromKl = $from->setTimezone(MalaysiaTime::TIMEZONE);
+        $toKl = $toExclusive->setTimezone(MalaysiaTime::TIMEZONE);
         $days = (int) $fromKl->diffInDays($toKl);
 
         if ($monthToDate) {

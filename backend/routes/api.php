@@ -1044,13 +1044,15 @@ Route::post('/webhooks/openwa', [OpenWaWebhookController::class, 'handle'])
 // ADR-074 — Reseller API channel. Not behind auth:sanctum:
 // EnsureResellerApiKey (a bearer `reseller_api_keys` credential) is its
 // own, deliberately separate auth boundary (decision 1) — never the
-// portal-login `reseller` Sanctum guard. Rate-limited per API key, not
-// IP (decision 4), via the `reseller-api` named limiter
-// (AppServiceProvider).
-Route::prefix('reseller/v1')->middleware(['throttle:reseller-api', EnsureResellerApiKey::class])->group(function () {
-    Route::get('/catalog', [ResellerApiCatalogController::class, 'index']);
-    Route::get('/balance', [ResellerApiBalanceController::class, 'show']);
-    Route::get('/orders', [ResellerApiOrderController::class, 'index']);
-    Route::post('/orders', [ResellerApiOrderController::class, 'store']);
-    Route::get('/orders/{orderNumber}', [ResellerApiOrderController::class, 'show']);
+// portal-login `reseller` Sanctum guard. Rate-limited per Reseller
+// account in two buckets, orders and reads (decision 4 + its 2026-10-13
+// addendum; limiters in AppServiceProvider).
+Route::prefix('reseller/v1')->middleware(EnsureResellerApiKey::class)->group(function () {
+    Route::middleware('throttle:reseller-api-reads')->group(function () {
+        Route::get('/catalog', [ResellerApiCatalogController::class, 'index']);
+        Route::get('/balance', [ResellerApiBalanceController::class, 'show']);
+        Route::get('/orders', [ResellerApiOrderController::class, 'index']);
+        Route::get('/orders/{orderNumber}', [ResellerApiOrderController::class, 'show']);
+    });
+    Route::post('/orders', [ResellerApiOrderController::class, 'store'])->middleware('throttle:reseller-api-orders');
 });
