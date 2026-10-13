@@ -165,3 +165,18 @@ The full-cover path (M-6) already failed closed on the voucher, but still decrem
 **Consequence to track.**
 - Forge migrates before the new code goes live. An admin settling an order in those seconds would get one more old-style debit that the migration missed. After the release, run the migration's SELECT read-only: it must return no row without an `item79-reversal` key. If one appears, a single reversal needs the founder's go-ahead.
 - The platform ledger now reads as: Σ `order_profit` + Σ `membership_fee` − admin-issued voucher cost. It is not the P&L; the Monthly Summary is.
+
+### 2026-10-13 addendum — a typed expiry date is valid through that Malaysia day (§16 item 88)
+
+*Context.* Create and Merge took `expires_at` as free text and validated `date|after:now`. A date like `2026-11-01` was stored as midnight UTC, which is 08:00 MYT that day, so `isExpired()` refused the voucher from 08:00 on the date the customer's WhatsApp line ("Valid until: 1 Nov 2026") called its last day. The admin list showed "1 Nov 2026, 8:00 am". Production 2026-10-13: 5 vouchers, none with an expiry, so no data to correct. Grilled, then stress-tested against the code with the founder.
+
+*Code trace.* Writers of `vouchers.expires_at`: `VoucherService::issue()` and `merge()` only, both from `Admin\VoucherController` (`OrderSettlementService` always passes `null`; there is no edit endpoint). Readers: `Voucher::isExpired()` (redeem, merge, `display_status`), Monthly Summary breakage and `CashPositionService` (Malaysia month bounds via `ReportService::TIMEZONE`), Reports `outstandingStoreCredit`, the WhatsApp voucher line, the admin voucher view.
+
+*Decisions.*
+1. **A typed date means "valid through the end of that Malaysia day"**: stored as 23:59:59 MYT (15:59:59 UTC). The next day's midnight as an exclusive bound was rejected: the WhatsApp line and admin would show the next day.
+2. **Date only.** Both FormRequests take `date_format:Y-m-d`; both admin modals use a native `<input type="date" min={todayInKL()}>`, the pattern the supplier-transfer form already uses. The label reads "Valid until".
+3. **Today in Malaysia is the earliest date** (`after_or_equal:` today in `ReportService::TIMEZONE`, the supplier-transfer request's pattern). Laravel's `today` is UTC and would accept yesterday's Malaysia date before 08:00 MYT.
+4. **Converted in one place**, `VoucherService::endOfMalaysiaDay()`, used by `issue()` and `merge()`. It calls `->utc()` explicitly: Eloquent writes a Carbon's own wall-clock time without converting, so a Kuala Lumpur instance saved as-is reads back 8 hours late (found in the stress test, proved in `tinker`).
+5. **The WhatsApp line formats in Malaysia time explicitly.** 15:59:59 UTC is already the same calendar day, so it was right by coincidence; now it is right on purpose.
+
+*Consequence to track.* Breakage is unchanged in practice: a voucher dated the 31st is stored before the next month's Malaysia midnight. `'Asia/Kuala_Lumpur'` is still typed in five services; voucher code reads `ReportService::TIMEZONE` as Accounting already does. Consolidating it is §16 item 90.
