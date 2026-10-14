@@ -137,6 +137,24 @@ class AdminMfaStepUpTest extends TestCase
         $this->assertSame(['mine'], DB::table('sessions')->pluck('id')->all());
     }
 
+    /**
+     * Found live 2026-10-14: saving your own account with a password (the
+     * browser had autofilled "New Password") logged you out on the next
+     * request — Sanctum's AuthenticateSession still held the old password's
+     * hash. Your own session must survive; only other sessions end.
+     */
+    public function test_changing_your_own_password_keeps_your_session(): void
+    {
+        $admin = $this->signIn($this->mfaAttributes());
+        $this->postJson('/api/mfa/step-up', ['code' => $this->totp($admin, 1)])->assertOk();
+
+        $this->putJson("/api/admin-users/{$admin->id}", ['name' => 'Renamed', 'email' => $admin->email, 'role' => 'super_admin', 'password' => 'a-new-password-1'])->assertOk();
+        // The test app keeps resolved guards between requests; production starts fresh.
+        $this->app['auth']->forgetGuards();
+
+        $this->getJson('/api/me')->assertOk()->assertJsonPath('name', 'Renamed');
+    }
+
     public function test_the_reset_command_clears_mfa_ends_sessions_and_alerts(): void
     {
         $admin = AdminUser::factory()->create($this->mfaAttributes());
