@@ -97,6 +97,10 @@ function AdminUserFormFields({
           <Input
             id="password"
             type="password"
+            // A new password for this account, never the signed-in admin's
+            // own: without this the browser autofills the saved login, and
+            // a name-only edit silently re-sets the password.
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required={!isEditing}

@@ -56,3 +56,14 @@ Fix: `Order::effectiveCostPriceSen()`/`costBasis()` — one cost figure per orde
 Also closed at the founder's explicit request: decision 9's per-`pricing_basis` coverage requirement, re-verified for COMBO specifically (the original build only proved it non-combo) — 4 new tests confirm `resolveComboOutcome()`'s aggregation holds `affiliate_profit` untouched across Standard/Affiliate/Member/ResellerWallet combo orders too.
 
 9 new tests total, full backend suite 2228/2228 green, Pint/tsc/eslint/build clean. Same PR (#265), not yet merged.
+
+### 2026-10-14 addendum — one FX rate per supplier per Price Sync run
+
+Price Sync resolved the supplier's rate once per run and recorded it in `PriceSyncRun.stats.fx_rates_used`. But each item was converted through `convertToSen()`, which read the cache again: 1,521 reads per Digiflazz run, 86% of `pulse_entries`. If the cached rate expired and was refetched mid-run, later items were priced at a different rate from the recorded one (reproduced in a test: 73 sen, then 320 sen).
+
+**Decision.**
+- `CurrencyRateService::convertToSenAt($price, $currency, $rate)` holds the one formula: MYR uses `round`, everything else `ceil`. `convertToSen()` resolves the rate, then delegates to it.
+- `ProductSyncService` prices every item with the rate it already resolved and records.
+- Delivery-time real cost (`OrderFulfillmentService::captureRealCostSen`) keeps calling `convertToSen()` once per leg, at the rate current at delivery, unchanged.
+
+No stored price moves: within a 24h cache TTL, the rates were already equal in practice.

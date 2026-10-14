@@ -9,6 +9,7 @@ use App\Http\Requests\Admin\UpdateAdminUserStatusRequest;
 use App\Models\AdminUser;
 use App\Services\Auth\AdminMfa;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -42,9 +43,17 @@ class AdminUserController extends Controller
 
         $admin_user->update($data);
 
-        // ADR-121: a new password ends that admin's other sessions.
+        // ADR-121: a new password ends that admin's other sessions. Your own
+        // stays: the guard gets the updated model, so Sanctum's
+        // AuthenticateSession stores the new password hash after this
+        // request instead of the old one (which logged you out next request).
         if (isset($data['password'])) {
-            $mfa->endSessions($admin_user, $admin_user->is($request->user()) && $request->hasSession() ? $request->session()->getId() : null);
+            $isSelf = $admin_user->is($request->user());
+            $mfa->endSessions($admin_user, $isSelf && $request->hasSession() ? $request->session()->getId() : null);
+
+            if ($isSelf) {
+                Auth::guard('web')->setUser($admin_user);
+            }
         }
 
         return response()->json($admin_user);

@@ -95,7 +95,7 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 | **AUTH-4** | Super Admin can manage admin users (create, edit, activate, deactivate) | **MVP** |
 | **AUTH-5** | Super Admin can manage API keys for system integration | **Phase 2** |
 | **AUTH-6** | System displays profile page with edit personal info and change password | **MVP** |
-| **AUTH-7** | Admin MFA (TOTP), opt-in per account (set by an admin in Admin Users); without it, five dangerous actions are refused (CHIP credentials, supplier credentials, manual reseller wallet credit, withdrawal approval, admin account changes), and with it they ask for a fresh code | **Built, ADR-121** (staging only until a release) |
+| **AUTH-7** | Admin MFA (TOTP), opt-in per account (set by an admin in Admin Users); without it, five dangerous actions are refused (CHIP credentials, supplier credentials, manual reseller wallet credit, withdrawal approval, admin account changes), and with it they ask for a fresh code | **Live, ADR-121** (2026-10-14) |
 
 ## 6.2 Admin — Dashboard
 
@@ -588,15 +588,13 @@ founder's choice (confirmed 2026-10-13). Until they are re-enabled, storefront
 checkout and the reseller wallet's self-serve top-up can't be paid; wallet
 orders against an existing balance still work.
 
-**Latest release 2026-10-14 (`staging`→`main`, PR #430), deploy verified.**
-Merged as `735e156`; the prod box runs it. Ships #426–#429: item 93 (a
-combo's stored price stays current while it is off and on reactivation),
-whose migration repriced 28 stale PUBG Mobile combos on deploy (0 stale of
-101 after), plus docs (item 66 parked, item 94 added). **Not yet released:** `staging`
-also carries #433 (items 73 and 95, the Reseller API rejection log and
-`/api/health/whatsapp`) plus docs #431/#432, and item 10 (admin MFA and the
-cookie-session admin login, ADR-121) once its PR merges. The founder holds
-the next release for a later session.
+**Latest release 2026-10-14 (`staging`→`main`, PR #437), deploy verified.**
+Merged as `4fefc43`; the prod box runs it. Ships #431–#436: item 10 (admin
+MFA and the cookie-session admin login, ADR-121), item 73 (Reseller API
+rejection log) and item 95 (`/api/health/whatsapp`, both sessions `ready`),
+plus docs. The founder's admin account has MFA active. **Not yet released:**
+#438 (changing your own admin password no longer logs you out; the edit
+form no longer autofills the password).
 
 **Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
 hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
@@ -629,7 +627,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 
 | Area | Status | Key ADRs |
 | --- | --- | --- |
-| Auth & Admin Users (AUTH-1..7) | ✅ Live. Login rate-limited + logged. Admin MFA (AUTH-7) and the cookie-session admin login built 2026-10-14, staging only until a release | ADR-019, ADR-121 |
+| Auth & Admin Users (AUTH-1..7) | ✅ Live. Login rate-limited + logged. Admin MFA (AUTH-7) and the cookie-session admin login live since 2026-10-14 (#437) | ADR-019, ADR-121 |
 | Admin Dashboard (DASH-1..6) | ✅ Live — KPIs, System Health, funnel, top games, hourly activity | ADR-045 |
 | Money core (Pricing, Ledger, Voucher, Order status, idempotency) | ✅ Live — full service layer, concurrency-proven. The most mature part of the codebase | ADR-002 |
 | Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end. PR #273's invite/session and compensation visibility fixes, plus ADR-112's role-aware shell, dashboard recent orders, and responsive Orders presentation, shipped in PRs #273, #275 and #276, released to `main` via #278 (2026-09-24) | ADR-056–061, 078, 112 |
@@ -637,7 +635,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Supplier Adapter (ADAPT-1..4) | ✅ Digiflazz live (the only funded supplier). Gamevion is integrated but deliberately unfunded (2026-09-24). Per-supplier circuit breaker, `SupplierAdapterFactory` routing, async delivery state machine + poll backstop, inbound webhooks (HMAC). **ADR-097 PR-1 + PR-2 built 2026-09-16** — Digiflazz `customer_no` separator moves per-game (was wrongly supplier-wide); per-game Zone ID picklist replaces free text, with the same presence+value-validation now shared (`CheckoutInputValidator`) across storefront, Reseller API, and Bot. Both PRs live. **ADR-098 built 2026-09-16** — `SupplierResponse::$transactionAlreadyFormed` (supplier-agnostic) routes a non-retriable Digiflazz `rc` (Terbentuk Transaksi=Ya, 20 codes) or Gamevion `duplicate_reference` straight to `needs_review`, closing a real gap in the async webhook/poll finalize path a plain `Failed` resend could never resolve (later refined by ADR-102). **2026-09-29:** the breaker also counts `createOrder`/`checkStatus` timeouts (`listProducts` excluded). For a replay-safe supplier (Digiflazz), an ambiguous outcome now goes to Pending with a same-ref poll instead of NeedsReview (ADR-102 addendum). Live | ADR-006, 030–032, 067, 069, 097, 098, 102 |
 | Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). All three methods (`fpx`, `fpx_b2b1`, `duitnow_qr`) inactive since 2026-10-07, the founder's choice (§14). Xendit deleted (archived). **ADR-110 PR-A built 2026-09-19** — `overdue`/`expired`/`blocked` now map to `Failed` (were silently stuck `Pending` forever); every purchase now sets `due`+`due_strict` so CHIP itself closes it after 30 min. **PR-C built 2026-09-19** — credentials moved to encrypted `payment_gateways` DB row + `/middleware/payment-gateways` admin screen, binding is DB-first; the founder completed the cutover 2026-09-24, and the `.env` fallback is kept deliberately (§16 Parked). **PR-B built 2026-09-19** — CHIP settlement `.xlsx` reconciliation + Monthly Accounting Summary, fills ADR-083 PR-2 (see §16 item 12). All three ADR-110 PRs now built | ADR-022, ADR-110 |
 | Games & Packages (GAME-1..11) | 🟢 Live — GAME-1..11 all shipped (list/detail, markup %, activate/deactivate, delete, bulk markup via `/admin/settings`, SEO fields via `/admin/seo/games`, drag-drop reorder via `/admin/games`'s "Reorder Games", folded with the storefront's Quick Top-Up widget). GAME-12 dropped, 2026-09-13 (dead requirement, see §16). **2026-10-02:** package delete now blocks a package with order history or live combo-component usage instead of silently orphaning order history or crashing with a raw DB error (ADR-119) | ADR-029, ADR-119 |
-| Combo Package | 🟢 Live — several catalog Packages sold as one opaque SKU (one FPX fee), sum-of-components pricing with optional `combo_override_price` (never below cost), up to 5 legs, per-leg references and attempt rows, `partially_delivered` + `OrderSettlementService` settlement (voucher or wallet refund), real-cost profit residual (ADR-107/111), component cascade on/off, bulk markup routed through `ComboPricingService` (ADR-028), component SKU in the Edit Combo modal. Per-leg attempt history shown under each leg on Order Detail (live via #406, 2026-10-12, item 66). **2026-10-13 (ADR-094 addendum, item 93):** the stored price stays current while a combo is off and is recomputed before the reactivation cascade; a component markup reprices its combos; a markup on a combo itself is rejected; staging only until a release. Edit-composition parked 2026-10-14 (§16 Parked) | ADR-094, ADR-100, ADR-046, ADR-106, ADR-107, ADR-028 |
+| Combo Package | 🟢 Live — several catalog Packages sold as one opaque SKU (one FPX fee), sum-of-components pricing with optional `combo_override_price` (never below cost), up to 5 legs, per-leg references and attempt rows, `partially_delivered` + `OrderSettlementService` settlement (voucher or wallet refund), real-cost profit residual (ADR-107/111), component cascade on/off, bulk markup routed through `ComboPricingService` (ADR-028), component SKU in the Edit Combo modal. Per-leg attempt history shown under each leg on Order Detail (live via #406, 2026-10-12, item 66). **2026-10-13 (ADR-094 addendum, item 93):** the stored price stays current while a combo is off and is recomputed before the reactivation cascade; a component markup reprices its combos; a markup on a combo itself is rejected; live since 2026-10-14 (#430). Edit-composition parked 2026-10-14 (§16 Parked) | ADR-094, ADR-100, ADR-046, ADR-106, ADR-107, ADR-028 |
 | Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening | ADR-015/016, 025, 033, 034, 067 |
 | Supplier Management (SUPP-1..5) | ✅ Live — SUPP-1/CRUD/SUPP-5; credentials in encrypted `Supplier.api_config`; balance refresh + low-balance chip; credential-rotation probe on save. **2026-09-24:** the bulk "Deactivate All"/"Deactivate by Game"/"Reactivate" toggle now cascades onto dependent combos (found while auditing the Pending Reactivation combo gap above — the bulk toggle had never called `ComboPricingService`'s cascade at all, deactivate or reactivate). Released `main` via PR #286, 2026-09-24 | ADR-046, 069 |
 | Orders Management (ORD-1..11) | ✅ Live — checkout + fulfillment, Resend (same-game swap, one resend seam, ADR-105), ORD-10 reconciliation, async `pending`, manual "Check from Supplier/Gateway" (ADR-096), one compensation guard `isAlreadyCompensated()` (ADR-102/103), restore-only voucher (ADR-024), six KPI cards (ADR-092), ADR-104 reskin, ADR-108 toolbar (Need Action excludes compensated, Source/Game/date filters, Columns, 2-sheet Excel export with earned profit) and a Failed pill (#385). Detail: build-log + ADRs | ADR-017, 024, 026, 032, 092, 096, 102, 103, 104, 105, 108 |
@@ -648,7 +646,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. Renewal-reminder emails at H-3 and H+1 (Malaysia days), listed on the admin member page (item 64, live via #416 2026-10-13). WhatsApp reminders designed, waiting on a trigger (§16 item 85) | ADR-027, 055, 068, 080 |
 | Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. The voucher path was live-tested 2026-10-06 (a failed order's Issue Voucher code arrived on WhatsApp), along with the status card and not-found reply. Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14). **2026-10-12 (§16 item 69):** every order-number message gets a card or a not-found reply; the silent repeat throttles are removed (live via #416; the founder confirmed on a real phone 2026-10-13) | ADR-116 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
-| Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private) — full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, restore-tested every run, CLI-only restore. **2026-09-14: found the restore-test had failed 14/14 since go-live** (managed-MySQL GTID privilege gap) **and its alert never reached an inbox** (`MAIL_MAILER=log`) — both fixed and **re-verified live same day**: a manual "Backup Now" landed on `r2_backups` with `status=success`/`restore_test_passed=1`, the first success ever recorded | ADR-039, ADR-095 |
+| Backups (BAK-1..5) | ⚠️ Live on Cloudflare R2 (`pekangame-backups`, private): full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, nightly at 02:07. **Every nightly run since 2026-10-01 is `failed` (§16 item 97): the archive uploads, but the restore test can't create its throwaway database.** Fixed in code on 2026-10-14, not live. The fix adds one restore path shared by the nightly test and a new `app:restore-backup` command; restores go only into an empty database; DEFINER clauses are dropped on restore; verification is real (no missing table, no pending migration); 300s timeout on `redis-long`; and killed runs close themselves. It needs a release and the ADR-117 2026-10-14 grant. The last restore-verified backup is #25 (2026-09-24). Earlier history: the 2026-09-14 GTID fix, build-log-archive | ADR-039, ADR-095, ADR-117 |
 | Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-form picker (`ImageUrlInput`, live via #406, 2026-10-12) on Edit Game, Hero Slide and the two SEO OG-image fields; the URL stays a plain text field | ADR-095 |
 | SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage. **ADR-120 (live 2026-10-08):** tokens in every SEO field, per-brand canonical origin (canonical/sitemap/robots/llms/JSON-LD), all packages in HTML, Product `offers` + `aggregateRating`, fact line, admin FAQ + `FAQPage` | ADR-029, ADR-042, ADR-120 |
 | Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 (Telegram) dropped and its fields removed (live via #406, 2026-10-12). Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this. A re-upload shows at once (`?v=` on the URL, #409, live via #416; founder-checked 2026-10-13) | ADR-028, 089 |
@@ -693,16 +691,21 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
 items dropped, listed under Recently closed). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- (none)
+- **97** Backup restore test fails every night since 2026-10-01. Cause
+  found and fixed in code on 2026-10-14 (not live). It needs a release, then
+  the founder's grant (ADR-117 2026-10-14 addendum), then "Backup Now" and a
+  check for `restore_test_passed = 1`.
 
 **B. Needs a short grill / ADR addendum first**
+- **98** Scheduler liveness alert: nothing notices if cron stops (backups,
+  price sync and payment reconciliation would all stop silently).
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
   the accountant's monthly document list first.
 
 **C. Founder actions (no code)**
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
-  `/api/health` and the OpenWA gateway; add a third monitor on
-  `/api/health/whatsapp` once item 95 is released.
+  `/api/health`, the OpenWA gateway and `/api/health/whatsapp` (third monitor
+  added and alert-tested by the founder 2026-10-14).
 - **71** GSC recheck around 2026-10-22.
 - **96** Upgrade OpenWA to v0.24.0 (with the founder standing by).
 
@@ -729,6 +732,30 @@ items dropped, listed under Recently closed). Re-verify before building.
 - **94** Best-selling products per game in Reports.
 
 ## Details
+
+97. **Backup restore test fails every night (found 2026-10-14, after release
+    #437).** `backup_runs` #31–#44 (2026-10-01 → 10-14) are all `failed`.
+    **Verified cause:** `ERROR 1044 Access denied for user 'pekangame_app' to
+    database 'defaultdb_restore_test_…'`. ADR-117's grants cover only
+    `defaultdb.*`, and its cutover check used `backup:run`, which skips the
+    restore test. Underneath sat three more faults: runs #26–#30 killed by the
+    60s worker timeout and left `running`; two views owned by `doadmin`
+    (`ERROR 1227` on restore); and a verification that passed a dump cut short
+    after the `migrations` table. **Fixed in code on 2026-10-14** (ADR-039,
+    ADR-117 and ADR-111 2026-10-14 addenda; build-log 2026-10-14), together
+    with one FX rate per Price Sync run and price sync's 300s timeout. **Left
+    to do:** release; the founder runs the grant as `doadmin` *after* the
+    release (granting before it would let tonight's run reach the restore and
+    die at the old 60s timeout); then "Backup Now" and check that
+    `restore_test_passed = 1`. The nightly alert went to a dead mailbox until
+    2026-10-14.
+
+98. **Scheduler liveness alert (found 2026-10-14, item 97 stress test).**
+    UptimeRobot polls `/api/health` (DB, Redis, Horizon), but nothing notices
+    if the Laravel scheduler (cron) stops. Backups, price sync, payment
+    reconciliation and the membership jobs would then all stop without an
+    alert. Needs a short design: where the heartbeat lives, and whether a
+    stale heartbeat should fail `/api/health` or send its own alert.
 
 4. **Bot-host capacity (+$20/mo resize)** — resize only when capacity actually
    calls for it. It is also the moment to revisit the OpenWA engine (item 59:
@@ -947,9 +974,9 @@ items dropped, listed under Recently closed). Re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
-- **10** 2026-10-14: admin MFA (TOTP) and a cookie-session admin login (ADR-121). The login lasts 7 days at most, ends after 2 days unused, and is shared by every tab. MFA is opt-in per account ("Require MFA" in Admin Users, one-way; set up on `/login`). Five actions need a code within the last 5 minutes and are refused without MFA: CHIP credentials, supplier credentials, manual reseller wallet credit, withdrawal approval, admin account changes. Eight recovery codes; `php artisan admin:mfa-reset {email}` over SSH. Staging only until a release; the founder then requires MFA on their own account. Details: build-log 2026-10-14.
-- **95** 2026-10-14: `GET /api/health/whatsapp` asks OpenWA for both sessions and answers 503 unless both are `ready` (`unreachable`, `not_configured`, or the session's own status otherwise); throttled 30/min. The founder adds an UptimeRobot monitor on it after the release, alerting after 2 failed checks. Staging only until a release. Details: build-log 2026-10-14.
-- **73** 2026-10-14: every Reseller API rejection a known reseller gets is logged (`warning`, since prod runs `LOG_LEVEL=warning`) from the one render hook: reseller, key, code, status, path, IP, details. A missing or wrong key is not logged (anonymous noise, already rate-limited per IP); `RATE_LIMITED` logs once a minute per reseller (ADR-074 2026-10-14 addendum). Staging only until a release.
+- **10** 2026-10-14: admin MFA (TOTP) and a cookie-session admin login (ADR-121). The login lasts 7 days at most, ends after 2 days unused, and is shared by every tab. MFA is opt-in per account ("Require MFA" in Admin Users, one-way; set up on `/login`). Five actions need a code within the last 5 minutes and are refused without MFA: CHIP credentials, supplier credentials, manual reseller wallet credit, withdrawal approval, admin account changes. Eight recovery codes; `php artisan admin:mfa-reset {email}` over SSH. Released 2026-10-14 (#437); the founder's MFA is active. Details: build-log 2026-10-14.
+- **95** 2026-10-14: `GET /api/health/whatsapp` asks OpenWA for both sessions and answers 503 unless both are `ready` (`unreachable`, `not_configured`, or the session's own status otherwise); throttled 30/min. Released 2026-10-14 (#437); UptimeRobot monitor added. Details: build-log 2026-10-14.
+- **73** 2026-10-14: every Reseller API rejection a known reseller gets is logged (`warning`, since prod runs `LOG_LEVEL=warning`) from the one render hook: reseller, key, code, status, path, IP, details. A missing or wrong key is not logged (anonymous noise, already rate-limited per IP); `RATE_LIMITED` logs once a minute per reseller (ADR-074 2026-10-14 addendum). Released 2026-10-14 (#437).
 
 - **49, 53, 58, 72, 82, 86, 89** dropped 2026-10-14 (founder): each was a
   "build if someone reports it" note, not scheduled work. Any design stays
@@ -962,7 +989,7 @@ items dropped, listed under Recently closed). Re-verify before building.
   `~/OpenWA/.env`; verified on a restart the same day (both `ready` in
   under 2 minutes, no manual start). ADR-114 2026-10-14 addendum.
 
-- **93** 2026-10-13: combo prices no longer go stale. Found on prod in the item-66 audit: 8 active combos sold at a price stored before their components' costs moved (a combo off during a price change came back on sale unrepriced). Every component price change now reprices every combo using it, active or not; the reactivation cascade reprices first; a component markup edit reprices its combos; a markup on a combo is rejected. A migration reprices the stale combos on deploy (ADR-094 2026-10-13 addendum). Staging only until a release. Details: build-log 2026-10-13.
+- **93** 2026-10-13: combo prices no longer go stale. Found on prod in the item-66 audit: 8 active combos sold at a price stored before their components' costs moved (a combo off during a price change came back on sale unrepriced). Every component price change now reprices every combo using it, active or not; the reactivation cascade reprices first; a component markup edit reprices its combos; a markup on a combo is rejected. A migration reprices the stale combos on deploy (ADR-094 2026-10-13 addendum). Released 2026-10-14 (#430; 28 combos repriced, 0 stale of 101). Details: build-log 2026-10-13.
 - **91** 2026-10-13: the admin hero-slide Starts/Ends inputs are read and loaded as Malaysia time whatever the browser's timezone (`klInputToIso` / `isoToKlInput`), so a re-save no longer shifts the schedule 8 hours; the list's Schedule column shows Malaysia dates. No production slide had a schedule. Live via #425 (2026-10-13). Details: build-log 2026-10-13.
 - **92** 2026-10-13: the Request Logs date filter uses Malaysia calendar days (the Orders filter's bounds) and rejects a non-date value with 422. Live via #425 (2026-10-13). Details: build-log 2026-10-13.
 - **90** 2026-10-13: one shared Malaysia timezone constant, `App\Support\MalaysiaTime::TIMEZONE` (admin: `KL_TIMEZONE` in `lib/date-range.ts`), replacing the five copies; vouchers and accounting no longer read it from `ReportService`. No behaviour change. Live via #425 (2026-10-13). Details: build-log 2026-10-13.

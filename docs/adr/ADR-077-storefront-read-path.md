@@ -77,3 +77,7 @@ Two background audits plus a live read of Laravel Pulse (`/pulse`, 7-day window,
 - **`ReportService::summary()` is called twice per Dashboard load** (`DashboardService::summary` runs it for two comparison windows) — the collapse halves that cost but the real fix is the deferred rewrite + the decision-11 index. Track whether Dashboard load time is acceptable post-PR-4; if not, that is the trigger to pull the Reports restructure forward.
 - **ADR-014's "cache values must be plain arrays" rule is now belt-and-braces, not load-bearing** — Redis would not corrupt a nested object. Keep the rule (portability, and it is already universal), but a future reader should know the original hard reason is gone.
 - **`RouteNotFoundException` / `CommandNotFoundException` in Pulse Exceptions** are handled in ADR-078 (root route) and noted as non-reproducible-from-repo respectively — not this ADR's scope, cross-referenced so a reader chasing the Pulse data lands in the right place.
+
+### 2026-10-14 addendum — price sync timeout closed
+
+The "Horizon supervisor-*timeout*" concern parked in PR-3 above (price sync 46s against a 60s budget) is closed. Price sync had reached 54.5s by 2026-10-14. `supervisor-price-sync` now runs on `redis-long` with a 300s timeout, and `supervisor-backups` moved with it (ADR-039 2026-10-14 addendum, PRD §16 item 97).

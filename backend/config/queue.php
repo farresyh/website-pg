@@ -74,8 +74,9 @@ return [
         ],
 
         // 2026-09-29 audit K-4: same Redis keys as `redis`, longer
-        // retry_after — used only by horizon's supervisor-orders-combo
-        // (300s timeout). retry_after is applied by the worker that pops
+        // retry_after — used by horizon's supervisor-orders-combo,
+        // supervisor-price-sync and supervisor-backups (300s timeout each,
+        // 2026-10-14 item 97). retry_after is applied by the worker that pops
         // the job, so producers keep dispatching on `redis` unchanged.
         'redis-long' => [
             'driver' => 'redis',
