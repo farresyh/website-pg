@@ -1,6 +1,7 @@
 <?php
 
 use App\Exceptions\ResellerApi\ResellerApiException;
+use App\Exceptions\ResellerApi\ResellerApiRejectionLog;
 use App\Http\Middleware\AllowActiveCustomDomainCors;
 use App\Http\Middleware\EnsureAccountType;
 use App\Http\Middleware\EnsureAdminRole;
@@ -156,21 +157,25 @@ return Application::configure(basePath: dirname(__DIR__))
         // exceptions it can't throw itself (validation, throttle, a bad
         // route/method) are mapped only on the `api/reseller/*` path so no
         // other API surface changes shape.
+        // Every rejection is logged here for a known reseller (PRD §16 item 73).
         $exceptions->render(function (Throwable $e, Request $request) {
-            if ($e instanceof ResellerApiException) {
-                return $e->toResponse();
-            }
+            $rejection = match (true) {
+                $e instanceof ResellerApiException => $e,
+                ! $request->is('api/reseller/*') => null,
+                $e instanceof ValidationException => ResellerApiException::validationFailed($e->errors()),
+                $e instanceof ThrottleRequestsException => ResellerApiException::rateLimited(),
+                $e instanceof MethodNotAllowedHttpException => ResellerApiException::methodNotAllowed(),
+                $e instanceof NotFoundHttpException => ResellerApiException::notFound(),
+                default => null,
+            };
 
-            if (! $request->is('api/reseller/*')) {
+            if ($rejection === null) {
                 return null;
             }
 
-            return match (true) {
-                $e instanceof ValidationException => ResellerApiException::validationFailed($e->errors())->toResponse(),
-                $e instanceof ThrottleRequestsException => ResellerApiException::rateLimited()->toResponse()->withHeaders($e->getHeaders()),
-                $e instanceof MethodNotAllowedHttpException => ResellerApiException::methodNotAllowed()->toResponse(),
-                $e instanceof NotFoundHttpException => ResellerApiException::notFound()->toResponse(),
-                default => null,
-            };
+            ResellerApiRejectionLog::record($request, $rejection);
+            $response = $rejection->toResponse();
+
+            return $e instanceof ThrottleRequestsException ? $response->withHeaders($e->getHeaders()) : $response;
         });
     })->create();
