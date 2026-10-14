@@ -708,3 +708,16 @@ Reopen only as a "Duplicate combo" button (ADR-094 2026-10-14 addendum, PRD
   is below cost. The 2026-10-13 entry expected 9 combos to be repriced;
   component costs have moved since, so the next release's migration should now
   reprice 28.
+
+**Release #430 verified (2026-10-14, read-only).** `main` = `735e156`;
+migration `2026_10_13_100000_recompute_stale_combo_prices` ran at 06:58:18
+UTC and wrote 28 `PriceChangeLog` rows (no sync run), matching the
+pre-release count. Same check after deploy: **0 stale of 101 combos**. The
+active count moved from 81 to 100 (PUBG 28 → 48), but not from the
+release: Price Sync run 2218 at 06:30:42 UTC, before the deploy,
+cascade-reactivated the 20 inactive September PUBG combos (1366–1435,
+`deactivated_reason = combo_component_deactivated`, `PackageReactivationLog`
+trigger `combo_components_all_active`) once their components came back.
+That ran on the old code, so they came back unrepriced, which is the item-93
+bug; the migration repriced them 28 minutes later. PUBG now has two active
+combos per denomination for those sizes (September and 2026-10-09 versions).
