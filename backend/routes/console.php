@@ -121,9 +121,11 @@ Schedule::command('app:prune-stale-cache')
 // `--triggered-by=system` distinguishes this from the manual "Backup
 // Now" admin action, both of which go through the same
 // RunBackupCommand (dump -> locate archive -> decision 8's restore
-// test -> one BackupRun row).
+// test -> one BackupRun row). 02:07, not 02:00 (item 97): off the minute
+// price sync and the */15 jobs start on, since the restore test also
+// writes to the same database server.
 Schedule::command('app:run-backup', ['--triggered-by' => 'system'])
-    ->dailyAt('02:00')
+    ->dailyAt('02:07')
     ->name('database-backup')
     ->withoutOverlapping();
 

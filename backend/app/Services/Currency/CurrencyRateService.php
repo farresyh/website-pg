@@ -47,11 +47,24 @@ final class CurrencyRateService
             return null;
         }
 
+        return $this->convertToSenAt($price, $fromCurrency, $fromCurrency === 'MYR' ? 1.0 : $this->rate($fromCurrency, 'MYR'));
+    }
+
+    /**
+     * ADR-111 2026-10-14 addendum: the same formula, with the rate supplied
+     * by the caller. Price Sync resolves one rate per supplier per run and
+     * prices every item with it, so the rate it records in fx_rates_used is
+     * the rate every item was priced at. `$rate` is ignored for MYR.
+     */
+    public function convertToSenAt(?float $price, string $fromCurrency, float $rate): ?int
+    {
+        if ($price === null) {
+            return null;
+        }
+
         if ($fromCurrency === 'MYR') {
             return (int) round($price * 100);
         }
-
-        $rate = $this->rate($fromCurrency, 'MYR');
 
         return (int) ceil($price * $rate * 100);
     }

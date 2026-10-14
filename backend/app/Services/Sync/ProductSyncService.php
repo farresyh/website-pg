@@ -44,6 +44,7 @@ final class ProductSyncService
         // an adapter failure already produces — this run writes nothing,
         // rather than silently mis-pricing every item.
         $fxRateUsed = null;
+        $rate = 1.0;
 
         if ($supplier->currency !== 'MYR') {
             try {
@@ -101,7 +102,7 @@ final class ProductSyncService
                     // even before its adapter was taught to set it).
                     'group_label' => $item->groupLabel ?? $item->category ?? '',
                     'type' => $item->type,
-                    'price_sen' => $this->currencyRates->convertToSen($item->price, $supplier->currency),
+                    'price_sen' => $this->currencyRates->convertToSenAt($item->price, $supplier->currency, $rate),
                     // ADR-069 decision 10 — the supplier's pre-conversion
                     // figure, display-only. Adapter-set, no branching here.
                     'raw_price' => $item->rawPrice,

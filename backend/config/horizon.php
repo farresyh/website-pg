@@ -283,8 +283,15 @@ return [
             'timeout' => 300,
             'nice' => 0,
         ],
+        // 2026-10-14 (item 97, ADR-039 addendum): price sync and backups
+        // are batch jobs whose runtime grows with the data — price sync hit
+        // 54.5s and backups were killed at 60s every night 09-26..30
+        // (TimeoutExceededException). 300s on `redis-long` (retry_after
+        // 330s) instead of the generic 60s. A breach still fails loudly
+        // (both jobs' failed()). ponytail: price sync does one query pair
+        // per product; move to a bulk upsert once it passes ~150s.
         'supervisor-price-sync' => [
-            'connection' => 'redis',
+            'connection' => 'redis-long',
             'queue' => ['price-sync'],
             'balance' => 'off',
             'maxProcesses' => 1,
@@ -292,7 +299,7 @@ return [
             'maxJobs' => 0,
             'memory' => 128,
             'tries' => 3,
-            'timeout' => 60,
+            'timeout' => 300,
             'nice' => 0,
         ],
         'supervisor-revalidation' => [
@@ -308,7 +315,7 @@ return [
             'nice' => 0,
         ],
         'supervisor-backups' => [
-            'connection' => 'redis',
+            'connection' => 'redis-long',
             'queue' => ['backups'],
             'balance' => 'off',
             'maxProcesses' => 1,
@@ -316,7 +323,7 @@ return [
             'maxJobs' => 0,
             'memory' => 128,
             'tries' => 3,
-            'timeout' => 60,
+            'timeout' => 300,
             'nice' => 0,
         ],
         // ADR-051 — its own supervisor, same isolation reasoning as
