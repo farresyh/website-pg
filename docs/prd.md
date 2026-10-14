@@ -77,7 +77,7 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 - **Supplier APIs**: assumed RESTful/JSON, but **must not be assumed to have a uniform response shape, auth style, or validation capability.** Confirmed by direct research (Gamevion API, MLBB-validator sample store) that these vary per supplier and even per game. All supplier calls go through a normalizing Adapter layer (see 6.21) — no business logic touches raw supplier response shapes.
 - **Payment gateway: CHIP only** (`PaymentGatewayFactory` kept for a future multi-region second gateway — [ADR-022's 2026-09-01 addendum](./adr/ADR-022-multi-gateway-payment-strategy.md) removed Xendit; FPX proven live with real money; all three methods switched off since 2026-10-07 by the founder's choice, see §14). Single company CHIP account; the platform collects 100% of every payment (including reseller storefronts) and the ledger does the split. **xenPlatform dropped entirely** — not deferred ([ADR-059](./adr/ADR-059-reseller-portal.md) decision 6, superseding ADR-001's addendum).
 - **Currency** assumed MYR as base, with dynamic exchange rate support for foreign-currency suppliers.
-- **Auth** Bearer token-based with role middleware on backend — frontend routing is convenience, not security. Admin MFA (AUTH-7) is planned for admins only (§16 item 10, 2026-10-14).
+- **Auth** Bearer token-based with role middleware on backend — frontend routing is convenience, not security. Admin MFA (AUTH-7) is designed for admins only (ADR-121, §16 item 10).
 - **Refund policy**: no cash refunds under any circumstance (ADR-004). Resolution paths for a failed order are limited to retry-delivery or voucher issuance.
 - **Balance/financials**: ledger-based (ADR-002). No entity may expose or rely on a directly-mutated `balance` column as the source of truth.
 
@@ -95,7 +95,7 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 | **AUTH-4** | Super Admin can manage admin users (create, edit, activate, deactivate) | **MVP** |
 | **AUTH-5** | Super Admin can manage API keys for system integration | **Phase 2** |
 | **AUTH-6** | System displays profile page with edit personal info and change password | **MVP** |
-| **AUTH-7** | System enforces MFA (TOTP) for Super Admin and Admin accounts — mandatory before any withdrawal/voucher/refund-affecting action | **Planned, admin only** (founder 2026-10-14, §16 item 10) |
+| **AUTH-7** | Admin MFA (TOTP), opt-in per account (set by an admin in Admin Users); without it, five dangerous actions are refused (CHIP credentials, supplier credentials, manual reseller wallet credit, withdrawal approval, admin account changes), and with it they ask for a fresh code | **Designed, ADR-121** (§16 item 10) |
 
 ## 6.2 Admin — Dashboard
 
@@ -628,7 +628,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 
 | Area | Status | Key ADRs |
 | --- | --- | --- |
-| Auth & Admin Users (AUTH-1..7) | ✅ Live. Login rate-limited + logged. Admin MFA (AUTH-7) planned, §16 item 10 | ADR-019 |
+| Auth & Admin Users (AUTH-1..7) | ✅ Live. Login rate-limited + logged. Admin MFA (AUTH-7) designed, §16 item 10 | ADR-019, ADR-121 |
 | Admin Dashboard (DASH-1..6) | ✅ Live — KPIs, System Health, funnel, top games, hourly activity | ADR-045 |
 | Money core (Pricing, Ledger, Voucher, Order status, idempotency) | ✅ Live — full service layer, concurrency-proven. The most mature part of the codebase | ADR-002 |
 | Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end. PR #273's invite/session and compensation visibility fixes, plus ADR-112's role-aware shell, dashboard recent orders, and responsive Orders presentation, shipped in PRs #273, #275 and #276, released to `main` via #278 (2026-09-24) | ADR-056–061, 078, 112 |
@@ -692,11 +692,10 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
 items dropped, listed under Recently closed). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- (none)
+- **10** Admin MFA + a 7-day cookie login shared across tabs: designed and
+  grilled 2026-10-14 (ADR-121), buildable now.
 
 **B. Needs a short grill / ADR addendum first**
-- **10** Admin MFA (Google Authenticator) with a 7-day login shared across
-  tabs (new ADR).
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
   the accountant's monthly document list first.
 
@@ -735,26 +734,14 @@ items dropped, listed under Recently closed). Re-verify before building.
    calls for it. It is also the moment to revisit the OpenWA engine (item 59:
    Baileys stays until then). OpenWA now shares `pekangame-prod-lwf` with the API
    (ADR-114).
-10. **Admin MFA — build, needs a new ADR + grill** (founder, 2026-10-14;
-    was descoped). Admin only: an admin account can change the CHIP
-    credentials (customer payments would go to another account), credit a
-    reseller wallet and issue vouchers, all of which spend real money. MFA
-    for `affiliate_users` and resellers is dropped: affiliate balances are
-    near zero, every withdrawal is approved by hand with a "bank details
-    changed" flag, and a reseller wallet can only be spent on top-ups.
-    Decided before the grill:
-    - Google Authenticator (TOTP) at login; the login then lasts at most
-      7 days, and ends after 2 days without use (both checked server-side).
-    - One login shared by every admin tab (today the token sits in
-      `sessionStorage`, so each new tab asks again and it ends at 12 h).
-    - A fresh code is asked again for the three dangerous actions: changing
-      the CHIP credentials, crediting a reseller wallet, issuing a voucher.
-    - Eight single-use recovery codes, shown once; a lost phone plus lost
-      codes is reset over SSH (procedure in the ADR).
-    Open for the grill: whether Laravel has a ready TOTP package or it is
-    built in-house, and where the token lives (an httpOnly cookie through
-    Sanctum's SPA mode is preferred over `localStorage` for a 7-day token;
-    it revises ADR-009's sessionStorage choice).
+10. **Admin MFA: designed, buildable now** (ADR-121, grilled and
+    stress-tested with the founder 2026-10-14). TOTP via `pragmarx/google2fa`,
+    opt-in per account from `/admin/users`, enrolment and code on `/login`, a
+    5-minute step-up for five dangerous actions, 8 recovery codes, reset over
+    SSH. The admin login moves from a `sessionStorage` bearer token to an
+    httpOnly cookie session (7 days max, 2 days idle, shared across tabs).
+    Issuing vouchers stays code-free, as an accepted risk. The ADR has the
+    full design and the release-day steps.
 
 11. **External uptime monitor added 2026-10-10 (founder-reported, UptimeRobot on
     `https://api.pekangame.space/api/health`); error tracking (Sentry) is still
