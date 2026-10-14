@@ -213,21 +213,9 @@ class SettingsController extends Controller
                 ->whereNull('combo_override_markup_percent')
                 ->chunkById(100, function ($combos) use (&$changed, &$gameIds) {
                     foreach ($combos as $combo) {
-                        $oldCostPrice = $combo->cost_price;
-                        $oldSellingPrice = $combo->standard_selling_price;
-
-                        if (! $this->comboPricing->recompute($combo)) {
+                        if (! $this->comboPricing->recomputeAndLog($combo, priceSyncRunId: null)) {
                             continue;
                         }
-
-                        PriceChangeLog::query()->create([
-                            'price_sync_run_id' => null,
-                            'package_id' => $combo->id,
-                            'old_cost_price' => $oldCostPrice,
-                            'new_cost_price' => $combo->cost_price,
-                            'old_standard_selling_price' => $oldSellingPrice,
-                            'new_standard_selling_price' => $combo->standard_selling_price,
-                        ]);
 
                         $changed++;
                         $gameIds[$combo->game_id] = true;

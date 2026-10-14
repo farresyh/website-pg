@@ -75,7 +75,7 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 - **Hosting:** the backend runs on a Laravel Forge-managed DigitalOcean droplet behind Cloudflare, and the four frontends on Vercel (ADR-066, ADR-114).
 - **Multi-tenant architecture**: schema tenant-aware (`affiliate_id`, `reseller_id` before ADR-072) from day 1 per ADR-003; the ORM global scope it promised was actually built in [ADR-057](./adr/ADR-057-tenant-isolation-mechanism.md) (2026-08-30). Every storefront — ours and third-party — is an `Affiliate` row ([ADR-061](./adr/ADR-061-every-storefront-is-a-reseller.md), superseding ADR-013's platform-owner special-case).
 - **Supplier APIs**: assumed RESTful/JSON, but **must not be assumed to have a uniform response shape, auth style, or validation capability.** Confirmed by direct research (Gamevion API, MLBB-validator sample store) that these vary per supplier and even per game. All supplier calls go through a normalizing Adapter layer (see 6.21) — no business logic touches raw supplier response shapes.
-- **Payment gateway: CHIP only** (`PaymentGatewayFactory` kept for a future multi-region second gateway — [ADR-022's 2026-09-01 addendum](./adr/ADR-022-multi-gateway-payment-strategy.md) removed Xendit; FPX live, DuitNow QR seeded inactive). Single company CHIP account; the platform collects 100% of every payment (including reseller storefronts) and the ledger does the split. **xenPlatform dropped entirely** — not deferred ([ADR-059](./adr/ADR-059-reseller-portal.md) decision 6, superseding ADR-001's addendum).
+- **Payment gateway: CHIP only** (`PaymentGatewayFactory` kept for a future multi-region second gateway — [ADR-022's 2026-09-01 addendum](./adr/ADR-022-multi-gateway-payment-strategy.md) removed Xendit; FPX proven live with real money; all three methods switched off since 2026-10-07 by the founder's choice, see §14). Single company CHIP account; the platform collects 100% of every payment (including reseller storefronts) and the ledger does the split. **xenPlatform dropped entirely** — not deferred ([ADR-059](./adr/ADR-059-reseller-portal.md) decision 6, superseding ADR-001's addendum).
 - **Currency** assumed MYR as base, with dynamic exchange rate support for foreign-currency suppliers.
 - **Auth** Bearer token-based with role middleware on backend — frontend routing is convenience, not security. MFA (AUTH-7) is descoped, founder's call (§16 item 10).
 - **Refund policy**: no cash refunds under any circumstance (ADR-004). Resolution paths for a failed order are limited to retry-delivery or voucher issuance.
@@ -440,7 +440,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 | **Game** | `id`, `name`, `slug`, `category`, `is_active`, `sort_order`, `image_url`, `banner_url`, `supplier_mappings` (JSON array of `{supplier_id, product_ref, supports_validation, supports_server_list}`), `validation_rules` (JSON), SEO fields | A game title available for top-up. `supports_validation` remains in the stored JSON shape (harmless, unread) but is dead — GAME-12 (which introduced it) is dropped, 2026-09-13; see §16. Real player-ID validation runs through `Game.player_validator_enabled`/`player_validator_profile_id` (`PlayerValidatorRegistry`, ADR-093) instead — an unrelated, separate mechanism. |
 | **Package** | `id`, `game_id`, `name`, `cost_price` (supplier wholesale, sourced only from the supplier sync — never admin-editable), `markup_percent` (admin-set per package, decimal — added 2026-07-25), `standard_selling_price` (= `cost_price` × (1 + `markup_percent` / 100), rounded to the nearest sen — **stored**, recomputed only when `markup_percent` changes via `PackageMarkupService`, never recomputed live at order time; renamed from `reseller_cost_price` 2026-08-29, [ADR-027](./adr/ADR-027-vip-membership.md)), `is_active`, `supplier_id`, `supplier_package_ref`, `sort_order` | A specific top-up denomination within a game. `standard_selling_price` is the platform owner's own guest/standard price — it is **not** the customer-facing price for every buyer type; a real affiliate's own wholesale rate is a separate mechanism (`affiliate_membership_tiers`, see the Affiliate row below and [ADR-056](./adr/ADR-056-reseller-wholesale-pricing-subscription-tiers.md) — live, checkout wiring [ADR-060](./adr/ADR-060-multi-tenant-branded-storefront-custom-domain.md)). Today it happens to equal the customer-facing price (the primary brand runs at `markup_pct = 0`), but the schema/formula never assumes that. |
 | **Supplier** | `id`, `name`, `slug`, `logo_url`, `is_active`, `api_config` (JSON — credentials, endpoints; **encrypted at rest**), `balance`, `currency` | A game credit supplier integrated via Middleware, accessed only through its Adapter (6.21). |
-| **Affiliate** | `id`, `business_name`, `contact_name`, `email`, `phone`, `markup_pct`, `max_markup_pct`, `domains` (JSON array, nullable), `status`, `is_owned` (bool — our own brand, [ADR-061](./adr/ADR-061-every-storefront-is-a-reseller.md)), `is_primary` (nullable bool, DB-enforced-single — the console/job/non-`Host` fallback tenant, never deletable), `membership_enabled` (bool — per-brand consumer-Membership toggle, effective only when the global `PlatformSettings.membership_enabled` master is also on), `deleted_at` (soft-delete, ADR-058 58b), `xendit_subaccount_id` (nullable, unused — xenPlatform dropped), `notes` — **no `balance` column**; balance is derived from `LedgerEntry` — **renamed from `Reseller`/`resellers` 2026-09-04, [ADR-072](./adr/ADR-072-reseller-system-split.md) PR-A, zero behaviour change** (vacates the `Reseller` name for a future prepaid-wallet entity, ADR-073..075) | A branded storefront owner. **Every storefront is a row here** — ours and third-party alike, with no special code path ([ADR-061](./adr/ADR-061-every-storefront-is-a-reseller.md), superseding ADR-013's `business_name = 'Platform Owner'` magic string). `Affiliate::primary()` resolves the one `is_primary` row for any context with no `Host` to resolve a brand from. `markup_pct`/`max_markup_pct` = the affiliate's own margin on top of what they pay the platform (an `is_owned` brand defaults 0 — all margin books as `platform_profit`). **What an affiliate pays the platform** depends on which `affiliate_membership_tiers` row they're subscribed to (or `standard_selling_price` if none active) — [ADR-056](./adr/ADR-056-reseller-wholesale-pricing-subscription-tiers.md), live, checkout wiring ADR-060. |
+| **Affiliate** | `id`, `business_name`, `contact_name`, `email`, `phone`, `markup_pct`, `max_markup_pct`, `domains` (JSON array, nullable), `status`, `is_owned` (bool — our own brand, [ADR-061](./adr/ADR-061-every-storefront-is-a-reseller.md)), `is_primary` (nullable bool, DB-enforced-single — the console/job/non-`Host` fallback tenant, never deletable), `membership_enabled` (bool — per-brand consumer-Membership toggle, effective only when the global `PlatformSettings.membership_enabled` master is also on), `deleted_at` (soft-delete, ADR-058 58b), `notes` — **no `balance` column**; balance is derived from `LedgerEntry` — **renamed from `Reseller`/`resellers` 2026-09-04, [ADR-072](./adr/ADR-072-reseller-system-split.md) PR-A, zero behaviour change** (vacates the `Reseller` name for a future prepaid-wallet entity, ADR-073..075) | A branded storefront owner. **Every storefront is a row here** — ours and third-party alike, with no special code path ([ADR-061](./adr/ADR-061-every-storefront-is-a-reseller.md), superseding ADR-013's `business_name = 'Platform Owner'` magic string). `Affiliate::primary()` resolves the one `is_primary` row for any context with no `Host` to resolve a brand from. `markup_pct`/`max_markup_pct` = the affiliate's own margin on top of what they pay the platform (an `is_owned` brand defaults 0 — all margin books as `platform_profit`). **What an affiliate pays the platform** depends on which `affiliate_membership_tiers` row they're subscribed to (or `standard_selling_price` if none active) — [ADR-056](./adr/ADR-056-reseller-wholesale-pricing-subscription-tiers.md), live, checkout wiring ADR-060. |
 | **Reseller** *([ADR-072/073](./adr/ADR-072-reseller-system-split.md))* | `id`, `business_name`, `contact_name`, `email`, `phone`, `reseller_tier_id` (nullable FK → `reseller_tiers`, restrict-on-delete, direct swap — no subscription state machine), `is_active` (bool, default true — account-level order-placement kill switch, doesn't freeze the balance), `notes`, `deleted_at` (soft-delete) — **no `balance` column**; wallet balance is derived from `LedgerEntry`, owner type `reseller_wallet` | The prepaid-wallet wholesale-buyer entity the Reseller API (ADR-074) and Reseller Bot (ADR-075) channels share — reclaims the `Reseller` name vacated by ADR-072's `Affiliate` rename. Structurally the opposite of `Affiliate`: only ever **spends** against a deposited balance, never earns. `reseller_tiers.markup_percent` (over `cost_price`, no monthly fee) prices every wallet order. Orders are placed through `ResellerOrderPlacementService` by the API (`reseller_api_keys`) and the Bot; portal login via polymorphic `affiliate_users`. |
 | **LedgerEntry** | `id`, `owner_type` (platform/affiliate/reseller_wallet — `'affiliate'` since ADR-072 PR-A, was `'reseller'`), `owner_id`, `type` (order_profit/withdrawal/voucher_issued/adjustment/wallet_topup/wallet_debit/wallet_refund/membership_fee/affiliate_tier_fee), `amount` (signed sen: credit positive, debit negative), `reference_type`, `reference_id`, `created_at`, `created_by`, `reason` (required for `adjustment`) | **Immutable, append-only.** Sole source of truth for any balance. Never updated or deleted, only inserted (ADR-002). **Every delivered order writes exactly two `order_profit` credit entries** — one for `platform_profit` (owner_type=platform) and one for `affiliate_profit` (owner_type=affiliate, the order's `affiliate_id`) — kept as two rows even when both resolve to the same owner (an `is_owned` brand), so the ledger logic is identical for every affiliate. |
 | **LedgerAccount** | `id`, `owner_type`, `owner_id` (unique together) | Pure lock/mutex anchor, **no balance column** — created upfront alongside the owner so `withdraw()` always has a row to `lockForUpdate()`, even for a brand-new owner with zero prior entries. See ADR-002 addendum. |
@@ -451,7 +451,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 | **Review** | `id`, `order_id`, `customer_email`, `game_id`, `package_id`, `rating` (1-5), `comment`, `status`, `created_at` | Customer feedback on a completed order. |
 | **BlacklistEntry** | `id`, `type` (player_id/email/phone), `value`, `reason`, `created_by`, `is_active`, timestamps | Internal fraud-prevention list, checked at checkout (FRAUD-1/2). Shipped 2026-07-29 as two tables, not one — corrects this row's original pre-build design (no `game_id`; a blacklist entry blocks everywhere, not per-game; `is_active` replaces hard-delete, see ADR-007's shipped addendum for why). |
 | **BlacklistHit** | `id`, `blacklist_entry_id`, `player_id`, `customer_email`, `customer_phone`, `ip`, timestamps | One row per blocked checkout attempt (FRAUD-3's audit trail) — not in the original §8 design, added during the 2026-07-29 build since a blocked attempt never creates an `Order` and so has no other record. |
-| **Backup** | `id`, `filename`, `size`, `type` (automatic/manual), `created_at`, `created_by` | Database backup record. |
+| **BackupRun** | `id`, `status` (queued/running/success/failed), `triggered_by` (`system` or the admin's name), `disk`, `path`, `size_bytes`, `restore_test_passed`, `restore_test_details`, `error_message`, `started_at`, `finished_at`, timestamps | One backup attempt (`backup_runs`, ADR-039): the dump, where it landed, and its restore-test result. |
 | **Validator** | `id`, `name`, `slug`, `rules` (JSON array of `{country_code, game_variant_slug}` mappings) | Region-based routing rules for player validation. |
 
 ---
@@ -468,7 +468,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
   - A circuit breaker trips per-supplier after repeated failures, preventing cascading timeouts from a down supplier blocking the whole delivery queue.
   - Dashboard must remain accessible even when one supplier is down.
   - The system never relies solely on a supplier webhook/callback for final state — a scheduled reconciliation job independently confirms order and payment status (ORD-10, PAY-3).
-- **Error Handling :** All supplier API errors must be logged with full request/response payload, credentials and excess PII redacted. Admin receives notifications for critical failures (stuck orders, low supplier balance, tripped circuit breaker).
+- **Error Handling :** All supplier API errors must be logged with full request/response payload, credentials and excess PII redacted. Admins are emailed (Plunk, every active admin) for a failed backup, a long Horizon queue wait and a stale FX rate. Stuck orders, supplier balance and circuit-breaker state are monitored on the Dashboard (System Health), not pushed. A low-supplier-balance email is designed with item 28 (ADR-115 2026-10-13 addendum), not built.
 - **Data Privacy :** Player IDs and customer personal data (including validation-response data such as in-game nickname/country) must be handled securely, retained only as long as operationally needed, and never over-logged. No logging of raw credentials. Admin action audit trails, including impersonation.
 - **Backup & Recovery :** Automatic daily backup, 7 daily / 4 weekly / 6 monthly retention (ADR-039, ADR-095). Manual backup via admin panel. Backups must be downloadable.
 - **Multi-language :** Storefront supports multiple languages (English + local language). Admin panel is single language (English).
@@ -480,7 +480,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 | Service | Function | Notes |
 | --- | --- | --- |
-| **CHIP** | **Sole payment gateway** — Malaysia-local (FPX live; DuitNow QR / `fpx_b2b1` seeded inactive). Also membership subscription + reseller wallet top-up checkout | 🟢 **LIVE in production since 2026-09-03** (live keys, `fpx` channel active, RM1.00 flat fee) — real money proven end-to-end (order `PG-PYAYMRYNUYV0`). Per-purchase `success_callback` (not a portal webhook), RSA signature verification with key-rotation re-fetch. Still resolved via `PaymentGatewayFactory` for a future multi-region 2nd gateway. `app:chip-smoke-test`. ADR-022 (+ 2026-09-01 CHIP-only addendum), ADR-068. |
+| **CHIP** | **Sole payment gateway** — Malaysia-local (FPX, FPX Business `fpx_b2b1`, DuitNow QR; all three switched off since 2026-10-07 by the founder's choice, §14). Also membership subscription + reseller wallet top-up checkout | 🟢 **Integrated with live keys since 2026-09-03** (RM1.00 flat FPX fee; no method active since 2026-10-07, §14) — real money proven end-to-end (order `PG-PYAYMRYNUYV0`). Per-purchase `success_callback` (not a portal webhook), RSA signature verification with key-rotation re-fetch. Still resolved via `PaymentGatewayFactory` for a future multi-region 2nd gateway. `app:chip-smoke-test`. ADR-022 (+ 2026-09-01 CHIP-only addendum), ADR-068. |
 | **~~Xendit~~** | ~~International payment processing~~ | **Removed entirely 2026-09-01** (ADR-022 addendum). Code archived to branch `archive/xendit-gateway` + tag `xendit-archive-2026-09-01`. International acceptance is gone, not dormant — its own grilled ADR if cross-border selling becomes real. xenPlatform was never adopted (ADR-059 decision 6 — the ledger splits partner money, not the gateway). |
 | **Gamevion** | Supplier — game credit catalog, price feed, order creation/fulfillment | **Integrated but deliberately unfunded (2026-09-24, Digiflazz-only).** First real `SupplierAdapter`. Static Bearer + API-key, `referenceNumber` + `409 Duplicate` idempotency, per-purchase `callback_url`. Sandbox via `GAMEVION_SANDBOX=true`. ADR-006/040. |
 | **Digiflazz** | Second supplier — Indonesian H2H aggregator (486 game SKUs + data SKUs) | **The only live supplier.** Prod key wired 2026-09-02, **funded 2026-09-15**, delivering real orders. IDR→MYR FX conversion at the sync boundary (ADR-033). Inbound `POST /api/webhooks/digiflazz` (HMAC-SHA1 `X-Hub-Signature` + IP allowlist). Topup has no rate limit; the full price list is limited to 1 call per 5 min (`rc 83`), per Digiflazz CS on 2026-09-29. Same-`ref_id` re-submit replays the stored outcome, which ADR-102's 2026-09-29 addendum relies on. ADR-030/067/069. |
@@ -502,7 +502,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 - **Loyalty & Rewards Program.** Points system for customers based on order frequency/value.
 - **Affiliate Marketing Module.** Third-party affiliate referral with commission tracking.
 - **Cross-Affiliate Inventory Sharing.** Route orders to best-available supplier when one affiliate's preferred supplier is low on balance.
-- **Automated Exchange Rate Feeds.** Real-time exchange rate API integration instead of manual/fallback rates.
+- **~~Automated Exchange Rate Feeds.~~** ✅ **Shipped** (ADR-033): a live FX API feeds IDR→MYR daily, with the last stored rate as fallback and a stale-rate alert after 48 h.
 - **Automated Refund Decisions.** (Reactivation is automated since ADR-100.) Move from manual admin approval (MVP default, per Open Question resolution below) to rules-based automation once enough fraud/failure pattern data exists.
 
 ---
@@ -529,7 +529,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 - **Supplier Middleware :** System layer that handles API communication with game credit suppliers via the Adapter layer. Provides product matching, price sync, player validation (where available), and order delivery.
 - **Adapter / Normalizer :** A per-supplier module implementing a common internal interface, translating that supplier's specific auth/response format into one canonical shape so business logic never depends on raw supplier response structure (6.21).
-- **Ledger Entry :** An immutable, append-only record of a single credit or debit against a platform-owner or affiliate's balance. Balance is always a derived SUM, never a directly-mutated field (ADR-002).
+- **Ledger Entry :** An immutable, append-only record of a single credit or debit against the platform's, an affiliate's or a reseller wallet's balance. Balance is always a derived SUM, never a directly-mutated field (ADR-002).
 - **Idempotency Key / Reference Number :** A unique identifier generated before the first attempt at a money-moving or order-creating API call, reused on every retry of that same logical operation so a retried request cannot create a duplicate effect.
 - **Envelope / Envelope Ledger :** What company money is set aside for (Capital Rolling, Marketing Budget, …), never where it sits. Supplier top-ups, CHIP payouts and moves between the company's own accounts never touch an envelope ([ADR-083](./adr/ADR-083-internal-accounting-financial-reconciliation.md) 2026-10-10 addendum).
 - **Posting :** One Envelope Ledger action: a header (type, date, receipt, director) over signed lines into or out of envelopes. Types: funding (loan or share capital), transfer, expense, director-paid expense, repayment, distribution, and profit allocation (month close only). Corrected only by a void (a reversal posting).
@@ -589,55 +589,24 @@ founder's choice (confirmed 2026-10-13). Until they are re-enabled, storefront
 checkout and the reseller wallet's self-serve top-up can't be paid; wallet
 orders against an existing balance still work.
 
-**Unreleased on `staging` (2026-10-13):** #418 (item 84, expired vouchers
-shown as expired), #420 (item 6/A3, Reseller API per-account rate limits,
-docs site v1.5.0) and #421 (item 88, voucher expiry through the Malaysia
-day), plus docs #417/#419. No migration. They go live with the next
-`staging`→`main` release.
+**Latest release 2026-10-13 (`staging`→`main`, PR #425), deploy verified.**
+Merged as `cad575e`; CI green, the prod box runs `cad575e`, `/api/health` ok,
+and the docs site serves v1.5.0. Ships #417–#424: expired vouchers shown as
+expired (item 84), Reseller API rate limits per account (item 6/A3), voucher
+expiry through the Malaysia day (item 88), one shared Malaysia timezone
+constant (item 90), the hero-slide schedule and Request Logs filter on
+Malaysia time (items 91, 92), the stale-FX alert time in MYT and the email
+footer year. No new migration. `staging` = `main` at that moment.
 
 **Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
 hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
 `cdn.` stay on `pekangame.space`.
 
-**Release 2026-10-12 (`staging`→`main`, PR #406), deploy verified.** Merged
-06:18 UTC (`aa0a4d6`); CI and all four Vercel builds green. Migration
-`drop_telegram_columns_from_platform_settings_table` Ran on prod and the three
-columns are gone (a read-only check beforehand showed them empty). Ships
-#394–#405, now live: Next 16.3.8 (item 77), debounced admin search (76), the
-gallery in-form picker and the Telegram settings removal (6), the Monthly
-Summary voucher split (75; renames `goodwill_vouchers_issued_sen` →
-`admin_issued_vouchers_sen` and `voucher_liability_issued_sen` →
-`failed_order_credit_issued_sen`, operating profit unchanged), the InfoTooltip
-fix and the combo per-leg attempt history (66). The founder confirmed the
-Monthly Summary voucher lines and the order-log leg history on prod.
-`staging` = `main` at that moment.
-
-**Release 2026-10-13 (`staging`→`main`, PR #416), deploy verified.** Merged
-as `d7e5fd5`; CI, the Forge deploy and all four Vercel builds green. Ships
-#407–#415: the logo/favicon `?v=` cache-bust (#409), the WhatsApp status card
-on every order-number message (item 69), the expired-voucher merge guard
-(item 80), compensation vouchers no longer debiting the platform ledger
-(item 79) and membership renewal-reminder emails with the email logo, receipt
-date and `BrandIdentity` fixes (item 64). Both migrations Ran on prod: item
-79's appended 4 reversals (platform ledger 1551 → 2869 sen, as predicted), and
-`membership_reminders` exists. The reminder dry-run lists nobody on
-2026-10-13, as expected: the one active member ends 24 Oct (MYT) and becomes
-due on 21 Oct. The founder checked #409 (a re-uploaded logo shows at once) and #411 (a card
-on every repeat from a real phone) and the unsquashed email logo the same
-day. `staging` = `main` at that moment.
-
-**Release 2026-10-10 (PR #393).** Envelope Ledger reshape (item 78: postings,
-director loans, month close, cash equation; removes the platform-owner
-withdrawal), the settlement month-span fix #388, the admin package-order
-tiebreak #387. September 2026 is closed on prod (25 postings, operating profit
-RM 4.64, gap -RM 10.94). The 2026-10-09 release (#385, Reports redesign) and
-the per-release detail are in `docs/build-log-archive.md`, "PRD narrative moved
-2026-10-12".
-
-**Earlier releases** (#393 Envelope Ledger, #385 Reports redesign, #376 Reseller API `max_price_sen` / Assistant = Reports /
+**Earlier releases** (#416 and #406 on 2026-10-12/13, #393 Envelope Ledger,
+#385 Reports redesign, #376 Reseller API `max_price_sen` / Assistant = Reports /
 `r2_accounting`, #369 ADR-120 SEO/GEO, #362, #354, #346, #342, #332,
 #320 and the 2026-09-28 audit waves) are recorded release by release in
-`docs/build-log.md` (2026-10-09 onward) and `docs/build-log-archive.md`
+`docs/build-log.md` (2026-10-11 onward) and `docs/build-log-archive.md`
 (before that). This section keeps only the current state.
 
 **Infrastructure:**
@@ -648,7 +617,7 @@ the per-release detail are in `docs/build-log-archive.md`, "PRD narrative moved
 - Cloudflare sits in front of `api.`.
 
 - **Per-feature-area status:** §15 below.
-- **Full chronological build record** (every session, what shipped, the gotchas): `docs/build-log.md` (entries before 2026-10-09 in `docs/build-log-archive.md`).
+- **Full chronological build record** (every session, what shipped, the gotchas): `docs/build-log.md` (entries before 2026-10-11 in `docs/build-log-archive.md`).
 - **Decision rationale** (Context → Decision → Rationale → Consequence): `docs/adr.md`.
 
 ---
@@ -664,17 +633,17 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Admin Dashboard (DASH-1..6) | ✅ Live — KPIs, System Health, funnel, top games, hourly activity | ADR-045 |
 | Money core (Pricing, Ledger, Voucher, Order status, idempotency) | ✅ Live — full service layer, concurrency-proven. The most mature part of the codebase | ADR-002 |
 | Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end. PR #273's invite/session and compensation visibility fixes, plus ADR-112's role-aware shell, dashboard recent orders, and responsive Orders presentation, shipped in PRs #273, #275 and #276, released to `main` via #278 (2026-09-24) | ADR-056–061, 078, 112 |
-| Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live — prepaid wallet (admin manual credit + self-serve CHIP top-up), one order-placement contract (`ResellerOrderPlacementService`), `reseller_code`/`catalog_code`, REST API v1.5.0 (keys, IP allowlist, delivery webhook, optional `max_price_sen`, per-account rate limits: orders 60/min and reads 120/min, ADR-074 2026-10-13 addendum, staging only until a release), WhatsApp Bot (OpenWA), shared role-aware portal (ADR-112), per-game player-input contract (ADR-097), own queue lane (ADR-048). Real customer orders run on this channel. Detail: build-log + ADRs | ADR-072–076, 084, 091, 093, 112, 048, 097 |
+| Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live — prepaid wallet (admin manual credit + self-serve CHIP top-up, unpayable while payment methods are off, §14), one order-placement contract (`ResellerOrderPlacementService`), `reseller_code`/`catalog_code`, REST API v1.5.0 (keys, IP allowlist, delivery webhook, optional `max_price_sen`, per-account rate limits: orders 60/min and reads 120/min, ADR-074 2026-10-13 addendum, live via #425), WhatsApp Bot (OpenWA), shared role-aware portal (ADR-112), per-game player-input contract (ADR-097), own queue lane (ADR-048). Real customer orders run on this channel. Detail: build-log + ADRs | ADR-072–076, 084, 091, 093, 112, 048, 097 |
 | Supplier Adapter (ADAPT-1..4) | ✅ Digiflazz live (the only funded supplier). Gamevion is integrated but deliberately unfunded (2026-09-24). Per-supplier circuit breaker, `SupplierAdapterFactory` routing, async delivery state machine + poll backstop, inbound webhooks (HMAC). **ADR-097 PR-1 + PR-2 built 2026-09-16** — Digiflazz `customer_no` separator moves per-game (was wrongly supplier-wide); per-game Zone ID picklist replaces free text, with the same presence+value-validation now shared (`CheckoutInputValidator`) across storefront, Reseller API, and Bot. Both PRs live. **ADR-098 built 2026-09-16** — `SupplierResponse::$transactionAlreadyFormed` (supplier-agnostic) routes a non-retriable Digiflazz `rc` (Terbentuk Transaksi=Ya, 20 codes) or Gamevion `duplicate_reference` straight to `needs_review`, closing a real gap in the async webhook/poll finalize path a plain `Failed` resend could never resolve (later refined by ADR-102). **2026-09-29:** the breaker also counts `createOrder`/`checkStatus` timeouts (`listProducts` excluded). For a replay-safe supplier (Digiflazz), an ambiguous outcome now goes to Pending with a same-ref poll instead of NeedsReview (ADR-102 addendum). Live | ADR-006, 030–032, 067, 069, 097, 098, 102 |
-| Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). `fpx` active; `fpx_b2b1` / `duitnow_qr` seeded inactive (later phases). Xendit deleted (archived). **ADR-110 PR-A built 2026-09-19** — `overdue`/`expired`/`blocked` now map to `Failed` (were silently stuck `Pending` forever); every purchase now sets `due`+`due_strict` so CHIP itself closes it after 30 min. **PR-C built 2026-09-19** — credentials moved to encrypted `payment_gateways` DB row + `/middleware/payment-gateways` admin screen, binding is DB-first; the founder completed the cutover 2026-09-24, and the `.env` fallback is kept deliberately (§16 Parked). **PR-B built 2026-09-19** — CHIP settlement `.xlsx` reconciliation + Monthly Accounting Summary, fills ADR-083 PR-2 (see §16 item 12). All three ADR-110 PRs now built | ADR-022, ADR-110 |
+| Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). All three methods (`fpx`, `fpx_b2b1`, `duitnow_qr`) inactive since 2026-10-07, the founder's choice (§14). Xendit deleted (archived). **ADR-110 PR-A built 2026-09-19** — `overdue`/`expired`/`blocked` now map to `Failed` (were silently stuck `Pending` forever); every purchase now sets `due`+`due_strict` so CHIP itself closes it after 30 min. **PR-C built 2026-09-19** — credentials moved to encrypted `payment_gateways` DB row + `/middleware/payment-gateways` admin screen, binding is DB-first; the founder completed the cutover 2026-09-24, and the `.env` fallback is kept deliberately (§16 Parked). **PR-B built 2026-09-19** — CHIP settlement `.xlsx` reconciliation + Monthly Accounting Summary, fills ADR-083 PR-2 (see §16 item 12). All three ADR-110 PRs now built | ADR-022, ADR-110 |
 | Games & Packages (GAME-1..11) | 🟢 Live — GAME-1..11 all shipped (list/detail, markup %, activate/deactivate, delete, bulk markup via `/admin/settings`, SEO fields via `/admin/seo/games`, drag-drop reorder via `/admin/games`'s "Reorder Games", folded with the storefront's Quick Top-Up widget). GAME-12 dropped, 2026-09-13 (dead requirement, see §16). **2026-10-02:** package delete now blocks a package with order history or live combo-component usage instead of silently orphaning order history or crashing with a raw DB error (ADR-119) | ADR-029, ADR-119 |
-| Combo Package | 🟢 Live — several catalog Packages sold as one opaque SKU (one FPX fee), sum-of-components pricing with optional `combo_override_price` (never below cost), up to 5 legs, per-leg references and attempt rows, `partially_delivered` + `OrderSettlementService` settlement (voucher or wallet refund), real-cost profit residual (ADR-107/111), component cascade on/off, bulk markup routed through `ComboPricingService` (ADR-028), component SKU in the Edit Combo modal. Per-leg attempt history shown under each leg on Order Detail (live via #406, 2026-10-12, item 66). Open: edit-composition (needs an ADR-094 addendum) | ADR-094, ADR-100, ADR-046, ADR-106, ADR-107, ADR-028 |
+| Combo Package | 🟢 Live — several catalog Packages sold as one opaque SKU (one FPX fee), sum-of-components pricing with optional `combo_override_price` (never below cost), up to 5 legs, per-leg references and attempt rows, `partially_delivered` + `OrderSettlementService` settlement (voucher or wallet refund), real-cost profit residual (ADR-107/111), component cascade on/off, bulk markup routed through `ComboPricingService` (ADR-028), component SKU in the Edit Combo modal. Per-leg attempt history shown under each leg on Order Detail (live via #406, 2026-10-12, item 66). **2026-10-13 (ADR-094 addendum, item 93):** the stored price stays current while a combo is off and is recomputed before the reactivation cascade; a component markup reprices its combos; a markup on a combo itself is rejected; staging only until a release. Edit-composition parked 2026-10-14 (§16 Parked) | ADR-094, ADR-100, ADR-046, ADR-106, ADR-107, ADR-028 |
 | Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening | ADR-015/016, 025, 033, 034, 067 |
 | Supplier Management (SUPP-1..5) | ✅ Live — SUPP-1/CRUD/SUPP-5; credentials in encrypted `Supplier.api_config`; balance refresh + low-balance chip; credential-rotation probe on save. **2026-09-24:** the bulk "Deactivate All"/"Deactivate by Game"/"Reactivate" toggle now cascades onto dependent combos (found while auditing the Pending Reactivation combo gap above — the bulk toggle had never called `ComboPricingService`'s cascade at all, deactivate or reactivate). Released `main` via PR #286, 2026-09-24 | ADR-046, 069 |
 | Orders Management (ORD-1..11) | ✅ Live — checkout + fulfillment, Resend (same-game swap, one resend seam, ADR-105), ORD-10 reconciliation, async `pending`, manual "Check from Supplier/Gateway" (ADR-096), one compensation guard `isAlreadyCompensated()` (ADR-102/103), restore-only voucher (ADR-024), six KPI cards (ADR-092), ADR-104 reskin, ADR-108 toolbar (Need Action excludes compensated, Source/Game/date filters, Columns, 2-sheet Excel export with earned profit) and a Failed pill (#385). Detail: build-log + ADRs | ADR-017, 024, 026, 032, 092, 096, 102, 103, 104, 105, 108 |
 | Reports (RPT-1..4) | 🟢 Live — redesigned per ADR-104 (2026-10-08 addendum R1–R21 + 2026-10-09 R8 addendum), live via #385 (2026-10-09). 7 tabs on Recharts. **Paid sales** (money collected, net of wallet refunds, `Order::netSalesSql()`) with a **Bridge to Accounting** to recognised revenue from one `RecognisedRevenue` seam shared with the Monthly Summary. Ledger-sourced profit, `paid_at` scoping, KL days. **Failed & compensated** per delivery status plus outstanding store credit. Compare period on every tab, sales by channel + API vs Bot (`orders.placed_via`), Delivery by game. CSV/PDF carry Paid / Wallet refund / Paid sales. Default range All time. LLM assistant at `/admin/reports/assistant` (ADR-087, `super_admin`) matches the page. History: ADR-086 grouped-SQL rewrite, ADR-088 unified date filter | ADR-086, 087, 088, 104 |
 | Withdrawals (WTH-1..5) | ✅ Live. Maker-checker threshold RM 2,000 (`WITHDRAWAL_MAKER_CHECKER_THRESHOLD_SEN`). **Live via #393 (2026-10-10):** the platform-owner request (button, "Available balance", `POST /api/withdrawals`) is removed; the screen reviews Affiliate requests only | ADR-059, ADR-083 |
-| Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), a typed expiry date valid through that Malaysia day (ADR-024 2026-10-13 addendum, staging only until a release), Path A double-submit key, Voucher Merge. Maker-checker RM 500. **2026-10-04 (ADR-024 addendum, live via #354):** a lost voucher or member-quota reservation now fails the checkout closed (Failed order, coded 422 `checkout_closed`, link never handed out) on every path, including idempotent replay; admin "Voucher Paid" reads the redemption. **2026-10-12 (ADR-036 addendum, item 80):** a merge rejects an expired source voucher. **2026-10-12 (ADR-024 addendum, item 79):** only an admin-issued voucher debits the platform ledger; the 4 old compensation-voucher debits were reversed on release (live via #416, 2026-10-13, verified on prod). **2026-10-13 (item 84):** expiry stays `expires_at` alone; the admin list, detail and order Refund cards show an active voucher past it as expired (`display_status`), and it can't be ticked for merge | ADR-024, 035, 036 |
+| Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), a typed expiry date valid through that Malaysia day (ADR-024 2026-10-13 addendum, live via #425), Path A double-submit key, Voucher Merge. Maker-checker RM 500. **2026-10-04 (ADR-024 addendum, live via #354):** a lost voucher or member-quota reservation now fails the checkout closed (Failed order, coded 422 `checkout_closed`, link never handed out) on every path, including idempotent replay; admin "Voucher Paid" reads the redemption. **2026-10-12 (ADR-036 addendum, item 80):** a merge rejects an expired source voucher. **2026-10-12 (ADR-024 addendum, item 79):** only an admin-issued voucher debits the platform ledger; the 4 old compensation-voucher debits were reversed on release (live via #416, 2026-10-13, verified on prod). **2026-10-13 (item 84):** expiry stays `expires_at` alone; the admin list, detail and order Refund cards show an active voucher past it as expired (`display_status`), and it can't be ticked for merge (live via #425) | ADR-024, 035, 036 |
 | Customer Analytics (ANL-1..5) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. Renewal-reminder emails at H-3 and H+1 (Malaysia days), listed on the admin member page (item 64, live via #416 2026-10-13). WhatsApp reminders designed, waiting on a trigger (§16 item 85) | ADR-027, 055, 068, 080 |
 | Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. The voucher path was live-tested 2026-10-06 (a failed order's Issue Voucher code arrived on WhatsApp), along with the status card and not-found reply. Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14). **2026-10-12 (§16 item 69):** every order-number message gets a card or a not-found reply; the silent repeat throttles are removed (live via #416; the founder confirmed on a real phone 2026-10-13) | ADR-116 |
@@ -707,7 +676,7 @@ for the 2026-09-17 audit that found two dark-mode token bugs).
 # 16. Open Items & Backlog
 
 **Restructured 2026-10-12; re-checked against git and production on
-2026-10-13, after release #416.** This list holds only **open** items. "Next up"
+2026-10-13, after release #425.** This list holds only **open** items. "Next up"
 is the one place they are sorted, one line each; "Details" holds each item's
 full text once, by number. Everything closed is one line under "Recently
 closed", pointing to where the full story lives (`docs/build-log.md` /
@@ -720,13 +689,12 @@ against real code or production before building on it.
 **Founder's rule (2026-10-08): clear the backlog below before any new
 feature.** Every open item sorted by what it needs to finish. Verified against
 code and production on 2026-10-09; re-checked on 2026-10-13 after release
-#416. Re-verify before building.
+#425. Re-verify before building.
 
 **A. Buildable now: code, no new design**
 - (none)
 
 **B. Needs a short grill / ADR addendum first**
-- **66** Combo edit-composition UI (needs an ADR-094 addendum).
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
   the accountant's monthly document list first.
 
@@ -738,7 +706,7 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
 **D. Waiting on a trigger: don't build early**
 - **4** Bot-host resize, when capacity calls for it.
 - **10** MFA, before the partner portal's withdrawal balances grow.
-- **28** Supplier buffer forecast (ADR-115), once real order volume exists.
+- **28** Supplier buffer forecast plus a low-balance email alert (ADR-115), once real order volume exists.
 - **49** Detect a proxied affiliate domain, when an affiliate hits it.
 - **53** Parallel scheduler reconcile, if a slow CHIP lookup delays delivery.
 - **55** Test-order flag, with item 28 at real volume.
@@ -766,6 +734,7 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
 - **24** Wallet pending top-up resume/cancel.
 - **25** Portal "needs attention" aggregate.
 - **57** Marketing Campaigns (ADR-118, designed).
+- **94** Best-selling products per game in Reports.
 
 ## Details
 
@@ -828,7 +797,11 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
     funding-drift chip), cold-start falls back to the founder's own
     manual threshold. No automatic trigger to start building — the
     founder will say when, typically once real (non-testing) order
-    volume exists.
+    volume exists. **2026-10-13 addendum:** the build also adds a
+    low-balance email to every active admin through the ops-alert path
+    (`BackupFailureAlerter`, Plunk), throttled once a day per supplier, when
+    the balance crosses the buffer. Today nothing alerts: Digiflazz has no
+    `low_balance_threshold` on prod, so even the log warning never fires.
 
 49. **Detect a proxied affiliate domain on "Check now"** (ADR-060 follow-up).
     The DNS setup guide is built (2026-10-02, `DomainSetupGuide.tsx`, EN/BM,
@@ -893,7 +866,7 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
     (`ENGINE_TYPE` is global, so a switch would also move `customer-support`), and
     plan the QR re-pairing of both numbers.
 
-66. **Combo edit-composition UI, deliberately deferred** (§15 Combo row): no edit-composition UI (delete and recreate only). Needs an ADR-094 addendum first: the paid-but-not-yet-fulfilled window, and 3 readers use the live `components->first()->supplier`. Until then: create a new combo and deactivate the old one. The per-leg attempt history and each component's supplier SKU are already shown (live via #406); orders before 2026-09-21 have no leg attempt rows.
+66. **Combo edit-composition UI: parked 2026-10-14** (see Parked below; ADR-094 2026-10-14 addendum). Original note: no edit-composition UI (delete and recreate only); an edit would need the paid-but-not-yet-fulfilled window settled, and 3 readers use the live `components->first()->supplier`. The per-leg attempt history and each component's supplier SKU are shown (live via #406); orders before 2026-09-21 have no leg attempt rows.
 
 71. **GSC recheck around 2026-10-22** (Pages report: duplicate / canonical reasons, indexed vs not indexed). ADR-120 went live 2026-10-08 (#369); the admin SEO › FAQ click-through was done by the founder on 2026-10-10. Founder-deferred: GA4, default OG image, Bing.
 
@@ -998,25 +971,44 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
     nullable per-`Reseller` override read by the two limiters, set from the
     admin reseller page.
 
+94. **Best-selling products per game in Reports — new feature, needs an
+    ADR-104 addendum** (founder, 2026-10-13). Reports has a per-game breakdown
+    only; nothing shows which product inside a game sells most (package names
+    appear only per order in the export and per customer in Customer
+    Analytics). Count by what the customer bought, not by SKU: the key is
+    game + `denomination`, else `catalog_code`, else the package name; the
+    label is the storefront's display name. Why not `package_id` or name:
+    on prod (2026-10-13) 520 groups of active native packages share a game
+    and denomination (several supplier SKUs, one storefront entry), 29 of 32
+    paid orders sit on such a package, a resend swap rewrites
+    `orders.package_id` to the SKU sent, a combo is named differently from a
+    native package of the same total and gets a new row per version (a
+    combo is recreated, never edited; item 66 parked), MLBB Malaysia has
+    two combos per denomination since 2026-10-13, and names drift (3
+    denomination groups differ only by spelling). For the grill: an
+    optional drill-down per SKU/combo version, and whether to snapshot the
+    product key on the order at checkout so a resend swap can't move it.
+
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
-- **91** 2026-10-13: the admin hero-slide Starts/Ends inputs are read and loaded as Malaysia time whatever the browser's timezone (`klInputToIso` / `isoToKlInput`), so a re-save no longer shifts the schedule 8 hours; the list's Schedule column shows Malaysia dates. No production slide had a schedule. Staging only until a release. Details: build-log 2026-10-13.
-- **92** 2026-10-13: the Request Logs date filter uses Malaysia calendar days (the Orders filter's bounds) and rejects a non-date value with 422. Staging only until a release. Details: build-log 2026-10-13.
-- **90** 2026-10-13: one shared Malaysia timezone constant, `App\Support\MalaysiaTime::TIMEZONE` (admin: `KL_TIMEZONE` in `lib/date-range.ts`), replacing the five copies; vouchers and accounting no longer read it from `ReportService`. No behaviour change. Staging only until a release. Details: build-log 2026-10-13.
-- **88** 2026-10-13: a typed voucher expiry date is valid through the end of that Malaysia day (stored 23:59:59 MYT), date-only input with a native picker, today in Malaysia the earliest date (ADR-024 2026-10-13 addendum). No production voucher had an expiry. Staging only until a release. Details: build-log 2026-10-13.
-- **6 / A3** 2026-10-13: the Reseller API is limited per Reseller account, not per key, in two buckets (orders 60/min, reads 120/min); per-tier limits closed as not wanted; Bot unchanged (ADR-074 2026-10-13 addendum). The override is item 89. Staging only until a release. Details: build-log 2026-10-13.
+- **93** 2026-10-13: combo prices no longer go stale. Found on prod in the item-66 audit: 8 active combos sold at a price stored before their components' costs moved (a combo off during a price change came back on sale unrepriced). Every component price change now reprices every combo using it, active or not; the reactivation cascade reprices first; a component markup edit reprices its combos; a markup on a combo is rejected. A migration reprices the stale combos on deploy (ADR-094 2026-10-13 addendum). Staging only until a release. Details: build-log 2026-10-13.
+- **91** 2026-10-13: the admin hero-slide Starts/Ends inputs are read and loaded as Malaysia time whatever the browser's timezone (`klInputToIso` / `isoToKlInput`), so a re-save no longer shifts the schedule 8 hours; the list's Schedule column shows Malaysia dates. No production slide had a schedule. Live via #425 (2026-10-13). Details: build-log 2026-10-13.
+- **92** 2026-10-13: the Request Logs date filter uses Malaysia calendar days (the Orders filter's bounds) and rejects a non-date value with 422. Live via #425 (2026-10-13). Details: build-log 2026-10-13.
+- **90** 2026-10-13: one shared Malaysia timezone constant, `App\Support\MalaysiaTime::TIMEZONE` (admin: `KL_TIMEZONE` in `lib/date-range.ts`), replacing the five copies; vouchers and accounting no longer read it from `ReportService`. No behaviour change. Live via #425 (2026-10-13). Details: build-log 2026-10-13.
+- **88** 2026-10-13: a typed voucher expiry date is valid through the end of that Malaysia day (stored 23:59:59 MYT), date-only input with a native picker, today in Malaysia the earliest date (ADR-024 2026-10-13 addendum). No production voucher had an expiry. Live via #425 (2026-10-13). Details: build-log 2026-10-13.
+- **6 / A3** 2026-10-13: the Reseller API is limited per Reseller account, not per key, in two buckets (orders 60/min, reads 120/min); per-tier limits closed as not wanted; Bot unchanged (ADR-074 2026-10-13 addendum). The override is item 89. Live via #425 (2026-10-13). Details: build-log 2026-10-13.
 - **87** 2026-10-13: the founder deleted the two old `.env` backups on the prod box (`.env.bak-before-dbtls`, `.env.bak-2026-09-30-doadmin-least-privilege`; both held the DB password). Verified read-only: only `.env` remains in the site root.
-- **84** 2026-10-13: the admin voucher list, voucher detail and order Refund cards show an active voucher past `expires_at` as expired (`display_status`); the stats split active/expired by it and an expired voucher can't be ticked for merge. `Voucher::isExpired()` is now the one expiry rule (checkout and merge use it). `status` is not backfilled. Staging only until a release (#418 merged 2026-10-13). Details: build-log 2026-10-13.
+- **84** 2026-10-13: the admin voucher list, voucher detail and order Refund cards show an active voucher past `expires_at` as expired (`display_status`); the stats split active/expired by it and an expired voucher can't be ticked for merge. `Voucher::isExpired()` is now the one expiry rule (checkout and merge use it). `status` is not backfilled. Live via #425 (2026-10-13). Details: build-log 2026-10-13.
 - **64** 2026-10-13: membership renewal-reminder emails at H-3 and H+1, in Malaysia days, one per period (`membership_reminders`), listed on the admin member page (ADR-068 2026-10-13 addendum). The same change fixes the squashed email logo, the receipt's day-early end date and its missing link, and makes email and WhatsApp share one brand lookup. WhatsApp reminders are item 85. Live via #416 (2026-10-13). Details: build-log 2026-10-13.
 - **79** 2026-10-12: a compensation voucher (issued for an order) no longer debits the platform ledger; only an admin-issued voucher does, matching `Voucher::scopeCompensation()` (ADR-024 2026-10-12 addendum). The 4 old debits (RM13.18) get one reasoned reversal each from a migration that runs on release. Live via #416 (2026-10-13). Details: build-log 2026-10-12.
 - **80** 2026-10-12: a voucher merge rejects an expired source (ADR-036 2026-10-12 addendum, #412). Live via #416 (2026-10-13).
 - **69** 2026-10-12: the WhatsApp status card and the "order not found" reply are now sent on every order-number message; the 30-minute and 10-minute `Cache::add` throttles are gone (ADR-116 2026-10-12 addendum). No per-number cap, by the founder's call and the chatbot project's six months of data (worst 10-minute window: 3 messages). Live via #416 (2026-10-13). Details: build-log 2026-10-12.
-- **66 (history view)** 2026-10-12: a combo's per-leg attempt history shows under each leg on Order Detail; leg `initial` rows no longer swallow each other in the order log (red test first). Admin only. Edit-composition stays open (B). Live via #406 (2026-10-12). Details: build-log 2026-10-12.
+- **66 (history view)** 2026-10-12: a combo's per-leg attempt history shows under each leg on Order Detail; leg `initial` rows no longer swallow each other in the order log (red test first). Admin only. Edit-composition parked 2026-10-14. Live via #406 (2026-10-12). Details: build-log 2026-10-12.
 - **75** 2026-10-11: the Monthly Summary's "voucher liability issued" split into "Admin-issued vouchers (no order)" (profit cost, was "Goodwill") and "Failed-order store credit issued" (information only); a merge result is in neither (ADR-083 2026-10-11 addendum, build-log). The accountant still owns expense-at-issue vs at-redemption. Live via #406 (2026-10-12).
 - **76** 2026-10-10: server-side search is debounced (300 ms) and stale-guarded on `/admin/orders`, `/admin/games`, `/admin/seo/games`, `/admin/gallery`, Middleware Sandbox and Product Manager, plus Reports' custom dates. Two shared admin hooks: `useDebouncedValue`, `useLatestRequest`. Admin only; the other apps have no affected search. Live via #406 (2026-10-12).
 - **77** 2026-10-10: `next` 16.3.5 → 16.3.8 in admin, storefront and reseller (the critical `next/og` RCE and the `next/image` SSRF); `npm audit --omit=dev` is now 0 in all three. docs-site: `sharp` 0.35.5 and a lockfile fix, no high left. Remaining: dev-only eslint `braces` (3 apps) and 11 moderate in docs-site (`postcss-selector-parser` under Starlight); both need `npm audit fix --force`, which downgrades Starlight, so left. Live via #406 (2026-10-12).
 - **6 (part)** 2026-10-10: the admin gallery in-form picker (#399) and the SET-9 Telegram removal (#400; the migration drops three columns, ADR-028 addendum). Live via #406 (2026-10-12). A3 closed 2026-10-13 (above).
-- **78** 2026-10-10: Envelope Ledger reshape (ADR-083 addendum) — postings with typed lines, director loans, month close and the cash equation; the platform-owner withdrawal removed. PR-1 #390 and PR-2 #391, live via #393 the same day; September 2026 closed on prod (operating profit RM 4.64). Details: build-log 2026-10-10.
+- **78** 2026-10-10: Envelope Ledger reshape (ADR-083 addendum) — postings with typed lines, director loans, month close and the cash equation; the platform-owner withdrawal removed. PR-1 #390 and PR-2 #391, live via #393 the same day; September 2026 closed on prod (operating profit RM 4.64). Details: build-log-archive 2026-10-10.
 - **9** 2026-10-10: DB TLS (TLSv1.3 with the cluster CA, `MYSQL_ATTR_SSL_CA`) and DNSSEC on `pekangame.space` and `pekangame.com` (ADR-020 2026-10-10 addendum). DuitNow QR / `fpx_b2b1` are later phases.
 - **65** 2026-10-09: Reports redesign (ADR-104 R1–R21 + the 2026-10-09 R8 addendum) — 7 tabs on Recharts, Paid sales with a Bridge to Accounting (= Monthly Summary), Failed & compensated per delivery status, Compare on every tab, sales by channel + `orders.placed_via`, an Orders Failed pill (ADR-108 addendum), export with Paid sales. A pre-release money audit reconciled every figure against prod. Live via #385; verified on prod the same night.
 - **27** 2026-10-08: e2e boots admin and storefront with `next build && next start` instead of Turbopack `next dev` (the `next/font/google` on-demand compile crash). 6/6 specs pass; `playwright` green on `main` after release #385 (2026-10-09). Reopen if it goes red on a boot error again.
@@ -1025,6 +1017,14 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
 - **Older closed items** (1–3, 5, 7, 8, 12, 15–54 except those open above, 60–63): moved verbatim to `docs/build-log-archive.md`, "PRD narrative moved 2026-10-12". Numbers stay stable.
 
 ## Parked by founder decision — not scheduled
+
+- **66 Combo edit-composition.** A combo is never edited: to change one,
+  create a new combo and deactivate the old one (the founder's workflow
+  since the 2026-10-13 MLBB Malaysia rebuild, two combos per denomination).
+  This keeps every combo a fixed SKU, so the paid-but-unfulfilled edit
+  window never exists. Reopen only as a "Duplicate combo" button (no money
+  path) if rebuilding combos by hand becomes a chore (ADR-094 2026-10-14
+  addendum).
 
 - **A second payment gateway.** The `PaymentGatewayFactory` seam is kept for
   multi-region payment, but a real 2nd gateway is revisited only when

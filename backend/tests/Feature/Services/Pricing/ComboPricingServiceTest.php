@@ -161,20 +161,63 @@ class ComboPricingServiceTest extends TestCase
         $this->assertSame(50000, $log->new_cost_price);
     }
 
-    public function test_recompute_for_component_change_ignores_an_already_inactive_combo(): void
+    /**
+     * Price Sync updates an inactive component's cost too, so an inactive
+     * combo must follow it: otherwise it comes back on sale at the old
+     * price (found on prod 2026-10-13, 8 active combos stale).
+     */
+    public function test_recompute_for_component_change_keeps_an_inactive_combo_current(): void
     {
         $game = $this->game();
         $component = $this->componentPackage($game, $this->supplier());
         $combo = $this->combo($game, $component);
         $this->service()->recompute($combo);
-        $combo->update(['is_active' => false, 'deactivated_reason' => 'admin']);
+        $combo->update(['is_active' => false, 'deactivated_reason' => 'combo_component_deactivated']);
 
         $component->update(['cost_price' => 50000, 'standard_selling_price' => 55000]);
-        $affected = $this->service()->recomputeForComponentChange($component, priceSyncRunId: null);
+        $this->service()->recomputeForComponentChange($component, priceSyncRunId: null);
 
-        $this->assertSame([], $affected->all());
-        $this->assertSame(40000, $combo->refresh()->cost_price);
-        $this->assertSame(0, PriceChangeLog::query()->count());
+        $combo->refresh();
+        $this->assertFalse($combo->is_active);
+        $this->assertSame(50000, $combo->cost_price);
+        $this->assertSame(55000, $combo->standard_selling_price);
+        $this->assertSame(1, PriceChangeLog::query()->where('package_id', $combo->id)->count());
+    }
+
+    public function test_cascade_reactivate_reprices_a_combo_before_it_goes_back_on_sale(): void
+    {
+        $game = $this->game();
+        $component = $this->componentPackage($game, $this->supplier());
+        $combo = $this->combo($game, $component);
+        $this->service()->recompute($combo);
+        $this->service()->cascadeDeactivate($component, priceSyncRunId: null);
+        // A cost change that reached no combo hook (e.g. before this fix).
+        $component->update(['is_active' => true, 'cost_price' => 39000, 'standard_selling_price' => 42900]);
+
+        $this->service()->cascadeReactivate($component, priceSyncRunId: null);
+
+        $combo->refresh();
+        $this->assertTrue($combo->is_active);
+        $this->assertSame(39000, $combo->cost_price);
+        $this->assertSame(42900, $combo->standard_selling_price);
+        $this->assertSame(1, PriceChangeLog::query()->where('package_id', $combo->id)->count());
+    }
+
+    public function test_cascade_reactivate_for_components_reprices_a_combo_before_it_goes_back_on_sale(): void
+    {
+        $game = $this->game();
+        $component = $this->componentPackage($game, $this->supplier());
+        $combo = $this->combo($game, $component);
+        $this->service()->recompute($combo);
+        $combo->update(['is_active' => false, 'deactivated_reason' => 'combo_component_deactivated', 'deactivated_at' => now()]);
+        $component->update(['cost_price' => 39000, 'standard_selling_price' => 42900]);
+
+        $this->service()->cascadeReactivateForComponents(collect([$component->id]), priceSyncRunId: null);
+
+        $combo->refresh();
+        $this->assertTrue($combo->is_active);
+        $this->assertSame(39000, $combo->cost_price);
+        $this->assertSame(42900, $combo->standard_selling_price);
     }
 
     public function test_cascade_deactivate_turns_off_every_active_combo_and_logs_it(): void

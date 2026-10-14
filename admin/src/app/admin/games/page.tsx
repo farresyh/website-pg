@@ -468,14 +468,13 @@ export default function GamesPage() {
   }
 
   async function handleUpdateMarkup(pkg: GamePackage, markupPercent: number) {
-    if (!session) return;
+    if (!session || !selected) return;
     setError(null);
     try {
-      // Merge, don't replace — this endpoint's response has no
-      // `supplier_active` (only the list endpoint computes it), a
-      // full replace would silently wipe that field from local state.
-      const updated = await updatePackageMarkup(session.token, pkg.id, markupPercent);
-      setPackages((prev) => prev?.map((p) => (p.id === pkg.id ? { ...p, ...updated } : p)) ?? null);
+      await updatePackageMarkup(session.token, pkg.id, markupPercent);
+      // Refetch, not merge: the combos using this package are repriced
+      // server-side too, and only the list endpoint returns them.
+      setPackages(await listGamePackages(session.token, selected.id));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update markup.");
     }
@@ -607,11 +606,16 @@ export default function GamesPage() {
                           </DataTableCell>
                           <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(pkg.cost_price)}</DataTableCell>
                           <DataTableCell className="px-5 py-4 text-theme-sm">
-                            <MarkupCell
-                              key={`${pkg.id}-${pkg.markup_percent}`}
-                              pkg={pkg}
-                              onUpdate={(markupPercent) => handleUpdateMarkup(pkg, markupPercent)}
-                            />
+                            {/* A combo is priced from its components or its override (Edit Combo), never a typed markup. */}
+                            {pkg.is_combo ? (
+                              <span className="text-gray-500 dark:text-gray-400">{pkg.markup_percent}%</span>
+                            ) : (
+                              <MarkupCell
+                                key={`${pkg.id}-${pkg.markup_percent}`}
+                                pkg={pkg}
+                                onUpdate={(markupPercent) => handleUpdateMarkup(pkg, markupPercent)}
+                              />
+                            )}
                           </DataTableCell>
                           <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
                             {formatRm(pkg.standard_selling_price)}

@@ -146,7 +146,7 @@ a session before.
    a Herd site), not the `php artisan serve` that `./scripts/dev.sh` starts
    on :8000. Herd must be running. The dev scripts pass
    `NODE_OPTIONS=--use-system-ca`, so Node trusts Herd's local certificate
-   (`docs/build-log.md`, 2026-10-09).
+   (`docs/build-log-archive.md`, 2026-10-09).
 7. **A built admin on another port logs in, then bounces back to `/login`.**
    Local CORS allows only `localhost:3000`, `:3001` and `:3002`. Use one of
    those, not `127.0.0.1` or another port, and build with
