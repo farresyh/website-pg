@@ -721,3 +721,50 @@ trigger `combo_components_all_active`) once their components came back.
 That ran on the old code, so they came back unrepriced, which is the item-93
 bug; the migration repriced them 28 minutes later. PUBG now has two active
 combos per denomination for those sizes (September and 2026-10-09 versions).
+
+## 2026-10-14 — §16 group D reviewed item by item; OpenWA sessions auto-start
+
+**Why.** The founder asked which "waiting on a trigger" items could be
+decided now instead of sitting in the backlog. Each was checked against prod
+(read-only) before deciding.
+
+**Decisions (founder).**
+- **28** Forecast plus low-balance email: build two weeks after launch
+  (payments back on for real customers). The founder set Digiflazz's
+  `low_balance_threshold` to IDR 10,000,000 the same day, so the Dashboard
+  chip works now (ADR-115 2026-10-14 addendum). **55** follows 28.
+- **10** Admin MFA: build (moved to group B, new ADR at the grill).
+  Affiliate/reseller MFA dropped. Login 7 days max, 2 days idle, shared
+  across tabs; a fresh code for CHIP credentials, wallet credit and voucher
+  issue; recovery codes (ADR-019, ADR-058, ADR-059 2026-10-14 addenda).
+- **73** Reseller API rejection log: build now (group A). Prod: 0 Reseller
+  API orders ever, keys last used 2026-09-09.
+- **New 95** WhatsApp session health endpoint for UptimeRobot (group A).
+  **New 96** OpenWA v0.24.0 upgrade (group C). The founder added an
+  UptimeRobot monitor on `https://bot.pekangame.space/api/health` (green).
+- **Dropped:** 49 (proxied affiliate domain), 53 (parallel reconcile), 58
+  (OpenWA chat-list rehydration: the founder answers from the
+  `customer-support` phone; ADR-075 2026-10-14 addendum), 72 (Bot `max=`),
+  82 (CS inbound log and CS-agent inputs: no CS agent is planned; the inputs
+  are still in the founder's `/Project/chatbot`), 86 (email logo PNG), 89
+  (per-reseller rate limit). Each was "build if someone reports it"; any
+  design stays in its ADR.
+- **Kept with their triggers:** 4, 59, 74, 83, 85.
+
+**OpenWA restarts left the bots down (prod fix, founder-run).** The founder
+often had to press Start on a disconnected session. The OpenWA audit log
+showed a manual `session_started` after every process restart, with the bots
+down 2 min to 28 h 39 min (3–4 Oct) between 30 Sep and 13 Oct. Cause: Ubuntu's
+daily `unattended-upgrade` → `needrestart` → `supervisor` restart → every
+Forge daemon restarts (13 Oct: apt 06:39:12, supervisor 06:39:19 UTC), and
+`AUTO_START_SESSIONS` was unset, which OpenWA treats as off.
+- Ran by the founder (the model's write was blocked by the permission
+  classifier): `cp .env .env.bak-2026-10-14 && printf
+  "\nAUTO_START_SESSIONS=true\n" >> .env` in `~/OpenWA`, then a daemon
+  restart from Forge.
+- Before: both sessions `disconnected` at 08:01:36 UTC after the restart.
+  After: `Auto-started session` logged, `reseller-bot` ready 08:03:05,
+  `customer-support` ready 08:03:08, no new manual `session_started` row.
+  ADR-114 2026-10-14 addendum.
+- Gotcha: the two `~/OpenWA/.env.bak-*` files hold the gateway's secrets;
+  deleting them is part of item 96.

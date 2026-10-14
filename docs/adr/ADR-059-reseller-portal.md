@@ -116,3 +116,10 @@ Decision 2's "59c = storefront settings + catalog toggle + live preview" assumed
   payout" tag. Regression test asserts a bank-detail override sent in the
   request body is fully ignored. Backend 2247/2247 fast, all green; admin
   `tsc`/`eslint` clean.
+
+### 2026-10-14 addendum — portal MFA dropped, admin MFA to be built
+
+Decision 1's "descoped, matching admin" no longer matches admin: admin MFA
+will be built (ADR-019 2026-10-14 addendum). Portal MFA stays off, now as a
+drop rather than a deferral, for the reasons decision 1 already lists: an
+admin approves every payout, with the "bank details changed" flag.
