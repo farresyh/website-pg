@@ -3,6 +3,7 @@
 namespace App\Services\OpenWa;
 
 use App\Jobs\Reseller\SendResellerBotReplyJob;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -66,6 +67,32 @@ final class OpenWaClient
             timeoutSeconds: $config['timeout'],
             connectTimeoutSeconds: $config['connect_timeout'],
         );
+    }
+
+    /**
+     * PRD §16 item 95: this session's live status from OpenWA (`ready`
+     * when connected), for `/api/health/whatsapp`. Never throws: an
+     * unconfigured session or an unreachable gateway comes back as its
+     * own value, which the health check treats as down.
+     */
+    public function sessionStatus(): string
+    {
+        if ($this->sessionId === null || $this->apiKey === null) {
+            return 'not_configured';
+        }
+
+        try {
+            $response = Http::baseUrl($this->baseUrl)
+                ->withToken($this->apiKey)
+                ->acceptJson()
+                ->timeout($this->timeoutSeconds)
+                ->connectTimeout($this->connectTimeoutSeconds)
+                ->get("/api/sessions/{$this->sessionId}");
+        } catch (ConnectionException) {
+            return 'unreachable';
+        }
+
+        return $response->successful() ? (string) $response->json('status', 'unknown') : "http_{$response->status()}";
     }
 
     /**

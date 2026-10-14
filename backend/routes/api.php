@@ -121,6 +121,9 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,
 // ADR-014: unauthenticated infra probe, DB + queue connection only —
 // no order/customer data ever touches this endpoint.
 Route::get('/health', [HealthController::class, 'check']);
+// PRD §16 item 95 — both OpenWA sessions `ready`, for a second UptimeRobot
+// monitor. Throttled: each hit makes two calls to the gateway.
+Route::get('/health/whatsapp', [HealthController::class, 'whatsapp'])->middleware('throttle:30,1,health-whatsapp');
 
 // ADR-044 decision 8 — public (both admin's Bearer-token and
 // storefront's guest context report here), throttled log sink for a

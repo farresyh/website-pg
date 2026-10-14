@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\OpenWa\OpenWaClient;
+use App\Services\OpenWa\OpenWaSessionStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -36,6 +38,28 @@ class HealthController extends Controller
 
         return response()->json(
             ['status' => $healthy ? 'ok' : 'degraded', 'checks' => $checks],
+            $healthy ? 200 : 503,
+        );
+    }
+
+    /**
+     * PRD §16 item 95: a second uptime-monitor target. The Dashboard chip
+     * only hears OpenWA's `session.status` webhooks, so a gateway that went
+     * quiet tells nobody; this asks OpenWA directly and fails unless both
+     * sessions are `ready`. The monitor alerts after 2 failed checks, since
+     * OpenWA's own stream drops reconnect within seconds.
+     */
+    public function whatsapp(OpenWaClient $resellerBot): JsonResponse
+    {
+        $sessions = [
+            OpenWaSessionStatus::RESELLER_BOT => $resellerBot->sessionStatus(),
+            OpenWaSessionStatus::CUSTOMER_SUPPORT => OpenWaClient::customerSupport()->sessionStatus(),
+        ];
+
+        $healthy = array_diff($sessions, ['ready']) === [];
+
+        return response()->json(
+            ['status' => $healthy ? 'ok' : 'degraded', 'sessions' => $sessions],
             $healthy ? 200 : 503,
         );
     }
