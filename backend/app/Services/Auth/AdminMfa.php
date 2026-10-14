@@ -84,7 +84,7 @@ class AdminMfa
     public function regenerateRecoveryCodes(AdminUser $admin): array
     {
         $codes = collect(range(1, self::RECOVERY_CODE_COUNT))
-            ->map(fn () => Str::lower(Str::random(5).'-'.Str::random(5)))
+            ->map(fn () => $this->randomChunk().'-'.$this->randomChunk())
             ->all();
 
         $admin->forceFill(['mfa_recovery_codes' => array_map($this->hash(...), $codes)])->save();
@@ -167,7 +167,15 @@ class AdminMfa
         return true;
     }
 
-    // Recovery codes are 50 random bits each, so a fast hash is enough.
+    /** Five characters with no look-alikes (no 0/o, 1/l/i), so a code copied by hand is typed back right. */
+    private function randomChunk(): string
+    {
+        $alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
+
+        return implode('', array_map(fn () => $alphabet[random_int(0, strlen($alphabet) - 1)], range(1, 5)));
+    }
+
+    // Recovery codes are ~50 random bits each, so a fast hash is enough.
     private function hash(string $code): string
     {
         return hash('sha256', $code);
