@@ -27,7 +27,6 @@ interface ResendDeliveryModalProps {
   onClose: () => void;
   onResent: () => void;
   order: OrderDetail;
-  token: string;
   /**
    * ADR-018 decision #5/#8: this modal is shared between /admin/orders
    * and /middleware/sandbox — sandbox mode swaps the target endpoint
@@ -54,7 +53,7 @@ function formatRm(sen: number): string {
  * decision #6). Renders as a child of <Modal>, which unmounts while
  * closed — fresh state every open, same convention as CreateValidatorModal.
  */
-function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit<ResendDeliveryModalProps, "isOpen">) {
+function ResendDeliveryFields({ onClose, onResent, order, sandbox }: Omit<ResendDeliveryModalProps, "isOpen">) {
   const [packages, setPackages] = useState<ResendOption[] | null>(null);
   const [packagesError, setPackagesError] = useState<string | null>(null);
   const [packageId, setPackageId] = useState<number | null>(null);
@@ -96,7 +95,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
   // packages, each with OrderResendService::preflight()'s impact.
   useEffect(() => {
     if (!gameId) return;
-    (sandbox ? getSandboxResendOptions : getResendOptions)(token, order.id)
+    (sandbox ? getSandboxResendOptions : getResendOptions)(order.id)
       .then((active) => {
         setPackages(active);
         // Default to the order's own package — a same-package submit
@@ -160,7 +159,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
     setError(null);
     try {
       if (sandbox) {
-        await resendSandboxOrderDelivery(token, order.id, {
+        await resendSandboxOrderDelivery(order.id, {
           package_id: packageId,
           note: note.trim() || undefined,
           override_reason: overrideReason.trim() || undefined,
@@ -169,7 +168,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
           error_message: !simulateSuccess ? errorMessage.trim() || undefined : undefined,
         });
       } else {
-        await resendOrderDelivery(token, order.id, {
+        await resendOrderDelivery(order.id, {
           package_id: packageId,
           note: note.trim() || undefined,
           override_reason: overrideReason.trim() || undefined,
@@ -406,7 +405,7 @@ function ResendDeliveryFields({ onClose, onResent, order, token, sandbox }: Omit
   );
 }
 
-export default function ResendDeliveryModal({ isOpen, onClose, onResent, order, token, sandbox }: ResendDeliveryModalProps) {
+export default function ResendDeliveryModal({ isOpen, onClose, onResent, order, sandbox }: ResendDeliveryModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -423,7 +422,7 @@ export default function ResendDeliveryModal({ isOpen, onClose, onResent, order, 
             </DialogHeader>
             <DialogContent>
               {isOpen && (
-                <ResendDeliveryFields onClose={onClose} onResent={onResent} order={order} token={token} sandbox={sandbox} />
+                <ResendDeliveryFields onClose={onClose} onResent={onResent} order={order} sandbox={sandbox} />
               )}
             </DialogContent>
           </DialogPopup>

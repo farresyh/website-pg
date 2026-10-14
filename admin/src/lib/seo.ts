@@ -118,78 +118,78 @@ export interface CrawlerRule {
 
 export type SaveCrawlerRuleValues = Omit<CrawlerRule, "id" | "is_custom">;
 
-export function getSeoOverview(token: string) {
-  return apiFetch<SeoOverview>("/api/seo/overview", { token });
+export function getSeoOverview() {
+  return apiFetch<SeoOverview>("/api/seo/overview");
 }
 
-export function getSeoSettings(token: string) {
-  return apiFetch<SeoSettings>("/api/seo/settings", { token });
+export function getSeoSettings() {
+  return apiFetch<SeoSettings>("/api/seo/settings");
 }
 
-export function updateSeoSettings(token: string, values: UpdateSeoSettingsValues) {
-  return apiFetch<SeoSettings>("/api/seo/settings", { method: "PUT", token, body: values });
+export function updateSeoSettings(values: UpdateSeoSettingsValues) {
+  return apiFetch<SeoSettings>("/api/seo/settings", { method: "PUT", body: values });
 }
 
-export function listGameSeo(token: string, params?: { search?: string; filter?: GameSeoStatus }) {
+export function listGameSeo(params?: { search?: string; filter?: GameSeoStatus }) {
   const query = new URLSearchParams();
   if (params?.search) query.set("search", params.search);
   if (params?.filter) query.set("filter", params.filter);
   const qs = query.toString();
-  return apiFetch<GameSeoListItem[]>(`/api/seo/games${qs ? `?${qs}` : ""}`, { token });
+  return apiFetch<GameSeoListItem[]>(`/api/seo/games${qs ? `?${qs}` : ""}`);
 }
 
-export function getGameSeo(token: string, gameId: number) {
-  return apiFetch<GameSeoDetail>(`/api/seo/games/${gameId}`, { token });
+export function getGameSeo(gameId: number) {
+  return apiFetch<GameSeoDetail>(`/api/seo/games/${gameId}`);
 }
 
-export function updateGameSeo(token: string, gameId: number, values: UpdateGameSeoValues) {
-  return apiFetch<GameSeoDetail>(`/api/seo/games/${gameId}`, { method: "PUT", token, body: values });
+export function updateGameSeo(gameId: number, values: UpdateGameSeoValues) {
+  return apiFetch<GameSeoDetail>(`/api/seo/games/${gameId}`, { method: "PUT", body: values });
 }
 
-export function listRedirects(token: string) {
-  return apiFetch<Redirect[]>("/api/seo/redirects", { token });
+export function listRedirects() {
+  return apiFetch<Redirect[]>("/api/seo/redirects");
 }
 
-export function createRedirect(token: string, values: SaveRedirectValues) {
-  return apiFetch<Redirect>("/api/seo/redirects", { method: "POST", token, body: values });
+export function createRedirect(values: SaveRedirectValues) {
+  return apiFetch<Redirect>("/api/seo/redirects", { method: "POST", body: values });
 }
 
-export function updateRedirect(token: string, id: number, values: SaveRedirectValues) {
-  return apiFetch<Redirect>(`/api/seo/redirects/${id}`, { method: "PUT", token, body: values });
+export function updateRedirect(id: number, values: SaveRedirectValues) {
+  return apiFetch<Redirect>(`/api/seo/redirects/${id}`, { method: "PUT", body: values });
 }
 
-export function deleteRedirect(token: string, id: number) {
-  return apiFetch<null>(`/api/seo/redirects/${id}`, { method: "DELETE", token });
+export function deleteRedirect(id: number) {
+  return apiFetch<null>(`/api/seo/redirects/${id}`, { method: "DELETE" });
 }
 
-export function listFaqs(token: string) {
-  return apiFetch<Faq[]>("/api/seo/faqs", { token });
+export function listFaqs() {
+  return apiFetch<Faq[]>("/api/seo/faqs");
 }
 
-export function createFaq(token: string, values: SaveFaqValues) {
-  return apiFetch<Faq>("/api/seo/faqs", { method: "POST", token, body: values });
+export function createFaq(values: SaveFaqValues) {
+  return apiFetch<Faq>("/api/seo/faqs", { method: "POST", body: values });
 }
 
-export function updateFaq(token: string, id: number, values: SaveFaqValues) {
-  return apiFetch<Faq>(`/api/seo/faqs/${id}`, { method: "PUT", token, body: values });
+export function updateFaq(id: number, values: SaveFaqValues) {
+  return apiFetch<Faq>(`/api/seo/faqs/${id}`, { method: "PUT", body: values });
 }
 
-export function deleteFaq(token: string, id: number) {
-  return apiFetch<null>(`/api/seo/faqs/${id}`, { method: "DELETE", token });
+export function deleteFaq(id: number) {
+  return apiFetch<null>(`/api/seo/faqs/${id}`, { method: "DELETE" });
 }
 
-export function listCrawlerRules(token: string) {
-  return apiFetch<CrawlerRule[]>("/api/seo/crawler-rules", { token });
+export function listCrawlerRules() {
+  return apiFetch<CrawlerRule[]>("/api/seo/crawler-rules");
 }
 
-export function createCrawlerRule(token: string, values: SaveCrawlerRuleValues) {
-  return apiFetch<CrawlerRule>("/api/seo/crawler-rules", { method: "POST", token, body: values });
+export function createCrawlerRule(values: SaveCrawlerRuleValues) {
+  return apiFetch<CrawlerRule>("/api/seo/crawler-rules", { method: "POST", body: values });
 }
 
-export function updateCrawlerRule(token: string, id: number, values: SaveCrawlerRuleValues) {
-  return apiFetch<CrawlerRule>(`/api/seo/crawler-rules/${id}`, { method: "PUT", token, body: values });
+export function updateCrawlerRule(id: number, values: SaveCrawlerRuleValues) {
+  return apiFetch<CrawlerRule>(`/api/seo/crawler-rules/${id}`, { method: "PUT", body: values });
 }
 
-export function deleteCrawlerRule(token: string, id: number) {
-  return apiFetch<null>(`/api/seo/crawler-rules/${id}`, { method: "DELETE", token });
+export function deleteCrawlerRule(id: number) {
+  return apiFetch<null>(`/api/seo/crawler-rules/${id}`, { method: "DELETE" });
 }

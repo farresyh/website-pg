@@ -44,7 +44,7 @@ export interface RequestLogFilters {
   per_page?: number;
 }
 
-export function listRequestLogs(token: string, filters: RequestLogFilters = {}) {
+export function listRequestLogs(filters: RequestLogFilters = {}) {
   const params = new URLSearchParams();
 
   for (const [key, value] of Object.entries(filters)) {
@@ -53,9 +53,9 @@ export function listRequestLogs(token: string, filters: RequestLogFilters = {}) 
 
   const query = params.toString();
 
-  return apiFetch<SupplierRequestLogPage>(`/api/middleware/request-logs${query ? `?${query}` : ""}`, { token });
+  return apiFetch<SupplierRequestLogPage>(`/api/middleware/request-logs${query ? `?${query}` : ""}`);
 }
 
-export function getRequestLog(token: string, id: number) {
-  return apiFetch<SupplierRequestLog>(`/api/middleware/request-logs/${id}`, { token });
+export function getRequestLog(id: number) {
+  return apiFetch<SupplierRequestLog>(`/api/middleware/request-logs/${id}`);
 }

@@ -73,3 +73,22 @@ a recovery ("back above the buffer") mail is wanted, and the manual
 cold-start number for Digiflazz. Until then, setting Digiflazz's
 `low_balance_threshold` would at least make today's log warning fire; it
 still reaches nobody without a log reader.
+
+### 2026-10-14 addendum — trigger set; the manual threshold is live
+
+**Context.** Group D of PRD §16 reviewed with the founder. Prod that day:
+Digiflazz balance IDR 2,285,108 (about RM 521 at the sync rate 0.000228);
+28 Digiflazz orders in the last 30 days costing RM 525; largest single order
+RM 333.50; payments off since 2026-10-07, so spend is near zero.
+
+**Decision.**
+1. The build (forecast plus the low-balance email) starts **two weeks after
+   launch**, meaning payments back on for real customers. Before then the
+   data is the founder's own testing, and the cold-start rule (decision 6)
+   would only repeat the manual number.
+2. The email is not built ahead of the forecast (founder): with no real
+   spend, the Dashboard chip is enough until launch.
+3. The founder set Digiflazz's `low_balance_threshold` to IDR 10,000,000
+   (about RM 2,280) on 2026-10-14, the cold-start number of decision 6. The
+   Dashboard "low balance" chip and the log warning now work; the chip
+   shows while the balance stays under it.

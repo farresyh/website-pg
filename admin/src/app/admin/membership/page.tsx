@@ -28,8 +28,8 @@ export default function MembershipPage() {
   const [togglingEnabled, setTogglingEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function refresh(token: string) {
-    return Promise.all([getMembershipPlans(token), getSettings(token)])
+  function refresh() {
+    return Promise.all([getMembershipPlans(), getSettings()])
       .then(([plansResponse, settingsResponse]) => {
         setPlans(plansResponse);
         setEnabled(settingsResponse.platform.membership_enabled);
@@ -45,7 +45,7 @@ export default function MembershipPage() {
       router.replace("/login");
       return;
     }
-    refresh(s.token);
+    refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -54,7 +54,7 @@ export default function MembershipPage() {
     setTogglingEnabled(true);
     setError(null);
     try {
-      await updateMembershipEnabled(session.token, next);
+      await updateMembershipEnabled(next);
       setEnabled(next);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update the membership feature toggle.");
@@ -97,11 +97,11 @@ export default function MembershipPage() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {plans.map((plan) => (
-          <TierCard key={plan.id} token={session.token} plan={plan} onSaved={() => refresh(session.token)} />
+          <TierCard key={plan.id} plan={plan} onSaved={() => refresh()} />
         ))}
       </div>
 
-      <MembersSection token={session.token} plans={plans} onChanged={() => refresh(session.token)} />
+      <MembersSection plans={plans} onChanged={() => refresh()} />
     </div>
   );
 }

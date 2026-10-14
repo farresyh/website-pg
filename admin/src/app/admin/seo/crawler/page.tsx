@@ -37,8 +37,8 @@ export default function CrawlerRulesPage() {
   const [savingDefaults, setSavingDefaults] = useState(false);
   const [defaultsSaved, setDefaultsSaved] = useState(false);
 
-  function refresh(token: string) {
-    return listCrawlerRules(token)
+  function refresh() {
+    return listCrawlerRules()
       .then(setRules)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load crawler rules.");
@@ -51,8 +51,8 @@ export default function CrawlerRulesPage() {
       router.replace("/login");
       return;
     }
-    refresh(s.token);
-    getSeoSettings(s.token)
+    refresh();
+    getSeoSettings()
       .then((settings) => setDefaultDisallow((settings.crawler_default_disallow_paths ?? []).join("\n")))
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load default disallow paths."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -64,7 +64,7 @@ export default function CrawlerRulesPage() {
     setDefaultsSaved(false);
     try {
       const paths = defaultDisallow.split("\n").map((p) => p.trim()).filter(Boolean);
-      await updateSeoSettings(session.token, { crawler_default_disallow_paths: paths });
+      await updateSeoSettings({ crawler_default_disallow_paths: paths });
       setDefaultsSaved(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not save default disallow paths.");
@@ -73,24 +73,24 @@ export default function CrawlerRulesPage() {
     }
   }
 
-  async function handleSubmit(values: Parameters<typeof createCrawlerRule>[1]) {
+  async function handleSubmit(values: Parameters<typeof createCrawlerRule>[0]) {
     if (!session) return;
     if (editing) {
-      await updateCrawlerRule(session.token, editing.id, values);
+      await updateCrawlerRule(editing.id, values);
     } else {
-      await createCrawlerRule(session.token, values);
+      await createCrawlerRule(values);
     }
     setModalOpen(false);
     setEditing(null);
-    await refresh(session.token);
+    await refresh();
   }
 
   async function handleDelete(rule: CrawlerRule) {
     if (!session) return;
     setDeletingId(rule.id);
     try {
-      await deleteCrawlerRule(session.token, rule.id);
-      await refresh(session.token);
+      await deleteCrawlerRule(rule.id);
+      await refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not delete rule.");
     } finally {

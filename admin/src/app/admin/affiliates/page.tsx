@@ -76,7 +76,6 @@ const TD = "px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400";
 export default function AffiliatesPage() {
   const router = useRouter();
   const session = useClientSession();
-  const token = session?.token ?? null;
   const [affiliates, setAffiliates] = useState<AffiliateRow[] | null>(null);
   const [tiers, setTiers] = useState<AffiliateTier[]>([]);
   const [sessions, setSessions] = useState<ImpersonationSessionRow[]>([]);
@@ -92,8 +91,8 @@ export default function AffiliatesPage() {
   const [deleteTarget, setDeleteTarget] = useState<AffiliateRow | null>(null);
   const [deleteTierTarget, setDeleteTierTarget] = useState<AffiliateTier | null>(null);
 
-  function refresh(t: string) {
-    return Promise.all([listAffiliates(t), listAffiliateTiers(t), listImpersonationSessions(t)])
+  function refresh() {
+    return Promise.all([listAffiliates(), listAffiliateTiers(), listImpersonationSessions()])
       .then(([r, ti, s]) => {
         setAffiliates(r.affiliates);
         setTiers(ti.tiers);
@@ -108,12 +107,12 @@ export default function AffiliatesPage() {
       router.replace("/login");
       return;
     }
-    refresh(s.token);
+    refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function guard(key: number, fn: () => Promise<void>) {
-    if (!token) return;
+    if (!session) return;
     setBusy(key);
     setError(null);
     try {
@@ -126,15 +125,15 @@ export default function AffiliatesPage() {
   }
 
   async function handleCreate(values: AffiliateFormSubmitValues) {
-    if (!token) return;
-    await createAffiliate(token, values);
+    if (!session) return;
+    await createAffiliate(values);
     setFormOpen(false);
-    await refresh(token);
+    await refresh();
   }
 
   async function handleUpdate(values: AffiliateFormSubmitValues) {
-    if (!token || !editing) return;
-    await updateAffiliate(token, editing.id, {
+    if (!session || !editing) return;
+    await updateAffiliate(editing.id, {
       business_name: values.business_name,
       contact_name: values.contact_name,
       email: values.email,
@@ -147,13 +146,13 @@ export default function AffiliatesPage() {
     });
     setFormOpen(false);
     setEditing(null);
-    await refresh(token);
+    await refresh();
   }
 
   async function openDetail(id: number) {
-    if (!token) return;
+    if (!session) return;
     await guard(id, async () => {
-      setDetail(await getAffiliate(token, id));
+      setDetail(await getAffiliate(id));
     });
   }
 
@@ -161,7 +160,7 @@ export default function AffiliatesPage() {
     return <p className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>;
   }
 
-  if (!token || !affiliates) {
+  if (!session || !affiliates) {
     return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
   }
 
@@ -246,8 +245,8 @@ export default function AffiliatesPage() {
                                     r.status === "active"
                                       ? setStatusTarget(r)
                                       : guard(r.id, async () => {
-                                          await updateAffiliateStatus(token, r.id, "active");
-                                          await refresh(token);
+                                          await updateAffiliateStatus(r.id, "active");
+                                          await refresh();
                                         })
                                   }
                                 >
@@ -376,8 +375,8 @@ export default function AffiliatesPage() {
                                 disabled={busy === s.id}
                                 onClick={() =>
                                   guard(s.id, async () => {
-                                    await endImpersonationSession(token, s.id);
-                                    await refresh(token);
+                                    await endImpersonationSession(s.id);
+                                    await refresh();
                                   })
                                 }
                               >
@@ -409,14 +408,13 @@ export default function AffiliatesPage() {
         <AffiliateDetailModal
           isOpen={detail !== null}
           onClose={() => setDetail(null)}
-          token={token}
           detail={detail}
           tiers={tiers}
           onChanged={(d) => {
             setDetail(d);
-            refresh(token);
+            refresh();
           }}
-          onRefresh={() => refresh(token)}
+          onRefresh={() => refresh()}
         />
       )}
 
@@ -426,13 +424,13 @@ export default function AffiliatesPage() {
         editing={editingTier}
         onSubmit={async (values) => {
           if (editingTier) {
-            await updateAffiliateTier(token, editingTier.id, values);
+            await updateAffiliateTier(editingTier.id, values);
           } else {
-            await createAffiliateTier(token, values);
+            await createAffiliateTier(values);
           }
           setTierFormOpen(false);
           setEditingTier(null);
-          await refresh(token);
+          await refresh();
         }}
       />
 
@@ -459,9 +457,9 @@ export default function AffiliatesPage() {
                   onClick={() =>
                     statusTarget &&
                     guard(statusTarget.id, async () => {
-                      await updateAffiliateStatus(token, statusTarget.id, "inactive");
+                      await updateAffiliateStatus(statusTarget.id, "inactive");
                       setStatusTarget(null);
-                      await refresh(token);
+                      await refresh();
                     })
                   }
                 >
@@ -496,9 +494,9 @@ export default function AffiliatesPage() {
                   onClick={() =>
                     deleteTarget &&
                     guard(deleteTarget.id, async () => {
-                      await deleteAffiliate(token, deleteTarget.id);
+                      await deleteAffiliate(deleteTarget.id);
                       setDeleteTarget(null);
-                      await refresh(token);
+                      await refresh();
                     })
                   }
                 >
@@ -532,9 +530,9 @@ export default function AffiliatesPage() {
                   onClick={() =>
                     deleteTierTarget &&
                     guard(deleteTierTarget.id, async () => {
-                      await deleteAffiliateTier(token, deleteTierTarget.id);
+                      await deleteAffiliateTier(deleteTierTarget.id);
                       setDeleteTierTarget(null);
-                      await refresh(token);
+                      await refresh();
                     })
                   }
                 >

@@ -32,7 +32,6 @@ interface SyncDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   runId: number | null;
-  token: string;
 }
 
 function formatRm(sen: number): string {
@@ -45,17 +44,17 @@ function formatRm(sen: number): string {
  * rather than passed down from the history row — the history table
  * only has the run's own aggregate stats, not the per-game breakdown.
  */
-function SyncDetailsContent({ runId, token }: { runId: number; token: string }) {
+function SyncDetailsContent({ runId }: { runId: number }) {
   const [details, setDetails] = useState<SyncDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getPriceSyncRunDetails(token, runId)
+    getPriceSyncRunDetails(runId)
       .then(setDetails)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load sync details.");
       });
-  }, [runId, token]);
+  }, [runId]);
 
   return (
     <>
@@ -150,7 +149,7 @@ function SyncDetailsContent({ runId, token }: { runId: number; token: string }) 
   );
 }
 
-export default function SyncDetailsModal({ isOpen, onClose, runId, token }: SyncDetailsModalProps) {
+export default function SyncDetailsModal({ isOpen, onClose, runId }: SyncDetailsModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -166,7 +165,7 @@ export default function SyncDetailsModal({ isOpen, onClose, runId, token }: Sync
               </DialogHeaderActions>
             </DialogHeader>
             <DialogContent>
-              {isOpen && runId !== null && <SyncDetailsContent key={runId} runId={runId} token={token} />}
+              {isOpen && runId !== null && <SyncDetailsContent key={runId} runId={runId} />}
             </DialogContent>
           </DialogPopup>
         </DialogPositioner>

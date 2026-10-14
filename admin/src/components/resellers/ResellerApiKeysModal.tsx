@@ -39,7 +39,6 @@ import {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  token: string;
   reseller: ResellerRow;
 }
 
@@ -47,7 +46,7 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleString("en-MY", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
+function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
   const [keys, setKeys] = useState<ResellerApiKey[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -59,7 +58,7 @@ function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
   const [savingIps, setSavingIps] = useState(false);
 
   function refresh() {
-    return listResellerApiKeys(token, reseller.id)
+    return listResellerApiKeys(reseller.id)
       .then(setKeys)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load API keys."));
   }
@@ -76,7 +75,7 @@ function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
 
     setIssuing(true);
     try {
-      const issued = await issueResellerApiKey(token, reseller.id, name);
+      const issued = await issueResellerApiKey(reseller.id, name);
       setFreshPlainTextKey(issued.plain_text_key);
       setName("");
       await refresh();
@@ -102,7 +101,7 @@ function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
     setSavingIps(true);
     setError(null);
     try {
-      await updateResellerApiKeyAllowedIps(token, reseller.id, key.id, ips);
+      await updateResellerApiKeyAllowedIps(reseller.id, key.id, ips);
       setIpEditId(null);
       await refresh();
     } catch (err) {
@@ -116,7 +115,7 @@ function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
     setError(null);
     setRevokingId(key.id);
     try {
-      await revokeResellerApiKey(token, reseller.id, key.id);
+      await revokeResellerApiKey(reseller.id, key.id);
       await refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not revoke key.");
@@ -248,7 +247,7 @@ function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
   );
 }
 
-export default function ResellerApiKeysModal({ isOpen, onClose, token, reseller }: Props) {
+export default function ResellerApiKeysModal({ isOpen, onClose, reseller }: Props) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -264,7 +263,7 @@ export default function ResellerApiKeysModal({ isOpen, onClose, token, reseller 
               </DialogHeaderActions>
             </DialogHeader>
             <DialogContent>
-              {isOpen && <Content key={reseller.id} token={token} reseller={reseller} />}
+              {isOpen && <Content key={reseller.id} reseller={reseller} />}
             </DialogContent>
           </DialogPopup>
         </DialogPositioner>

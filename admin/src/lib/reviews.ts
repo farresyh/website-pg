@@ -51,7 +51,7 @@ export interface ReviewFilters {
   per_page?: number;
 }
 
-export function listReviews(token: string, filters: ReviewFilters = {}) {
+export function listReviews(filters: ReviewFilters = {}) {
   const params = new URLSearchParams();
 
   for (const [key, value] of Object.entries(filters)) {
@@ -60,17 +60,17 @@ export function listReviews(token: string, filters: ReviewFilters = {}) {
 
   const query = params.toString();
 
-  return apiFetch<ReviewIndexResponse>(`/api/reviews${query ? `?${query}` : ""}`, { token });
+  return apiFetch<ReviewIndexResponse>(`/api/reviews${query ? `?${query}` : ""}`);
 }
 
-export function approveReview(token: string, id: number) {
-  return apiFetch<Review>(`/api/reviews/${id}/approve`, { method: "PATCH", token });
+export function approveReview(id: number) {
+  return apiFetch<Review>(`/api/reviews/${id}/approve`, { method: "PATCH" });
 }
 
-export function rejectReview(token: string, id: number) {
-  return apiFetch<Review>(`/api/reviews/${id}/reject`, { method: "PATCH", token });
+export function rejectReview(id: number) {
+  return apiFetch<Review>(`/api/reviews/${id}/reject`, { method: "PATCH" });
 }
 
-export function bulkApproveReviews(token: string) {
-  return apiFetch<{ approved_count: number }>("/api/reviews/bulk-approve", { method: "POST", token });
+export function bulkApproveReviews() {
+  return apiFetch<{ approved_count: number }>("/api/reviews/bulk-approve", { method: "POST" });
 }

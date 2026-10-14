@@ -49,14 +49,13 @@ function formatDate(iso: string | null): string {
 export default function BalanceOverviewPage() {
   const router = useRouter();
   const session = useClientSession();
-  const token = session?.token ?? null;
   const [suppliers, setSuppliers] = useState<Supplier[] | null>(null);
   const [resellers, setResellers] = useState<ResellerRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshingId, setRefreshingId] = useState<number | null>(null);
 
-  function refresh(t: string) {
-    return Promise.all([listSuppliers(t), listResellers(t)])
+  function refresh() {
+    return Promise.all([listSuppliers(), listResellers()])
       .then(([s, r]) => {
         setSuppliers(s);
         setResellers(r.resellers);
@@ -70,16 +69,16 @@ export default function BalanceOverviewPage() {
       router.replace("/login");
       return;
     }
-    refresh(s.token);
+    refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleRefreshSupplier(supplierId: number) {
-    if (!token) return;
+    if (!session) return;
     setRefreshingId(supplierId);
     setError(null);
     try {
-      const updated = await refreshSupplierBalance(token, supplierId);
+      const updated = await refreshSupplierBalance(supplierId);
       setSuppliers((prev) => prev?.map((s) => (s.id === supplierId ? updated : s)) ?? prev);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Balance check failed.");
@@ -92,7 +91,7 @@ export default function BalanceOverviewPage() {
     return <p className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>;
   }
 
-  if (!token || !suppliers || !resellers) {
+  if (!session || !suppliers || !resellers) {
     return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
   }
 

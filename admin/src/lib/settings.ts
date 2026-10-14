@@ -61,46 +61,45 @@ export type UpdatePlatformValues = Pick<
   | "whatsapp_notifications_enabled"
 >;
 
-export function getSettings(token: string) {
-  return apiFetch<SettingsIndexResponse>("/api/settings", { token });
+export function getSettings() {
+  return apiFetch<SettingsIndexResponse>("/api/settings");
 }
 
-export function updateBranding(token: string, values: UpdateBrandingValues) {
-  return apiFetch<Branding>("/api/settings/branding", { method: "PUT", token, body: values });
+export function updateBranding(values: UpdateBrandingValues) {
+  return apiFetch<Branding>("/api/settings/branding", { method: "PUT", body: values });
 }
 
-export function uploadBrandingLogo(token: string, file: File) {
+export function uploadBrandingLogo(file: File) {
   const form = new FormData();
   form.append("image", file);
-  return apiUpload<Branding>("/api/settings/branding/logo", form, { token });
+  return apiUpload<Branding>("/api/settings/branding/logo", form);
 }
 
-export function deleteBrandingLogo(token: string) {
-  return apiFetch<Branding>("/api/settings/branding/logo", { method: "DELETE", token });
+export function deleteBrandingLogo() {
+  return apiFetch<Branding>("/api/settings/branding/logo", { method: "DELETE" });
 }
 
-export function uploadBrandingFavicon(token: string, file: File) {
+export function uploadBrandingFavicon(file: File) {
   const form = new FormData();
   form.append("image", file);
-  return apiUpload<Branding>("/api/settings/branding/favicon", form, { token });
+  return apiUpload<Branding>("/api/settings/branding/favicon", form);
 }
 
-export function deleteBrandingFavicon(token: string) {
-  return apiFetch<Branding>("/api/settings/branding/favicon", { method: "DELETE", token });
+export function deleteBrandingFavicon() {
+  return apiFetch<Branding>("/api/settings/branding/favicon", { method: "DELETE" });
 }
 
-export function updateFooterSettings(token: string, values: UpdateFooterValues) {
-  return apiFetch<FooterSettings>("/api/settings/footer", { method: "PUT", token, body: values });
+export function updateFooterSettings(values: UpdateFooterValues) {
+  return apiFetch<FooterSettings>("/api/settings/footer", { method: "PUT", body: values });
 }
 
-export function updatePlatformSettings(token: string, values: UpdatePlatformValues) {
-  return apiFetch<PlatformSettings>("/api/settings/platform", { method: "PUT", token, body: values });
+export function updatePlatformSettings(values: UpdatePlatformValues) {
+  return apiFetch<PlatformSettings>("/api/settings/platform", { method: "PUT", body: values });
 }
 
-export function applyBulkMarkup(token: string, markupPercent: number) {
+export function applyBulkMarkup(markupPercent: number) {
   return apiFetch<{ packages_updated: number }>("/api/settings/platform/bulk-markup", {
     method: "POST",
-    token,
     body: { markup_percent: markupPercent },
   });
 }

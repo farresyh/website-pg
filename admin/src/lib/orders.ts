@@ -1,9 +1,8 @@
-import { apiFetch, ApiError } from "@/lib/api-client";
+import { apiFetch, apiDownload } from "@/lib/api-client";
 import { todayInKL } from "@/lib/date-range";
 import type { Game } from "@/lib/games";
 import type { Voucher } from "@/lib/vouchers";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
 
 /**
  * ORD-1..7 — list + detail + retry-delivery (ORD-7 / ADR-014) +
@@ -269,38 +268,20 @@ function buildOrderFilterQuery(params: OrderListFilters): URLSearchParams {
   return query;
 }
 
-export function listOrders(token: string, params: OrderListFilters = {}) {
+export function listOrders(params: OrderListFilters = {}) {
   const qs = buildOrderFilterQuery(params).toString();
 
-  return apiFetch<OrderPage>(`/api/orders${qs ? `?${qs}` : ""}`, { token });
+  return apiFetch<OrderPage>(`/api/orders${qs ? `?${qs}` : ""}`);
 }
 
 /**
- * ADR-108 decision 9 (ORD-5) — mirrors exportReport()'s own raw-fetch +
- * blob-download shape (admin/src/lib/reports.ts): apiFetch() assumes a
- * JSON body, so a file download needs its own fetch call. Respects every
+ * ADR-108 decision 9 (ORD-5) — a file download via apiDownload(). Respects every
  * filter listOrders() does, via the same buildOrderFilterQuery(). Since
  * the 2026-10-04 addendum the file is an Excel workbook (Summary + Orders).
  */
-export async function exportOrders(token: string, params: OrderListFilters = {}): Promise<void> {
+export async function exportOrders(params: OrderListFilters = {}): Promise<void> {
   const qs = buildOrderFilterQuery(params).toString();
-  const response = await fetch(`${API_BASE_URL}/api/orders/export${qs ? `?${qs}` : ""}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!response.ok) {
-    throw new ApiError(response.status, undefined, `Export failed (${response.status})`);
-  }
-
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `orders-${todayInKL()}.xlsx`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  await apiDownload(`/api/orders/export${qs ? `?${qs}` : ""}`, `orders-${todayInKL()}.xlsx`);
 }
 
 /**
@@ -317,12 +298,12 @@ export interface OrderSummary {
   all: number;
 }
 
-export function getOrderSummary(token: string) {
-  return apiFetch<OrderSummary>("/api/orders/summary", { token });
+export function getOrderSummary() {
+  return apiFetch<OrderSummary>("/api/orders/summary");
 }
 
-export function getOrder(token: string, id: number) {
-  return apiFetch<OrderDetail>(`/api/orders/${id}`, { token });
+export function getOrder(id: number) {
+  return apiFetch<OrderDetail>(`/api/orders/${id}`);
 }
 
 /**
@@ -357,12 +338,11 @@ export interface ResendOption {
   impact: ResendImpact;
 }
 
-export function getResendOptions(token: string, id: number) {
-  return apiFetch<{ data: ResendOption[] }>(`/api/orders/${id}/resend-options`, { token }).then((r) => r.data);
+export function getResendOptions(id: number) {
+  return apiFetch<{ data: ResendOption[] }>(`/api/orders/${id}/resend-options`).then((r) => r.data);
 }
 
 export function resendOrderDelivery(
-  token: string,
   id: number,
   values: {
     package_id: number;
@@ -374,7 +354,7 @@ export function resendOrderDelivery(
     server_id?: string;
   },
 ) {
-  return apiFetch<{ message: string }>(`/api/orders/${id}/resend`, { method: "POST", token, body: values });
+  return apiFetch<{ message: string }>(`/api/orders/${id}/resend`, { method: "POST", body: values });
 }
 
 /**
@@ -409,8 +389,8 @@ export function validatePlayerForResend(gameId: number, playerId: string, server
  * multi-leg combo. The orders page routes combo orders (`delivery_legs.
  * length > 0`) here instead of opening ResendDeliveryModal.
  */
-export function retryOrderDelivery(token: string, id: number, values: { override_reason?: string } = {}) {
-  return apiFetch<{ message: string }>(`/api/orders/${id}/retry-delivery`, { method: "POST", token, body: values });
+export function retryOrderDelivery(id: number, values: { override_reason?: string } = {}) {
+  return apiFetch<{ message: string }>(`/api/orders/${id}/retry-delivery`, { method: "POST", body: values });
 }
 
 /**
@@ -446,8 +426,8 @@ export interface IssueVoucherResult {
   voucher: Voucher | null;
 }
 
-export function issueVoucherFromOrder(token: string, id: number, values: { reason?: string } = {}) {
-  return apiFetch<IssueVoucherResult>(`/api/orders/${id}/voucher`, { method: "POST", token, body: values });
+export function issueVoucherFromOrder(id: number, values: { reason?: string } = {}) {
+  return apiFetch<IssueVoucherResult>(`/api/orders/${id}/voucher`, { method: "POST", body: values });
 }
 
 /**
@@ -457,8 +437,8 @@ export function issueVoucherFromOrder(token: string, id: number, values: { reaso
  * share of `final_amount` (all of it for a failed order) back into that
  * Reseller's wallet balance; no cash ever leaves the platform.
  */
-export function refundOrderToWallet(token: string, id: number) {
-  return apiFetch<OrderDetail>(`/api/orders/${id}/refund-to-wallet`, { method: "POST", token });
+export function refundOrderToWallet(id: number) {
+  return apiFetch<OrderDetail>(`/api/orders/${id}/refund-to-wallet`, { method: "POST" });
 }
 
 /**
@@ -469,8 +449,8 @@ export function refundOrderToWallet(token: string, id: number) {
  * paste back the real invoice number they find there. Backend rejects
  * (422) unless delivery_status is already "needs_review".
  */
-export function markOrderDelivered(token: string, id: number, values: { supplier_ref: string; note?: string }) {
-  return apiFetch<OrderDetail>(`/api/orders/${id}/mark-delivered`, { method: "POST", token, body: values });
+export function markOrderDelivered(id: number, values: { supplier_ref: string; note?: string }) {
+  return apiFetch<OrderDetail>(`/api/orders/${id}/mark-delivered`, { method: "POST", body: values });
 }
 
 /**
@@ -484,8 +464,8 @@ export function markOrderDelivered(token: string, id: number, values: { supplier
  * already "needs_review". On a combo with a delivered leg it lands on
  * `partially_delivered` instead (ADR-094 decision 31).
  */
-export function confirmOrderDeliveryFailed(token: string, id: number, values: { note: string }) {
-  return apiFetch<OrderDetail>(`/api/orders/${id}/confirm-failed`, { method: "POST", token, body: values });
+export function confirmOrderDeliveryFailed(id: number, values: { note: string }) {
+  return apiFetch<OrderDetail>(`/api/orders/${id}/confirm-failed`, { method: "POST", body: values });
 }
 
 /**
@@ -531,11 +511,11 @@ export interface ManualCheckGatewayResponse {
  * delayed result. A 422 (cooldown active) carries `retry_after_seconds`
  * on the thrown ApiError's `.payload`.
  */
-export function checkOrderSupplier(token: string, id: number) {
-  return apiFetch<ManualCheckSupplierResponse>(`/api/orders/${id}/check-supplier`, { method: "POST", token });
+export function checkOrderSupplier(id: number) {
+  return apiFetch<ManualCheckSupplierResponse>(`/api/orders/${id}/check-supplier`, { method: "POST" });
 }
 
 /** ADR-096 — the payment-side counterpart to checkOrderSupplier() above. */
-export function checkOrderGateway(token: string, id: number) {
-  return apiFetch<ManualCheckGatewayResponse>(`/api/orders/${id}/check-gateway`, { method: "POST", token });
+export function checkOrderGateway(id: number) {
+  return apiFetch<ManualCheckGatewayResponse>(`/api/orders/${id}/check-gateway`, { method: "POST" });
 }

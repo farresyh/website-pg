@@ -41,7 +41,6 @@ import {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  token: string;
   reseller: ResellerRow;
 }
 
@@ -57,7 +56,7 @@ const DELIVERY_SEVERITY: Record<ResellerWebhookDelivery["status"], "info" | "suc
   exhausted: "danger",
 };
 
-function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
+function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
   const [webhook, setWebhook] = useState<ResellerWebhook | null>(null);
   const [deliveries, setDeliveries] = useState<ResellerWebhookDelivery[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -67,7 +66,7 @@ function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
   const [freshSecret, setFreshSecret] = useState<string | null>(null);
 
   function refresh() {
-    return Promise.all([getResellerWebhook(token, reseller.id), listResellerWebhookDeliveries(token, reseller.id)])
+    return Promise.all([getResellerWebhook(reseller.id), listResellerWebhookDeliveries(reseller.id)])
       .then(([{ webhook: hook }, page]) => {
         setWebhook(hook);
         setUrl(hook?.url ?? "");
@@ -93,21 +92,21 @@ function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
 
   const save = () =>
     run(async () => {
-      const { secret } = await setResellerWebhook(token, reseller.id, url.trim());
+      const { secret } = await setResellerWebhook(reseller.id, url.trim());
       if (secret) setFreshSecret(secret);
     }, "Could not save the endpoint.");
 
   const rotate = () =>
     run(async () => {
-      const { secret } = await rotateResellerWebhookSecret(token, reseller.id);
+      const { secret } = await rotateResellerWebhookSecret(reseller.id);
       setFreshSecret(secret);
     }, "Could not rotate the secret.");
 
-  const toggle = () => run(() => setResellerWebhookActive(token, reseller.id, !webhook!.is_active), "Could not update the endpoint.");
+  const toggle = () => run(() => setResellerWebhookActive(reseller.id, !webhook!.is_active), "Could not update the endpoint.");
 
   const remove = () =>
     run(async () => {
-      await deleteResellerWebhook(token, reseller.id);
+      await deleteResellerWebhook(reseller.id);
       setFreshSecret(null);
     }, "Could not remove the endpoint.");
 
@@ -207,7 +206,7 @@ function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
   );
 }
 
-export default function ResellerWebhookModal({ isOpen, onClose, token, reseller }: Props) {
+export default function ResellerWebhookModal({ isOpen, onClose, reseller }: Props) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -223,7 +222,7 @@ export default function ResellerWebhookModal({ isOpen, onClose, token, reseller 
               </DialogHeaderActions>
             </DialogHeader>
             <DialogContent>
-              {isOpen && <Content key={reseller.id} token={token} reseller={reseller} />}
+              {isOpen && <Content key={reseller.id} reseller={reseller} />}
             </DialogContent>
           </DialogPopup>
         </DialogPositioner>

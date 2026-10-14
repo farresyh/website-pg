@@ -31,7 +31,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-006](./adr/ADR-006-supplier-adapter-normalizer-layer-is-mvp-not.md) | Supplier Adapter/Normalizer layer is MVP, not Phase 2 | In force | 2026-07-25 |
 | [ADR-007](./adr/ADR-007-internal-fraud-blacklist-is-first-class-mvp.md) | Internal fraud blacklist is first-class MVP | In force | 2026-07-29 |
 | [ADR-008](./adr/ADR-008-split-frontend-stack.md) | Split frontend stack — Vue for Admin, Next.js for Storefront | Superseded by ADR-009 |  |
-| [ADR-009](./adr/ADR-009-unify-frontend-stack.md) | Unify frontend stack — Next.js (React) for both Admin Panel and Storefront | In force | 2026-07-26 |
+| [ADR-009](./adr/ADR-009-unify-frontend-stack.md) | Unify frontend stack — Next.js (React) for both Admin Panel and Storefront | In force; admin auth transport revised by ADR-121 | 2026-10-14 |
 | [ADR-010](./adr/ADR-010-docker-for-mysql-only-not-full-laravel-sail.md) | Docker for MySQL only, not full Laravel Sail | In force |  |
 | [ADR-011](./adr/ADR-011-storefront-stays-guest-checkout.md) | Storefront stays guest-checkout — no Customer account/auth in MVP | In force |  |
 | [ADR-012](./adr/ADR-012-admin-panel-ui-built-on-the-free-tailadmin.md) | Admin Panel UI built on the free TailAdmin template as a component/layout reference | In force |  |
@@ -41,7 +41,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-016](./adr/ADR-016-price-sync-center.md) | Price Sync Center — admin UI design | In force | 2026-07-27 |
 | [ADR-017](./adr/ADR-017-order-resend-delivery.md) | Order Resend Delivery — same-game package swap + live price reconciliation | In force; decisions 2/4 revised by ADR-105 (2026-10-06) | 2026-10-06 |
 | [ADR-018](./adr/ADR-018-sandbox-test-orders.md) | Sandbox Test Orders — a middleware-only tool for exercising the real Order lifecycle without touching real data or real money | In force | 2026-07-30 |
-| [ADR-019](./adr/ADR-019-second-pass-resilience-security-audit.md) | Second-pass resilience & security audit — reconciling ADR-014 against real code, docs restructure | In force; cache deferral closed by ADR-077 | 2026-09-29 |
+| [ADR-019](./adr/ADR-019-second-pass-resilience-security-audit.md) | Second-pass resilience & security audit — reconciling ADR-014 against real code, docs restructure | In force; cache deferral closed by ADR-077 | 2026-10-14 |
 | [ADR-020](./adr/ADR-020-production-host.md) | Production host — DigitalOcean Basic Droplet + Managed MySQL, Docker Compose, Cloudflare-fronted | Partly superseded by ADR-066 (Forge deploy, Vercel frontends) | 2026-10-10 |
 | [ADR-021](./adr/ADR-021-next-session-priority-re-sequencing.md) | Next-session priority re-sequencing — payment reconciliation before deployment infra | In force | 2026-07-30 |
 | [ADR-022](./adr/ADR-022-multi-gateway-payment-strategy.md) | Multi-gateway payment strategy — CHIP for Malaysia-local, Xendit retained for international + split-payment | In force as CHIP-only; Xendit decisions reversed by its own 2026-09-01 addendum | 2026-09-02 |
@@ -80,8 +80,8 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-055](./adr/ADR-055-membership-upsell-promo-card.md) | Membership upsell promo card — storefront Order Summary, Tier 2 teaser | In force | 2026-09-18 |
 | [ADR-056](./adr/ADR-056-reseller-wholesale-pricing-subscription-tiers.md) | Reseller wholesale pricing & subscription tiers — `reseller_membership_tiers`, cost-anchored wholesale rate, tier fee from earnings | In force |  |
 | [ADR-057](./adr/ADR-057-tenant-isolation-mechanism.md) | Tenant isolation mechanism — `BelongsToReseller` trait + Eloquent global scope, retrofitted before any reseller-scoped endpoint | In force |  |
-| [ADR-058](./adr/ADR-058-reseller-authentication-admin-reseller.md) | Reseller authentication + admin Reseller Management (RES-1..6) | In force | 2026-09-29 |
-| [ADR-059](./adr/ADR-059-reseller-portal.md) | Reseller portal — `reseller/` app, earnings ledger, withdrawals, self-service storefront config | In force | 2026-09-26 |
+| [ADR-058](./adr/ADR-058-reseller-authentication-admin-reseller.md) | Reseller authentication + admin Reseller Management (RES-1..6) | In force | 2026-10-14 |
+| [ADR-059](./adr/ADR-059-reseller-portal.md) | Reseller portal — `reseller/` app, earnings ledger, withdrawals, self-service storefront config | In force | 2026-10-14 |
 | [ADR-060](./adr/ADR-060-multi-tenant-branded-storefront-custom-domain.md) | Multi-tenant branded storefront + custom-domain infrastructure (decision 3 reversed: Vercel-native custom domains, NOT Cloudflare for SaaS) | In force | 2026-10-02 |
 | [ADR-061](./adr/ADR-061-every-storefront-is-a-reseller.md) | Every storefront is a Reseller — abolish the platform-owner special-case | In force; decision 7's platform withdrawal retired by ADR-083 (2026-10-10) | 2026-08-31 |
 | [ADR-062](./adr/ADR-062-rebrand-the-primary-storefront-to-pekangame.md) | Rebrand the primary storefront to "PekanGame" | In force | 2026-09-01 |
@@ -96,8 +96,8 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-071](./adr/ADR-071-storefront-perceived-performance.md) | Storefront perceived-performance — loading states, prefetchable routes, tag-based revalidation, and mobile buy-flow layout fixes | In force | 2026-09-24 |
 | [ADR-072](./adr/ADR-072-reseller-system-split.md) | Reseller-system split — `Affiliate` (whitelabel) vs `Reseller` (prepaid wallet), full rename, shared portal architecture | In force | 2026-09-04 |
 | [ADR-073](./adr/ADR-073-reseller-wallet.md) | Reseller wallet — fee-less tiers, prepaid-deposit ledger, order-placement contract, profit booking, delivery-failure handling | In force | 2026-09-04 |
-| [ADR-074](./adr/ADR-074-reseller-api-channel.md) | Reseller API channel — per-tenant API keys, order-placement/status endpoints | In force | 2026-10-13 |
-| [ADR-075](./adr/ADR-075-reseller-bot-channel.md) | Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology | In force | 2026-10-10 |
+| [ADR-074](./adr/ADR-074-reseller-api-channel.md) | Reseller API channel — per-tenant API keys, order-placement/status endpoints | In force | 2026-10-14 |
+| [ADR-075](./adr/ADR-075-reseller-bot-channel.md) | Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology | In force | 2026-10-14 |
 | [ADR-076](./adr/ADR-076-reseller-bot-v2.md) | Reseller Bot v2 — two-stage order-completion messaging, `.trackorder`/`.checkid`/`.info`, reply styling | In force | 2026-09-14 |
 | [ADR-077](./adr/ADR-077-storefront-read-path.md) | Storefront read-path — Redis cache cutover, eviction policy, invalidation fan-out, propagation freshness | In force |  |
 | [ADR-078](./adr/ADR-078-custom-domain-storefront-gaps.md) | Custom-domain storefront gaps — dynamic CORS, edge-cache staleness, membership-toggle visibility | In force | 2026-09-08 |
@@ -136,10 +136,11 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-111](./adr/ADR-111-real-cost-profit-reconciliation-at-delivery-time.md) | Real-cost profit reconciliation at delivery time — widens ADR-033's FX conversion boundary to a second call site | In force | 2026-09-22 |
 | [ADR-112](./adr/ADR-112-affiliate-reseller-portal-mobile-first-redesign.md) | Affiliate/Reseller portal mobile-first redesign — role-aware shell, dashboards, and Orders | In force |  |
 | [ADR-113](./adr/ADR-113-affiliate-theme-preset-dark-mode-for-all-4.md) | Affiliate theme-preset dark mode for all 4 affiliate-selectable presets, `storefront/DESIGN.md`, Digital Architect retired from the affiliate picker | In force |  |
-| [ADR-114](./adr/ADR-114-production-infra-split-off-digitalocean-s-shared.md) | Production infra split off DigitalOcean's shared team — droplet + managed MySQL rebuilt into a new DO team (`LWF Group Sdn Bhd`) | In force | 2026-10-08 |
-| [ADR-115](./adr/ADR-115-supplier-balance-comfortable-buffer-forecast.md) | Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold | Parked (designed); low-balance email alert added to scope | 2026-10-13 |
+| [ADR-114](./adr/ADR-114-production-infra-split-off-digitalocean-s-shared.md) | Production infra split off DigitalOcean's shared team — droplet + managed MySQL rebuilt into a new DO team (`LWF Group Sdn Bhd`) | In force | 2026-10-14 |
+| [ADR-115](./adr/ADR-115-supplier-balance-comfortable-buffer-forecast.md) | Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold | Parked (designed); builds two weeks after launch, with the low-balance email | 2026-10-14 |
 | [ADR-116](./adr/ADR-116-customer-order-notifications-over-whatsapp.md) | Customer order notifications over WhatsApp (OpenWA), not email — closes audit M-11 | In force | 2026-10-12 |
 | [ADR-117](./adr/ADR-117-prod-db-least-privilege.md) | Prod DB least-privilege — `doadmin` superuser replaced by a dedicated scoped app user | In force |  |
 | [ADR-118](./adr/ADR-118-marketing-campaigns.md) | Marketing Campaigns — multi-use KOL discount codes, separate from `Voucher` | Accepted (design) | 2026-10-02 |
 | [ADR-119](./adr/ADR-119-package-delete-guards.md) | Package delete guards — block a hard-delete that already has order history or is a live combo component | In force |  |
 | [ADR-120](./adr/ADR-120-seo-geo-overhaul.md) | SEO/GEO overhaul — brand-correct meta, per-brand canonical origin, machine-readable catalog | In force |  |
+| [ADR-121](./adr/ADR-121-admin-mfa-and-session-login.md) | Admin MFA (TOTP), opt-in per account, step-up on five dangerous actions; admin login moves to a cookie session | In force | 2026-10-14 |

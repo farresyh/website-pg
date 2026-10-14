@@ -2,9 +2,11 @@
 
 namespace Tests;
 
+use App\Models\AdminUser;
 use App\Models\Affiliate;
 use App\Support\OutboundUrlGuard;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Laravel\Sanctum\Sanctum;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -50,5 +52,21 @@ abstract class TestCase extends BaseTestCase
                 'membership_enabled' => true,
             ], $attributes),
         );
+    }
+
+    /**
+     * ADR-121: act as an admin with active MFA who stepped up just now, so a
+     * test of one of the five dangerous actions (`mfa.stepup`) reaches the
+     * controller. The step-up gate itself is tested in AdminMfaStepUpTest.
+     */
+    protected function actingAsSteppedUp(AdminUser $admin): AdminUser
+    {
+        $admin->forceFill(['mfa_required' => true, 'mfa_enabled' => true])->save();
+        Sanctum::actingAs($admin);
+
+        $this->withHeader('Referer', 'http://localhost:3000/')
+            ->withSession(['mfa_stepup_at' => now()->timestamp]);
+
+        return $admin;
     }
 }

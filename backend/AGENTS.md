@@ -141,16 +141,23 @@ a session before.
    throws against it. For a local smoke test that touches tag-flushing
    (`GameController::forgetIndexCache()`), run
    `CACHE_STORE=redis php artisan serve --no-reload`.
-6. **Admin login fails with `ConnectTimeoutError ... kedairuncit-backend.test:443`.**
-   The frontends call `NEXT_PUBLIC_API_URL` (`https://kedairuncit-backend.test`,
-   a Herd site), not the `php artisan serve` that `./scripts/dev.sh` starts
-   on :8000. Herd must be running. The dev scripts pass
-   `NODE_OPTIONS=--use-system-ca`, so Node trusts Herd's local certificate
-   (`docs/build-log-archive.md`, 2026-10-09).
+6. **Admin login "works" but every page bounces back to `/login`.** Since
+   ADR-121 the admin app is authorized by Laravel's session cookie, which the
+   browser sends only to the same site. `localhost:3000` →
+   `https://kedairuncit-backend.test` is cross-site, so the cookie never
+   arrives. Point the **admin** app at `http://localhost:8000` (the
+   `php artisan serve` that `composer run dev` / `./scripts/dev.sh` start):
+   `NEXT_PUBLIC_API_URL=http://localhost:8000` in `admin/.env.local`. The
+   storefront and portal use bearer tokens and can stay on the Herd site
+   (`https://kedairuncit-backend.test`, Herd must be running; the dev scripts
+   pass `NODE_OPTIONS=--use-system-ca` so Node trusts Herd's certificate,
+   `docs/build-log-archive.md`, 2026-10-09).
 7. **A built admin on another port logs in, then bounces back to `/login`.**
-   Local CORS allows only `localhost:3000`, `:3001` and `:3002`. Use one of
-   those, not `127.0.0.1` or another port, and build with
-   `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`.
+   Local CORS allows only `localhost:3000`, `:3001` and `:3002`, and only
+   `localhost:3000` is a Sanctum stateful origin (cookie session, ADR-121).
+   Serve the admin on `localhost:3000` and build it with
+   `NEXT_PUBLIC_API_URL=http://localhost:8000` — not `127.0.0.1`, which is a
+   different site from `localhost`, so the session cookie is dropped.
 8. **Every MySQL test errors with `Table 'llm_report_orders' already exists`.**
    A killed MySQL run leaves the `llm_report_*` views in docker `kerox`, and
    `migrate:fresh` doesn't drop views. Drop them:

@@ -12,18 +12,17 @@ export interface MembershipPlan {
 
 export type UpdateMembershipPlanValues = Pick<MembershipPlan, "name" | "fee_sen" | "quota_sen" | "discount_percent">;
 
-export function getMembershipPlans(token: string) {
-  return apiFetch<MembershipPlan[]>("/api/membership-plans", { token });
+export function getMembershipPlans() {
+  return apiFetch<MembershipPlan[]>("/api/membership-plans");
 }
 
-export function updateMembershipPlan(token: string, planId: number, values: UpdateMembershipPlanValues) {
-  return apiFetch<MembershipPlan>(`/api/membership-plans/${planId}`, { method: "PUT", token, body: values });
+export function updateMembershipPlan(planId: number, values: UpdateMembershipPlanValues) {
+  return apiFetch<MembershipPlan>(`/api/membership-plans/${planId}`, { method: "PUT", body: values });
 }
 
-export function updateMembershipEnabled(token: string, enabled: boolean) {
+export function updateMembershipEnabled(enabled: boolean) {
   return apiFetch<{ membership_enabled: boolean }>("/api/membership-plans/enabled", {
     method: "PATCH",
-    token,
     body: { membership_enabled: enabled },
   });
 }
@@ -55,9 +54,9 @@ export type MembershipPricingPreview =
  * Backend computes this via the same PricingService/MembershipPricingService
  * CatalogController itself uses, never re-derived here.
  */
-export function previewMembershipPricing(token: string, discountPercent: number) {
+export function previewMembershipPricing(discountPercent: number) {
   const query = new URLSearchParams({ discount_percent: String(discountPercent) });
-  return apiFetch<MembershipPricingPreview>(`/api/membership-plans/preview?${query}`, { token });
+  return apiFetch<MembershipPricingPreview>(`/api/membership-plans/preview?${query}`);
 }
 
 /**
@@ -75,8 +74,8 @@ export interface MembershipBrand {
   business_name: string;
 }
 
-export function listMembershipBrands(token: string) {
-  return apiFetch<MembershipBrand[]>("/api/memberships/brands", { token });
+export function listMembershipBrands() {
+  return apiFetch<MembershipBrand[]>("/api/memberships/brands");
 }
 
 export interface MembershipListItem {
@@ -105,7 +104,6 @@ export interface MembershipPage {
 export type MembershipStatusFilter = "all" | "active" | "expired";
 
 export function listMemberships(
-  token: string,
   params: { status?: MembershipStatusFilter; planId?: number; search?: string; page?: number; affiliateId?: number } = {},
 ) {
   const query = new URLSearchParams();
@@ -116,7 +114,7 @@ export function listMemberships(
   if (params.affiliateId) query.set("affiliate_id", String(params.affiliateId));
   const qs = query.toString();
 
-  return apiFetch<MembershipPage>(`/api/memberships${qs ? `?${qs}` : ""}`, { token });
+  return apiFetch<MembershipPage>(`/api/memberships${qs ? `?${qs}` : ""}`);
 }
 
 export interface RecordMembershipPaymentValues {
@@ -128,10 +126,9 @@ export interface RecordMembershipPaymentValues {
   idempotency_key: string;
 }
 
-export function recordMembershipPayment(token: string, values: RecordMembershipPaymentValues) {
+export function recordMembershipPayment(values: RecordMembershipPaymentValues) {
   return apiFetch<MembershipListItem>("/api/memberships/record-payment", {
     method: "POST",
-    token,
     body: values,
   });
 }
@@ -197,6 +194,6 @@ export interface MembershipDetail {
   };
 }
 
-export function getMembershipDetail(token: string, id: number) {
-  return apiFetch<MembershipDetail>(`/api/memberships/${id}`, { token });
+export function getMembershipDetail(id: number) {
+  return apiFetch<MembershipDetail>(`/api/memberships/${id}`);
 }

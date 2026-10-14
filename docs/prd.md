@@ -77,7 +77,7 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 - **Supplier APIs**: assumed RESTful/JSON, but **must not be assumed to have a uniform response shape, auth style, or validation capability.** Confirmed by direct research (Gamevion API, MLBB-validator sample store) that these vary per supplier and even per game. All supplier calls go through a normalizing Adapter layer (see 6.21) — no business logic touches raw supplier response shapes.
 - **Payment gateway: CHIP only** (`PaymentGatewayFactory` kept for a future multi-region second gateway — [ADR-022's 2026-09-01 addendum](./adr/ADR-022-multi-gateway-payment-strategy.md) removed Xendit; FPX proven live with real money; all three methods switched off since 2026-10-07 by the founder's choice, see §14). Single company CHIP account; the platform collects 100% of every payment (including reseller storefronts) and the ledger does the split. **xenPlatform dropped entirely** — not deferred ([ADR-059](./adr/ADR-059-reseller-portal.md) decision 6, superseding ADR-001's addendum).
 - **Currency** assumed MYR as base, with dynamic exchange rate support for foreign-currency suppliers.
-- **Auth** Bearer token-based with role middleware on backend — frontend routing is convenience, not security. MFA (AUTH-7) is descoped, founder's call (§16 item 10).
+- **Auth** Role middleware on the backend — frontend routing is convenience, not security. Admins use a Sanctum cookie session with opt-in MFA (AUTH-7, ADR-121); affiliate/reseller-portal users use bearer tokens.
 - **Refund policy**: no cash refunds under any circumstance (ADR-004). Resolution paths for a failed order are limited to retry-delivery or voucher issuance.
 - **Balance/financials**: ledger-based (ADR-002). No entity may expose or rely on a directly-mutated `balance` column as the source of truth.
 
@@ -95,7 +95,7 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 | **AUTH-4** | Super Admin can manage admin users (create, edit, activate, deactivate) | **MVP** |
 | **AUTH-5** | Super Admin can manage API keys for system integration | **Phase 2** |
 | **AUTH-6** | System displays profile page with edit personal info and change password | **MVP** |
-| **AUTH-7** | System enforces MFA (TOTP) for Super Admin and Admin accounts — mandatory before any withdrawal/voucher/refund-affecting action | **Descoped** (founder, §16 item 10) |
+| **AUTH-7** | Admin MFA (TOTP), opt-in per account (set by an admin in Admin Users); without it, five dangerous actions are refused (CHIP credentials, supplier credentials, manual reseller wallet credit, withdrawal approval, admin account changes), and with it they ask for a fresh code | **Built, ADR-121** (staging only until a release) |
 
 ## 6.2 Admin — Dashboard
 
@@ -468,7 +468,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
   - A circuit breaker trips per-supplier after repeated failures, preventing cascading timeouts from a down supplier blocking the whole delivery queue.
   - Dashboard must remain accessible even when one supplier is down.
   - The system never relies solely on a supplier webhook/callback for final state — a scheduled reconciliation job independently confirms order and payment status (ORD-10, PAY-3).
-- **Error Handling :** All supplier API errors must be logged with full request/response payload, credentials and excess PII redacted. Admins are emailed (Plunk, every active admin) for a failed backup, a long Horizon queue wait and a stale FX rate. Stuck orders, supplier balance and circuit-breaker state are monitored on the Dashboard (System Health), not pushed. A low-supplier-balance email is designed with item 28 (ADR-115 2026-10-13 addendum), not built.
+- **Error Handling :** All supplier API errors must be logged with full request/response payload, credentials and excess PII redacted. Admins are emailed (Plunk, every active admin) for a failed backup, a long Horizon queue wait and a stale FX rate. Stuck orders, supplier balance and circuit-breaker state are monitored on the Dashboard (System Health), not pushed. A low-supplier-balance email is designed with item 28 (ADR-115 2026-10-13 addendum), not built; it ships two weeks after launch. UptimeRobot polls `/api/health` and the OpenWA gateway's own health URL (§16 item 11).
 - **Data Privacy :** Player IDs and customer personal data (including validation-response data such as in-game nickname/country) must be handled securely, retained only as long as operationally needed, and never over-logged. No logging of raw credentials. Admin action audit trails, including impersonation.
 - **Backup & Recovery :** Automatic daily backup, 7 daily / 4 weekly / 6 monthly retention (ADR-039, ADR-095). Manual backup via admin panel. Backups must be downloadable.
 - **Multi-language :** Storefront supports multiple languages (English + local language). Admin panel is single language (English).
@@ -485,7 +485,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 | **Gamevion** | Supplier — game credit catalog, price feed, order creation/fulfillment | **Integrated but deliberately unfunded (2026-09-24, Digiflazz-only).** First real `SupplierAdapter`. Static Bearer + API-key, `referenceNumber` + `409 Duplicate` idempotency, per-purchase `callback_url`. Sandbox via `GAMEVION_SANDBOX=true`. ADR-006/040. |
 | **Digiflazz** | Second supplier — Indonesian H2H aggregator (486 game SKUs + data SKUs) | **The only live supplier.** Prod key wired 2026-09-02, **funded 2026-09-15**, delivering real orders. IDR→MYR FX conversion at the sync boundary (ADR-033). Inbound `POST /api/webhooks/digiflazz` (HMAC-SHA1 `X-Hub-Signature` + IP allowlist). Topup has no rate limit; the full price list is limited to 1 call per 5 min (`rc 83`), per Digiflazz CS on 2026-09-29. Same-`ref_id` re-submit replays the stored outcome, which ADR-102's 2026-09-29 addendum relies on. ADR-030/067/069. |
 | **Supplier API(s) — general** | The Adapter contract all suppliers implement | Confirmed to vary significantly per supplier (auth, response envelopes, validation availability per-game, idempotency). All access goes through the Adapter layer (§6.21), resolved per-order by `supplier_id` (`SupplierAdapterFactory`, ADR-031). Onboarding a new supplier = a new adapter, enforced from MVP (ADR-006). |
-| **OpenWA** | WhatsApp gateway, two sessions. `reseller-bot` runs the Reseller Bot channel (`.order` / `.baki` / `.listharga` / `.topupbaki`). `customer-support` (+60 11-4301 3150) sends customer voucher codes and opted-in Delivered receipts, and receives opt-in/`STOP` (ADR-116) | Self-hosted on the prod box, v0.23.7, Baileys engine. `SEND_PACING` is on (warm-up and cold caps) and `SIMULATE_TYPING` is on. Inbound `OpenWaWebhookController` (HMAC `X-OpenWA-Signature`) routes by `sessionId`. ADR-075/076/116. |
+| **OpenWA** | WhatsApp gateway, two sessions. `reseller-bot` runs the Reseller Bot channel (`.order` / `.baki` / `.listharga` / `.topupbaki`). `customer-support` (+60 11-4301 3150) sends customer voucher codes and opted-in Delivered receipts, and receives opt-in/`STOP` (ADR-116) | Self-hosted on the prod box, v0.23.7 (v0.24.0 upgrade: §16 item 96), Baileys engine, `AUTO_START_SESSIONS=true` since 2026-10-14 (sessions come back by themselves after a restart). `SEND_PACING` is on (warm-up and cold caps) and `SIMULATE_TYPING` is on. Inbound `OpenWaWebhookController` (HMAC `X-OpenWA-Signature`) routes by `sessionId`. ADR-075/076/116. |
 | **Plunk** | Transactional email — membership OTP, receipts and renewal reminders, partner-portal invites, domain-status mails, and ops alerts (backup failure, Horizon long-wait, stale FX rate). Customer order notifications go by WhatsApp instead (ADR-116) | API-based (`PLUNK_API_KEY`). Replaced the generic "SMTP or API" placeholder. ADR-027/068. |
 | **Laravel Reverb** | Realtime broadcasting — order-status push, replaces application-level polling on the customer buy-flow | Self-hosted WebSocket server + Echo client. ADR-047, ADR-071 PR4. |
 | **Vercel** | Custom-domain provisioning for Affiliate whitelabel storefronts | `AffiliateDomainProvider` seam (Vercel / no-op). `affiliate_domains` table, self-serve onboarding, provider opacity in the portal. ADR-060 (reverses decision 3's Cloudflare-for-SaaS), ADR-078. |
@@ -520,7 +520,6 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 **Still open:**
 
 - Blacklist data source: internal chargeback history only, or also manually curated from known fraud reports? Needs a policy for false-positive appeal.
-- MFA for `affiliate_users` (was `reseller_users`) — deferred with the same reasoning as the admin MFA gap (ADR-058 consequence note); resolve before the partner portal's withdrawal screen carries meaningful balances.
 - Multi-region payment routing (Malaysia → CHIP, other countries → a 2nd gateway, auto by country) — founder want. **Superseded for now** by the CHIP-only cutover (ADR-022, 2026-09-01): the `PaymentGatewayFactory` seam is kept, but a real 2nd gateway is only revisited when cross-border selling is real. Xendit (the original candidate) is deleted.
 
 ---
@@ -570,7 +569,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 # 14. Build Status
 
-**Where things stand (2026-10-13).** The platform is feature-complete and live
+**Where things stand (2026-10-14).** The platform is feature-complete and live
 in production: storefront (plus every Affiliate whitelabel brand), admin panel,
 Affiliate/Reseller portal, and the developer-docs site. CHIP FPX payments and
 the CHIP + Digiflazz webhooks are proven end-to-end with real money.
@@ -589,20 +588,21 @@ founder's choice (confirmed 2026-10-13). Until they are re-enabled, storefront
 checkout and the reseller wallet's self-serve top-up can't be paid; wallet
 orders against an existing balance still work.
 
-**Latest release 2026-10-13 (`staging`→`main`, PR #425), deploy verified.**
-Merged as `cad575e`; CI green, the prod box runs `cad575e`, `/api/health` ok,
-and the docs site serves v1.5.0. Ships #417–#424: expired vouchers shown as
-expired (item 84), Reseller API rate limits per account (item 6/A3), voucher
-expiry through the Malaysia day (item 88), one shared Malaysia timezone
-constant (item 90), the hero-slide schedule and Request Logs filter on
-Malaysia time (items 91, 92), the stale-FX alert time in MYT and the email
-footer year. No new migration. `staging` = `main` at that moment.
+**Latest release 2026-10-14 (`staging`→`main`, PR #430), deploy verified.**
+Merged as `735e156`; the prod box runs it. Ships #426–#429: item 93 (a
+combo's stored price stays current while it is off and on reactivation),
+whose migration repriced 28 stale PUBG Mobile combos on deploy (0 stale of
+101 after), plus docs (item 66 parked, item 94 added). **Not yet released:** `staging`
+also carries #433 (items 73 and 95, the Reseller API rejection log and
+`/api/health/whatsapp`) plus docs #431/#432, and item 10 (admin MFA and the
+cookie-session admin login, ADR-121) once its PR merges. The founder holds
+the next release for a later session.
 
 **Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
 hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
 `cdn.` stay on `pekangame.space`.
 
-**Earlier releases** (#416 and #406 on 2026-10-12/13, #393 Envelope Ledger,
+**Earlier releases** (#425 on 2026-10-13, #416 and #406 on 2026-10-12/13, #393 Envelope Ledger,
 #385 Reports redesign, #376 Reseller API `max_price_sen` / Assistant = Reports /
 `r2_accounting`, #369 ADR-120 SEO/GEO, #362, #354, #346, #342, #332,
 #320 and the 2026-09-28 audit waves) are recorded release by release in
@@ -629,7 +629,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 
 | Area | Status | Key ADRs |
 | --- | --- | --- |
-| Auth & Admin Users (AUTH-1..7) | ✅ Live. Login rate-limited + logged. MFA (AUTH-7) descoped, founder's call | ADR-019 |
+| Auth & Admin Users (AUTH-1..7) | ✅ Live. Login rate-limited + logged. Admin MFA (AUTH-7) and the cookie-session admin login built 2026-10-14, staging only until a release | ADR-019, ADR-121 |
 | Admin Dashboard (DASH-1..6) | ✅ Live — KPIs, System Health, funnel, top games, hourly activity | ADR-045 |
 | Money core (Pricing, Ledger, Voucher, Order status, idempotency) | ✅ Live — full service layer, concurrency-proven. The most mature part of the codebase | ADR-002 |
 | Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end. PR #273's invite/session and compensation visibility fixes, plus ADR-112's role-aware shell, dashboard recent orders, and responsive Orders presentation, shipped in PRs #273, #275 and #276, released to `main` via #278 (2026-09-24) | ADR-056–061, 078, 112 |
@@ -689,7 +689,8 @@ against real code or production before building on it.
 **Founder's rule (2026-10-08): clear the backlog below before any new
 feature.** Every open item sorted by what it needs to finish. Verified against
 code and production on 2026-10-09; re-checked on 2026-10-13 after release
-#425. Re-verify before building.
+#425; group D reviewed item by item with the founder on 2026-10-14 (seven
+items dropped, listed under Recently closed). Re-verify before building.
 
 **A. Buildable now: code, no new design**
 - (none)
@@ -699,34 +700,25 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
   the accountant's monthly document list first.
 
 **C. Founder actions (no code)**
-- **11** Sentry (error tracking) is still not set up. UptimeRobot on
-  `/api/health` confirmed green and its alert delivery tested 2026-10-12.
+- **11** Sentry (error tracking) is still not set up. UptimeRobot watches
+  `/api/health` and the OpenWA gateway; add a third monitor on
+  `/api/health/whatsapp` once item 95 is released.
 - **71** GSC recheck around 2026-10-22.
+- **96** Upgrade OpenWA to v0.24.0 (with the founder standing by).
 
 **D. Waiting on a trigger: don't build early**
 - **4** Bot-host resize, when capacity calls for it.
-- **10** MFA, before the partner portal's withdrawal balances grow.
-- **28** Supplier buffer forecast plus a low-balance email alert (ADR-115), once real order volume exists.
-- **49** Detect a proxied affiliate domain, when an affiliate hits it.
-- **53** Parallel scheduler reconcile, if a slow CHIP lookup delays delivery.
-- **55** Test-order flag, with item 28 at real volume.
-- **58** OpenWA chat rehydration: designed; the founder says when (needs a
-  standby window).
+- **28** Supplier buffer forecast plus a low-balance email alert (ADR-115),
+  two weeks after launch (payments back on for real customers).
+- **55** Test-order flag, with item 28.
 - **59** OpenWA engine switch, with item 4 (Baileys stays until then, ADR-075
   2026-10-10 addendum).
-- **72** Bot `max=` token, on a Bot price complaint.
-- **73** Reseller API rejection logging, on an integrator issue.
 - **74** Ask the external reviewer, before the first non-zero affiliate tier
   fee.
-- **82** Customer-support inbound log and CS-agent inputs, with the CS-agent ADR.
 - **83** Give back an admin voucher's ledger debit on revoke/expiry, with the
   first admin-issued voucher.
 - **85** Membership renewal reminder on WhatsApp (designed), at 10 active members
   or when members don't renew despite the email.
-- **86** Email logo as PNG, if an email client still shows the WebP logo badly
-  after the 2026-10-13 sizing fix.
-- **89** Per-reseller Reseller API rate-limit override, when a reseller asks
-  for more than 60 orders / 120 reads a minute.
 
 **E. New features: after the backlog** (each needs its own ADR + grill)
 - **13** Self-serve reseller signup.
@@ -742,9 +734,6 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
    calls for it. It is also the moment to revisit the OpenWA engine (item 59:
    Baileys stays until then). OpenWA now shares `pekangame-prod-lwf` with the API
    (ADR-114).
-10. **MFA** — admin (AUTH-7) and `affiliate_users` both descoped; revisit before
-    the partner portal's withdrawal balances get meaningful.
-
 11. **External uptime monitor added 2026-10-10 (founder-reported, UptimeRobot on
     `https://api.pekangame.space/api/health`); error tracking (Sentry) is still
     not set up.** ADR-019's accepted deferral. Since 2026-09-29 `/api/health`
@@ -756,6 +745,10 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
     Founder confirmed the monitor green on 2026-10-12 (100% over 7 and 30 days,
     5-minute checks, up 1d 17h). The founder's Test Notification reached them the
     same day.
+    **2026-10-14:** a second UptimeRobot monitor on the OpenWA gateway,
+    `https://bot.pekangame.space/api/health` (founder, green). It catches the
+    OpenWA process down, not a WhatsApp session that is disconnected while
+    the process runs; item 95 covers that.
 
 13. **ADR-085 candidate** — self-serve reseller signup (payment risk, KYC, auto
     tier-assignment). Needs its own ADR + grill; ADR-084 assumes invite-only.
@@ -797,22 +790,16 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
     funding-drift chip), cold-start falls back to the founder's own
     manual threshold. No automatic trigger to start building — the
     founder will say when, typically once real (non-testing) order
-    volume exists. **2026-10-13 addendum:** the build also adds a
+    volume exists. **Trigger set 2026-10-14 (founder): two weeks after
+    launch**, i.e. payments back on for real customers; the email ships with
+    the forecast, not before. **2026-10-13 addendum:** the build also adds a
     low-balance email to every active admin through the ops-alert path
     (`BackupFailureAlerter`, Plunk), throttled once a day per supplier, when
-    the balance crosses the buffer. Today nothing alerts: Digiflazz has no
-    `low_balance_threshold` on prod, so even the log warning never fires.
-
-49. **Detect a proxied affiliate domain on "Check now"** (ADR-060 follow-up).
-    The DNS setup guide is built (2026-10-02, `DomainSetupGuide.tsx`, EN/BM,
-    Cloudflare grey-cloud tips). Still open, only once a real affiliate hits
-    it: show a specific warning when the domain is proxied (orange cloud)
-    instead of a misleading `active`.
-
-53. **Parallel scheduler reconcile** (audit Wave 4 Low, deferred 2026-09-29):
-    reconcile tasks run inline and sequentially on the same 15-minute tick.
-    Not slow today; revisit if a slow CHIP lookup visibly delays delivery
-    reconcile.
+    the balance crosses the buffer. Since 2026-10-14 Digiflazz's
+    `low_balance_threshold` is set on prod (IDR 10,000,000, about RM 2,280,
+    founder), so the Dashboard "low balance" chip and the log warning work;
+    with the balance at IDR 2,285,108 that day the chip shows until the
+    balance passes the threshold.
 
 55. **Test/internal order flag — grilled 2026-09-30, deliberately parked**
     (ADR-083 2026-09-30 second addendum, `docs/adr.md`). The founder's own
@@ -824,9 +811,8 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
     point. **Not** every current order is the founder's own testing — a real
     reseller's real customer order (e.g. Naeem Industries) sits in the same
     table, so any future build here needs per-order judgment, never a
-    blanket assumption or an email-based auto-detect. Same park-until-real-
-    volume trigger as item 28 (ADR-115) — revisit together if either comes
-    up. **2026-10-10:** kept out of the ADR-083 Envelope Ledger addendum
+    blanket assumption or an email-based auto-detect. Same trigger as item 28 (ADR-115):
+    two weeks after launch — revisit together. **2026-10-10:** kept out of the ADR-083 Envelope Ledger addendum
     (item 78), to follow it as its own addendum. Whether an order can be
     tagged after its month is closed now depends on that addendum's
     decision 12.
@@ -847,17 +833,6 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
     Before building, confirm R14's contra-revenue treatment with the external accounting
     reviewer.
 
-58. **OpenWA chat-list rehydration on process restart — [ADR-075](./adr/ADR-075-reseller-bot-channel.md)'s 2026-10-02
-    addendum. Designed and grilled; build not started.** OpenWA's dashboard Chats list is
-    in-memory only. After a full OpenWA process restart, a chat that has gone quiet can't be
-    opened from the dashboard, though its messages are still safe in `openwa.sqlite`. This
-    matters most for an active `customer-support` conversation. The fix:
-    - fork `rmyndharis/OpenWA` and deploy from the fork;
-    - in `session.service.ts`, union `listChats()` with a chat-summary list built from the DB;
-    - validate on the single prod instance while the founder is standing by, with the
-      pre-patch commit ready as a rollback.
-    Build when the founder says so.
-
 59. **`ENGINE_TYPE=baileys` runs both OpenWA sessions — decided 2026-10-10: Baileys
     stays until the droplet is upgraded** ([ADR-075](./adr/ADR-075-reseller-bot-channel.md)'s
     2026-10-10 addendum). Waiting on a trigger: the host resize (item 4), a WhatsApp
@@ -869,17 +844,6 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
 66. **Combo edit-composition UI: parked 2026-10-14** (see Parked below; ADR-094 2026-10-14 addendum). Original note: no edit-composition UI (delete and recreate only); an edit would need the paid-but-not-yet-fulfilled window settled, and 3 readers use the live `components->first()->supplier`. The per-leg attempt history and each component's supplier SKU are shown (live via #406); orders before 2026-09-21 have no leg attempt rows.
 
 71. **GSC recheck around 2026-10-22** (Pages report: duplicate / canonical reasons, indexed vs not indexed). ADR-120 went live 2026-10-08 (#369); the admin SEO › FAQ click-through was done by the founder on 2026-10-10. Founder-deferred: GA4, default OG image, Bing.
-
-72. **Reseller Bot price ceiling — optional `max=` token on `.order`**
-    (ADR-074 2026-10-08 addendum decision 5). The API has `max_price_sen`;
-    the Bot charges the live price and shows `Harga` only after. The seam
-    exists (`ResellerOrderPlacementRequest::$maxPriceSen`), so this is
-    parsing + a BM reply. Build if a Bot reseller is charged a price they
-    didn't expect. Prod 2026-10-08: 7 Bot orders ever.
-
-73. **Reseller API rejections aren't logged anywhere** (decision 6 of the
-    same addendum). If wanted, log in the one `ResellerApiException` render
-    hook (`bootstrap/app.php`) for every code, not per code.
 
 74. **Ask the external reviewer before the first non-zero affiliate tier
     fee** (ADR-083 2026-10-08 addendum). The Monthly Summary shows the fee
@@ -925,20 +889,6 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
     - Before the grill: get the accountant's own monthly document list, so
       the pack follows what they actually ask for.
 
-82. **Customer-support inbound log and CS-agent design inputs — waiting on the
-    CS-agent ADR.** Found while closing item 69 (2026-10-12). Laravel keeps no
-    record of inbound messages: a stranger's message that carries no order
-    number (two such numbers wrote on 2026-10-07) leaves a trace only in
-    OpenWA's `data/openwa.sqlite`, which has no retention and is not backed up.
-    That table also holds ~360 group messages the session was never meant to
-    act on. A log of direct messages needs its own retention and privacy
-    decision. Inputs for the CS-agent ADR from the founder's chatbot project
-    (`/Project/chatbot`, read 2026-10-12): escalation to an admin group with
-    `!reply` / `!solved`, a per-chat `ai` / `admin` / `paused` mode, a 10 s
-    per-chat debounce that merges rapid messages, and image OCR for order
-    numbers. That chatbot raises an admin alert on every unknown order number
-    with no cap, so any escalation built here needs one.
-
 83. **An admin-issued voucher's ledger debit is never given back — waiting on
     the first admin-issued voucher** (ADR-024 2026-10-12 addendum, founder's
     call). A revoked or expired admin voucher keeps its full `voucher_issued`
@@ -956,20 +906,6 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
     WhatsApp is added; `STOP RENEW` stops membership reminders only, so
     receipts continue; sent through `CustomerNotificationService` with a
     nullable `membership_id`; a "WhatsApp" card on the admin member page.
-
-86. **Email logo as PNG** (found 2026-10-13). Logos are stored as WebP
-    (`affiliate-logos/{id}.webp`), which Outlook desktop does not show. The
-    squashed header logo was a CSS bug, fixed in item 64's branch. Only if a
-    real email client still shows the logo badly: emit a PNG copy in the one
-    shared image-ingest step both logo uploads use.
-
-89. **Per-reseller Reseller API rate-limit override — waiting on a request**
-    (ADR-074 2026-10-13 addendum, decision 3). The limits are one pair for
-    every account (orders 60/min, reads 120/min, `AppServiceProvider`). The
-    public docs say "contact PekanGame" if they are too low; until a reseller
-    does, a deploy that changes the number is the answer. When one asks: a
-    nullable per-`Reseller` override read by the two limiters, set from the
-    admin reseller page.
 
 94. **Best-selling products per game in Reports — new feature, needs an
     ADR-104 addendum** (founder, 2026-10-13). Reports has a per-game breakdown
@@ -989,7 +925,42 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
     optional drill-down per SKU/combo version, and whether to snapshot the
     product key on the order at checkout so a resend swap can't move it.
 
+96. **Upgrade OpenWA v0.23.7 → v0.24.0** (released 2026-10-03; found
+    2026-10-14). Prod runs OpenWA from a git checkout, so the dashboard's
+    "new version" notice never updates it by itself. v0.24.0 has security
+    and Baileys fixes; its breaking API changes touch nothing we call
+    (Laravel uses only `send-text` plus inbound webhooks). It does not fix
+    item 58's chat list (a quiet 1:1 chat still appears only on its next
+    message). Steps, with the founder standing by:
+    - back up `~/OpenWA/data/` first: boot migrates `main.sqlite`, and a
+      rollback needs the old file back with the old version;
+    - check out the tag, build, restart the daemon, confirm both sessions
+      come back `ready` by themselves (`AUTO_START_SESSIONS=true` since
+      2026-10-14) and send one test message;
+    - change the daemon command from `npm run build:all && node dist/main`
+      to `node dist/main`, so a restart no longer rebuilds for ~2 minutes;
+    - decide `MESSAGE_RETENTION_DAYS` (`openwa.sqlite` is 22 MB and keeps
+      everything);
+    - delete `~/OpenWA/.env.bak-2026-09-30` and `.env.bak-2026-10-14` once
+      the new `.env` is confirmed (they hold the gateway's secrets, as
+      item 87's backups did).
+
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
+
+- **10** 2026-10-14: admin MFA (TOTP) and a cookie-session admin login (ADR-121). The login lasts 7 days at most, ends after 2 days unused, and is shared by every tab. MFA is opt-in per account ("Require MFA" in Admin Users, one-way; set up on `/login`). Five actions need a code within the last 5 minutes and are refused without MFA: CHIP credentials, supplier credentials, manual reseller wallet credit, withdrawal approval, admin account changes. Eight recovery codes; `php artisan admin:mfa-reset {email}` over SSH. Staging only until a release; the founder then requires MFA on their own account. Details: build-log 2026-10-14.
+- **95** 2026-10-14: `GET /api/health/whatsapp` asks OpenWA for both sessions and answers 503 unless both are `ready` (`unreachable`, `not_configured`, or the session's own status otherwise); throttled 30/min. The founder adds an UptimeRobot monitor on it after the release, alerting after 2 failed checks. Staging only until a release. Details: build-log 2026-10-14.
+- **73** 2026-10-14: every Reseller API rejection a known reseller gets is logged (`warning`, since prod runs `LOG_LEVEL=warning`) from the one render hook: reseller, key, code, status, path, IP, details. A missing or wrong key is not logged (anonymous noise, already rate-limited per IP); `RATE_LIMITED` logs once a minute per reseller (ADR-074 2026-10-14 addendum). Staging only until a release.
+
+- **49, 53, 58, 72, 82, 86, 89** dropped 2026-10-14 (founder): each was a
+  "build if someone reports it" note, not scheduled work. Any design stays
+  in its ADR (49 ADR-060; 58 ADR-075 2026-10-02 addendum; 72, 89 ADR-074
+  addenda). Reasons per item: build-log 2026-10-14.
+- **OpenWA sessions start themselves after a restart** 2026-10-14: every
+  OpenWA restart (Ubuntu's daily unattended upgrade restarts supervisor)
+  left both WhatsApp sessions disconnected until someone pressed Start,
+  for up to 28 h 39 min (3–4 Oct). `AUTO_START_SESSIONS=true` in
+  `~/OpenWA/.env`; verified on a restart the same day (both `ready` in
+  under 2 minutes, no manual start). ADR-114 2026-10-14 addendum.
 
 - **93** 2026-10-13: combo prices no longer go stale. Found on prod in the item-66 audit: 8 active combos sold at a price stored before their components' costs moved (a combo off during a price change came back on sale unrepriced). Every component price change now reprices every combo using it, active or not; the reactivation cascade reprices first; a component markup edit reprices its combos; a markup on a combo is rejected. A migration reprices the stale combos on deploy (ADR-094 2026-10-13 addendum). Staging only until a release. Details: build-log 2026-10-13.
 - **91** 2026-10-13: the admin hero-slide Starts/Ends inputs are read and loaded as Malaysia time whatever the browser's timezone (`klInputToIso` / `isoToKlInput`), so a re-save no longer shifts the schedule 8 hours; the list's Schedule column shows Malaysia dates. No production slide had a schedule. Live via #425 (2026-10-13). Details: build-log 2026-10-13.

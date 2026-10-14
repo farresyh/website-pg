@@ -8,8 +8,8 @@ import { formatRm, formatRmValue, toRm } from "../format";
 const pctOf = (part: number, whole: number) => (whole > 0 ? (part / whole) * 100 : 0);
 
 export function MembershipTab(props: ReportTabProps) {
-  const { token, filters, compare } = props;
-  const membership = useReport(props, () => getMembershipBreakdown(token, filters, compare));
+  const { filters, compare } = props;
+  const membership = useReport(props, () => getMembershipBreakdown(filters, compare));
 
   const m = membership.data;
   const cmp = m?.compare ?? undefined;

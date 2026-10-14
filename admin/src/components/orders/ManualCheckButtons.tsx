@@ -22,7 +22,6 @@ type Kind = "supplier" | "gateway";
 
 interface ManualCheckButtonsProps {
   order: OrderDetail;
-  token: string;
   /** Re-fetches the full order after a check applies an outcome — same pattern as Refund to Wallet/Mark as Delivered. */
   onChecked: () => void;
 }
@@ -36,7 +35,7 @@ interface ManualCheckButtonsProps {
  * per-order/per-supplier cooldown (decision 8) is still active — its
  * `retry_after_seconds` drives the button's own disabled countdown.
  */
-export default function ManualCheckButtons({ order, token, onChecked }: ManualCheckButtonsProps) {
+export default function ManualCheckButtons({ order, onChecked }: ManualCheckButtonsProps) {
   const [loading, setLoading] = useState<Kind | null>(null);
   const [cooldown, setCooldown] = useState<Record<Kind, number>>({ supplier: 0, gateway: 0 });
   const [error, setError] = useState<{ kind: Kind; message: string } | null>(null);
@@ -57,7 +56,7 @@ export default function ManualCheckButtons({ order, token, onChecked }: ManualCh
     setLoading(kind);
     setError(null);
     try {
-      const response = kind === "supplier" ? await checkOrderSupplier(token, order.id) : await checkOrderGateway(token, order.id);
+      const response = kind === "supplier" ? await checkOrderSupplier(order.id) : await checkOrderGateway(order.id);
       setResultState({ kind, result: response.result });
       onChecked();
     } catch (err) {

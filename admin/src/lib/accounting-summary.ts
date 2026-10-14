@@ -23,8 +23,8 @@ export interface MonthlyAccountingSummary {
   operating_profit_sen: number;
 }
 
-export function getMonthlyAccountingSummary(token: string, year: number, month: number) {
-  return apiFetch<MonthlyAccountingSummary>(`/api/accounting/summary?year=${year}&month=${month}`, { token });
+export function getMonthlyAccountingSummary(year: number, month: number) {
+  return apiFetch<MonthlyAccountingSummary>(`/api/accounting/summary?year=${year}&month=${month}`);
 }
 
 /** ADR-083 2026-10-10 addendum, decision 13 — every figure except the cash accounts the founder types in. */
@@ -87,22 +87,22 @@ export interface CloseMonthValues {
   gap_note: string | null;
 }
 
-export function getMonthClose(token: string, year: number, month: number) {
-  return apiFetch<MonthClose>(`/api/accounting/month-close?year=${year}&month=${month}`, { token });
+export function getMonthClose(year: number, month: number) {
+  return apiFetch<MonthClose>(`/api/accounting/month-close?year=${year}&month=${month}`);
 }
 
-export function closeMonth(token: string, values: CloseMonthValues) {
-  return apiFetch<{ close: { id: number } }>("/api/accounting/month-close", { method: "POST", token, body: values });
+export function closeMonth(values: CloseMonthValues) {
+  return apiFetch<{ close: { id: number } }>("/api/accounting/month-close", { method: "POST", body: values });
 }
 
-export function reopenMonthClose(token: string, closeId: number, reason: string) {
-  return apiFetch<{ close: { id: number } }>(`/api/accounting/month-close/${closeId}/reopen`, { method: "POST", token, body: { reason } });
+export function reopenMonthClose(closeId: number, reason: string) {
+  return apiFetch<{ close: { id: number } }>(`/api/accounting/month-close/${closeId}/reopen`, { method: "POST", body: { reason } });
 }
 
-export function createCashAccount(token: string, name: string) {
-  return apiFetch<{ cash_account: { id: number } }>("/api/accounting/cash-accounts", { method: "POST", token, body: { name } });
+export function createCashAccount(name: string) {
+  return apiFetch<{ cash_account: { id: number } }>("/api/accounting/cash-accounts", { method: "POST", body: { name } });
 }
 
-export function updateCashAccount(token: string, id: number, values: { name?: string; is_active?: boolean }) {
-  return apiFetch<{ cash_account: { id: number } }>(`/api/accounting/cash-accounts/${id}`, { method: "PATCH", token, body: values });
+export function updateCashAccount(id: number, values: { name?: string; is_active?: boolean }) {
+  return apiFetch<{ cash_account: { id: number } }>(`/api/accounting/cash-accounts/${id}`, { method: "PATCH", body: values });
 }

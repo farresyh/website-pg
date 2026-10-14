@@ -43,10 +43,10 @@ function ChannelCard({ badge, tone, value, meta, description, footer, muted }: {
 }
 
 export function PartnersTab(props: ReportTabProps) {
-  const { token, filters, compare } = props;
-  const channels = useReport(props, () => getChannelBreakdown(token, filters, compare));
-  const affiliates = useReport(props, () => getAffiliateBreakdown(token, filters));
-  const resellers = useReport(props, () => getResellerBreakdown(token, filters));
+  const { filters, compare } = props;
+  const channels = useReport(props, () => getChannelBreakdown(filters, compare));
+  const affiliates = useReport(props, () => getAffiliateBreakdown(filters));
+  const resellers = useReport(props, () => getResellerBreakdown(filters));
 
   const c = channels.data;
   const total = c?.channels.reduce((sum, ch) => sum + ch.sales, 0) ?? 0;

@@ -296,20 +296,20 @@ export default function GamesPage() {
   // unfiltered regardless of the list view's own search/status filter.
   const [reorderGamesList, setReorderGamesList] = useState<Game[] | null>(null);
 
-  function refreshGames(token: string) {
+  function refreshGames() {
     const isLatest = beginListLoad();
-    return listGames(token, { search: debouncedSearch || undefined, status: status === "all" ? undefined : status })
+    return listGames({ search: debouncedSearch || undefined, status: status === "all" ? undefined : status })
       .then((list) => isLatest() && setGames(list))
       .catch((err: unknown) => {
         if (isLatest()) setError(err instanceof ApiError ? err.message : "Could not load games.");
       });
   }
 
-  async function openGame(token: string, game: Game) {
+  async function openGame(game: Game) {
     setSelected(game);
     setPackages(null);
     try {
-      setPackages(await listGamePackages(token, game.id));
+      setPackages(await listGamePackages(game.id));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load packages.");
     }
@@ -327,7 +327,7 @@ export default function GamesPage() {
   useEffect(() => {
     if (!session) return;
 
-    refreshGames(session.token);
+    refreshGames();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, debouncedSearch, status]);
 
@@ -336,7 +336,7 @@ export default function GamesPage() {
 
     // Powers the "Player ID Validator" picker in EditGameModal — profiles
     // themselves are created/managed at /middleware/validators, not here.
-    listPlayerValidatorProfiles(session.token)
+    listPlayerValidatorProfiles()
       .then(setValidatorProfiles)
       .catch(() => {
         // Non-fatal — the games screen still works, the picker just shows "None" only.
@@ -345,33 +345,33 @@ export default function GamesPage() {
 
   async function handleEditGameSubmit(values: UpdateGameValues) {
     if (!session || !editingGame) return;
-    const updated = await updateGame(session.token, editingGame.id, values);
+    const updated = await updateGame(editingGame.id, values);
     setEditingGame(null);
-    await refreshGames(session.token);
+    await refreshGames();
     if (selected?.id === updated.id) setSelected(updated);
   }
 
   async function handleDeleteGame() {
     if (!session || !editingGame) return;
-    await deleteGame(session.token, editingGame.id);
+    await deleteGame(editingGame.id);
     setEditingGame(null);
     if (selected?.id === editingGame.id) setSelected(null);
-    await refreshGames(session.token);
+    await refreshGames();
   }
 
   async function handleEditPackageSubmit(values: UpdatePackageValues) {
     if (!session || !editingPackage || !selected) return;
-    await updatePackage(session.token, editingPackage.id, values);
+    await updatePackage(editingPackage.id, values);
     setEditingPackage(null);
-    await openGame(session.token, selected);
+    await openGame(selected);
   }
 
   async function handleDeletePackage() {
     if (!session || !editingPackage || !selected) return;
-    await deletePackage(session.token, editingPackage.id);
+    await deletePackage(editingPackage.id);
     setEditingPackage(null);
-    await openGame(session.token, selected);
-    await refreshGames(session.token);
+    await openGame(selected);
+    await refreshGames();
   }
 
   async function startReordering() {
@@ -380,7 +380,7 @@ export default function GamesPage() {
     try {
       // Always the full unfiltered list — the current search/status
       // filter must never determine what gets a sort_order written.
-      setReorderGamesList(await listGames(session.token, {}));
+      setReorderGamesList(await listGames({}));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load games.");
     }
@@ -388,9 +388,9 @@ export default function GamesPage() {
 
   async function handleSaveOrder(orderedIds: number[]) {
     if (!session) return;
-    await reorderGames(session.token, orderedIds);
+    await reorderGames(orderedIds);
     setReorderGamesList(null);
-    await refreshGames(session.token);
+    await refreshGames();
   }
 
   /**
@@ -424,7 +424,7 @@ export default function GamesPage() {
     }
 
     try {
-      await updatePackageStatus(session.token, pkg.id, activating);
+      await updatePackageStatus(pkg.id, activating);
       setPackages((prev) => prev?.map((p) => (p.id === pkg.id ? { ...p, is_active: activating } : p)) ?? null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update status.");
@@ -435,9 +435,9 @@ export default function GamesPage() {
   async function handleConfirmDeactivateCascade() {
     if (!session || !deactivateCascadeTarget || !selected) return;
     try {
-      await updatePackageStatus(session.token, deactivateCascadeTarget.id, false, true);
+      await updatePackageStatus(deactivateCascadeTarget.id, false, true);
       setDeactivateCascadeTarget(null);
-      await openGame(session.token, selected);
+      await openGame(selected);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not deactivate.");
       setDeactivateCascadeTarget(null);
@@ -446,35 +446,35 @@ export default function GamesPage() {
 
   async function handleCreateCombo(values: CreateComboPackageValues) {
     if (!session || !selected) return;
-    await createComboPackage(session.token, selected.id, values);
+    await createComboPackage(selected.id, values);
     setCreatingCombo(false);
-    await openGame(session.token, selected);
-    await refreshGames(session.token);
+    await openGame(selected);
+    await refreshGames();
   }
 
   async function handleUpdateComboOverride(values: UpdateComboOverrideValues) {
     if (!session || !editingCombo || !selected) return;
-    await updateComboOverride(session.token, editingCombo.id, values);
+    await updateComboOverride(editingCombo.id, values);
     setEditingCombo(null);
-    await openGame(session.token, selected);
+    await openGame(selected);
   }
 
   async function handleDeleteCombo() {
     if (!session || !editingCombo || !selected) return;
-    await deletePackage(session.token, editingCombo.id);
+    await deletePackage(editingCombo.id);
     setEditingCombo(null);
-    await openGame(session.token, selected);
-    await refreshGames(session.token);
+    await openGame(selected);
+    await refreshGames();
   }
 
   async function handleUpdateMarkup(pkg: GamePackage, markupPercent: number) {
     if (!session || !selected) return;
     setError(null);
     try {
-      await updatePackageMarkup(session.token, pkg.id, markupPercent);
+      await updatePackageMarkup(pkg.id, markupPercent);
       // Refetch, not merge: the combos using this package are repriced
       // server-side too, and only the list endpoint returns them.
-      setPackages(await listGamePackages(session.token, selected.id));
+      setPackages(await listGamePackages(selected.id));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update markup.");
     }
@@ -485,7 +485,7 @@ export default function GamesPage() {
     setError(null);
     try {
       // Merge, don't replace — same reasoning as handleUpdateMarkup.
-      const updated = await updatePackageDenomination(session.token, pkg.id, denomination);
+      const updated = await updatePackageDenomination(pkg.id, denomination);
       setPackages((prev) => prev?.map((p) => (p.id === pkg.id ? { ...p, ...updated } : p)) ?? null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update denomination.");
@@ -497,7 +497,7 @@ export default function GamesPage() {
     setError(null);
     try {
       // Merge, don't replace — same reasoning as handleUpdateMarkup.
-      const updated = await updatePackageCatalogCode(session.token, pkg.id, catalogCode);
+      const updated = await updatePackageCatalogCode(pkg.id, catalogCode);
       setPackages((prev) => prev?.map((p) => (p.id === pkg.id ? { ...p, ...updated } : p)) ?? null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update catalog code.");
@@ -752,7 +752,7 @@ export default function GamesPage() {
                           </Tag>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <Button size="small" variant="outlined" onClick={() => session && openGame(session.token, game)}>
+                          <Button size="small" variant="outlined" onClick={() => session && openGame(game)}>
                             View
                           </Button>
                         </DataTableCell>

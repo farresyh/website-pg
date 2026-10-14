@@ -46,24 +46,24 @@ export default function PaymentGatewaysPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const refresh = useCallback((token: string) => {
-    listPaymentGateways(token)
+  const refresh = useCallback(() => {
+    listPaymentGateways()
       .then(setGateways)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load payment gateways."));
   }, []);
 
   useEffect(() => {
     if (!session) return;
-    refresh(session.token);
+    refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   async function handleSave(apiConfig: Record<string, string>) {
     if (!session || !editTarget) return;
     setNotice(null);
-    const updated = await updatePaymentGateway(session.token, editTarget, apiConfig);
+    const updated = await updatePaymentGateway(editTarget, apiConfig);
     setEditTarget(null);
-    refresh(session.token);
+    refresh();
 
     const probe = updated.connection_probe;
     setNotice({

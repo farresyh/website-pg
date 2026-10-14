@@ -38,7 +38,6 @@ import {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  token: string;
   detail: AffiliateDetail;
   tiers: AffiliateTier[];
   onChanged: (detail: AffiliateDetail) => void;
@@ -68,7 +67,7 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleString("en-MY", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-function Body({ token, detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isOpen">) {
+function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isOpen">) {
   const r = detail.affiliate;
   const sub = r.subscription;
 
@@ -167,7 +166,7 @@ function Body({ token, detail, tiers, onChanged, onRefresh, onClose }: Omit<Prop
             disabled={busy !== null || tierId === "" || (sub !== null && String(sub.tier_id) === tierId)}
             onClick={() =>
               run("assign", async () => {
-                const d = await assignAffiliateTier(token, r.id, Number(tierId), tierNote || null);
+                const d = await assignAffiliateTier(r.id, Number(tierId), tierNote || null);
                 setTierNote("");
                 onChanged(d);
                 setNotice("Tier updated.");
@@ -187,7 +186,7 @@ function Body({ token, detail, tiers, onChanged, onRefresh, onClose }: Omit<Prop
               disabled={busy !== null}
               onClick={() =>
                 run("charge", async () => {
-                  const d = await chargeAffiliateTierFee(token, r.id);
+                  const d = await chargeAffiliateTierFee(r.id);
                   onChanged(d);
                   setNotice("Charge attempted — see the tier status above.");
                 })
@@ -203,7 +202,7 @@ function Body({ token, detail, tiers, onChanged, onRefresh, onClose }: Omit<Prop
                 disabled={busy !== null}
                 onClick={() =>
                   run("reactivate", async () => {
-                    const d = await reactivateAffiliateSubscription(token, r.id);
+                    const d = await reactivateAffiliateSubscription(r.id);
                     onChanged(d);
                     setNotice("Subscription reactivated with a fresh 30-day cycle.");
                   })
@@ -236,7 +235,7 @@ function Body({ token, detail, tiers, onChanged, onRefresh, onClose }: Omit<Prop
                     disabled={busy !== null}
                     onClick={() =>
                       run(`resend-${u.id}`, async () => {
-                        await resendAffiliateInvite(token, r.id, u.id);
+                        await resendAffiliateInvite(r.id, u.id);
                         setNotice(`Invite re-sent to ${u.email}.`);
                       })
                     }
@@ -264,7 +263,7 @@ function Body({ token, detail, tiers, onChanged, onRefresh, onClose }: Omit<Prop
             disabled={busy !== null || !newUserName || !newUserEmail}
             onClick={() =>
               run("add-user", async () => {
-                const d = await addAffiliateUser(token, r.id, { name: newUserName, email: newUserEmail });
+                const d = await addAffiliateUser(r.id, { name: newUserName, email: newUserEmail });
                 setNewUserName("");
                 setNewUserEmail("");
                 onChanged(d);
@@ -313,7 +312,7 @@ function Body({ token, detail, tiers, onChanged, onRefresh, onClose }: Omit<Prop
                         disabled={busy !== null}
                         onClick={() =>
                           run(`domain-recheck-${d.id}`, async () => {
-                            const detail2 = await recheckAffiliateDomain(token, r.id, d.id);
+                            const detail2 = await recheckAffiliateDomain(r.id, d.id);
                             onChanged(detail2);
                             setNotice(`Re-checked ${d.hostname}.`);
                           })
@@ -328,7 +327,7 @@ function Body({ token, detail, tiers, onChanged, onRefresh, onClose }: Omit<Prop
                         disabled={busy !== null}
                         onClick={() =>
                           run(`domain-remove-${d.id}`, async () => {
-                            const detail2 = await removeAffiliateDomain(token, r.id, d.id);
+                            const detail2 = await removeAffiliateDomain(r.id, d.id);
                             onChanged(detail2);
                             setNotice(`Removed ${d.hostname}.`);
                           })
@@ -364,7 +363,7 @@ function Body({ token, detail, tiers, onChanged, onRefresh, onClose }: Omit<Prop
             disabled={busy !== null || r.status !== "active"}
             onClick={() =>
               run("impersonate", async () => {
-                const res = await impersonateAffiliate(token, r.id, impersonateReason || null);
+                const res = await impersonateAffiliate(r.id, impersonateReason || null);
                 setImpersonateReason("");
                 // ADR-059 59c: open the portal directly, carrying the
                 // minted token in the URL *hash* (never a query string —
@@ -412,7 +411,7 @@ function Body({ token, detail, tiers, onChanged, onRefresh, onClose }: Omit<Prop
   );
 }
 
-export default function AffiliateDetailModal({ isOpen, onClose, token, detail, tiers, onChanged, onRefresh }: Props) {
+export default function AffiliateDetailModal({ isOpen, onClose, detail, tiers, onChanged, onRefresh }: Props) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -429,7 +428,7 @@ export default function AffiliateDetailModal({ isOpen, onClose, token, detail, t
             </DialogHeader>
             <DialogContent>
               {isOpen && (
-                <Body token={token} detail={detail} tiers={tiers} onChanged={onChanged} onRefresh={onRefresh} onClose={onClose} />
+                <Body detail={detail} tiers={tiers} onChanged={onChanged} onRefresh={onRefresh} onClose={onClose} />
               )}
             </DialogContent>
           </DialogPopup>

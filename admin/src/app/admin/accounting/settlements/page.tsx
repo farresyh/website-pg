@@ -64,7 +64,6 @@ const statusSeverity: Record<PaymentSettlement["status"], "secondary" | "success
 export default function PaymentSettlementsPage() {
   const router = useRouter();
   const session = useClientSession();
-  const token = session?.token ?? null;
 
   const [viewMode, setViewMode] = useState<"window" | "date">("window");
 
@@ -83,15 +82,15 @@ export default function PaymentSettlementsPage() {
   const [dateRangeData, setDateRangeData] = useState<Paginated<ChipSettledTransactionWithWindow> | null>(null);
   const [dateRangeError, setDateRangeError] = useState<string | null>(null);
 
-  const refresh = useCallback((t: string, p: number) => {
-    listPaymentSettlements(t, p)
+  const refresh = useCallback((p: number) => {
+    listPaymentSettlements(p)
       .then(setSettlements)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load settlements."));
   }, []);
 
-  const refreshDateRange = useCallback((t: string, p: number) => {
+  const refreshDateRange = useCallback((p: number) => {
     setDateRangeError(null);
-    getSettlementTransactionsByDateRange(t, { from: dateFrom || undefined, to: dateTo || undefined, page: p })
+    getSettlementTransactionsByDateRange({ from: dateFrom || undefined, to: dateTo || undefined, page: p })
       .then(setDateRangeData)
       .catch((err: unknown) => setDateRangeError(err instanceof ApiError ? err.message : "Could not load transactions for this range."));
   }, [dateFrom, dateTo]);
@@ -102,42 +101,42 @@ export default function PaymentSettlementsPage() {
       router.replace("/login");
       return;
     }
-    refresh(s.token, page);
+    refresh(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
   /** Fetched on-demand (toggle click / Filter click), never as an effect — nothing external to synchronize with, just a user action. */
   function handleViewModeChange(mode: "window" | "date") {
     setViewMode(mode);
-    if (mode === "date" && token && !dateRangeData) {
-      refreshDateRange(token, dateRangePage);
+    if (mode === "date" && session && !dateRangeData) {
+      refreshDateRange(dateRangePage);
     }
   }
 
   function handleDateRangeFilter() {
-    if (!token) return;
+    if (!session) return;
     setDateRangePage(1);
-    refreshDateRange(token, 1);
+    refreshDateRange(1);
   }
 
   function handleDateRangePageChange(p: number) {
-    if (!token) return;
+    if (!session) return;
     setDateRangePage(p);
-    refreshDateRange(token, p);
+    refreshDateRange(p);
   }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file || !token) return;
+    if (!file || !session) return;
 
     setUploading(true);
     setError(null);
     setLastResult(null);
     try {
-      const result = await uploadPaymentSettlement(token, file);
+      const result = await uploadPaymentSettlement(file);
       setLastResult(result);
-      refresh(token, page);
+      refresh(page);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Upload failed — is this a real CHIP settlement .xlsx?");
     } finally {
@@ -154,7 +153,7 @@ export default function PaymentSettlementsPage() {
    * still null).
    */
   async function handleSaveBankFigure(settlement: PaymentSettlement) {
-    if (!token) return;
+    if (!session) return;
     const raw = bankFigures[settlement.id];
     if (!raw) return;
     const sen = Math.round(parseFloat(raw) * 100);
@@ -163,9 +162,9 @@ export default function PaymentSettlementsPage() {
     setSavingId(settlement.id);
     setError(null);
     try {
-      await updatePaymentSettlement(token, settlement.id, { actual_bank_amount_sen: sen });
+      await updatePaymentSettlement(settlement.id, { actual_bank_amount_sen: sen });
       setEditingBankFigure(null);
-      refresh(token, page);
+      refresh(page);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not save the bank figure.");
     } finally {
@@ -177,7 +176,7 @@ export default function PaymentSettlementsPage() {
     return <p className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>;
   }
 
-  if (!token || !settlements) {
+  if (!session || !settlements) {
     return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
   }
 

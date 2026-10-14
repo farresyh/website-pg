@@ -122,7 +122,7 @@ export default function DeveloperToolsPage() {
 
   useEffect(() => {
     if (!session) return;
-    listSuppliers(session.token).then(setSuppliers).catch(() => undefined);
+    listSuppliers().then(setSuppliers).catch(() => undefined);
   }, [session]);
 
   const supplier = suppliers.find((s) => String(s.id) === supplierId) ?? null;
@@ -146,7 +146,7 @@ export default function DeveloperToolsPage() {
       const trimmedPayload = Object.fromEntries(
         Object.entries(payload).filter(([, value]) => value.trim() !== ""),
       );
-      const response = await testSupplierAdapter(session.token, {
+      const response = await testSupplierAdapter({
         supplier_id: supplier.id,
         method,
         dry_run: dryRun,

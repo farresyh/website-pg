@@ -15,7 +15,7 @@ import {
 } from "@/lib/settings";
 
 /** ADR-089: primary brand's own Logo + Favicon upload — was previously only available to affiliates via the reseller portal's Branding tab. */
-function LogoAndFaviconPanel({ token, branding, onSaved }: { token: string; branding: Branding; onSaved: () => void }) {
+function LogoAndFaviconPanel({ branding, onSaved }: { branding: Branding; onSaved: () => void }) {
   const logoRef = useRef<HTMLInputElement>(null);
   const faviconRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<"logo" | "favicon" | null>(null);
@@ -25,7 +25,7 @@ function LogoAndFaviconPanel({ token, branding, onSaved }: { token: string; bran
     setBusy("logo");
     setError(null);
     try {
-      await uploadBrandingLogo(token, file);
+      await uploadBrandingLogo(file);
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not upload that logo.");
@@ -39,7 +39,7 @@ function LogoAndFaviconPanel({ token, branding, onSaved }: { token: string; bran
     setBusy("logo");
     setError(null);
     try {
-      await deleteBrandingLogo(token);
+      await deleteBrandingLogo();
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not remove the logo.");
@@ -52,7 +52,7 @@ function LogoAndFaviconPanel({ token, branding, onSaved }: { token: string; bran
     setBusy("favicon");
     setError(null);
     try {
-      await uploadBrandingFavicon(token, file);
+      await uploadBrandingFavicon(file);
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not upload that favicon.");
@@ -66,7 +66,7 @@ function LogoAndFaviconPanel({ token, branding, onSaved }: { token: string; bran
     setBusy("favicon");
     setError(null);
     try {
-      await deleteBrandingFavicon(token);
+      await deleteBrandingFavicon();
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not remove the favicon.");
@@ -144,11 +144,9 @@ function LogoAndFaviconPanel({ token, branding, onSaved }: { token: string; bran
 }
 
 export default function StoreBrandingSection({
-  token,
   branding,
   onSaved,
 }: {
-  token: string;
   branding: Branding;
   onSaved: () => void;
 }) {
@@ -168,7 +166,7 @@ export default function StoreBrandingSection({
     setSaving(true);
     setError(null);
     try {
-      await updateBranding(token, {
+      await updateBranding({
         store_name: storeName,
         description: description || null,
         support_email: supportEmail || null,
@@ -192,7 +190,7 @@ export default function StoreBrandingSection({
 
   return (
     <div>
-      <LogoAndFaviconPanel token={token} branding={branding} onSaved={onSaved} />
+      <LogoAndFaviconPanel branding={branding} onSaved={onSaved} />
 
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
       {error && (

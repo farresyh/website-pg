@@ -7,6 +7,7 @@ use App\Http\Requests\Admin\CreateAdminUserRequest;
 use App\Http\Requests\Admin\UpdateAdminUserRequest;
 use App\Http\Requests\Admin\UpdateAdminUserStatusRequest;
 use App\Models\AdminUser;
+use App\Services\Auth\AdminMfa;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
 
@@ -31,7 +32,7 @@ class AdminUserController extends Controller
         return response()->json($admin, 201);
     }
 
-    public function update(UpdateAdminUserRequest $request, AdminUser $admin_user): JsonResponse
+    public function update(UpdateAdminUserRequest $request, AdminUser $admin_user, AdminMfa $mfa): JsonResponse
     {
         $data = $request->validated();
 
@@ -41,6 +42,11 @@ class AdminUserController extends Controller
 
         $admin_user->update($data);
 
+        // ADR-121: a new password ends that admin's other sessions.
+        if (isset($data['password'])) {
+            $mfa->endSessions($admin_user, $admin_user->is($request->user()) && $request->hasSession() ? $request->session()->getId() : null);
+        }
+
         return response()->json($admin_user);
     }
 
@@ -49,7 +55,7 @@ class AdminUserController extends Controller
      * single-admin setup (or a mistake) locks out the only account that
      * could undo it.
      */
-    public function updateStatus(UpdateAdminUserStatusRequest $request, AdminUser $admin_user): JsonResponse
+    public function updateStatus(UpdateAdminUserStatusRequest $request, AdminUser $admin_user, AdminMfa $mfa): JsonResponse
     {
         $isActive = $request->validated('is_active');
 
@@ -60,6 +66,22 @@ class AdminUserController extends Controller
         }
 
         $admin_user->update(['is_active' => $isActive]);
+
+        if (! $isActive) {
+            $mfa->endSessions($admin_user);
+        }
+
+        return response()->json($admin_user);
+    }
+
+    /**
+     * ADR-121 decision 3: one-way, and deliberately not behind step-up (it
+     * only adds protection, and the first admin to use it has no code yet).
+     * Turning MFA off is `php artisan admin:mfa-reset` only.
+     */
+    public function requireMfa(AdminUser $admin_user): JsonResponse
+    {
+        $admin_user->forceFill(['mfa_required' => true])->save();
 
         return response()->json($admin_user);
     }

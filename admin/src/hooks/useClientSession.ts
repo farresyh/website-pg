@@ -5,7 +5,7 @@
  * used to be duplicated as `useState<SessionPayload|null>(null)` +
  * `useEffect(() => setSession(getClientSession()), [])` across ~24 call
  * sites (see UserDropdown.tsx's original comment for why a render-body
- * read isn't safe — sessionStorage doesn't exist during SSR, so it
+ * read isn't safe — browser storage doesn't exist during SSR, so it
  * produces a server/client text mismatch).
  *
  * useSyncExternalStore is the framework-provided fix: getServerSnapshot

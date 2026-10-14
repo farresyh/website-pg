@@ -65,23 +65,23 @@ export interface SettlementIngestResult {
   paid_but_not_settled: PaidButNotSettledRow[];
 }
 
-export function listPaymentSettlements(token: string, page = 1) {
-  return apiFetch<Paginated<PaymentSettlement>>(`/api/accounting/settlements?page=${page}`, { token });
+export function listPaymentSettlements(page = 1) {
+  return apiFetch<Paginated<PaymentSettlement>>(`/api/accounting/settlements?page=${page}`);
 }
 
-export function getPaymentSettlement(token: string, id: number, transactionsPage = 1) {
+export function getPaymentSettlement(id: number, transactionsPage = 1) {
   return apiFetch<{
     settlement: PaymentSettlement;
     transactions: Paginated<ChipSettledTransaction>;
     paid_but_not_settled: PaidButNotSettledRow[];
-  }>(`/api/accounting/settlements/${id}?page=${transactionsPage}`, { token });
+  }>(`/api/accounting/settlements/${id}?page=${transactionsPage}`);
 }
 
-export function uploadPaymentSettlement(token: string, file: File) {
+export function uploadPaymentSettlement(file: File) {
   const formData = new FormData();
   formData.append("file", file);
 
-  return apiUpload<SettlementIngestResult>("/api/accounting/settlements", formData, { token });
+  return apiUpload<SettlementIngestResult>("/api/accounting/settlements", formData);
 }
 
 /** ADR-110 PR-B addendum — a purely optional founder annotation, no cadence, never touches `status` (computed, read-only). */
@@ -90,8 +90,8 @@ export interface UpdatePaymentSettlementValues {
   variance_note?: string;
 }
 
-export function updatePaymentSettlement(token: string, id: number, values: UpdatePaymentSettlementValues) {
-  return apiFetch<PaymentSettlement>(`/api/accounting/settlements/${id}`, { method: "PATCH", body: values, token });
+export function updatePaymentSettlement(id: number, values: UpdatePaymentSettlementValues) {
+  return apiFetch<PaymentSettlement>(`/api/accounting/settlements/${id}`, { method: "PATCH", body: values });
 }
 
 /** 2026-09-28 addendum — a matched CHIP transaction as returned by the cross-window date-range view, carrying its parent upload window for a "View Window" link. */
@@ -113,7 +113,7 @@ export interface SettlementDateRangeFilters {
  * double-count risk — `chip_settled_transactions.transaction_id` is
  * already unique-dedup'd at ingest (ADR-110).
  */
-export function getSettlementTransactionsByDateRange(token: string, filters: SettlementDateRangeFilters = {}) {
+export function getSettlementTransactionsByDateRange(filters: SettlementDateRangeFilters = {}) {
   const params = new URLSearchParams();
   if (filters.from) params.set("from", filters.from);
   if (filters.to) params.set("to", filters.to);
@@ -121,5 +121,5 @@ export function getSettlementTransactionsByDateRange(token: string, filters: Set
   if (filters.per_page) params.set("per_page", String(filters.per_page));
   const qs = params.toString();
 
-  return apiFetch<Paginated<ChipSettledTransactionWithWindow>>(`/api/accounting/settlements/transactions${qs ? `?${qs}` : ""}`, { token });
+  return apiFetch<Paginated<ChipSettledTransactionWithWindow>>(`/api/accounting/settlements/transactions${qs ? `?${qs}` : ""}`);
 }

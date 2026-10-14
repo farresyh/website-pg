@@ -67,7 +67,7 @@ export default function ReportAssistantPage() {
     setError(null);
 
     try {
-      const result = await askReportAssistant(session.token, text, history);
+      const result = await askReportAssistant(text, history);
       setMessages((prev) => [...prev, { role: "assistant", text: result.answer, sql: result.sql }]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not reach the assistant.");

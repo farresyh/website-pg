@@ -67,9 +67,9 @@ export default function GalleryPage() {
   }, []);
 
   const refresh = useCallback(
-    (token: string) => {
+    () => {
       const isLatest = beginListLoad();
-      listGalleryImages(token, { search: debouncedSearch || undefined, page: pageNumber })
+      listGalleryImages({ search: debouncedSearch || undefined, page: pageNumber })
         .then((p) => isLatest() && setPage(p))
         .catch((err) => isLatest() && setError(err instanceof ApiError ? err.message : "Could not load the gallery."));
     },
@@ -78,7 +78,7 @@ export default function GalleryPage() {
 
   useEffect(() => {
     if (!session) return;
-    refresh(session.token);
+    refresh();
   }, [session, refresh]);
 
   async function handleFiles(files: FileList | null) {
@@ -91,10 +91,10 @@ export default function GalleryPage() {
       // request contract (UploadGalleryImageRequest); a multi-file
       // drop just fires several uploads, not one multi-file endpoint.
       for (const file of Array.from(files)) {
-        await uploadGalleryImage(session.token, file);
+        await uploadGalleryImage(file);
       }
       setPageNumber(1);
-      refresh(session.token);
+      refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Upload failed.");
     } finally {
@@ -112,7 +112,7 @@ export default function GalleryPage() {
     // dialog opens rather than embedded in every grid card (24+ per
     // page); a plain fetch failure here degrades to "unknown," never
     // blocks the delete action itself.
-    getGalleryImageReferences(session.token, image.id)
+    getGalleryImageReferences(image.id)
       .then((res) => setDeletingReferences(res.references))
       .catch(() => setDeletingReferences([]))
       .finally(() => setLoadingReferences(false));
@@ -121,10 +121,10 @@ export default function GalleryPage() {
   async function handleDeleteConfirmed() {
     if (!session || !deletingImage) return;
     try {
-      await deleteGalleryImage(session.token, deletingImage.id);
+      await deleteGalleryImage(deletingImage.id);
       setDeletingImage(null);
       setDeletingReferences(null);
-      refresh(session.token);
+      refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not delete this image.");
     }

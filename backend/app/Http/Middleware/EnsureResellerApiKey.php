@@ -66,6 +66,9 @@ class EnsureResellerApiKey
             throw $token === null ? ResellerApiException::missingApiKey() : ResellerApiException::invalidApiKey();
         }
 
+        // Lets bootstrap/app.php log a rejection below (or later) against this key.
+        $request->attributes->set('reseller_api_key', $key);
+
         $reseller = $key->reseller;
         if ($reseller === null || ! $reseller->is_active) {
             throw ResellerApiException::resellerInactive();

@@ -41,7 +41,6 @@ import {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  token: string;
   reseller: ResellerRow;
 }
 
@@ -50,7 +49,7 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleString("en-MY", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
+function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
   const [users, setUsers] = useState<ResellerUserRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -60,7 +59,7 @@ function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
   const [newUserEmail, setNewUserEmail] = useState("");
 
   function refresh() {
-    return getResellerDetail(token, reseller.id)
+    return getResellerDetail(reseller.id)
       .then((d) => setUsers(d.users))
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load portal users."));
   }
@@ -116,7 +115,7 @@ function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
                   disabled={busy !== null}
                   onClick={() =>
                     run(`resend-${u.id}`, async () => {
-                      await resendResellerUserInvite(token, reseller.id, u.id);
+                      await resendResellerUserInvite(reseller.id, u.id);
                       setNotice(`Invite re-sent to ${u.email}.`);
                     })
                   }
@@ -152,7 +151,7 @@ function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
           disabled={busy !== null || !newUserName || !newUserEmail}
           onClick={() =>
             run("add-user", async () => {
-              const d = await addResellerUser(token, reseller.id, { name: newUserName, email: newUserEmail });
+              const d = await addResellerUser(reseller.id, { name: newUserName, email: newUserEmail });
               setNewUserName("");
               setNewUserEmail("");
               setUsers(d.users);
@@ -167,7 +166,7 @@ function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
   );
 }
 
-export default function ResellerPortalUsersModal({ isOpen, onClose, token, reseller }: Props) {
+export default function ResellerPortalUsersModal({ isOpen, onClose, reseller }: Props) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -183,7 +182,7 @@ export default function ResellerPortalUsersModal({ isOpen, onClose, token, resel
               </DialogHeaderActions>
             </DialogHeader>
             <DialogContent>
-              {isOpen && <Content key={reseller.id} token={token} reseller={reseller} />}
+              {isOpen && <Content key={reseller.id} reseller={reseller} />}
             </DialogContent>
           </DialogPopup>
         </DialogPositioner>

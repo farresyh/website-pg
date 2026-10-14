@@ -36,9 +36,10 @@ final class AccountLoginThrottle
         }
     }
 
-    public function recordFailure(): void
+    /** @return bool true on the failure that just locked the account (ADR-121 alerts on it) */
+    public function recordFailure(): bool
     {
-        RateLimiter::hit($this->key(), self::DECAY_SECONDS);
+        return RateLimiter::hit($this->key(), self::DECAY_SECONDS) === self::MAX_FAILURES;
     }
 
     public function clear(): void

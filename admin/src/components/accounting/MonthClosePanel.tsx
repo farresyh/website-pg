@@ -26,14 +26,13 @@ const sumSen = (values: Record<number, string>) =>
   Object.values(values).reduce((sum, v) => sum + (Number.isFinite(signedRmToSen(v)) ? signedRmToSen(v) : 0), 0);
 
 interface Props {
-  token: string;
   year: number;
   month: number;
   data: MonthClose;
   onChanged: () => Promise<void> | void;
 }
 
-export function MonthClosePanel({ token, year, month, data, onChanged }: Props) {
+export function MonthClosePanel({ year, month, data, onChanged }: Props) {
   const [allocations, setAllocations] = useState<Record<number, string>>({});
   const [balances, setBalances] = useState<Record<number, string>>({});
   const [gapNote, setGapNote] = useState("");
@@ -71,7 +70,7 @@ export function MonthClosePanel({ token, year, month, data, onChanged }: Props) 
       setError("Enter every amount as RM, e.g. 120.50 (a loss allocation can be negative).");
       return;
     }
-    void run(() => closeMonth(token, { year, month, lines, cash_balances: cash, gap_note: gapNote.trim() || null }));
+    void run(() => closeMonth({ year, month, lines, cash_balances: cash, gap_note: gapNote.trim() || null }));
   }
 
   return (
@@ -119,7 +118,7 @@ export function MonthClosePanel({ token, year, month, data, onChanged }: Props) 
           {close.gap_note && <p className="mt-3 text-theme-sm text-gray-600 dark:text-gray-300">Gap note: {close.gap_note}</p>}
           {close.can_reopen && (
             <form
-              onSubmit={(e) => { e.preventDefault(); void run(() => reopenMonthClose(token, close.id, reopenReason.trim())); }}
+              onSubmit={(e) => { e.preventDefault(); void run(() => reopenMonthClose(close.id, reopenReason.trim())); }}
               className="mt-5 flex flex-wrap items-end gap-2 border-t border-gray-100 pt-4 dark:border-gray-800"
             >
               <div className="min-w-64 flex-1">
@@ -158,7 +157,7 @@ export function MonthClosePanel({ token, year, month, data, onChanged }: Props) 
                 <div key={acc.id}>
                   <div className="flex items-baseline justify-between">
                     <Label htmlFor={`cash_${acc.id}`}>{acc.name}</Label>
-                    <button type="button" onClick={() => void run(() => updateCashAccount(token, acc.id, { is_active: false }))} className="text-theme-xs text-gray-400 hover:underline">
+                    <button type="button" onClick={() => void run(() => updateCashAccount(acc.id, { is_active: false }))} className="text-theme-xs text-gray-400 hover:underline">
                       Archive
                     </button>
                   </div>
@@ -175,7 +174,7 @@ export function MonthClosePanel({ token, year, month, data, onChanged }: Props) 
                   size="small"
                   variant="outlined"
                   disabled={busy || !newAccount.trim()}
-                  onClick={() => void run(async () => { await createCashAccount(token, newAccount.trim()); setNewAccount(""); })}
+                  onClick={() => void run(async () => { await createCashAccount(newAccount.trim()); setNewAccount(""); })}
                 >
                   Add
                 </Button>

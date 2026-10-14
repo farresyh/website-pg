@@ -2,16 +2,14 @@
 
 import Echo from "laravel-echo";
 import Pusher from "pusher-js";
-import { getClientSession } from "@/lib/session";
+import { apiRequest } from "@/lib/api-client";
 
 /**
  * ADR-047 decisions 1/3/5 — Reverb client, admin side. Every channel here
- * is PRIVATE (routes/channels.php), authorized against the bearer-token
- * session this app already uses for every other API call (ADR-009 — no
- * cookie/session auth exists) — Echo's default authorizer assumes cookie-
- * based Sanctum SPA auth, which doesn't apply here, so a custom one reads
- * the current token fresh on every subscribe instead (the token can
- * change across this Echo instance's lifetime — login/logout/expiry).
+ * is PRIVATE (routes/channels.php), authorized through apiRequest() — the
+ * same session cookie + CSRF header as every other API call (ADR-121).
+ * Echo's default authorizer would post to its own relative URL without
+ * our CSRF header, so this one routes through the shared client instead.
  *
  * A single module-level instance, not one per page — Price Sync/Backups
  * both need a live connection while their own screens are mounted, but
@@ -24,8 +22,6 @@ declare global {
   }
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
-
 /**
  * pusher-js's own generator type for this (`ChannelAuthorizerGenerator`)
  * isn't exported from its public entrypoint, so this is typed loosely at
@@ -36,18 +32,12 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
 function reverbAuthorizer(channel: { name: string }): any {
   return {
     authorize(socketId: string, callback: (error: Error | null, data: { auth: string } | null) => void) {
-      const token = getClientSession()?.token;
-
-      fetch(`${API_BASE_URL}/api/broadcasting/auth`, {
+      apiRequest("/api/broadcasting/auth", {
         method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ socket_id: socketId, channel_name: channel.name }),
       })
-        .then((response) => (response.ok ? response.json() : Promise.reject(response)))
+        .then((response) => response.json())
         .then((data) => callback(null, data))
         .catch(() => callback(new Error("Channel authorization failed"), null));
     },

@@ -54,7 +54,7 @@ function PreviewCard({ preview }: { preview: MembershipPricingPreview }) {
   );
 }
 
-export default function TierCard({ token, plan, onSaved }: { token: string; plan: MembershipPlan; onSaved: () => void }) {
+export default function TierCard({ plan, onSaved }: { plan: MembershipPlan; onSaved: () => void }) {
   const [name, setName] = useState(plan.name);
   const [feeRm, setFeeRm] = useState(String(plan.fee_sen / 100));
   const [quotaRm, setQuotaRm] = useState(String(plan.quota_sen / 100));
@@ -101,7 +101,7 @@ export default function TierCard({ token, plan, onSaved }: { token: string; plan
     setPreviewing(true);
     setPreviewError(null);
     try {
-      setPreview(await previewMembershipPricing(token, discount));
+      setPreview(await previewMembershipPricing(discount));
     } catch (err) {
       setPreviewError(err instanceof ApiError ? err.message : "Could not preview this discount.");
     } finally {
@@ -131,7 +131,7 @@ export default function TierCard({ token, plan, onSaved }: { token: string; plan
     setError(null);
     setSaved(false);
     try {
-      await updateMembershipPlan(token, plan.id, {
+      await updateMembershipPlan(plan.id, {
         name,
         fee_sen: feeSen,
         quota_sen: quotaSen,

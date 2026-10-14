@@ -708,3 +708,138 @@ Reopen only as a "Duplicate combo" button (ADR-094 2026-10-14 addendum, PRD
   is below cost. The 2026-10-13 entry expected 9 combos to be repriced;
   component costs have moved since, so the next release's migration should now
   reprice 28.
+
+**Release #430 verified (2026-10-14, read-only).** `main` = `735e156`;
+migration `2026_10_13_100000_recompute_stale_combo_prices` ran at 06:58:18
+UTC and wrote 28 `PriceChangeLog` rows (no sync run), matching the
+pre-release count. Same check after deploy: **0 stale of 101 combos**. The
+active count moved from 81 to 100 (PUBG 28 → 48), but not from the
+release: Price Sync run 2218 at 06:30:42 UTC, before the deploy,
+cascade-reactivated the 20 inactive September PUBG combos (1366–1435,
+`deactivated_reason = combo_component_deactivated`, `PackageReactivationLog`
+trigger `combo_components_all_active`) once their components came back.
+That ran on the old code, so they came back unrepriced, which is the item-93
+bug; the migration repriced them 28 minutes later. PUBG now has two active
+combos per denomination for those sizes (September and 2026-10-09 versions).
+
+## 2026-10-14 — §16 group D reviewed item by item; OpenWA sessions auto-start
+
+**Why.** The founder asked which "waiting on a trigger" items could be
+decided now instead of sitting in the backlog. Each was checked against prod
+(read-only) before deciding.
+
+**Decisions (founder).**
+- **28** Forecast plus low-balance email: build two weeks after launch
+  (payments back on for real customers). The founder set Digiflazz's
+  `low_balance_threshold` to IDR 10,000,000 the same day, so the Dashboard
+  chip works now (ADR-115 2026-10-14 addendum). **55** follows 28.
+- **10** Admin MFA: build (moved to group B, new ADR at the grill).
+  Affiliate/reseller MFA dropped. Login 7 days max, 2 days idle, shared
+  across tabs; a fresh code for CHIP credentials, wallet credit and voucher
+  issue; recovery codes (ADR-019, ADR-058, ADR-059 2026-10-14 addenda).
+- **73** Reseller API rejection log: build now (group A). Prod: 0 Reseller
+  API orders ever, keys last used 2026-09-09.
+- **New 95** WhatsApp session health endpoint for UptimeRobot (group A).
+  **New 96** OpenWA v0.24.0 upgrade (group C). The founder added an
+  UptimeRobot monitor on `https://bot.pekangame.space/api/health` (green).
+- **Dropped:** 49 (proxied affiliate domain), 53 (parallel reconcile), 58
+  (OpenWA chat-list rehydration: the founder answers from the
+  `customer-support` phone; ADR-075 2026-10-14 addendum), 72 (Bot `max=`),
+  82 (CS inbound log and CS-agent inputs: no CS agent is planned; the inputs
+  are still in the founder's `/Project/chatbot`), 86 (email logo PNG), 89
+  (per-reseller rate limit). Each was "build if someone reports it"; any
+  design stays in its ADR.
+- **Kept with their triggers:** 4, 59, 74, 83, 85.
+
+**OpenWA restarts left the bots down (prod fix, founder-run).** The founder
+often had to press Start on a disconnected session. The OpenWA audit log
+showed a manual `session_started` after every process restart, with the bots
+down 2 min to 28 h 39 min (3–4 Oct) between 30 Sep and 13 Oct. Cause: Ubuntu's
+daily `unattended-upgrade` → `needrestart` → `supervisor` restart → every
+Forge daemon restarts (13 Oct: apt 06:39:12, supervisor 06:39:19 UTC), and
+`AUTO_START_SESSIONS` was unset, which OpenWA treats as off.
+- Ran by the founder (the model's write was blocked by the permission
+  classifier): `cp .env .env.bak-2026-10-14 && printf
+  "\nAUTO_START_SESSIONS=true\n" >> .env` in `~/OpenWA`, then a daemon
+  restart from Forge.
+- Before: both sessions `disconnected` at 08:01:36 UTC after the restart.
+  After: `Auto-started session` logged, `reseller-bot` ready 08:03:05,
+  `customer-support` ready 08:03:08, no new manual `session_started` row.
+  ADR-114 2026-10-14 addendum.
+- Gotcha: the two `~/OpenWA/.env.bak-*` files hold the gateway's secrets;
+  deleting them is part of item 96.
+
+## 2026-10-14 — §16 items 73 and 95 built (Reseller API rejection log, WhatsApp health)
+
+**What shipped (branch `feature/reseller-api-rejection-log-and-whatsapp-health`).**
+- **73:** `ResellerApiRejectionLog::record()` runs inside the one Reseller
+  API render hook, which now builds the rejection first and then logs and
+  renders it (same responses as before, `Retry-After` kept on 429).
+  `EnsureResellerApiKey` stores the resolved key on the request before its
+  inactive and IP checks. Only known resellers are logged; `RATE_LIMITED`
+  once a minute per reseller (ADR-074 2026-10-14 addendum).
+- **95:** `OpenWaClient::sessionStatus()` (never throws: `not_configured`,
+  `unreachable`, `http_<code>` or OpenWA's own status) and
+  `HealthController::whatsapp()` on `GET /api/health/whatsapp`, 503 unless
+  both sessions are `ready`, throttled 30/min. The response shape was read
+  from prod first (`GET /api/sessions/{id}` returns `status: "ready"`).
+
+**Gotcha.** Prod runs `LOG_LEVEL=warning`, so the rejection line had to be
+`warning`; an `info` line would have passed every test and never reached
+the prod log.
+
+**Tests.** Red first: `RejectionLogTest` (6: business and middleware
+rejections logged with reseller and key, validation details, no log without
+a valid key, none on success, rate limit once a minute) and
+`WhatsAppHealthTest` (4: ok, one disconnected, unreachable, not
+configured). Full suite 2763/2763; Pint clean. The Scramble export covers
+only `api/reseller`, so the docs-site spec is unchanged.
+
+**Live check.** Local `php artisan serve`: `/api/health/whatsapp` answers
+503 `not_configured` for both (no OpenWA locally); a keyless Reseller API
+call still answers 401. The `ready` path is checked on prod after release.
+
+## 2026-10-14 — §16 item 10 built: admin MFA and the cookie-session admin login (ADR-121)
+
+**What shipped (branch `feature/admin-mfa`).**
+- **Backend.**
+  - The admin login is a Sanctum SPA cookie session, and admin bearer tokens are refused. A migration deletes the existing admin tokens and adds `mfa_required`, `mfa_recovery_codes` and `mfa_last_timestep`.
+  - The login lasts 7 days at most (`EnsureAdminSessionFresh`) and ends after 2 days unused.
+  - MFA is opt-in per account (`PATCH /admin-users/{id}/require-mfa`, one-way). Setup and the code are entered at `/api/login` → `/api/login/mfa`.
+  - `mfa.stepup` guards CHIP credentials, supplier create/credentials, manual reseller wallet credit, withdrawal approve, admin create/edit/status, and recovery-code regeneration. `StepUpRoutesTest` pins the set.
+  - The TOTP and recovery logic lives in one `AdminMfa` service. Wrong codes count toward `AccountLoginThrottle`.
+  - Plunk security emails go out on recovery-code use, lockout and SSH reset. The SSH reset is `php artisan admin:mfa-reset {email}`.
+  - CORS credentials are allowed for the admin origin only.
+- **Admin.**
+  - The login page has the setup (QR plus key), code and recovery-code screens.
+  - A `StepUpDialog` appears on `mfa_step_up_required`, and the original request is retried.
+  - Admin Users has an MFA column and a "Require MFA" action. The header menu has "New recovery codes".
+  - The profile cache lives in `localStorage` and holds no credential.
+  - All bearer-token plumbing is removed (~1,200 references, 124 files), and the eight download copies are one `apiDownload()`.
+
+**Why.** PRD §16 item 10. An admin password alone could change the CHIP credentials, credit a reseller wallet or approve a withdrawal. Separately, every new admin tab asked for a login again.
+
+**Gotchas.**
+- `google2fa`'s `verifyKeyNewer()` returns `true` instead of the time-step when the previous one is `null`, so the service always passes an int.
+- A global `supports_credentials = true` broke `CorsConfigTest`, which pins ADR-078's "never for a custom domain". The fix scopes credentials per request instead.
+- The dashboard cleared the profile cache on any `/api/me` error. That included a fetch aborted by navigation, and with the cache now shared across tabs it would have logged every tab out. Found in the browser walkthrough.
+- Local admin dev must call `http://localhost:8000`, because a `*.test` Herd site is cross-site and the cookie is dropped (backend `AGENTS.md` gotchas 6–7).
+- e2e moved to `SESSION_DRIVER=file`.
+
+**Tests.**
+- `AdminMfaLoginTest` (12) and `AdminMfaStepUpTest` (7), plus a CORS test for the admin-only credentials. Existing step-up-route tests act as a stepped-up admin via `TestCase::actingAsSteppedUp()`. Three bearer-token tests were replaced.
+- Full backend suite 2780/2780; Pint clean.
+- Admin `tsc`, `lint` and `build` clean.
+- e2e 6/6, which covers three UI admin logins and the checkout spec's admin API login over a session.
+
+**Live check (local, real browser).** Playwright against `php artisan serve` plus `next dev`, with a throwaway local admin that was deleted afterwards:
+- A password-only login stored no token, and a new tab opened `/admin/users` without a login.
+- A dangerous action without MFA was refused with 403 `mfa_not_enabled`.
+- After "Require MFA" the account showed "Awaiting setup". Setup worked: a wrong code was refused, then 8 recovery codes were shown and the MFA column read "On".
+- Editing an admin opened the step-up dialog, and the save went through after the code.
+- A recovery-code login worked, and `admin:mfa-reset` cleared the account between runs.
+- Screenshots were checked, and the login buttons now use the shared `Button`.
+
+**Release notes.**
+- Production needs **no `.env` change**: stateful domain and CORS come from `ADMIN_URL`, `SESSION_DRIVER=database` and `SESSION_SECURE_COOKIE=true` are already set, and the lifetime is fixed in config.
+- On release, every admin signs in again. The founder then sets "Require MFA" on their own account, signs out and enrols. Until then, the five step-up actions are refused.

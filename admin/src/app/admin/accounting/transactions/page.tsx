@@ -80,15 +80,14 @@ function formatDate(iso: string): string {
 export default function TransactionRegisterPage() {
   const router = useRouter();
   const session = useClientSession();
-  const token = session?.token ?? null;
   const [page, setPage] = useState<Paginated<TransactionRegisterRow> | null>(null);
   const [pageNo, setPageNo] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<TransactionRegisterFilters>({});
   const [exporting, setExporting] = useState(false);
 
-  function refresh(t: string, f: TransactionRegisterFilters, p: number) {
-    return getTransactionRegister(t, { ...f, page: p })
+  function refresh(f: TransactionRegisterFilters, p: number) {
+    return getTransactionRegister({ ...f, page: p })
       .then(setPage)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load the transaction register."));
   }
@@ -99,28 +98,28 @@ export default function TransactionRegisterPage() {
       router.replace("/login");
       return;
     }
-    refresh(s.token, {}, 1);
+    refresh({}, 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleFilter() {
-    if (!token) return;
+    if (!session) return;
     setPageNo(1);
-    refresh(token, filters, 1);
+    refresh(filters, 1);
   }
 
   function handlePageChange(p: number) {
-    if (!token) return;
+    if (!session) return;
     setPageNo(p);
-    refresh(token, filters, p);
+    refresh(filters, p);
   }
 
   async function handleExport() {
-    if (!token) return;
+    if (!session) return;
     setExporting(true);
     setError(null);
     try {
-      await exportTransactionRegister(token, filters);
+      await exportTransactionRegister(filters);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Export failed.");
     } finally {
@@ -132,7 +131,7 @@ export default function TransactionRegisterPage() {
     return <p className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>;
   }
 
-  if (!token || !page) {
+  if (!session || !page) {
     return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
   }
 

@@ -1,7 +1,6 @@
-import { apiFetch, ApiError } from "@/lib/api-client";
+import { apiFetch, apiDownload } from "@/lib/api-client";
 import type { Paginated } from "@/lib/payment-settlements";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
 
 /**
  * ADR-083 decision 9 (+ 2026-09-28 addendum) — the Transaction Register:
@@ -61,27 +60,11 @@ function buildQuery(filters: TransactionRegisterFilters): string {
 }
 
 /** 2026-09-28 addendum — real backend pagination (was every matching row, unbounded). */
-export function getTransactionRegister(token: string, filters: TransactionRegisterFilters = {}) {
-  return apiFetch<Paginated<TransactionRegisterRow>>(`/api/accounting/transactions${buildQuery(filters)}`, { token });
+export function getTransactionRegister(filters: TransactionRegisterFilters = {}) {
+  return apiFetch<Paginated<TransactionRegisterRow>>(`/api/accounting/transactions${buildQuery(filters)}`);
 }
 
-/** Bearer-token-gated binary download — same fetch-as-blob-then-object-URL pattern as exportReport(). Deliberately unpaginated — a year-end export must cover the whole filtered range, not one page. */
-export async function exportTransactionRegister(token: string, filters: TransactionRegisterFilters = {}): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/accounting/transactions/export${buildQuery({ from: filters.from, to: filters.to, type: filters.type })}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!response.ok) {
-    throw new ApiError(response.status, undefined, `Export failed (${response.status})`);
-  }
-
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "transaction-register.csv";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+/** Auth-gated binary download — same fetch-as-blob-then-object-URL pattern as exportReport(). Deliberately unpaginated — a year-end export must cover the whole filtered range, not one page. */
+export async function exportTransactionRegister(filters: TransactionRegisterFilters = {}): Promise<void> {
+  await apiDownload(`/api/accounting/transactions/export${buildQuery({ from: filters.from, to: filters.to, type: filters.type })}`, "transaction-register.csv");
 }

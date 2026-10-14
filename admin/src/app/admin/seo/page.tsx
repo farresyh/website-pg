@@ -26,7 +26,7 @@ export default function SeoOverviewPage() {
       router.replace("/login");
       return;
     }
-    getSeoOverview(s.token)
+    getSeoOverview()
       .then(setData)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load SEO overview."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
