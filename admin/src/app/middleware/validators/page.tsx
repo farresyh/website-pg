@@ -56,8 +56,8 @@ export default function ValidatorsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function load(token: string) {
-    return Promise.all([listPlayerValidatorProfiles(token), listAvailableValidatorKeys(token), listGames(token)]).then(
+  function load() {
+    return Promise.all([listPlayerValidatorProfiles(), listAvailableValidatorKeys(), listGames()]).then(
       ([validatorsResult, keysResult, gamesResult]) => {
         setValidators(validatorsResult);
         setAvailableKeys(keysResult);
@@ -68,7 +68,7 @@ export default function ValidatorsPage() {
 
   useEffect(() => {
     if (!session) return;
-    load(session.token).catch((err: unknown) => {
+    load().catch((err: unknown) => {
       setError(err instanceof ApiError ? err.message : "Could not load validators.");
     });
      
@@ -78,7 +78,7 @@ export default function ValidatorsPage() {
     if (!session) return;
     setError(null);
     try {
-      await load(session.token);
+      await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not refresh validators.");
     }
@@ -86,7 +86,7 @@ export default function ValidatorsPage() {
 
   async function handleCreate(values: { name: string; key: string }) {
     if (!session) return;
-    const created = await createPlayerValidatorProfile(session.token, values);
+    const created = await createPlayerValidatorProfile(values);
     setValidators((prev) => [...(prev ?? []), created]);
     setCreateOpen(false);
   }
@@ -95,7 +95,7 @@ export default function ValidatorsPage() {
     if (!session) return;
     setError(null);
     try {
-      const updated = await updatePlayerValidatorProfile(session.token, validator.id, { name });
+      const updated = await updatePlayerValidatorProfile(validator.id, { name });
       setValidators((prev) => prev?.map((v) => (v.id === validator.id ? updated : v)) ?? null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not rename validator.");
@@ -106,7 +106,7 @@ export default function ValidatorsPage() {
     if (!session) return;
     setError(null);
     try {
-      await deletePlayerValidatorProfile(session.token, validator.id);
+      await deletePlayerValidatorProfile(validator.id);
       setValidators((prev) => prev?.filter((v) => v.id !== validator.id) ?? null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not delete validator.");
@@ -115,7 +115,7 @@ export default function ValidatorsPage() {
 
   async function handleTest(validator: PlayerValidatorProfile, playerId: string, serverId: string) {
     if (!session) throw new Error("No session");
-    const outcome = await testPlayerValidatorProfile(session.token, validator.id, {
+    const outcome = await testPlayerValidatorProfile(validator.id, {
       player_id: playerId,
       server_id: serverId || undefined,
     });
@@ -127,7 +127,7 @@ export default function ValidatorsPage() {
     if (!session) return;
     setError(null);
     try {
-      const created = await createPlayerRegionMapping(session.token, validator.id, {
+      const created = await createPlayerRegionMapping(validator.id, {
         country_code: countryCode,
         country_name: countryName,
         game_id: gameId,
@@ -149,7 +149,7 @@ export default function ValidatorsPage() {
     if (!session) return;
     setError(null);
     try {
-      const updated = await updatePlayerRegionMapping(session.token, validator.id, mapping.id, {
+      const updated = await updatePlayerRegionMapping(validator.id, mapping.id, {
         country_name: countryName,
         game_id: gameId,
       });
@@ -168,7 +168,7 @@ export default function ValidatorsPage() {
     if (!session) return;
     setError(null);
     try {
-      await deletePlayerRegionMapping(session.token, validator.id, mapping.id);
+      await deletePlayerRegionMapping(validator.id, mapping.id);
       setValidators(
         (prev) =>
           prev?.map((v) => (v.id === validator.id ? { ...v, mappings: v.mappings.filter((m) => m.id !== mapping.id) } : v)) ??

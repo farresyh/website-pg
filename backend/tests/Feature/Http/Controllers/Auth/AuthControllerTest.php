@@ -12,40 +12,15 @@ class AuthControllerTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_login_returns_a_token_for_valid_credentials(): void
+    /**
+     * ADR-121: login is a cookie session, available only to the admin app
+     * (a Sanctum stateful origin). Session, MFA and logout behaviour live
+     * in Tests\Feature\Auth\AdminMfaLoginTest.
+     */
+    protected function setUp(): void
     {
-        $admin = AdminUser::factory()->create(['password' => 'secret-password']);
-
-        $response = $this->postJson('/api/login', [
-            'email' => $admin->email,
-            'password' => 'secret-password',
-        ]);
-
-        $response->assertOk();
-        $response->assertJsonStructure(['token', 'admin']);
-    }
-
-    public function test_token_older_than_the_configured_expiration_is_rejected(): void
-    {
-        // Was `null` (never expires) — fixed 2026-08-14, fresh audit.
-        // Sanctum's `expiration` config enforces a rolling window off each
-        // token's `created_at`, not a stored `expires_at` set at issuance —
-        // so this proves the enforcement, not just the config value.
-        $admin = AdminUser::factory()->create(['password' => 'secret-password']);
-
-        $login = $this->postJson('/api/login', [
-            'email' => $admin->email,
-            'password' => 'secret-password',
-        ])->assertOk();
-        $plainToken = $login->json('token');
-
-        $admin->tokens()->sole()->forceFill([
-            'created_at' => now()->subMinutes(config('sanctum.expiration') + 1),
-        ])->save();
-
-        $this->withHeader('Authorization', "Bearer {$plainToken}")
-            ->getJson('/api/me')
-            ->assertUnauthorized();
+        parent::setUp();
+        $this->withHeader('Referer', 'http://localhost:3000/');
     }
 
     public function test_login_logs_a_successful_attempt(): void
@@ -220,17 +195,5 @@ class AuthControllerTest extends TestCase
         $response = $this->getJson('/api/me');
 
         $response->assertUnauthorized();
-    }
-
-    public function test_logout_revokes_the_current_token(): void
-    {
-        $admin = AdminUser::factory()->create();
-        $token = $admin->createToken('api');
-
-        $response = $this->withHeader('Authorization', "Bearer {$token->plainTextToken}")
-            ->postJson('/api/logout');
-
-        $response->assertOk();
-        $this->assertSame(0, $admin->tokens()->count());
     }
 }

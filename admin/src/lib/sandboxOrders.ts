@@ -13,17 +13,17 @@ export interface SandboxOrderDetail extends OrderDetail {
   is_test: boolean;
 }
 
-export function listSandboxOrders(token: string, params: { search?: string; page?: number } = {}) {
+export function listSandboxOrders(params: { search?: string; page?: number } = {}) {
   const query = new URLSearchParams();
   if (params.search) query.set("search", params.search);
   if (params.page) query.set("page", String(params.page));
   const qs = query.toString();
 
-  return apiFetch<OrderPage>(`/api/middleware/sandbox${qs ? `?${qs}` : ""}`, { token });
+  return apiFetch<OrderPage>(`/api/middleware/sandbox${qs ? `?${qs}` : ""}`);
 }
 
-export function getSandboxOrder(token: string, id: number) {
-  return apiFetch<SandboxOrderDetail>(`/api/middleware/sandbox/${id}`, { token });
+export function getSandboxOrder(id: number) {
+  return apiFetch<SandboxOrderDetail>(`/api/middleware/sandbox/${id}`);
 }
 
 /**
@@ -42,8 +42,8 @@ export interface CreateSandboxOrderValues {
   server_id?: string;
 }
 
-export function createSandboxOrder(token: string, values: CreateSandboxOrderValues) {
-  return apiFetch<SandboxOrderDetail>("/api/middleware/sandbox", { method: "POST", token, body: values });
+export function createSandboxOrder(values: CreateSandboxOrderValues) {
+  return apiFetch<SandboxOrderDetail>("/api/middleware/sandbox", { method: "POST", body: values });
 }
 
 /**
@@ -63,12 +63,12 @@ export interface ResendSandboxOrderDeliveryValues {
 }
 
 /** ADR-105 2026-10-06 decision 15 — sandbox twin of getResendOptions() in lib/orders.ts. */
-export function getSandboxResendOptions(token: string, id: number) {
-  return apiFetch<{ data: ResendOption[] }>(`/api/middleware/sandbox/${id}/resend-options`, { token }).then((r) => r.data);
+export function getSandboxResendOptions(id: number) {
+  return apiFetch<{ data: ResendOption[] }>(`/api/middleware/sandbox/${id}/resend-options`).then((r) => r.data);
 }
 
-export function resendSandboxOrderDelivery(token: string, id: number, values: ResendSandboxOrderDeliveryValues) {
-  return apiFetch<SandboxOrderDetail>(`/api/middleware/sandbox/${id}/resend`, { method: "POST", token, body: values });
+export function resendSandboxOrderDelivery(id: number, values: ResendSandboxOrderDeliveryValues) {
+  return apiFetch<SandboxOrderDetail>(`/api/middleware/sandbox/${id}/resend`, { method: "POST", body: values });
 }
 
 /**
@@ -77,19 +77,19 @@ export function resendSandboxOrderDelivery(token: string, id: number, values: Re
  * order uses, so no LedgerEntry is written even though the response
  * shape is identical to a real one.
  */
-export function markSandboxOrderDelivered(token: string, id: number, values: { supplier_ref: string; note?: string }) {
-  return apiFetch<SandboxOrderDetail>(`/api/middleware/sandbox/${id}/mark-delivered`, { method: "POST", token, body: values });
+export function markSandboxOrderDelivered(id: number, values: { supplier_ref: string; note?: string }) {
+  return apiFetch<SandboxOrderDetail>(`/api/middleware/sandbox/${id}/mark-delivered`, { method: "POST", body: values });
 }
 
 /** ADR-026 addendum (2026-09-16) sandbox counterpart — mirrors confirmOrderDeliveryFailed() in lib/orders.ts. */
-export function confirmSandboxOrderDeliveryFailed(token: string, id: number, values: { note: string }) {
-  return apiFetch<SandboxOrderDetail>(`/api/middleware/sandbox/${id}/confirm-failed`, { method: "POST", token, body: values });
+export function confirmSandboxOrderDeliveryFailed(id: number, values: { note: string }) {
+  return apiFetch<SandboxOrderDetail>(`/api/middleware/sandbox/${id}/confirm-failed`, { method: "POST", body: values });
 }
 
-export function deleteSandboxOrder(token: string, id: number) {
-  return apiFetch<{ message: string }>(`/api/middleware/sandbox/${id}`, { method: "DELETE", token });
+export function deleteSandboxOrder(id: number) {
+  return apiFetch<{ message: string }>(`/api/middleware/sandbox/${id}`, { method: "DELETE" });
 }
 
-export function deleteAllSandboxOrders(token: string) {
-  return apiFetch<{ message: string }>("/api/middleware/sandbox", { method: "DELETE", token });
+export function deleteAllSandboxOrders() {
+  return apiFetch<{ message: string }>("/api/middleware/sandbox", { method: "DELETE" });
 }

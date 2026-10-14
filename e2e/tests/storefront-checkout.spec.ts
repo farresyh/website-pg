@@ -1,11 +1,6 @@
 import { test, expect } from "@playwright/test";
-import {
-  BACKEND_URL,
-  STOREFRONT_URL,
-  E2E_ADMIN_EMAIL,
-  E2E_ADMIN_PASSWORD,
-  E2E_GAME_SLUG,
-} from "./constants";
+import { BACKEND_URL, STOREFRONT_URL, E2E_GAME_SLUG } from "./constants";
+import { loginAdminApi } from "./helpers";
 
 // Golden path — ADR-023. Covers the storefront's only revenue path:
 // guest checkout -> payment -> order status. Needs no payment
@@ -71,19 +66,16 @@ test("guest checkout -> payment -> order status", async ({ page, request }) => {
   // Look up the payment_ref the gateway assigned — never exposed to
   // the storefront's own narrow response shape (ORD-9) — via the
   // already-authenticated admin API, the same way an operator would.
-  const login = await request.post(`${BACKEND_URL}/api/login`, {
-    data: { email: E2E_ADMIN_EMAIL, password: E2E_ADMIN_PASSWORD },
-  });
-  const { token } = await login.json();
+  const adminHeaders = await loginAdminApi(request);
 
   const search = await request.get(`${BACKEND_URL}/api/orders?search=${encodeURIComponent(orderNumber)}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: adminHeaders,
   });
   const { data } = await search.json();
   const orderId: number = data[0].id;
 
   const detail = await request.get(`${BACKEND_URL}/api/orders/${orderId}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: adminHeaders,
   });
   const order = await detail.json();
   expect(order.payment_ref).toBeTruthy();
@@ -116,7 +108,7 @@ test("guest checkout -> payment -> order status", async ({ page, request }) => {
     .poll(
       async () => {
         const res = await request.get(`${BACKEND_URL}/api/orders/${orderId}`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: adminHeaders,
         });
         return (await res.json()).delivery_status;
       },

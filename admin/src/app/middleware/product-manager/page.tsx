@@ -225,9 +225,9 @@ export default function ProductManagerPage() {
   const [promoting, setPromoting] = useState<SupplierProduct | null>(null);
 
   /** Reloads the group list; resolves to it, or null when it failed or a newer load superseded this one. */
-  function refreshCategories(token: string): Promise<SupplierProductCategory[] | null> {
+  function refreshCategories(): Promise<SupplierProductCategory[] | null> {
     const isLatest = beginCategoriesLoad();
-    return listSupplierProductCategories(token, { search: debouncedCategorySearch || undefined })
+    return listSupplierProductCategories({ search: debouncedCategorySearch || undefined })
       .then((list) => {
         if (!isLatest()) return null;
         setCategories(list);
@@ -239,7 +239,7 @@ export default function ProductManagerPage() {
       });
   }
 
-  async function openCategory(token: string, category: SupplierProductCategory) {
+  async function openCategory(category: SupplierProductCategory) {
     setSelected(category);
     setTab("available");
     setItems(null);
@@ -247,13 +247,13 @@ export default function ProductManagerPage() {
 
     try {
       setItems(
-        await listAllSupplierProducts(token, {
+        await listAllSupplierProducts({
           supplier_id: category.supplier?.id,
           group_label: category.group_label,
         }),
       );
       if (category.game_id) {
-        setCatalogPackages(await listGamePackages(token, category.game_id));
+        setCatalogPackages(await listGamePackages(category.game_id));
       } else {
         setCatalogPackages([]);
       }
@@ -269,7 +269,7 @@ export default function ProductManagerPage() {
       return;
     }
 
-    listGames(s.token).then(setGames).catch(() => {
+    listGames().then(setGames).catch(() => {
       // Non-fatal — "new game" mode in the link modal still works without the picker.
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -278,43 +278,43 @@ export default function ProductManagerPage() {
   useEffect(() => {
     if (!session) return;
 
-    refreshCategories(session.token);
+    refreshCategories();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, debouncedCategorySearch]);
 
   async function handleLinkSubmit(values: LinkCategoryValues) {
     if (!session || !linkingCategory) return;
-    await linkSupplierProductCategory(session.token, values);
+    await linkSupplierProductCategory(values);
     setLinkingCategory(null);
 
     // Re-open the category so it immediately shows as linked, instead
     // of the admin having to click it again.
-    const refreshed = await refreshCategories(session.token);
+    const refreshed = await refreshCategories();
     const reopened = refreshed?.find((c) => sameGroup(c, linkingCategory));
-    if (reopened) await openCategory(session.token, reopened);
+    if (reopened) await openCategory(reopened);
   }
 
   async function handleUpdateCheckoutInput(rules: GameValidationRules) {
     if (!session || !selected?.game || !selected.supplier) return;
 
-    await linkSupplierProductCategory(session.token, {
+    await linkSupplierProductCategory({
       supplier_id: selected.supplier.id,
       group_label: selected.group_label,
       game_id: selected.game.id,
       validation_rules: rules,
     });
 
-    const refreshed = await refreshCategories(session.token);
+    const refreshed = await refreshCategories();
     const reopened = refreshed?.find((c) => sameGroup(c, selected));
     if (reopened) setSelected(reopened);
   }
 
   async function handlePromoteSubmit(values: PromoteValues) {
     if (!session || !promoting || !selected) return;
-    await promoteSupplierProduct(session.token, promoting.id, values);
+    await promoteSupplierProduct(promoting.id, values);
     setPromoting(null);
-    await openCategory(session.token, selected);
-    await refreshCategories(session.token);
+    await openCategory(selected);
+    await refreshCategories();
   }
 
   if (selected) {
@@ -611,7 +611,7 @@ export default function ProductManagerPage() {
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <div className="flex gap-2">
-                            <Button size="small" variant="outlined" onClick={() => session && openCategory(session.token, category)}>
+                            <Button size="small" variant="outlined" onClick={() => session && openCategory(category)}>
                               View
                             </Button>
                             {!category.game && (

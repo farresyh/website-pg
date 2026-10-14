@@ -121,7 +121,7 @@ export default function PaymentMethodsPage() {
   useEffect(() => {
     if (!session) return;
 
-    listPaymentMethods(session.token, { category: category === "all" ? undefined : category })
+    listPaymentMethods({ category: category === "all" ? undefined : category })
       .then(setMethods)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load payment methods.");
@@ -133,7 +133,7 @@ export default function PaymentMethodsPage() {
     if (!session) return;
     setError(null);
     try {
-      const updated = await updatePaymentMethodStatus(session.token, method.id, !method.is_active);
+      const updated = await updatePaymentMethodStatus(method.id, !method.is_active);
       setMethods((prev) => prev?.map((m) => (m.id === method.id ? { ...m, ...updated } : m)) ?? null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update status.");
@@ -144,7 +144,7 @@ export default function PaymentMethodsPage() {
     if (!session) return;
     setError(null);
     try {
-      const updated = await updatePaymentMethodFee(session.token, method.id, percentageRate, flatFeeSen);
+      const updated = await updatePaymentMethodFee(method.id, percentageRate, flatFeeSen);
       setMethods((prev) => prev?.map((m) => (m.id === method.id ? { ...m, ...updated } : m)) ?? null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update fee.");
@@ -156,7 +156,7 @@ export default function PaymentMethodsPage() {
     setError(null);
     setTestingId(method.id);
     try {
-      const updated = await testPaymentMethod(session.token, method.id);
+      const updated = await testPaymentMethod(method.id);
       setMethods((prev) => prev?.map((m) => (m.id === method.id ? { ...m, ...updated } : m)) ?? null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not test channel.");

@@ -22,10 +22,10 @@ const BUCKETS: { value: TrendBucket; label: string }[] = [
 ];
 
 export function ProfitTab(props: ReportTabProps) {
-  const { token, filters, compare, rangeIncludesToday } = props;
-  const summary = useReport(props, () => getReportSummary(token, filters, compare));
-  const trend = useReport(props, () => getReportTrend(token, filters));
-  const games = useReport(props, () => getGameBreakdown(token, filters));
+  const { filters, compare, rangeIncludesToday } = props;
+  const summary = useReport(props, () => getReportSummary(filters, compare));
+  const trend = useReport(props, () => getReportTrend(filters));
+  const games = useReport(props, () => getGameBreakdown(filters));
   const [bucketChoice, setBucketChoice] = useState<TrendBucket | null>(null);
 
   const s = summary.data;

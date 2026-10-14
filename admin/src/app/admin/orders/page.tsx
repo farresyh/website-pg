@@ -327,14 +327,14 @@ function OrdersPageInner() {
   // Resend Delivery modal has its own copy of this field).
   const [retryOverrideReason, setRetryOverrideReason] = useState("");
 
-  async function openOrder(token: string, id: number) {
+  async function openOrder(id: number) {
     setSelected(null);
     setResendMessage(null);
     setVoucherMessage(null);
     setMarkDeliveredMessage(null);
     setRefundMessage(null);
     try {
-      setSelected(await getOrder(token, id));
+      setSelected(await getOrder(id));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load this order.");
     }
@@ -351,7 +351,7 @@ function OrdersPageInner() {
     const session = getClientSession();
     if (!session || !selected) return;
     try {
-      setSelected(await getOrder(session.token, selected.id));
+      setSelected(await getOrder(selected.id));
     } catch {
       // Silent — see doc comment above.
     }
@@ -414,7 +414,7 @@ function OrdersPageInner() {
     if (!session || !selected) return;
     setRefundingToWallet(true);
     try {
-      const updated = await refundOrderToWallet(session.token, selected.id);
+      const updated = await refundOrderToWallet(selected.id);
       setRefundMessage(`Refunded ${formatRm(updated.wallet_refund?.amount ?? 0)} to ${updated.wallet_reseller?.business_name}'s wallet.`);
       setSelected(updated);
     } catch (err) {
@@ -431,7 +431,7 @@ function OrdersPageInner() {
     setRetryingDelivery(true);
     setRetryMessage(null);
     try {
-      await retryOrderDelivery(session.token, selected.id, {
+      await retryOrderDelivery(selected.id, {
         override_reason: retryOverrideReason.trim() || undefined,
       });
       setRetryOverrideReason("");
@@ -455,7 +455,7 @@ function OrdersPageInner() {
     setExporting(true);
     setError(null);
     try {
-      await exportOrders(s.token, orderFilters);
+      await exportOrders(orderFilters);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not export orders.");
     } finally {
@@ -477,9 +477,9 @@ function OrdersPageInner() {
   // the newest request wins whichever path fired it (useLatestRequest).
   const beginListLoad = useLatestRequest();
   const loadOrderList = useCallback(
-    (token: string, filters: Parameters<typeof listOrders>[1], silent = false) => {
+    (filters: Parameters<typeof listOrders>[0], silent = false) => {
       const isLatest = beginListLoad();
-      listOrders(token, filters)
+      listOrders(filters)
         .then((p) => {
           if (!isLatest()) return;
           setPage(p);
@@ -494,13 +494,13 @@ function OrdersPageInner() {
 
   useEffect(() => {
     if (!session) return;
-    loadOrderList(session.token, orderFilters);
+    loadOrderList(orderFilters);
   }, [session, orderFilters, loadOrderList]);
 
   /** Manual "Refresh" button — re-runs the same fetch the effect above already does, on demand. */
   function handleManualRefresh() {
     if (!session) return;
-    loadOrderList(session.token, orderFilters);
+    loadOrderList(orderFilters);
   }
 
   // Read inside the push listener below without re-subscribing every time
@@ -546,12 +546,12 @@ function OrdersPageInner() {
 
     const channel = getEcho().private("admin-orders");
     channel.listen(".order.status.updated", (payload: { order_number: string }) => {
-      loadOrderList(session.token, orderFiltersRef.current, true);
+      loadOrderList(orderFiltersRef.current, true);
 
       const current = selectedRef.current;
       if (!current || current.order_number !== payload.order_number) return;
 
-      getOrder(session.token, current.id)
+      getOrder(current.id)
         .then((fresh) => {
           setSelected(fresh);
           setPendingStatusWatch((watch) => {
@@ -580,11 +580,11 @@ function OrdersPageInner() {
   useReconcileOnResume(
     useCallback(() => {
       if (!session) return;
-      loadOrderList(session.token, orderFiltersRef.current, true);
+      loadOrderList(orderFiltersRef.current, true);
 
       const current = selectedRef.current;
       if (!current) return;
-      getOrder(session.token, current.id).then(setSelected).catch(() => {});
+      getOrder(current.id).then(setSelected).catch(() => {});
     }, [session, loadOrderList]),
   );
 
@@ -594,7 +594,7 @@ function OrdersPageInner() {
   useEffect(() => {
     if (!session) return;
 
-    listGames(session.token).then(setGames).catch(() => {});
+    listGames().then(setGames).catch(() => {});
   }, [session]);
 
   // ADR-092: decoupled from the listOrders() effect above — the six
@@ -605,7 +605,7 @@ function OrdersPageInner() {
 
     let cancelled = false;
     const fetchSummary = () => {
-      getOrderSummary(session.token)
+      getOrderSummary()
         .then((s) => {
           if (!cancelled) setSummary(s);
         })
@@ -636,7 +636,7 @@ function OrdersPageInner() {
     const id = Number(orderIdParam);
     if (!Number.isFinite(id)) return;
 
-    getOrder(session.token, id)
+    getOrder(id)
       .then(setSelected)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load this order.");
@@ -745,7 +745,7 @@ function OrdersPageInner() {
               {/* ADR-096 — independent of the failed/needs_review block above:
                   a Pending delivery_status/payment_status is an async supplier/
                   gateway awaiting confirmation, not a failure needing retry. */}
-              {session && <ManualCheckButtons order={selected} token={session.token} onChecked={refreshSelected} />}
+              {session && <ManualCheckButtons order={selected} onChecked={refreshSelected} />}
             </div>
           </div>
 
@@ -839,28 +839,24 @@ function OrdersPageInner() {
             onClose={() => setResendModalOpen(false)}
             onResent={handleResent}
             order={selected}
-            token={session.token}
           />
           <IssueVoucherModal
             isOpen={voucherModalOpen}
             onClose={() => setVoucherModalOpen(false)}
             onIssued={handleVoucherIssued}
             order={selected}
-            token={session.token}
           />
           <MarkDeliveredModal
             isOpen={markDeliveredModalOpen}
             onClose={() => setMarkDeliveredModalOpen(false)}
             onConfirmed={handleMarkedDelivered}
             order={selected}
-            token={session.token}
           />
           <ConfirmFailedModal
             isOpen={confirmFailedModalOpen}
             onClose={() => setConfirmFailedModalOpen(false)}
             onConfirmed={handleConfirmedFailed}
             order={selected}
-            token={session.token}
           />
         </>
       )}
@@ -1128,7 +1124,7 @@ function OrdersPageInner() {
                           <Button
                             size="small"
                             variant={order.delivery_status === "failed" || order.delivery_status === "partially_delivered" ? undefined : "outlined"}
-                            onClick={() => session && openOrder(session.token, order.id)}
+                            onClick={() => session && openOrder(order.id)}
                           >
                             View
                           </Button>

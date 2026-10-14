@@ -14,7 +14,6 @@ use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class SupplierControllerTest extends TestCase
@@ -24,7 +23,7 @@ class SupplierControllerTest extends TestCase
     private function actingAsAdmin(): AdminUser
     {
         $admin = AdminUser::factory()->create(['role' => 'super_admin']);
-        Sanctum::actingAs($admin);
+        $this->actingAsSteppedUp($admin);
 
         return $admin;
     }
@@ -76,7 +75,7 @@ class SupplierControllerTest extends TestCase
 
     public function test_regular_admin_is_forbidden(): void
     {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+        $this->actingAsSteppedUp(AdminUser::factory()->create(['role' => 'admin']));
 
         $this->getJson('/api/middleware/suppliers')->assertForbidden();
     }

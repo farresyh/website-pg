@@ -42,26 +42,25 @@ export interface SaveHeroSlideValues {
   ends_at?: string | null;
 }
 
-export function listHeroSlides(token: string) {
-  return apiFetch<HeroSlide[]>("/api/hero-slides", { token });
+export function listHeroSlides() {
+  return apiFetch<HeroSlide[]>("/api/hero-slides");
 }
 
-export function createHeroSlide(token: string, values: SaveHeroSlideValues) {
-  return apiFetch<HeroSlide>("/api/hero-slides", { method: "POST", token, body: values });
+export function createHeroSlide(values: SaveHeroSlideValues) {
+  return apiFetch<HeroSlide>("/api/hero-slides", { method: "POST", body: values });
 }
 
-export function updateHeroSlide(token: string, id: number, values: SaveHeroSlideValues) {
-  return apiFetch<HeroSlide>(`/api/hero-slides/${id}`, { method: "PUT", token, body: values });
+export function updateHeroSlide(id: number, values: SaveHeroSlideValues) {
+  return apiFetch<HeroSlide>(`/api/hero-slides/${id}`, { method: "PUT", body: values });
 }
 
-export function updateHeroSlideStatus(token: string, id: number, isActive: boolean) {
+export function updateHeroSlideStatus(id: number, isActive: boolean) {
   return apiFetch<HeroSlide>(`/api/hero-slides/${id}/status`, {
     method: "PATCH",
-    token,
     body: { is_active: isActive },
   });
 }
 
-export function deleteHeroSlide(token: string, id: number) {
-  return apiFetch<void>(`/api/hero-slides/${id}`, { method: "DELETE", token });
+export function deleteHeroSlide(id: number) {
+  return apiFetch<void>(`/api/hero-slides/${id}`, { method: "DELETE" });
 }

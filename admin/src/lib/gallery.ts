@@ -22,24 +22,24 @@ export interface GalleryImagePage {
   total: number;
 }
 
-export function listGalleryImages(token: string, params: { search?: string; page?: number } = {}) {
+export function listGalleryImages(params: { search?: string; page?: number } = {}) {
   const query = new URLSearchParams();
   if (params.search) query.set("search", params.search);
   if (params.page) query.set("page", String(params.page));
   const qs = query.toString();
 
-  return apiFetch<GalleryImagePage>(`/api/gallery/images${qs ? `?${qs}` : ""}`, { token });
+  return apiFetch<GalleryImagePage>(`/api/gallery/images${qs ? `?${qs}` : ""}`);
 }
 
-export function uploadGalleryImage(token: string, file: File) {
+export function uploadGalleryImage(file: File) {
   const formData = new FormData();
   formData.append("image", file);
 
-  return apiUpload<GalleryImage>("/api/gallery/images", formData, { token });
+  return apiUpload<GalleryImage>("/api/gallery/images", formData);
 }
 
-export function deleteGalleryImage(token: string, id: number) {
-  return apiFetch<void>(`/api/gallery/images/${id}`, { method: "DELETE", token });
+export function deleteGalleryImage(id: number) {
+  return apiFetch<void>(`/api/gallery/images/${id}`, { method: "DELETE" });
 }
 
 /**
@@ -49,6 +49,6 @@ export function deleteGalleryImage(token: string, id: number) {
  * instead of a generic disclaimer. Never blocks the delete itself —
  * see GalleryImageController::references()'s own doc comment.
  */
-export function getGalleryImageReferences(token: string, id: number) {
-  return apiFetch<{ references: string[] }>(`/api/gallery/images/${id}/references`, { token });
+export function getGalleryImageReferences(id: number) {
+  return apiFetch<{ references: string[] }>(`/api/gallery/images/${id}/references`);
 }

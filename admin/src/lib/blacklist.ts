@@ -42,18 +42,18 @@ export interface CreateBlacklistEntryValues {
   reason: string;
 }
 
-export function listBlacklistEntries(token: string) {
-  return apiFetch<BlacklistIndexResponse>("/api/blacklist", { token });
+export function listBlacklistEntries() {
+  return apiFetch<BlacklistIndexResponse>("/api/blacklist");
 }
 
-export function createBlacklistEntry(token: string, values: CreateBlacklistEntryValues) {
-  return apiFetch<BlacklistEntry>("/api/blacklist", { method: "POST", token, body: values });
+export function createBlacklistEntry(values: CreateBlacklistEntryValues) {
+  return apiFetch<BlacklistEntry>("/api/blacklist", { method: "POST", body: values });
 }
 
-export function getBlacklistEntry(token: string, id: number) {
-  return apiFetch<BlacklistEntryDetail>(`/api/blacklist/${id}`, { token });
+export function getBlacklistEntry(id: number) {
+  return apiFetch<BlacklistEntryDetail>(`/api/blacklist/${id}`);
 }
 
-export function deactivateBlacklistEntry(token: string, id: number) {
-  return apiFetch<BlacklistEntry>(`/api/blacklist/${id}/deactivate`, { method: "PATCH", token });
+export function deactivateBlacklistEntry(id: number) {
+  return apiFetch<BlacklistEntry>(`/api/blacklist/${id}/deactivate`, { method: "PATCH" });
 }

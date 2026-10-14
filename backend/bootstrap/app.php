@@ -3,10 +3,13 @@
 use App\Exceptions\ResellerApi\ResellerApiException;
 use App\Exceptions\ResellerApi\ResellerApiRejectionLog;
 use App\Http\Middleware\AllowActiveCustomDomainCors;
+use App\Http\Middleware\AllowAdminCorsCredentials;
 use App\Http\Middleware\EnsureAccountType;
 use App\Http\Middleware\EnsureAdminRole;
+use App\Http\Middleware\EnsureAdminSessionFresh;
 use App\Http\Middleware\EnsureBrandMembershipEnabled;
 use App\Http\Middleware\EnsureResellerApiKey;
+use App\Http\Middleware\RequireMfaStepUp;
 use App\Http\Middleware\ResolveStorefrontBrand;
 use App\Http\Middleware\SetAffiliateContext;
 use Illuminate\Foundation\Application;
@@ -27,15 +30,13 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     // ADR-047 decision 3: admin private-channel auth must run through this
-    // app's real auth boundary (bearer-token Sanctum, per every other
-    // endpoint in routes/api.php) — the framework's own default for
-    // `withRouting(channels: ...)` registers an unprefixed
-    // `/broadcasting/auth` behind the session-based `web` guard, which
-    // this API-only backend never otherwise uses. Registered explicitly
-    // here instead, at `POST /api/broadcasting/auth`, `auth:sanctum`-gated.
+    // app's real auth boundary (`auth:sanctum`, as every admin route in
+    // routes/api.php), so it is registered explicitly at
+    // `POST /api/broadcasting/auth` rather than the framework's unprefixed
+    // default. Since ADR-121 that boundary is the admin cookie session.
     ->withBroadcasting(
         __DIR__.'/../routes/channels.php',
-        ['prefix' => 'api', 'middleware' => ['api', 'auth:sanctum']],
+        ['prefix' => 'api', 'middleware' => ['api', 'auth:sanctum', 'admin.session']],
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // Item 26 (found 2026-09-24, fixed 2026-09-28): this API-only
@@ -52,6 +53,12 @@ return Application::configure(basePath: dirname(__DIR__))
         // to redirect to.
         $middleware->redirectGuestsTo(fn () => null);
 
+        // ADR-121: Sanctum SPA mode. Only requests from a stateful origin
+        // (the admin app, config/sanctum.php) get cookies, a session and
+        // CSRF checks; every other caller (storefront, portal, Reseller
+        // API, webhooks) is untouched.
+        $middleware->statefulApi();
+
         // ADR-078 decision 1: runs before the framework's HandleCors
         // (prepended to the global stack) so it can add an active custom
         // affiliate-domain (ADR-060) to `cors.allowed_origins` for this
@@ -59,6 +66,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // no work. See the middleware's own doc comment for why this is
         // not a rebound CorsService.
         $middleware->prepend(AllowActiveCustomDomainCors::class);
+        // ADR-121: CORS credentials for the admin origin only.
+        $middleware->prepend(AllowAdminCorsCredentials::class);
 
         // Production is Laravel Forge (native nginx → php-fpm, ADR-066) with
         // Cloudflare proxying `api.pekangame.space` (ADR-020 decision 8 /
@@ -109,6 +118,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'admin.role' => EnsureAdminRole::class,
+            // ADR-121: the 7-day cap on an admin cookie login, and the
+            // step-up gate on the five dangerous actions.
+            'admin.session' => EnsureAdminSessionFresh::class,
+            'mfa.stepup' => RequireMfaStepUp::class,
             // ADR-058 (58a): activates ADR-057's tenant scope from the
             // authenticated affiliate_user. Always paired with
             // `auth:affiliate` on affiliate-portal routes.

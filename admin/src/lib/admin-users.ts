@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api-client";
+import type { MfaStatus } from "@/lib/auth";
 
 export interface AdminUser {
   id: number;
@@ -7,6 +8,7 @@ export interface AdminUser {
   role: "super_admin" | "admin";
   phone: string | null;
   is_active: boolean;
+  mfa_status: MfaStatus;
 }
 
 export interface AdminUserFormValues {
@@ -17,14 +19,13 @@ export interface AdminUserFormValues {
   phone: string;
 }
 
-export function listAdminUsers(token: string) {
-  return apiFetch<AdminUser[]>("/api/admin-users", { token });
+export function listAdminUsers() {
+  return apiFetch<AdminUser[]>("/api/admin-users");
 }
 
-export function createAdminUser(token: string, values: AdminUserFormValues) {
+export function createAdminUser(values: AdminUserFormValues) {
   return apiFetch<AdminUser>("/api/admin-users", {
     method: "POST",
-    token,
     body: {
       name: values.name,
       email: values.email,
@@ -36,13 +37,11 @@ export function createAdminUser(token: string, values: AdminUserFormValues) {
 }
 
 export function updateAdminUser(
-  token: string,
   id: number,
   values: Omit<AdminUserFormValues, "password"> & { password?: string },
 ) {
   return apiFetch<AdminUser>(`/api/admin-users/${id}`, {
     method: "PUT",
-    token,
     body: {
       name: values.name,
       email: values.email,
@@ -53,10 +52,14 @@ export function updateAdminUser(
   });
 }
 
-export function updateAdminUserStatus(token: string, id: number, isActive: boolean) {
+export function updateAdminUserStatus(id: number, isActive: boolean) {
   return apiFetch<AdminUser>(`/api/admin-users/${id}/status`, {
     method: "PATCH",
-    token,
     body: { is_active: isActive },
   });
+}
+
+/** ADR-121: one-way; the account sets MFA up at its next login. Turning it off is SSH-only. */
+export function requireAdminUserMfa(id: number) {
+  return apiFetch<AdminUser>(`/api/admin-users/${id}/require-mfa`, { method: "PATCH" });
 }

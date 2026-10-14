@@ -1,13 +1,9 @@
 /**
- * Client-side counterpart to the httpOnly SESSION_COOKIE_NAME cookie in
- * auth.ts. Per ADR-009, the Admin Panel calls the Laravel API directly from
- * the browser using a Bearer token — that token has to live somewhere JS can
- * read it, which an httpOnly cookie deliberately can't be. sessionStorage
- * (cleared on tab close) is the minimal choice here, not localStorage.
- *
- * The httpOnly cookie stays presence-only (see app/api/login/route.ts) and
- * is never the source of the token — it only drives proxy.ts's optimistic
- * redirect gate, which is explicitly not a security boundary.
+ * The signed-in admin's profile (id, role, name, email, MFA status), cached
+ * in the browser so the UI can render role-aware screens without a round
+ * trip. ADR-121: this holds no credential — the login itself is Laravel's
+ * httpOnly session cookie, and every API call is authorized by it. The
+ * cache is in localStorage so every tab shares it, like the login.
  */
 
 import type { SessionPayload } from "@/lib/auth";
@@ -19,10 +15,16 @@ const STORAGE_KEY = "kerox_admin_session";
 // *other* tabs, never the tab that made the change.
 export const SESSION_CHANGE_EVENT = "kerox-admin-session-change";
 
-export function getClientSession(): SessionPayload | null {
-  if (typeof window === "undefined") return null;
+function storage(): Storage | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
 
-  const raw = window.sessionStorage.getItem(STORAGE_KEY);
+export function getClientSession(): SessionPayload | null {
+  const raw = storage()?.getItem(STORAGE_KEY);
   if (!raw) return null;
 
   try {
@@ -33,11 +35,11 @@ export function getClientSession(): SessionPayload | null {
 }
 
 export function setClientSession(session: SessionPayload): void {
-  window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  storage()?.setItem(STORAGE_KEY, JSON.stringify(session));
   window.dispatchEvent(new Event(SESSION_CHANGE_EVENT));
 }
 
 export function clearClientSession(): void {
-  window.sessionStorage.removeItem(STORAGE_KEY);
+  storage()?.removeItem(STORAGE_KEY);
   window.dispatchEvent(new Event(SESSION_CHANGE_EVENT));
 }

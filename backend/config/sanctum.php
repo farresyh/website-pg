@@ -3,7 +3,6 @@
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Laravel\Sanctum\Http\Middleware\AuthenticateSession;
-use Laravel\Sanctum\Sanctum;
 
 return [
 
@@ -18,12 +17,14 @@ return [
     |
     */
 
-    'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', sprintf(
-        '%s%s',
-        'localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1',
-        Sanctum::currentApplicationUrlWithPort(),
-        // Sanctum::currentRequestHost(),
-    ))),
+    // ADR-121: only the admin app is stateful (cookie session + CSRF). The
+    // default derives from ADMIN_URL, which production already sets, so no
+    // extra env var is needed. Never add the storefront or the portal: they
+    // authenticate differently and must not receive admin cookies.
+    'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', implode(',', array_filter([
+        'localhost:3000',
+        parse_url((string) env('ADMIN_URL', ''), PHP_URL_HOST),
+    ])))),
 
     /*
     |--------------------------------------------------------------------------
@@ -56,7 +57,8 @@ return [
     // admin shift without forcing a mid-session re-login; admin/lib/
     // api-client.ts now handles the resulting 401 by clearing the client
     // session and redirecting to /login instead of every page growing its
-    // own handling.
+    // own handling. Since ADR-121 admins don't use tokens at all (cookie
+    // session); this now bounds affiliate/reseller-portal tokens.
     'expiration' => env('SANCTUM_TOKEN_EXPIRATION_MINUTES', 720),
 
     /*

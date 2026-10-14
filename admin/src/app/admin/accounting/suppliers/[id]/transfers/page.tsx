@@ -60,7 +60,6 @@ const sourceChannelLabel: Record<string, string> = {
 export default function SupplierFundingHistoryPage() {
   const router = useRouter();
   const session = useClientSession();
-  const token = session?.token ?? null;
   const params = useParams<{ id: string }>();
   const supplierId = Number(params.id);
 
@@ -87,8 +86,8 @@ export default function SupplierFundingHistoryPage() {
   const [correcting, setCorrecting] = useState(false);
   const [correctionError, setCorrectionError] = useState<string | null>(null);
 
-  function refresh(t: string, p: number) {
-    return getSupplierTransfers(t, supplierId, {
+  function refresh(p: number) {
+    return getSupplierTransfers(supplierId, {
       from: from || undefined,
       to: to || undefined,
       status: status || undefined,
@@ -104,23 +103,23 @@ export default function SupplierFundingHistoryPage() {
       router.replace("/login");
       return;
     }
-    listSuppliers(s.token)
+    listSuppliers()
       .then((suppliers) => setSupplier(suppliers.find((x) => x.id === supplierId) ?? null))
       .catch(() => {});
-    refresh(s.token, 1);
+    refresh(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleFilter() {
-    if (!token) return;
+    if (!session) return;
     setPage(1);
-    refresh(token, 1);
+    refresh(1);
   }
 
   function handlePageChange(p: number) {
-    if (!token) return;
+    if (!session) return;
     setPage(p);
-    refresh(token, p);
+    refresh(p);
   }
 
   function openCorrection(transfer: SupplierTransfer) {
@@ -140,7 +139,7 @@ export default function SupplierFundingHistoryPage() {
 
   async function handleCorrectionSubmit(e: React.FormEvent, transfer: SupplierTransfer) {
     e.preventDefault();
-    if (!token) return;
+    if (!session) return;
     setCorrectionError(null);
 
     if (!correctionReason.trim()) {
@@ -151,14 +150,14 @@ export default function SupplierFundingHistoryPage() {
     setCorrecting(true);
     try {
       if (correctionMode === "void") {
-        await voidSupplierTransfer(token, transfer.id, correctionReason.trim());
+        await voidSupplierTransfer(transfer.id, correctionReason.trim());
       } else if (correctionMode === "adjust") {
         if (!correctionAmount || Number(correctionAmount) === 0) {
           setCorrectionError("Enter a non-zero adjustment amount.");
           setCorrecting(false);
           return;
         }
-        await adjustSupplierTransfer(token, transfer.id, correctionAmount, correctionReason.trim());
+        await adjustSupplierTransfer(transfer.id, correctionAmount, correctionReason.trim());
       } else {
         const values: CorrectSupplierTransferValues = { reason: correctionReason.trim() };
         let hasChange = false;
@@ -200,10 +199,10 @@ export default function SupplierFundingHistoryPage() {
           return;
         }
 
-        await correctSupplierTransfer(token, transfer.id, values);
+        await correctSupplierTransfer(transfer.id, values);
       }
       setCorrectingId(null);
-      await refresh(token, page);
+      await refresh(page);
     } catch (err) {
       setCorrectionError(err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {
@@ -212,10 +211,10 @@ export default function SupplierFundingHistoryPage() {
   }
 
   async function handleDownload(transfer: SupplierTransfer) {
-    if (!token) return;
+    if (!session) return;
     setDownloading(transfer.id);
     try {
-      await downloadSupplierTransferReceipt(token, transfer.id, `supplier-transfer-${transfer.id}-receipt`);
+      await downloadSupplierTransferReceipt(transfer.id, `supplier-transfer-${transfer.id}-receipt`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Download failed.");
     } finally {
@@ -227,7 +226,7 @@ export default function SupplierFundingHistoryPage() {
     return <p className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>;
   }
 
-  if (!token || !ledger) {
+  if (!session || !ledger) {
     return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
   }
 

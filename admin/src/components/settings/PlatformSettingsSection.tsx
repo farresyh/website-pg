@@ -9,11 +9,9 @@ import { applyBulkMarkup, updatePlatformSettings, type PlatformSettings } from "
 import { Switch } from "@/components/ui/switch";
 
 export default function PlatformSettingsSection({
-  token,
   platform,
   onSaved,
 }: {
-  token: string;
   platform: PlatformSettings;
   onSaved: () => void;
 }) {
@@ -38,7 +36,7 @@ export default function PlatformSettingsSection({
     setSaving(true);
     setError(null);
     try {
-      await updatePlatformSettings(token, {
+      await updatePlatformSettings({
         maintenance_mode: maintenanceMode,
         maintenance_message: maintenanceMessage || null,
         vip_spend_threshold_sen: vipThresholdSen,
@@ -66,7 +64,7 @@ export default function PlatformSettingsSection({
     setError(null);
     setMarkupResult(null);
     try {
-      const result = await applyBulkMarkup(token, percent);
+      const result = await applyBulkMarkup(percent);
       setMarkupResult(`${result.packages_updated} package${result.packages_updated === 1 ? "" : "s"} updated.`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not apply bulk markup.");

@@ -88,7 +88,7 @@ export default function MemberDetailPage() {
 
   useEffect(() => {
     if (!session || !Number.isFinite(id)) return;
-    getMembershipDetail(session.token, id)
+    getMembershipDetail(id)
       .then(setDetail)
       .catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 404) {

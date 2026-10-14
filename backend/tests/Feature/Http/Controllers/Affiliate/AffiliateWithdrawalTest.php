@@ -10,7 +10,6 @@ use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
-use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
@@ -175,7 +174,7 @@ class AffiliateWithdrawalTest extends TestCase
         $withdrawal = Withdrawal::query()->firstOrFail();
         $this->assertNull($withdrawal->requested_by);
 
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
+        $this->actingAsSteppedUp(AdminUser::factory()->create(['role' => 'super_admin']));
 
         $this->patchJson("/api/withdrawals/{$withdrawal->id}/approve")
             ->assertOk()

@@ -25,7 +25,6 @@ interface IssueVoucherModalProps {
   onClose: () => void;
   onIssued: (result: IssueVoucherResult) => void;
   order: OrderDetail;
-  token: string;
 }
 
 function formatRm(sen: number): string {
@@ -53,7 +52,7 @@ export function isRestoreOnly(order: OrderDetail): boolean {
  * Restore-only mode drops the Reason field: nothing gets created for
  * it to attach to.
  */
-function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVoucherModalProps, "isOpen">) {
+function IssueVoucherFields({ onClose, onIssued, order }: Omit<IssueVoucherModalProps, "isOpen">) {
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +66,7 @@ function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVouch
     setSubmitting(true);
     setError(null);
     try {
-      const result = await issueVoucherFromOrder(token, order.id, {
+      const result = await issueVoucherFromOrder(order.id, {
         reason: restoreOnly ? undefined : reason.trim() || undefined,
       });
       onIssued(result);
@@ -142,7 +141,7 @@ function IssueVoucherFields({ onClose, onIssued, order, token }: Omit<IssueVouch
   );
 }
 
-export default function IssueVoucherModal({ isOpen, onClose, onIssued, order, token }: IssueVoucherModalProps) {
+export default function IssueVoucherModal({ isOpen, onClose, onIssued, order }: IssueVoucherModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -158,7 +157,7 @@ export default function IssueVoucherModal({ isOpen, onClose, onIssued, order, to
               </DialogHeaderActions>
             </DialogHeader>
             <DialogContent>
-              {isOpen && <IssueVoucherFields onClose={onClose} onIssued={onIssued} order={order} token={token} />}
+              {isOpen && <IssueVoucherFields onClose={onClose} onIssued={onIssued} order={order} />}
             </DialogContent>
           </DialogPopup>
         </DialogPositioner>

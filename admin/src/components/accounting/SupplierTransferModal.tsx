@@ -37,7 +37,6 @@ import { todayInKL } from "@/lib/date-range";
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  token: string;
   supplier: Supplier;
 }
 
@@ -48,7 +47,7 @@ function formatForeign(amount: string, currency: string): string {
   return `${currency} ${n.toLocaleString("en-MY", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
 }
 
-function Content({ token, supplier }: Omit<Props, "isOpen" | "onClose">) {
+function Content({ supplier }: Omit<Props, "isOpen" | "onClose">) {
   const [ledger, setLedger] = useState<SupplierFundingLedger | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [transferredOn, setTransferredOn] = useState(todayInKL());
@@ -63,7 +62,7 @@ function Content({ token, supplier }: Omit<Props, "isOpen" | "onClose">) {
   const [submitting, setSubmitting] = useState(false);
 
   function refresh() {
-    return getSupplierTransfers(token, supplier.id)
+    return getSupplierTransfers(supplier.id)
       .then(setLedger)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load the funding ledger."));
   }
@@ -90,7 +89,7 @@ function Content({ token, supplier }: Omit<Props, "isOpen" | "onClose">) {
 
     setSubmitting(true);
     try {
-      await recordSupplierTransfer(token, supplier.id, {
+      await recordSupplierTransfer(supplier.id, {
         transferred_on: transferredOn,
         source_channel: sourceChannel,
         paid_by: paidBy || undefined,
@@ -236,7 +235,7 @@ function Content({ token, supplier }: Omit<Props, "isOpen" | "onClose">) {
   );
 }
 
-export default function SupplierTransferModal({ isOpen, onClose, token, supplier }: Props) {
+export default function SupplierTransferModal({ isOpen, onClose, supplier }: Props) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -252,7 +251,7 @@ export default function SupplierTransferModal({ isOpen, onClose, token, supplier
               </DialogHeaderActions>
             </DialogHeader>
             <DialogContent>
-              {isOpen && <Content key={supplier.id} token={token} supplier={supplier} />}
+              {isOpen && <Content key={supplier.id} supplier={supplier} />}
             </DialogContent>
           </DialogPopup>
         </DialogPositioner>

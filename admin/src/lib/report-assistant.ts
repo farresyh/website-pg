@@ -21,10 +21,9 @@ export interface ReportAssistantAnswer {
   row_count: number | null;
 }
 
-export function askReportAssistant(token: string, question: string, history: ReportAssistantTurn[]) {
+export function askReportAssistant(question: string, history: ReportAssistantTurn[]) {
   return apiFetch<ReportAssistantAnswer>("/api/reports/assistant/ask", {
     method: "POST",
-    token,
     body: { question, history },
   });
 }

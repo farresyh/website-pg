@@ -11,7 +11,8 @@ import {
   PopoverContent,
   PopoverClose,
 } from "@/components/ui/popover";
-import { clearClientSession } from "@/lib/session";
+import { logout, regenerateRecoveryCodes } from "@/lib/login";
+import RecoveryCodesDialog from "@/components/common/RecoveryCodesDialog";
 import { useClientSession } from "@/hooks/useClientSession";
 
 export default function UserDropdown() {
@@ -22,7 +23,7 @@ export default function UserDropdown() {
   // stale/inconsistent there); Popover's `anchor` prop needs the actual
   // element up front, not just a ref object.
   const [triggerEl, setTriggerEl] = useState<HTMLButtonElement | null>(null);
-  // sessionStorage doesn't exist during SSR, so a render-body read would
+  // Browser storage doesn't exist during SSR, so a render-body read would
   // render "?"/"Account" on the server and the real name on the client's
   // first (hydration) render — React sees that as a text mismatch. This
   // was the exact cause of the known "+ T / - ?" hydration warning on
@@ -36,14 +37,18 @@ export default function UserDropdown() {
     setIsOpen((prev) => !prev);
   }
 
-  async function handleLogout() {
-    await fetch("/api/logout", {
-      method: "POST",
-      headers: session ? { Authorization: `Bearer ${session.token}` } : undefined,
-    }).catch(() => null);
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
 
-    clearClientSession();
+  async function handleLogout() {
+    await logout();
     router.push("/login");
+  }
+
+  // ADR-121: needs a step-up (api-client opens the code dialog); every
+  // older code stops working. A cancelled step-up just leaves things as-is.
+  async function handleNewRecoveryCodes() {
+    const codes = await regenerateRecoveryCodes().catch(() => null);
+    if (codes) setRecoveryCodes(codes);
   }
 
   return (
@@ -75,6 +80,16 @@ export default function UserDropdown() {
               </PopoverHeader>
               <PopoverContent>
                 <ul className="flex flex-col gap-1">
+                  {session?.mfa_status === "active" && (
+                    <li>
+                      <PopoverClose
+                        onClick={() => void handleNewRecoveryCodes()}
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-theme-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+                      >
+                        New recovery codes
+                      </PopoverClose>
+                    </li>
+                  )}
                   <li>
                     <PopoverClose
                       onClick={() => void handleLogout()}
@@ -89,6 +104,7 @@ export default function UserDropdown() {
           </PopoverPositioner>
         </PopoverPortal>
       </Popover>
+      <RecoveryCodesDialog codes={recoveryCodes} onClose={() => setRecoveryCodes(null)} />
     </div>
   );
 }

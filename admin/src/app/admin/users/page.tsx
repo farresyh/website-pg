@@ -34,14 +34,22 @@ import {
   createAdminUser,
   updateAdminUser,
   updateAdminUserStatus,
+  requireAdminUserMfa,
 } from "@/lib/admin-users";
 import AdminUserFormModal, {
   type AdminUserFormSubmitValues,
 } from "@/components/admin-users/AdminUserFormModal";
 
+/** ADR-121: the account's MFA state as shown in the table. */
+const MFA_TAG: Record<AdminUser["mfa_status"], { label: string; severity: "success" | "warn" | "secondary" }> = {
+  active: { label: "On", severity: "success" },
+  pending: { label: "Awaiting setup", severity: "warn" },
+  none: { label: "Off", severity: "secondary" },
+};
+
 export default function AdminUsersPage() {
   const router = useRouter();
-  // Read in an effect, not render body — sessionStorage isn't available
+  // Read in an effect, not render body — browser storage isn't available
   // during SSR, and reading it directly during render caused the known
   // hydration mismatch on other screens (see UserDropdown.tsx). Fixed
   // here as part of standardizing on this pattern, 2026-07-25 audit.
@@ -53,9 +61,9 @@ export default function AdminUsersPage() {
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState<number | null>(null);
 
-  async function refreshUsers(token: string) {
+  async function refreshUsers() {
     try {
-      setUsers(await listAdminUsers(token));
+      setUsers(await listAdminUsers());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load admin users.");
     }
@@ -68,7 +76,7 @@ export default function AdminUsersPage() {
       return;
     }
 
-    listAdminUsers(s.token)
+    listAdminUsers()
       .then(setUsers)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load admin users.");
@@ -90,13 +98,26 @@ export default function AdminUsersPage() {
     if (!session) return;
 
     if (editingUser) {
-      await updateAdminUser(session.token, editingUser.id, values);
+      await updateAdminUser(editingUser.id, values);
     } else {
-      await createAdminUser(session.token, values);
+      await createAdminUser(values);
     }
 
     setIsModalOpen(false);
-    await refreshUsers(session.token);
+    await refreshUsers();
+  }
+
+  async function handleRequireMfa(user: AdminUser) {
+    setError(null);
+    setStatusUpdatingId(user.id);
+    try {
+      await requireAdminUserMfa(user.id);
+      await refreshUsers();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not require MFA.");
+    } finally {
+      setStatusUpdatingId(null);
+    }
   }
 
   async function handleToggleStatus(user: AdminUser) {
@@ -105,8 +126,8 @@ export default function AdminUsersPage() {
     setStatusUpdatingId(user.id);
 
     try {
-      await updateAdminUserStatus(session.token, user.id, !user.is_active);
-      await refreshUsers(session.token);
+      await updateAdminUserStatus(user.id, !user.is_active);
+      await refreshUsers();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update status.");
     } finally {
@@ -120,7 +141,8 @@ export default function AdminUsersPage() {
         <div>
           <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Admin Users</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Create, edit, activate, or deactivate Super Admin and Admin accounts.
+            Create, edit, activate, or deactivate Super Admin and Admin accounts. &ldquo;Require MFA&rdquo; is
+            one-way: the account sets up Google Authenticator at its next login.
           </p>
         </div>
         <Button size="small" onClick={openCreateModal}>
@@ -155,6 +177,9 @@ export default function AdminUsersPage() {
                       Status
                     </DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                      MFA
+                    </DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
                       Actions
                     </DataTableTHeadCell>
                   </DataTableTHeadRow>
@@ -182,6 +207,9 @@ export default function AdminUsersPage() {
                           </Tag>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
+                          <Tag severity={MFA_TAG[user.mfa_status].severity}>{MFA_TAG[user.mfa_status].label}</Tag>
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm">
                           <div className="flex items-center gap-3">
                             <button
                               onClick={() => openEditModal(user)}
@@ -199,6 +227,16 @@ export default function AdminUsersPage() {
                             >
                               {isSelf ? "You" : user.is_active ? "Deactivate" : "Activate"}
                             </Button>
+                            {user.mfa_status === "none" && (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                disabled={statusUpdatingId === user.id}
+                                onClick={() => handleRequireMfa(user)}
+                              >
+                                Require MFA
+                              </Button>
+                            )}
                           </div>
                         </DataTableCell>
                       </DataTableRow>

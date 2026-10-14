@@ -80,7 +80,6 @@ const TD = "px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400";
 export default function ResellersPage() {
   const router = useRouter();
   const session = useClientSession();
-  const token = session?.token ?? null;
   const [resellers, setResellers] = useState<ResellerRow[] | null>(null);
   const [tiers, setTiers] = useState<ResellerTier[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -101,8 +100,8 @@ export default function ResellersPage() {
   const [whatsAppGroupsTarget, setWhatsAppGroupsTarget] = useState<ResellerRow | null>(null);
   const [portalUsersTarget, setPortalUsersTarget] = useState<ResellerRow | null>(null);
 
-  function refresh(t: string) {
-    return Promise.all([listResellers(t), listResellerTiers(t)])
+  function refresh() {
+    return Promise.all([listResellers(), listResellerTiers()])
       .then(([r, ti]) => {
         setResellers(r.resellers);
         setTiers(ti.tiers);
@@ -116,12 +115,12 @@ export default function ResellersPage() {
       router.replace("/login");
       return;
     }
-    refresh(s.token);
+    refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function guard(key: number, fn: () => Promise<void>) {
-    if (!token) return;
+    if (!session) return;
     setBusy(key);
     setError(null);
     try {
@@ -134,15 +133,15 @@ export default function ResellersPage() {
   }
 
   async function handleCreate(values: ResellerFormSubmitValues) {
-    if (!token) return;
-    await createReseller(token, values);
+    if (!session) return;
+    await createReseller(values);
     setFormOpen(false);
-    await refresh(token);
+    await refresh();
   }
 
   async function handleUpdate(values: ResellerFormSubmitValues) {
-    if (!token || !editing) return;
-    await updateReseller(token, editing.id, {
+    if (!session || !editing) return;
+    await updateReseller(editing.id, {
       business_name: values.business_name,
       contact_name: values.contact_name,
       email: values.email,
@@ -151,14 +150,14 @@ export default function ResellersPage() {
     });
     setFormOpen(false);
     setEditing(null);
-    await refresh(token);
+    await refresh();
   }
 
   if (error && !resellers) {
     return <p className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>;
   }
 
-  if (!token || !resellers) {
+  if (!session || !resellers) {
     return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
   }
 
@@ -256,8 +255,8 @@ export default function ResellersPage() {
                                 r.is_active
                                   ? setStatusTarget(r)
                                   : guard(r.id, async () => {
-                                      await updateResellerStatus(token, r.id, true);
-                                      await refresh(token);
+                                      await updateResellerStatus(r.id, true);
+                                      await refresh();
                                     })
                               }
                             >
@@ -350,9 +349,8 @@ export default function ResellersPage() {
         <ResellerWalletModal
           isOpen={walletTarget !== null}
           onClose={() => setWalletTarget(null)}
-          token={token}
           reseller={walletTarget}
-          onCredited={() => refresh(token)}
+          onCredited={() => refresh()}
         />
       )}
 
@@ -360,7 +358,6 @@ export default function ResellersPage() {
         <ResellerApiKeysModal
           isOpen={apiKeysTarget !== null}
           onClose={() => setApiKeysTarget(null)}
-          token={token}
           reseller={apiKeysTarget}
         />
       )}
@@ -369,7 +366,6 @@ export default function ResellersPage() {
         <ResellerWebhookModal
           isOpen={webhookTarget !== null}
           onClose={() => setWebhookTarget(null)}
-          token={token}
           reseller={webhookTarget}
         />
       )}
@@ -378,7 +374,6 @@ export default function ResellersPage() {
         <ResellerWhatsAppGroupsModal
           isOpen={whatsAppGroupsTarget !== null}
           onClose={() => setWhatsAppGroupsTarget(null)}
-          token={token}
           reseller={whatsAppGroupsTarget}
         />
       )}
@@ -387,7 +382,6 @@ export default function ResellersPage() {
         <ResellerPortalUsersModal
           isOpen={portalUsersTarget !== null}
           onClose={() => setPortalUsersTarget(null)}
-          token={token}
           reseller={portalUsersTarget}
         />
       )}
@@ -406,13 +400,13 @@ export default function ResellersPage() {
         editing={editingTier}
         onSubmit={async (values) => {
           if (editingTier) {
-            await updateResellerTier(token, editingTier.id, values);
+            await updateResellerTier(editingTier.id, values);
           } else {
-            await createResellerTier(token, values);
+            await createResellerTier(values);
           }
           setTierFormOpen(false);
           setEditingTier(null);
-          await refresh(token);
+          await refresh();
         }}
       />
 
@@ -439,9 +433,9 @@ export default function ResellersPage() {
                   onClick={() =>
                     statusTarget &&
                     guard(statusTarget.id, async () => {
-                      await updateResellerStatus(token, statusTarget.id, false);
+                      await updateResellerStatus(statusTarget.id, false);
                       setStatusTarget(null);
-                      await refresh(token);
+                      await refresh();
                     })
                   }
                 >
@@ -485,9 +479,9 @@ export default function ResellersPage() {
                   onClick={() =>
                     tierTarget &&
                     guard(tierTarget.id, async () => {
-                      await assignResellerTier(token, tierTarget.id, Number(tierSelectValue));
+                      await assignResellerTier(tierTarget.id, Number(tierSelectValue));
                       setTierTarget(null);
-                      await refresh(token);
+                      await refresh();
                     })
                   }
                 >
@@ -521,9 +515,9 @@ export default function ResellersPage() {
                   onClick={() =>
                     deleteTarget &&
                     guard(deleteTarget.id, async () => {
-                      await deleteReseller(token, deleteTarget.id);
+                      await deleteReseller(deleteTarget.id);
                       setDeleteTarget(null);
-                      await refresh(token);
+                      await refresh();
                     })
                   }
                 >
@@ -557,9 +551,9 @@ export default function ResellersPage() {
                   onClick={() =>
                     deleteTierTarget &&
                     guard(deleteTierTarget.id, async () => {
-                      await deleteResellerTier(token, deleteTierTarget.id);
+                      await deleteResellerTier(deleteTierTarget.id);
                       setDeleteTierTarget(null);
-                      await refresh(token);
+                      await refresh();
                     })
                   }
                 >

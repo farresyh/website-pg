@@ -30,7 +30,7 @@ export default function SeoGlobalSettingsPage() {
       router.replace("/login");
       return;
     }
-    getSeoSettings(s.token)
+    getSeoSettings()
       .then(setSettings)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load SEO settings."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -42,7 +42,7 @@ export default function SeoGlobalSettingsPage() {
     setError(null);
     setSaved(false);
     try {
-      const updated = await updateSeoSettings(session.token, {
+      const updated = await updateSeoSettings({
         default_meta_title: settings.default_meta_title || null,
         default_meta_description: settings.default_meta_description || null,
         default_og_image: settings.default_og_image || null,

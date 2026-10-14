@@ -34,18 +34,18 @@ export interface WithdrawalIndexResponse {
   withdrawals: Withdrawal[];
 }
 
-export function listWithdrawals(token: string) {
-  return apiFetch<WithdrawalIndexResponse>("/api/withdrawals", { token });
+export function listWithdrawals() {
+  return apiFetch<WithdrawalIndexResponse>("/api/withdrawals");
 }
 
-export function approveWithdrawal(token: string, id: number) {
-  return apiFetch<Withdrawal>(`/api/withdrawals/${id}/approve`, { method: "PATCH", token });
+export function approveWithdrawal(id: number) {
+  return apiFetch<Withdrawal>(`/api/withdrawals/${id}/approve`, { method: "PATCH" });
 }
 
-export function rejectWithdrawal(token: string, id: number) {
-  return apiFetch<Withdrawal>(`/api/withdrawals/${id}/reject`, { method: "PATCH", token });
+export function rejectWithdrawal(id: number) {
+  return apiFetch<Withdrawal>(`/api/withdrawals/${id}/reject`, { method: "PATCH" });
 }
 
-export function completeWithdrawal(token: string, id: number) {
-  return apiFetch<Withdrawal>(`/api/withdrawals/${id}/complete`, { method: "PATCH", token });
+export function completeWithdrawal(id: number) {
+  return apiFetch<Withdrawal>(`/api/withdrawals/${id}/complete`, { method: "PATCH" });
 }

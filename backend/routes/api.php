@@ -50,6 +50,7 @@ use App\Http\Controllers\Affiliate\Storefront\StorefrontGameController as Affili
 use App\Http\Controllers\Affiliate\SubscriptionController as AffiliateSubscriptionController;
 use App\Http\Controllers\Affiliate\WithdrawalController as AffiliateWithdrawalController;
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Auth\MfaController;
 use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\CheckoutController;
@@ -117,6 +118,10 @@ use Illuminate\Support\Facades\Route;
 // route in this file now gets its own prefix for the same reason,
 // not just this one.
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1,login');
+// ADR-121: the admin app's cookie-session plumbing. The code step has its
+// own bucket; wrong codes also count toward AccountLoginThrottle.
+Route::get('/csrf-token', [AuthController::class, 'csrfToken'])->middleware('throttle:30,1,csrf-token');
+Route::post('/login/mfa', [AuthController::class, 'loginMfa'])->middleware('throttle:5,1,login-mfa');
 
 // ADR-014: unauthenticated infra probe, DB + queue connection only —
 // no order/customer data ever touches this endpoint.
@@ -425,16 +430,23 @@ Route::prefix('reseller-portal')->middleware(['auth:affiliate', 'account.type:re
     Route::get('/webhook/deliveries', [ResellerPortalWebhookController::class, 'deliveries']);
 });
 
-Route::middleware('auth:sanctum')->group(function () {
+// ADR-121: `admin.session` caps a cookie login at 7 days. Admin bearer
+// tokens are refused in AppServiceProvider, so this group is session-only
+// for admins. `mfa.stepup` marks the five dangerous actions
+// (StepUpRoutesTest pins the set).
+Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+    Route::post('/mfa/step-up', [MfaController::class, 'stepUp'])->middleware('throttle:5,1,mfa-step-up');
+    Route::post('/mfa/recovery-codes', [MfaController::class, 'regenerateRecoveryCodes'])->middleware('mfa.stepup');
 
     // AUTH-4 — Super Admin only, per PRD §3 Users & Roles.
     Route::middleware('admin.role:super_admin')->prefix('admin-users')->group(function () {
         Route::get('/', [AdminUserController::class, 'index']);
-        Route::post('/', [AdminUserController::class, 'store']);
-        Route::put('/{admin_user}', [AdminUserController::class, 'update']);
-        Route::patch('/{admin_user}/status', [AdminUserController::class, 'updateStatus']);
+        Route::post('/', [AdminUserController::class, 'store'])->middleware('mfa.stepup');
+        Route::put('/{admin_user}', [AdminUserController::class, 'update'])->middleware('mfa.stepup');
+        Route::patch('/{admin_user}/status', [AdminUserController::class, 'updateStatus'])->middleware('mfa.stepup');
+        Route::patch('/{admin_user}/require-mfa', [AdminUserController::class, 'requireMfa']);
     });
 
     // WTH-1..5 — Admin and Super Admin both operate this; the
@@ -443,7 +455,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // it depends on each withdrawal's own amount.
     Route::middleware('admin.role:super_admin,admin')->prefix('withdrawals')->group(function () {
         Route::get('/', [WithdrawalController::class, 'index']);
-        Route::patch('/{withdrawal}/approve', [WithdrawalController::class, 'approve']);
+        Route::patch('/{withdrawal}/approve', [WithdrawalController::class, 'approve'])->middleware('mfa.stepup');
         Route::patch('/{withdrawal}/reject', [WithdrawalController::class, 'reject']);
         Route::patch('/{withdrawal}/complete', [WithdrawalController::class, 'complete']);
     });
@@ -590,8 +602,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('admin.role:super_admin')->prefix('middleware/suppliers')->group(function () {
         Route::get('/', [SupplierController::class, 'index']);
         Route::get('/available-slugs', [SupplierController::class, 'availableSlugs']);
-        Route::post('/', [SupplierController::class, 'store']);
-        Route::put('/{supplier}', [SupplierController::class, 'update']);
+        Route::post('/', [SupplierController::class, 'store'])->middleware('mfa.stepup');
+        Route::put('/{supplier}', [SupplierController::class, 'update'])->middleware('mfa.stepup:api_config');
         Route::patch('/{supplier}/status', [SupplierController::class, 'updateStatus']);
         Route::delete('/{supplier}', [SupplierController::class, 'destroy']);
         Route::post('/{supplier}/refresh-balance', [SupplierController::class, 'refreshBalance']);
@@ -604,7 +616,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // PaymentGatewayFactory, not admin-defined.
     Route::middleware('admin.role:super_admin')->prefix('middleware/payment-gateways')->group(function () {
         Route::get('/', [PaymentGatewayController::class, 'index']);
-        Route::put('/{gatewayKey}', [PaymentGatewayController::class, 'update']);
+        Route::put('/{gatewayKey}', [PaymentGatewayController::class, 'update'])->middleware('mfa.stepup');
     });
 
     // ADR-051 (MUI-9) — read-only Request Logs viewer. Super Admin
@@ -840,7 +852,7 @@ Route::middleware('auth:sanctum')->group(function () {
             // CHIP top-up (decision 3a) deferred to whichever PR first gives
             // a Reseller its own entry point (see ADR-073's build addendum).
             Route::get('/{reseller}/wallet', [ResellerWalletController::class, 'index']);
-            Route::post('/{reseller}/wallet/credit', [ResellerWalletController::class, 'credit']);
+            Route::post('/{reseller}/wallet/credit', [ResellerWalletController::class, 'credit'])->middleware('mfa.stepup');
 
             // ADR-074 decision 1 (PR-E) — issue/revoke a Reseller API
             // credential. The plaintext key is only ever in store()'s

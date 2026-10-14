@@ -26,7 +26,6 @@ interface MarkDeliveredModalProps {
   onClose: () => void;
   onConfirmed: (order: OrderDetail) => void;
   order: OrderDetail;
-  token: string;
   /**
    * ADR-026 — shared with /admin/orders, same pattern
    * ResendDeliveryModal already established: sandbox mode swaps the
@@ -47,7 +46,7 @@ interface MarkDeliveredModalProps {
  * place. Rendered only while the dialog is open, same fresh-state-
  * per-open convention as IssueVoucherModal/ResendDeliveryModal.
  */
-function MarkDeliveredFields({ onClose, onConfirmed, order, token, sandbox }: Omit<MarkDeliveredModalProps, "isOpen">) {
+function MarkDeliveredFields({ onClose, onConfirmed, order, sandbox }: Omit<MarkDeliveredModalProps, "isOpen">) {
   const [supplierRef, setSupplierRef] = useState("");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -60,8 +59,8 @@ function MarkDeliveredFields({ onClose, onConfirmed, order, token, sandbox }: Om
     try {
       const values = { supplier_ref: supplierRef.trim(), note: note.trim() || undefined };
       const updated = sandbox
-        ? await markSandboxOrderDelivered(token, order.id, values)
-        : await markOrderDelivered(token, order.id, values);
+        ? await markSandboxOrderDelivered(order.id, values)
+        : await markOrderDelivered(order.id, values);
       onConfirmed(updated);
       onClose();
     } catch (err) {
@@ -127,7 +126,7 @@ function MarkDeliveredFields({ onClose, onConfirmed, order, token, sandbox }: Om
   );
 }
 
-export default function MarkDeliveredModal({ isOpen, onClose, onConfirmed, order, token, sandbox }: MarkDeliveredModalProps) {
+export default function MarkDeliveredModal({ isOpen, onClose, onConfirmed, order, sandbox }: MarkDeliveredModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -144,7 +143,7 @@ export default function MarkDeliveredModal({ isOpen, onClose, onConfirmed, order
             </DialogHeader>
             <DialogContent>
               {isOpen && (
-                <MarkDeliveredFields onClose={onClose} onConfirmed={onConfirmed} order={order} token={token} sandbox={sandbox} />
+                <MarkDeliveredFields onClose={onClose} onConfirmed={onConfirmed} order={order} sandbox={sandbox} />
               )}
             </DialogContent>
           </DialogPopup>

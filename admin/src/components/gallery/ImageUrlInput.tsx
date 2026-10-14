@@ -102,7 +102,7 @@ function GalleryGrid({ selectedUrl, onPick }: { selectedUrl: string; onPick: (ur
   useEffect(() => {
     if (!session) return;
     const isLatest = beginLoad();
-    listGalleryImages(session.token, { search: debouncedSearch || undefined, page: pageNumber })
+    listGalleryImages({ search: debouncedSearch || undefined, page: pageNumber })
       .then((p) => isLatest() && setPage(p))
       .catch((err: unknown) => isLatest() && setError(err instanceof ApiError ? err.message : "Could not load the gallery."));
   }, [session, debouncedSearch, pageNumber, beginLoad]);

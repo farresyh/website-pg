@@ -37,10 +37,9 @@ export interface DeveloperToolResult {
   error_message?: string | null;
 }
 
-export function testSupplierAdapter(token: string, values: TestSupplierAdapterValues) {
+export function testSupplierAdapter(values: TestSupplierAdapterValues) {
   return apiFetch<DeveloperToolResult>("/api/middleware/developer-tools/test", {
     method: "POST",
     body: values,
-    token,
   });
 }

@@ -26,7 +26,6 @@ interface ConfirmFailedModalProps {
   onClose: () => void;
   onConfirmed: (order: OrderDetail) => void;
   order: OrderDetail;
-  token: string;
   /** Same sandbox-mode pattern as MarkDeliveredModal — swaps the target endpoint only. */
   sandbox?: boolean;
 }
@@ -43,7 +42,7 @@ interface ConfirmFailedModalProps {
  * is a genuine claim, same weight as Mark Delivered's, just the
  * opposite outcome.
  */
-function ConfirmFailedFields({ onClose, onConfirmed, order, token, sandbox }: Omit<ConfirmFailedModalProps, "isOpen">) {
+function ConfirmFailedFields({ onClose, onConfirmed, order, sandbox }: Omit<ConfirmFailedModalProps, "isOpen">) {
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,8 +54,8 @@ function ConfirmFailedFields({ onClose, onConfirmed, order, token, sandbox }: Om
     try {
       const values = { note: note.trim() };
       const updated = sandbox
-        ? await confirmSandboxOrderDeliveryFailed(token, order.id, values)
-        : await confirmOrderDeliveryFailed(token, order.id, values);
+        ? await confirmSandboxOrderDeliveryFailed(order.id, values)
+        : await confirmOrderDeliveryFailed(order.id, values);
       onConfirmed(updated);
       onClose();
     } catch (err) {
@@ -123,7 +122,7 @@ function ConfirmFailedFields({ onClose, onConfirmed, order, token, sandbox }: Om
   );
 }
 
-export default function ConfirmFailedModal({ isOpen, onClose, onConfirmed, order, token, sandbox }: ConfirmFailedModalProps) {
+export default function ConfirmFailedModal({ isOpen, onClose, onConfirmed, order, sandbox }: ConfirmFailedModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -140,7 +139,7 @@ export default function ConfirmFailedModal({ isOpen, onClose, onConfirmed, order
             </DialogHeader>
             <DialogContent>
               {isOpen && (
-                <ConfirmFailedFields onClose={onClose} onConfirmed={onConfirmed} order={order} token={token} sandbox={sandbox} />
+                <ConfirmFailedFields onClose={onClose} onConfirmed={onConfirmed} order={order} sandbox={sandbox} />
               )}
             </DialogContent>
           </DialogPopup>

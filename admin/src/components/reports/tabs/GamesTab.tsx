@@ -7,9 +7,9 @@ import { GameIcon, KpiCard, Pending, ReportCard, ReportTable, ShareBar, previous
 import { formatRm } from "../format";
 
 export function GamesTab(props: ReportTabProps) {
-  const { token, filters, compare } = props;
-  const summary = useReport(props, () => getReportSummary(token, filters, compare));
-  const games = useReport(props, () => getGameBreakdown(token, filters));
+  const { filters, compare } = props;
+  const summary = useReport(props, () => getReportSummary(filters, compare));
+  const games = useReport(props, () => getGameBreakdown(filters));
   const [query, setQuery] = useState("");
 
   const s = summary.data;

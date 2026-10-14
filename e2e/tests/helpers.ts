@@ -1,5 +1,5 @@
-import type { Page } from "@playwright/test";
-import { ADMIN_URL, E2E_ADMIN_EMAIL, E2E_ADMIN_PASSWORD } from "./constants";
+import type { APIRequestContext, Page } from "@playwright/test";
+import { ADMIN_URL, BACKEND_URL, E2E_ADMIN_EMAIL, E2E_ADMIN_PASSWORD } from "./constants";
 
 /** Shared by both admin golden-path specs — not its own golden path (ADR-023 only names 3). */
 export async function loginAsAdmin(page: Page): Promise<void> {
@@ -44,4 +44,21 @@ export async function openOrder(page: Page, orderNumber: string): Promise<void> 
   // appear avoids a race where an unrelated row's "View" gets clicked.
   const row = page.locator("tr", { hasText: orderNumber });
   await row.getByRole("button", { name: "View" }).click();
+}
+
+/**
+ * ADR-121: the admin API is a cookie session for the admin app's origin
+ * only. Logs `request` in the way the admin app does (CSRF token, then
+ * login); the context keeps the session cookie. Pass the returned headers
+ * on every later call so Laravel treats it as the admin app.
+ */
+export async function loginAdminApi(request: APIRequestContext): Promise<Record<string, string>> {
+  const headers = { Referer: `${ADMIN_URL}/`, Accept: "application/json" };
+  const { token } = await (await request.get(`${BACKEND_URL}/api/csrf-token`, { headers })).json();
+  const login = await request.post(`${BACKEND_URL}/api/login`, {
+    headers: { ...headers, "X-CSRF-TOKEN": token },
+    data: { email: E2E_ADMIN_EMAIL, password: E2E_ADMIN_PASSWORD },
+  });
+  if (!login.ok()) throw new Error(`admin API login failed (${login.status()})`);
+  return headers;
 }

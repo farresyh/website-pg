@@ -8,7 +8,6 @@ use App\Models\Withdrawal;
 use App\Services\Ledger\LedgerService;
 use App\Services\Withdrawal\WithdrawalStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class WithdrawalControllerTest extends TestCase
@@ -29,7 +28,7 @@ class WithdrawalControllerTest extends TestCase
     public function test_the_platform_owner_can_no_longer_request_a_withdrawal(): void
     {
         $this->fundPlatformLedger(50_000);
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+        $this->actingAsSteppedUp(AdminUser::factory()->create(['role' => 'admin']));
 
         $this->postJson('/api/withdrawals', ['amount' => 10_000])->assertMethodNotAllowed();
         $this->assertDatabaseCount('withdrawals', 0);
@@ -43,7 +42,7 @@ class WithdrawalControllerTest extends TestCase
             'bank_name' => 'Maybank', 'bank_account_no' => '111', 'bank_account_holder' => 'Acme',
             'status' => WithdrawalStatus::Pending,
         ]);
-        Sanctum::actingAs($admin);
+        $this->actingAsSteppedUp($admin);
 
         $response = $this->getJson('/api/withdrawals');
 
@@ -57,7 +56,7 @@ class WithdrawalControllerTest extends TestCase
     {
         $this->fundPlatformLedger(50_000);
         $admin = AdminUser::factory()->create(['role' => 'admin']);
-        Sanctum::actingAs($admin);
+        $this->actingAsSteppedUp($admin);
 
         $withdrawal = Withdrawal::query()->create([
             'owner_type' => 'platform',
@@ -92,7 +91,7 @@ class WithdrawalControllerTest extends TestCase
             'requested_by' => $requester->id,
         ]);
 
-        Sanctum::actingAs($approver);
+        $this->actingAsSteppedUp($approver);
         $response = $this->patchJson("/api/withdrawals/{$withdrawal->id}/approve");
 
         $response->assertUnprocessable();
@@ -113,7 +112,7 @@ class WithdrawalControllerTest extends TestCase
             'requested_by' => $requester->id,
         ]);
 
-        Sanctum::actingAs($requester);
+        $this->actingAsSteppedUp($requester);
         $response = $this->patchJson("/api/withdrawals/{$withdrawal->id}/approve");
 
         $response->assertUnprocessable();
@@ -135,7 +134,7 @@ class WithdrawalControllerTest extends TestCase
             'requested_by' => $requester->id,
         ]);
 
-        Sanctum::actingAs($approver);
+        $this->actingAsSteppedUp($approver);
         $response = $this->patchJson("/api/withdrawals/{$withdrawal->id}/approve");
 
         $response->assertOk();
@@ -157,7 +156,7 @@ class WithdrawalControllerTest extends TestCase
             'requested_by' => $admin->id,
         ]);
 
-        Sanctum::actingAs($admin);
+        $this->actingAsSteppedUp($admin);
         $response = $this->patchJson("/api/withdrawals/{$withdrawal->id}/approve");
 
         $response->assertUnprocessable();
@@ -178,7 +177,7 @@ class WithdrawalControllerTest extends TestCase
             'requested_by' => $admin->id,
         ]);
 
-        Sanctum::actingAs($admin);
+        $this->actingAsSteppedUp($admin);
         $response = $this->patchJson("/api/withdrawals/{$withdrawal->id}/reject", ['admin_note' => 'Wrong bank details']);
 
         $response->assertOk();
@@ -202,7 +201,7 @@ class WithdrawalControllerTest extends TestCase
             'approved_by' => $admin->id,
         ]);
 
-        Sanctum::actingAs($admin);
+        $this->actingAsSteppedUp($admin);
         $response = $this->patchJson("/api/withdrawals/{$withdrawal->id}/reject");
 
         $response->assertUnprocessable();
@@ -223,7 +222,7 @@ class WithdrawalControllerTest extends TestCase
             'approved_by' => $admin->id,
         ]);
 
-        Sanctum::actingAs($admin);
+        $this->actingAsSteppedUp($admin);
         $response = $this->patchJson("/api/withdrawals/{$withdrawal->id}/complete");
 
         $response->assertOk();
@@ -245,7 +244,7 @@ class WithdrawalControllerTest extends TestCase
             'requested_by' => $admin->id,
         ]);
 
-        Sanctum::actingAs($admin);
+        $this->actingAsSteppedUp($admin);
         $response = $this->patchJson("/api/withdrawals/{$withdrawal->id}/complete");
 
         $response->assertUnprocessable();
@@ -269,7 +268,7 @@ class WithdrawalControllerTest extends TestCase
             'status' => WithdrawalStatus::Pending,
         ]);
 
-        Sanctum::actingAs($admin);
+        $this->actingAsSteppedUp($admin);
         $response = $this->getJson('/api/withdrawals');
 
         $response->assertOk();
@@ -296,7 +295,7 @@ class WithdrawalControllerTest extends TestCase
             'status' => WithdrawalStatus::Pending,
         ]);
 
-        Sanctum::actingAs($admin);
+        $this->actingAsSteppedUp($admin);
         $response = $this->getJson('/api/withdrawals');
 
         $response->assertOk();
@@ -307,7 +306,7 @@ class WithdrawalControllerTest extends TestCase
     public function test_index_never_flags_a_platform_withdrawal(): void
     {
         $admin = AdminUser::factory()->create(['role' => 'admin']);
-        Sanctum::actingAs($admin);
+        $this->actingAsSteppedUp($admin);
         Withdrawal::query()->create([
             'owner_type' => 'platform', 'amount' => 5_000, 'bank_name' => 'Maybank', 'bank_account_no' => '123',
             'bank_account_holder' => 'KRS', 'status' => WithdrawalStatus::Pending, 'requested_by' => $admin->id,

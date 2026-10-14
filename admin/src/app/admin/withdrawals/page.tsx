@@ -56,9 +56,9 @@ export default function WithdrawalsPage() {
   const [error, setError] = useState<string | null>(null);
   const [actingOnId, setActingOnId] = useState<number | null>(null);
 
-  async function refresh(token: string) {
+  async function refresh() {
     try {
-      setData(await listWithdrawals(token));
+      setData(await listWithdrawals());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load withdrawals.");
     }
@@ -71,7 +71,7 @@ export default function WithdrawalsPage() {
       return;
     }
 
-    listWithdrawals(s.token)
+    listWithdrawals()
       .then(setData)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load withdrawals.");
@@ -85,8 +85,8 @@ export default function WithdrawalsPage() {
     setActingOnId(withdrawal.id);
 
     try {
-      await action(session.token, withdrawal.id);
-      await refresh(session.token);
+      await action(withdrawal.id);
+      await refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Action failed.");
     } finally {

@@ -41,7 +41,7 @@ export default function MiddlewareSidebar() {
     const tab = window.open("", "_blank");
     setOpeningTarget(target);
     try {
-      const { url } = await mintOpsLink(session.token, target);
+      const { url } = await mintOpsLink(target);
       if (tab) tab.location.href = url;
     } catch {
       tab?.close();

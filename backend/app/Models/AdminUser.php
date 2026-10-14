@@ -29,13 +29,20 @@ class AdminUser extends Authenticatable
         'is_active',
         'mfa_secret',
         'mfa_enabled',
+        'mfa_required',
+        'mfa_recovery_codes',
+        'mfa_last_timestep',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
         'mfa_secret',
+        'mfa_recovery_codes',
+        'mfa_last_timestep',
     ];
+
+    protected $appends = ['mfa_status'];
 
     protected function casts(): array
     {
@@ -45,6 +52,19 @@ class AdminUser extends Authenticatable
             'is_active' => 'boolean',
             'mfa_secret' => 'encrypted', // AUTH-7: TOTP secret, encrypted at rest
             'mfa_enabled' => 'boolean',
+            'mfa_required' => 'boolean',
+            'mfa_recovery_codes' => 'array',
+            'mfa_last_timestep' => 'integer',
         ];
+    }
+
+    /** ADR-121: `none` (not required), `pending` (required, not set up yet), `active`. */
+    public function getMfaStatusAttribute(): string
+    {
+        return match (true) {
+            (bool) $this->mfa_enabled => 'active',
+            (bool) $this->mfa_required => 'pending',
+            default => 'none',
+        };
     }
 }

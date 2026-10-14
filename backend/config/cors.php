@@ -49,6 +49,11 @@ return [
 
     'max_age' => 0,
 
+    // Never true globally: a custom affiliate domain (ADR-078) must not get
+    // credentials. ADR-121: AllowAdminCorsCredentials turns it on per
+    // request for the origins below only (the admin app's cookie session).
     'supports_credentials' => false,
+
+    'credentialed_origins' => array_filter(explode(',', env('ADMIN_URL', 'http://localhost:3000'))),
 
 ];

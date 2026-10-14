@@ -39,7 +39,6 @@ import {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  token: string;
   reseller: ResellerRow;
 }
 
@@ -47,7 +46,7 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleString("en-MY", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
+function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
   const [groups, setGroups] = useState<ResellerWhatsAppGroup[] | null>(null);
   const [pending, setPending] = useState<ResellerWhatsAppPendingLink[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +54,7 @@ function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
   const [togglingId, setTogglingId] = useState<number | null>(null);
 
   function refresh() {
-    return Promise.all([listResellerWhatsAppGroups(token, reseller.id), listPendingWhatsAppGroups(token)])
+    return Promise.all([listResellerWhatsAppGroups(reseller.id), listPendingWhatsAppGroups()])
       .then(([g, p]) => {
         setGroups(g);
         setPending(p);
@@ -72,7 +71,7 @@ function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
     setError(null);
     setLinking(whatsappGroupId);
     try {
-      await linkResellerWhatsAppGroup(token, reseller.id, whatsappGroupId);
+      await linkResellerWhatsAppGroup(reseller.id, whatsappGroupId);
       await refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not link this group.");
@@ -85,7 +84,7 @@ function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
     setError(null);
     setTogglingId(group.id);
     try {
-      await updateResellerWhatsAppGroupStatus(token, reseller.id, group.id, !group.is_active);
+      await updateResellerWhatsAppGroupStatus(reseller.id, group.id, !group.is_active);
       await refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update this group.");
@@ -182,7 +181,7 @@ function Content({ token, reseller }: Omit<Props, "isOpen" | "onClose">) {
   );
 }
 
-export default function ResellerWhatsAppGroupsModal({ isOpen, onClose, token, reseller }: Props) {
+export default function ResellerWhatsAppGroupsModal({ isOpen, onClose, reseller }: Props) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -198,7 +197,7 @@ export default function ResellerWhatsAppGroupsModal({ isOpen, onClose, token, re
               </DialogHeaderActions>
             </DialogHeader>
             <DialogContent>
-              {isOpen && <Content key={reseller.id} token={token} reseller={reseller} />}
+              {isOpen && <Content key={reseller.id} reseller={reseller} />}
             </DialogContent>
           </DialogPopup>
         </DialogPositioner>

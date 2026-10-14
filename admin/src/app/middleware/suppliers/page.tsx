@@ -76,35 +76,35 @@ export default function SuppliersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const refresh = useCallback((token: string) => {
-    listSuppliers(token)
+  const refresh = useCallback(() => {
+    listSuppliers()
       .then(setSuppliers)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load suppliers."));
-    listAvailableSupplierSlugs(token).then(setAvailableSlugs).catch(() => {});
-    listGames(token).then(setGames).catch(() => {});
+    listAvailableSupplierSlugs().then(setAvailableSlugs).catch(() => {});
+    listGames().then(setGames).catch(() => {});
   }, []);
 
   useEffect(() => {
     if (!session) return;
-    refresh(session.token);
+    refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   const creatableSlugs = availableSlugs.filter((slug) => !suppliers?.some((s) => s.slug === slug));
 
-  async function handleCreate(values: Parameters<typeof createSupplier>[1]) {
+  async function handleCreate(values: Parameters<typeof createSupplier>[0]) {
     if (!session) return;
-    await createSupplier(session.token, values);
+    await createSupplier(values);
     setCreateOpen(false);
-    refresh(session.token);
+    refresh();
   }
 
-  async function handleEdit(values: Parameters<typeof updateSupplier>[2]) {
+  async function handleEdit(values: Parameters<typeof updateSupplier>[1]) {
     if (!session || !editTarget) return;
     setNotice(null);
-    const updated = await updateSupplier(session.token, editTarget.id, values);
+    const updated = await updateSupplier(editTarget.id, values);
     setEditTarget(null);
-    refresh(session.token);
+    refresh();
 
     // ADR-069 decision 11 — surface the post-save connection probe.
     // Stress-test Q3: a breaker-open result is not a credential problem.
@@ -127,8 +127,8 @@ export default function SuppliersPage() {
     setError(null);
     setBusySlug(supplier.slug);
     try {
-      await updateSupplierStatus(session.token, supplier.id, !supplier.is_active);
-      refresh(session.token);
+      await updateSupplierStatus(supplier.id, !supplier.is_active);
+      refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update this supplier.");
     } finally {
@@ -142,8 +142,8 @@ export default function SuppliersPage() {
     setError(null);
     setBusySlug(supplier.slug);
     try {
-      await refreshSupplierBalance(session.token, supplier.id);
-      refresh(session.token);
+      await refreshSupplierBalance(supplier.id);
+      refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not refresh balance.");
     } finally {
@@ -156,9 +156,9 @@ export default function SuppliersPage() {
     setError(null);
     setBusySlug(deleteConfirmTarget.slug);
     try {
-      await deleteSupplier(session.token, deleteConfirmTarget.id);
+      await deleteSupplier(deleteConfirmTarget.id);
       setDeleteConfirmTarget(null);
-      refresh(session.token);
+      refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not delete this supplier.");
     } finally {
@@ -166,11 +166,11 @@ export default function SuppliersPage() {
     }
   }
 
-  async function handlePackagesSubmit(values: Parameters<typeof updateSupplierPackagesStatus>[2]) {
+  async function handlePackagesSubmit(values: Parameters<typeof updateSupplierPackagesStatus>[1]) {
     if (!session || !packagesTarget) return;
-    await updateSupplierPackagesStatus(session.token, packagesTarget.id, values);
+    await updateSupplierPackagesStatus(packagesTarget.id, values);
     setPackagesTarget(null);
-    refresh(session.token);
+    refresh();
   }
 
   return (
