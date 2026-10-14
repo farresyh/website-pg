@@ -592,8 +592,10 @@ orders against an existing balance still work.
 Merged as `735e156`; the prod box runs it. Ships #426–#429: item 93 (a
 combo's stored price stays current while it is off and on reactivation),
 whose migration repriced 28 stale PUBG Mobile combos on deploy (0 stale of
-101 after), plus docs (item 66 parked, item 94 added). `staging` = `main`
-apart from docs.
+101 after), plus docs (item 66 parked, item 94 added). **Not yet released:** `staging`
+also carries #433 (items 73 and 95, the Reseller API rejection log and
+`/api/health/whatsapp`) plus docs #431/#432; the founder holds the next
+release for a later session.
 
 **Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
 hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
