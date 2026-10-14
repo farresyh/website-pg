@@ -937,3 +937,9 @@ call still answers 401. The `ready` path is checked on prod after release.
 - ADR-039 and ADR-117 2026-10-15 addenda (the replacement SQL revokes the useless literal grant).
 
 **Left to do:** release, the founder's replacement grant, then "Backup Now" and a check for `restore_test_passed = 1`.
+
+**Later 2026-10-15.**
+- PR #442 is merged to `staging`, with CI green (the `backend-concurrency` job now runs under `partial_revokes = ON`).
+- The founder ran the ADR-117 2026-10-15 SQL. Verified read-only: `pekangame_app` holds the exact-name grant on `defaultdb_restore_test`, and the wildcard grant is gone.
+- The founder chose to release #442 together with the next backlog items, so release PR #443 was closed unmerged.
+- Until that release, each nightly run still fails with `1044`, because the live code uses a timestamped name. Each run alerts the admins, and archives still upload.
