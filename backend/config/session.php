@@ -32,7 +32,11 @@ return [
     |
     */
 
-    'lifetime' => (int) env('SESSION_LIFETIME', 120),
+    // ADR-121: the admin cookie login ends after 2 days unused. Not read
+    // from env on purpose: production's .env still says 120, and this is a
+    // security decision, not a per-environment knob. (The 7-day absolute
+    // cap is EnsureAdminSessionFresh.)
+    'lifetime' => 2 * 24 * 60,
 
     'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
 

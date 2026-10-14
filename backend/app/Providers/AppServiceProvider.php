@@ -4,10 +4,11 @@ namespace App\Providers;
 
 use App\Events\OrderStatusUpdated;
 use App\Listeners\Backup\LogAndAlertBackupFailure;
-use App\Listeners\Horizon\AlertOnLongQueueWait;
 use App\Listeners\Broadcasting\LogFailedBroadcastJob;
+use App\Listeners\Horizon\AlertOnLongQueueWait;
 use App\Listeners\Reseller\DispatchResellerOrderWebhook;
 use App\Listeners\Reseller\SendResellerBotOrderNotification;
+use App\Models\AdminUser;
 use App\Models\AffiliateMembershipTier;
 use App\Models\AffiliateSubscription;
 use App\Models\BackupRun;
@@ -59,8 +60,9 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
-use Laravel\Horizon\Events\LongWaitDetected;
 use Intervention\Image\ImageManager;
+use Laravel\Horizon\Events\LongWaitDetected;
+use Laravel\Sanctum\Sanctum;
 use Spatie\Backup\Events\BackupHasFailed;
 use Spatie\Backup\Events\CleanupHasFailed;
 
@@ -405,6 +407,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // ADR-121: an admin is authenticated by the `web` cookie session
+        // only, never a bearer token, so a leftover or stolen admin token
+        // can't skip MFA. Affiliate tokens are unaffected.
+        Sanctum::authenticateAccessTokensUsing(
+            fn ($token, bool $isValid) => $isValid && ! $token->tokenable instanceof AdminUser,
+        );
+
         // ADR-039 decision 7: listens to spatie/laravel-backup's own raw
         // domain events (config/backup.php disables its built-in
         // notification channels) so alerting reaches every current

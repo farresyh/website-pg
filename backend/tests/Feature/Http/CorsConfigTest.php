@@ -129,6 +129,16 @@ class CorsConfigTest extends TestCase
         $this->assertNull($response->headers->get('Access-Control-Allow-Credentials'));
     }
 
+    /** ADR-121: only the admin app's origin gets credentials (its cookie session). */
+    public function test_credentials_are_allowed_for_the_admin_origin_only(): void
+    {
+        $admin = $this->getJson('/api/catalog/storefront-status', ['Origin' => 'http://localhost:3000']);
+        $this->assertSame('true', $admin->headers->get('Access-Control-Allow-Credentials'));
+
+        $storefront = $this->getJson('/api/catalog/storefront-status', ['Origin' => 'http://localhost:3001']);
+        $this->assertNull($storefront->headers->get('Access-Control-Allow-Credentials'));
+    }
+
     private function makeDomain(string $hostname, AffiliateDomainStatus $status): AffiliateDomain
     {
         $affiliate = Affiliate::query()->create([

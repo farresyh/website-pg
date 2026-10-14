@@ -12,7 +12,6 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
-use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
@@ -25,7 +24,7 @@ class ResellerWalletControllerTest extends TestCase
     private function actAsSuperAdmin(): AdminUser
     {
         $admin = AdminUser::factory()->superAdmin()->create();
-        Sanctum::actingAs($admin);
+        $this->actingAsSteppedUp($admin);
 
         return $admin;
     }
@@ -67,7 +66,7 @@ class ResellerWalletControllerTest extends TestCase
 
     public function test_regular_admin_is_forbidden(): void
     {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+        $this->actingAsSteppedUp(AdminUser::factory()->create(['role' => 'admin']));
         $reseller = $this->makeReseller();
 
         $this->getJson("/api/resellers/{$reseller->id}/wallet")->assertForbidden();
