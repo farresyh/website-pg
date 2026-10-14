@@ -38,7 +38,6 @@ import {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  token: string;
   reseller: ResellerRow;
   onCredited: () => void;
 }
@@ -57,7 +56,7 @@ const typeLabel: Record<string, string> = {
   wallet_refund: "Refund",
 };
 
-function Content({ token, reseller, onCredited }: Omit<Props, "isOpen" | "onClose">) {
+function Content({ reseller, onCredited }: Omit<Props, "isOpen" | "onClose">) {
   const [wallet, setWallet] = useState<ResellerWallet | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [amountRm, setAmountRm] = useState("");
@@ -71,7 +70,7 @@ function Content({ token, reseller, onCredited }: Omit<Props, "isOpen" | "onClos
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
 
   function refresh(p: number = page) {
-    return getResellerWallet(token, reseller.id, p)
+    return getResellerWallet(reseller.id, p)
       .then(setWallet)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load wallet."));
   }
@@ -93,7 +92,7 @@ function Content({ token, reseller, onCredited }: Omit<Props, "isOpen" | "onClos
 
     setSubmitting(true);
     try {
-      await creditResellerWallet(token, reseller.id, { amount_sen: amountSen, note: note || null, receipt, idempotency_key: idempotencyKey });
+      await creditResellerWallet(reseller.id, { amount_sen: amountSen, note: note || null, receipt, idempotency_key: idempotencyKey });
       setIdempotencyKey(crypto.randomUUID());
       setAmountRm("");
       setNote("");
@@ -112,7 +111,7 @@ function Content({ token, reseller, onCredited }: Omit<Props, "isOpen" | "onClos
     if (!entry.reference_id) return;
     setDownloading(entry.id);
     try {
-      await downloadWalletTopupReceipt(token, entry.reference_id, entry.receipt_name ?? `receipt-${entry.reference_id}`);
+      await downloadWalletTopupReceipt(entry.reference_id, entry.receipt_name ?? `receipt-${entry.reference_id}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Download failed.");
     } finally {
@@ -248,7 +247,7 @@ function Content({ token, reseller, onCredited }: Omit<Props, "isOpen" | "onClos
   );
 }
 
-export default function ResellerWalletModal({ isOpen, onClose, token, reseller, onCredited }: Props) {
+export default function ResellerWalletModal({ isOpen, onClose, reseller, onCredited }: Props) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -264,7 +263,7 @@ export default function ResellerWalletModal({ isOpen, onClose, token, reseller, 
               </DialogHeaderActions>
             </DialogHeader>
             <DialogContent>
-              {isOpen && <Content key={reseller.id} token={token} reseller={reseller} onCredited={onCredited} />}
+              {isOpen && <Content key={reseller.id} reseller={reseller} onCredited={onCredited} />}
             </DialogContent>
           </DialogPopup>
         </DialogPositioner>

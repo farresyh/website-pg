@@ -31,7 +31,7 @@ export default function SeoTemplatesPage() {
       router.replace("/login");
       return;
     }
-    getSeoSettings(s.token)
+    getSeoSettings()
       .then(setSettings)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load templates."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -43,7 +43,7 @@ export default function SeoTemplatesPage() {
     setError(null);
     setSaved(false);
     try {
-      const updated = await updateSeoSettings(session.token, {
+      const updated = await updateSeoSettings({
         meta_title_template: settings.meta_title_template || null,
         meta_description_template: settings.meta_description_template || null,
       });

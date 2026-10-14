@@ -9,6 +9,6 @@ import { apiFetch } from "@/lib/api-client";
  */
 export type OpsTarget = "horizon" | "pulse";
 
-export function mintOpsLink(token: string, target: OpsTarget) {
-  return apiFetch<{ url: string }>(`/api/middleware/ops/${target}/link`, { method: "POST", token });
+export function mintOpsLink(target: OpsTarget) {
+  return apiFetch<{ url: string }>(`/api/middleware/ops/${target}/link`, { method: "POST" });
 }

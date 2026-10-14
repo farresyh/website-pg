@@ -40,13 +40,13 @@ function Money({ sen }: { sen: number }) {
 }
 
 export function OverviewTab(props: ReportTabProps) {
-  const { token, filters, compare, rangeIncludesToday, onOpenTab } = props;
-  const summary = useReport(props, () => getReportSummary(token, filters, compare));
-  const funnel = useReport(props, () => getOrderStatusFunnel(token, filters));
-  const games = useReport(props, () => getGameBreakdown(token, filters));
-  const daily = useReport(props, () => getReportDailyBreakdown(token, filters));
-  const trend = useReport(props, () => getReportTrend(token, filters));
-  const bridge = useReport(props, () => getAccountingBridge(token, filters));
+  const { filters, compare, rangeIncludesToday, onOpenTab } = props;
+  const summary = useReport(props, () => getReportSummary(filters, compare));
+  const funnel = useReport(props, () => getOrderStatusFunnel(filters));
+  const games = useReport(props, () => getGameBreakdown(filters));
+  const daily = useReport(props, () => getReportDailyBreakdown(filters));
+  const trend = useReport(props, () => getReportTrend(filters));
+  const bridge = useReport(props, () => getAccountingBridge(filters));
 
   const [measure, setMeasure] = useState<"money" | "orders">("money");
   // ADR-104 R17 — the bucket opens on the range's own size; the toggle overrides it.

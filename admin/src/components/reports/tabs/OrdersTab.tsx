@@ -53,10 +53,10 @@ function CompensationBlockView({ title, note, block, countLabel, showPaid = true
 }
 
 export function OrdersTab(props: ReportTabProps) {
-  const { token, filters } = props;
-  const funnel = useReport(props, () => getOrderStatusFunnel(token, filters));
-  const failed = useReport(props, () => getFailedCompensated(token, filters));
-  const delivery = useReport(props, () => getDeliveryByGame(token, filters));
+  const { filters } = props;
+  const funnel = useReport(props, () => getOrderStatusFunnel(filters));
+  const failed = useReport(props, () => getFailedCompensated(filters));
+  const delivery = useReport(props, () => getDeliveryByGame(filters));
 
   const f = funnel.data;
   // ADR-104 R8 revision — a partial delivery is its own outcome, not "in progress".

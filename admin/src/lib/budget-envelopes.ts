@@ -1,6 +1,5 @@
-import { apiFetch, apiUpload, ApiError } from "@/lib/api-client";
+import { apiFetch, apiUpload, apiDownload } from "@/lib/api-client";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
 
 /**
  * ADR-083 Envelope Ledger, reshaped by the 2026-10-10 addendum: every action
@@ -80,30 +79,30 @@ export interface RecordPostingValues {
   receipt?: File | null;
 }
 
-export function getBudgetEnvelopes(token: string) {
-  return apiFetch<BudgetEnvelopeIndex>("/api/accounting/envelopes", { token });
+export function getBudgetEnvelopes() {
+  return apiFetch<BudgetEnvelopeIndex>("/api/accounting/envelopes");
 }
 
-export function createBudgetEnvelope(token: string, name: string) {
-  return apiFetch<{ envelope: BudgetEnvelope }>("/api/accounting/envelopes", { method: "POST", token, body: { name } });
+export function createBudgetEnvelope(name: string) {
+  return apiFetch<{ envelope: BudgetEnvelope }>("/api/accounting/envelopes", { method: "POST", body: { name } });
 }
 
 /** Rename and/or archive/reactivate — never a hard delete. */
-export function updateBudgetEnvelope(token: string, envelopeId: number, values: { name?: string; is_active?: boolean }) {
-  return apiFetch<{ envelope: BudgetEnvelope }>(`/api/accounting/envelopes/${envelopeId}`, { method: "PATCH", token, body: values });
+export function updateBudgetEnvelope(envelopeId: number, values: { name?: string; is_active?: boolean }) {
+  return apiFetch<{ envelope: BudgetEnvelope }>(`/api/accounting/envelopes/${envelopeId}`, { method: "PATCH", body: values });
 }
 
-export function getBudgetEnvelopeEntries(token: string, envelopeId: number, filters: { from?: string; to?: string } = {}) {
+export function getBudgetEnvelopeEntries(envelopeId: number, filters: { from?: string; to?: string } = {}) {
   const params = new URLSearchParams();
   if (filters.from) params.set("from", filters.from);
   if (filters.to) params.set("to", filters.to);
   const qs = params.toString();
 
-  return apiFetch<{ entries: BudgetEnvelopeEntry[] }>(`/api/accounting/envelopes/${envelopeId}/entries${qs ? `?${qs}` : ""}`, { token });
+  return apiFetch<{ entries: BudgetEnvelopeEntry[] }>(`/api/accounting/envelopes/${envelopeId}/entries${qs ? `?${qs}` : ""}`);
 }
 
 /** The backend enforces every type's rules (signs, sums, required fields) and answers 422 with the reason. */
-export function recordPosting(token: string, values: RecordPostingValues) {
+export function recordPosting(values: RecordPostingValues) {
   const formData = new FormData();
   formData.append("type", values.type);
   formData.append("transaction_date", values.transaction_date);
@@ -118,39 +117,21 @@ export function recordPosting(token: string, values: RecordPostingValues) {
   if (values.reference_no) formData.append("reference_no", values.reference_no);
   if (values.receipt) formData.append("receipt", values.receipt);
 
-  return apiUpload<{ posting: { id: number } }>("/api/accounting/envelope-postings", formData, { token });
+  return apiUpload<{ posting: { id: number } }>("/api/accounting/envelope-postings", formData);
 }
 
 /** Reverses every line of the posting; the original stays. A posting is voided at most once. */
-export function voidPosting(token: string, postingId: number, reason: string) {
-  return apiFetch<{ reversal: { id: number } }>(`/api/accounting/envelope-postings/${postingId}/void`, { method: "POST", token, body: { reason } });
+export function voidPosting(postingId: number, reason: string) {
+  return apiFetch<{ reversal: { id: number } }>(`/api/accounting/envelope-postings/${postingId}/void`, { method: "POST", body: { reason } });
 }
 
-/** Bearer-token-gated (private disk) — Blob + object-URL download. */
-export async function downloadPostingReceipt(token: string, postingId: number): Promise<void> {
-  await downloadBlob(token, `/api/accounting/envelope-postings/${postingId}/receipt`, `envelope-posting-${postingId}-receipt`);
+/** Auth-gated (private disk) — Blob + object-URL download. */
+export async function downloadPostingReceipt(postingId: number): Promise<void> {
+  await apiDownload(`/api/accounting/envelope-postings/${postingId}/receipt`, `envelope-posting-${postingId}-receipt`);
 }
 
-export async function downloadEnvelopeExport(token: string): Promise<void> {
-  await downloadBlob(token, "/api/accounting/envelopes/export", "envelope-ledger.csv");
-}
-
-async function downloadBlob(token: string, path: string, filename: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } });
-
-  if (!response.ok) {
-    throw new ApiError(response.status, undefined, `Download failed (${response.status})`);
-  }
-
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+export async function downloadEnvelopeExport(): Promise<void> {
+  await apiDownload("/api/accounting/envelopes/export", "envelope-ledger.csv");
 }
 
 export function formatRm(sen: number): string {

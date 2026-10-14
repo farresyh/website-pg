@@ -1,10 +1,8 @@
 "use client";
 
 /**
- * DASH-1..6 (docs/prd.md §6.2, ADR-045). Auth-guard logic below is
- * unchanged from the original placeholder — reads the Bearer token
- * stashed by login/page.tsx and calls GET /api/me (ADR-009), including
- * the `cancelled` guard against the abort race ADR-023 already fixed
+ * DASH-1..6 (docs/prd.md §6.2, ADR-045). The auth guard calls GET /api/me
+ * through the session cookie (ADR-121) and keeps the `cancelled` guard against the abort race ADR-023 already fixed
  * live (a page navigation aborting this fetch was previously misread
  * as "session invalid" and wiped a valid session).
  */
@@ -12,7 +10,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, ApiError } from "@/lib/api-client";
-import { getClientSession, clearClientSession } from "@/lib/session";
+import { getClientSession } from "@/lib/session";
 import { useTheme } from "@/context/ThemeContext";
 import { Tag } from "@/components/ui/tag";
 import { ChartLine as ChartLineIcon, ChartLine as TrendUpIcon } from "@primeicons/react/chart-line";
@@ -64,7 +62,6 @@ export default function AdminDashboardPage() {
   const { theme } = useTheme();
   const [admin, setAdmin] = useState<Admin | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [token, setToken] = useState<string | null>(null);
 
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [health, setHealth] = useState<DashboardHealth | null>(null);
@@ -84,18 +81,19 @@ export default function AdminDashboardPage() {
 
     let cancelled = false;
 
-    apiFetch<Admin>("/api/me", { token: session.token })
+    apiFetch<Admin>("/api/me")
       .then((data) => {
         if (!cancelled) {
           setAdmin(data);
-          setToken(session.token);
         }
       })
       .catch((err: unknown) => {
+        // A 401 is handled centrally by api-client (clears the profile cache,
+        // redirects to /login). Anything else — an aborted fetch on navigation,
+        // a network blip — must not log every tab out (ADR-121: the cache is
+        // shared across tabs), so it only shows the message.
         if (cancelled) return;
-        clearClientSession();
-        setAuthError(err instanceof ApiError ? err.message : "Session expired.");
-        router.replace("/login");
+        setAuthError(err instanceof ApiError ? err.message : "Could not verify your session.");
       });
 
     return () => {
@@ -105,19 +103,19 @@ export default function AdminDashboardPage() {
 
   // DASH-1
   useEffect(() => {
-    if (!token) return;
-    getDashboardSummary(token)
+    if (!admin) return;
+    getDashboardSummary()
       .then(setSummary)
       .catch((err: unknown) => setSectionError(err instanceof ApiError ? err.message : "Could not load dashboard summary."));
-  }, [token]);
+  }, [admin]);
 
   // DASH-2 — the only section polled on a timer (60s, always-on, ADR-045 decision 22/23).
   useEffect(() => {
-    if (!token) return;
+    if (!admin) return;
 
     let cancelled = false;
     const load = () => {
-      getDashboardHealth(token)
+      getDashboardHealth()
         .then((data) => {
           if (!cancelled) setHealth(data);
         })
@@ -131,31 +129,31 @@ export default function AdminDashboardPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [token]);
+  }, [admin]);
 
   // DASH-3
   useEffect(() => {
-    if (!token) return;
-    getDashboardFunnel(token).then(setFunnel).catch(() => undefined);
-  }, [token]);
+    if (!admin) return;
+    getDashboardFunnel().then(setFunnel).catch(() => undefined);
+  }, [admin]);
 
   // DASH-4
   useEffect(() => {
-    if (!token) return;
-    getDashboardTopGames(token, 5).then(setTopGames).catch(() => undefined);
-  }, [token]);
+    if (!admin) return;
+    getDashboardTopGames(5).then(setTopGames).catch(() => undefined);
+  }, [admin]);
 
   // DASH-5
   useEffect(() => {
-    if (!token) return;
-    getDashboardHourlyActivity(token, selectedDate).then(setHourly).catch(() => undefined);
-  }, [token, selectedDate]);
+    if (!admin) return;
+    getDashboardHourlyActivity(selectedDate).then(setHourly).catch(() => undefined);
+  }, [admin, selectedDate]);
 
   if (authError) {
     return <p className="text-sm text-red-600 dark:text-red-400">{authError}</p>;
   }
 
-  if (!admin || !token) {
+  if (!admin) {
     return <p className="text-sm text-black/60 dark:text-white/60">Loading…</p>;
   }
 

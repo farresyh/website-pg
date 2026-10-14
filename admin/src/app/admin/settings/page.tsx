@@ -33,8 +33,8 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("branding");
 
-  function refresh(token: string) {
-    return getSettings(token)
+  function refresh() {
+    return getSettings()
       .then(setData)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load settings.");
@@ -47,7 +47,7 @@ export default function SettingsPage() {
       router.replace("/login");
       return;
     }
-    refresh(s.token);
+    refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -86,18 +86,17 @@ export default function SettingsPage() {
       </div>
 
       {tab === "branding" && (
-        <StoreBrandingSection token={session.token} branding={data.branding} onSaved={() => refresh(session.token)} />
+        <StoreBrandingSection branding={data.branding} onSaved={() => refresh()} />
       )}
       {tab === "footer" && (
         <FooterSettingsSection
-          token={session.token}
           footer={data.footer}
           storeName={data.branding.store_name}
-          onSaved={() => refresh(session.token)}
+          onSaved={() => refresh()}
         />
       )}
       {tab === "platform" && (
-        <PlatformSettingsSection token={session.token} platform={data.platform} onSaved={() => refresh(session.token)} />
+        <PlatformSettingsSection platform={data.platform} onSaved={() => refresh()} />
       )}
     </div>
   );

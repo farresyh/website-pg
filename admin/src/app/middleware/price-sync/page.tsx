@@ -116,16 +116,16 @@ export default function PriceSyncPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const refreshStats = useCallback((token: string) => {
-    getPriceSyncStats(token)
+  const refreshStats = useCallback(() => {
+    getPriceSyncStats()
       .then(setStats)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load Price Sync stats.");
       });
   }, []);
 
-  const refreshPending = useCallback((token: string) => {
-    listPendingReactivations(token)
+  const refreshPending = useCallback(() => {
+    listPendingReactivations()
       .then((rows) => {
         setPending(rows);
         setSelected(new Set());
@@ -135,32 +135,32 @@ export default function PriceSyncPage() {
       });
   }, []);
 
-  const refreshDismissed = useCallback((token: string, page: number) => {
-    listDismissedPackages(token, page)
+  const refreshDismissed = useCallback((page: number) => {
+    listDismissedPackages(page)
       .then(setDismissedPage)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load dismissed packages.");
       });
   }, []);
 
-  const refreshHistory = useCallback((token: string, page: number) => {
-    listPriceSyncRuns(token, page)
+  const refreshHistory = useCallback((page: number) => {
+    listPriceSyncRuns(page)
       .then(setHistoryPage)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load sync history.");
       });
   }, []);
 
-  const refreshPendingPriceChanges = useCallback((token: string) => {
-    listPendingPriceChanges(token)
+  const refreshPendingPriceChanges = useCallback(() => {
+    listPendingPriceChanges()
       .then(setPendingPriceChanges)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load pending price changes.");
       });
   }, []);
 
-  const refreshFxRates = useCallback((token: string, page: number) => {
-    listCurrencyRates(token, page)
+  const refreshFxRates = useCallback((page: number) => {
+    listCurrencyRates(page)
       .then(setFxRatesPage)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load FX rate history.");
@@ -168,13 +168,13 @@ export default function PriceSyncPage() {
   }, []);
 
   const refreshAll = useCallback(
-    (token: string) => {
-      refreshStats(token);
-      refreshPending(token);
-      refreshDismissed(token, dismissedPageNumber);
-      refreshHistory(token, historyPageNumber);
-      refreshPendingPriceChanges(token);
-      refreshFxRates(token, fxRatesPageNumber);
+    () => {
+      refreshStats();
+      refreshPending();
+      refreshDismissed(dismissedPageNumber);
+      refreshHistory(historyPageNumber);
+      refreshPendingPriceChanges();
+      refreshFxRates(fxRatesPageNumber);
     },
     [
       refreshStats,
@@ -191,25 +191,25 @@ export default function PriceSyncPage() {
 
   useEffect(() => {
     if (!session) return;
-    refreshAll(session.token);
+    refreshAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   useEffect(() => {
     if (!session) return;
-    refreshDismissed(session.token, dismissedPageNumber);
+    refreshDismissed(dismissedPageNumber);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, dismissedPageNumber]);
 
   useEffect(() => {
     if (!session) return;
-    refreshHistory(session.token, historyPageNumber);
+    refreshHistory(historyPageNumber);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, historyPageNumber]);
 
   useEffect(() => {
     if (!session) return;
-    refreshFxRates(session.token, fxRatesPageNumber);
+    refreshFxRates(fxRatesPageNumber);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, fxRatesPageNumber]);
 
@@ -243,7 +243,7 @@ export default function PriceSyncPage() {
     channel.listen(".price-sync-run.status.updated", (updated: PriceSyncRun) => {
       setRun(updated);
       if (!RUN_IN_FLIGHT.has(updated.status)) {
-        refreshAll(session.token);
+        refreshAll();
       }
     });
 
@@ -256,11 +256,11 @@ export default function PriceSyncPage() {
   useReconcileOnResume(
     useCallback(() => {
       if (!session || !run) return;
-      refreshHistory(session.token, historyPageNumber);
+      refreshHistory(historyPageNumber);
       if (RUN_IN_FLIGHT.has(run.status)) {
-        getPriceSyncRun(session.token, run.id).then(setRun).catch(() => {});
+        getPriceSyncRun(run.id).then(setRun).catch(() => {});
       } else {
-        refreshAll(session.token);
+        refreshAll();
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session, run?.id, run?.status]),
@@ -270,7 +270,7 @@ export default function PriceSyncPage() {
     if (!session) return;
     setError(null);
     try {
-      const created = await triggerPriceSync(session.token);
+      const created = await triggerPriceSync();
       setRun(created);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not start Price Sync.");
@@ -280,7 +280,7 @@ export default function PriceSyncPage() {
   function handleRefresh() {
     if (!session) return;
     setError(null);
-    refreshAll(session.token);
+    refreshAll();
   }
 
   async function handleApprove(packageId: number) {
@@ -288,9 +288,9 @@ export default function PriceSyncPage() {
     setError(null);
     setRowBusyId(packageId);
     try {
-      await approvePendingReactivation(session.token, packageId);
+      await approvePendingReactivation(packageId);
       setPending((prev) => prev?.filter((p) => p.id !== packageId) ?? null);
-      refreshStats(session.token);
+      refreshStats();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not approve reactivation.");
     } finally {
@@ -303,10 +303,10 @@ export default function PriceSyncPage() {
     setError(null);
     setRowBusyId(packageId);
     try {
-      await dismissPendingReactivation(session.token, packageId);
+      await dismissPendingReactivation(packageId);
       setPending((prev) => prev?.filter((p) => p.id !== packageId) ?? null);
-      refreshStats(session.token);
-      refreshDismissed(session.token, dismissedPageNumber);
+      refreshStats();
+      refreshDismissed(dismissedPageNumber);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not dismiss reactivation.");
     } finally {
@@ -321,14 +321,14 @@ export default function PriceSyncPage() {
     const ids = Array.from(selected);
     try {
       if (action === "approve") {
-        await bulkApprovePendingReactivations(session.token, ids);
+        await bulkApprovePendingReactivations(ids);
       } else {
-        await bulkDismissPendingReactivations(session.token, ids);
+        await bulkDismissPendingReactivations(ids);
       }
       setPending((prev) => prev?.filter((p) => !selected.has(p.id)) ?? null);
       setSelected(new Set());
-      refreshStats(session.token);
-      if (action === "dismiss") refreshDismissed(session.token, dismissedPageNumber);
+      refreshStats();
+      if (action === "dismiss") refreshDismissed(dismissedPageNumber);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : `Could not bulk ${action}.`);
     } finally {
@@ -341,11 +341,11 @@ export default function PriceSyncPage() {
     setError(null);
     setRestoringId(pkg.id);
     try {
-      await restoreDismissedPackage(session.token, pkg.id);
+      await restoreDismissedPackage(pkg.id);
       setDismissedPage((prev) =>
         prev ? { ...prev, data: prev.data.filter((p) => p.id !== pkg.id) } : prev,
       );
-      refreshStats(session.token);
+      refreshStats();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not restore this package.");
     } finally {
@@ -358,9 +358,9 @@ export default function PriceSyncPage() {
     setError(null);
     setPriceChangeBusyId(id);
     try {
-      await approvePendingPriceChange(session.token, id);
+      await approvePendingPriceChange(id);
       setPendingPriceChanges((prev) => prev?.filter((p) => p.id !== id) ?? null);
-      refreshStats(session.token);
+      refreshStats();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not approve this price change.");
     } finally {
@@ -373,9 +373,9 @@ export default function PriceSyncPage() {
     setError(null);
     setPriceChangeBusyId(id);
     try {
-      await dismissPendingPriceChange(session.token, id);
+      await dismissPendingPriceChange(id);
       setPendingPriceChanges((prev) => prev?.filter((p) => p.id !== id) ?? null);
-      refreshStats(session.token);
+      refreshStats();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not dismiss this price change.");
     } finally {
@@ -735,7 +735,6 @@ export default function PriceSyncPage() {
           isOpen={detailsRunId !== null}
           onClose={() => setDetailsRunId(null)}
           runId={detailsRunId}
-          token={session.token}
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-import { apiFetch, apiUpload, ApiError } from "@/lib/api-client";
+import { apiFetch, apiUpload, apiDownload } from "@/lib/api-client";
 
 /**
  * ADR-072/073 PR-B — admin Reseller (prepaid-wallet) account management:
@@ -48,40 +48,38 @@ export interface CreateResellerValues {
 
 export type UpdateResellerValues = Omit<CreateResellerValues, "reseller_tier_id">;
 
-export function listResellers(token: string) {
-  return apiFetch<{ resellers: ResellerRow[] }>("/api/resellers", { token });
+export function listResellers() {
+  return apiFetch<{ resellers: ResellerRow[] }>("/api/resellers");
 }
 
-export function createReseller(token: string, values: CreateResellerValues) {
-  return apiFetch<ResellerRow>("/api/resellers", { method: "POST", token, body: values });
+export function createReseller(values: CreateResellerValues) {
+  return apiFetch<ResellerRow>("/api/resellers", { method: "POST", body: values });
 }
 
-export function updateReseller(token: string, id: number, values: UpdateResellerValues) {
-  return apiFetch<ResellerRow>(`/api/resellers/${id}`, { method: "PUT", token, body: values });
+export function updateReseller(id: number, values: UpdateResellerValues) {
+  return apiFetch<ResellerRow>(`/api/resellers/${id}`, { method: "PUT", body: values });
 }
 
-export function updateResellerStatus(token: string, id: number, isActive: boolean) {
+export function updateResellerStatus(id: number, isActive: boolean) {
   return apiFetch<ResellerRow>(`/api/resellers/${id}/status`, {
     method: "PATCH",
-    token,
     body: { is_active: isActive },
   });
 }
 
-export function assignResellerTier(token: string, id: number, resellerTierId: number) {
+export function assignResellerTier(id: number, resellerTierId: number) {
   return apiFetch<ResellerRow>(`/api/resellers/${id}/tier`, {
     method: "POST",
-    token,
     body: { reseller_tier_id: resellerTierId },
   });
 }
 
-export function deleteReseller(token: string, id: number) {
-  return apiFetch<{ message: string }>(`/api/resellers/${id}`, { method: "DELETE", token });
+export function deleteReseller(id: number) {
+  return apiFetch<{ message: string }>(`/api/resellers/${id}`, { method: "DELETE" });
 }
 
-export function listResellerTiers(token: string) {
-  return apiFetch<{ tiers: ResellerTier[] }>("/api/reseller-tiers", { token });
+export function listResellerTiers() {
+  return apiFetch<{ tiers: ResellerTier[] }>("/api/reseller-tiers");
 }
 
 export interface ResellerTierValues {
@@ -92,16 +90,16 @@ export interface ResellerTierValues {
   show_on_price_list: boolean;
 }
 
-export function createResellerTier(token: string, values: ResellerTierValues) {
-  return apiFetch<ResellerTier>("/api/reseller-tiers", { method: "POST", token, body: values });
+export function createResellerTier(values: ResellerTierValues) {
+  return apiFetch<ResellerTier>("/api/reseller-tiers", { method: "POST", body: values });
 }
 
-export function updateResellerTier(token: string, id: number, values: Partial<ResellerTierValues>) {
-  return apiFetch<ResellerTier>(`/api/reseller-tiers/${id}`, { method: "PUT", token, body: values });
+export function updateResellerTier(id: number, values: Partial<ResellerTierValues>) {
+  return apiFetch<ResellerTier>(`/api/reseller-tiers/${id}`, { method: "PUT", body: values });
 }
 
-export function deleteResellerTier(token: string, id: number) {
-  return apiFetch<{ message: string }>(`/api/reseller-tiers/${id}`, { method: "DELETE", token });
+export function deleteResellerTier(id: number) {
+  return apiFetch<{ message: string }>(`/api/reseller-tiers/${id}`, { method: "DELETE" });
 }
 
 /**
@@ -135,10 +133,10 @@ export interface ResellerWallet {
   entries: WalletLedgerPage;
 }
 
-export function getResellerWallet(token: string, id: number, page?: number) {
+export function getResellerWallet(id: number, page?: number) {
   const qs = page ? `?page=${page}` : "";
 
-  return apiFetch<ResellerWallet>(`/api/resellers/${id}/wallet${qs}`, { token });
+  return apiFetch<ResellerWallet>(`/api/resellers/${id}/wallet${qs}`);
 }
 
 export interface CreditResellerWalletValues {
@@ -149,7 +147,7 @@ export interface CreditResellerWalletValues {
   idempotency_key: string;
 }
 
-export function creditResellerWallet(token: string, id: number, values: CreditResellerWalletValues) {
+export function creditResellerWallet(id: number, values: CreditResellerWalletValues) {
   const formData = new FormData();
   formData.append("amount_sen", String(values.amount_sen));
   formData.append("idempotency_key", values.idempotency_key);
@@ -159,7 +157,6 @@ export function creditResellerWallet(token: string, id: number, values: CreditRe
   return apiUpload<{ balance_sen: number; entry: WalletLedgerEntry }>(
     `/api/resellers/${id}/wallet/credit`,
     formData,
-    { token },
   );
 }
 
@@ -174,27 +171,25 @@ export interface ResellerApiKey {
   created_at: string;
 }
 
-export function listResellerApiKeys(token: string, resellerId: number) {
-  return apiFetch<ResellerApiKey[]>(`/api/resellers/${resellerId}/api-keys`, { token });
+export function listResellerApiKeys(resellerId: number) {
+  return apiFetch<ResellerApiKey[]>(`/api/resellers/${resellerId}/api-keys`);
 }
 
-export function issueResellerApiKey(token: string, resellerId: number, name: string) {
+export function issueResellerApiKey(resellerId: number, name: string) {
   return apiFetch<ResellerApiKey & { plain_text_key: string }>(`/api/resellers/${resellerId}/api-keys`, {
     method: "POST",
-    token,
     body: { name },
   });
 }
 
-export function revokeResellerApiKey(token: string, resellerId: number, apiKeyId: number) {
-  return apiFetch<void>(`/api/resellers/${resellerId}/api-keys/${apiKeyId}`, { method: "DELETE", token });
+export function revokeResellerApiKey(resellerId: number, apiKeyId: number) {
+  return apiFetch<void>(`/api/resellers/${resellerId}/api-keys/${apiKeyId}`, { method: "DELETE" });
 }
 
 /** ADR-084 PR-4: admin edits one key's IP allowlist for support (empty array = any IP). */
-export function updateResellerApiKeyAllowedIps(token: string, resellerId: number, apiKeyId: number, allowedIps: string[]) {
+export function updateResellerApiKeyAllowedIps(resellerId: number, apiKeyId: number, allowedIps: string[]) {
   return apiFetch<ResellerApiKey>(`/api/resellers/${resellerId}/api-keys/${apiKeyId}`, {
     method: "PATCH",
-    token,
     body: { allowed_ips: allowedIps },
   });
 }
@@ -233,36 +228,34 @@ export interface ResellerWebhookDeliveryPage {
   total: number;
 }
 
-export function getResellerWebhook(token: string, resellerId: number) {
-  return apiFetch<{ webhook: ResellerWebhook | null }>(`/api/resellers/${resellerId}/webhook`, { token });
+export function getResellerWebhook(resellerId: number) {
+  return apiFetch<{ webhook: ResellerWebhook | null }>(`/api/resellers/${resellerId}/webhook`);
 }
 
-export function setResellerWebhook(token: string, resellerId: number, url: string) {
+export function setResellerWebhook(resellerId: number, url: string) {
   return apiFetch<{ webhook: ResellerWebhook; secret: string | null }>(`/api/resellers/${resellerId}/webhook`, {
     method: "POST",
-    token,
     body: { url },
   });
 }
 
-export function rotateResellerWebhookSecret(token: string, resellerId: number) {
-  return apiFetch<{ secret: string }>(`/api/resellers/${resellerId}/webhook/rotate-secret`, { method: "POST", token });
+export function rotateResellerWebhookSecret(resellerId: number) {
+  return apiFetch<{ secret: string }>(`/api/resellers/${resellerId}/webhook/rotate-secret`, { method: "POST" });
 }
 
-export function setResellerWebhookActive(token: string, resellerId: number, isActive: boolean) {
+export function setResellerWebhookActive(resellerId: number, isActive: boolean) {
   return apiFetch<{ webhook: ResellerWebhook }>(`/api/resellers/${resellerId}/webhook/status`, {
     method: "PATCH",
-    token,
     body: { is_active: isActive },
   });
 }
 
-export function deleteResellerWebhook(token: string, resellerId: number) {
-  return apiFetch<void>(`/api/resellers/${resellerId}/webhook`, { method: "DELETE", token });
+export function deleteResellerWebhook(resellerId: number) {
+  return apiFetch<void>(`/api/resellers/${resellerId}/webhook`, { method: "DELETE" });
 }
 
-export function listResellerWebhookDeliveries(token: string, resellerId: number) {
-  return apiFetch<ResellerWebhookDeliveryPage>(`/api/resellers/${resellerId}/webhook/deliveries`, { token });
+export function listResellerWebhookDeliveries(resellerId: number) {
+  return apiFetch<ResellerWebhookDeliveryPage>(`/api/resellers/${resellerId}/webhook/deliveries`);
 }
 
 /**
@@ -284,26 +277,24 @@ export interface ResellerWhatsAppGroup {
   created_at: string;
 }
 
-export function listPendingWhatsAppGroups(token: string) {
-  return apiFetch<ResellerWhatsAppPendingLink[]>("/api/reseller-whatsapp-groups/pending", { token });
+export function listPendingWhatsAppGroups() {
+  return apiFetch<ResellerWhatsAppPendingLink[]>("/api/reseller-whatsapp-groups/pending");
 }
 
-export function listResellerWhatsAppGroups(token: string, resellerId: number) {
-  return apiFetch<ResellerWhatsAppGroup[]>(`/api/resellers/${resellerId}/whatsapp-groups`, { token });
+export function listResellerWhatsAppGroups(resellerId: number) {
+  return apiFetch<ResellerWhatsAppGroup[]>(`/api/resellers/${resellerId}/whatsapp-groups`);
 }
 
-export function linkResellerWhatsAppGroup(token: string, resellerId: number, whatsappGroupId: string) {
+export function linkResellerWhatsAppGroup(resellerId: number, whatsappGroupId: string) {
   return apiFetch<ResellerWhatsAppGroup>(`/api/resellers/${resellerId}/whatsapp-groups`, {
     method: "POST",
-    token,
     body: { whatsapp_group_id: whatsappGroupId },
   });
 }
 
-export function updateResellerWhatsAppGroupStatus(token: string, resellerId: number, groupId: number, isActive: boolean) {
+export function updateResellerWhatsAppGroupStatus(resellerId: number, groupId: number, isActive: boolean) {
   return apiFetch<ResellerWhatsAppGroup>(`/api/resellers/${resellerId}/whatsapp-groups/${groupId}/status`, {
     method: "PATCH",
-    token,
     body: { is_active: isActive },
   });
 }
@@ -325,48 +316,29 @@ export interface ResellerUserRow {
   invite_pending: boolean;
 }
 
-export function getResellerDetail(token: string, id: number) {
-  return apiFetch<ResellerRow & { users: ResellerUserRow[] }>(`/api/resellers/${id}`, { token });
+export function getResellerDetail(id: number) {
+  return apiFetch<ResellerRow & { users: ResellerUserRow[] }>(`/api/resellers/${id}`);
 }
 
-export function addResellerUser(token: string, id: number, values: { name: string; email: string }) {
+export function addResellerUser(id: number, values: { name: string; email: string }) {
   return apiFetch<ResellerRow & { users: ResellerUserRow[] }>(`/api/resellers/${id}/users`, {
     method: "POST",
-    token,
     body: values,
   });
 }
 
-export function resendResellerUserInvite(token: string, id: number, userId: number) {
+export function resendResellerUserInvite(id: number, userId: number) {
   return apiFetch<{ message: string }>(`/api/resellers/${id}/users/${userId}/resend-invite`, {
     method: "POST",
-    token,
   });
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
 
 /**
- * Bearer-token-gated route (`wallet_receipts_disk` is deliberately
+ * Auth-gated route (`wallet_receipts_disk` is deliberately
  * private, ADR-073 decision 3(b)) — not a plain `<a href>`, same Blob +
  * object-URL pattern as `downloadBackupRun`.
  */
-export async function downloadWalletTopupReceipt(token: string, receiptId: number, filename: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/wallet-topup-receipts/${receiptId}/download`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!response.ok) {
-    throw new ApiError(response.status, undefined, `Download failed (${response.status})`);
-  }
-
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+export async function downloadWalletTopupReceipt(receiptId: number, filename: string): Promise<void> {
+  await apiDownload(`/api/wallet-topup-receipts/${receiptId}/download`, filename);
 }

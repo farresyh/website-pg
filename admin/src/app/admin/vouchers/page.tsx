@@ -104,9 +104,9 @@ export default function VouchersPage() {
   const [selected, setSelected] = useState<VoucherShowResponse | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
 
-  async function refresh(token: string) {
+  async function refresh() {
     try {
-      setData(await listVouchers(token));
+      setData(await listVouchers());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load vouchers.");
     }
@@ -119,7 +119,7 @@ export default function VouchersPage() {
       return;
     }
 
-    listVouchers(s.token)
+    listVouchers()
       .then(setData)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load vouchers.");
@@ -127,7 +127,7 @@ export default function VouchersPage() {
 
     // ADR-060 PR-4d: brand list for the Create-Voucher picker. Only
     // active, non-deleted brands are scopable targets.
-    listAffiliates(s.token)
+    listAffiliates()
       .then((res) => {
         setBrands(
           res.affiliates
@@ -141,11 +141,11 @@ export default function VouchersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleCreate(values: Parameters<typeof createVoucher>[1]) {
+  async function handleCreate(values: Parameters<typeof createVoucher>[0]) {
     if (!session) return;
-    await createVoucher(session.token, values);
+    await createVoucher(values);
     setIsModalOpen(false);
-    await refresh(session.token);
+    await refresh();
   }
 
   function toggleSelected(voucherId: number) {
@@ -154,12 +154,12 @@ export default function VouchersPage() {
     );
   }
 
-  async function handleMerge(values: Parameters<typeof mergeVouchers>[1]) {
+  async function handleMerge(values: Parameters<typeof mergeVouchers>[0]) {
     if (!session) return;
-    await mergeVouchers(session.token, values);
+    await mergeVouchers(values);
     setIsMergeModalOpen(false);
     setSelectedIds([]);
-    await refresh(session.token);
+    await refresh();
   }
 
   async function handleRevoke(voucher: Voucher) {
@@ -168,8 +168,8 @@ export default function VouchersPage() {
     setRevokingId(voucher.id);
 
     try {
-      await revokeVoucher(session.token, voucher.id);
-      await refresh(session.token);
+      await revokeVoucher(voucher.id);
+      await refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not revoke voucher.");
     } finally {
@@ -181,7 +181,7 @@ export default function VouchersPage() {
     if (!session) return;
     setDetailError(null);
     try {
-      setSelected(await getVoucher(session.token, voucherId));
+      setSelected(await getVoucher(voucherId));
     } catch (err) {
       setDetailError(err instanceof ApiError ? err.message : "Could not load voucher details.");
     }
@@ -189,7 +189,7 @@ export default function VouchersPage() {
 
   async function closeDetail() {
     setSelected(null);
-    if (session) await refresh(session.token);
+    if (session) await refresh();
   }
 
   if (selected) {

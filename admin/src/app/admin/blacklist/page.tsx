@@ -51,9 +51,9 @@ export default function BlacklistPage() {
   const [deactivatingId, setDeactivatingId] = useState<number | null>(null);
   const [historyEntryId, setHistoryEntryId] = useState<number | null>(null);
 
-  async function refresh(token: string) {
+  async function refresh() {
     try {
-      setData(await listBlacklistEntries(token));
+      setData(await listBlacklistEntries());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load blacklist entries.");
     }
@@ -62,7 +62,7 @@ export default function BlacklistPage() {
   useEffect(() => {
     // A plain function call, not the useClientSession() hook above: this
     // effect needs an immediate, authoritative read the moment it runs
-    // (real browser/sessionStorage, no SSR/hydration snapshot involved),
+    // (real browser storage, no SSR/hydration snapshot involved),
     // not the hook's hydration-safe-but-eventually-consistent value —
     // using the hook here raced its own resync on a hard navigation and
     // fired a false redirect while a valid session existed, caught live.
@@ -72,7 +72,7 @@ export default function BlacklistPage() {
       return;
     }
 
-    listBlacklistEntries(s.token)
+    listBlacklistEntries()
       .then(setData)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load blacklist entries.");
@@ -80,11 +80,11 @@ export default function BlacklistPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleCreate(values: Parameters<typeof createBlacklistEntry>[1]) {
+  async function handleCreate(values: Parameters<typeof createBlacklistEntry>[0]) {
     if (!session) return;
-    await createBlacklistEntry(session.token, values);
+    await createBlacklistEntry(values);
     setIsModalOpen(false);
-    await refresh(session.token);
+    await refresh();
   }
 
   async function handleDeactivate(entry: BlacklistEntry) {
@@ -93,8 +93,8 @@ export default function BlacklistPage() {
     setDeactivatingId(entry.id);
 
     try {
-      await deactivateBlacklistEntry(session.token, entry.id);
-      await refresh(session.token);
+      await deactivateBlacklistEntry(entry.id);
+      await refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not deactivate entry.");
     } finally {
@@ -207,7 +207,7 @@ export default function BlacklistPage() {
 
       <CreateBlacklistEntryModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleCreate} />
       {session && (
-        <BlacklistHitsModal entryId={historyEntryId} token={session.token} onClose={() => setHistoryEntryId(null)} />
+        <BlacklistHitsModal entryId={historyEntryId} onClose={() => setHistoryEntryId(null)} />
       )}
     </div>
   );

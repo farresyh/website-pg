@@ -58,9 +58,9 @@ function GameSeoListPageInner() {
   const beginListLoad = useLatestRequest();
   const [filter, setFilter] = useState(searchParams.get("filter") ?? "");
 
-  function refresh(token: string) {
+  function refresh() {
     const isLatest = beginListLoad();
-    return listGameSeo(token, { search: debouncedSearch || undefined, filter: (filter || undefined) as GameSeoStatus | undefined })
+    return listGameSeo({ search: debouncedSearch || undefined, filter: (filter || undefined) as GameSeoStatus | undefined })
       .then((list) => isLatest() && setGames(list))
       .catch((err: unknown) => {
         if (isLatest()) setError(err instanceof ApiError ? err.message : "Could not load games.");
@@ -73,12 +73,12 @@ function GameSeoListPageInner() {
       router.replace("/login");
       return;
     }
-    refresh(s.token);
+    refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (session) refresh(session.token);
+    if (session) refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch, filter]);
 

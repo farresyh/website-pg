@@ -64,8 +64,8 @@ export default function MonthlyAccountingSummaryPage() {
   // taken, so it's never mistaken for a real month-end figure.
   const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
 
-  function load(token: string, y: number, m: number) {
-    return Promise.all([getMonthlyAccountingSummary(token, y, m), getMonthClose(token, y, m)])
+  function load(y: number, m: number) {
+    return Promise.all([getMonthlyAccountingSummary(y, m), getMonthClose(y, m)])
       .then(([s, c]) => {
         setError(null);
         setSummary(s);
@@ -81,7 +81,7 @@ export default function MonthlyAccountingSummaryPage() {
       router.replace("/login");
       return;
     }
-    load(s.token, year, month);
+    load(year, month);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, month]);
 
@@ -180,7 +180,7 @@ export default function MonthlyAccountingSummaryPage() {
       )}
 
       {monthClose && session && (
-        <MonthClosePanel key={monthClose.period} token={session.token} year={year} month={month} data={monthClose} onChanged={() => load(session.token, year, month)} />
+        <MonthClosePanel key={monthClose.period} year={year} month={month} data={monthClose} onChanged={() => load(year, month)} />
       )}
     </div>
   );

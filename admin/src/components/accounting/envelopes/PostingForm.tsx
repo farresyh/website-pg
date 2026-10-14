@@ -37,13 +37,12 @@ const HINTS: Record<PostingType, string> = {
 };
 
 interface Props {
-  token: string;
   index: BudgetEnvelopeIndex;
   defaultEnvelopeId: number | null;
   onRecorded: () => Promise<void> | void;
 }
 
-export function PostingForm({ token, index, defaultEnvelopeId, onRecorded }: Props) {
+export function PostingForm({ index, defaultEnvelopeId, onRecorded }: Props) {
   const active = index.envelopes.filter((e) => e.is_active);
   const firstId = defaultEnvelopeId ?? active[0]?.id ?? 0;
 
@@ -113,7 +112,7 @@ export function PostingForm({ token, index, defaultEnvelopeId, onRecorded }: Pro
 
     setSubmitting(true);
     try {
-      await recordPosting(token, {
+      await recordPosting({
         type,
         transaction_date: transactionDate,
         description: description.trim(),

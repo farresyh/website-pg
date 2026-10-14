@@ -1,4 +1,4 @@
-import { apiFetch, ApiError } from "@/lib/api-client";
+import { apiFetch, apiDownload } from "@/lib/api-client";
 
 /**
  * ANL-1..4. Mirrors backend/app/Services/CustomerAnalytics/CustomerAnalyticsService.php
@@ -60,14 +60,14 @@ function filterQuery(filters: CustomerAnalyticsFilters) {
   });
 }
 
-export function getCustomerAnalyticsSummary(token: string, filters: CustomerAnalyticsFilters) {
+export function getCustomerAnalyticsSummary(filters: CustomerAnalyticsFilters) {
   const query = filterQuery(filters);
-  return apiFetch<CustomerAnalyticsSummary>(`/api/customer-analytics/summary${query}`, { token });
+  return apiFetch<CustomerAnalyticsSummary>(`/api/customer-analytics/summary${query}`);
 }
 
-export function getCustomerAnalyticsCustomers(token: string, filters: CustomerAnalyticsFilters) {
+export function getCustomerAnalyticsCustomers(filters: CustomerAnalyticsFilters) {
   const query = filterQuery(filters);
-  return apiFetch<{ customers: CustomerAnalyticsRow[] }>(`/api/customer-analytics/customers${query}`, { token });
+  return apiFetch<{ customers: CustomerAnalyticsRow[] }>(`/api/customer-analytics/customers${query}`);
 }
 
 /** ANL-5 (ADR-050) — full drill-down for one customer, always their full lifetime across every affiliate. */
@@ -129,31 +129,14 @@ export interface CustomerDetail {
   order_history: CustomerOrderHistoryRow[];
 }
 
-export function getCustomerDetail(token: string, email: string) {
-  return apiFetch<CustomerDetail>(`/api/customer-analytics/customers/${encodeURIComponent(email)}`, { token });
+export function getCustomerDetail(email: string) {
+  return apiFetch<CustomerDetail>(`/api/customer-analytics/customers/${encodeURIComponent(email)}`);
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
 
-/** Bearer-token-gated binary download — same pattern as exportReport(). */
-export async function exportCustomerAnalytics(token: string, filters: CustomerAnalyticsFilters): Promise<void> {
+/** Auth-gated binary download — same pattern as exportReport(). */
+export async function exportCustomerAnalytics(filters: CustomerAnalyticsFilters): Promise<void> {
   const query = filterQuery(filters);
 
-  const response = await fetch(`${API_BASE_URL}/api/customer-analytics/export${query}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!response.ok) {
-    throw new ApiError(response.status, undefined, `Export failed (${response.status})`);
-  }
-
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "customer-analytics.csv";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  await apiDownload(`/api/customer-analytics/export${query}`, "customer-analytics.csv");
 }

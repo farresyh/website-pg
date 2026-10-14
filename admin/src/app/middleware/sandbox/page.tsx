@@ -104,17 +104,17 @@ export default function SandboxOrdersPage() {
   async function refreshList() {
     if (!session) return;
     const isLatest = beginListLoad();
-    listSandboxOrders(session.token, { search: debouncedSearch || undefined, page: pageNumber })
+    listSandboxOrders({ search: debouncedSearch || undefined, page: pageNumber })
       .then((p) => isLatest() && setPage(p))
       .catch((err: unknown) => isLatest() && setError(err instanceof ApiError ? err.message : "Could not load test orders."));
   }
 
-  async function openOrder(token: string, id: number) {
+  async function openOrder(id: number) {
     setSelected(null);
     setResendMessage(null);
     setMarkDeliveredMessage(null);
     try {
-      setSelected(await getSandboxOrder(token, id));
+      setSelected(await getSandboxOrder(id));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load this test order.");
     }
@@ -122,7 +122,7 @@ export default function SandboxOrdersPage() {
 
   async function refreshSelected() {
     if (!session || !selected) return;
-    setSelected(await getSandboxOrder(session.token, selected.id));
+    setSelected(await getSandboxOrder(selected.id));
   }
 
   function handleResent() {
@@ -140,14 +140,14 @@ export default function SandboxOrdersPage() {
 
   async function handleCreate(values: CreateSandboxOrderValues) {
     if (!session) return;
-    await createSandboxOrder(session.token, values);
+    await createSandboxOrder(values);
     setCreateModalOpen(false);
     refreshList();
   }
 
   async function handleDelete(id: number) {
     if (!session) return;
-    await deleteSandboxOrder(session.token, id);
+    await deleteSandboxOrder(id);
     setSelected(null);
     refreshList();
   }
@@ -155,7 +155,7 @@ export default function SandboxOrdersPage() {
   async function handleDeleteAll() {
     if (!session) return;
     if (!confirm("Delete every test order? This cannot be undone.")) return;
-    await deleteAllSandboxOrders(session.token);
+    await deleteAllSandboxOrders();
     setSelected(null);
     refreshList();
   }
@@ -238,7 +238,6 @@ export default function SandboxOrdersPage() {
               onClose={() => setResendModalOpen(false)}
               onResent={handleResent}
               order={selected}
-              token={session.token}
               sandbox
             />
             <MarkDeliveredModal
@@ -246,7 +245,6 @@ export default function SandboxOrdersPage() {
               onClose={() => setMarkDeliveredModalOpen(false)}
               onConfirmed={handleMarkedDelivered}
               order={selected}
-              token={session.token}
               sandbox
             />
           </>
@@ -326,7 +324,7 @@ export default function SandboxOrdersPage() {
                           {new Date(order.created_at).toLocaleString()}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <Button size="small" variant="outlined" onClick={() => session && openOrder(session.token, order.id)}>
+                          <Button size="small" variant="outlined" onClick={() => session && openOrder(order.id)}>
                             View
                           </Button>
                         </DataTableCell>
@@ -366,7 +364,6 @@ export default function SandboxOrdersPage() {
           isOpen={createModalOpen}
           onClose={() => setCreateModalOpen(false)}
           onSubmit={handleCreate}
-          token={session.token}
         />
       )}
     </div>

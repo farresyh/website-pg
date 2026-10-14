@@ -43,13 +43,13 @@ export interface ConnectionProbe {
   error: string | null;
 }
 
-export function listPaymentGateways(token: string) {
-  return apiFetch<PaymentGateway[]>("/api/middleware/payment-gateways", { token });
+export function listPaymentGateways() {
+  return apiFetch<PaymentGateway[]>("/api/middleware/payment-gateways");
 }
 
-export function updatePaymentGateway(token: string, gatewayKey: string, apiConfig: Record<string, string>) {
+export function updatePaymentGateway(gatewayKey: string, apiConfig: Record<string, string>) {
   return apiFetch<PaymentGateway & { connection_probe: ConnectionProbe }>(
     `/api/middleware/payment-gateways/${gatewayKey}`,
-    { method: "PUT", body: { api_config: apiConfig }, token },
+    { method: "PUT", body: { api_config: apiConfig } },
   );
 }

@@ -23,12 +23,12 @@ import { formatRm, formatRmValue, toRm } from "../format";
 const pctOf = (part: number, whole: number) => (whole > 0 ? (part / whole) * 100 : 0);
 
 export function SalesTab(props: ReportTabProps) {
-  const { token, filters, compare, onOpenTab } = props;
-  const summary = useReport(props, () => getReportSummary(token, filters, compare));
-  const methods = useReport(props, () => getPaymentMethodBreakdown(token, filters));
-  const games = useReport(props, () => getGameBreakdown(token, filters));
-  const channels = useReport(props, () => getChannelBreakdown(token, filters));
-  const daily = useReport(props, () => getReportDailyBreakdown(token, filters));
+  const { filters, compare, onOpenTab } = props;
+  const summary = useReport(props, () => getReportSummary(filters, compare));
+  const methods = useReport(props, () => getPaymentMethodBreakdown(filters));
+  const games = useReport(props, () => getGameBreakdown(filters));
+  const channels = useReport(props, () => getChannelBreakdown(filters));
+  const daily = useReport(props, () => getReportDailyBreakdown(filters));
 
   const s = summary.data;
   const cmp = s?.compare ?? undefined;

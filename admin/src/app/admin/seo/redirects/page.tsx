@@ -32,8 +32,8 @@ export default function RedirectsPage() {
   const [editing, setEditing] = useState<Redirect | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  function refresh(token: string) {
-    return listRedirects(token)
+  function refresh() {
+    return listRedirects()
       .then(setRedirects)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load redirects.");
@@ -46,28 +46,28 @@ export default function RedirectsPage() {
       router.replace("/login");
       return;
     }
-    refresh(s.token);
+    refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleSubmit(values: Parameters<typeof createRedirect>[1]) {
+  async function handleSubmit(values: Parameters<typeof createRedirect>[0]) {
     if (!session) return;
     if (editing) {
-      await updateRedirect(session.token, editing.id, values);
+      await updateRedirect(editing.id, values);
     } else {
-      await createRedirect(session.token, values);
+      await createRedirect(values);
     }
     setModalOpen(false);
     setEditing(null);
-    await refresh(session.token);
+    await refresh();
   }
 
   async function handleDelete(redirect: Redirect) {
     if (!session) return;
     setDeletingId(redirect.id);
     try {
-      await deleteRedirect(session.token, redirect.id);
-      await refresh(session.token);
+      await deleteRedirect(redirect.id);
+      await refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not delete redirect.");
     } finally {

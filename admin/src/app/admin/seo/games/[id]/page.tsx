@@ -32,7 +32,7 @@ export default function GameSeoEditPage() {
       router.replace("/login");
       return;
     }
-    getGameSeo(s.token, gameId)
+    getGameSeo(gameId)
       .then(setGame)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load game."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -44,7 +44,7 @@ export default function GameSeoEditPage() {
     setError(null);
     setSaved(false);
     try {
-      const updated = await updateGameSeo(session.token, gameId, {
+      const updated = await updateGameSeo(gameId, {
         seo_title: game.seo_title || null,
         seo_title_local: game.seo_title_local || null,
         seo_description: game.seo_description || null,

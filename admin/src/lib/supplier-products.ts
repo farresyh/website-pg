@@ -70,7 +70,6 @@ export interface PromoteValues {
 }
 
 export function listSupplierProducts(
-  token: string,
   params: { search?: string; supplier_id?: number; group_label?: string; page?: number } = {},
 ) {
   const query = new URLSearchParams();
@@ -80,7 +79,7 @@ export function listSupplierProducts(
   if (params.page) query.set("page", String(params.page));
   const qs = query.toString();
 
-  return apiFetch<SupplierProductPage>(`/api/middleware/supplier-products${qs ? `?${qs}` : ""}`, { token });
+  return apiFetch<SupplierProductPage>(`/api/middleware/supplier-products${qs ? `?${qs}` : ""}`);
 }
 
 /**
@@ -92,37 +91,34 @@ export function listSupplierProducts(
  * concatenate.
  */
 export async function listAllSupplierProducts(
-  token: string,
   params: { search?: string; supplier_id?: number; group_label?: string } = {},
 ): Promise<SupplierProduct[]> {
-  const first = await listSupplierProducts(token, { ...params, page: 1 });
+  const first = await listSupplierProducts({ ...params, page: 1 });
   const all = [...first.data];
   for (let page = 2; page <= first.last_page; page++) {
-    all.push(...(await listSupplierProducts(token, { ...params, page })).data);
+    all.push(...(await listSupplierProducts({ ...params, page })).data);
   }
   return all;
 }
 
-export function listSupplierProductCategories(token: string, params: { search?: string } = {}) {
+export function listSupplierProductCategories(params: { search?: string } = {}) {
   const query = new URLSearchParams();
   if (params.search) query.set("search", params.search);
   const qs = query.toString();
 
-  return apiFetch<SupplierProductCategory[]>(`/api/middleware/supplier-products/categories${qs ? `?${qs}` : ""}`, { token });
+  return apiFetch<SupplierProductCategory[]>(`/api/middleware/supplier-products/categories${qs ? `?${qs}` : ""}`);
 }
 
-export function linkSupplierProductCategory(token: string, values: LinkCategoryValues) {
+export function linkSupplierProductCategory(values: LinkCategoryValues) {
   return apiFetch<{ game: { id: number; name: string } }>("/api/middleware/supplier-products/categories/link", {
     method: "POST",
-    token,
     body: values,
   });
 }
 
-export function promoteSupplierProduct(token: string, id: number, values: PromoteValues) {
+export function promoteSupplierProduct(id: number, values: PromoteValues) {
   return apiFetch<{ package: { id: number } }>(`/api/middleware/supplier-products/${id}/promote`, {
     method: "POST",
-    token,
     body: values,
   });
 }

@@ -15,7 +15,6 @@ import { formatShortRange } from "./format";
 
 /** What the page hands every tab. */
 export interface ReportTabProps {
-  token: string;
   filters: ReportFilters;
   /** Set only when Compare is on and the range is bounded (R12). */
   compare?: CompareMode;
@@ -30,7 +29,7 @@ export type Loaded<T> = { data: T | null; error: string | null };
  * One report fetch, re-run when the filters or Compare change. A slower
  * earlier response never lands on top of a newer one.
  */
-export function useReport<T>({ token, filters, compare }: Pick<ReportTabProps, "token" | "filters" | "compare">, load: () => Promise<T>): Loaded<T> {
+export function useReport<T>({ filters, compare }: Pick<ReportTabProps, "filters" | "compare">, load: () => Promise<T>): Loaded<T> {
   const [state, setState] = useState<Loaded<T>>({ data: null, error: null });
 
   useEffect(() => {
@@ -42,7 +41,7 @@ export function useReport<T>({ token, filters, compare }: Pick<ReportTabProps, "
       current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, filters.from, filters.to, filters.affiliateId, compare]);
+  }, [filters.from, filters.to, filters.affiliateId, compare]);
 
   return state;
 }

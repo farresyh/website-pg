@@ -30,7 +30,6 @@ import { getBlacklistEntry, type BlacklistEntryDetail } from "@/lib/blacklist";
 
 interface BlacklistHitsModalProps {
   entryId: number | null;
-  token: string;
   onClose: () => void;
 }
 
@@ -39,17 +38,17 @@ interface BlacklistHitsModalProps {
  * blocked attempt never creates an Order (FRAUD-2 rejects before
  * payment), so this renders blacklist_hits, not an orders list.
  */
-function BlacklistHitsContent({ entryId, token }: { entryId: number; token: string }) {
+function BlacklistHitsContent({ entryId }: { entryId: number }) {
   const [detail, setDetail] = useState<BlacklistEntryDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getBlacklistEntry(token, entryId)
+    getBlacklistEntry(entryId)
       .then(setDetail)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load blocked-attempt history.");
       });
-  }, [entryId, token]);
+  }, [entryId]);
 
   return (
     <>
@@ -112,7 +111,7 @@ function BlacklistHitsContent({ entryId, token }: { entryId: number; token: stri
   );
 }
 
-export default function BlacklistHitsModal({ entryId, token, onClose }: BlacklistHitsModalProps) {
+export default function BlacklistHitsModal({ entryId, onClose }: BlacklistHitsModalProps) {
   return (
     <Dialog open={entryId !== null} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -128,7 +127,7 @@ export default function BlacklistHitsModal({ entryId, token, onClose }: Blacklis
               </DialogHeaderActions>
             </DialogHeader>
             <DialogContent>
-              {entryId !== null && <BlacklistHitsContent key={entryId} entryId={entryId} token={token} />}
+              {entryId !== null && <BlacklistHitsContent key={entryId} entryId={entryId} />}
             </DialogContent>
           </DialogPopup>
         </DialogPositioner>

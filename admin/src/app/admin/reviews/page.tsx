@@ -75,8 +75,8 @@ export default function ReviewsPage() {
   const [withCommentOnly, setWithCommentOnly] = useState(false);
   const [page, setPage] = useState(1);
 
-  function refresh(token: string) {
-    return listReviews(token, {
+  function refresh() {
+    return listReviews({
       status: (status || undefined) as ReviewStatus | undefined,
       rating: rating ? Number(rating) : undefined,
       game_id: gameId ? Number(gameId) : undefined,
@@ -95,13 +95,13 @@ export default function ReviewsPage() {
       router.replace("/login");
       return;
     }
-    listGames(s.token).then(setGames).catch(() => undefined);
+    listGames().then(setGames).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (!session) return;
-    refresh(session.token);
+    refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, status, rating, gameId, withCommentOnly, page]);
 
@@ -110,8 +110,8 @@ export default function ReviewsPage() {
     setError(null);
     setActingId(review.id);
     try {
-      await approveReview(session.token, review.id);
-      await refresh(session.token);
+      await approveReview(review.id);
+      await refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not approve this review.");
     } finally {
@@ -124,8 +124,8 @@ export default function ReviewsPage() {
     setError(null);
     setActingId(review.id);
     try {
-      await rejectReview(session.token, review.id);
-      await refresh(session.token);
+      await rejectReview(review.id);
+      await refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not reject this review.");
     } finally {
@@ -139,8 +139,8 @@ export default function ReviewsPage() {
     setError(null);
     setBulkApproving(true);
     try {
-      await bulkApproveReviews(session.token);
-      await refresh(session.token);
+      await bulkApproveReviews();
+      await refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not bulk-approve reviews.");
     } finally {

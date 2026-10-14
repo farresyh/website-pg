@@ -1,6 +1,5 @@
-import { apiFetch, apiUpload, ApiError } from "@/lib/api-client";
+import { apiFetch, apiUpload, apiDownload } from "@/lib/api-client";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
 
 /**
  * ADR-083 decision 2 (PR-1): the supplier funding ledger — under
@@ -97,7 +96,7 @@ export interface SupplierTransferFilters {
   per_page?: number;
 }
 
-export function getSupplierTransfers(token: string, supplierId: number, filters: SupplierTransferFilters = {}) {
+export function getSupplierTransfers(supplierId: number, filters: SupplierTransferFilters = {}) {
   const params = new URLSearchParams();
   if (filters.from) params.set("from", filters.from);
   if (filters.to) params.set("to", filters.to);
@@ -106,7 +105,7 @@ export function getSupplierTransfers(token: string, supplierId: number, filters:
   if (filters.per_page) params.set("per_page", String(filters.per_page));
   const qs = params.toString();
 
-  return apiFetch<SupplierFundingLedger>(`/api/accounting/suppliers/${supplierId}/transfers${qs ? `?${qs}` : ""}`, { token });
+  return apiFetch<SupplierFundingLedger>(`/api/accounting/suppliers/${supplierId}/transfers${qs ? `?${qs}` : ""}`);
 }
 
 export interface RecordSupplierTransferValues {
@@ -124,7 +123,7 @@ export interface RecordSupplierTransferValues {
   receipt?: File | null;
 }
 
-export function recordSupplierTransfer(token: string, supplierId: number, values: RecordSupplierTransferValues) {
+export function recordSupplierTransfer(supplierId: number, values: RecordSupplierTransferValues) {
   const formData = new FormData();
   formData.append("transferred_on", values.transferred_on);
   formData.append("source_channel", values.source_channel);
@@ -140,7 +139,6 @@ export function recordSupplierTransfer(token: string, supplierId: number, values
   return apiUpload<{ transfer: SupplierTransfer; ledger_balance: string }>(
     `/api/accounting/suppliers/${supplierId}/transfers`,
     formData,
-    { token },
   );
 }
 
@@ -150,10 +148,10 @@ export function recordSupplierTransfer(token: string, supplierId: number, values
  * edits the transfer itself — writes a new `MANUAL_ADJUSTMENT` ledger
  * entry referencing it.
  */
-export function adjustSupplierTransfer(token: string, transferId: number, amount: string, reason: string) {
+export function adjustSupplierTransfer(transferId: number, amount: string, reason: string) {
   return apiFetch<{ entry: SupplierLedgerAdjustment; ledger_balance: string }>(
     `/api/accounting/supplier-transfers/${transferId}/adjust`,
-    { method: "POST", token, body: { amount, reason } },
+    { method: "POST", body: { amount, reason } },
   );
 }
 
@@ -164,10 +162,10 @@ export function adjustSupplierTransfer(token: string, transferId: number, amount
  * possible to call twice on the same transfer (backend rejects once
  * `voided_at` is set).
  */
-export function voidSupplierTransfer(token: string, transferId: number, reason: string) {
+export function voidSupplierTransfer(transferId: number, reason: string) {
   return apiFetch<{ transfer: SupplierTransfer; entry: SupplierLedgerAdjustment; ledger_balance: string }>(
     `/api/accounting/supplier-transfers/${transferId}/void`,
-    { method: "POST", token, body: { reason } },
+    { method: "POST", body: { reason } },
   );
 }
 
@@ -183,7 +181,7 @@ export interface CorrectSupplierTransferValues {
   reason: string;
 }
 
-export function correctSupplierTransfer(token: string, transferId: number, values: CorrectSupplierTransferValues) {
+export function correctSupplierTransfer(transferId: number, values: CorrectSupplierTransferValues) {
   const formData = new FormData();
   if (values.transferred_on) formData.append("transferred_on", values.transferred_on);
   if (values.source_channel) formData.append("source_channel", values.source_channel);
@@ -197,31 +195,14 @@ export function correctSupplierTransfer(token: string, transferId: number, value
   return apiUpload<{ transfer: SupplierTransfer; correction: SupplierTransferCorrection }>(
     `/api/accounting/supplier-transfers/${transferId}/correct`,
     formData,
-    { token },
   );
 }
 
 /**
- * Bearer-token-gated route (`accounting_disk` is deliberately private,
+ * Auth-gated route (`accounting_disk` is deliberately private,
  * ADR-083 decision 10) — not a plain `<a href>`, same Blob +
  * object-URL pattern as `downloadWalletTopupReceipt`.
  */
-export async function downloadSupplierTransferReceipt(token: string, transferId: number, filename: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/accounting/supplier-transfers/${transferId}/receipt`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!response.ok) {
-    throw new ApiError(response.status, undefined, `Download failed (${response.status})`);
-  }
-
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+export async function downloadSupplierTransferReceipt(transferId: number, filename: string): Promise<void> {
+  await apiDownload(`/api/accounting/supplier-transfers/${transferId}/receipt`, filename);
 }

@@ -32,8 +32,8 @@ export default function FaqPage() {
   const [editing, setEditing] = useState<Faq | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  function refresh(token: string) {
-    return listFaqs(token)
+  function refresh() {
+    return listFaqs()
       .then(setFaqs)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load the FAQ.");
@@ -46,28 +46,28 @@ export default function FaqPage() {
       router.replace("/login");
       return;
     }
-    refresh(s.token);
+    refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleSubmit(values: Parameters<typeof createFaq>[1]) {
+  async function handleSubmit(values: Parameters<typeof createFaq>[0]) {
     if (!session) return;
     if (editing) {
-      await updateFaq(session.token, editing.id, values);
+      await updateFaq(editing.id, values);
     } else {
-      await createFaq(session.token, values);
+      await createFaq(values);
     }
     setModalOpen(false);
     setEditing(null);
-    await refresh(session.token);
+    await refresh();
   }
 
   async function handleDelete(faq: Faq) {
     if (!session) return;
     setDeletingId(faq.id);
     try {
-      await deleteFaq(session.token, faq.id);
-      await refresh(session.token);
+      await deleteFaq(faq.id);
+      await refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not delete the question.");
     } finally {

@@ -135,13 +135,13 @@ export default function ReportsPage() {
   const minutesAgo = Math.floor((now - updatedAt) / 60_000);
   const updatedLabel = minutesAgo < 1 ? "Updated just now" : `Updated ${minutesAgo} min ago`;
 
-  const refresh = useCallback((token: string) => {
-    listReportAffiliates(token).then(setAffiliates).catch(() => undefined);
+  const refresh = useCallback(() => {
+    listReportAffiliates().then(setAffiliates).catch(() => undefined);
   }, []);
 
   useEffect(() => {
     if (!session) return;
-    refresh(session.token);
+    refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
@@ -150,7 +150,7 @@ export default function ReportsPage() {
     setExporting(format);
     setError(null);
     try {
-      await exportReport(session.token, format, filters);
+      await exportReport(format, filters);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not export the report.");
     } finally {
@@ -281,7 +281,6 @@ export default function ReportsPage() {
               <TabsPanel key={value} value={value}>
                 {activeTab === value && (
                   <Tab
-                    token={session.token}
                     filters={filters}
                     compare={compare}
                     rangeIncludesToday={to === undefined || to >= todayInKL()}

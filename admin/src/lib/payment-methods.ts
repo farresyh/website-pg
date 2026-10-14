@@ -47,33 +47,30 @@ export function paymentMethodLabel(method: string | null | undefined): string {
   );
 }
 
-export function listPaymentMethods(token: string, params: { category?: string } = {}) {
+export function listPaymentMethods(params: { category?: string } = {}) {
   const query = new URLSearchParams();
   if (params.category) query.set("category", params.category);
   const qs = query.toString();
 
-  return apiFetch<PaymentMethod[]>(`/api/middleware/payment-methods${qs ? `?${qs}` : ""}`, { token });
+  return apiFetch<PaymentMethod[]>(`/api/middleware/payment-methods${qs ? `?${qs}` : ""}`);
 }
 
-export function updatePaymentMethodStatus(token: string, id: number, isActive: boolean) {
+export function updatePaymentMethodStatus(id: number, isActive: boolean) {
   return apiFetch<PaymentMethod>(`/api/middleware/payment-methods/${id}/status`, {
     method: "PATCH",
-    token,
     body: { is_active: isActive },
   });
 }
 
-export function updatePaymentMethodFee(token: string, id: number, percentageRate: number, flatFeeSen: number) {
+export function updatePaymentMethodFee(id: number, percentageRate: number, flatFeeSen: number) {
   return apiFetch<PaymentMethod>(`/api/middleware/payment-methods/${id}/fee`, {
     method: "PATCH",
-    token,
     body: { percentage_rate: percentageRate, flat_fee_sen: flatFeeSen },
   });
 }
 
-export function testPaymentMethod(token: string, id: number) {
+export function testPaymentMethod(id: number) {
   return apiFetch<PaymentMethod>(`/api/middleware/payment-methods/${id}/test`, {
     method: "POST",
-    token,
   });
 }

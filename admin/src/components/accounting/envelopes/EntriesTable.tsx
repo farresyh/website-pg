@@ -18,13 +18,12 @@ function formatDateTime(iso: string): string {
 }
 
 interface Props {
-  token: string;
   entries: BudgetEnvelopeEntry[];
   onChanged: () => Promise<void> | void;
   onError: (message: string) => void;
 }
 
-export function EntriesTable({ token, entries, onChanged, onError }: Props) {
+export function EntriesTable({ entries, onChanged, onError }: Props) {
   const [voidingId, setVoidingId] = useState<number | null>(null);
   const [voidReason, setVoidReason] = useState("");
   const [downloading, setDownloading] = useState<number | null>(null);
@@ -35,7 +34,7 @@ export function EntriesTable({ token, entries, onChanged, onError }: Props) {
       return;
     }
     try {
-      await voidPosting(token, postingId, voidReason.trim());
+      await voidPosting(postingId, voidReason.trim());
       setVoidingId(null);
       setVoidReason("");
       await onChanged();
@@ -47,7 +46,7 @@ export function EntriesTable({ token, entries, onChanged, onError }: Props) {
   async function handleDownload(postingId: number) {
     setDownloading(postingId);
     try {
-      await downloadPostingReceipt(token, postingId);
+      await downloadPostingReceipt(postingId);
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Download failed.");
     } finally {

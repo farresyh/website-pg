@@ -132,100 +132,93 @@ export interface ImpersonationSessionRow {
   active: boolean;
 }
 
-export function listAffiliates(token: string) {
-  return apiFetch<{ affiliates: AffiliateRow[] }>("/api/affiliates", { token });
+export function listAffiliates() {
+  return apiFetch<{ affiliates: AffiliateRow[] }>("/api/affiliates");
 }
 
-export function getAffiliate(token: string, id: number) {
-  return apiFetch<AffiliateDetail>(`/api/affiliates/${id}`, { token });
+export function getAffiliate(id: number) {
+  return apiFetch<AffiliateDetail>(`/api/affiliates/${id}`);
 }
 
-export function createAffiliate(token: string, values: CreateAffiliateValues) {
-  return apiFetch<AffiliateDetail>("/api/affiliates", { method: "POST", token, body: values });
+export function createAffiliate(values: CreateAffiliateValues) {
+  return apiFetch<AffiliateDetail>("/api/affiliates", { method: "POST", body: values });
 }
 
-export function updateAffiliate(token: string, id: number, values: UpdateAffiliateValues) {
-  return apiFetch<AffiliateDetail>(`/api/affiliates/${id}`, { method: "PUT", token, body: values });
+export function updateAffiliate(id: number, values: UpdateAffiliateValues) {
+  return apiFetch<AffiliateDetail>(`/api/affiliates/${id}`, { method: "PUT", body: values });
 }
 
-export function updateAffiliateStatus(token: string, id: number, status: AffiliateStatus) {
+export function updateAffiliateStatus(id: number, status: AffiliateStatus) {
   return apiFetch<AffiliateDetail>(`/api/affiliates/${id}/status`, {
     method: "PATCH",
-    token,
     body: { status },
   });
 }
 
-export function deleteAffiliate(token: string, id: number) {
-  return apiFetch<{ message: string }>(`/api/affiliates/${id}`, { method: "DELETE", token });
+export function deleteAffiliate(id: number) {
+  return apiFetch<{ message: string }>(`/api/affiliates/${id}`, { method: "DELETE" });
 }
 
 /** ADR-060 PR-5 — admin break-glass: force a provider re-check of one custom domain. */
-export function recheckAffiliateDomain(token: string, id: number, domainId: number) {
+export function recheckAffiliateDomain(id: number, domainId: number) {
   return apiFetch<AffiliateDetail>(`/api/affiliates/${id}/domains/${domainId}/recheck`, {
     method: "POST",
-    token,
   });
 }
 
 /** ADR-060 PR-5 — admin break-glass: detach + remove one custom domain (abuse / affiliate request). */
-export function removeAffiliateDomain(token: string, id: number, domainId: number) {
+export function removeAffiliateDomain(id: number, domainId: number) {
   return apiFetch<AffiliateDetail>(`/api/affiliates/${id}/domains/${domainId}`, {
     method: "DELETE",
-    token,
   });
 }
 
-export function assignAffiliateTier(token: string, id: number, tierId: number, note: string | null) {
+export function assignAffiliateTier(id: number, tierId: number, note: string | null) {
   return apiFetch<AffiliateDetail>(`/api/affiliates/${id}/tier`, {
     method: "POST",
-    token,
     body: { tier_id: tierId, note },
   });
 }
 
-export function chargeAffiliateTierFee(token: string, id: number) {
-  return apiFetch<AffiliateDetail>(`/api/affiliates/${id}/tier/charge`, { method: "POST", token });
+export function chargeAffiliateTierFee(id: number) {
+  return apiFetch<AffiliateDetail>(`/api/affiliates/${id}/tier/charge`, { method: "POST" });
 }
 
-export function reactivateAffiliateSubscription(token: string, id: number) {
-  return apiFetch<AffiliateDetail>(`/api/affiliates/${id}/tier/reactivate`, { method: "POST", token });
+export function reactivateAffiliateSubscription(id: number) {
+  return apiFetch<AffiliateDetail>(`/api/affiliates/${id}/tier/reactivate`, { method: "POST" });
 }
 
-export function addAffiliateUser(token: string, id: number, values: { name: string; email: string }) {
-  return apiFetch<AffiliateDetail>(`/api/affiliates/${id}/users`, { method: "POST", token, body: values });
+export function addAffiliateUser(id: number, values: { name: string; email: string }) {
+  return apiFetch<AffiliateDetail>(`/api/affiliates/${id}/users`, { method: "POST", body: values });
 }
 
-export function resendAffiliateInvite(token: string, id: number, userId: number) {
+export function resendAffiliateInvite(id: number, userId: number) {
   return apiFetch<{ message: string }>(`/api/affiliates/${id}/users/${userId}/resend-invite`, {
     method: "POST",
-    token,
   });
 }
 
-export function impersonateAffiliate(token: string, id: number, reason: string | null) {
+export function impersonateAffiliate(id: number, reason: string | null) {
   return apiFetch<ImpersonationStartResult>(`/api/affiliates/${id}/impersonate`, {
     method: "POST",
-    token,
     body: { reason },
   });
 }
 
-export function listImpersonationSessions(token: string) {
+export function listImpersonationSessions() {
   return apiFetch<{ sessions: ImpersonationSessionRow[] }>("/api/affiliate-impersonation-sessions", {
-    token,
   });
 }
 
-export function endImpersonationSession(token: string, sessionId: number) {
+export function endImpersonationSession(sessionId: number) {
   return apiFetch<{ message: string }>(
     `/api/affiliate-impersonation-sessions/${sessionId}/end`,
-    { method: "POST", token },
+    { method: "POST" },
   );
 }
 
-export function listAffiliateTiers(token: string) {
-  return apiFetch<{ tiers: AffiliateTier[] }>("/api/affiliate-tiers", { token });
+export function listAffiliateTiers() {
+  return apiFetch<{ tiers: AffiliateTier[] }>("/api/affiliate-tiers");
 }
 
 export interface AffiliateTierValues {
@@ -236,14 +229,14 @@ export interface AffiliateTierValues {
   sort_order: number;
 }
 
-export function createAffiliateTier(token: string, values: AffiliateTierValues) {
-  return apiFetch<AffiliateTier>("/api/affiliate-tiers", { method: "POST", token, body: values });
+export function createAffiliateTier(values: AffiliateTierValues) {
+  return apiFetch<AffiliateTier>("/api/affiliate-tiers", { method: "POST", body: values });
 }
 
-export function updateAffiliateTier(token: string, id: number, values: Partial<AffiliateTierValues>) {
-  return apiFetch<AffiliateTier>(`/api/affiliate-tiers/${id}`, { method: "PUT", token, body: values });
+export function updateAffiliateTier(id: number, values: Partial<AffiliateTierValues>) {
+  return apiFetch<AffiliateTier>(`/api/affiliate-tiers/${id}`, { method: "PUT", body: values });
 }
 
-export function deleteAffiliateTier(token: string, id: number) {
-  return apiFetch<{ message: string }>(`/api/affiliate-tiers/${id}`, { method: "DELETE", token });
+export function deleteAffiliateTier(id: number) {
+  return apiFetch<{ message: string }>(`/api/affiliate-tiers/${id}`, { method: "DELETE" });
 }

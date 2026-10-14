@@ -45,11 +45,9 @@ const statusSeverity: Record<MembershipListItem["status"], "success" | "secondar
 };
 
 export default function MembersSection({
-  token,
   plans,
   onChanged,
 }: {
-  token: string;
   plans: MembershipPlan[];
   onChanged: () => void;
 }) {
@@ -68,7 +66,7 @@ export default function MembersSection({
   const [presetAffiliateId, setPresetAffiliateId] = useState<number | undefined>(undefined);
 
   function refresh(nextPage = 1) {
-    listMemberships(token, {
+    listMemberships({
       status: statusFilter,
       search: search || undefined,
       page: nextPage,
@@ -86,18 +84,18 @@ export default function MembersSection({
   }
 
   useEffect(() => {
-    listMembershipBrands(token)
+    listMembershipBrands()
       .then(setBrands)
       .catch(() => setBrands([]));
-  }, [token]);
+  }, []);
 
   useEffect(() => {
     refresh(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, brandFilter]);
 
-  async function handleRecorded(values: Parameters<typeof recordMembershipPayment>[1]) {
-    await recordMembershipPayment(token, values);
+  async function handleRecorded(values: Parameters<typeof recordMembershipPayment>[0]) {
+    await recordMembershipPayment(values);
     setIsModalOpen(false);
     setPresetEmail(undefined);
     setPresetAffiliateId(undefined);

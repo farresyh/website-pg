@@ -100,16 +100,16 @@ export default function BackupsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const refreshStats = useCallback((token: string) => {
-    getBackupStats(token)
+  const refreshStats = useCallback(() => {
+    getBackupStats()
       .then(setStats)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load backup stats.");
       });
   }, []);
 
-  const refreshHistory = useCallback((token: string, page: number) => {
-    listBackupRuns(token, page)
+  const refreshHistory = useCallback((page: number) => {
+    listBackupRuns(page)
       .then(setHistoryPage)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load backup history.");
@@ -117,22 +117,22 @@ export default function BackupsPage() {
   }, []);
 
   const refreshAll = useCallback(
-    (token: string) => {
-      refreshStats(token);
-      refreshHistory(token, historyPageNumber);
+    () => {
+      refreshStats();
+      refreshHistory(historyPageNumber);
     },
     [refreshStats, refreshHistory, historyPageNumber],
   );
 
   useEffect(() => {
     if (!session) return;
-    refreshAll(session.token);
+    refreshAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   useEffect(() => {
     if (!session) return;
-    refreshHistory(session.token, historyPageNumber);
+    refreshHistory(historyPageNumber);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, historyPageNumber]);
 
@@ -149,7 +149,7 @@ export default function BackupsPage() {
 
     const channel = getEcho().private("backups");
     channel.listen(".backup-run.status.updated", () => {
-      refreshAll(session.token);
+      refreshAll();
     });
 
     return () => {
@@ -164,7 +164,7 @@ export default function BackupsPage() {
   // of having to navigate away and back or hit refresh by hand.
   useReconcileOnResume(
     useCallback(() => {
-      if (session) refreshAll(session.token);
+      if (session) refreshAll();
     }, [session, refreshAll]),
   );
 
@@ -173,8 +173,8 @@ export default function BackupsPage() {
     setError(null);
     setTriggering(true);
     try {
-      await triggerBackup(session.token);
-      refreshAll(session.token);
+      await triggerBackup();
+      refreshAll();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not start a backup.");
     } finally {
@@ -187,7 +187,7 @@ export default function BackupsPage() {
     setError(null);
     setBusyId(run.id);
     try {
-      await downloadBackupRun(session.token, run);
+      await downloadBackupRun(run);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not download this backup.");
     } finally {
@@ -200,9 +200,9 @@ export default function BackupsPage() {
     setError(null);
     setBusyId(confirmDeleteRun.id);
     try {
-      await deleteBackupRun(session.token, confirmDeleteRun.id);
+      await deleteBackupRun(confirmDeleteRun.id);
       setConfirmDeleteRun(null);
-      refreshAll(session.token);
+      refreshAll();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not delete this backup.");
     } finally {

@@ -124,12 +124,12 @@ export default function RequestLogsPage() {
 
   useEffect(() => {
     if (!session) return;
-    listSuppliers(session.token).then(setSuppliers).catch(() => undefined);
+    listSuppliers().then(setSuppliers).catch(() => undefined);
   }, [session]);
 
   const refresh = useCallback(
-    (token: string) => {
-      listRequestLogs(token, {
+    () => {
+      listRequestLogs({
         supplier_id: supplierId ? Number(supplierId) : undefined,
         call_type: (callType || undefined) as SupplierRequestCallType | undefined,
         outcome: (outcome || undefined) as SupplierRequestOutcome | undefined,
@@ -147,7 +147,7 @@ export default function RequestLogsPage() {
 
   useEffect(() => {
     if (!session) return;
-    refresh(session.token);
+    refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, supplierId, callType, outcome, from, to, pageNumber]);
 
@@ -165,7 +165,7 @@ export default function RequestLogsPage() {
     if (!session) return;
     setError(null);
     try {
-      setDetailLog(await getRequestLog(session.token, id));
+      setDetailLog(await getRequestLog(id));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load this request log.");
     }

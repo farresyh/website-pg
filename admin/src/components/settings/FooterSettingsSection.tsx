@@ -51,12 +51,10 @@ function LegalField({
 }
 
 export default function FooterSettingsSection({
-  token,
   footer,
   storeName,
   onSaved,
 }: {
-  token: string;
   footer: FooterSettings;
   storeName: string;
   onSaved: () => void;
@@ -71,10 +69,10 @@ export default function FooterSettingsSection({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listGames(token, { status: "active" })
+    listGames({ status: "active" })
       .then(setActiveGames)
       .catch(() => undefined);
-  }, [token]);
+  }, []);
 
   function toggleGame(id: number) {
     setGameIds((prev) => {
@@ -88,7 +86,7 @@ export default function FooterSettingsSection({
     setSaving(true);
     setError(null);
     try {
-      await updateFooterSettings(token, {
+      await updateFooterSettings({
         footer_text: footerText || null,
         terms_content: terms || null,
         privacy_content: privacy || null,

@@ -1,4 +1,4 @@
-import { apiFetch, ApiError } from "@/lib/api-client";
+import { apiFetch, apiDownload } from "@/lib/api-client";
 
 /**
  * RPT-1..3. Mirrors backend/app/Services/Report/ReportService.php — see
@@ -241,89 +241,87 @@ function buildQuery(params: Record<string, string | number | undefined>): string
   return query ? `?${query}` : "";
 }
 
-export function listReportAffiliates(token: string) {
-  return apiFetch<ReportAffiliate[]>("/api/reports/affiliates", { token });
+export function listReportAffiliates() {
+  return apiFetch<ReportAffiliate[]>("/api/reports/affiliates");
 }
 
-export function getReportSummary(token: string, filters: ReportFilters, compare?: CompareMode) {
+export function getReportSummary(filters: ReportFilters, compare?: CompareMode) {
   const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId, compare });
-  return apiFetch<ReportSummary>(`/api/reports/summary${query}`, { token });
+  return apiFetch<ReportSummary>(`/api/reports/summary${query}`);
 }
 
-export function getAccountingBridge(token: string, filters: ReportFilters) {
+export function getAccountingBridge(filters: ReportFilters) {
   const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
-  return apiFetch<{ bridge: ReportAccountingBridge | null }>(`/api/reports/accounting-bridge${query}`, { token });
+  return apiFetch<{ bridge: ReportAccountingBridge | null }>(`/api/reports/accounting-bridge${query}`);
 }
 
-export function getFailedCompensated(token: string, filters: ReportFilters) {
+export function getFailedCompensated(filters: ReportFilters) {
   const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
-  return apiFetch<ReportFailedCompensated>(`/api/reports/failed-compensated${query}`, { token });
+  return apiFetch<ReportFailedCompensated>(`/api/reports/failed-compensated${query}`);
 }
 
-export function getChannelBreakdown(token: string, filters: ReportFilters, compare?: CompareMode) {
+export function getChannelBreakdown(filters: ReportFilters, compare?: CompareMode) {
   const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId, compare });
-  return apiFetch<ReportChannelBreakdown>(`/api/reports/breakdown/channels${query}`, { token });
+  return apiFetch<ReportChannelBreakdown>(`/api/reports/breakdown/channels${query}`);
 }
 
-export function getDeliveryByGame(token: string, filters: ReportFilters) {
+export function getDeliveryByGame(filters: ReportFilters) {
   const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
-  return apiFetch<{ games: ReportDeliveryByGameRow[] }>(`/api/reports/breakdown/delivery-by-game${query}`, { token });
+  return apiFetch<{ games: ReportDeliveryByGameRow[] }>(`/api/reports/breakdown/delivery-by-game${query}`);
 }
 
 /** ADR-086 filter-unification follow-up — trend chart now follows the same filters as every other tab, no more its own days=7|14|30 param. */
-export function getReportTrend(token: string, filters: ReportFilters) {
+export function getReportTrend(filters: ReportFilters) {
   const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
-  return apiFetch<{ days: ReportTrendDay[] }>(`/api/reports/trend${query}`, { token });
+  return apiFetch<{ days: ReportTrendDay[] }>(`/api/reports/trend${query}`);
 }
 
-export function getReportDailyBreakdown(token: string, filters: ReportFilters) {
+export function getReportDailyBreakdown(filters: ReportFilters) {
   const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
-  return apiFetch<{ days: ReportDailyBreakdownRow[] }>(`/api/reports/daily-breakdown${query}`, { token });
+  return apiFetch<{ days: ReportDailyBreakdownRow[] }>(`/api/reports/daily-breakdown${query}`);
 }
 
-export function getTopGames(token: string, filters: ReportFilters, limit = 5) {
+export function getTopGames(filters: ReportFilters, limit = 5) {
   const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId, limit });
-  return apiFetch<{ games: ReportGameRow[] }>(`/api/reports/top-games${query}`, { token });
+  return apiFetch<{ games: ReportGameRow[] }>(`/api/reports/top-games${query}`);
 }
 
-export function getGameBreakdown(token: string, filters: ReportFilters) {
+export function getGameBreakdown(filters: ReportFilters) {
   const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
-  return apiFetch<{ games: ReportGameRow[] }>(`/api/reports/breakdown/games${query}`, { token });
+  return apiFetch<{ games: ReportGameRow[] }>(`/api/reports/breakdown/games${query}`);
 }
 
-export function getPaymentMethodBreakdown(token: string, filters: ReportFilters) {
+export function getPaymentMethodBreakdown(filters: ReportFilters) {
   const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
-  return apiFetch<{ payment_methods: ReportPaymentMethodRow[] }>(`/api/reports/breakdown/payment-methods${query}`, { token });
+  return apiFetch<{ payment_methods: ReportPaymentMethodRow[] }>(`/api/reports/breakdown/payment-methods${query}`);
 }
 
-export function getAffiliateBreakdown(token: string, filters: ReportFilters) {
+export function getAffiliateBreakdown(filters: ReportFilters) {
   const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
-  return apiFetch<{ affiliates: ReportAffiliateRow[] }>(`/api/reports/breakdown/affiliates${query}`, { token });
+  return apiFetch<{ affiliates: ReportAffiliateRow[] }>(`/api/reports/breakdown/affiliates${query}`);
 }
 
-export function getResellerBreakdown(token: string, filters: ReportFilters) {
+export function getResellerBreakdown(filters: ReportFilters) {
   const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
-  return apiFetch<{ resellers: ReportResellerRow[] }>(`/api/reports/breakdown/resellers${query}`, { token });
+  return apiFetch<{ resellers: ReportResellerRow[] }>(`/api/reports/breakdown/resellers${query}`);
 }
 
-export function getOrderStatusFunnel(token: string, filters: ReportFilters) {
+export function getOrderStatusFunnel(filters: ReportFilters) {
   const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
-  return apiFetch<ReportOrderStatusFunnel>(`/api/reports/order-status-funnel${query}`, { token });
+  return apiFetch<ReportOrderStatusFunnel>(`/api/reports/order-status-funnel${query}`);
 }
 
-export function getMembershipBreakdown(token: string, filters: ReportFilters, compare?: CompareMode) {
+export function getMembershipBreakdown(filters: ReportFilters, compare?: CompareMode) {
   const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId, compare });
-  return apiFetch<ReportMembershipBreakdown>(`/api/reports/membership-breakdown${query}`, { token });
+  return apiFetch<ReportMembershipBreakdown>(`/api/reports/membership-breakdown${query}`);
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
 
 /**
- * RPT-3 export — bearer-token-gated binary download, same
+ * RPT-3 export — auth-gated binary download, same
  * fetch-as-blob-then-object-URL pattern as Backups' downloadBackupRun.
  */
 export async function exportReport(
-  token: string,
   format: "csv" | "pdf",
   filters: ReportFilters,
 ): Promise<void> {
@@ -334,21 +332,5 @@ export async function exportReport(
     affiliate_id: filters.affiliateId,
   });
 
-  const response = await fetch(`${API_BASE_URL}/api/reports/export${query}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!response.ok) {
-    throw new ApiError(response.status, undefined, `Export failed (${response.status})`);
-  }
-
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `sales-report.${format}`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  await apiDownload(`/api/reports/export${query}`, `sales-report.${format}`);
 }

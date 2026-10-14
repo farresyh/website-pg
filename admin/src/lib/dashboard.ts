@@ -126,22 +126,22 @@ export interface DashboardHourlyActivity {
   definition: string;
 }
 
-export function getDashboardSummary(token: string) {
-  return apiFetch<DashboardSummary>("/api/dashboard/summary", { token });
+export function getDashboardSummary() {
+  return apiFetch<DashboardSummary>("/api/dashboard/summary");
 }
 
-export function getDashboardHealth(token: string) {
-  return apiFetch<DashboardHealth>("/api/dashboard/health", { token });
+export function getDashboardHealth() {
+  return apiFetch<DashboardHealth>("/api/dashboard/health");
 }
 
-export function getDashboardFunnel(token: string) {
-  return apiFetch<DashboardFunnel>("/api/dashboard/funnel", { token });
+export function getDashboardFunnel() {
+  return apiFetch<DashboardFunnel>("/api/dashboard/funnel");
 }
 
-export function getDashboardTopGames(token: string, limit = 5) {
-  return apiFetch<DashboardTopGames>(`/api/dashboard/top-games?limit=${limit}`, { token });
+export function getDashboardTopGames(limit = 5) {
+  return apiFetch<DashboardTopGames>(`/api/dashboard/top-games?limit=${limit}`);
 }
 
-export function getDashboardHourlyActivity(token: string, date: string) {
-  return apiFetch<DashboardHourlyActivity>(`/api/dashboard/hourly-activity?date=${encodeURIComponent(date)}`, { token });
+export function getDashboardHourlyActivity(date: string) {
+  return apiFetch<DashboardHourlyActivity>(`/api/dashboard/hourly-activity?date=${encodeURIComponent(date)}`);
 }

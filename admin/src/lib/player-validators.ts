@@ -46,74 +46,65 @@ export interface TestValidatorResult {
   error?: string;
 }
 
-export function listPlayerValidatorProfiles(token: string) {
-  return apiFetch<PlayerValidatorProfile[]>("/api/middleware/validators", { token });
+export function listPlayerValidatorProfiles() {
+  return apiFetch<PlayerValidatorProfile[]>("/api/middleware/validators");
 }
 
-export function listAvailableValidatorKeys(token: string) {
-  return apiFetch<AvailableValidatorKey[]>("/api/middleware/validators/available-keys", { token });
+export function listAvailableValidatorKeys() {
+  return apiFetch<AvailableValidatorKey[]>("/api/middleware/validators/available-keys");
 }
 
-export function createPlayerValidatorProfile(token: string, values: { name: string; key: string }) {
+export function createPlayerValidatorProfile(values: { name: string; key: string }) {
   return apiFetch<PlayerValidatorProfile>("/api/middleware/validators", {
     method: "POST",
-    token,
     body: values,
   });
 }
 
-export function updatePlayerValidatorProfile(token: string, id: number, values: { name: string }) {
+export function updatePlayerValidatorProfile(id: number, values: { name: string }) {
   return apiFetch<PlayerValidatorProfile>(`/api/middleware/validators/${id}`, {
     method: "PUT",
-    token,
     body: values,
   });
 }
 
-export function deletePlayerValidatorProfile(token: string, id: number) {
-  return apiFetch<void>(`/api/middleware/validators/${id}`, { method: "DELETE", token });
+export function deletePlayerValidatorProfile(id: number) {
+  return apiFetch<void>(`/api/middleware/validators/${id}`, { method: "DELETE" });
 }
 
 export function testPlayerValidatorProfile(
-  token: string,
   id: number,
   values: { player_id: string; server_id?: string },
 ) {
   return apiFetch<TestValidatorResult>(`/api/middleware/validators/${id}/test`, {
     method: "POST",
-    token,
     body: values,
   });
 }
 
 export function createPlayerRegionMapping(
-  token: string,
   validatorId: number,
   values: { country_code: string; country_name: string; game_id: number },
 ) {
   return apiFetch<PlayerRegionMapping>(`/api/middleware/validators/${validatorId}/mappings`, {
     method: "POST",
-    token,
     body: values,
   });
 }
 
 export function updatePlayerRegionMapping(
-  token: string,
   validatorId: number,
   mappingId: number,
   values: { country_name: string; game_id: number },
 ) {
   return apiFetch<PlayerRegionMapping>(`/api/middleware/validators/${validatorId}/mappings/${mappingId}`, {
     method: "PUT",
-    token,
     body: values,
   });
 }
 
-export function deletePlayerRegionMapping(token: string, validatorId: number, mappingId: number) {
+export function deletePlayerRegionMapping(validatorId: number, mappingId: number) {
   return apiFetch<void>(`/api/middleware/validators/${validatorId}/mappings/${mappingId}`, {
     method: "DELETE",
-    token,
   });
 }

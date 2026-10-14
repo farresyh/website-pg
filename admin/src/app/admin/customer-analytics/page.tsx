@@ -130,22 +130,22 @@ export default function CustomerAnalyticsPage() {
 
   useEffect(() => {
     if (!session) return;
-    listReportAffiliates(session.token).then(setAffiliates).catch(() => undefined);
-    listResellers(session.token).then((res) => setResellers(res.resellers)).catch(() => undefined);
+    listReportAffiliates().then(setAffiliates).catch(() => undefined);
+    listResellers().then((res) => setResellers(res.resellers)).catch(() => undefined);
   }, [session]);
 
-  const refresh = useCallback((token: string, f: CustomerAnalyticsFilters) => {
-    getCustomerAnalyticsSummary(token, f)
+  const refresh = useCallback((f: CustomerAnalyticsFilters) => {
+    getCustomerAnalyticsSummary(f)
       .then(setSummary)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load stats."));
-    getCustomerAnalyticsCustomers(token, f)
+    getCustomerAnalyticsCustomers(f)
       .then((res) => setRows(res.customers))
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load customers."));
   }, []);
 
   useEffect(() => {
     if (!session) return;
-    refresh(session.token, filters);
+    refresh(filters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, year, month, affiliateId, resellerId, segment]);
 
@@ -154,7 +154,7 @@ export default function CustomerAnalyticsPage() {
     setExporting(true);
     setError(null);
     try {
-      await exportCustomerAnalytics(session.token, filters);
+      await exportCustomerAnalytics(filters);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not export customers.");
     } finally {

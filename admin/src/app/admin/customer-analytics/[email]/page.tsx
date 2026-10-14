@@ -92,7 +92,7 @@ export default function CustomerDetailPage() {
 
   useEffect(() => {
     if (!session) return;
-    getCustomerDetail(session.token, email)
+    getCustomerDetail(email)
       .then(setDetail)
       .catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 404) {

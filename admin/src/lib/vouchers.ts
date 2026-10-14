@@ -99,16 +99,16 @@ export interface CreateVoucherValues {
   affiliate_id: number;
 }
 
-export function listVouchers(token: string) {
-  return apiFetch<VoucherIndexResponse>("/api/vouchers", { token });
+export function listVouchers() {
+  return apiFetch<VoucherIndexResponse>("/api/vouchers");
 }
 
-export function getVoucher(token: string, id: number) {
-  return apiFetch<VoucherShowResponse>(`/api/vouchers/${id}`, { token });
+export function getVoucher(id: number) {
+  return apiFetch<VoucherShowResponse>(`/api/vouchers/${id}`);
 }
 
-export function createVoucher(token: string, values: CreateVoucherValues) {
-  return apiFetch<Voucher>("/api/vouchers", { method: "POST", token, body: values });
+export function createVoucher(values: CreateVoucherValues) {
+  return apiFetch<Voucher>("/api/vouchers", { method: "POST", body: values });
 }
 
 export interface MergeVouchersValues {
@@ -117,10 +117,10 @@ export interface MergeVouchersValues {
   expires_at?: string | null;
 }
 
-export function mergeVouchers(token: string, values: MergeVouchersValues) {
-  return apiFetch<Voucher>("/api/vouchers/merge", { method: "POST", token, body: values });
+export function mergeVouchers(values: MergeVouchersValues) {
+  return apiFetch<Voucher>("/api/vouchers/merge", { method: "POST", body: values });
 }
 
-export function revokeVoucher(token: string, id: number) {
-  return apiFetch<Voucher>(`/api/vouchers/${id}/revoke`, { method: "PATCH", token });
+export function revokeVoucher(id: number) {
+  return apiFetch<Voucher>(`/api/vouchers/${id}/revoke`, { method: "PATCH" });
 }

@@ -25,7 +25,6 @@ interface CreateSandboxOrderModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (values: CreateSandboxOrderValues) => Promise<void>;
-  token: string;
 }
 
 function formatRm(sen: number): string {
@@ -39,7 +38,7 @@ function formatRm(sen: number): string {
  * consistent money figures. Player/customer fields all default to
  * fixed sandbox placeholders server-side when left blank.
  */
-function CreateSandboxOrderFields({ onClose, onSubmit, token }: Omit<CreateSandboxOrderModalProps, "isOpen">) {
+function CreateSandboxOrderFields({ onClose, onSubmit }: Omit<CreateSandboxOrderModalProps, "isOpen">) {
   const [games, setGames] = useState<Game[] | null>(null);
   const [gamesError, setGamesError] = useState<string | null>(null);
   const [gameId, setGameId] = useState<number | null>(null);
@@ -65,16 +64,14 @@ function CreateSandboxOrderFields({ onClose, onSubmit, token }: Omit<CreateSandb
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    listGames(token, { status: "active" })
+    listGames({ status: "active" })
       .then(setGames)
       .catch(() => setGamesError("Could not load games."));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (!gameId) return;
-    listGamePackages(token, gameId).then((all) => setPackages(all.filter((p) => p.is_active)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    listGamePackages(gameId).then((all) => setPackages(all.filter((p) => p.is_active)));
   }, [gameId]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -179,7 +176,7 @@ function CreateSandboxOrderFields({ onClose, onSubmit, token }: Omit<CreateSandb
   );
 }
 
-export default function CreateSandboxOrderModal({ isOpen, onClose, onSubmit, token }: CreateSandboxOrderModalProps) {
+export default function CreateSandboxOrderModal({ isOpen, onClose, onSubmit }: CreateSandboxOrderModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -195,7 +192,7 @@ export default function CreateSandboxOrderModal({ isOpen, onClose, onSubmit, tok
               </DialogHeaderActions>
             </DialogHeader>
             <DialogContent>
-              {isOpen && <CreateSandboxOrderFields onClose={onClose} onSubmit={onSubmit} token={token} />}
+              {isOpen && <CreateSandboxOrderFields onClose={onClose} onSubmit={onSubmit} />}
             </DialogContent>
           </DialogPopup>
         </DialogPositioner>

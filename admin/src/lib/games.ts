@@ -155,44 +155,42 @@ export interface UpdatePackageValues {
   name: string;
 }
 
-export function listGames(token: string, params: { search?: string; status?: "active" | "inactive" } = {}) {
+export function listGames(params: { search?: string; status?: "active" | "inactive" } = {}) {
   const query = new URLSearchParams();
   if (params.search) query.set("search", params.search);
   if (params.status) query.set("status", params.status);
   const qs = query.toString();
 
-  return apiFetch<Game[]>(`/api/games${qs ? `?${qs}` : ""}`, { token });
+  return apiFetch<Game[]>(`/api/games${qs ? `?${qs}` : ""}`);
 }
 
-export function listGamePackages(token: string, gameId: number) {
-  return apiFetch<GamePackage[]>(`/api/games/${gameId}/packages`, { token });
+export function listGamePackages(gameId: number) {
+  return apiFetch<GamePackage[]>(`/api/games/${gameId}/packages`);
 }
 
-export function updateGame(token: string, gameId: number, values: UpdateGameValues) {
-  return apiFetch<Game>(`/api/games/${gameId}`, { method: "PUT", token, body: values });
+export function updateGame(gameId: number, values: UpdateGameValues) {
+  return apiFetch<Game>(`/api/games/${gameId}`, { method: "PUT", body: values });
 }
 
-export function deleteGame(token: string, gameId: number) {
-  return apiFetch<void>(`/api/games/${gameId}`, { method: "DELETE", token });
+export function deleteGame(gameId: number) {
+  return apiFetch<void>(`/api/games/${gameId}`, { method: "DELETE" });
 }
 
 /** GAME-6 — `gameIds` is the complete new front-to-back order; `sort_order` is written as each id's position. */
-export function reorderGames(token: string, gameIds: number[]) {
+export function reorderGames(gameIds: number[]) {
   return apiFetch<{ games_reordered: number }>(`/api/games/reorder`, {
     method: "POST",
-    token,
     body: { game_ids: gameIds },
   });
 }
 
-export function updatePackage(token: string, packageId: number, values: UpdatePackageValues) {
-  return apiFetch<GamePackage>(`/api/packages/${packageId}`, { method: "PUT", token, body: values });
+export function updatePackage(packageId: number, values: UpdatePackageValues) {
+  return apiFetch<GamePackage>(`/api/packages/${packageId}`, { method: "PUT", body: values });
 }
 
-export function updatePackageMarkup(token: string, packageId: number, markupPercent: number) {
+export function updatePackageMarkup(packageId: number, markupPercent: number) {
   return apiFetch<GamePackage>(`/api/packages/${packageId}/markup`, {
     method: "PATCH",
-    token,
     body: { markup_percent: markupPercent },
   });
 }
@@ -206,34 +204,31 @@ export function updatePackageMarkup(token: string, packageId: number, markupPerc
  * re-checks this itself regardless (defense in depth, not the primary
  * discovery mechanism).
  */
-export function updatePackageStatus(token: string, packageId: number, isActive: boolean, acknowledgeCascade?: boolean) {
+export function updatePackageStatus(packageId: number, isActive: boolean, acknowledgeCascade?: boolean) {
   return apiFetch<GamePackage>(`/api/packages/${packageId}/status`, {
     method: "PATCH",
-    token,
     body: { is_active: isActive, ...(acknowledgeCascade ? { acknowledge_cascade: true } : {}) },
   });
 }
 
 /** ADR-034 decision 3: the edit-time half of curating denomination — the promote-time half is PromoteValues/promoteSupplierProduct. Pass null to clear it. */
-export function updatePackageDenomination(token: string, packageId: number, denomination: number | null) {
+export function updatePackageDenomination(packageId: number, denomination: number | null) {
   return apiFetch<GamePackage>(`/api/packages/${packageId}/denomination`, {
     method: "PATCH",
-    token,
     body: { denomination },
   });
 }
 
 /** ADR-075's catalog-code addendum (2026-09-04): the catalog_code counterpart to updatePackageDenomination() — for bundle/pass packages. Pass null to clear it. */
-export function updatePackageCatalogCode(token: string, packageId: number, catalogCode: string | null) {
+export function updatePackageCatalogCode(packageId: number, catalogCode: string | null) {
   return apiFetch<GamePackage>(`/api/packages/${packageId}/catalog-code`, {
     method: "PATCH",
-    token,
     body: { catalog_code: catalogCode },
   });
 }
 
-export function deletePackage(token: string, packageId: number) {
-  return apiFetch<void>(`/api/packages/${packageId}`, { method: "DELETE", token });
+export function deletePackage(packageId: number) {
+  return apiFetch<void>(`/api/packages/${packageId}`, { method: "DELETE" });
 }
 
 /** ADR-094 decisions 1-4: assembles a new combo Package from `components` already promoted on this game — the one deliberate exception to every other Package tracing back to a real supplier item. */
@@ -242,8 +237,8 @@ export interface CreateComboPackageValues {
   components: { package_id: number; quantity: number }[];
 }
 
-export function createComboPackage(token: string, gameId: number, values: CreateComboPackageValues) {
-  return apiFetch<GamePackage>(`/api/games/${gameId}/packages/combo`, { method: "POST", token, body: values });
+export function createComboPackage(gameId: number, values: CreateComboPackageValues) {
+  return apiFetch<GamePackage>(`/api/games/${gameId}/packages/combo`, { method: "POST", body: values });
 }
 
 /** ADR-094 decision 5's second half — mutually exclusive, same as UpdatePackageDenominationValues/UpdatePackageCatalogCodeValues. Passing both null reverts to the default sum-of-components price. */
@@ -252,6 +247,6 @@ export interface UpdateComboOverrideValues {
   combo_override_price: number | null;
 }
 
-export function updateComboOverride(token: string, packageId: number, values: UpdateComboOverrideValues) {
-  return apiFetch<GamePackage>(`/api/packages/${packageId}/combo-override`, { method: "PATCH", token, body: values });
+export function updateComboOverride(packageId: number, values: UpdateComboOverrideValues) {
+  return apiFetch<GamePackage>(`/api/packages/${packageId}/combo-override`, { method: "PATCH", body: values });
 }

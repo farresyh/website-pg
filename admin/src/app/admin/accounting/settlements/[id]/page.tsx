@@ -54,7 +54,7 @@ export default function PaymentSettlementDetailPage() {
       router.replace("/login");
       return;
     }
-    getPaymentSettlement(s.token, settlementId, page)
+    getPaymentSettlement(settlementId, page)
       .then((res) => {
         setSettlement(res.settlement);
         setTransactions(res.transactions);

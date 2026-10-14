@@ -113,16 +113,16 @@ export interface UpdateSupplierValues {
   api_config?: Record<string, unknown>;
 }
 
-export function listSuppliers(token: string) {
-  return apiFetch<Supplier[]>("/api/middleware/suppliers", { token });
+export function listSuppliers() {
+  return apiFetch<Supplier[]>("/api/middleware/suppliers");
 }
 
-export function listAvailableSupplierSlugs(token: string) {
-  return apiFetch<string[]>("/api/middleware/suppliers/available-slugs", { token });
+export function listAvailableSupplierSlugs() {
+  return apiFetch<string[]>("/api/middleware/suppliers/available-slugs");
 }
 
-export function createSupplier(token: string, values: CreateSupplierValues) {
-  return apiFetch<Supplier>("/api/middleware/suppliers", { method: "POST", body: values, token });
+export function createSupplier(values: CreateSupplierValues) {
+  return apiFetch<Supplier>("/api/middleware/suppliers", { method: "POST", body: values });
 }
 
 /**
@@ -139,28 +139,27 @@ export interface ConnectionProbe {
   breaker_open?: boolean;
 }
 
-export function updateSupplier(token: string, supplierId: number, values: UpdateSupplierValues) {
+export function updateSupplier(supplierId: number, values: UpdateSupplierValues) {
   return apiFetch<Supplier & { connection_probe?: ConnectionProbe }>(
     `/api/middleware/suppliers/${supplierId}`,
-    { method: "PUT", body: values, token },
+    { method: "PUT", body: values },
   );
 }
 
 /** ADR-046 decision 5 — the confirm warning itself lives in the caller (this is a plain toggle call). */
-export function updateSupplierStatus(token: string, supplierId: number, isActive: boolean) {
+export function updateSupplierStatus(supplierId: number, isActive: boolean) {
   return apiFetch<Supplier>(`/api/middleware/suppliers/${supplierId}/status`, {
     method: "PATCH",
     body: { is_active: isActive },
-    token,
   });
 }
 
-export function deleteSupplier(token: string, supplierId: number) {
-  return apiFetch<null>(`/api/middleware/suppliers/${supplierId}`, { method: "DELETE", token });
+export function deleteSupplier(supplierId: number) {
+  return apiFetch<null>(`/api/middleware/suppliers/${supplierId}`, { method: "DELETE" });
 }
 
-export function refreshSupplierBalance(token: string, supplierId: number) {
-  return apiFetch<Supplier>(`/api/middleware/suppliers/${supplierId}/refresh-balance`, { method: "POST", token });
+export function refreshSupplierBalance(supplierId: number) {
+  return apiFetch<Supplier>(`/api/middleware/suppliers/${supplierId}/refresh-balance`, { method: "POST" });
 }
 
 export interface UpdateSupplierPackagesStatusValues {
@@ -171,13 +170,11 @@ export interface UpdateSupplierPackagesStatusValues {
 
 /** ADR-046 decisions 9/10 — "Deactivate All"/"Deactivate by Game" and their paired "Reactivate". */
 export function updateSupplierPackagesStatus(
-  token: string,
   supplierId: number,
   values: UpdateSupplierPackagesStatusValues,
 ) {
   return apiFetch<{ updated: number }>(`/api/middleware/suppliers/${supplierId}/packages/status`, {
     method: "PATCH",
     body: values,
-    token,
   });
 }

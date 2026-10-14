@@ -4,6 +4,7 @@ import React from "react";
 import { useSidebar } from "@/context/SidebarContext";
 import AppHeader from "@/layout/AppHeader";
 import Backdrop from "@/layout/Backdrop";
+import StepUpDialog from "@/components/common/StepUpDialog";
 
 /**
  * Shared chrome for the Admin and Middleware panels: a collapsible/
@@ -36,6 +37,7 @@ export default function PanelShell({
         <AppHeader title={headerTitle} />
         <div className="mx-auto max-w-(--breakpoint-2xl) p-4 md:p-6">{children}</div>
       </div>
+      <StepUpDialog />
     </div>
   );
 }

@@ -47,8 +47,8 @@ export default function HeroSlidesPage() {
   const [creating, setCreating] = useState(false);
   const [editingSlide, setEditingSlide] = useState<HeroSlide | null>(null);
 
-  function refresh(token: string) {
-    return listHeroSlides(token)
+  function refresh() {
+    return listHeroSlides()
       .then(setSlides)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load hero slides.");
@@ -66,36 +66,36 @@ export default function HeroSlidesPage() {
 
   useEffect(() => {
     if (!session) return;
-    refresh(session.token);
+    refresh();
      
   }, [session]);
 
   async function handleCreateSubmit(values: SaveHeroSlideValues) {
     if (!session) return;
-    await createHeroSlide(session.token, values);
+    await createHeroSlide(values);
     setCreating(false);
-    await refresh(session.token);
+    await refresh();
   }
 
   async function handleEditSubmit(values: SaveHeroSlideValues) {
     if (!session || !editingSlide) return;
-    await updateHeroSlide(session.token, editingSlide.id, values);
+    await updateHeroSlide(editingSlide.id, values);
     setEditingSlide(null);
-    await refresh(session.token);
+    await refresh();
   }
 
   async function handleDelete() {
     if (!session || !editingSlide) return;
-    await deleteHeroSlide(session.token, editingSlide.id);
+    await deleteHeroSlide(editingSlide.id);
     setEditingSlide(null);
-    await refresh(session.token);
+    await refresh();
   }
 
   async function handleToggleStatus(slide: HeroSlide) {
     if (!session) return;
     setError(null);
     try {
-      await updateHeroSlideStatus(session.token, slide.id, !slide.is_active);
+      await updateHeroSlideStatus(slide.id, !slide.is_active);
       setSlides((prev) => prev?.map((s) => (s.id === slide.id ? { ...s, is_active: !s.is_active } : s)) ?? null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update status.");

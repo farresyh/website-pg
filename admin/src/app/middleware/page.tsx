@@ -38,8 +38,8 @@ export default function MiddlewareDashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function load(token: string) {
-    return Promise.all([getDashboardHealth(token), listRequestLogs(token, { per_page: 5 })]).then(([health, logs]) => {
+  function load() {
+    return Promise.all([getDashboardHealth(), listRequestLogs({ per_page: 5 })]).then(([health, logs]) => {
       setSuppliers(health.suppliers);
       setRecentCalls(logs.data);
     });
@@ -47,7 +47,7 @@ export default function MiddlewareDashboardPage() {
 
   useEffect(() => {
     if (!session) return;
-    load(session.token).catch((err: unknown) => {
+    load().catch((err: unknown) => {
       setError(err instanceof ApiError ? err.message : "Could not load middleware status.");
     });
 
@@ -58,7 +58,7 @@ export default function MiddlewareDashboardPage() {
     setError(null);
     setRefreshing(true);
     try {
-      await load(session.token);
+      await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not refresh middleware status.");
     } finally {

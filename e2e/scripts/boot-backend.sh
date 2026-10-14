@@ -59,7 +59,10 @@ export CACHE_STORE=database
 # requests here since this whole suite runs as one continuous `php
 # artisan serve` process, not per-request-forked PHP-FPM workers.
 export CATALOG_PACKAGES_CACHE_STORE=array
-export SESSION_DRIVER=array
+# ADR-121: the admin login is a cookie session, so it must survive between
+# requests — `php artisan serve` boots the app per request, which empties
+# the array driver every time.
+export SESSION_DRIVER=file
 # ADR-060 PR-3: the storefront (served at :3001 here) sends its own host
 # in `X-Storefront-Host`; `ResolveStorefrontBrand` treats a configured
 # primary host as the primary brand with no `affiliate_domains` row. The

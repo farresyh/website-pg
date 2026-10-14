@@ -36,13 +36,12 @@ const TD = "px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400";
 export default function AccountingSuppliersPage() {
   const router = useRouter();
   const session = useClientSession();
-  const token = session?.token ?? null;
   const [suppliers, setSuppliers] = useState<Supplier[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ledgerTarget, setLedgerTarget] = useState<Supplier | null>(null);
 
-  function refresh(t: string) {
-    return listSuppliers(t)
+  function refresh() {
+    return listSuppliers()
       .then(setSuppliers)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load suppliers."));
   }
@@ -53,7 +52,7 @@ export default function AccountingSuppliersPage() {
       router.replace("/login");
       return;
     }
-    refresh(s.token);
+    refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -61,7 +60,7 @@ export default function AccountingSuppliersPage() {
     return <p className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>;
   }
 
-  if (!token || !suppliers) {
+  if (!session || !suppliers) {
     return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
   }
 
@@ -130,7 +129,6 @@ export default function AccountingSuppliersPage() {
         <SupplierTransferModal
           isOpen={!!ledgerTarget}
           onClose={() => setLedgerTarget(null)}
-          token={token}
           supplier={ledgerTarget}
         />
       )}

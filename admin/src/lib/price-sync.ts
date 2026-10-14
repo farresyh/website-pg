@@ -117,71 +117,66 @@ export interface DismissedPackagePage {
   total: number;
 }
 
-export function triggerPriceSync(token: string) {
-  return apiFetch<PriceSyncRun>("/api/middleware/price-sync", { method: "POST", token });
+export function triggerPriceSync() {
+  return apiFetch<PriceSyncRun>("/api/middleware/price-sync", { method: "POST" });
 }
 
-export function getPriceSyncRun(token: string, runId: number) {
-  return apiFetch<PriceSyncRun>(`/api/middleware/price-sync/runs/${runId}`, { token });
+export function getPriceSyncRun(runId: number) {
+  return apiFetch<PriceSyncRun>(`/api/middleware/price-sync/runs/${runId}`);
 }
 
-export function getPriceSyncStats(token: string) {
-  return apiFetch<PriceSyncStats>("/api/middleware/price-sync/stats", { token });
+export function getPriceSyncStats() {
+  return apiFetch<PriceSyncStats>("/api/middleware/price-sync/stats");
 }
 
-export function listPriceSyncRuns(token: string, page = 1) {
+export function listPriceSyncRuns(page = 1) {
   const query = page > 1 ? `?page=${page}` : "";
 
-  return apiFetch<PriceSyncRunPage>(`/api/middleware/price-sync/runs${query}`, { token });
+  return apiFetch<PriceSyncRunPage>(`/api/middleware/price-sync/runs${query}`);
 }
 
-export function getPriceSyncRunDetails(token: string, runId: number) {
-  return apiFetch<SyncDetails>(`/api/middleware/price-sync/runs/${runId}/details`, { token });
+export function getPriceSyncRunDetails(runId: number) {
+  return apiFetch<SyncDetails>(`/api/middleware/price-sync/runs/${runId}/details`);
 }
 
-export function listDismissedPackages(token: string, page = 1) {
+export function listDismissedPackages(page = 1) {
   const query = page > 1 ? `?page=${page}` : "";
 
-  return apiFetch<DismissedPackagePage>(`/api/middleware/price-sync/dismissed-packages${query}`, { token });
+  return apiFetch<DismissedPackagePage>(`/api/middleware/price-sync/dismissed-packages${query}`);
 }
 
-export function restoreDismissedPackage(token: string, packageId: number) {
+export function restoreDismissedPackage(packageId: number) {
   return apiFetch<DismissedPackage>(`/api/middleware/price-sync/dismissed-packages/${packageId}/restore`, {
     method: "PATCH",
-    token,
   });
 }
 
-export function listPendingReactivations(token: string) {
-  return apiFetch<PendingReactivation[]>("/api/middleware/price-sync/pending-reactivations", { token });
+export function listPendingReactivations() {
+  return apiFetch<PendingReactivation[]>("/api/middleware/price-sync/pending-reactivations");
 }
 
-export function approvePendingReactivation(token: string, packageId: number) {
+export function approvePendingReactivation(packageId: number) {
   return apiFetch<PendingReactivation>(`/api/middleware/price-sync/pending-reactivations/${packageId}/approve`, {
     method: "PATCH",
-    token,
   });
 }
 
-export function dismissPendingReactivation(token: string, packageId: number) {
+export function dismissPendingReactivation(packageId: number) {
   return apiFetch<PendingReactivation>(`/api/middleware/price-sync/pending-reactivations/${packageId}/dismiss`, {
     method: "PATCH",
-    token,
   });
 }
 
-export function bulkApprovePendingReactivations(token: string, packageIds: number[]) {
+export function bulkApprovePendingReactivations(packageIds: number[]) {
   return apiFetch<{ processed: number }>("/api/middleware/price-sync/pending-reactivations/bulk-approve", {
     method: "POST",
-    token,
     body: { package_ids: packageIds },
   });
 }
 
-export function bulkDismissPendingReactivations(token: string, packageIds: number[]) {
+export function bulkDismissPendingReactivations(packageIds: number[]) {
   return apiFetch<{ processed: number }>("/api/middleware/price-sync/pending-reactivations/bulk-dismiss", {
     method: "POST",
-    token,
     body: { package_ids: packageIds },
   });
 }
@@ -208,21 +203,19 @@ export interface PendingPriceChange {
   };
 }
 
-export function listPendingPriceChanges(token: string) {
-  return apiFetch<PendingPriceChange[]>("/api/middleware/price-sync/pending-price-changes", { token });
+export function listPendingPriceChanges() {
+  return apiFetch<PendingPriceChange[]>("/api/middleware/price-sync/pending-price-changes");
 }
 
-export function approvePendingPriceChange(token: string, id: number) {
+export function approvePendingPriceChange(id: number) {
   return apiFetch<PendingPriceChange>(`/api/middleware/price-sync/pending-price-changes/${id}/approve`, {
     method: "PATCH",
-    token,
   });
 }
 
-export function dismissPendingPriceChange(token: string, id: number) {
+export function dismissPendingPriceChange(id: number) {
   return apiFetch<PendingPriceChange>(`/api/middleware/price-sync/pending-price-changes/${id}/dismiss`, {
     method: "PATCH",
-    token,
   });
 }
 
@@ -246,8 +239,8 @@ export interface CurrencyRatePage {
   total: number;
 }
 
-export function listCurrencyRates(token: string, page = 1) {
+export function listCurrencyRates(page = 1) {
   const query = page > 1 ? `?page=${page}` : "";
 
-  return apiFetch<CurrencyRatePage>(`/api/middleware/price-sync/fx-rates${query}`, { token });
+  return apiFetch<CurrencyRatePage>(`/api/middleware/price-sync/fx-rates${query}`);
 }

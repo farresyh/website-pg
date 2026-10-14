@@ -36,7 +36,6 @@ import Link from "next/link";
 export default function EnvelopeLedgerPage() {
   const router = useRouter();
   const session = useClientSession();
-  const token = session?.token ?? null;
 
   const [index, setIndex] = useState<BudgetEnvelopeIndex | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -50,8 +49,8 @@ export default function EnvelopeLedgerPage() {
   const [renameValue, setRenameValue] = useState("");
   const [panel, setPanel] = useState<"record" | null>(null);
 
-  function loadIndex(t: string) {
-    return getBudgetEnvelopes(t)
+  function loadIndex() {
+    return getBudgetEnvelopes()
       .then((data) => {
         setIndex(data);
         setSelectedId((current) => current ?? data.envelopes.find((e) => e.is_active)?.id ?? data.envelopes[0]?.id ?? null);
@@ -59,16 +58,16 @@ export default function EnvelopeLedgerPage() {
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load envelopes."));
   }
 
-  function loadEntries(t: string, envelopeId: number) {
-    return getBudgetEnvelopeEntries(t, envelopeId)
+  function loadEntries(envelopeId: number) {
+    return getBudgetEnvelopeEntries(envelopeId)
       .then((data) => setEntries(data.entries))
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load entries."));
   }
 
   async function reload() {
-    if (!token) return;
+    if (!session) return;
     setError(null);
-    await Promise.all([loadIndex(token), selectedId ? loadEntries(token, selectedId) : Promise.resolve()]);
+    await Promise.all([loadIndex(), selectedId ? loadEntries(selectedId) : Promise.resolve()]);
   }
 
   useEffect(() => {
@@ -77,19 +76,19 @@ export default function EnvelopeLedgerPage() {
       router.replace("/login");
       return;
     }
-    loadIndex(s.token);
+    loadIndex();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (token && selectedId) loadEntries(token, selectedId);
-  }, [token, selectedId]);
+    if (session && selectedId) loadEntries(selectedId);
+  }, [session, selectedId]);
 
   const envelopes = index?.envelopes ?? [];
   const selectedEnvelope = envelopes.find((e) => e.id === selectedId) ?? null;
 
   async function run(action: () => Promise<unknown>, fallback: string) {
-    if (!token) return;
+    if (!session) return;
     setError(null);
     try {
       await action();
@@ -101,9 +100,9 @@ export default function EnvelopeLedgerPage() {
 
   async function handleCreateEnvelope(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || !newEnvelopeName.trim()) return;
+    if (!session || !newEnvelopeName.trim()) return;
     await run(async () => {
-      await createBudgetEnvelope(token, newEnvelopeName.trim());
+      await createBudgetEnvelope(newEnvelopeName.trim());
       setNewEnvelopeName("");
       setShowNewEnvelope(false);
     }, "Could not create envelope.");
@@ -111,29 +110,29 @@ export default function EnvelopeLedgerPage() {
 
   async function handleRename(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || !selectedEnvelope || !renameValue.trim()) return;
+    if (!session || !selectedEnvelope || !renameValue.trim()) return;
     await run(async () => {
-      await updateBudgetEnvelope(token, selectedEnvelope.id, { name: renameValue.trim() });
+      await updateBudgetEnvelope(selectedEnvelope.id, { name: renameValue.trim() });
       setRenaming(false);
     }, "Could not rename this envelope.");
   }
 
   /** Never a hard delete. Archiving needs a zero balance; the backend explains if not. */
   function handleToggleArchive(envelope: BudgetEnvelope) {
-    if (!token) return;
-    return run(() => updateBudgetEnvelope(token, envelope.id, { is_active: !envelope.is_active }), "Could not update this envelope.");
+    if (!session) return;
+    return run(() => updateBudgetEnvelope(envelope.id, { is_active: !envelope.is_active }), "Could not update this envelope.");
   }
 
   async function handleExport() {
-    if (!token) return;
+    if (!session) return;
     try {
-      await downloadEnvelopeExport(token);
+      await downloadEnvelopeExport();
     } catch {
       setError("Export failed.");
     }
   }
 
-  if (!token || !index) {
+  if (!session || !index) {
     return <p className="text-sm text-gray-500 dark:text-gray-400">{error ?? "Loading…"}</p>;
   }
 
@@ -266,14 +265,13 @@ export default function EnvelopeLedgerPage() {
           {panel === "record" && (
             <PostingForm
               key={selectedEnvelope.id}
-              token={token}
               index={index}
               defaultEnvelopeId={selectedEnvelope.is_active ? selectedEnvelope.id : null}
               onRecorded={async () => { setPanel(null); await reload(); }}
             />
           )}
 
-          <EntriesTable token={token} entries={entries} onChanged={reload} onError={setError} />
+          <EntriesTable entries={entries} onChanged={reload} onError={setError} />
         </>
       )}
     </div>
