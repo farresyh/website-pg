@@ -706,5 +706,5 @@ Reopen only as a "Duplicate combo" button (ADR-094 2026-10-14 addendum, PRD
   active ones are the item-93 set and are priced *above* their live cost
   (stored cost higher than the component sum by RM0.23–RM2.39), so no sale
   is below cost. The 2026-10-13 entry expected 9 combos to be repriced;
-  component costs have moved since, so release #429's migration should now
+  component costs have moved since, so the next release's migration should now
   reprice 28.
