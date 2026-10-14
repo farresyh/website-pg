@@ -2,7 +2,9 @@
 
 namespace Tests\Unit\Services\Backup;
 
+use App\Services\Backup\BackupRestorer;
 use App\Services\Backup\BackupRestoreTester;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -33,7 +35,17 @@ class BackupRestoreTesterTest extends TestCase
 
         file_put_contents($path, $sql);
 
-        return $path;
+        return $this->dumps[] = $path;
+    }
+
+    /** @var list<string> */
+    private array $dumps = [];
+
+    protected function tearDown(): void
+    {
+        array_map(fn (string $path) => @unlink($path), $this->dumps);
+
+        parent::tearDown();
     }
 
     public function test_passes_for_a_dump_whose_migrations_table_matches_every_real_migration_file(): void
@@ -51,8 +63,7 @@ class BackupRestoreTesterTest extends TestCase
 
         $this->assertTrue($result['passed'], json_encode($result['details']));
         $this->assertGreaterThanOrEqual(2, $result['details']['table_count']);
-        $this->assertTrue($result['details']['migrate_status_has_ran']);
-        $this->assertFalse($result['details']['migrate_status_has_pending']);
+        $this->assertSame([], $result['details']['pending_migrations']);
     }
 
     /**
@@ -71,8 +82,8 @@ class BackupRestoreTesterTest extends TestCase
 
     /**
      * A dump missing one real migration (simulating a partial/corrupt
-     * restore) must be caught by `migrate:status` reporting a pending
-     * migration, not silently pass because the table has some rows.
+     * restore) must be caught as a pending migration, not silently pass
+     * because the table has some rows.
      */
     public function test_fails_when_a_real_migration_is_missing_from_the_dump(): void
     {
@@ -88,7 +99,57 @@ class BackupRestoreTesterTest extends TestCase
         $result = app(BackupRestoreTester::class)->test($this->writeDump($sql));
 
         $this->assertFalse($result['passed']);
-        $this->assertTrue($result['details']['migrate_status_has_pending']);
+        $this->assertCount(1, $result['details']['pending_migrations']);
+    }
+
+    private function validDump(): string
+    {
+        $sql = "CREATE TABLE migrations (id INTEGER PRIMARY KEY, migration TEXT, batch INTEGER);\n";
+
+        foreach ($this->realMigrationNames() as $name) {
+            $sql .= "INSERT INTO migrations (migration, batch) VALUES ('{$name}', 1);\n";
+        }
+
+        return $this->writeDump($sql);
+    }
+
+    /**
+     * Item 97: a dump cut short after `migrations` used to pass. Every live
+     * table must come back, except the dump's own exclusions.
+     */
+    public function test_fails_when_a_live_table_is_missing_from_the_restore(): void
+    {
+        DB::statement('CREATE TABLE migrations (id INTEGER PRIMARY KEY, migration TEXT, batch INTEGER)');
+        DB::statement('CREATE TABLE orders (id INTEGER PRIMARY KEY)');
+
+        $result = app(BackupRestoreTester::class)->test($this->validDump());
+
+        $this->assertFalse($result['passed']);
+        $this->assertSame(['orders'], $result['details']['missing_tables']);
+    }
+
+    public function test_a_table_the_dump_excludes_is_not_counted_as_missing(): void
+    {
+        DB::statement('CREATE TABLE migrations (id INTEGER PRIMARY KEY, migration TEXT, batch INTEGER)');
+        DB::statement('CREATE TABLE player_validations (id INTEGER PRIMARY KEY)');
+
+        $result = app(BackupRestoreTester::class)->test($this->validDump());
+
+        $this->assertTrue($result['passed'], json_encode($result['details']));
+    }
+
+    public function test_the_restorer_refuses_a_target_that_is_not_empty(): void
+    {
+        $target = storage_path('app/backup-temp/not-empty-'.uniqid('', true).'.sqlite');
+        touch($target);
+        (new \PDO('sqlite:'.$target))->exec('CREATE TABLE ledger_entries (id INTEGER PRIMARY KEY)');
+
+        try {
+            $this->expectExceptionMessage('is not empty');
+            app(BackupRestorer::class)->restore($this->validDump(), $target);
+        } finally {
+            @unlink($target);
+        }
     }
 
     public function test_fails_gracefully_for_a_corrupt_dump_file(): void

@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\BackupRun;
 use App\Services\Backup\BackupFailureAlerter;
+use App\Services\Backup\BackupRestorer;
 use App\Services\Backup\BackupRestoreTester;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -13,7 +14,8 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Storage;
-use ZipArchive;
+use RuntimeException;
+use Throwable;
 
 /**
  * ADR-039 decisions 2/8/9: the one job both the daily `Schedule::call()`
@@ -37,8 +39,10 @@ final class RunDatabaseBackupJob implements ShouldQueue
         $this->onQueue('backups');
     }
 
-    public function handle(BackupRestoreTester $tester, BackupFailureAlerter $alerter): void
+    public function handle(BackupRestoreTester $tester, BackupRestorer $restorer, BackupFailureAlerter $alerter): void
     {
+        self::sweepLeftoverExtracts();
+
         $disk = config('filesystems.backup_disk');
 
         $this->run->update(['status' => 'running', 'disk' => $disk, 'started_at' => now()]);
@@ -69,7 +73,7 @@ final class RunDatabaseBackupJob implements ShouldQueue
         }
 
         $sizeBytes = Storage::disk($disk)->size($backupPath);
-        $restoreResult = $this->restoreTest($tester, $disk, $backupPath);
+        $restoreResult = $this->restoreTest($tester, $restorer, $disk, $backupPath);
 
         $this->run->update([
             'status' => $restoreResult['passed'] ? 'success' : 'failed',
@@ -117,55 +121,48 @@ final class RunDatabaseBackupJob implements ShouldQueue
     }
 
     /**
-     * @return array{passed: bool, details: array<string, mixed>}
+     * Item 97: a run killed by the worker timeout (2026-09-26..30) never
+     * reached handle()'s own status update, so its row stayed `running`
+     * and nobody was told. The worker calls this before killing the job.
      */
-    private function restoreTest(BackupRestoreTester $tester, string $disk, string $backupPath): array
+    public function failed(?Throwable $exception): void
     {
-        $tempDir = storage_path('app/backup-temp/restore-extract-'.uniqid('', true));
-        mkdir($tempDir, 0755, true);
+        $message = 'backup job died: '.($exception?->getMessage() ?? 'unknown error');
+        $this->failRun($message);
+        app(BackupFailureAlerter::class)->alert('Backup run failed', $message);
+    }
 
-        try {
-            $localZipPath = $tempDir.'/archive.zip';
-            file_put_contents($localZipPath, Storage::disk($disk)->get($backupPath));
+    /**
+     * A killed run's `finally` never runs, so its decrypted plaintext dump
+     * (customer PII) stayed on disk. Each run clears what earlier runs left.
+     * ponytail: safe only because supervisor-backups runs one job at a time
+     * (maxProcesses 1); the operator's `app:restore-backup` uses its own
+     * `restore-cli-` prefix, never swept here.
+     */
+    public static function sweepLeftoverExtracts(): void
+    {
+        $restorer = app(BackupRestorer::class);
 
-            $zip = new ZipArchive;
-
-            if ($zip->open($localZipPath) !== true) {
-                return ['passed' => false, 'details' => ['error' => 'could not open backup archive for restore-test']];
-            }
-
-            if ($password = config('backup.backup.password')) {
-                $zip->setPassword($password);
-            }
-
-            $zip->extractTo($tempDir);
-            $zip->close();
-
-            $dumpFiles = glob($tempDir.'/db-dumps/*');
-
-            if (empty($dumpFiles)) {
-                return ['passed' => false, 'details' => ['error' => 'no db dump found inside backup archive']];
-            }
-
-            return $tester->test($dumpFiles[0]);
-        } finally {
-            $this->deleteDirectory($tempDir);
+        foreach (glob(storage_path('app/backup-temp/restore-extract-*'), GLOB_ONLYDIR) ?: [] as $dir) {
+            $restorer->deleteDirectory($dir);
         }
     }
 
-    private function deleteDirectory(string $dir): void
+    /**
+     * @return array{passed: bool, details: array<string, mixed>}
+     */
+    private function restoreTest(BackupRestoreTester $tester, BackupRestorer $restorer, string $disk, string $backupPath): array
     {
-        if (! is_dir($dir)) {
-            return;
+        $workDir = $restorer->makeWorkDir('restore-extract-');
+
+        try {
+            $dumpPath = $restorer->extractDump($restorer->download($disk, $backupPath, $workDir), $workDir);
+
+            return $tester->test($dumpPath);
+        } catch (RuntimeException $e) {
+            return ['passed' => false, 'details' => ['error' => $e->getMessage()]];
+        } finally {
+            $restorer->deleteDirectory($workDir);
         }
-
-        $files = array_diff(scandir($dir), ['.', '..']);
-
-        foreach ($files as $file) {
-            $path = "{$dir}/{$file}";
-            is_dir($path) ? $this->deleteDirectory($path) : unlink($path);
-        }
-
-        rmdir($dir);
     }
 }
