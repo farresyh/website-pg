@@ -31,7 +31,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-006](./adr/ADR-006-supplier-adapter-normalizer-layer-is-mvp-not.md) | Supplier Adapter/Normalizer layer is MVP, not Phase 2 | In force | 2026-07-25 |
 | [ADR-007](./adr/ADR-007-internal-fraud-blacklist-is-first-class-mvp.md) | Internal fraud blacklist is first-class MVP | In force | 2026-07-29 |
 | [ADR-008](./adr/ADR-008-split-frontend-stack.md) | Split frontend stack — Vue for Admin, Next.js for Storefront | Superseded by ADR-009 |  |
-| [ADR-009](./adr/ADR-009-unify-frontend-stack.md) | Unify frontend stack — Next.js (React) for both Admin Panel and Storefront | In force | 2026-07-26 |
+| [ADR-009](./adr/ADR-009-unify-frontend-stack.md) | Unify frontend stack — Next.js (React) for both Admin Panel and Storefront | In force; admin auth transport revised by ADR-121 | 2026-10-14 |
 | [ADR-010](./adr/ADR-010-docker-for-mysql-only-not-full-laravel-sail.md) | Docker for MySQL only, not full Laravel Sail | In force |  |
 | [ADR-011](./adr/ADR-011-storefront-stays-guest-checkout.md) | Storefront stays guest-checkout — no Customer account/auth in MVP | In force |  |
 | [ADR-012](./adr/ADR-012-admin-panel-ui-built-on-the-free-tailadmin.md) | Admin Panel UI built on the free TailAdmin template as a component/layout reference | In force |  |
@@ -143,3 +143,4 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-118](./adr/ADR-118-marketing-campaigns.md) | Marketing Campaigns — multi-use KOL discount codes, separate from `Voucher` | Accepted (design) | 2026-10-02 |
 | [ADR-119](./adr/ADR-119-package-delete-guards.md) | Package delete guards — block a hard-delete that already has order history or is a live combo component | In force |  |
 | [ADR-120](./adr/ADR-120-seo-geo-overhaul.md) | SEO/GEO overhaul — brand-correct meta, per-brand canonical origin, machine-readable catalog | In force |  |
+| [ADR-121](./adr/ADR-121-admin-mfa-and-session-login.md) | Admin MFA (TOTP), opt-in per account, step-up on five dangerous actions; admin login moves to a cookie session | Accepted (design) |  |

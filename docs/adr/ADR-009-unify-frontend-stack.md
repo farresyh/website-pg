@@ -1,6 +1,6 @@
 # ADR-009 (D8-revised): Unify frontend stack — Next.js (React) for both Admin Panel and Storefront
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-14):** In force; admin auth transport revised by [ADR-121](./ADR-121-admin-mfa-and-session-login.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — 2026-07-23 — supersedes ADR-008
 
@@ -11,3 +11,7 @@
 **Consequence to track:** because Admin Panel doesn't need Next's SSR features, watch for accidental complexity creep (e.g. someone reaching for a Server Component or a Next API route for something that's simpler as a plain client fetch to Laravel) — if that starts happening often, it's a signal Admin Panel would genuinely be simpler as a plain Vite + React SPA instead of Next.js. Not a concern to solve now, just one to notice later.
 
 **Addendum, 2026-07-26 (new session) — Storefront actually scaffolded, and a page-count decision worth recording:** `storefront/` now exists (Next.js 16, mirrors `admin/`'s `apiFetch` pattern, own design system — see `prd.md` §14's Storefront app row for the full build). One real decision made while reconciling the founder's own HTML page references against this project's real backend: the founder's 3 reference pages (top-up wizard / order-review / order-status) were built as 2 real routes, not 3 — `OrderForm` already holds all wizard state client-side (unlike 3 static HTML files, which had to pass state through URL querystrings between page loads), so "Order Review" became a **Review Modal** opened from `/order/[slug]` rather than a separate route, and `/order/status/[orderNumber]` is shared by both the post-checkout redirect and `/track-order`'s lookup result (one tracker component, two entry points — the founder's own steer, not assumed). Kept SSR/RSC usage minimal even on the founder-approved homepage redesign — this is a transactional/checkout-adjacent app, not marketing-only, so most pages still lean on client interactivity (wizard state, live polling) rather than server-rendered content.
+
+### 2026-10-14 addendum — admin auth moves from a Bearer token to a cookie session
+
+[ADR-121](./ADR-121-admin-mfa-and-session-login.md) replaces the Admin Panel's Bearer token (held in `sessionStorage`) with a Sanctum SPA cookie session: an httpOnly cookie on `api.pekangame.space`, sent with `credentials: 'include'`, CSRF via `X-CSRF-TOKEN`. The rest of this decision stands: the Admin Panel is still client-rendered and still calls the Laravel API directly from the browser.
