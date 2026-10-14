@@ -690,8 +690,7 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
 items dropped, listed under Recently closed). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- **73** Log every Reseller API rejection in its one render hook.
-- **95** WhatsApp session health endpoint for a second UptimeRobot monitor.
+- (none)
 
 **B. Needs a short grill / ADR addendum first**
 - **10** Admin MFA (Google Authenticator) with a 7-day login shared across
@@ -701,7 +700,8 @@ items dropped, listed under Recently closed). Re-verify before building.
 
 **C. Founder actions (no code)**
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
-  `/api/health` and the OpenWA gateway.
+  `/api/health` and the OpenWA gateway; add a third monitor on
+  `/api/health/whatsapp` once item 95 is released.
 - **71** GSC recheck around 2026-10-22.
 - **96** Upgrade OpenWA to v0.24.0 (with the founder standing by).
 
@@ -865,16 +865,6 @@ items dropped, listed under Recently closed). Re-verify before building.
 
 71. **GSC recheck around 2026-10-22** (Pages report: duplicate / canonical reasons, indexed vs not indexed). ADR-120 went live 2026-10-08 (#369); the admin SEO › FAQ click-through was done by the founder on 2026-10-10. Founder-deferred: GA4, default OG image, Bing.
 
-73. **Log every Reseller API rejection** (decision 6 of the ADR-074
-    2026-10-08 addendum). Today a rejection (bad key, IP not allowed, low
-    balance, price changed, unknown code, rate limit) is only sent back to
-    the integrator, so a later "my order failed yesterday" can't be
-    checked. Log it in the one `ResellerApiException` render hook
-    (`bootstrap/app.php`) for every code, not per code: reseller, code,
-    endpoint, time. Founder 2026-10-14: build now rather than wait for an
-    integrator issue (the log would be missing by then). Prod that day: 0
-    Reseller API orders ever, keys last used 2026-09-09.
-
 74. **Ask the external reviewer before the first non-zero affiliate tier
     fee** (ADR-083 2026-10-08 addendum). The Monthly Summary shows the fee
     as a neutral line; the reviewer decides whether it is revenue or a
@@ -955,17 +945,6 @@ items dropped, listed under Recently closed). Re-verify before building.
     optional drill-down per SKU/combo version, and whether to snapshot the
     product key on the order at checkout so a resend swap can't move it.
 
-95. **WhatsApp session health endpoint** (founder, 2026-10-14). The
-    Dashboard chip for the `reseller-bot` and `customer-support` sessions
-    is fed only by OpenWA's `session.status` webhooks (1 h cache), so a dead
-    gateway shows "no recent event", and nobody is told. The OpenWA monitor
-    (item 11) catches the process down, but not a session disconnected
-    while the process runs. Build a small Laravel endpoint (for example
-    `/api/health/whatsapp`) that asks OpenWA for both sessions' status and
-    answers 503 unless both are connected, and add a second UptimeRobot
-    monitor on it, alerting after 2 failed checks (OpenWA's own drops
-    reconnect within seconds, so a single failed check is noise).
-
 96. **Upgrade OpenWA v0.23.7 → v0.24.0** (released 2026-10-03; found
     2026-10-14). Prod runs OpenWA from a git checkout, so the dashboard's
     "new version" notice never updates it by itself. v0.24.0 has security
@@ -987,6 +966,9 @@ items dropped, listed under Recently closed). Re-verify before building.
       item 87's backups did).
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
+
+- **95** 2026-10-14: `GET /api/health/whatsapp` asks OpenWA for both sessions and answers 503 unless both are `ready` (`unreachable`, `not_configured`, or the session's own status otherwise); throttled 30/min. The founder adds an UptimeRobot monitor on it after the release, alerting after 2 failed checks. Staging only until a release. Details: build-log 2026-10-14.
+- **73** 2026-10-14: every Reseller API rejection a known reseller gets is logged (`warning`, since prod runs `LOG_LEVEL=warning`) from the one render hook: reseller, key, code, status, path, IP, details. A missing or wrong key is not logged (anonymous noise, already rate-limited per IP); `RATE_LIMITED` logs once a minute per reseller (ADR-074 2026-10-14 addendum). Staging only until a release.
 
 - **49, 53, 58, 72, 82, 86, 89** dropped 2026-10-14 (founder): each was a
   "build if someone reports it" note, not scheduled work. Any design stays

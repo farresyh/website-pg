@@ -112,3 +112,8 @@ daemon command rebuilds (`npm run build:all && node dist/main`); dropping
 the build step, the v0.24.0 upgrade and the two `.env.bak-*` files with
 secrets are PRD §16 item 96. A session disconnected while the process runs
 is still only visible on the Dashboard until item 95 ships.
+
+**Built the same day (PRD §16 item 95):** `GET /api/health/whatsapp` asks
+OpenWA for both sessions (`GET /api/sessions/{id}` with each session's own
+key) and answers 503 unless both are `ready`. It is an UptimeRobot target,
+alerting after 2 failed checks, since a stream drop reconnects in seconds.

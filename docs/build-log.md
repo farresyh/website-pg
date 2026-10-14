@@ -768,3 +768,33 @@ Forge daemon restarts (13 Oct: apt 06:39:12, supervisor 06:39:19 UTC), and
   ADR-114 2026-10-14 addendum.
 - Gotcha: the two `~/OpenWA/.env.bak-*` files hold the gateway's secrets;
   deleting them is part of item 96.
+
+## 2026-10-14 — §16 items 73 and 95 built (Reseller API rejection log, WhatsApp health)
+
+**What shipped (branch `feature/reseller-api-rejection-log-and-whatsapp-health`).**
+- **73:** `ResellerApiRejectionLog::record()` runs inside the one Reseller
+  API render hook, which now builds the rejection first and then logs and
+  renders it (same responses as before, `Retry-After` kept on 429).
+  `EnsureResellerApiKey` stores the resolved key on the request before its
+  inactive and IP checks. Only known resellers are logged; `RATE_LIMITED`
+  once a minute per reseller (ADR-074 2026-10-14 addendum).
+- **95:** `OpenWaClient::sessionStatus()` (never throws: `not_configured`,
+  `unreachable`, `http_<code>` or OpenWA's own status) and
+  `HealthController::whatsapp()` on `GET /api/health/whatsapp`, 503 unless
+  both sessions are `ready`, throttled 30/min. The response shape was read
+  from prod first (`GET /api/sessions/{id}` returns `status: "ready"`).
+
+**Gotcha.** Prod runs `LOG_LEVEL=warning`, so the rejection line had to be
+`warning`; an `info` line would have passed every test and never reached
+the prod log.
+
+**Tests.** Red first: `RejectionLogTest` (6: business and middleware
+rejections logged with reseller and key, validation details, no log without
+a valid key, none on success, rate limit once a minute) and
+`WhatsAppHealthTest` (4: ok, one disconnected, unreachable, not
+configured). Full suite 2763/2763; Pint clean. The Scramble export covers
+only `api/reseller`, so the docs-site spec is unchanged.
+
+**Live check.** Local `php artisan serve`: `/api/health/whatsapp` answers
+503 `not_configured` for both (no OpenWA locally); a keyless Reseller API
+call still answers 401. The `ready` path is checked on prod after release.
