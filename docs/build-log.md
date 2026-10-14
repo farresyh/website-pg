@@ -798,3 +798,48 @@ only `api/reseller`, so the docs-site spec is unchanged.
 **Live check.** Local `php artisan serve`: `/api/health/whatsapp` answers
 503 `not_configured` for both (no OpenWA locally); a keyless Reseller API
 call still answers 401. The `ready` path is checked on prod after release.
+
+## 2026-10-14 — §16 item 10 built: admin MFA and the cookie-session admin login (ADR-121)
+
+**What shipped (branch `feature/admin-mfa`).**
+- **Backend.**
+  - The admin login is a Sanctum SPA cookie session, and admin bearer tokens are refused. A migration deletes the existing admin tokens and adds `mfa_required`, `mfa_recovery_codes` and `mfa_last_timestep`.
+  - The login lasts 7 days at most (`EnsureAdminSessionFresh`) and ends after 2 days unused.
+  - MFA is opt-in per account (`PATCH /admin-users/{id}/require-mfa`, one-way). Setup and the code are entered at `/api/login` → `/api/login/mfa`.
+  - `mfa.stepup` guards CHIP credentials, supplier create/credentials, manual reseller wallet credit, withdrawal approve, admin create/edit/status, and recovery-code regeneration. `StepUpRoutesTest` pins the set.
+  - The TOTP and recovery logic lives in one `AdminMfa` service. Wrong codes count toward `AccountLoginThrottle`.
+  - Plunk security emails go out on recovery-code use, lockout and SSH reset. The SSH reset is `php artisan admin:mfa-reset {email}`.
+  - CORS credentials are allowed for the admin origin only.
+- **Admin.**
+  - The login page has the setup (QR plus key), code and recovery-code screens.
+  - A `StepUpDialog` appears on `mfa_step_up_required`, and the original request is retried.
+  - Admin Users has an MFA column and a "Require MFA" action. The header menu has "New recovery codes".
+  - The profile cache lives in `localStorage` and holds no credential.
+  - All bearer-token plumbing is removed (~1,200 references, 124 files), and the eight download copies are one `apiDownload()`.
+
+**Why.** PRD §16 item 10. An admin password alone could change the CHIP credentials, credit a reseller wallet or approve a withdrawal. Separately, every new admin tab asked for a login again.
+
+**Gotchas.**
+- `google2fa`'s `verifyKeyNewer()` returns `true` instead of the time-step when the previous one is `null`, so the service always passes an int.
+- A global `supports_credentials = true` broke `CorsConfigTest`, which pins ADR-078's "never for a custom domain". The fix scopes credentials per request instead.
+- The dashboard cleared the profile cache on any `/api/me` error. That included a fetch aborted by navigation, and with the cache now shared across tabs it would have logged every tab out. Found in the browser walkthrough.
+- Local admin dev must call `http://localhost:8000`, because a `*.test` Herd site is cross-site and the cookie is dropped (backend `AGENTS.md` gotchas 6–7).
+- e2e moved to `SESSION_DRIVER=file`.
+
+**Tests.**
+- `AdminMfaLoginTest` (12) and `AdminMfaStepUpTest` (7), plus a CORS test for the admin-only credentials. Existing step-up-route tests act as a stepped-up admin via `TestCase::actingAsSteppedUp()`. Three bearer-token tests were replaced.
+- Full backend suite 2780/2780; Pint clean.
+- Admin `tsc`, `lint` and `build` clean.
+- e2e 6/6, which covers three UI admin logins and the checkout spec's admin API login over a session.
+
+**Live check (local, real browser).** Playwright against `php artisan serve` plus `next dev`, with a throwaway local admin that was deleted afterwards:
+- A password-only login stored no token, and a new tab opened `/admin/users` without a login.
+- A dangerous action without MFA was refused with 403 `mfa_not_enabled`.
+- After "Require MFA" the account showed "Awaiting setup". Setup worked: a wrong code was refused, then 8 recovery codes were shown and the MFA column read "On".
+- Editing an admin opened the step-up dialog, and the save went through after the code.
+- A recovery-code login worked, and `admin:mfa-reset` cleared the account between runs.
+- Screenshots were checked, and the login buttons now use the shared `Button`.
+
+**Release notes.**
+- Production needs **no `.env` change**: stateful domain and CORS come from `ADMIN_URL`, `SESSION_DRIVER=database` and `SESSION_SECURE_COOKIE=true` are already set, and the lifetime is fixed in config.
+- On release, every admin signs in again. The founder then sets "Require MFA" on their own account, signs out and enrols. Until then, the five step-up actions are refused.

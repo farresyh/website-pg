@@ -77,7 +77,7 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 - **Supplier APIs**: assumed RESTful/JSON, but **must not be assumed to have a uniform response shape, auth style, or validation capability.** Confirmed by direct research (Gamevion API, MLBB-validator sample store) that these vary per supplier and even per game. All supplier calls go through a normalizing Adapter layer (see 6.21) — no business logic touches raw supplier response shapes.
 - **Payment gateway: CHIP only** (`PaymentGatewayFactory` kept for a future multi-region second gateway — [ADR-022's 2026-09-01 addendum](./adr/ADR-022-multi-gateway-payment-strategy.md) removed Xendit; FPX proven live with real money; all three methods switched off since 2026-10-07 by the founder's choice, see §14). Single company CHIP account; the platform collects 100% of every payment (including reseller storefronts) and the ledger does the split. **xenPlatform dropped entirely** — not deferred ([ADR-059](./adr/ADR-059-reseller-portal.md) decision 6, superseding ADR-001's addendum).
 - **Currency** assumed MYR as base, with dynamic exchange rate support for foreign-currency suppliers.
-- **Auth** Bearer token-based with role middleware on backend — frontend routing is convenience, not security. Admin MFA (AUTH-7) is designed for admins only (ADR-121, §16 item 10).
+- **Auth** Role middleware on the backend — frontend routing is convenience, not security. Admins use a Sanctum cookie session with opt-in MFA (AUTH-7, ADR-121); affiliate/reseller-portal users use bearer tokens.
 - **Refund policy**: no cash refunds under any circumstance (ADR-004). Resolution paths for a failed order are limited to retry-delivery or voucher issuance.
 - **Balance/financials**: ledger-based (ADR-002). No entity may expose or rely on a directly-mutated `balance` column as the source of truth.
 
@@ -95,7 +95,7 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 | **AUTH-4** | Super Admin can manage admin users (create, edit, activate, deactivate) | **MVP** |
 | **AUTH-5** | Super Admin can manage API keys for system integration | **Phase 2** |
 | **AUTH-6** | System displays profile page with edit personal info and change password | **MVP** |
-| **AUTH-7** | Admin MFA (TOTP), opt-in per account (set by an admin in Admin Users); without it, five dangerous actions are refused (CHIP credentials, supplier credentials, manual reseller wallet credit, withdrawal approval, admin account changes), and with it they ask for a fresh code | **Designed, ADR-121** (§16 item 10) |
+| **AUTH-7** | Admin MFA (TOTP), opt-in per account (set by an admin in Admin Users); without it, five dangerous actions are refused (CHIP credentials, supplier credentials, manual reseller wallet credit, withdrawal approval, admin account changes), and with it they ask for a fresh code | **Built, ADR-121** (staging only until a release) |
 
 ## 6.2 Admin — Dashboard
 
@@ -594,8 +594,9 @@ combo's stored price stays current while it is off and on reactivation),
 whose migration repriced 28 stale PUBG Mobile combos on deploy (0 stale of
 101 after), plus docs (item 66 parked, item 94 added). **Not yet released:** `staging`
 also carries #433 (items 73 and 95, the Reseller API rejection log and
-`/api/health/whatsapp`) plus docs #431/#432; the founder holds the next
-release for a later session.
+`/api/health/whatsapp`) plus docs #431/#432, and item 10 (admin MFA and the
+cookie-session admin login, ADR-121) once its PR merges. The founder holds
+the next release for a later session.
 
 **Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
 hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
@@ -628,7 +629,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 
 | Area | Status | Key ADRs |
 | --- | --- | --- |
-| Auth & Admin Users (AUTH-1..7) | ✅ Live. Login rate-limited + logged. Admin MFA (AUTH-7) designed, §16 item 10 | ADR-019, ADR-121 |
+| Auth & Admin Users (AUTH-1..7) | ✅ Live. Login rate-limited + logged. Admin MFA (AUTH-7) and the cookie-session admin login built 2026-10-14, staging only until a release | ADR-019, ADR-121 |
 | Admin Dashboard (DASH-1..6) | ✅ Live — KPIs, System Health, funnel, top games, hourly activity | ADR-045 |
 | Money core (Pricing, Ledger, Voucher, Order status, idempotency) | ✅ Live — full service layer, concurrency-proven. The most mature part of the codebase | ADR-002 |
 | Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end. PR #273's invite/session and compensation visibility fixes, plus ADR-112's role-aware shell, dashboard recent orders, and responsive Orders presentation, shipped in PRs #273, #275 and #276, released to `main` via #278 (2026-09-24) | ADR-056–061, 078, 112 |
@@ -692,8 +693,7 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
 items dropped, listed under Recently closed). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- **10** Admin MFA + a 7-day cookie login shared across tabs: designed and
-  grilled 2026-10-14 (ADR-121), buildable now.
+- (none)
 
 **B. Needs a short grill / ADR addendum first**
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
@@ -734,15 +734,6 @@ items dropped, listed under Recently closed). Re-verify before building.
    calls for it. It is also the moment to revisit the OpenWA engine (item 59:
    Baileys stays until then). OpenWA now shares `pekangame-prod-lwf` with the API
    (ADR-114).
-10. **Admin MFA: designed, buildable now** (ADR-121, grilled and
-    stress-tested with the founder 2026-10-14). TOTP via `pragmarx/google2fa`,
-    opt-in per account from `/admin/users`, enrolment and code on `/login`, a
-    5-minute step-up for five dangerous actions, 8 recovery codes, reset over
-    SSH. The admin login moves from a `sessionStorage` bearer token to an
-    httpOnly cookie session (7 days max, 2 days idle, shared across tabs).
-    Issuing vouchers stays code-free, as an accepted risk. The ADR has the
-    full design and the release-day steps.
-
 11. **External uptime monitor added 2026-10-10 (founder-reported, UptimeRobot on
     `https://api.pekangame.space/api/health`); error tracking (Sentry) is still
     not set up.** ADR-019's accepted deferral. Since 2026-09-29 `/api/health`
@@ -956,6 +947,7 @@ items dropped, listed under Recently closed). Re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
+- **10** 2026-10-14: admin MFA (TOTP) and a cookie-session admin login (ADR-121). The login lasts 7 days at most, ends after 2 days unused, and is shared by every tab. MFA is opt-in per account ("Require MFA" in Admin Users, one-way; set up on `/login`). Five actions need a code within the last 5 minutes and are refused without MFA: CHIP credentials, supplier credentials, manual reseller wallet credit, withdrawal approval, admin account changes. Eight recovery codes; `php artisan admin:mfa-reset {email}` over SSH. Staging only until a release; the founder then requires MFA on their own account. Details: build-log 2026-10-14.
 - **95** 2026-10-14: `GET /api/health/whatsapp` asks OpenWA for both sessions and answers 503 unless both are `ready` (`unreachable`, `not_configured`, or the session's own status otherwise); throttled 30/min. The founder adds an UptimeRobot monitor on it after the release, alerting after 2 failed checks. Staging only until a release. Details: build-log 2026-10-14.
 - **73** 2026-10-14: every Reseller API rejection a known reseller gets is logged (`warning`, since prod runs `LOG_LEVEL=warning`) from the one render hook: reseller, key, code, status, path, IP, details. A missing or wrong key is not logged (anonymous noise, already rate-limited per IP); `RATE_LIMITED` logs once a minute per reseller (ADR-074 2026-10-14 addendum). Staging only until a release.
 

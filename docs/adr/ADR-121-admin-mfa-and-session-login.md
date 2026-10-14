@@ -1,6 +1,6 @@
 # ADR-121: Admin MFA (TOTP) and a cookie-session admin login: opt-in per account, step-up on five dangerous actions
 
-> **Standing (2026-10-14):** Accepted (design). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-14):** In force (built 2026-10-14; see the build addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-14. Grilled with the founder in five rounds via `/mattpocock-skills:grilling` (Q1–Q17), then stress-tested against code and production (read-only). PRD §16 item 10, AUTH-7.
 
@@ -88,3 +88,24 @@ MFA for `affiliate_users` and resellers is out of scope (PRD §16 item 10 record
 - `backend/AGENTS.md` local-dev gotchas: the admin dev API URL is `localhost:8000`, and why.
 - e2e: the admin login spec is updated. An e2e admin account does not require MFA, so its golden paths run unchanged unless they hit a step-up route.
 - Not a money-math change. It gates money actions but reads and writes no price, cost, ledger or wallet column, so the ADR-118 code-trace pass does not apply beyond confirming each gated route (done during the stress test).
+
+### 2026-10-14 addendum — build notes and where the build differs from the design
+
+Built on `feature/admin-mfa`. Unless a point below says otherwise, the decisions above hold as written.
+
+- **Admin auth guard (decision 1).** The admin route group keeps `auth:sanctum`, not a plain `web` guard. `AppServiceProvider` refuses every access token whose tokenable is an `AdminUser` (`Sanctum::authenticateAccessTokensUsing`), so the effect is the same (session only, pinned by a test). The ~60 feature tests that use `Sanctum::actingAs` keep working unchanged.
+- **CORS (decision 1).** `supports_credentials` stays `false` globally. A new `AllowAdminCorsCredentials` middleware turns it on per request, only for the `ADMIN_URL` origin(s). `CorsConfigTest` already pinned that a custom affiliate domain never gets credentials (ADR-078), and a global `true` broke that test.
+- **Login only from the admin app.** `/api/login`, `/api/login/mfa` and `/api/csrf-token` answer 400 without a session, which means a request from outside a Sanctum stateful origin. The default stateful list is now `localhost:3000` plus the host of `ADMIN_URL`, so production needs no new env var.
+- **Session lifetime** is fixed at 2 days in `config/session.php` rather than read from env, because production's `.env` still says `SESSION_LIFETIME=120`. Production needs no `.env` change for this release.
+- **Security emails (decision 8)** go through the existing Plunk alert path (`BackupFailureAlerter`, area `Security`), which emails every active admin. That is a superset of "the affected admin and every super admin"; today both are the founder.
+- **TOTP library gotcha.** `pragmarx/google2fa`'s `verifyKeyNewer()` returns `true`, not the matched time-step, when the old time-step is `null`. Storing "now" then would let a code from the next step be accepted twice. `AdminMfa` always passes an int.
+- **Recovery codes** are `xxxxx-xxxxx`, drawn from an alphabet with no look-alike characters (no 0/o, 1/l/i), and stored as sha256 hashes (about 50 random bits each, so a fast hash is enough).
+- **Admin frontend.**
+  - The cached admin profile (id, role, name, email, MFA status) moved from `sessionStorage` to `localStorage` so every tab shares it. It holds no credential.
+  - All bearer-token plumbing was removed: about 1,200 references across 124 files.
+  - `api-client` sends the session cookie with every call and adds the CSRF header to mutating ones. It retries once on 419, and on `mfa_step_up_required` it waits for `StepUpDialog`.
+  - The eight copies of the Blob download code are now one `apiDownload()`.
+  - The dashboard used to clear the profile cache on any `/api/me` error, including a fetch aborted by navigation. Because the cache is now shared, that would log every tab out, so the dashboard now relies on the central 401 handling.
+- **Local dev and e2e.** The admin app must call the API on the same site. `localhost:3000` → `https://kedairuncit-backend.test` is cross-site, so the session cookie is not sent. Use `NEXT_PUBLIC_API_URL=http://localhost:8000` (backend `AGENTS.md` gotchas 6–7). e2e now runs `SESSION_DRIVER=file`, because the array driver is emptied on every `php artisan serve` request.
+- **Known limit (accepted).** An account awaiting setup is enrolled by whoever next signs in with its password. Require MFA only on accounts whose password is known to be safe, for example straight after creating them.
+
