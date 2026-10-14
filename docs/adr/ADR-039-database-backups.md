@@ -78,3 +78,14 @@ Also: the repo had no restore command at all, although decision 5 says restore i
 - 300s is a ceiling. A breach now fails loudly through `failed()`. `backup_runs` keeps each run's duration; revisit the timeout when a run passes ~150s.
 - The grant in ADR-117's 2026-10-14 addendum must be in place before the first run on this code, or the nightly run keeps failing at "could not create".
 - Local sqlite backups stay incomplete (spatie + `sqlite3` argument limit). The dev DB is not backed up anyway; the restore test now reports this truthfully.
+
+### 2026-10-15 addendum — fixed throwaway database name
+
+The MySQL restore test now always uses `<db>_restore_test` (prod: `defaultdb_restore_test`), not `<db>_restore_test_<time>`.
+
+**Why:** prod's `partial_revokes = 1` makes a wildcard GRANT literal (ADR-117 2026-10-15 addendum), so the app user can only be granted one exact name.
+
+**How it stays safe:**
+- Each run drops that database before creating it, so a run killed mid-restore can't block the next one.
+- Only one backup job runs at a time (`supervisor-backups`, maxProcesses 1).
+- The operator's `app:restore-backup` targets a database the operator names, never this one.

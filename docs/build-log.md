@@ -915,3 +915,25 @@ call still answers 401. The `ready` path is checked on prod after release.
 - Local: no `mysqldump` on PATH. Used DBngin's 8.0.33 client for the run. `BackupRestoreTesterTest` had left 2,280 dump files in `storage/app/backup-temp`; it now cleans up after itself.
 
 **Not live.** Next steps: release, then the founder's grant (ADR-117 addendum; after the release, not before), then "Backup Now" and a check for `restore_test_passed = 1`.
+
+## 2026-10-15 — Release #441 live; item 97 verification run failed on `partial_revokes`; fixed-name follow-up
+
+**Release #441 (`staging`→`main`, merged by the founder) verified live:**
+- `main` = `bd80f27` on the box.
+- Horizon is running; `supervisor-backups` and `supervisor-price-sync` are on `redis-long`.
+- `fail_stuck_backup_runs` ran, and #26–#30 are now `failed`.
+- `app:restore-backup` exists, the schedule is 02:07, and `/api/health` returns 200.
+- The latest Price Sync run succeeded with `fx_rates_used` 0.000228. There were 31 `currency_rate` cache reads in the last 30 minutes, against 1,521 per run before.
+
+**Grant + verification run.**
+- The founder ran the 2026-10-14 wildcard grant. `SHOW GRANTS` showed it.
+- A manual run (#45, `triggered_by` "Claude (item 97 verify)") still failed: `1044 Access denied … 'defaultdb_restore_test_1792001735'`. Its failure alert went to the admins.
+- Cause: the cluster has `@@global.partial_revokes = 1`, while local Docker and CI have `0`. With it on, `_`/`%` in a database GRANT are literal, so the grant matched nothing.
+- The 2026-10-14 stress test missed this because the MySQL test ran under different server settings from prod.
+
+**Follow-up (branch `fix/restore-test-fixed-db-name`).**
+- The restore test always uses `<db>_restore_test`, dropping any leftover from a killed run first.
+- `BackupRestoreMysqlTest` now runs with `partial_revokes = ON` and an exact-name grant. Red first: it reproduced the prod `1044`. A new case covers a leftover half-restored database.
+- ADR-039 and ADR-117 2026-10-15 addenda (the replacement SQL revokes the useless literal grant).
+
+**Left to do:** release, the founder's replacement grant, then "Backup Now" and a check for `restore_test_passed = 1`.

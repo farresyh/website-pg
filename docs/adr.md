@@ -61,7 +61,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-036](./adr/ADR-036-voucher-merge.md) | Voucher Merge — admin-triggered consolidation into a new code, no ledger write | In force | 2026-10-12 |
 | [ADR-037](./adr/ADR-037-staging-production-git-branch-model-staging.md) | Staging/production git branch model + staging environment infra | In force | 2026-09-01 |
 | [ADR-038](./adr/ADR-038-admin-ui-component-library.md) | Admin UI component library — adopt PrimeReact (Tailwind mode), opportunistic migration off hand-rolled TailAdmin primitives | In force | 2026-08-26 |
-| [ADR-039](./adr/ADR-039-database-backups.md) | Database backups — app-level, host-agnostic backup/restore mechanism (BAK-1..5) | In force | 2026-10-14 |
+| [ADR-039](./adr/ADR-039-database-backups.md) | Database backups — app-level, host-agnostic backup/restore mechanism (BAK-1..5) | In force | 2026-10-15 |
 | [ADR-040](./adr/ADR-040-gamevion-sandbox-integration.md) | Gamevion sandbox integration — investigation saga, `telp` normalization, `callback_url` fix (2026-07-25 – 2026-08-14) | In force | 2026-08-13 |
 | [ADR-041](./adr/ADR-041-checkout-level-idempotency-key.md) | Checkout-level idempotency key — client-generated key, unique DB constraint, replay/resume branching | In force | 2026-07-29 |
 | [ADR-042](./adr/ADR-042-seo-module-scope-widened.md) | SEO module scope widened — structured data, scripts manager, crawler/robots management, sitemap & overview panels, per-game SEO UX | In force | 2026-10-08 |
@@ -139,7 +139,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-114](./adr/ADR-114-production-infra-split-off-digitalocean-s-shared.md) | Production infra split off DigitalOcean's shared team — droplet + managed MySQL rebuilt into a new DO team (`LWF Group Sdn Bhd`) | In force | 2026-10-14 |
 | [ADR-115](./adr/ADR-115-supplier-balance-comfortable-buffer-forecast.md) | Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold | Parked (designed); builds two weeks after launch, with the low-balance email | 2026-10-14 |
 | [ADR-116](./adr/ADR-116-customer-order-notifications-over-whatsapp.md) | Customer order notifications over WhatsApp (OpenWA), not email — closes audit M-11 | In force | 2026-10-12 |
-| [ADR-117](./adr/ADR-117-prod-db-least-privilege.md) | Prod DB least-privilege — `doadmin` superuser replaced by a dedicated scoped app user | In force | 2026-10-14 |
+| [ADR-117](./adr/ADR-117-prod-db-least-privilege.md) | Prod DB least-privilege — `doadmin` superuser replaced by a dedicated scoped app user | In force | 2026-10-15 |
 | [ADR-118](./adr/ADR-118-marketing-campaigns.md) | Marketing Campaigns — multi-use KOL discount codes, separate from `Voucher` | Accepted (design) | 2026-10-02 |
 | [ADR-119](./adr/ADR-119-package-delete-guards.md) | Package delete guards — block a hard-delete that already has order history or is a live combo component | In force |  |
 | [ADR-120](./adr/ADR-120-seo-geo-overhaul.md) | SEO/GEO overhaul — brand-correct meta, per-brand canonical origin, machine-readable catalog | In force |  |
