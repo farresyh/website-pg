@@ -12,9 +12,12 @@ use RuntimeException;
  * tables exist, `migrate:status` is clean, and every live table (minus the
  * dump's own exclusions) came back.
  *
- * On MySQL the throwaway database is `<db>_restore_test_<time>` on the
- * same server; the app user needs ADR-117's addendum grant on that name
- * pattern. Driver-aware: sqlite locally and in the fast test suite.
+ * On MySQL the throwaway database is always `<db>_restore_test` on the
+ * same server, and the app user holds a grant on that exact name
+ * (ADR-117 2026-10-15 addendum). A fixed name, not a pattern: prod runs
+ * partial_revokes = ON, which makes `_`/`%` in a GRANT literal. A run
+ * killed mid-restore leaves it behind, so each run drops it first.
+ * Driver-aware: sqlite locally and in the fast test suite.
  */
 class BackupRestoreTester
 {
@@ -30,12 +33,13 @@ class BackupRestoreTester
 
         $target = $isSqlite
             ? storage_path('app/backup-temp/restore-test-'.uniqid('', true).'.sqlite')
-            : ($base['database'] ?? 'pekangame').'_restore_test_'.time();
+            : ($base['database'] ?? 'pekangame').'_restore_test';
 
         try {
             if ($isSqlite) {
                 touch($target);
             } else {
+                DB::connection()->statement("DROP DATABASE IF EXISTS `{$target}`");
                 DB::connection()->statement("CREATE DATABASE `{$target}`");
             }
         } catch (\Throwable $e) {
