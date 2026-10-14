@@ -843,3 +843,23 @@ call still answers 401. The `ready` path is checked on prod after release.
 **Release notes.**
 - Production needs **no `.env` change**: stateful domain and CORS come from `ADMIN_URL`, `SESSION_DRIVER=database` and `SESSION_SECURE_COOKIE=true` are already set, and the lifetime is fixed in config.
 - On release, every admin signs in again. The founder then sets "Require MFA" on their own account, signs out and enrols. Until then, the five step-up actions are refused.
+
+## 2026-10-14 — Release #437 (`staging`→`main`) verified live; own-password logout fix (#438); backup restore test found failing (item 97)
+
+**Release.** #437 merged as `4fefc43` (#431–#436: items 10, 73, 95 plus docs). CI and the Forge deploy were green. Read-only checks on prod:
+- The `add_admin_mfa_columns` migration ran, and 0 admin bearer tokens remain.
+- Config is as designed: stateful `admin.pekangame.space`, session lifetime 2880, `secure`, host-only, CORS credentials for `https://admin.pekangame.space` only. The storefront origin gets none, and a login from outside the admin app gets 400.
+- `/api/health/whatsapp` answers 200 with both sessions `ready`. No errors in `laravel.log` since the deploy.
+
+**Founder follow-up.**
+- The founder set "Require MFA" on their account and enrolled (prod: `mfa_status = active`, 8 recovery codes).
+- They added the third UptimeRobot monitor on `/api/health/whatsapp` and test-alerted it.
+- They switched local `admin/.env.local` to `http://localhost:8000`.
+- They changed the admin email from `admin@pekangame.space`, a dead mailbox, to a live `@pekangame.com` address. All Plunk alerts (backup and security) go to every active admin, so until now nobody received them.
+
+**Bug found live → #438.** Editing your own account (name only) asked for the step-up and saved, then the next request bounced to `/login`.
+- Cause: the edit form's "New Password" field had no `autocomplete`, so the browser autofilled the saved login and the save re-set the password. Sanctum's `AuthenticateSession` then still held the old password hash for the session.
+- Fix: the guard gets the updated model on your own password change, so your session stays (other sessions still end, ADR-121). The field is now `autocomplete="new-password"`.
+- Red-first test `test_changing_your_own_password_keeps_your_session`; suite 2781/2781. Staging only until a release.
+
+**Found while scanning the prod log → §16 item 97.** `backup_runs` #31–#44 (every night 2026-10-01 → 10-14) are all `failed`. The archive uploads, but the restore test logs "could not create throwaway restore-test database". The first failure follows ADR-117's switch to the `defaultdb`-scoped `pekangame_app` user, which is the likely cause but is not verified yet. The alert reached only the dead admin mailbox above.
