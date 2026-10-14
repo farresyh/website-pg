@@ -81,3 +81,34 @@ PekanGame and Nakhoda (a separate, older business with real external customers) 
 - **Process lesson for the next infra migration of this shape:** `mysqldump`-based decision 2 in the original ADR only ever claimed to migrate the database — this addendum is not a criticism of that decision, it's the gap between "the DB migrated cleanly" and "every private-disk file reference in that DB still resolves," which this ADR's own Consequence section never explicitly called out at the time. A future migration of this kind should treat `storage/app/private` (and any other local-disk-backed private storage) as its own explicit migration step with its own verification, not assumed to be covered by the DB dump.
 
 **Addendum (2026-10-08) — the durability gap is closed (PRD §16 item 56).** `ACCOUNTING_DISK` and `WALLET_RECEIPTS_DISK` now point at `r2_accounting`, a private R2 bucket (`pekangame-accounting`: no custom domain, public URL off) with its own token scoped to that bucket, the same least-privilege shape as `r2_backups`. One bucket serves both disks (founder's call): both are private finance receipts. Unlike `r2_backups`, the disk sets `throw => true`, so a failed upload fails the save (a wallet credit rolls back) rather than storing `receipt_path = false`. The two receipt deletes in `SupplierFundingService::recordCorrection()` became best-effort, so a storage error after commit can't 500 a saved correction. Built in #375, released via #376. The 3 live supplier receipts were copied to R2 at the same paths, and all 3 stream back as valid PDFs. `WalletTopupReceipt` stores its disk per row, so it needed no copy (0 rows). The next infra move no longer has to carry `storage/app/private` for receipts.
+
+### 2026-10-14 addendum — OpenWA sessions start themselves after a restart
+
+**Context.** The founder often found a WhatsApp session disconnected and had
+to press Start in the OpenWA dashboard, not knowing for how long. Read-only
+check on the box: every OpenWA process restart was followed by a manual
+`session_started` audit row, with gaps of 2 min, 6 h 44 min, 28 h 39 min
+(3–4 Oct), 4 min, 1 h 52 min, 42 min and 2 h 32 min between 30 Sep and
+13 Oct. The founder never restarted it. The cause: Ubuntu's daily
+`unattended-upgrade` (around 06:xx UTC) updates a library, `needrestart`
+restarts `supervisor`, and every Forge daemon restarts with it (13 Oct:
+apt 06:39:12, supervisor 06:39:19). Horizon and Reverb recover by
+themselves; OpenWA did not, because `AUTO_START_SESSIONS` was not set and
+OpenWA treats unset as off. OpenWA's brief stream drops (`503 Stream
+Errored`) are a different case and reconnect within seconds.
+
+**Decision.** `AUTO_START_SESSIONS=true` in `~/OpenWA/.env` (added by the
+founder 2026-10-14; backup `.env.bak-2026-10-14`). OpenWA recommends it for
+a single-instance deployment; its multi-replica risk does not apply here,
+and a logged-out session is never auto-started. Unattended upgrades stay
+on: they carry the security patches.
+
+**Verified.** Daemon restarted from Forge at 08:01:36 UTC; OpenWA logged
+`Auto-started session` for both, `reseller-bot` ready 08:03:05 and
+`customer-support` 08:03:08, with no new manual `session_started` row.
+
+**Consequence to track.** A restart still costs ~2 minutes because the
+daemon command rebuilds (`npm run build:all && node dist/main`); dropping
+the build step, the v0.24.0 upgrade and the two `.env.bak-*` files with
+secrets are PRD §16 item 96. A session disconnected while the process runs
+is still only visible on the Dashboard until item 95 ships.

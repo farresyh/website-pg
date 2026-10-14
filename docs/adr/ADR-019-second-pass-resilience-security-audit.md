@@ -66,3 +66,15 @@ Result: all six of ADR-014's decisions are genuinely shipped as designed. Two th
 2. **OTP send: 10/hour per IP**, added alongside the existing 3/hour per email (ADR-027 decision 26). Without it, one IP could mail-bomb any number of different inboxes. 10 leaves room for several people behind one NAT.
 3. **OTP attempt counter is now atomic.** `OtpService::verify()` claims an attempt slot with a conditional `UPDATE ... WHERE attempts < 5` and consumes the code the same way (`WHERE consumed_at IS NULL`). Previously it read then incremented, so N parallel guesses against a code at 4 attempts each got a try.
 4. **Reseller API failed-auth counter:** 20 failures/min per IP in `EnsureResellerApiKey`, then 429 `RATE_LIMITED` with `Retry-After`. The `reseller-api` limiter keys on the raw bearer token (ADR-074 decision 4, kept so shared-infra resellers don't starve each other), which gave every made-up key its own fresh bucket.
+
+### 2026-10-14 addendum — admin MFA will be built; affiliate MFA dropped
+
+The 2026-07-29 descoping of MFA is reversed for admins (founder): an admin
+account can change the CHIP credentials, credit a reseller wallet and issue
+vouchers, so a stolen password moves real money. MFA for `affiliate_users`
+and resellers is dropped, not deferred: affiliate balances are near zero,
+each withdrawal is approved by hand with a "bank details changed" flag
+(ADR-059 2026-09-26 addendum), and a reseller wallet can only be spent on
+top-ups (prod 2026-10-14: affiliates RM 0.00 and RM 0.15, wallets RM 3.44
+and RM 306.85, 1 admin). The admin design gets its own ADR at the grill;
+the founder's choices so far are in PRD §16 item 10.

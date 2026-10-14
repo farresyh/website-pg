@@ -118,3 +118,13 @@ One grilled design (2026-09-04), split into four sequenced ADRs, delivered as se
   - WhatsApp warns about or bans either number;
   - `reseller-bot` volume grows until one ban costs more than the resize.
 - **Not checked.** Whether OpenWA can set the engine per session. Settle that before any switch, since a global switch would also move `customer-support`.
+
+### 2026-10-14 addendum — chat-list rehydration dropped (PRD §16 item 58)
+
+The 2026-10-02 addendum's fork-and-patch of OpenWA's chat list is dropped
+(founder). The phone holding the `customer-support` number is a linked
+device's primary and shows every chat, so a quiet chat is answered from the
+phone after a restart; a permanent fork costs more than that. OpenWA
+v0.24.0 does not fix it either (after a restart a 1:1 chat with no pin,
+archive or mute state still appears only on its next message). The design
+above stays as the starting point if it is ever reopened.
