@@ -15,7 +15,10 @@ use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use App\Services\Sync\ProductSyncFailedException;
 use App\Services\Sync\ProductSyncService;
+use Illuminate\Cache\Events\CacheHit;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Tests\TestCase;
@@ -336,6 +339,32 @@ class ProductSyncServiceTest extends TestCase
         // 3200 IDR * 0.000228 MYR/IDR = 0.7296 MYR = 72.96 sen -> ceil -> 73 sen.
         $this->assertSame(73, SupplierProduct::query()->firstOrFail()->price_sen);
         $this->assertSame(['from' => 'IDR', 'to' => 'MYR', 'rate' => 0.000228, 'source' => 'open.er-api.com'], $result->fxRateUsed);
+    }
+
+    /**
+     * ADR-111 2026-10-14 addendum: one rate per supplier per run. The
+     * cached rate changing mid-run (TTL expiry + refetch) must not price
+     * later items at a different rate than the run records in fxRateUsed.
+     */
+    public function test_sync_prices_every_item_at_the_one_rate_the_run_records(): void
+    {
+        Http::fake(['open.er-api.com/*' => Http::response(['result' => 'success', 'rates' => ['MYR' => 0.000228]], 200)]);
+        Event::listen(CacheHit::class, function (CacheHit $event) {
+            if ($event->key === 'currency_rate:IDR:MYR') {
+                Cache::put('currency_rate:IDR:MYR', 0.001, 60);
+            }
+        });
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'currency' => 'IDR', 'api_config' => []]);
+        $adapter = $this->fakeAdapter(true, [
+            new SupplierCatalogItem('a', 'A', 'Mobile Legends', 3200.0, 'active'),
+            new SupplierCatalogItem('b', 'B', 'Mobile Legends', 3200.0, 'active'),
+            new SupplierCatalogItem('c', 'C', 'Mobile Legends', 3200.0, 'active'),
+        ]);
+
+        $result = (new ProductSyncService(new CurrencyRateService))->sync($supplier, $adapter);
+
+        $this->assertSame(0.000228, $result->fxRateUsed['rate']);
+        $this->assertSame([73, 73, 73], SupplierProduct::query()->orderBy('external_ref')->pluck('price_sen')->all());
     }
 
     public function test_sync_leaves_fx_rate_used_null_for_a_myr_supplier(): void
