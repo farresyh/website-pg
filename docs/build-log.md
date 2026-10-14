@@ -686,3 +686,25 @@ On `fix/combo-price-stale-after-reactivation`. Staging-only until a release.
   cache flush made the PATCH 500 after its commit; re-run with
   `CACHE_STORE=array ... php artisan serve --no-reload` (backend/AGENTS.md
   gotchas 3 and 5).
+
+## 2026-10-14 — §16 item 66 parked: a combo is never edited
+
+**Decision (founder, docs only).** Item 66 (combo edit-composition UI) is
+parked. On 2026-10-13 the founder rebuilt MLBB Malaysia's combos by hand, two
+per denomination, and will do the same for PUBG Mobile, so the planned "edit
+= replace version" design would only automate what that workflow already
+does. A combo is never edited: create a new one and deactivate the old one.
+Reopen only as a "Duplicate combo" button (ADR-094 2026-10-14 addendum, PRD
+§16 Parked). PRD §16 group B now holds only item 81.
+
+**Pre-release combo check (prod, read-only tinker, 2026-10-14).** Stored
+`cost_price` / `standard_selling_price` against the sum of components, all
+101 combos (none has an override):
+- Mobile Legends Malaysia: 52 combos, all active, all current (the 2026-10-13
+  rebuild; the older MLBB combos are gone).
+- PUBG Mobile Global: 49 combos, 28 stale (8 active, 20 inactive). The 8
+  active ones are the item-93 set and are priced *above* their live cost
+  (stored cost higher than the component sum by RM0.23–RM2.39), so no sale
+  is below cost. The 2026-10-13 entry expected 9 combos to be repriced;
+  component costs have moved since, so the next release's migration should now
+  reprice 28.

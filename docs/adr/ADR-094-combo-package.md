@@ -237,3 +237,28 @@ loss, because it compares with the combo's equally stale stored cost.
 component's `supplier_id` was never built, and no endpoint edits a
 package's `supplier_id`, so the same-supplier invariant cannot drift today
 (prod: no mixed-supplier combo, 2026-10-13).
+
+### 2026-10-14 addendum — a combo is never edited; edit-composition parked (PRD §16 item 66)
+
+**Context.** Item 66 asked for an edit-composition UI. The 2026-10-13 audit
+recommended "edit = replace version": a new combo plus the old one retired in
+one transaction. That is the same thing the admin already does by hand
+(create a new combo, deactivate the old one). On 2026-10-13 the founder
+rebuilt MLBB Malaysia's combos that way, two combos per denomination
+(prod: 52 active, all priced at the sum of their components), and plans the
+same for PUBG Mobile.
+
+**Decision.** A combo's composition is never edited. To change a combo,
+create a new one and deactivate the old one. Item 66 is parked, not
+scheduled.
+
+**Rationale.** A combo stays a fixed SKU, so the paid-but-not-yet-fulfilled
+window an edit would open (legs are seeded at first fulfillment, not at
+checkout) never exists, and the 3 readers of the live
+`components->first()->supplier` never see a composition change under an
+order. Order history and reports (item 94) keep one row per version. The only
+cost is rebuilding a combo by hand.
+
+**Consequence to track.** Reopen only as a "Duplicate combo" button that
+pre-fills the create form from an existing combo (no checkout, fulfillment
+or ledger change), if rebuilding combos by hand becomes a chore.
