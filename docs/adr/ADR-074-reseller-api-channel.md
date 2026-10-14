@@ -109,3 +109,18 @@ Live-verified against the same real wallet order from the walkthrough above (`co
 *Rejected.* A per-key bucket with a key cap (still multiplies, adds a rule); one bucket per account (polling still starves orders); a `bucket` field in the 429 body (contract change for no integrator need); Digiflazz's 200-with-`rc` refusal.
 
 *Consequence to track.* Fixed one-minute windows allow a burst of up to twice the limit across a boundary — accepted. The public numbers in `docs-site/src/content/docs/rate-limits.md` are hand-written and have no drift guard (Scramble does not carry limits); the limiter comment points there. Build the item 89 override when the first reseller asks for more.
+
+### 2026-10-14 addendum — rejections are logged (decision 6 of the 2026-10-08 addendum, built)
+
+Every rejection is logged from the one render hook in `bootstrap/app.php`
+(`ResellerApiRejectionLog`), for every code, as decision 6 said. Three
+choices made at build time:
+1. Only a request whose API key resolved is logged. `EnsureResellerApiKey`
+   now puts the key on the request before its inactive/IP checks, so
+   `RESELLER_INACTIVE` and `IP_NOT_ALLOWED` are logged too. A missing or
+   wrong key is anonymous internet traffic, already rate-limited per IP.
+2. `RATE_LIMITED` is logged once a minute per reseller, so a client
+   hammering past its limit can't fill the log.
+3. Level `warning`, because prod runs `LOG_LEVEL=warning` and an `info`
+   line would never be written. Fields: reseller, key, code, status,
+   method, path, IP and the response's `details`.
