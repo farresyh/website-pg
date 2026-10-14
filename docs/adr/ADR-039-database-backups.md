@@ -47,3 +47,34 @@ Deployment/hosting provisioning (`ADR-020`/`ADR-037`'s territory) and payment-ga
 2. **Why no one saw 12 days of failure alerts:** decision 7's "email every admin" was firing every time (`BackupFailureAlerter::alert()` was called correctly on every failed run) but landed nowhere — `config('mail.default')` is `log` in production (`MAIL_MAILER` was never provisioned), so Laravel's native `Mail::` facade was silently writing every alert to the log file instead of sending it. Blast radius check (repo-wide grep) confirmed this affects only `BackupFailedMail` — the only other real email path, Membership OTP, goes through `PlunkMailer` (a separate HTTP-based vendor, ADR-027's 2026-08-29 addendum), so customer-facing email was never affected. **Fix:** `BackupFailureAlerter` now sends through `PlunkMailer::send()` (already proven live) instead of `Mail::`, looping per active admin so one bad address can't swallow the rest. The now-fully-dead `App\Mail\BackupFailedMail` Mailable and its blade view were deleted (confirmed, repo-wide grep, this alerter was their only caller).
 - Tests: **+3** new (`BackupFailureAlerterTest`: every active admin gets a real Plunk send attempt, an inactive admin doesn't, one recipient's send failure doesn't block the others, the critical log line always fires). Full backend suite **1846/1846**. Pint clean.
 - ~~Not yet re-verified against a real production run~~ **Verified live, same day, 2026-09-14** — released `staging`→`main` (PR #199), founder flipped `BACKUP_DISK=r2_backups`, then a manual `php artisan app:run-backup` was triggered and polled to completion: `BackupRun#15` — `status=success`, `restore_test_passed=1`, no error, file confirmed to physically exist on the real `r2_backups` bucket. The first `success` in the table's entire history (1 of 15 rows ever) — every prior row, all the way back to go-live, was the GTID bug. Both this fix and ADR-095's backup-disk cutover proven correct in the same check.
+
+### 2026-10-14 addendum — one restore path, real verification, killed runs close themselves (PRD §16 item 97)
+
+**Context.** Every nightly run from 2026-10-01 (#31–#44) was `failed`: `ERROR 1044 Access denied for user 'pekangame_app' to database 'defaultdb_restore_test_…'`. ADR-117's switch to `pekangame_app` (2026-09-30) granted only `defaultdb.*`, and its live check ran `backup:run`, which skips the restore test. Under that error sat three more faults, all found against production and real MySQL, not guessed:
+
+1. **Killed runs.** Runs #26–#30 (2026-09-26..30) died at the generic 60s worker timeout (`TimeoutExceededException` ×5 in `failed_jobs`; successful runs had already climbed from 38s to 50s). The job had no `failed()`, so each row stayed `running`, nobody was alerted, and the decrypted plaintext dump stayed in `backup-temp` (removed by hand 2026-10-08).
+2. **View definers.** Two views (`llm_report_catalog`, `llm_report_membership_fees`) are owned by `doadmin` (made by 2026-09-12 migrations). Restoring a dump of them as any user without `SET_ANY_DEFINER` fails: `ERROR 1227`, reproduced on MySQL 8.4 as a non-super user. Same class as the 2026-09-14 GTID fault.
+3. **Weak verification.** "Tables exist + `migrations` table complete" passes a dump cut short after the `migrations` table, with `orders`, `vouchers` and the rest missing. Proven locally: spatie's sqlite dumper drops every table past roughly the 50th (`sqlite3` dot-command argument limit when `exclude_tables` is set), and the old check would have passed it. Sqlite is local-only; the MySQL dumper uses `--ignore-table` and is not affected.
+
+Also: the repo had no restore command at all, although decision 5 says restore is CLI-only. So the nightly test proved a path nobody would use in a real restore.
+
+**Decision.**
+
+1. **One restore path, `BackupRestorer`.** The nightly test (`BackupRestoreTester`) and a new operator command, `php artisan app:restore-backup {--run=|--path=|--file=} --database=`, both download, decrypt, extract, restore and verify through it. Each nightly pass therefore proves the disaster-restore path.
+2. **Restore only into an existing, empty database.** The restorer refuses a target that has any table. That covers a fresh cluster (empty `defaultdb`) and a side-by-side recovery, and nothing can write over live data (decision 5's friction, kept by state, not by a flag or a name).
+3. **`DEFINER` clauses are dropped on restore,** so the restoring user owns the views. Lines starting `INSERT ` are passed through untouched, so customer data is never rewritten.
+4. **The DB password stays out of argv.** The `mysql` client reads a `0600` `--defaults-extra-file` that is deleted afterwards.
+5. **Verification is real.** Every live table (minus the dump's `exclude_tables`) must come back, and every migration the codebase knows must be recorded as run. The migration check is read directly, not scraped from `migrate:status` output. `restore_test_details` now holds `table_count`, `missing_tables`, `migrations_ran` and `pending_migrations`.
+6. **Timeouts sized for batch jobs.** `supervisor-backups` and `supervisor-price-sync` run on `redis-long` with a 300s timeout (retry_after 330s; producers unchanged, same Redis keys). `HorizonQueueCoverageTest` already guards timeout < retry_after.
+7. **Killed runs close themselves.** `RunDatabaseBackupJob::failed()` marks the row `failed` and alerts. Each run first deletes `restore-extract-*` folders left by a killed run. This is safe only because `supervisor-backups` runs one job at a time; the operator command uses its own `restore-cli-` prefix, which the job never touches. The 5 stuck rows were closed by migration `2026_10_14_100000_fail_stuck_backup_runs`.
+8. **Schedule moved 02:00 → 02:07,** off the minute that price sync and the `*/15` jobs start on, because the restore test now writes to the same database server.
+
+**Rejected.**
+- Restoring into a local MySQL on the app box. It would avoid the grant, but it would not test the managed server's behaviour (which is how the GTID fault was found). It also re-adds infra and RAM on the 4 GB box OpenWA shares.
+- Recreating the two views as `pekangame_app`. That fixes today's dump, but the problem returns with the next user change.
+- Excluding Pulse table data from the dump. MySQL 8.4's `mysqldump` has no `--ignore-table-data`, and excluding the tables drops their structure.
+
+**Consequence to track.**
+- 300s is a ceiling. A breach now fails loudly through `failed()`. `backup_runs` keeps each run's duration; revisit the timeout when a run passes ~150s.
+- The grant in ADR-117's 2026-10-14 addendum must be in place before the first run on this code, or the nightly run keeps failing at "could not create".
+- Local sqlite backups stay incomplete (spatie + `sqlite3` argument limit). The dev DB is not backed up anyway; the restore test now reports this truthfully.

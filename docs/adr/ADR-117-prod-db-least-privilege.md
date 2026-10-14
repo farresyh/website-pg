@@ -91,3 +91,19 @@ check before touching anything):**
   to `doadmin` for the app connection.
 - `docs/prd.md` §16 item 52 (which originally bundled this with the old-droplet decommission) is
   now fully closed on both halves.
+
+### 2026-10-14 addendum — restore-test grant (PRD §16 item 97)
+
+The grant list above missed one need: the nightly backup restore test (ADR-039 decision 8) creates and drops a throwaway database, `defaultdb_restore_test_<time>`, on the same server. Without a grant on that name, every run from 2026-10-01 failed with `ERROR 1044`. The live check at cutover ran `backup:run`, which skips the restore test, so the gap went unseen.
+
+**Added grant** (run by the founder as `doadmin`, from the app box's `mysql` client):
+
+```sql
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, REFERENCES, INDEX, ALTER,
+      CREATE VIEW, SHOW VIEW, LOCK TABLES
+ON `defaultdb\_restore\_test\_%`.* TO `pekangame_app`@`%`;
+```
+
+This adds almost nothing to the user's reach: it can already write all of `defaultdb`, and this covers only databases named by that pattern. `LOCK TABLES` is needed because a `mysqldump` file contains `LOCK TABLES … WRITE`.
+
+**Rule from now on:** a change to the app DB user is verified with a full `app:run-backup` (restore test included) and a `restore_test_passed = 1` row, never with `backup:run` alone.

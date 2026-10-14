@@ -863,3 +863,55 @@ call still answers 401. The `ready` path is checked on prod after release.
 - Red-first test `test_changing_your_own_password_keeps_your_session`; suite 2781/2781. Staging only until a release.
 
 **Found while scanning the prod log → §16 item 97.** `backup_runs` #31–#44 (every night 2026-10-01 → 10-14) are all `failed`. The archive uploads, but the restore test logs "could not create throwaway restore-test database". The first failure follows ADR-117's switch to the `defaultdb`-scoped `pekangame_app` user, which is the likely cause but is not verified yet. The alert reached only the dead admin mailbox above.
+
+## 2026-10-14 — §16 item 97 fixed in code: backup restore path, job timeouts, one FX rate per sync run; Pulse/Horizon health check
+
+**Why.** Every nightly backup run from 2026-10-01 was `failed` (item 97). The founder also asked for a Pulse and Horizon health check, because the last one ran before the system grew.
+
+**Investigation (prod, read-only).**
+- `SHOW GRANTS` for `pekangame_app` covers only `defaultdb.*`. Runs #41–#44 all say `ERROR 1044 Access denied … to database 'defaultdb_restore_test_…'`.
+- Runs #26–#30 (2026-09-26..30) are still `running`, with no `path`. `failed_jobs` holds 5 `TimeoutExceededException` for `RunDatabaseBackupJob` on those exact dates. Successful runs #18–#25 had grown from 38s to 50s against the generic 60s timeout.
+- Two views are owned by `doadmin@%` (`llm_report_catalog`, `llm_report_membership_fees`); `llm_report_orders` is owned by `pekangame_app@%`.
+- The last restore-verified backup is #25 (2026-09-24).
+
+**Pulse / Horizon / Redis / DB health (prod, 7-day window).**
+- **Horizon:** running, 9/9 supervisors; no failed job in 14 days.
+- **Redis:** 2.7 MB of 256 MB, 0 evictions. ADR-077 says 512 MB; prod is 256 MB, harmless at this size.
+- **Host:** 1.8 GB RAM available, disk 12%, load 0.3.
+- **DB is healthy.** `SELECT 1` takes 1.2–5 ms. The 507 ms `affiliates` slow query runs in 2.6 ms in isolation. The 70 slow queries cluster on scheduler minute boundaries and deploy migrations: most likely first-query connection setup (TLS), not a slow DB.
+- **Slow requests are deploy bursts, not customers.** 652 of 769 fell in four windows lining up with releases (#416 merged 13:44 → burst 13:55; #437 18:38 → 18:39–19:05; #438/#439 19:22 → 19:24–19:30).
+- **Catalog cache hit rate (~42%) is by design:** the TTL is 60s (ADR-077/078) and traffic is low.
+- **One real anomaly:** 495k cache hits a week on one key, `currency_rate:IDR:MYR`, which is 86% of `pulse_entries` (123 MB, the largest table in the DB). Cause: Price Sync read the cached FX rate once per item (1,521 per run, every 30 min). It also hid a small pricing gap (below).
+- **Price sync:** max 54.5s against the 60s timeout.
+
+**What shipped (branch `fix/backup-restore-and-job-timeouts`).**
+- `BackupRestorer` is the one restore path, used by the nightly test and a new `php artisan app:restore-backup {--run=|--path=|--file=} --database=`.
+  - It restores only into an existing, empty database.
+  - It drops `DEFINER` clauses (lines starting `INSERT ` are left untouched).
+  - The DB password goes through a `0600` defaults file, not argv.
+  - Verification requires every live table except `exclude_tables` plus every known migration; it no longer scrapes `migrate:status` text.
+- `RunDatabaseBackupJob`:
+  - `failed()` marks the row failed and alerts.
+  - Each run clears `restore-extract-*` folders a killed run left behind.
+  - Migration `2026_10_14_100000_fail_stuck_backup_runs` closes rows #26–#30.
+- `supervisor-backups` and `supervisor-price-sync` moved to `redis-long` with a 300s timeout.
+- The backup schedule moved from 02:00 to 02:07.
+- `CurrencyRateService::convertToSenAt()`: Price Sync prices every item with the one rate it records in `fx_rates_used` (ADR-111 addendum).
+- Docs: ADR-039, ADR-117, ADR-111 and ADR-077 2026-10-14 addenda; PRD §15 Backups row and §16 items 97 and 98 (new: scheduler liveness alert).
+
+**Proofs (red first).**
+- **FX:** a mid-run cache change priced items 2–3 at 320 sen instead of 73. Green after the fix.
+- **MySQL 8.4 (concurrency suite, new `BackupRestoreMysqlTest`):**
+  - A non-super `kerox` user restoring a real `mysqldump` with a root-owned view failed with `ERROR 1227 … SET_ANY_DEFINER`. Green after the fix, with the prod-equivalent pattern grant.
+  - The throwaway DB is dropped afterwards.
+  - A table added after the dump is reported in `missing_tables`.
+- **Sqlite:** a missing live table fails; an excluded table is not counted as missing; a non-empty target is refused; the restore command is tested end to end; `failed()` and the sweep are tested; the stuck-runs migration is idempotent.
+- Fast suite 2792/2792.
+
+**Gotchas hit.**
+- Symfony Process fed from a generator writes one chunk per poll, so a real dump crawled. The cleaned dump is now written to the private work dir and streamed as a file.
+- Laravel's console test harness mocks nested `Artisan::call` output, which is why `migrate:status` text-scraping was replaced.
+- **The new check caught a real local fault:** spatie's sqlite dumper passes every table to one `.dump` dot-command, and `sqlite3` stops at about 50 arguments, so local sqlite archives held 50 of ~98 tables. The old check would have passed them. Sqlite and dev only (MySQL uses `--ignore-table`); left as is and recorded in ADR-039.
+- Local: no `mysqldump` on PATH. Used DBngin's 8.0.33 client for the run. `BackupRestoreTesterTest` had left 2,280 dump files in `storage/app/backup-temp`; it now cleans up after itself.
+
+**Not live.** Next steps: release, then the founder's grant (ADR-117 addendum; after the release, not before), then "Backup Now" and a check for `restore_test_passed = 1`.

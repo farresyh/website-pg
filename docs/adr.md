@@ -55,13 +55,13 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-030](./adr/ADR-030-digiflazz-supplier-integration.md) | Digiflazz supplier integration — buyer-role adapter, prepaid games only | In force; decision 2 modified by ADR-067, rc table reopened by ADR-098/102 | 2026-09-03 |
 | [ADR-031](./adr/ADR-031-multi-supplier-routing.md) | Multi-supplier routing — `SupplierAdapterFactory` + one-Package-one-supplier | In force |  |
 | [ADR-032](./adr/ADR-032-async-supplier-delivery.md) | Async supplier delivery — `DeliveryStatus::Pending` + normalized `SupplierResponse` outcome + webhook & poll finalization | In force |  |
-| [ADR-033](./adr/ADR-033-foreign-currency-supplier-pricing.md) | Foreign-currency supplier pricing — FX-rate conversion at sync time | In force | 2026-09-29 |
+| [ADR-033](./adr/ADR-033-foreign-currency-supplier-pricing.md) | Foreign-currency supplier pricing — FX-rate conversion at sync time | In force; one rate per run, see ADR-111 2026-10-14 addendum | 2026-09-29 |
 | [ADR-034](./adr/ADR-034-storefront-best-price-selection.md) | Storefront best-price selection — `packages.denomination` | In force |  |
 | [ADR-035](./adr/ADR-035-voucher-path-a-double-submission-guard.md) | Voucher Path A double-submission guard — idempotency key, mirroring checkout | In force |  |
 | [ADR-036](./adr/ADR-036-voucher-merge.md) | Voucher Merge — admin-triggered consolidation into a new code, no ledger write | In force | 2026-10-12 |
 | [ADR-037](./adr/ADR-037-staging-production-git-branch-model-staging.md) | Staging/production git branch model + staging environment infra | In force | 2026-09-01 |
 | [ADR-038](./adr/ADR-038-admin-ui-component-library.md) | Admin UI component library — adopt PrimeReact (Tailwind mode), opportunistic migration off hand-rolled TailAdmin primitives | In force | 2026-08-26 |
-| [ADR-039](./adr/ADR-039-database-backups.md) | Database backups — app-level, host-agnostic backup/restore mechanism (BAK-1..5) | In force | 2026-09-14 |
+| [ADR-039](./adr/ADR-039-database-backups.md) | Database backups — app-level, host-agnostic backup/restore mechanism (BAK-1..5) | In force | 2026-10-14 |
 | [ADR-040](./adr/ADR-040-gamevion-sandbox-integration.md) | Gamevion sandbox integration — investigation saga, `telp` normalization, `callback_url` fix (2026-07-25 – 2026-08-14) | In force | 2026-08-13 |
 | [ADR-041](./adr/ADR-041-checkout-level-idempotency-key.md) | Checkout-level idempotency key — client-generated key, unique DB constraint, replay/resume branching | In force | 2026-07-29 |
 | [ADR-042](./adr/ADR-042-seo-module-scope-widened.md) | SEO module scope widened — structured data, scripts manager, crawler/robots management, sitemap & overview panels, per-game SEO UX | In force | 2026-10-08 |
@@ -99,7 +99,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-074](./adr/ADR-074-reseller-api-channel.md) | Reseller API channel — per-tenant API keys, order-placement/status endpoints | In force | 2026-10-14 |
 | [ADR-075](./adr/ADR-075-reseller-bot-channel.md) | Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology | In force | 2026-10-14 |
 | [ADR-076](./adr/ADR-076-reseller-bot-v2.md) | Reseller Bot v2 — two-stage order-completion messaging, `.trackorder`/`.checkid`/`.info`, reply styling | In force | 2026-09-14 |
-| [ADR-077](./adr/ADR-077-storefront-read-path.md) | Storefront read-path — Redis cache cutover, eviction policy, invalidation fan-out, propagation freshness | In force |  |
+| [ADR-077](./adr/ADR-077-storefront-read-path.md) | Storefront read-path — Redis cache cutover, eviction policy, invalidation fan-out, propagation freshness | In force | 2026-10-14 |
 | [ADR-078](./adr/ADR-078-custom-domain-storefront-gaps.md) | Custom-domain storefront gaps — dynamic CORS, edge-cache staleness, membership-toggle visibility | In force | 2026-09-08 |
 | [ADR-079](./adr/ADR-079-storefront-conversion-polish.md) | Storefront Conversion & Polish — Real Product Artwork, Dynamic Payment Channels & Official SVG Logos, Denomination-vs-Pass Package Tabs, and Guest Checkout Convenience | In force | 2026-09-08 |
 | [ADR-080](./adr/ADR-080-membership-per-brand.md) | Membership × per-brand — close the `/membership` surface consistently on a membership-disabled brand | In force |  |
@@ -133,13 +133,13 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-108](./adr/ADR-108-orders-list-correctness-need-action-compensation.md) | Orders list correctness (Need Action + compensation-tag decluttering) + toolbar overhaul (Source/Game/date-range/Columns/Export) | In force | 2026-10-09 |
 | [ADR-109](./adr/ADR-109-game-info-modal-card.md) | Game info modal card — customer-facing description/important-notes popup + admin-editable per-game instant-delivery badge | In force | 2026-10-08 |
 | [ADR-110](./adr/ADR-110-chip-integration-hardening.md) | CHIP Integration Hardening — Purchase Status Mapping & Expiry, Settlement Reconciliation (fills ADR-083 PR-2), and Credential Migration | In force | 2026-10-04 |
-| [ADR-111](./adr/ADR-111-real-cost-profit-reconciliation-at-delivery-time.md) | Real-cost profit reconciliation at delivery time — widens ADR-033's FX conversion boundary to a second call site | In force | 2026-09-22 |
+| [ADR-111](./adr/ADR-111-real-cost-profit-reconciliation-at-delivery-time.md) | Real-cost profit reconciliation at delivery time — widens ADR-033's FX conversion boundary to a second call site | In force | 2026-10-14 |
 | [ADR-112](./adr/ADR-112-affiliate-reseller-portal-mobile-first-redesign.md) | Affiliate/Reseller portal mobile-first redesign — role-aware shell, dashboards, and Orders | In force |  |
 | [ADR-113](./adr/ADR-113-affiliate-theme-preset-dark-mode-for-all-4.md) | Affiliate theme-preset dark mode for all 4 affiliate-selectable presets, `storefront/DESIGN.md`, Digital Architect retired from the affiliate picker | In force |  |
 | [ADR-114](./adr/ADR-114-production-infra-split-off-digitalocean-s-shared.md) | Production infra split off DigitalOcean's shared team — droplet + managed MySQL rebuilt into a new DO team (`LWF Group Sdn Bhd`) | In force | 2026-10-14 |
 | [ADR-115](./adr/ADR-115-supplier-balance-comfortable-buffer-forecast.md) | Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold | Parked (designed); builds two weeks after launch, with the low-balance email | 2026-10-14 |
 | [ADR-116](./adr/ADR-116-customer-order-notifications-over-whatsapp.md) | Customer order notifications over WhatsApp (OpenWA), not email — closes audit M-11 | In force | 2026-10-12 |
-| [ADR-117](./adr/ADR-117-prod-db-least-privilege.md) | Prod DB least-privilege — `doadmin` superuser replaced by a dedicated scoped app user | In force |  |
+| [ADR-117](./adr/ADR-117-prod-db-least-privilege.md) | Prod DB least-privilege — `doadmin` superuser replaced by a dedicated scoped app user | In force | 2026-10-14 |
 | [ADR-118](./adr/ADR-118-marketing-campaigns.md) | Marketing Campaigns — multi-use KOL discount codes, separate from `Voucher` | Accepted (design) | 2026-10-02 |
 | [ADR-119](./adr/ADR-119-package-delete-guards.md) | Package delete guards — block a hard-delete that already has order history or is a live combo component | In force |  |
 | [ADR-120](./adr/ADR-120-seo-geo-overhaul.md) | SEO/GEO overhaul — brand-correct meta, per-brand canonical origin, machine-readable catalog | In force |  |
