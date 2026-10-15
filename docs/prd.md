@@ -101,12 +101,12 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 
 | ID | Functional Requirement | Priority |
 | --- | --- | --- |
-| **DASH-1** | System displays KPI cards: Sales Today, Orders Today, Profit Today, Refunds Today with comparison vs yesterday | **MVP** |
-| **DASH-2** | System displays System Health: supplier API status per supplier, supplier balances, stuck orders count, pending payments count, queue depth, **circuit-breaker state per supplier** | **MVP** |
-| **DASH-3** | System displays Conversion Funnel (last 7 days): Orders Created → Payment Confirmed → Delivered with drop-off counts | **MVP** |
-| **DASH-4** | System displays Top Games weekly ranking (order count + revenue + % change) | **MVP** |
-| **DASH-5** | System displays Hourly Activity chart (orders per hour, last 7 days, day selector) | **MVP** |
-| **DASH-6** | Dashboard data refreshes automatically every N seconds/minutes | **Important** |
+| **DASH-1** | One period filter for the page (Today, Last 7 days, Last 30 days, Custom; always opens on Today) drives KPI cards for Sales, Owner profit, Orders and Margin. Each is compared with the previous period up to the same time, with a summary sentence above them. Figures come from `/reports/*` (ADR-104 2026-10-15) | **MVP** |
+| **DASH-2** | Status strip ("N need action" or "All systems OK"): each item links to its screen. System details shows supplier status, balances and drift, OpenWA sessions, scheduled tasks, stuck orders, pending payments, queue, and reseller wallets vs supplier balance | **MVP** |
+| **DASH-3** | Sales trend (daily sales and owner profit; the last 14 days for a period under 7 days) and sales by channel (Own brand / Reseller wallet / External affiliate) | **MVP** |
+| **DASH-4** | Top 5 games by paid sales, each with its change vs the previous period | **MVP** |
+| **DASH-5** | Busy hours: paid orders per hour of day, summed over the period, with the peak window named. Highlights: best day (with an all-time-record mark), top reseller, biggest order | **MVP** |
+| **DASH-6** | The status strip and System details refresh every 60 seconds; period figures refresh on a period change or Refresh | **Important** |
 
 ## 6.3 Admin — Games & Packages Management
 
@@ -629,7 +629,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Area | Status | Key ADRs |
 | --- | --- | --- |
 | Auth & Admin Users (AUTH-1..7) | ✅ Live. Login rate-limited + logged. Admin MFA (AUTH-7) and the cookie-session admin login live since 2026-10-14 (#437) | ADR-019, ADR-121 |
-| Admin Dashboard (DASH-1..6) | ✅ Live — KPIs, System Health, funnel, top games, hourly activity. **Scheduler liveness (ADR-122, §16 item 98):** live 2026-10-15 via #449. Per-task heartbeat (`scheduled_task_heartbeats`); a stale critical task fails `/api/health` (`checks.scheduler`); a "Scheduled tasks" row on System Health | ADR-045, ADR-122 |
+| Admin Dashboard (DASH-1..6) | ✅ Live — KPIs, System Health, funnel, top games, hourly activity. **Redesign (§16 item 102, ADR-104 2026-10-15) built on `staging`, not live:** daily briefing with a period filter, status strip, trend, channels, top games, busy hours, highlights; the funnel and single-day hourly chart are removed. **Scheduler liveness (ADR-122, §16 item 98):** live 2026-10-15 via #449. Per-task heartbeat (`scheduled_task_heartbeats`); a stale critical task fails `/api/health` (`checks.scheduler`); a "Scheduled tasks" row on System Health | ADR-045, ADR-122 |
 | Money core (Pricing, Ledger, Voucher, Order status, idempotency) | ✅ Live — full service layer, concurrency-proven. The most mature part of the codebase | ADR-002 |
 | Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end. PR #273's invite/session and compensation visibility fixes, plus ADR-112's role-aware shell, dashboard recent orders, and responsive Orders presentation, shipped in PRs #273, #275 and #276, released to `main` via #278 (2026-09-24) | ADR-056–061, 078, 112 |
 | Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live — prepaid wallet (admin manual credit + self-serve CHIP top-up, unpayable while payment methods are off, §14), one order-placement contract (`ResellerOrderPlacementService`), `reseller_code`/`catalog_code`, REST API v1.5.0 (keys, IP allowlist, delivery webhook, optional `max_price_sen`, per-account rate limits: orders 60/min and reads 120/min, ADR-074 2026-10-13 addendum, live via #425), WhatsApp Bot (OpenWA), shared role-aware portal (ADR-112), per-game player-input contract (ADR-097), own queue lane (ADR-048). Real customer orders run on this channel. Detail: build-log + ADRs | ADR-072–076, 084, 091, 093, 112, 048, 097 |
@@ -711,9 +711,9 @@ production on 2026-10-15 after release #449. Re-verify before building.
   CI guard. Not live: ships with the next release.
 
 **B. Needs a short grill / ADR addendum first**
-- **102** Dashboard redesign: grilled, stress-tested and mockup approved
-  2026-10-15 (ADR-104 2026-10-15 addenda). PR-0 (#452) merged; the backend
-  PR (#454) is built; the frontend PR is next. Not live.
+- **102** Dashboard redesign: built 2026-10-15. #452 (dead code), #454
+  (backend) and the frontend PR are all on `staging`. Not live; close it
+  once it is released and checked on prod.
 - **103** Customer Analytics `stats()` loads every lifetime customer per call
   (whereIn over all emails). Fine at ~36 orders; fix before or soon after
   launch.

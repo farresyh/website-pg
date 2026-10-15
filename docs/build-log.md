@@ -835,3 +835,36 @@ No live call: a price-list from a local machine shares the production account's 
 - The 71 Report/Dashboard tests also pass on real MySQL, which exercises `HOUR(CONVERT_TZ())` and the aliased `ORDER BY`.
 
 **Not live.** It ships with the frontend PR in the next release.
+
+## 2026-10-15 — Dashboard redesign, frontend PR (item 102)
+
+**Why.** This is the frontend half of the Dashboard redesign. It follows the mockup the founder approved in the design-system artifact (ADR-104 2026-10-15 addenda).
+
+**Shipped (branch `feature/dashboard-frontend`).**
+- **`/admin` rebuilt as a daily briefing.**
+  - The header subtitle is the summary sentence. It is built from data in `lib/dashboard-briefing.ts` and tested.
+  - The period switch offers Today, 7 days, 30 days and Custom, and always opens on Today.
+  - The status strip and its System details panel are both read from `/dashboard/health`, polled every 60s.
+  - KPIs (Sales, Owner profit, Orders, Margin) show compare labels like "vs 14 Oct, to 8:48 PM".
+  - Cards: Sales trend (`TrendChart`), Channels, Top games (with change), Busy hours (peak and quietest 3-hour windows) and Highlights.
+  - Every business figure comes from `/reports/*`.
+- **Shared with Reports.**
+  - A **Today** preset in `date-range.ts`, which Reports and Orders also get.
+  - `previousLabelOf` shows the backend's `until` ("…, to 10:30 AM").
+  - `formatShortRange` prints one date for a one-day range.
+- **Reviews** opens on `?status=pending`, the Dashboard's "reviews pending" link.
+- **Backend.** `/reports/top-games?compare=` (`ReportService::gameComparison`, tested).
+- **Removed.**
+  - The old `/dashboard/summary|funnel|top-games|hourly-activity` endpoints, service methods and tests.
+  - `DashboardKpiCard`, `StatCard`, `ComparisonBadge`, `ConversionFunnelChart` and `HourlyActivityChart`.
+  - `lib/dashboard.ts`'s dead types and fetchers.
+
+**Verified.**
+- Admin: `tsc`, eslint and build are clean, and `npm test` passes 14/14.
+- Backend: the full suite passes 2,811 (down from 2,835 because of the removed old-endpoint tests).
+- In a live browser (built admin + local API, light, dark and 390px):
+  - Today empty: the sentence names the last order, empty cards explain themselves, and Highlights is hidden.
+  - A Custom range with data matches the mockup's layout.
+  - Every text element is ≥ 4.5:1, with no horizontal scroll.
+
+**Not live.** It ships with the next `staging`→`main` release.

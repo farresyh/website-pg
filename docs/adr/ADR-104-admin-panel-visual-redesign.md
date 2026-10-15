@@ -294,3 +294,9 @@ money definition is introduced.
 3. A backend PR, test-first.
 4. A frontend PR that also deletes the B2 leftovers.
 5. Docs: PRD §6.2 DASH-1..6 rewritten.
+
+**Build note, 2026-10-15 — Dashboard frontend PR.** Built as the grill-outcome addendum above says, with these additions found while building:
+- **Top games change.** `/reports/top-games` gains `?compare=`, computed by `ReportService::gameComparison()` through the one `compareWith` seam, because the frontend never computes a change (R13).
+- **Today in the trend.** Today is the last bar of the 14-day trend for short periods. The mockup shaded it; Recharts' `TrendChart` has no band, so the card subtitle says it instead.
+- **"Stuck or needs review".** The System details row keeps `stuck_orders` (which includes NeedsReview) and is labelled that way, so it can't be mistaken for the strip's stale-only *Stuck* item.
+- **Removed.** The four old `/dashboard/*` endpoints, their service methods and tests, and the five dashboard-only components. `DashboardService` no longer depends on `ReportService`.
