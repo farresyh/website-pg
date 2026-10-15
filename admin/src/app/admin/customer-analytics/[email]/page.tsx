@@ -20,6 +20,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Tag } from "@/components/ui/tag";
+import { Button } from "@/components/ui/button";
 import {
   DataTable,
   DataTableTableContainer,
@@ -34,6 +35,7 @@ import {
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { KL_TIMEZONE } from "@/lib/date-range";
 import { type CustomerDetail, type CustomerSegment, getCustomerDetail } from "@/lib/customer-analytics";
 
 const segmentSeverity: Record<CustomerSegment, "warn" | "info" | "secondary" | "success" | undefined> = {
@@ -59,7 +61,7 @@ function formatRm(sen: number): string {
 }
 
 function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString();
+  return new Date(value).toLocaleDateString("en-MY", { timeZone: KL_TIMEZONE });
 }
 
 function pct(part: number, total: number): string {
@@ -74,6 +76,7 @@ export default function CustomerDetailPage() {
   const [detail, setDetail] = useState<CustomerDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [historyPage, setHistoryPage] = useState(1);
 
   useEffect(() => {
     const s = getClientSession();
@@ -90,18 +93,23 @@ export default function CustomerDetailPage() {
   // ("%2540") and the backend correctly 404s on a literal, wrong email.
   const email = decodeURIComponent(params.email);
 
+  // ADR-050 2026-10-15 addendum: the order history is paged; a page flip
+  // reloads the whole detail, and aborts the request it replaces.
   useEffect(() => {
     if (!session) return;
-    getCustomerDetail(email)
+    const controller = new AbortController();
+    getCustomerDetail(email, historyPage, controller.signal)
       .then(setDetail)
       .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
         if (err instanceof ApiError && err.status === 404) {
           setNotFound(true);
           return;
         }
         setError(err instanceof ApiError ? err.message : "Could not load customer detail.");
       });
-  }, [session, email]);
+    return () => controller.abort();
+  }, [session, email, historyPage]);
 
   if (notFound) {
     return (
@@ -337,7 +345,7 @@ export default function CustomerDetailPage() {
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <h3 className="p-5 pb-0 text-sm font-semibold text-gray-800 dark:text-white/90">Order History</h3>
         <div className="max-w-full overflow-x-auto">
-          <DataTable data={detail.order_history} dataKey="order_number">
+          <DataTable data={detail.order_history.data} dataKey="order_number">
             <DataTableTableContainer>
               <DataTableTable>
                 <DataTableTHead>
@@ -354,7 +362,7 @@ export default function CustomerDetailPage() {
                 </DataTableTHead>
                 <DataTableTBody>
                   {({ item }) => {
-                    const row = item as unknown as CustomerDetail["order_history"][number];
+                    const row = item as unknown as CustomerDetail["order_history"]["data"][number];
 
                     return (
                       <DataTableRow
@@ -393,10 +401,25 @@ export default function CustomerDetailPage() {
               </DataTableTable>
             </DataTableTableContainer>
           </DataTable>
-          {detail.order_history.length === 0 && (
+          {detail.order_history.data.length === 0 && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No orders found.</p>
           )}
         </div>
+        {detail.order_history.last_page > 1 && (
+          <div className="flex items-center justify-between gap-3 p-5 text-sm text-gray-500 dark:text-gray-400">
+            <span>
+              Page {detail.order_history.current_page} of {detail.order_history.last_page} ({detail.order_history.total} orders)
+            </span>
+            <div className="flex gap-2">
+              <Button size="small" variant="outlined" disabled={detail.order_history.current_page <= 1} onClick={() => setHistoryPage((p) => p - 1)}>
+                Previous
+              </Button>
+              <Button size="small" variant="outlined" disabled={detail.order_history.current_page >= detail.order_history.last_page} onClick={() => setHistoryPage((p) => p + 1)}>
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
