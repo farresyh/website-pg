@@ -8,6 +8,7 @@ use App\Listeners\Broadcasting\LogFailedBroadcastJob;
 use App\Listeners\Horizon\AlertOnLongQueueWait;
 use App\Listeners\Reseller\DispatchResellerOrderWebhook;
 use App\Listeners\Reseller\SendResellerBotOrderNotification;
+use App\Listeners\Scheduling\RecordScheduledTaskHeartbeat;
 use App\Models\AdminUser;
 use App\Models\AffiliateMembershipTier;
 use App\Models\AffiliateSubscription;
@@ -54,6 +55,8 @@ use Dedoc\Scramble\Scramble;
 use Dedoc\Scramble\Support\Generator\OpenApi;
 use Dedoc\Scramble\Support\Generator\SecurityScheme;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Console\Events\ScheduledTaskFailed;
+use Illuminate\Console\Events\ScheduledTaskFinished;
 use Illuminate\Http\Request;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Event;
@@ -445,6 +448,10 @@ class AppServiceProvider extends ServiceProvider
         BackupRun::observe(BackupRunObserver::class);
         AffiliateSubscription::observe(AffiliateSubscriptionObserver::class);
         AffiliateMembershipTier::observe(AffiliateMembershipTierObserver::class);
+
+        // ADR-122 — per-task scheduler heartbeat, read by /api/health.
+        Event::listen(ScheduledTaskFinished::class, [RecordScheduledTaskHeartbeat::class, 'handleFinished']);
+        Event::listen(ScheduledTaskFailed::class, [RecordScheduledTaskHeartbeat::class, 'handleFailed']);
 
         // ADR-047 2026-09-28 addendum — see LogFailedBroadcastJob's own
         // doc comment for why this exists.

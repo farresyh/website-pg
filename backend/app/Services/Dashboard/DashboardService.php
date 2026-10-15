@@ -14,6 +14,7 @@ use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
+use App\Services\Scheduling\SchedulerLiveness;
 use App\Support\MalaysiaTime;
 use App\Support\PeriodComparison;
 use Carbon\CarbonImmutable;
@@ -44,6 +45,7 @@ final class DashboardService
         private readonly ReportService $reports,
         private readonly OpenWaSessionStatus $openWaSessionStatus,
         private readonly CurrencyRateService $currencyRates,
+        private readonly SchedulerLiveness $schedulerLiveness,
     ) {}
 
     /**
@@ -229,6 +231,11 @@ final class DashboardService
                 'pending' => (int) collect(self::MONITORED_QUEUES)->sum(fn (string $queue) => Queue::size($queue)),
                 'failed' => (int) DB::table('failed_jobs')->whereIn('queue', self::MONITORED_QUEUES)->count(),
                 'definition' => 'Pending = live Redis queue size (waiting + delayed + in-flight); failed = COUNT(*) from failed_jobs. Order lanes only ('.implode(', ', self::MONITORED_QUEUES).') — the delivery-critical FulfillOrderJob/ResendOrderDeliveryJob/CheckSupplierDeliveryJob path. The default/price-sync/backups queues aren\'t part of the money-critical customer-facing path this screen monitors.',
+            ],
+            // ADR-122 — the detail behind /api/health's `scheduler` boolean.
+            'scheduled_tasks' => [
+                'tasks' => $this->schedulerLiveness->tasks(),
+                'definition' => 'One row per scheduled task (scheduled_task_heartbeats). last_ok_at = the scheduler last ran it with exit code 0 (a run skipped by its overlap lock does not count). stale = it missed its due runs: a task that runs more than once a day may miss one, then 30 minutes grace; a daily task may miss none, 60 minutes grace. A stale critical task fails /api/health (UptimeRobot alerts); a stale routine task shows here only. This is whether the task ran, not whether a job it dispatched (backup, price sync) succeeded.',
             ],
         ];
     }

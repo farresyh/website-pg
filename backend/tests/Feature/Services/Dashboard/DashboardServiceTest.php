@@ -18,6 +18,7 @@ use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
+use App\Services\Scheduling\SchedulerLiveness;
 use App\Support\MalaysiaTime;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -40,7 +41,7 @@ class DashboardServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->dashboard = new DashboardService(new ReportService, new OpenWaSessionStatus, new CurrencyRateService);
+        $this->dashboard = new DashboardService(new ReportService, new OpenWaSessionStatus, new CurrencyRateService, new SchedulerLiveness);
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\OpenWa\OpenWaClient;
 use App\Services\OpenWa\OpenWaSessionStatus;
+use App\Services\Scheduling\SchedulerLiveness;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -23,15 +24,19 @@ use Throwable;
  * fulfilled and its own LongWait alert dies with it, so this endpoint
  * (the uptime monitor's target) has to catch it. Only checked when the
  * queue actually runs on Redis — sync/database drivers have no Horizon.
+ *
+ * `scheduler` (ADR-122): cron can stop, or one task can be held off by a
+ * stuck lock, and nothing inside the app can alert on that.
  */
 class HealthController extends Controller
 {
-    public function check(): JsonResponse
+    public function check(SchedulerLiveness $liveness): JsonResponse
     {
         $checks = [
             'database' => $this->checkDatabase(),
             'queue' => $this->checkQueue(),
             'horizon' => config('queue.default') !== 'redis' || $this->checkHorizon(),
+            'scheduler' => $this->checkScheduler($liveness),
         ];
 
         $healthy = ! in_array(false, $checks, true);
@@ -79,6 +84,19 @@ class HealthController extends Controller
     {
         try {
             return app(MasterSupervisorRepository::class)->all() !== [];
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * ADR-122: false when a critical scheduled task missed its due runs.
+     * Task names stay on the admin Dashboard, off this public endpoint.
+     */
+    private function checkScheduler(SchedulerLiveness $liveness): bool
+    {
+        try {
+            return $liveness->criticalTasksHealthy();
         } catch (Throwable) {
             return false;
         }

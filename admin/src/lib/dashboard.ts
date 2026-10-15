@@ -72,6 +72,16 @@ export function formatMyrEquivalent(amount: number | null): string | null {
   return `≈ RM ${amount.toFixed(2)}`;
 }
 
+export interface ScheduledTaskHealth {
+  name: string;
+  tier: "critical" | "routine";
+  stale: boolean;
+  last_ok_at: string | null;
+  last_failed_at: string | null;
+  last_error: string | null;
+  last_runtime_seconds: number | null;
+}
+
 export interface DashboardHealth {
   suppliers: DashboardHealthSupplier[];
   suppliers_definition: string;
@@ -82,6 +92,8 @@ export interface DashboardHealth {
   stuck_orders: { value: number; definition: string };
   pending_payments: { value: number; definition: string };
   queue: { pending: number; failed: number; definition: string };
+  /** ADR-122 — per-task scheduler heartbeat; a stale critical task also fails /api/health. */
+  scheduled_tasks: { tasks: ScheduledTaskHealth[]; definition: string };
   /**
    * 2026-09-28 addendum — treasury/liquidity check: a reseller's wallet
    * top-up credits them immediately, but the CHIP cash behind it only
