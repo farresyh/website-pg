@@ -245,7 +245,7 @@ export default function DeveloperToolsPage() {
                       }`}
                     >
                       <div>{e.label}</div>
-                      <div className="font-mono text-theme-xs text-gray-400 dark:text-gray-500">
+                      <div className="font-mono text-theme-xs text-ink-subtle">
                         SupplierAdapter::{e.method}()
                       </div>
                     </button>

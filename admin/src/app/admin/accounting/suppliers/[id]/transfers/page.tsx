@@ -298,23 +298,23 @@ export default function SupplierFundingHistoryPage() {
                     <tr className={isVoided ? "opacity-60" : undefined}>
                       <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
                         {transfer.transferred_on}
-                        <span className="block text-theme-xs text-gray-400">recorded {formatDate(transfer.created_at)}</span>
+                        <span className="block text-theme-xs text-ink-subtle">recorded {formatDate(transfer.created_at)}</span>
                       </td>
                       <td className="px-4 py-2 text-gray-700 dark:text-gray-300">
                         {sourceChannelLabel[transfer.source_channel] ?? transfer.source_channel}
                         {transfer.paid_by && (
-                          <span className="block text-theme-xs text-gray-400">
+                          <span className="block text-theme-xs text-ink-subtle">
                             {ledger.paid_from_options.find((p) => p.value === transfer.paid_by)?.label ?? transfer.paid_by}
                           </span>
                         )}
                       </td>
                       <td className={`px-4 py-2 text-gray-700 dark:text-gray-300 ${isVoided ? "line-through" : ""}`}>{formatRm(transfer.amount_myr_sent)}</td>
                       <td className="px-4 py-2">
-                        <span className={`font-medium ${isVoided ? "text-gray-400 line-through" : "text-success-600"}`}>
+                        <span className={`font-medium ${isVoided ? "text-ink-subtle line-through" : "text-success-600"}`}>
                           {formatForeign(String(netForeign(transfer)), transfer.currency)}
                         </span>
                         {hasFee && !isVoided && (
-                          <div className="text-theme-xs text-gray-400">
+                          <div className="text-theme-xs text-ink-subtle">
                             gross {formatForeign(transfer.amount_foreign_received, transfer.currency)} − fee {formatForeign(transfer.supplier_fee ?? "0", transfer.currency)}
                           </div>
                         )}
@@ -355,7 +355,7 @@ export default function SupplierFundingHistoryPage() {
 
                     {transfer.adjustments.map((adjustment) => (
                       <tr key={`adj-${adjustment.id}`} className="bg-gray-50/50 dark:bg-white/[0.02]">
-                        <td colSpan={3} className="px-4 py-1.5 pl-8 text-theme-xs text-gray-400">
+                        <td colSpan={3} className="px-4 py-1.5 pl-8 text-theme-xs text-ink-subtle">
                           ↳ {formatDate(adjustment.created_at)}
                         </td>
                         <td colSpan={4} className="px-4 py-1.5 text-theme-xs">
@@ -370,7 +370,7 @@ export default function SupplierFundingHistoryPage() {
 
                     {transfer.corrections.map((correction) => (
                       <tr key={`corr-${correction.id}`} className="bg-gray-50/50 dark:bg-white/[0.02]">
-                        <td colSpan={3} className="px-4 py-1.5 pl-8 text-theme-xs text-gray-400">
+                        <td colSpan={3} className="px-4 py-1.5 pl-8 text-theme-xs text-ink-subtle">
                           ↳ {formatDate(correction.created_at)}
                         </td>
                         <td colSpan={4} className="px-4 py-1.5 text-theme-xs">
@@ -423,7 +423,7 @@ export default function SupplierFundingHistoryPage() {
 
                             {correctionMode === "edit" && (
                               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                <p className="text-theme-xs text-gray-400 sm:col-span-2">
+                                <p className="text-theme-xs text-ink-subtle sm:col-span-2">
                                   Corrects only how this transfer was recorded (date/RM sent/fee/channel/reference/receipt) — never the {transfer.currency} amount credited to the ledger. Only the fields you change are sent.
                                 </p>
                                 <div>
@@ -509,7 +509,7 @@ export default function SupplierFundingHistoryPage() {
               })}
               {ledger.transfers.data.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-gray-400">No transfers recorded yet.</td>
+                  <td colSpan={7} className="px-4 py-6 text-center text-ink-subtle">No transfers recorded yet.</td>
                 </tr>
               )}
             </tbody>

@@ -8,13 +8,33 @@ import { apiFetch, apiDownload } from "@/lib/api-client";
  */
 export type CustomerSegment = "vip" | "frequent" | "dormant" | "new" | "one_time";
 
+export type CustomerSort = "total_spent" | "orders_count" | "last_order_at";
+
+/** ADR-049 2026-10-15 addendum. `from`/`to` are Malaysia dates (YYYY-MM-DD), as on Reports. */
 export interface CustomerAnalyticsFilters {
-  year?: number;
-  month?: number;
+  from?: string;
+  to?: string;
   affiliateId?: number;
   /** ADR-049 addendum — independently combinable with affiliateId, mirrors Reports' own reseller filter. */
   resellerId?: number;
+}
+
+/** The list-only filters: they pick which customers show, never the stat cards. */
+export interface CustomerListQuery extends CustomerAnalyticsFilters {
   segment?: CustomerSegment;
+  search?: string;
+  sort?: CustomerSort;
+  page?: number;
+  perPage?: number;
+}
+
+/** Laravel's paginator shape, as on Orders. */
+export interface Paged<T> {
+  data: T[];
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
 }
 
 export interface CustomerAnalyticsSummary {
@@ -36,9 +56,9 @@ export interface CustomerAnalyticsRow {
   orders_count: number;
   total_spent: number;
   last_order_at: string;
-  /** ADR-049 addendum — set when this customer_email's orders are a wallet Reseller's, not a retail buyer's. */
-  wallet_reseller_id: number | null;
-  reseller_name: string | null;
+  /** "Retail", "Reseller: A" or "Reseller: A + Retail" — every order the customer ever paid for. */
+  source_label: string;
+  has_reseller_orders: boolean;
 }
 
 function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -50,24 +70,27 @@ function buildQuery(params: Record<string, string | number | undefined>): string
   return query ? `?${query}` : "";
 }
 
-function filterQuery(filters: CustomerAnalyticsFilters) {
+function filterQuery(filters: CustomerListQuery) {
   return buildQuery({
-    year: filters.year,
-    month: filters.month,
+    from: filters.from,
+    to: filters.to,
     affiliate_id: filters.affiliateId,
     reseller_id: filters.resellerId,
     segment: filters.segment,
+    search: filters.search,
+    sort: filters.sort,
+    page: filters.page,
+    per_page: filters.perPage,
   });
 }
 
-export function getCustomerAnalyticsSummary(filters: CustomerAnalyticsFilters) {
-  const query = filterQuery(filters);
-  return apiFetch<CustomerAnalyticsSummary>(`/api/customer-analytics/summary${query}`);
+export function getCustomerAnalyticsSummary(filters: CustomerAnalyticsFilters, signal?: AbortSignal) {
+  const { from, to, affiliateId, resellerId } = filters;
+  return apiFetch<CustomerAnalyticsSummary>(`/api/customer-analytics/summary${filterQuery({ from, to, affiliateId, resellerId })}`, { signal });
 }
 
-export function getCustomerAnalyticsCustomers(filters: CustomerAnalyticsFilters) {
-  const query = filterQuery(filters);
-  return apiFetch<{ customers: CustomerAnalyticsRow[] }>(`/api/customer-analytics/customers${query}`);
+export function getCustomerAnalyticsCustomers(query: CustomerListQuery, signal?: AbortSignal) {
+  return apiFetch<Paged<CustomerAnalyticsRow>>(`/api/customer-analytics/customers${filterQuery(query)}`, { signal });
 }
 
 /** ANL-5 (ADR-050) — full drill-down for one customer, always their full lifetime across every affiliate. */
@@ -126,16 +149,18 @@ export interface CustomerDetail {
   top_packages: CustomerTopBreakdownRow[];
   /** ADR-050 addendum — was top_affiliates; renamed since a wallet Reseller order's affiliate is always the primary brand. */
   top_sources: CustomerTopBreakdownRow[];
-  order_history: CustomerOrderHistoryRow[];
+  /** ADR-050 2026-10-15 addendum — paged, 25 per page. */
+  order_history: Paged<CustomerOrderHistoryRow>;
 }
 
-export function getCustomerDetail(email: string) {
-  return apiFetch<CustomerDetail>(`/api/customer-analytics/customers/${encodeURIComponent(email)}`);
+export function getCustomerDetail(email: string, historyPage = 1, signal?: AbortSignal) {
+  const query = historyPage > 1 ? `?history_page=${historyPage}` : "";
+  return apiFetch<CustomerDetail>(`/api/customer-analytics/customers/${encodeURIComponent(email)}${query}`, { signal });
 }
 
 
 /** Auth-gated binary download — same pattern as exportReport(). */
-export async function exportCustomerAnalytics(filters: CustomerAnalyticsFilters): Promise<void> {
+export async function exportCustomerAnalytics(filters: Omit<CustomerListQuery, "page" | "perPage">): Promise<void> {
   const query = filterQuery(filters);
 
   await apiDownload(`/api/customer-analytics/export${query}`, "customer-analytics.csv");

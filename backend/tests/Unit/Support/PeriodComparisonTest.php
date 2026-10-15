@@ -47,6 +47,56 @@ class PeriodComparisonTest extends TestCase
         $this->assertSame(['2026-02-01', '2026-02-28'], $this->klDates($previous));
     }
 
+    /**
+     * ADR-104 2026-10-15 grill Q3: a range that ends after now is compared
+     * with the previous range up to the same elapsed time, so a morning
+     * never looks like a bad day.
+     */
+    public function test_a_range_still_running_is_compared_up_to_the_same_time(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-15 10:30', 'Asia/Kuala_Lumpur'));
+
+        [$start, $end] = PeriodComparison::previousRange(...[...$this->range('2026-10-15', '2026-10-15'), false]);
+
+        $this->assertSame('2026-10-14 00:00', $start->setTimezone('Asia/Kuala_Lumpur')->format('Y-m-d H:i'));
+        $this->assertSame('2026-10-14 10:30', $end->setTimezone('Asia/Kuala_Lumpur')->format('Y-m-d H:i'));
+    }
+
+    public function test_last_7_days_still_running_ends_the_previous_week_at_the_same_time(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-15 18:40', 'Asia/Kuala_Lumpur'));
+
+        [$start, $end] = PeriodComparison::previousRange(...[...$this->range('2026-10-09', '2026-10-15'), false]);
+
+        $this->assertSame('2026-10-02 00:00', $start->setTimezone('Asia/Kuala_Lumpur')->format('Y-m-d H:i'));
+        $this->assertSame('2026-10-08 18:40', $end->setTimezone('Asia/Kuala_Lumpur')->format('Y-m-d H:i'));
+    }
+
+    public function test_month_to_date_still_running_ends_last_month_at_the_same_time(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-08 09:00', 'Asia/Kuala_Lumpur'));
+
+        [$start, $end] = PeriodComparison::previousRange(...[...$this->range('2026-10-01', '2026-10-08'), true]);
+
+        $this->assertSame('2026-09-01 00:00', $start->setTimezone('Asia/Kuala_Lumpur')->format('Y-m-d H:i'));
+        $this->assertSame('2026-09-08 09:00', $end->setTimezone('Asia/Kuala_Lumpur')->format('Y-m-d H:i'));
+    }
+
+    public function test_a_finished_range_is_not_clipped(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-15 10:30', 'Asia/Kuala_Lumpur'));
+
+        $previous = PeriodComparison::previousRange(...[...$this->range('2026-10-02', '2026-10-08'), false]);
+
+        $this->assertSame(['2026-09-25', '2026-10-01'], $this->klDates($previous));
+    }
+
+    protected function tearDown(): void
+    {
+        CarbonImmutable::setTestNow();
+        parent::tearDown();
+    }
+
     public function test_change_is_a_percentage_with_a_direction(): void
     {
         $this->assertSame(['pct' => 50.0, 'direction' => 'up'], PeriodComparison::change(150, 100));

@@ -6,8 +6,8 @@
  * built into storefront/src/components/order/RateOrderModal.tsx).
  */
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   DataTable,
   DataTableTableContainer,
@@ -59,6 +59,15 @@ const STATUS_SEVERITY: Record<ReviewStatus, "warn" | "success" | "danger"> = {
 };
 
 export default function ReviewsPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-ink-muted">Loading…</p>}>
+      <ReviewsPageInner />
+    </Suspense>
+  );
+}
+
+function ReviewsPageInner() {
+  const searchParams = useSearchParams();
   const router = useRouter();
   const session = useClientSession();
 
@@ -69,7 +78,8 @@ export default function ReviewsPage() {
   const [bulkApproving, setBulkApproving] = useState(false);
   const [confirmingBulkApprove, setConfirmingBulkApprove] = useState(false);
 
-  const [status, setStatus] = useState("");
+  // A deep link (?status=pending from the Dashboard) opens on that filter.
+  const [status, setStatus] = useState(() => searchParams.get("status") ?? "");
   const [rating, setRating] = useState("");
   const [gameId, setGameId] = useState("");
   const [withCommentOnly, setWithCommentOnly] = useState(false);
@@ -285,7 +295,7 @@ export default function ReviewsPage() {
                               </Button>
                             </div>
                           ) : (
-                            <span className="text-gray-400">—</span>
+                            <span className="text-ink-subtle">—</span>
                           )}
                         </DataTableCell>
                       </DataTableRow>

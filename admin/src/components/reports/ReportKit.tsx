@@ -11,7 +11,7 @@ import type * as React from "react";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
 import type { CompareMode, PercentChange, PointsChange, ReportFilters } from "@/lib/reports";
-import { formatShortRange } from "./format";
+import { formatClock, formatShortRange } from "./format";
 
 /** What the page hands every tab. */
 export interface ReportTabProps {
@@ -55,9 +55,14 @@ export function Pending({ error, className = "" }: { error: string | null; class
   );
 }
 
-/** "vs 12 Apr – 10 Jul" on a KPI card. */
-export function previousLabelOf(compare: { previous_range: { from: string; to: string } } | null | undefined): string | undefined {
-  return compare ? formatShortRange(compare.previous_range.from, compare.previous_range.to) : undefined;
+/**
+ * "vs 12 Apr – 10 Jul" on a KPI card. A range still running is compared up
+ * to the same time (ADR-104 2026-10-15), and the label says so: "14 Oct, to 10:30 AM".
+ */
+export function previousLabelOf(compare: { previous_range: { from: string; to: string; until?: string | null } } | null | undefined): string | undefined {
+  if (!compare) return undefined;
+  const { from, to, until } = compare.previous_range;
+  return formatShortRange(from, to) + (until ? `, to ${formatClock(until)}` : "");
 }
 
 /** A small pill naming a channel or status, on the artifact's surface/ink pairs. */

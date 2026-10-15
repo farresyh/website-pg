@@ -234,7 +234,7 @@ export default function SuppliersPage() {
                   )}
                   <div>
                     <p className="font-medium text-gray-800 dark:text-white/90">{supplier.name}</p>
-                    <p className="text-theme-xs text-gray-400">{supplier.slug}</p>
+                    <p className="text-theme-xs text-ink-subtle">{supplier.slug}</p>
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1.5">

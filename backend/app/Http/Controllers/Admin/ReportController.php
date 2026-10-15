@@ -52,6 +52,18 @@ class ReportController extends Controller
         return response()->json($this->withCompare($request, 'summary', 'summaryComparison'));
     }
 
+    /** ADR-104 2026-10-15 — Dashboard Busy hours: paid orders per KL hour over the range. */
+    public function busyHours(Request $request): JsonResponse
+    {
+        return response()->json(['hours' => $this->reports->busyHours(...[...$this->rangeFromRequest($request), $this->affiliateId($request)])]);
+    }
+
+    /** ADR-104 2026-10-15 — Dashboard Highlights: best day, top reseller, biggest order. */
+    public function highlights(Request $request): JsonResponse
+    {
+        return response()->json($this->reports->highlights(...[...$this->rangeFromRequest($request), $this->affiliateId($request)]));
+    }
+
     public function trend(Request $request): JsonResponse
     {
         [$from, $toExclusive] = $this->trendRangeFromRequest($request);
@@ -70,14 +82,22 @@ class ReportController extends Controller
         ]);
     }
 
+    /** ADR-104 2026-10-15 — `?compare=` adds each listed game's sales change (Dashboard Top games). */
     public function topGames(Request $request): JsonResponse
     {
+        $request->validate(['compare' => ['nullable', 'in:previous,month_to_date']]);
         [$from, $toExclusive] = $this->rangeFromRequest($request);
-        $limit = (int) $request->query('limit', 5);
+        $affiliateId = $this->affiliateId($request);
+        $games = $this->reports->gameBreakdown($from, $toExclusive, $affiliateId, (int) $request->query('limit', 5));
+        $response = ['games' => $games];
 
-        return response()->json([
-            'games' => $this->reports->gameBreakdown($from, $toExclusive, $this->affiliateId($request), $limit),
-        ]);
+        if ($request->filled('compare')) {
+            $response['compare'] = $this->reports->gameComparison(
+                $games, $from, $toExclusive, $affiliateId, $request->query('compare') === 'month_to_date',
+            );
+        }
+
+        return response()->json($response);
     }
 
     public function gameBreakdown(Request $request): JsonResponse

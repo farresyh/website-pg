@@ -68,7 +68,7 @@ export default function PendingPriceChangeSection({ items, busyId, onApprove, on
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <span className="font-medium text-gray-800 dark:text-white/90">{p.package.name}</span>
                           <br />
-                          <span className="text-theme-xs text-gray-400">{p.package.supplier_package_ref} · {p.package.supplier?.name}</span>
+                          <span className="text-theme-xs text-ink-subtle">{p.package.supplier_package_ref} · {p.package.supplier?.name}</span>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{p.package.game?.name ?? "—"}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.old_cost_price)}</DataTableCell>

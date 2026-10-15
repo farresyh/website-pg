@@ -155,7 +155,7 @@ export default function PaymentSettlementDetailPage() {
             </DataTableTableContainer>
           </DataTable>
           {transactions.data.length === 0 && (
-            <p className="px-5 py-6 text-center text-theme-sm text-gray-400">No transactions recorded for this settlement.</p>
+            <p className="px-5 py-6 text-center text-theme-sm text-ink-subtle">No transactions recorded for this settlement.</p>
           )}
         </div>
       </div>

@@ -291,7 +291,7 @@ export default function VouchersPage() {
                     <li key={m.id} className="text-theme-sm text-gray-700 dark:text-gray-300">
                       <span className="font-medium">{m.source_voucher?.code ?? `voucher #${m.source_voucher_id}`}</span>
                       {" — "}
-                      {m.reason} <span className="text-theme-xs text-gray-400">({formatDate(m.created_at)})</span>
+                      {m.reason} <span className="text-theme-xs text-ink-subtle">({formatDate(m.created_at)})</span>
                     </li>
                   ))}
                 </ul>
@@ -310,7 +310,7 @@ export default function VouchersPage() {
                   {n.status}
                 </Tag>
                 <span className="text-gray-500 dark:text-gray-400">{n.phone ?? "no phone"}</span>
-                <span className="text-theme-xs text-gray-400">
+                <span className="text-theme-xs text-ink-subtle">
                   {n.status === "sent" && n.sent_at ? formatDate(n.sent_at) : (n.error ?? "Waiting to send")}
                 </span>
               </p>
@@ -464,7 +464,7 @@ export default function VouchersPage() {
                             {v.code}
                           </button>
                           {v.order_id && (
-                            <span className="ml-2 text-theme-xs text-gray-400">order #{v.order_id}</span>
+                            <span className="ml-2 text-theme-xs text-ink-subtle">order #{v.order_id}</span>
                           )}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{v.affiliate?.business_name ?? "—"}</DataTableCell>

@@ -139,21 +139,21 @@ function ComboOverrideFields({
             {mode === "markup" && (
               <div className="relative">
                 <Input type="text" value={markup} onChange={(e) => setMarkup(e.target.value)} placeholder="e.g. 15" required />
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink-subtle">%</span>
               </div>
             )}
             {mode === "price" && (
               <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">RM</span>
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-ink-subtle">RM</span>
                 <Input type="text" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g. 399.00" required className="pl-9" />
               </div>
             )}
             {mode === "default" && (
-              <p className="text-theme-xs text-gray-400">Reverts to the literal sum of each component&apos;s own selling price.</p>
+              <p className="text-theme-xs text-ink-subtle">Reverts to the literal sum of each component&apos;s own selling price.</p>
             )}
           </div>
 
-          <p className="text-theme-xs text-gray-400">
+          <p className="text-theme-xs text-ink-subtle">
             Current selling price: <span className="font-medium text-gray-700 dark:text-gray-300">{formatRm(pkg.standard_selling_price)}</span>
           </p>
 

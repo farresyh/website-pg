@@ -79,13 +79,13 @@ export function EntriesTable({ entries, onChanged, onError }: Props) {
                 <tr key={entry.id} className={entry.is_voided ? "opacity-60" : undefined}>
                   <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
                     {entry.transaction_date}
-                    <span className="block text-theme-xs text-gray-400">#{entry.posting_id} · recorded {formatDateTime(entry.created_at)}</span>
+                    <span className="block text-theme-xs text-ink-subtle">#{entry.posting_id} · recorded {formatDateTime(entry.created_at)}</span>
                   </td>
                   <td className="px-4 py-2 text-gray-700 dark:text-gray-300">
                     {entry.type_label}
                     {/* Its two lines net to zero in the same envelope: say which is which. */}
                     {entry.type === "director_paid_expense" && (
-                      <span className="block text-theme-xs text-gray-400">
+                      <span className="block text-theme-xs text-ink-subtle">
                         {entry.amount_sen > 0 === !isReversal ? "loan in from the director" : "expense out"}
                       </span>
                     )}
@@ -97,7 +97,7 @@ export function EntriesTable({ entries, onChanged, onError }: Props) {
                   </td>
                   <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
                     {entry.description}
-                    {details.length > 0 && <span className="block text-theme-xs text-gray-400">{details.join(" · ")}</span>}
+                    {details.length > 0 && <span className="block text-theme-xs text-ink-subtle">{details.join(" · ")}</span>}
                   </td>
                   <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{entry.created_by ?? "—"}</td>
                   <td className="px-4 py-2">
@@ -119,7 +119,7 @@ export function EntriesTable({ entries, onChanged, onError }: Props) {
                           <Input value={voidReason} onChange={(e) => setVoidReason(e.target.value)} placeholder="Reason (required)" className="w-56" />
                           <Button type="button" size="small" severity="danger" onClick={() => handleVoid(entry.posting_id)}>Void entry #{entry.posting_id}</Button>
                         </div>
-                        <span className="block text-theme-xs text-gray-400">Reverses every envelope this entry touched.</span>
+                        <span className="block text-theme-xs text-ink-subtle">Reverses every envelope this entry touched.</span>
                       </div>
                     )}
                   </td>
@@ -128,7 +128,7 @@ export function EntriesTable({ entries, onChanged, onError }: Props) {
             })}
             {entries.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-gray-400">No entries recorded yet.</td>
+                <td colSpan={6} className="px-4 py-6 text-center text-ink-subtle">No entries recorded yet.</td>
               </tr>
             )}
           </tbody>

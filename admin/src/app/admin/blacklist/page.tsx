@@ -185,7 +185,7 @@ export default function BlacklistPage() {
                               Remove
                             </Button>
                           ) : (
-                            <span className="text-gray-400">—</span>
+                            <span className="text-ink-subtle">—</span>
                           )}
                         </DataTableCell>
                       </DataTableRow>

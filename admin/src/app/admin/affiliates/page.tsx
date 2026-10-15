@@ -207,8 +207,8 @@ export default function AffiliatesPage() {
                       <DataTableRow key={r.id}>
                         <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
                           {r.business_name}
-                          {r.is_primary && <span className="ml-2 text-theme-xs text-gray-400">(primary)</span>}
-                          {r.is_owned && !r.is_primary && <span className="ml-2 text-theme-xs text-gray-400">(our brand)</span>}
+                          {r.is_primary && <span className="ml-2 text-theme-xs text-ink-subtle">(primary)</span>}
+                          {r.is_owned && !r.is_primary && <span className="ml-2 text-theme-xs text-ink-subtle">(our brand)</span>}
                           {r.membership_enabled && <span className="ml-2 text-theme-xs text-brand-500">membership</span>}
                           {r.contact_name && <p className="text-theme-xs font-normal text-gray-500 dark:text-gray-400">{r.contact_name}</p>}
                         </DataTableCell>
@@ -219,7 +219,7 @@ export default function AffiliatesPage() {
                               <Tag severity={subSeverity[r.subscription.status]}>{r.subscription.status}</Tag>
                             </span>
                           ) : (
-                            <span className="text-gray-400">walk-in rate</span>
+                            <span className="text-ink-subtle">walk-in rate</span>
                           )}
                         </DataTableCell>
                         <DataTableCell className={TD}>{formatRm(r.earnings_balance_sen)}</DataTableCell>

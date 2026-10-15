@@ -193,7 +193,7 @@ export default function WithdrawalsPage() {
                               </Button>
                             )}
                             {(w.status === "completed" || w.status === "rejected") && (
-                              <span className="text-gray-400">—</span>
+                              <span className="text-ink-subtle">—</span>
                             )}
                           </div>
                         </DataTableCell>

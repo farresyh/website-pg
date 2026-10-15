@@ -150,7 +150,7 @@ export default function MonthlyAccountingSummaryPage() {
                       {line.label}
                       <InfoTooltip definition={line.definition} />
                       {line.key === "reseller_wallet_balance_sen" && fetchedAt && (
-                        <span className="text-theme-xs text-gray-400 dark:text-gray-500">
+                        <span className="text-theme-xs text-ink-subtle">
                           (as of {fetchedAt.toLocaleString("en-MY", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })})
                         </span>
                       )}

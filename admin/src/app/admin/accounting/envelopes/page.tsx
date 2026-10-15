@@ -211,7 +211,7 @@ export default function EnvelopeLedgerPage() {
           </form>
         )}
         {envelopes.some((e) => !e.is_active) && (
-          <button type="button" onClick={() => setShowArchived((v) => !v)} className="text-theme-sm text-gray-400 hover:underline">
+          <button type="button" onClick={() => setShowArchived((v) => !v)} className="text-theme-sm text-ink-subtle hover:underline">
             {showArchived ? "Hide" : "Show"} archived ({envelopes.filter((e) => !e.is_active).length})
           </button>
         )}
@@ -240,11 +240,11 @@ export default function EnvelopeLedgerPage() {
                 <button
                   type="button"
                   onClick={() => { setRenaming(true); setRenameValue(selectedEnvelope.name); }}
-                  className="text-theme-xs text-gray-400 hover:underline"
+                  className="text-theme-xs text-ink-subtle hover:underline"
                 >
                   Rename
                 </button>
-                <button type="button" onClick={() => handleToggleArchive(selectedEnvelope)} className="text-theme-xs text-gray-400 hover:underline">
+                <button type="button" onClick={() => handleToggleArchive(selectedEnvelope)} className="text-theme-xs text-ink-subtle hover:underline">
                   {selectedEnvelope.is_active ? "Archive" : "Reactivate"}
                 </button>
               </span>

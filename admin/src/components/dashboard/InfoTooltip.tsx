@@ -66,7 +66,7 @@ export function InfoTooltip({ definition }: { definition: string }) {
         }}
         onBlur={() => setOpen(false)}
         aria-label="What does this metric mean?"
-        className="flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-gray-400 ring-1 ring-inset ring-gray-300 hover:text-gray-600 dark:text-gray-500 dark:ring-gray-600 dark:hover:text-gray-300"
+        className="flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-ink-subtle ring-1 ring-inset ring-gray-300 hover:text-gray-600 dark:ring-gray-600 dark:hover:text-gray-300"
       >
         i
       </button>

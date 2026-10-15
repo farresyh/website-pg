@@ -10,6 +10,7 @@ use App\Models\PlatformSettings;
 use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Services\CustomerAnalytics\CustomerAnalyticsService;
+use App\Services\CustomerAnalytics\CustomerFilters;
 use App\Services\CustomerAnalytics\CustomerSegment;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
@@ -36,6 +37,12 @@ class CustomerAnalyticsServiceTest extends TestCase
     {
         parent::setUp();
         $this->analytics = new CustomerAnalyticsService;
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function rows(CustomerFilters $filters): array
+    {
+        return $this->analytics->customers($filters, perPage: 100)->items();
     }
 
     private function order(array $overrides = []): Order
@@ -69,7 +76,7 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->assertSame(5100 - 2000, $detail['profit_analysis']['total_revenue']);
         $this->assertSame(2400, $detail['profit_analysis']['supplier_cost']);
         $this->assertSame(600, $detail['profit_analysis']['system_profit']);
-        $this->assertSame(600, collect($detail['order_history'])->firstWhere('id', $order->id)['system_profit']);
+        $this->assertSame(600, collect($detail['order_history']['data'])->firstWhere('id', $order->id)['system_profit']);
     }
 
     public function test_customers_only_counts_paid_non_test_orders(): void
@@ -78,7 +85,7 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->order(['customer_email' => 'b@example.com', 'payment_status' => PaymentStatus::Pending->value, 'paid_at' => null]);
         $this->order(['customer_email' => 'c@example.com', 'is_test' => true]);
 
-        $rows = $this->analytics->customers(null, null, null, null);
+        $rows = $this->rows(new CustomerFilters);
 
         $this->assertCount(1, $rows);
         $this->assertSame('a@example.com', $rows[0]['customer_email']);
@@ -95,7 +102,7 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->order(['customer_email' => 'plain@example.com', 'final_amount' => 1000, 'order_number' => 'KRS-plain-1', 'paid_at' => CarbonImmutable::now()->subDays(45)]);
         $this->order(['customer_email' => 'plain@example.com', 'final_amount' => 1000, 'order_number' => 'KRS-plain-2', 'paid_at' => CarbonImmutable::now()->subDays(44)]);
 
-        $rows = collect($this->analytics->customers(null, null, null, null))->keyBy('customer_email');
+        $rows = collect($this->rows(new CustomerFilters))->keyBy('customer_email');
 
         $this->assertSame(CustomerSegment::Vip->value, $rows['vip@example.com']['segment']);
         $this->assertNull($rows['plain@example.com']['segment']);
@@ -110,7 +117,7 @@ class CustomerAnalyticsServiceTest extends TestCase
             $this->order(['customer_email' => 'not-frequent@example.com', 'order_number' => 'KRS-notfreq-'.$i, 'final_amount' => 100]);
         }
 
-        $rows = collect($this->analytics->customers(null, null, null, null))->keyBy('customer_email');
+        $rows = collect($this->rows(new CustomerFilters))->keyBy('customer_email');
 
         $this->assertSame(CustomerSegment::Frequent->value, $rows['frequent@example.com']['segment']);
         $this->assertNotSame(CustomerSegment::Frequent->value, $rows['not-frequent@example.com']['segment']);
@@ -121,7 +128,7 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->order(['customer_email' => 'dormant@example.com', 'paid_at' => CarbonImmutable::now()->subDays(61)]);
         $this->order(['customer_email' => 'active@example.com', 'paid_at' => CarbonImmutable::now()->subDays(59)]);
 
-        $rows = collect($this->analytics->customers(null, null, null, null))->keyBy('customer_email');
+        $rows = collect($this->rows(new CustomerFilters))->keyBy('customer_email');
 
         $this->assertSame(CustomerSegment::Dormant->value, $rows['dormant@example.com']['segment']);
         $this->assertNotSame(CustomerSegment::Dormant->value, $rows['active@example.com']['segment']);
@@ -135,7 +142,7 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->order(['customer_email' => 'old@example.com', 'order_number' => 'KRS-old-1', 'paid_at' => CarbonImmutable::now()->subDays(31)]);
         $this->order(['customer_email' => 'old@example.com', 'order_number' => 'KRS-old-2', 'paid_at' => CarbonImmutable::now()->subDays(30)]);
 
-        $rows = collect($this->analytics->customers(null, null, null, null))->keyBy('customer_email');
+        $rows = collect($this->rows(new CustomerFilters))->keyBy('customer_email');
 
         $this->assertSame(CustomerSegment::NewCustomer->value, $rows['new@example.com']['segment']);
         $this->assertNull($rows['old@example.com']['segment']);
@@ -147,7 +154,7 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->order(['customer_email' => 'twice@example.com', 'order_number' => 'KRS-twice-1', 'paid_at' => CarbonImmutable::now()->subDays(45)]);
         $this->order(['customer_email' => 'twice@example.com', 'order_number' => 'KRS-twice-2', 'paid_at' => CarbonImmutable::now()->subDays(44)]);
 
-        $rows = collect($this->analytics->customers(null, null, null, null))->keyBy('customer_email');
+        $rows = collect($this->rows(new CustomerFilters))->keyBy('customer_email');
 
         $this->assertSame(CustomerSegment::OneTime->value, $rows['onetime@example.com']['segment']);
         $this->assertNull($rows['twice@example.com']['segment']);
@@ -160,7 +167,7 @@ class CustomerAnalyticsServiceTest extends TestCase
         // Spent enough to be VIP, but last order was 61 days ago (also Dormant).
         $this->order(['customer_email' => 'vip-dormant@example.com', 'final_amount' => 500000, 'paid_at' => CarbonImmutable::now()->subDays(61)]);
 
-        $rows = collect($this->analytics->customers(null, null, null, null))->keyBy('customer_email');
+        $rows = collect($this->rows(new CustomerFilters))->keyBy('customer_email');
 
         $this->assertSame(CustomerSegment::Vip->value, $rows['vip-dormant@example.com']['segment']);
     }
@@ -174,7 +181,7 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->order(['customer_email' => 'vip@example.com', 'order_number' => 'KRS-recent', 'final_amount' => 1000, 'paid_at' => CarbonImmutable::now()->subDays(1)]);
 
         $from = CarbonImmutable::now()->subDays(7);
-        $rows = collect($this->analytics->customers($from, null, null, null))->keyBy('customer_email');
+        $rows = collect($this->rows(new CustomerFilters(from: $from)))->keyBy('customer_email');
 
         // Segment still reflects the full lifetime spend (VIP)...
         $this->assertSame(CustomerSegment::Vip->value, $rows['vip@example.com']['segment']);
@@ -188,7 +195,7 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->order(['customer_email' => 'old-only@example.com', 'paid_at' => CarbonImmutable::now()->subDays(90)]);
 
         $from = CarbonImmutable::now()->subDays(7);
-        $rows = collect($this->analytics->customers($from, null, null, null));
+        $rows = collect($this->rows(new CustomerFilters(from: $from)));
 
         $this->assertCount(0, $rows);
     }
@@ -199,7 +206,7 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->order(['customer_email' => 'vip@example.com', 'final_amount' => 500000]);
         $this->order(['customer_email' => 'other@example.com', 'final_amount' => 100]);
 
-        $rows = $this->analytics->customers(null, null, null, CustomerSegment::Vip);
+        $rows = $this->rows(new CustomerFilters(segment: CustomerSegment::Vip));
 
         $this->assertCount(1, $rows);
         $this->assertSame('vip@example.com', $rows[0]['customer_email']);
@@ -213,7 +220,7 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->order(['customer_email' => 'shared@example.com', 'affiliate_id' => $affiliateA->id, 'final_amount' => 1000]);
         $this->order(['customer_email' => 'shared@example.com', 'affiliate_id' => $affiliateB->id, 'order_number' => 'KRS-r2', 'final_amount' => 2000]);
 
-        $rows = collect($this->analytics->customers(null, null, $affiliateA->id, null))->keyBy('customer_email');
+        $rows = collect($this->rows(new CustomerFilters(affiliateId: $affiliateA->id)))->keyBy('customer_email');
 
         $this->assertCount(1, $rows);
         $this->assertSame(1000, $rows['shared@example.com']['total_spent']);
@@ -233,14 +240,14 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->order(['customer_email' => 'wholesale@example.com', 'wallet_reseller_id' => $reseller->id, 'final_amount' => 1000]);
         $this->order(['customer_email' => 'retail@example.com', 'final_amount' => 2000]);
 
-        $rows = collect($this->analytics->customers(null, null, null, null))->keyBy('customer_email');
+        $rows = collect($this->rows(new CustomerFilters))->keyBy('customer_email');
 
-        $this->assertSame($reseller->id, $rows['wholesale@example.com']['wallet_reseller_id']);
-        $this->assertSame('Wholesale Partner', $rows['wholesale@example.com']['reseller_name']);
-        $this->assertNull($rows['retail@example.com']['wallet_reseller_id']);
-        $this->assertNull($rows['retail@example.com']['reseller_name']);
+        $this->assertTrue($rows['wholesale@example.com']['has_reseller_orders']);
+        $this->assertSame('Reseller: Wholesale Partner', $rows['wholesale@example.com']['source_label']);
+        $this->assertFalse($rows['retail@example.com']['has_reseller_orders']);
+        $this->assertSame('Retail', $rows['retail@example.com']['source_label']);
 
-        $scoped = $this->analytics->customers(null, null, null, null, $reseller->id);
+        $scoped = $this->rows(new CustomerFilters(resellerId: $reseller->id));
 
         $this->assertCount(1, $scoped);
         $this->assertSame('wholesale@example.com', $scoped[0]['customer_email']);
@@ -253,7 +260,7 @@ class CustomerAnalyticsServiceTest extends TestCase
         $reseller = Reseller::query()->create(['business_name' => 'Big Wholesale Partner']);
         $this->order(['customer_email' => 'wholesale@example.com', 'wallet_reseller_id' => $reseller->id, 'final_amount' => 500000]);
 
-        $rows = collect($this->analytics->customers(null, null, null, null))->keyBy('customer_email');
+        $rows = collect($this->rows(new CustomerFilters))->keyBy('customer_email');
 
         $this->assertSame(CustomerSegment::Vip->value, $rows['wholesale@example.com']['segment']);
     }
@@ -270,7 +277,7 @@ class CustomerAnalyticsServiceTest extends TestCase
 
         $detail = $this->analytics->customerDetail('wholesale@example.com');
 
-        $this->assertSame('Reseller: Wholesale Partner', $detail['order_history'][0]['source_name']);
+        $this->assertSame('Reseller: Wholesale Partner', $detail['order_history']['data'][0]['source_name']);
         $this->assertSame('Reseller: Wholesale Partner', $detail['top_sources'][0]['name']);
         $this->assertSame(1000, $detail['top_sources'][0]['total_spent']);
     }
@@ -280,7 +287,7 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->order(['customer_email' => 'big@example.com', 'final_amount' => 5000]);
         $this->order(['customer_email' => 'small@example.com', 'final_amount' => 1000]);
 
-        $stats = $this->analytics->stats(null, null, null);
+        $stats = $this->analytics->stats(new CustomerFilters);
 
         $this->assertSame(2, $stats['total_customers']);
         $this->assertSame(3000, $stats['avg_order_value']);
@@ -294,7 +301,7 @@ class CustomerAnalyticsServiceTest extends TestCase
         $this->order(['customer_email' => 'repeat@example.com', 'order_number' => 'KRS-2', 'final_amount' => 1000]);
         $this->order(['customer_email' => 'single@example.com', 'final_amount' => 1000]);
 
-        $stats = $this->analytics->stats(null, null, null);
+        $stats = $this->analytics->stats(new CustomerFilters);
 
         // 1 of 2 customers (50%) has more than one lifetime order.
         $this->assertSame(50.0, $stats['repeat_rate_pct']);
@@ -394,7 +401,7 @@ class CustomerAnalyticsServiceTest extends TestCase
         ]);
 
         $detail = $this->analytics->customerDetail('history@example.com');
-        $rows = collect($detail['order_history'])->keyBy('order_number');
+        $rows = collect($detail['order_history']['data'])->keyBy('order_number');
 
         $this->assertSame(80, $rows['KRS-delivered']['system_profit']);
         $this->assertSame(10, $rows['KRS-delivered']['affiliate_profit']);
@@ -483,7 +490,7 @@ class CustomerAnalyticsServiceTest extends TestCase
             'final_amount' => 9194,
         ]);
 
-        $rows = collect($this->analytics->customers(null, null, null, null))->keyBy('customer_email');
+        $rows = collect($this->rows(new CustomerFilters))->keyBy('customer_email');
         $this->assertSame(9194, $rows['naeem@example.com']['total_spent']);
         $this->assertSame(2, $rows['naeem@example.com']['orders_count']);
 

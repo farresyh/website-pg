@@ -1,6 +1,6 @@
 # ADR-045: Admin Dashboard — DASH-1..6, `orders.delivered_at`, and a per-metric self-documenting `definition` convention
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-15):** Partly superseded by [ADR-104](./ADR-104-admin-panel-visual-redesign.md)'s 2026-10-15 addenda: the Dashboard's KPIs, funnel, top games and hourly activity (DASH-1, 3, 4, 5) are replaced. DASH-2 system health, its 60s poll and the per-metric `definition` convention stay in force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted, built — 2026-08-27 (grilled via `/mattpocock-skills:grilling` before implementation, four rounds, 27 pinned decisions).
 
@@ -70,4 +70,17 @@ Scope: **all six** DASH-1..6 requirements, built in one pass — founder's expli
 ### 2026-10-11 addendum — InfoTooltip renders in a portal
 
 Decision 25's (i) popover was `absolute` inside its container, so an ancestor with `overflow-hidden` clipped it (Monthly Summary's last rows, founder screenshots). `admin/src/components/dashboard/InfoTooltip.tsx` now renders it in a portal with `position: fixed`, placed from the icon's rect: below the icon, flipped above when the viewport has no room, clamped to the left and right edges, closed on scroll or resize. One component, so every user of it (Dashboard KPI cards, the funnel chart, Monthly Summary) is fixed. Verified live at 1280px light and dark and at 390px.
+
+### 2026-10-15 addendum — the Dashboard's business figures move to Reports
+
+ADR-104's 2026-10-15 addenda redesign the Dashboard as a daily briefing. Its
+sales, profit, trend, channel, game, busy-hour and highlight figures now come
+from `ReportService` through `/reports/*`, so they always equal Reports.
+`/dashboard/summary`, `/funnel`, `/top-games` and `/hourly-activity` are
+removed, along with the decisions here that defined them: today-vs-yesterday
+KPIs, the 7-day cohort funnel, the rolling-week top games, the single-day
+hourly chart and the Vouchers-issued tile.
+
+`/dashboard/health` (DASH-2) stays as decided here. It gains an `attention`
+block for the status strip, built from the same figures as the panel.
 

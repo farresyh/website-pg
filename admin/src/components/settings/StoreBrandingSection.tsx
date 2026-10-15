@@ -87,7 +87,7 @@ function LogoAndFaviconPanel({ branding, onSaved }: { branding: Branding; onSave
               // eslint-disable-next-line @next/next/no-img-element
               <img src={branding.logo_url} alt="" className="h-full w-full object-contain" />
             ) : (
-              <span className="text-theme-xs text-gray-400">None</span>
+              <span className="text-theme-xs text-ink-subtle">None</span>
             )}
           </div>
           <div className="space-y-1.5">
@@ -115,7 +115,7 @@ function LogoAndFaviconPanel({ branding, onSaved }: { branding: Branding; onSave
               // eslint-disable-next-line @next/next/no-img-element
               <img src={branding.favicon_url} alt="" className="h-full w-full object-contain" />
             ) : (
-              <span className="text-theme-xs text-gray-400">None</span>
+              <span className="text-theme-xs text-ink-subtle">None</span>
             )}
           </div>
           <div className="space-y-1.5">

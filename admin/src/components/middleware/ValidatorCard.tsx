@@ -312,7 +312,7 @@ export default function ValidatorCard({
             <button
               onClick={handleDelete}
               disabled={deleting}
-              className="text-error-500 hover:text-error-600 disabled:opacity-50 dark:text-error-400"
+              className="text-danger-ink hover:text-error-600 disabled:opacity-50 dark:text-error-400"
             >
               {deleting ? "…" : "Delete"}
             </button>
@@ -321,7 +321,7 @@ export default function ValidatorCard({
       </div>
 
       {validator.last_test_result && (
-        <p className="mb-3 text-xs text-gray-400">
+        <p className="mb-3 text-xs text-ink-subtle">
           Last tested {validator.last_tested_at ? new Date(validator.last_tested_at).toLocaleString() : ""} —{" "}
           {validator.last_test_result}
         </p>

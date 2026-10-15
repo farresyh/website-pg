@@ -195,7 +195,7 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
             <label className="mt-3 flex items-center gap-2 text-theme-sm text-gray-700 dark:text-gray-300">
               <input type="checkbox" checked={membershipEnabled} onChange={(e) => setMembershipEnabled(e.target.checked)} />
               Enable consumer Membership on this storefront
-              <span className="text-theme-xs text-gray-400">(also needs the global membership switch on)</span>
+              <span className="text-theme-xs text-ink-subtle">(also needs the global membership switch on)</span>
             </label>
           )}
           {isOwned && !membershipEnabled && (

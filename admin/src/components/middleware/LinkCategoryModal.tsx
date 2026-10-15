@@ -149,7 +149,7 @@ function LinkCategoryFields({
         <div>
           <Label htmlFor="extra_field">Checkout input needed</Label>
           <SimpleSelect id="extra_field" value={extraField} onChange={setExtraField} options={EXTRA_FIELD_OPTIONS} />
-          <p className="mt-1 text-theme-xs text-gray-400">
+          <p className="mt-1 text-theme-xs text-ink-subtle">
             What Gamevion needs beyond Player ID for orders in this category — e.g. Mobile Legends needs a Zone ID.
           </p>
         </div>

@@ -184,7 +184,7 @@ function MarkupCell({ pkg, onUpdate }: { pkg: GamePackage; onUpdate: (markupPerc
           onChange={(e) => setValue(e.target.value)}
           className="h-9 w-20 rounded-lg border border-gray-300 px-2 pr-5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
         />
-        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-ink-subtle">%</span>
       </div>
       <Button size="small" disabled={saving} onClick={handleUpdate}>
         {saving ? "…" : "Update"}
@@ -578,7 +578,7 @@ export default function GamesPage() {
                             )}
                             <br />
                             {/* ADR-094: a combo has no supplier of its own (decision 3) — show its component count instead. */}
-                            <span className="text-theme-xs text-gray-400">
+                            <span className="text-theme-xs text-ink-subtle">
                               {pkg.is_combo ? `${pkg.components.length} component(s)` : `Supplier ID: ${pkg.supplier_package_ref}`}
                             </span>
                             {pkg.active_combo_dependents.length > 0 && (

@@ -62,29 +62,6 @@ use Illuminate\Support\Facades\DB;
 final class ReportService
 {
     /**
-     * Resolves RPT-3's year/month filter into a [from, toExclusive) UTC
-     * instant pair ready to feed into paid_at comparisons. Null year
-     * means "no filter" (all-time) — both null.
-     *
-     * Kept alongside `dateRangeFromDates()` below (added 2026-09-11 for
-     * the Reports page's own filter-unification) because
-     * `CustomerAnalyticsController` (ANL-1..4, ADR-049) still uses this
-     * one for its own, unrelated year/month filter — Customer Analytics'
-     * UX wasn't part of that change and stays as it is.
-     */
-    public function dateRangeForYearMonth(?int $year, ?int $month): array
-    {
-        if ($year === null) {
-            return [null, null];
-        }
-
-        $start = CarbonImmutable::create($year, $month ?? 1, 1, 0, 0, 0, MalaysiaTime::TIMEZONE);
-        $end = $month !== null ? $start->addMonth() : $start->addYear();
-
-        return [$start->setTimezone('UTC'), $end->setTimezone('UTC')];
-    }
-
-    /**
      * ADR-086 filter-unification follow-up (2026-09-11) — replaces the
      * Reports page's old separate Year/Month picker with one date-range
      * filter that every tab, including the trend chart, resolves the
@@ -209,6 +186,21 @@ final class ReportService
     }
 
     /**
+     * ADR-104 2026-10-15 — Compare for the Dashboard's Top games: each
+     * listed game's sales against the same game's previous-range sales
+     * (zero when it sold nothing then, so "new"). Keyed by game_id.
+     */
+    public function gameComparison(array $games, ?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId, bool $monthToDate): ?array
+    {
+        $current = array_column($games, 'sales', 'game_id');
+
+        return $this->compareWith($from, $toExclusive, $monthToDate,
+            fn ($prevFrom, $prevTo) => array_intersect_key(array_column($this->gameBreakdown($prevFrom, $prevTo, $affiliateId), 'sales', 'game_id'), $current),
+            fn (array $previous) => $this->changes($current, $previous + array_fill_keys(array_keys($current), 0), array_keys($current)),
+        );
+    }
+
+    /**
      * The one Compare seam (R12–R14): `$fetch` re-runs the tab's own
      * breakdown over the previous range, `$changes` turns current vs
      * previous into `PeriodComparison` results. Null for an unbounded
@@ -225,11 +217,16 @@ final class ReportService
 
         [$prevFrom, $prevTo] = PeriodComparison::previousRange($from, $toExclusive, $monthToDate);
         $previous = $fetch($prevFrom, $prevTo);
+        $prevToKl = $prevTo->setTimezone(MalaysiaTime::TIMEZONE);
+        // ADR-104 2026-10-15 (S2): a range still running ends mid-day, and
+        // the label must say "to 10:30" rather than claim whole days.
+        $clipped = ! $prevToKl->eq($prevToKl->startOfDay());
 
         return [
             'previous_range' => [
                 'from' => $prevFrom->setTimezone(MalaysiaTime::TIMEZONE)->toDateString(),
-                'to' => $prevTo->setTimezone(MalaysiaTime::TIMEZONE)->subDay()->toDateString(),
+                'to' => ($clipped ? $prevToKl : $prevToKl->subDay())->toDateString(),
+                'until' => $clipped ? $prevToKl->format('H:i') : null,
             ],
             'previous' => $previous,
             'changes' => $changes($previous),
@@ -335,6 +332,79 @@ final class ReportService
         }
 
         return $rows;
+    }
+
+    /**
+     * ADR-104 2026-10-15 — Dashboard Busy hours: paid orders per KL hour of
+     * `paid_at`, summed over the range. Same population as every Sales
+     * figure (`scopedOrders()`), one row per hour, zero-filled.
+     *
+     * @return list<array{hour: int, orders_count: int}>
+     */
+    public function busyHours(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
+    {
+        $counts = $this->scopedOrders($from, $toExclusive, $affiliateId)
+            ->selectRaw($this->hourBucketExpr('paid_at').' as report_hour, COUNT(*) as orders_count')
+            ->groupBy('report_hour')
+            ->pluck('orders_count', 'report_hour');
+
+        return array_map(fn (int $hour) => ['hour' => $hour, 'orders_count' => (int) ($counts[$hour] ?? 0)], range(0, 23));
+    }
+
+    /**
+     * ADR-104 2026-10-15 — Dashboard Highlights, each null when it has no
+     * data. `best_day` is also null for a one-day range, where it means
+     * nothing. Money is net sales (`Order::netSalesSql()`), as in Sales.
+     */
+    public function highlights(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
+    {
+        $oneDay = $from !== null && $toExclusive !== null && (int) $from->diffInDays($toExclusive) <= 1;
+        $bestDay = $oneDay ? null : $this->bestDay($from, $toExclusive, $affiliateId);
+
+        if ($bestDay !== null) {
+            $bestDay['is_all_time_record'] = $this->bestDay(null, null, $affiliateId)['date'] === $bestDay['date'];
+        }
+
+        $topReseller = $this->resellerBreakdown($from, $toExclusive, $affiliateId)[0] ?? null;
+
+        $biggest = $this->scopedOrders($from, $toExclusive, $affiliateId)
+            ->with(['game:id,name', 'package:id,name'])
+            ->selectRaw('orders.*, '.Order::netSalesSql().' as net_amount')
+            ->orderByDesc('net_amount')
+            ->orderBy('id')
+            ->first();
+
+        return [
+            'best_day' => $bestDay,
+            'top_reseller' => $topReseller === null ? null : Arr::only($topReseller, ['reseller_id', 'reseller_name', 'sales', 'orders_count']),
+            'biggest_order' => $biggest === null ? null : [
+                'id' => $biggest->id,
+                'order_number' => $biggest->order_number,
+                'amount' => (int) $biggest->net_amount,
+                'game_name' => $biggest->game?->name,
+                'package_name' => $biggest->package?->name,
+            ],
+        ];
+    }
+
+    /**
+     * The KL day with the most net sales; ties go to the earlier day, so a
+     * later day only becomes the all-time record by beating it.
+     * ponytail: the all-time call groups every paid order by day on each
+     * load; cache it per day if that ever gets slow.
+     *
+     * @return array{date: string, sales: int, orders_count: int}|null
+     */
+    private function bestDay(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): ?array
+    {
+        $row = $this->scopedOrders($from, $toExclusive, $affiliateId)
+            ->selectRaw($this->dayBucketExpr('paid_at').' as report_key, SUM('.Order::netSalesSql().') as sales, COUNT(*) as orders_count')
+            ->groupBy('report_key')
+            ->orderByDesc('sales')
+            ->orderBy('report_key')
+            ->first();
+
+        return $row === null ? null : ['date' => (string) $row->report_key, 'sales' => (int) $row->sales, 'orders_count' => (int) $row->orders_count];
     }
 
     /**
@@ -1029,11 +1099,17 @@ final class ReportService
      * don't exist in MySQL. `$column` is a fixed, hardcoded-per-callsite
      * identifier — never user input.
      */
-    private function dayBucketExpr(string $column): string
+    /** The KL hour (0-23) of a UTC timestamp column. */
+    private function hourBucketExpr(string $column): string
     {
         return match (DB::connection()->getDriverName()) {
-            'sqlite' => "date({$column}, '+8 hours')",
-            default => "DATE(CONVERT_TZ({$column}, '+00:00', '+08:00'))",
+            'sqlite' => "CAST(strftime('%H', {$column}, '+8 hours') AS INTEGER)",
+            default => "HOUR(CONVERT_TZ({$column}, '+00:00', '+08:00'))",
         };
+    }
+
+    private function dayBucketExpr(string $column): string
+    {
+        return MalaysiaTime::dateSql($column);
     }
 }

@@ -112,7 +112,7 @@ export default function MiddlewareDashboardPage() {
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Balance: {formatSupplierBalance(s.balance, s.currency)}
                 {formatMyrEquivalent(s.balance_myr_equivalent) && (
-                  <span className="ml-1 text-theme-xs text-gray-400">{formatMyrEquivalent(s.balance_myr_equivalent)}</span>
+                  <span className="ml-1 text-theme-xs text-ink-subtle">{formatMyrEquivalent(s.balance_myr_equivalent)}</span>
                 )}
               </p>
             </div>

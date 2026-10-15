@@ -2,24 +2,25 @@
 
 namespace Tests\Feature\Services\Dashboard;
 
-use App\Models\Game;
+use App\Models\AdminUser;
+use App\Models\BackupRun;
 use App\Models\LedgerEntry;
 use App\Models\Order;
+use App\Models\PaymentMethod;
+use App\Models\Review;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
-use App\Models\Voucher;
+use App\Models\Withdrawal;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Currency\CurrencyRateService;
 use App\Services\Dashboard\DashboardService;
 use App\Services\Ledger\LedgerOwnerType;
-use App\Services\Ledger\LedgerService;
 use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
-use App\Services\Report\ReportService;
 use App\Services\Scheduling\SchedulerLiveness;
-use App\Support\MalaysiaTime;
+use App\Services\Withdrawal\WithdrawalStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -41,7 +42,7 @@ class DashboardServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->dashboard = new DashboardService(new ReportService, new OpenWaSessionStatus, new CurrencyRateService, new SchedulerLiveness);
+        $this->dashboard = new DashboardService(new OpenWaSessionStatus, new CurrencyRateService, new SchedulerLiveness);
     }
 
     /**
@@ -82,110 +83,6 @@ class DashboardServiceTest extends TestCase
     }
 
     // --- summary() / DASH-1 ---------------------------------------------
-
-    public function test_summary_sales_orders_match_report_service_definitions(): void
-    {
-        $order = $this->order(['final_amount' => 5000]);
-        (new LedgerService)->credit('platform', null, $order->platform_profit, 'order_profit', 'order', $order->id);
-
-        $summary = $this->dashboard->summary();
-
-        $this->assertSame(5000, $summary['sales_today']['value']);
-        $this->assertSame(1, $summary['orders_today']['value']);
-        $this->assertSame(100, $summary['profit_today']['value']);
-    }
-
-    public function test_summary_excludes_orders_paid_yesterday(): void
-    {
-        $this->order(['final_amount' => 5000, 'paid_at' => now()->subDay()]);
-
-        $summary = $this->dashboard->summary();
-
-        $this->assertSame(0, $summary['sales_today']['value']);
-    }
-
-    public function test_summary_comparison_is_percentage_change_vs_yesterday(): void
-    {
-        $this->order(['final_amount' => 1000]);
-        $this->order(['final_amount' => 1000, 'paid_at' => now()->subDay()]);
-        $this->order(['final_amount' => 1000, 'paid_at' => now()->subDay()]);
-
-        $summary = $this->dashboard->summary();
-
-        // Today: 1 order, Yesterday: 2 orders -> -50%
-        $this->assertSame(-50.0, -1 * $summary['orders_today']['comparison']['pct'] * ($summary['orders_today']['comparison']['direction'] === 'down' ? 1 : -1));
-        $this->assertSame('down', $summary['orders_today']['comparison']['direction']);
-        $this->assertSame(50.0, $summary['orders_today']['comparison']['pct']);
-    }
-
-    public function test_summary_comparison_is_new_when_yesterday_was_zero(): void
-    {
-        $this->order(['final_amount' => 1000]);
-
-        $summary = $this->dashboard->summary();
-
-        $this->assertNull($summary['sales_today']['comparison']['pct']);
-        $this->assertSame('new', $summary['sales_today']['comparison']['direction']);
-    }
-
-    public function test_summary_comparison_is_flat_when_both_days_are_zero(): void
-    {
-        $summary = $this->dashboard->summary();
-
-        $this->assertSame('flat', $summary['orders_today']['comparison']['direction']);
-    }
-
-    public function test_vouchers_issued_today_counts_only_path_b_order_triggered_vouchers(): void
-    {
-        $order = $this->order();
-
-        Voucher::query()->create([
-            'order_id' => $order->id,
-            'affiliate_id' => $order->affiliate_id,
-            'code' => 'PATHB-'.uniqid(),
-            'customer_email' => 'buyer@example.com',
-            'amount' => 500,
-            'remaining' => 500,
-            'status' => 'active',
-            'reason' => 'Order delivery failed',
-        ]);
-
-        Voucher::query()->create([
-            'order_id' => null,
-            'affiliate_id' => $this->primaryAffiliate()->id,
-            'code' => 'PATHA-'.uniqid(),
-            'customer_email' => 'promo@example.com',
-            'amount' => 2000,
-            'remaining' => 2000,
-            'status' => 'active',
-            'reason' => 'Goodwill promo',
-        ]);
-
-        $summary = $this->dashboard->summary();
-
-        $this->assertSame(1, $summary['vouchers_issued_today']['value']);
-        $this->assertSame(500, $summary['vouchers_issued_today']['amount_sen']);
-    }
-
-    public function test_vouchers_issued_today_excludes_vouchers_on_test_orders(): void
-    {
-        $testOrder = $this->order(['is_test' => true]);
-
-        Voucher::query()->create([
-            'order_id' => $testOrder->id,
-            'affiliate_id' => $testOrder->affiliate_id,
-            'code' => 'TESTVCH-'.uniqid(),
-            'customer_email' => 'buyer@example.com',
-            'amount' => 500,
-            'remaining' => 500,
-            'status' => 'active',
-            'reason' => 'Sandbox test voucher',
-        ]);
-
-        $summary = $this->dashboard->summary();
-
-        $this->assertSame(0, $summary['vouchers_issued_today']['value']);
-    }
 
     // --- health() / DASH-2 -----------------------------------------------
 
@@ -411,131 +308,109 @@ class DashboardServiceTest extends TestCase
 
     // --- funnel() / DASH-3 ------------------------------------------------
 
-    public function test_funnel_is_a_cohort_by_created_at_not_three_independent_windows(): void
-    {
-        // Created today, paid today, delivered.
-        $this->order();
-
-        // Created today, still pending payment (never paid) — counts in
-        // Created, not in Payment Confirmed or Delivered.
-        $this->order(['payment_status' => PaymentStatus::Pending->value, 'paid_at' => null, 'delivery_status' => DeliveryStatus::NotStarted->value]);
-
-        // Created OUTSIDE the 7-day window — must not count at all,
-        // even though it's Paid/Delivered.
-        $outside = $this->order();
-        DB::table('orders')->where('id', $outside->id)->update(['created_at' => now()->subDays(10)]);
-
-        $funnel = $this->dashboard->funnel();
-
-        $this->assertSame(2, $funnel['created']['value']);
-        $this->assertSame(1, $funnel['payment_confirmed']['value']);
-        $this->assertSame(1, $funnel['delivered']['value']);
-    }
-
-    public function test_funnel_delivered_uses_current_status_not_a_delivered_at_window(): void
-    {
-        // Created 6 days ago, delivered just now (delivered_at is recent,
-        // but the order itself is still inside the 7-day creation window).
-        $order = $this->order();
-        DB::table('orders')->where('id', $order->id)->update(['created_at' => now()->subDays(6)]);
-
-        $funnel = $this->dashboard->funnel();
-
-        $this->assertSame(1, $funnel['delivered']['value']);
-    }
-
-    public function test_funnel_excludes_test_orders(): void
-    {
-        $this->order(['is_test' => true]);
-
-        $funnel = $this->dashboard->funnel();
-
-        $this->assertSame(0, $funnel['created']['value']);
-    }
-
     // --- topGames() / DASH-4 -----------------------------------------------
-
-    public function test_top_games_reuses_report_service_game_breakdown(): void
-    {
-        $order = $this->order(['final_amount' => 3000]);
-
-        $topGames = $this->dashboard->topGames(5);
-
-        $this->assertCount(1, $topGames['games']);
-        $this->assertSame($order->game_id, $topGames['games'][0]['game_id']);
-        $this->assertSame(3000, $topGames['games'][0]['sales']);
-    }
-
-    public function test_top_games_comparison_is_new_when_game_had_no_sales_last_week(): void
-    {
-        $this->order(['final_amount' => 3000]);
-
-        $topGames = $this->dashboard->topGames(5);
-
-        $this->assertSame('new', $topGames['games'][0]['comparison']['direction']);
-    }
-
-    public function test_top_games_comparison_vs_prior_seven_day_window(): void
-    {
-        $game = Game::query()->create(['name' => 'Test Game', 'slug' => 'test-game-'.uniqid()]);
-
-        $this->order(['final_amount' => 2000, 'game_id' => $game->id]);
-        $lastWeek = $this->order(['final_amount' => 1000, 'game_id' => $game->id]);
-        DB::table('orders')->where('id', $lastWeek->id)->update([
-            'paid_at' => CarbonImmutable::now()->subDays(10),
-            'created_at' => CarbonImmutable::now()->subDays(10),
-        ]);
-
-        $topGames = $this->dashboard->topGames(5);
-        $row = collect($topGames['games'])->firstWhere('game_id', $game->id);
-
-        $this->assertSame('up', $row['comparison']['direction']);
-        $this->assertSame(100.0, $row['comparison']['pct']);
-    }
 
     // --- hourlyActivity() / DASH-5 ------------------------------------------
 
-    public function test_hourly_activity_groups_by_hour_of_day_in_kl_timezone(): void
+    // --- attention (ADR-104 2026-10-15 grill Q9 / S4) -------------------
+
+    /** @return array<string, array{key: string, level: string, count: int, subject: string|null}> */
+    private function attentionItems(): array
     {
-        $today = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->startOfDay();
-
-        $order = $this->order();
-        DB::table('orders')->where('id', $order->id)->update([
-            'created_at' => $today->addHours(14)->setTimezone('UTC'),
-        ]);
-
-        $activity = $this->dashboard->hourlyActivity($today->toDateString());
-
-        $this->assertCount(24, $activity['hours']);
-        $this->assertSame(1, $activity['hours'][14]['count']);
-        $this->assertSame(0, $activity['hours'][0]['count']);
+        return collect($this->dashboard->health()['attention']['items'])
+            ->keyBy(fn (array $item) => $item['key'].($item['subject'] ? ':'.$item['subject'] : ''))
+            ->all();
     }
 
-    public function test_hourly_activity_counts_created_orders_regardless_of_payment_status(): void
+    public function test_attention_is_empty_when_all_is_well(): void
     {
-        $today = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->startOfDay();
+        $attention = $this->dashboard->health()['attention'];
 
-        $order = $this->order(['payment_status' => PaymentStatus::Failed->value, 'paid_at' => null]);
-        DB::table('orders')->where('id', $order->id)->update([
-            'created_at' => $today->addHours(9)->setTimezone('UTC'),
-        ]);
-
-        $activity = $this->dashboard->hourlyActivity($today->toDateString());
-
-        $this->assertSame(1, $activity['hours'][9]['count']);
+        $this->assertSame([], $attention['items']);
+        $this->assertSame(0, $attention['needs_action_count']);
     }
 
-    public function test_hourly_activity_excludes_test_orders(): void
+    public function test_a_needs_review_order_is_not_counted_again_as_stuck(): void
     {
-        $today = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->startOfDay();
+        $this->order(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $stale = $this->order(['delivery_status' => DeliveryStatus::Processing->value]);
+        DB::table('orders')->where('id', $stale->id)->update(['updated_at' => now()->subDay()]);
 
-        $order = $this->order(['is_test' => true]);
-        DB::table('orders')->where('id', $order->id)->update([
-            'created_at' => $today->addHours(9)->setTimezone('UTC'),
-        ]);
+        $items = $this->attentionItems();
 
-        $activity = $this->dashboard->hourlyActivity($today->toDateString());
+        $this->assertSame(['key' => 'needs_review', 'level' => 'red', 'count' => 1, 'subject' => null], $items['needs_review']);
+        $this->assertSame(1, $items['stuck_orders']['count']);
+        $this->assertSame(2, $this->dashboard->health()['attention']['needs_action_count']);
+    }
 
-        $this->assertSame(0, $activity['hours'][9]['count']);
+    public function test_failed_uncompensated_orders_need_action(): void
+    {
+        $this->order(['delivery_status' => DeliveryStatus::Failed->value]);
+
+        $this->assertSame(['key' => 'needs_action_orders', 'level' => 'red', 'count' => 1, 'subject' => null], $this->attentionItems()['needs_action_orders']);
+    }
+
+    public function test_supplier_low_balance_is_amber_and_names_the_supplier(): void
+    {
+        $this->fakeNoFxRateAvailable();
+        Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz-'.uniqid(), 'currency' => 'IDR', 'balance' => 5000, 'api_config' => ['low_balance_threshold' => 10000]]);
+
+        $this->assertSame(['key' => 'supplier_low_balance', 'level' => 'amber', 'count' => 1, 'subject' => 'Digiflazz'], $this->attentionItems()['supplier_low_balance:Digiflazz']);
+    }
+
+    public function test_withdrawals_to_process_count_pending_and_approved(): void
+    {
+        $admin = AdminUser::factory()->create();
+        foreach ([WithdrawalStatus::Pending, WithdrawalStatus::Approved, WithdrawalStatus::Completed] as $status) {
+            Withdrawal::query()->create(['owner_type' => 'platform', 'amount' => 1000, 'bank_name' => 'Maybank', 'bank_account_no' => '1', 'bank_account_holder' => 'KRS', 'status' => $status, 'requested_by' => $admin->id]);
+        }
+
+        $this->assertSame(2, $this->attentionItems()['withdrawals_to_process']['count']);
+    }
+
+    public function test_payments_off_and_pending_reviews_are_neutral_and_not_counted(): void
+    {
+        PaymentMethod::query()->create(['channel_code' => 'fpx', 'label' => 'FPX', 'category' => 'fpx', 'gateway' => 'chip', 'is_active' => false, 'percentage_rate' => 0.0, 'flat_fee_sen' => 100]);
+        Review::query()->create(['order_id' => $this->order()->id, 'rating' => 5]);
+
+        $items = $this->attentionItems();
+
+        $this->assertSame('neutral', $items['payments_off']['level']);
+        $this->assertSame(['key' => 'reviews_pending', 'level' => 'neutral', 'count' => 1, 'subject' => null], $items['reviews_pending']);
+        $this->assertSame(0, $this->dashboard->health()['attention']['needs_action_count']);
+    }
+
+    public function test_payments_are_not_off_while_one_method_is_active(): void
+    {
+        PaymentMethod::query()->create(['channel_code' => 'fpx', 'label' => 'FPX', 'category' => 'fpx', 'gateway' => 'chip', 'is_active' => true, 'percentage_rate' => 0.0, 'flat_fee_sen' => 100]);
+        PaymentMethod::query()->create(['channel_code' => 'qr', 'label' => 'QR', 'category' => 'fpx', 'gateway' => 'chip', 'is_active' => false, 'percentage_rate' => 0.0, 'flat_fee_sen' => 100]);
+
+        $this->assertArrayNotHasKey('payments_off', $this->attentionItems());
+    }
+
+    public function test_a_disconnected_reseller_bot_is_red_but_no_recent_event_is_not(): void
+    {
+        $this->assertArrayNotHasKey('reseller_bot_disconnected', $this->attentionItems());
+
+        (new OpenWaSessionStatus)->record('disconnected');
+
+        $this->assertSame('red', $this->attentionItems()['reseller_bot_disconnected']['level']);
+    }
+
+    public function test_the_last_backup_failing_is_amber(): void
+    {
+        BackupRun::query()->create(['status' => 'success', 'triggered_by' => 'system']);
+        BackupRun::query()->create(['status' => 'failed', 'triggered_by' => 'system']);
+
+        $this->assertSame('amber', $this->attentionItems()['backup_failed']['level']);
+    }
+
+    public function test_attention_carries_the_last_paid_order_time(): void
+    {
+        $this->assertNull($this->dashboard->health()['attention']['last_paid_at']);
+
+        $this->order(['paid_at' => CarbonImmutable::parse('2026-10-10 10:00', 'UTC')]);
+
+        $this->assertSame('2026-10-10T18:00:00+08:00', $this->dashboard->health()['attention']['last_paid_at']);
     }
 }

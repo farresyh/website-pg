@@ -86,11 +86,11 @@ export default function ComboLegBreakdown({ legs, attempts = [] }: { legs: Order
                       <DataTableCell className="px-3 py-3 text-theme-sm">
                         <span className="font-medium text-ink">{leg.component_package?.name ?? "—"}</span>
                         {leg.component_package?.denomination !== null && leg.component_package?.denomination !== undefined && (
-                          <span className="ml-1 text-theme-xs text-gray-400">({leg.component_package.denomination})</span>
+                          <span className="ml-1 text-theme-xs text-ink-subtle">({leg.component_package.denomination})</span>
                         )}
                         {/* 2026-09-16 addendum: the product SKU actually submitted for this leg — distinct from the "Supplier Ref" column, which is the supplier's own transaction/response id, not the product code. Needed when two components share a denomination across suppliers. */}
                         {leg.component_package?.supplier_package_ref && (
-                          <div className="font-mono text-theme-xs text-gray-400">{leg.component_package.supplier_package_ref}</div>
+                          <div className="font-mono text-theme-xs text-ink-subtle">{leg.component_package.supplier_package_ref}</div>
                         )}
                       </DataTableCell>
                       <DataTableCell className="px-3 py-3 text-theme-sm text-ink-muted">{leg.supplier?.name ?? "—"}</DataTableCell>

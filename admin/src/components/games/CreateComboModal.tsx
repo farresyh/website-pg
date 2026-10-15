@@ -113,7 +113,7 @@ function CreateComboFields({ onClose, onSubmit, packages }: Omit<CreateComboModa
       <div>
         <div className="mb-2 flex items-center justify-between">
           <Label>Components</Label>
-          <span className={`text-theme-xs ${totalLegs > MAX_TOTAL_LEGS ? "text-error-600 dark:text-error-400" : "text-gray-400"}`}>
+          <span className={`text-theme-xs ${totalLegs > MAX_TOTAL_LEGS ? "text-error-600 dark:text-error-400" : "text-ink-subtle"}`}>
             {totalLegs}/{MAX_TOTAL_LEGS} legs
           </span>
         </div>
@@ -161,7 +161,7 @@ function CreateComboFields({ onClose, onSubmit, packages }: Omit<CreateComboModa
           </Button>
         )}
         {eligible.length === 0 && (
-          <p className="mt-2 text-theme-xs text-gray-400">
+          <p className="mt-2 text-theme-xs text-ink-subtle">
             No active, denominated packages on this game yet — promote some via Product Manager first.
           </p>
         )}

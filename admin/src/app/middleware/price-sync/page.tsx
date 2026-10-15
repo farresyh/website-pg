@@ -471,7 +471,7 @@ export default function PriceSyncPage() {
                 <p className="text-sm font-medium text-gray-800 dark:text-white/90">
                   Run #{shown.id} — <Tag severity={runStatusSeverity[shown.status]}>{shown.status}</Tag>
                   {shown.triggered_by && (
-                    <span className="ml-2 text-theme-xs text-gray-400">triggered by {shown.triggered_by}</span>
+                    <span className="ml-2 text-theme-xs text-ink-subtle">triggered by {shown.triggered_by}</span>
                   )}
                 </p>
                 {shown.status === "failed" && shown.error_message && (
@@ -545,7 +545,7 @@ export default function PriceSyncPage() {
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <span className="font-medium text-gray-800 dark:text-white/90">{p.name}</span>
                           <br />
-                          <span className="text-theme-xs text-gray-400">{p.supplier_package_ref} · {p.supplier?.name}</span>
+                          <span className="text-theme-xs text-ink-subtle">{p.supplier_package_ref} · {p.supplier?.name}</span>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{p.game?.name ?? "—"}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.cost_price)}</DataTableCell>
@@ -613,7 +613,7 @@ export default function PriceSyncPage() {
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <span className="font-medium text-gray-800 dark:text-white/90">{p.name}</span>
                           <br />
-                          <span className="text-theme-xs text-gray-400">{p.supplier_package_ref} · {p.supplier?.name}</span>
+                          <span className="text-theme-xs text-ink-subtle">{p.supplier_package_ref} · {p.supplier?.name}</span>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{p.game?.name ?? "—"}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.cost_price)}</DataTableCell>

@@ -219,7 +219,7 @@ function EditGameFields({
                   />
                   <label
                     className={`mt-3 flex items-center gap-2 text-sm ${
-                      validatorProfileId ? "text-gray-700 dark:text-gray-300" : "text-gray-400 dark:text-gray-600"
+                      validatorProfileId ? "text-gray-700 dark:text-gray-300" : "text-ink-subtle"
                     }`}
                   >
                     <input

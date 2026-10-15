@@ -67,12 +67,12 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-042](./adr/ADR-042-seo-module-scope-widened.md) | SEO module scope widened — structured data, scripts manager, crawler/robots management, sitemap & overview panels, per-game SEO UX | In force | 2026-10-08 |
 | [ADR-043](./adr/ADR-043-llms-txt.md) | `llms.txt` — auto-generated AI/LLM-context route | In force | 2026-08-22 |
 | [ADR-044](./adr/ADR-044-zod-runtime-schema-validation-at-the-admin.md) | Zod runtime schema validation at the admin/storefront API boundary | In force |  |
-| [ADR-045](./adr/ADR-045-admin-dashboard.md) | Admin Dashboard — DASH-1..6, `orders.delivered_at`, and a per-metric self-documenting `definition` convention | In force | 2026-10-11 |
+| [ADR-045](./adr/ADR-045-admin-dashboard.md) | Admin Dashboard — DASH-1..6, `orders.delivered_at`, and a per-metric self-documenting `definition` convention | In force; DASH-1, 3, 4, 5 replaced by ADR-104 (2026-10-15) | 2026-10-15 |
 | [ADR-046](./adr/ADR-046-supplier-management-screen.md) | Supplier Management screen — trimmed to config/health (SUPP-1/CRUD/SUPP-5), `Supplier.api_config` becomes the live credential source, per-supplier/per-game bulk deactivation | In force | 2026-09-24 |
 | [ADR-047](./adr/ADR-047-realtime-broadcasting.md) | Realtime broadcasting — Laravel Reverb + Echo, replacing application-level polling | In force | 2026-09-28 |
 | [ADR-048](./adr/ADR-048-queue-driver-migration-to-redis-plus-horizon.md) | Queue driver migration to Redis, plus Horizon + Pulse — reverses ADR-014 decision #1 / ADR-020 decision #3's "queue stays on `database`" | In force | 2026-09-29 |
-| [ADR-049](./adr/ADR-049-customer-analytics-anl-1-4.md) | Customer Analytics (ANL-1..4) — identity as a derived grouping, segmentation rules, and date-range scope | In force | 2026-09-18 |
-| [ADR-050](./adr/ADR-050-customer-detail-drill-down-anl-5.md) | Customer Detail drill-down (ANL-5) — profit-panel scoping, kept consistent with the delivery-gated ledger rule | In force | 2026-09-18 |
+| [ADR-049](./adr/ADR-049-customer-analytics-anl-1-4.md) | Customer Analytics (ANL-1..4) — identity as a derived grouping, segmentation rules, and date-range scope | In force | 2026-10-15 |
+| [ADR-050](./adr/ADR-050-customer-detail-drill-down-anl-5.md) | Customer Detail drill-down (ANL-5) — profit-panel scoping, kept consistent with the delivery-gated ledger rule | In force | 2026-10-15 |
 | [ADR-051](./adr/ADR-051-middleware-request-logs-mid-10-11-mui-9.md) | Middleware Request Logs (MID-10/11, MUI-9) — HTTP-client-event hook, redact-then-queue write path, and split retention | In force | 2026-08-28 |
 | [ADR-052](./adr/ADR-052-middleware-panel-closure-batch.md) | Middleware Panel closure batch — MUI-7 merged into Validators, MUI-1 as a thin `/middleware` landing page, MUI-4 dropped | In force |  |
 | [ADR-053](./adr/ADR-053-reviews-rev-1-5.md) | Reviews (REV-1..5) — guest, order-linked submission via a real-time delivery-status trigger, admin-only moderation | In force; decision 6 (no public reviews) reversed by ADR-082 |  |
@@ -110,7 +110,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-085](./adr/ADR-085-reserved.md) | RESERVED — self-serve reseller signup (candidate, not written) | Reserved number — not written |  |
 | [ADR-086](./adr/ADR-086-reports-restructure.md) | Reports restructure — dimensional rebuild-from-scratch audit + grouped-SQL rewrite | In force; PR-3 closure (no chart library) reversed by ADR-104 | 2026-09-21 |
 | [ADR-087](./adr/ADR-087-admin-reports-llm-assistant.md) | Admin Reports LLM Assistant — Gemini-backed, curated read-only SQL views, additive to the Reports tabs | In force | 2026-10-08 |
-| [ADR-088](./adr/ADR-088-reports.md) | Reports — unified date-range filter (reverses RPT-2's decoupled-trend rule) + export widening | In force |  |
+| [ADR-088](./adr/ADR-088-reports.md) | Reports — unified date-range filter (reverses RPT-2's decoupled-trend rule) + export widening | In force (decision 4 retired by ADR-049 2026-10-15) | 2026-10-15 |
 | [ADR-089](./adr/ADR-089-brand-asset-pipeline.md) | Brand asset pipeline — aspect-preserving logo sizing, a primary-brand admin Logo/Favicon panel, per-brand dynamic favicon | In force |  |
 | [ADR-090](./adr/ADR-090-theme-preset-background-ink-tokens-a-per.md) | Theme preset background/ink tokens + a per-affiliate Site Mode (light/dark), the first slice of ADR-081's pinned dark-mode requirement | In force |  |
 | [ADR-091](./adr/ADR-091-public-reseller-price-list-page.md) | Public Reseller Price List page — a sales/acquisition surface on `is_owned` storefronts, admin-selected tiers | In force | 2026-09-13 |
@@ -126,7 +126,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-101](./adr/ADR-101-security-hardening.md) | Security hardening — external pentest response (SPF/DMARC, CSP, OTP throttle, admin script-injection reversal) | In force | 2026-09-16 |
 | [ADR-102](./adr/ADR-102-order-delivery-failure-guard-unification.md) | Order delivery-failure guard unification + Digiflazz `rc`-classification correction + admin refund-clarity UI | In force; decision 12 reversed by ADR-108 | 2026-10-05 |
 | [ADR-103](./adr/ADR-103-combo-order-per-leg-independence.md) | Combo order per-leg `reference_number` independence | In force | 2026-09-17 |
-| [ADR-104](./adr/ADR-104-admin-panel-visual-redesign.md) | Admin panel visual redesign — retire TailAdmin token layer, adopt "PekanGame Admin" design system | In force | 2026-10-09 |
+| [ADR-104](./adr/ADR-104-admin-panel-visual-redesign.md) | Admin panel visual redesign — retire TailAdmin token layer, adopt "PekanGame Admin" design system | In force; replaces ADR-045 DASH-1, 3, 4, 5 (2026-10-15) | 2026-10-15 |
 | [ADR-105](./adr/ADR-105-order-resend-profit-recompute-correctness.md) | Order resend profit-recompute correctness — reconcile against the order's own frozen snapshot, not the target package's live pricing | In force | 2026-10-06 |
 | [ADR-106](./adr/ADR-106-durable-delivery-attempt-audit-record.md) | Durable delivery-attempt audit record — every fulfillment attempt gets its own immutable row, not just resends | In force | 2026-10-12 |
 | [ADR-107](./adr/ADR-107-combo-order-profit-reconciliation-on-retry.md) | Combo order profit reconciliation on retry + partial-delivery voucher accuracy | In force | 2026-09-17 |

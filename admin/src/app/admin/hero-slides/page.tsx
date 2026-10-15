@@ -145,9 +145,9 @@ export default function HeroSlidesPage() {
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{slide.sort_order}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <span className="font-medium text-gray-800 dark:text-white/90">
-                            {slide.title || <span className="italic text-gray-400">Asset-only banner</span>}
+                            {slide.title || <span className="italic text-ink-subtle">Asset-only banner</span>}
                           </span>
-                          {slide.eyebrow && <p className="text-theme-xs text-gray-400">{slide.eyebrow}</p>}
+                          {slide.eyebrow && <p className="text-theme-xs text-ink-subtle">{slide.eyebrow}</p>}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
                           {slide.starts_at || slide.ends_at ? (

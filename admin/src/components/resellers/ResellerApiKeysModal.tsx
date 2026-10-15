@@ -177,7 +177,7 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
                   <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{key.name}</td>
                   <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
                     {key.last_used_at ? formatDate(key.last_used_at) : "Never"}
-                    {key.last_used_ip && <span className="block text-theme-xs text-gray-400">from {key.last_used_ip}</span>}
+                    {key.last_used_ip && <span className="block text-theme-xs text-ink-subtle">from {key.last_used_ip}</span>}
                   </td>
                   <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
                     {key.revoked_at ? (
@@ -237,7 +237,7 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
             ))}
             {keys !== null && keys.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-gray-400">No API keys yet.</td>
+                <td colSpan={5} className="px-4 py-6 text-center text-ink-subtle">No API keys yet.</td>
               </tr>
             )}
           </tbody>
