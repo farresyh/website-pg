@@ -244,15 +244,6 @@ class ReportServiceTest extends TestCase
         $this->assertSame('Affiliate', $labels['PG-BASIS-affiliate']);
     }
 
-    /** Still used by CustomerAnalyticsController — see ReportService::dateRangeForYearMonth()'s own doc comment. */
-    public function test_date_range_for_year_month_resolves_kl_month_boundaries(): void
-    {
-        [$from, $to] = $this->reports->dateRangeForYearMonth(2026, 8);
-
-        $this->assertSame('2026-07-31T16:00:00+00:00', $from->toIso8601String());
-        $this->assertSame('2026-08-31T16:00:00+00:00', $to->toIso8601String());
-    }
-
     public function test_date_range_from_dates_resolves_kl_calendar_boundaries(): void
     {
         [$from, $to] = $this->reports->dateRangeFromDates('2026-08-01', '2026-08-31');

@@ -70,7 +70,7 @@ class CustomerAnalyticsControllerTest extends TestCase
         $this->order(['customer_email' => 'other@example.com', 'final_amount' => 100]);
 
         $response = $this->getJson('/api/customer-analytics/customers?segment=vip')->assertOk();
-        $customers = $response->json('customers');
+        $customers = $response->json('data');
 
         $this->assertCount(1, $customers);
         $this->assertSame('vip@example.com', $customers[0]['customer_email']);
@@ -86,11 +86,40 @@ class CustomerAnalyticsControllerTest extends TestCase
         $this->order(['customer_email' => 'retail@example.com']);
 
         $response = $this->getJson('/api/customer-analytics/customers?reseller_id='.$reseller->id)->assertOk();
-        $customers = $response->json('customers');
+        $customers = $response->json('data');
 
         $this->assertCount(1, $customers);
         $this->assertSame('wholesale@example.com', $customers[0]['customer_email']);
-        $this->assertSame('Wholesale Partner', $customers[0]['reseller_name']);
+        $this->assertSame('Reseller: Wholesale Partner', $customers[0]['source_label']);
+    }
+
+    /** ADR-049 2026-10-15 addendum decision 4 — Laravel's paginator shape, as on Orders. */
+    public function test_customers_is_paged_and_filtered_by_date_and_search(): void
+    {
+        $this->actingAsAdmin();
+        $this->order(['customer_email' => 'ali@example.com', 'order_number' => 'KRS-a', 'paid_at' => '2026-09-10 03:00:00']);
+        $this->order(['customer_email' => 'mali@example.com', 'order_number' => 'KRS-m', 'paid_at' => '2026-09-10 03:00:00']);
+        $this->order(['customer_email' => 'ali@example.com', 'order_number' => 'KRS-old', 'paid_at' => '2026-08-01 03:00:00']);
+
+        $this->getJson('/api/customer-analytics/customers?from=2026-09-01&to=2026-09-30&search=ali&per_page=25&page=1&sort=orders_count')
+            ->assertOk()
+            ->assertJsonPath('total', 2)
+            ->assertJsonPath('per_page', 25)
+            ->assertJsonPath('current_page', 1)
+            ->assertJsonPath('data.0.customer_email', 'ali@example.com')
+            ->assertJsonPath('data.0.orders_count', 1);
+    }
+
+    /** Decision 10 — a bad filter is rejected, not silently dropped. */
+    public function test_bad_filters_are_a_422(): void
+    {
+        $this->actingAsAdmin();
+
+        foreach (['segment=gold', 'sort=email', 'per_page=1000', 'from=2026-13-01', 'from=2026-09-10&to=2026-09-01', 'search=a'] as $query) {
+            $this->getJson('/api/customer-analytics/customers?'.$query)->assertUnprocessable();
+        }
+        $this->getJson('/api/customer-analytics/summary?segment=gold')->assertUnprocessable();
+        $this->getJson('/api/customer-analytics/export?sort=email')->assertUnprocessable();
     }
 
     public function test_export_streams_csv(): void
@@ -125,7 +154,8 @@ class CustomerAnalyticsControllerTest extends TestCase
             ->assertOk()
             ->assertJsonStructure([
                 'customer_email', 'customer_name', 'customer_phone', 'segment', 'segment_label',
-                'stats', 'profit_analysis', 'monthly_trend', 'top_packages', 'top_sources', 'order_history',
+                'stats', 'profit_analysis', 'monthly_trend', 'top_packages', 'top_sources',
+                'order_history' => ['data', 'total', 'current_page', 'last_page', 'per_page'],
             ])
             ->assertJson(['customer_email' => 'buyer@example.com']);
     }
