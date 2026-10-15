@@ -704,12 +704,16 @@ production on 2026-10-15 after release #449. Re-verify before building.
   status inks (now 7.86:1), 22 light classes moved off shades that never
   existed, plus a CI guard test; `body` gets `text-ink` (uncoloured text was
   browser black in dark mode). Live 2026-10-15 (#449).
-- **101** Admin low-contrast leftovers (seen in the 2026-10-15 sweep, not
-  built): light `gray-400` secondary text and info icons at 2.3–2.6:1 (~70),
-  dark-mode `error-500` Delete buttons at 2.5:1 (23). Needs a design call
-  (ADR-104 decision 7: screens outside the reskin wait for mockups).
+- **101** Admin low-contrast leftovers: light `gray-400` secondary text
+  (2.3:1) and dark `error-500` Delete links (2.5:1). Fixed 2026-10-15 on
+  `fix/admin-low-contrast-leftovers` with the artifact's own `ink-subtle` /
+  `danger-ink` tokens (no layout change, ADR-104 2026-10-15 addendum), plus a
+  CI guard. Not live: ships with the next release.
 
 **B. Needs a short grill / ADR addendum first**
+- **102** Dashboard redesign: brief agreed with the founder 2026-10-15
+  (ADR-104 2026-10-15 addendum). Next: grill, then a Dashboard mockup in the
+  design-system artifact for approval, then build.
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
   the accountant's monthly document list first.
 
@@ -1007,6 +1011,24 @@ production on 2026-10-15 after release #449. Re-verify before building.
     `error-500` (#b42318) "Delete" buttons at 2.5:1 (23). Both are token
     choices on screens outside the ADR-104 reskin (decision 7: those wait
     for the founder's mockups), so this needs a design call, not a patch.
+    **Fixed 2026-10-15 (founder chose the design-system tokens over waiting
+    for mockups; ADR-104 2026-10-15 addendum):**
+    - New token `ink-subtle` (artifact values: light #716b62, dark #9a948a).
+      All 135 base `text-gray-400` classes (66 files) use it; a `dark:text-gray-500/600`
+      partner is dropped so the token's own dark value applies.
+    - The 5 base `text-error-500` classes use `danger-ink` (light unchanged,
+      dark #f59c93); two `dark:text-{error,success}-500` become `-400`.
+    - `color-tokens.test.ts` fails on a base `text-gray-400` / `text-error-500`.
+    - Live browser, 10 pages × light/dark: every changed element ≥ 4.8:1
+      light, ≥ 5.45:1 dark (SEO FAQ Delete 2.5 → 7.86:1 dark).
+
+102. **Dashboard redesign (brief agreed 2026-10-15, design only).** The
+    Dashboard is the one high-traffic admin page still on the pre-ADR-104
+    look (38 TailAdmin-era classes) and its KPIs date from before resellers,
+    wallets, combos and membership. Prod check 2026-10-15: every Dashboard
+    figure matches raw order data; it looks broken only because the last
+    order was 2026-10-10 (payments off since 10-07) and the cards are
+    today-only. The agreed brief is in the ADR-104 2026-10-15 addendum.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-13, `docs/build-log-archive.md`; why in `docs/adr.md`)
 

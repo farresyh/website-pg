@@ -126,7 +126,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-101](./adr/ADR-101-security-hardening.md) | Security hardening — external pentest response (SPF/DMARC, CSP, OTP throttle, admin script-injection reversal) | In force | 2026-09-16 |
 | [ADR-102](./adr/ADR-102-order-delivery-failure-guard-unification.md) | Order delivery-failure guard unification + Digiflazz `rc`-classification correction + admin refund-clarity UI | In force; decision 12 reversed by ADR-108 | 2026-10-05 |
 | [ADR-103](./adr/ADR-103-combo-order-per-leg-independence.md) | Combo order per-leg `reference_number` independence | In force | 2026-09-17 |
-| [ADR-104](./adr/ADR-104-admin-panel-visual-redesign.md) | Admin panel visual redesign — retire TailAdmin token layer, adopt "PekanGame Admin" design system | In force | 2026-10-09 |
+| [ADR-104](./adr/ADR-104-admin-panel-visual-redesign.md) | Admin panel visual redesign — retire TailAdmin token layer, adopt "PekanGame Admin" design system | In force | 2026-10-15 |
 | [ADR-105](./adr/ADR-105-order-resend-profit-recompute-correctness.md) | Order resend profit-recompute correctness — reconcile against the order's own frozen snapshot, not the target package's live pricing | In force | 2026-10-06 |
 | [ADR-106](./adr/ADR-106-durable-delivery-attempt-audit-record.md) | Durable delivery-attempt audit record — every fulfillment attempt gets its own immutable row, not just resends | In force | 2026-10-12 |
 | [ADR-107](./adr/ADR-107-combo-order-profit-reconciliation-on-retry.md) | Combo order profit reconciliation on retry + partial-delivery voucher accuracy | In force | 2026-09-17 |

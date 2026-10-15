@@ -766,3 +766,30 @@ No live call: a price-list from a local machine shares the production account's 
 - New locks are 30 minutes (ADR-122), so this class now clears itself.
 
 **Item 99:** too early to judge (the 09:00 price-list took 7.0s and succeeded). Re-check the `exception` count after a day.
+
+## 2026-10-15 — Item 101: admin low-contrast leftovers fixed with design-system tokens; Dashboard redesign brief agreed
+
+**Why.** The item-100 sweep left two groups under 3:1: light `text-gray-400` secondary text (2.3–2.6:1) and dark-mode `text-error-500` Delete links (2.5:1). The founder pointed out that the "PekanGame Admin" artifact already defines the right colours. So this is a token swap, not a mockup wait (ADR-104 2026-10-15 addendum).
+
+**Shipped (branch `fix/admin-low-contrast-leftovers`).**
+- New token `--color-ink-subtle`, using the artifact's values: light #716b62, dark #9a948a.
+- All 135 base `text-gray-400` classes (66 files) now use `text-ink-subtle`.
+  - Where a `dark:text-gray-500/600` partner sat next to it, that partner was dropped so the token's own dark value applies.
+  - Two non-adjacent stale partners (InfoTooltip, TierCard) were removed by hand after the browser check caught the tooltip "i" at 3.96:1.
+- The Assistant "Thinking…" bubble sits on `gray-800`, so it uses `ink-muted` instead.
+- 5 base `text-error-500` classes now use `text-danger-ink`, which flips in dark. Two `dark:text-{error,success}-500` classes are now `-400` (same dark bug as item 100).
+- `color-tokens.test.ts` now fails on a base `text-gray-400` / `text-error-500`. It was proven red by restoring two old files.
+
+**Verified.**
+- Admin `npm test` 10/10, `tsc`, eslint and build are clean.
+- Local built admin + Playwright, 10 pages × light/dark, `getComputedStyle` on every changed element:
+  - Minimum 4.8:1 light, 5.45:1 dark.
+  - SEO FAQ Delete: 2.5 → 7.86:1 dark.
+  - Screenshots of Affiliates in both themes look right.
+
+**Dashboard check (read-only prod).** The founder suspected the KPI and Hourly data was broken.
+- `DashboardService` outputs match raw `orders` rows exactly: summary 0 today; hourly 3 at 23:00 on 10-05 and 1 at 18:00 on 10-10; funnel 1/1/1; top game PUBG 1 order.
+- Nothing is broken. The last order was 2026-10-10 10:00 UTC; payments have been off since 10-07.
+- The redesign brief is recorded as ADR-104 2026-10-15 addendum and PRD §16 item 102.
+
+**Not live.** It ships with the next release bundle.
