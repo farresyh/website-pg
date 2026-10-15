@@ -115,6 +115,7 @@ final class DigiflazzAdapter implements SupplierAdapter
         private readonly ?string $proxyUrl = null,
         private readonly int $timeoutSeconds = 10,
         private readonly int $connectTimeoutSeconds = 5,
+        private readonly int $priceListTimeoutSeconds = 30,
     ) {}
 
     public function checkBalance(): SupplierResponse
@@ -141,7 +142,12 @@ final class DigiflazzAdapter implements SupplierAdapter
 
     public function listProducts(): SupplierResponse
     {
-        $response = $this->client(callType: 'listProducts')->post('/v1/price-list', [
+        // ADR-069 2026-10-15 addendum (item 99): the full price-list takes
+        // 4.7s median / 8.5s p90 in production, so it gets its own timeout,
+        // and no retry — Digiflazz counts a request we timed out on, so an
+        // instant retry hits rc 83 (price-list rate limit). The next
+        // scheduled sync is the retry.
+        $response = $this->client(callType: 'listProducts', timeoutSeconds: $this->priceListTimeoutSeconds, retry: false)->post('/v1/price-list', [
             'cmd' => 'prepaid',
             'username' => $this->username,
             'sign' => $this->sign('pricelist'),
@@ -200,19 +206,22 @@ final class DigiflazzAdapter implements SupplierAdapter
      * DB row lock — same reasoning as GamevionAdapter::client() for
      * keeping the timeout short.
      */
-    private function client(string $callType = 'unknown', ?int $orderId = null): PendingRequest
+    private function client(string $callType = 'unknown', ?int $orderId = null, ?int $timeoutSeconds = null, bool $retry = true): PendingRequest
     {
         $client = Http::baseUrl($this->baseUrl)
-            ->timeout($this->timeoutSeconds)
+            ->timeout($timeoutSeconds ?? $this->timeoutSeconds)
             ->connectTimeout($this->connectTimeoutSeconds)
-            ->acceptJson()
+            ->acceptJson();
+
+        if ($retry) {
             // ADR-014: same shared retry predicate every adapter uses —
             // connection failures and real 5xx only. `throw: false` means
             // a business `rc` failure never becomes a RequestException the
             // predicate could see, so it is never retried regardless of
             // the HTTP status Digiflazz wraps it in (2xx or 4xx) — the
             // classification happens in submitTransaction()/failureFrom().
-            ->retry([200, 500, 1000], when: TransientFailureRetryPolicy::shouldRetry(), throw: false);
+            $client = $client->retry([200, 500, 1000], when: TransientFailureRetryPolicy::shouldRetry(), throw: false);
+        }
 
         if ($this->proxyUrl !== null) {
             $client = $client->withOptions(['proxy' => $this->proxyUrl]);

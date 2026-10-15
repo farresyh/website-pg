@@ -103,3 +103,18 @@
 - **Q8 — `DashboardService::health()` reads `low_balance_threshold` out of the encrypted `api_config`** (PR-3 changed its `->get([cols])` to `->get()`). The per-supplier decryption cost on the 60s System Health poll is accepted (2 suppliers, ~microseconds); a regression test now asserts the health response's supplier rows are a fixed key whitelist with no `api_config`.
 
 **ADR-069 is fully built (PR-1..3 + the stress-test addendum).** The supplier-deposit / FX-history ledger remains split out as a future ADR (ADR-070 candidate).
+
+### 2026-10-15 addendum — price-list gets its own 30s timeout and no retry (PRD §16 item 99)
+
+**Context.** `SyncSupplierPricesJob` logged Digiflazz `rc 83` ("Anda telah mencapai limitasi pengecekan pricelist") several times a day after the old box was destroyed. Production `supplier_request_logs`, 2026-10-11 to 2026-10-15:
+- Successful `/v1/price-list` calls take 4.7s median, 8.5s p90, and up to 9.999s, which is the cap.
+- 42 of 249 calls hit the shared 10s `DIGIFLAZZ_TIMEOUT_SECONDS`.
+- Every one was retried at once by the ADR-014 retry policy, because a read timeout is a `ConnectionException`. 7 of those retries got `rc 83`: Digiflazz had counted the request we timed out on.
+
+The limit was self-inflicted, not a second caller.
+
+**Decision** (grilled with the founder, 2026-10-15):
+1. **The price-list call gets its own timeout, `DIGIFLAZZ_PRICE_LIST_TIMEOUT_SECONDS` = 30** (about 3.5× p90). Transactions (`createOrder`/`checkStatus`) and `checkBalance` keep the 10s timeout, because a transaction runs inside the order's row lock. Price sync runs on `redis-long` (300s), so a 30s call leaves room.
+2. **The price-list call is not retried.** A retry after a read timeout re-hits the limit. A failed price-list fails that sync run as before; the next scheduled sync (30 min) or a manual "Sync All Prices Now" is the retry. Every other Digiflazz call keeps the ADR-014 retry.
+
+**Consequence to track.** After release, the count of `listProducts` `exception` rows for Digiflazz should drop to near zero, and `rc 83` should stop appearing in `laravel.log`. Re-read the price-list durations if they move toward 30s.
