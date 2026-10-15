@@ -701,15 +701,17 @@ items dropped, listed under Recently closed). Re-verify before building.
 - **98** Scheduler liveness (ADR-122): built 2026-10-15, not live. It ships with
   #442 in the next release; then check that `scheduled_task_heartbeats`
   fills and `/api/health` stays 200.
+- **99** Digiflazz `[83]` price-list rate limit: self-inflicted (10s timeout,
+  then an instant retry). Fixed 2026-10-15 (ADR-069 addendum: own 30s
+  timeout, no retry), not live. Ships with the next release; then check the
+  `exception` count drops.
 - **100** Admin dark mode: `dark:text-error-400` (145 uses) points to an
   undefined token, so error text renders at 1.83:1 (also `success-400`,
   `warning-400`). Define the `-400`
   status tokens in `globals.css` (needs a look at every screen).
 
 **B. Needs a short grill / ADR addendum first**
-- **99** Digiflazz `[83]` pricelist rate limit still hit now and then (8 times
-  since 2026-10-11) although the old box is gone: find which callers share
-  the limit.
+
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
   the accountant's monthly document list first.
 
@@ -785,6 +787,11 @@ items dropped, listed under Recently closed). Re-verify before building.
     destroyed, so another caller shares the limit (price sync every 30 min,
     the daily balance refresh, Product Manager sync, Developer Tools?). Each
     failure is a recorded `PriceSyncRun`; the next run usually succeeds.
+    **Root cause found 2026-10-15:** no second caller. The price-list takes
+    4.7s median / 8.5s p90; 42 of 249 calls hit the shared 10s timeout and were
+    retried at once, and 7 retries got rc 83 because Digiflazz had counted the
+    timed-out request. Fixed (ADR-069 2026-10-15 addendum): price-list gets
+    its own 30s timeout and no retry.
 100. **Admin dark-mode error colour (found 2026-10-15, item 98 browser check).**
     `globals.css` defines `--color-error-500/600` but no `-400`, so the 145
     `dark:text-error-400` classes do nothing and dark mode shows `error-600`
