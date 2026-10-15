@@ -266,6 +266,8 @@ export default function AdminDashboardPage() {
                     )}
                   </li>
                 ))}
+                {/* ADR-122 — scheduler liveness; the names behind /api/health's `scheduler` boolean. */}
+                <ScheduledTasksRow scheduled={health.scheduled_tasks} />
               </ul>
               <div className="flex items-center gap-1.5 pb-1">
                 <span className="text-theme-xs text-gray-400 dark:text-gray-500">Supplier status/balance</span>
@@ -371,5 +373,37 @@ export default function AdminDashboardPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function ScheduledTasksRow({ scheduled }: { scheduled: DashboardHealth["scheduled_tasks"] }) {
+  const stale = scheduled.tasks.filter((t) => t.stale);
+  const criticalStale = stale.filter((t) => t.tier === "critical").length;
+
+  return (
+    <li className="text-theme-sm">
+      <span className="flex items-center gap-2 font-medium text-gray-700 dark:text-gray-200">
+        Scheduled tasks
+        {criticalStale > 0 ? (
+          <Tag severity="danger">{criticalStale} critical stale</Tag>
+        ) : stale.length > 0 ? (
+          <Tag severity="warn">{stale.length} stale</Tag>
+        ) : (
+          <Tag severity="success">running</Tag>
+        )}
+        <InfoTooltip definition={scheduled.definition} />
+      </span>
+      {stale.length > 0 && (
+        <ul className="mt-1 space-y-0.5 pl-1 text-theme-xs text-gray-500 dark:text-gray-400">
+          {stale.map((t) => (
+            <li key={t.name} title={t.last_error ?? undefined}>
+              {t.name} ({t.tier}) — last OK{" "}
+              {t.last_ok_at ? new Date(t.last_ok_at).toLocaleString("en-MY", { dateStyle: "short", timeStyle: "short" }) : "never"}
+              {t.last_error && <span className="text-error-600 dark:text-red-400"> · {t.last_error.slice(0, 80)}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
