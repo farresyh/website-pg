@@ -81,6 +81,8 @@ return [
         'customer_no_separator' => env('DIGIFLAZZ_CUSTOMER_NO_SEPARATOR', '|'),
         'timeout' => (int) env('DIGIFLAZZ_TIMEOUT_SECONDS', 10),
         'connect_timeout' => (int) env('DIGIFLAZZ_CONNECT_TIMEOUT_SECONDS', 5),
+        // ADR-069 2026-10-15 addendum (item 99): the full price-list only.
+        'price_list_timeout' => (int) env('DIGIFLAZZ_PRICE_LIST_TIMEOUT_SECONDS', 30),
         // ADR-069 decision 3 — the inbound-webhook IP allowlist, a
         // config-driven second gate behind the HMAC signature (which is
         // the primary auth). Digiflazz's API-setup docs name
