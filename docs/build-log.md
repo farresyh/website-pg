@@ -1000,3 +1000,26 @@ call still answers 401. The `ready` path is checked on prod after release.
 No live call: a price-list from a local machine shares the production account's rate limit.
 
 **Not live.** It ships with the next release bundle. Afterwards, watch the Digiflazz `listProducts` `exception` count and `rc 83` in `laravel.log`.
+
+## 2026-10-15 — Item 100: admin status colours had no tokens; aliased to the ADR-104 inks, plus a CI guard
+
+**Found.** In the item 98 browser check, dark-mode error text measured 1.83:1.
+- `globals.css` defines `error/success/warning` 50, 500 and 600 only, so the ~190 `dark:text-*-400` classes produced no rule: Tailwind v4 silently drops a utility whose token is missing. Dark mode kept the light `-600`.
+- A scan of every colour class found 22 more, in light mode, naming shades that don't exist: `text-error-700/800`, `text-success-700`, `text-warning-700`, `border-warning-300`. Those rendered in the inherited colour.
+
+**Shipped (branch `fix/admin-status-color-tokens`).**
+- `-400` aliases to the ADR-104 `*-ink` tokens, in `@theme static` next to the chart aliases (`.dark` sits on `<html>`, so each alias follows its ink's dark value).
+- The 22 light classes now use existing shades.
+- A dead `hover:text-dark-900` is removed.
+- `color-tokens.test.ts` is the guard: red without the `globals.css` change (it listed the three `-400` tokens), green with it. The first version also flagged `primary-*`/`surface-*`; those come from `tailwindcss-primeui`, so the test reads that plugin's `theme/colors.css` instead of hardcoding exceptions.
+
+**Verified.**
+- Admin `npm test` 9/9, `tsc`, eslint and build are clean.
+- Local browser with `getComputedStyle`:
+  - Dark resolves error #f59c93, success #7fd6a0, warning #f0bd6a.
+  - Light is unchanged (the 600s).
+  - Dashboard "(12 failed)" and the Balance page's failed line measure 7.86:1 dark (was 1.83) and 8.96:1 light.
+
+**Seen, not fixed (asked the founder).** Two headings with no colour class, the Dashboard `h1` and the login `h1`, show near-black on the dark canvas, because `body` sets `bg-canvas` but no text colour.
+
+**Not live.** It ships with the next release bundle.

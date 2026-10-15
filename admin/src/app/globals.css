@@ -170,6 +170,16 @@
   --color-chart-grid: var(--color-border);
   --color-chart-positive: var(--color-success-ink);
   --color-chart-negative: var(--color-danger-ink);
+
+  /*
+   * PRD §16 item 100: `dark:text-{error,success,warning}-400` (~190 uses)
+   * had no token, so Tailwind dropped the rule and dark mode kept the
+   * light 600 (1.83:1 on gray-900). Aliased to the artifact's status inks,
+   * which carry their own `.dark` values. Only used under `dark:`.
+   */
+  --color-error-400: var(--color-danger-ink);
+  --color-success-400: var(--color-success-ink);
+  --color-warning-400: var(--color-warning-ink);
 }
 
 @theme {

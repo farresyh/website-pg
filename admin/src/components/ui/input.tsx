@@ -15,7 +15,7 @@ const inputVariants = cva(
         },
         compoundVariants: [
             { disabled: true, className: 'text-gray-500 border-gray-300 cursor-not-allowed dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700' },
-            { disabled: false, error: true, className: 'text-error-800 border-error-500 focus:ring-error-500/10 dark:text-error-400 dark:border-error-500' },
+            { disabled: false, error: true, className: 'text-error-600 border-error-500 focus:ring-error-500/10 dark:text-error-400 dark:border-error-500' },
             { disabled: false, error: false, className: 'bg-transparent text-gray-800 border-gray-300 focus:border-brand-300 focus:ring-brand-500/10 dark:border-gray-700' }
         ],
         defaultVariants: { disabled: false, error: false }
