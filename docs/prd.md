@@ -597,12 +597,15 @@ addendum), and the admin status-colour tokens plus `body` `text-ink` (#447,
 #448). The same day #441 shipped item 97's main fix and #438 (changing your
 own admin password no longer logs you out).
 
-**Waiting on `staging`, not live (2026-10-15):** #450–#455. These carry item
-101 (admin low-contrast tokens), the admin dead-code sweep, and the Dashboard
-redesign (item 102: daily briefing, status strip, busy hours, highlights). The
-same release changes Reports' Compare: a range ending today is compared up to
-the same time. It also adds a Today date preset. Release `staging`→`main` when
-the founder asks.
+**Waiting on `staging`, not live (2026-10-15):** #450–#460. These carry item
+101 (admin low-contrast tokens), the admin dead-code sweep, the Dashboard
+redesign (item 102: daily briefing, status strip, busy hours, highlights) and
+Customer Analytics at scale (item 103, #458 + #459: server-paged list, search,
+Reports date presets, mixed Source label). The same release changes Reports'
+Compare: a range ending today is compared up to the same time. It also adds a
+Today date preset. Item 103 changes the `/customer-analytics/customers` API
+shape, so its backend and admin halves ship in the same release. Release
+`staging`→`main` when the founder asks.
 
 **Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
 hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,

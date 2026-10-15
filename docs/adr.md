@@ -110,7 +110,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-085](./adr/ADR-085-reserved.md) | RESERVED — self-serve reseller signup (candidate, not written) | Reserved number — not written |  |
 | [ADR-086](./adr/ADR-086-reports-restructure.md) | Reports restructure — dimensional rebuild-from-scratch audit + grouped-SQL rewrite | In force; PR-3 closure (no chart library) reversed by ADR-104 | 2026-09-21 |
 | [ADR-087](./adr/ADR-087-admin-reports-llm-assistant.md) | Admin Reports LLM Assistant — Gemini-backed, curated read-only SQL views, additive to the Reports tabs | In force | 2026-10-08 |
-| [ADR-088](./adr/ADR-088-reports.md) | Reports — unified date-range filter (reverses RPT-2's decoupled-trend rule) + export widening | In force |  |
+| [ADR-088](./adr/ADR-088-reports.md) | Reports — unified date-range filter (reverses RPT-2's decoupled-trend rule) + export widening | In force (decision 4 retired by ADR-049 2026-10-15) | 2026-10-15 |
 | [ADR-089](./adr/ADR-089-brand-asset-pipeline.md) | Brand asset pipeline — aspect-preserving logo sizing, a primary-brand admin Logo/Favicon panel, per-brand dynamic favicon | In force |  |
 | [ADR-090](./adr/ADR-090-theme-preset-background-ink-tokens-a-per.md) | Theme preset background/ink tokens + a per-affiliate Site Mode (light/dark), the first slice of ADR-081's pinned dark-mode requirement | In force |  |
 | [ADR-091](./adr/ADR-091-public-reseller-price-list-page.md) | Public Reseller Price List page — a sales/acquisition surface on `is_owned` storefronts, admin-selected tiers | In force | 2026-09-13 |
