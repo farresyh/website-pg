@@ -10,14 +10,20 @@
  * figures (and the CSV export), never the segment tag itself. This page
  * only renders what the backend returns.
  *
+ * ADR-049 2026-10-15 addendum (item 103): the list is paged, sorted and
+ * searched on the server; the date filter is the shared preset range
+ * (lib/date-range.ts, as on Reports). A filter change aborts the request
+ * it replaces, so an older answer never overwrites a newer one.
+ *
  * ADR-038: new screen, PrimeReact-Tailwind only (Button/Select/Tag/
  * DataTable), no old TailAdmin primitives.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Tag } from "@/components/ui/tag";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectTrigger,
@@ -42,14 +48,18 @@ import {
 } from "@/components/ui/datatable";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { DATE_RANGE_PRESETS, type DateRangePreset, KL_TIMEZONE, resolveDateRange } from "@/lib/date-range";
 import { ApiError } from "@/lib/api-client";
 import { type ReportAffiliate, listReportAffiliates } from "@/lib/reports";
 import { type ResellerRow, listResellers } from "@/lib/resellers";
 import {
-  type CustomerAnalyticsFilters,
   type CustomerAnalyticsRow,
   type CustomerAnalyticsSummary,
+  type CustomerListQuery,
   type CustomerSegment,
+  type CustomerSort,
+  type Paged,
   getCustomerAnalyticsSummary,
   getCustomerAnalyticsCustomers,
   exportCustomerAnalytics,
@@ -57,18 +67,14 @@ import {
 
 const AFFILIATE_ALL = "all";
 const RESELLER_ALL = "all";
-const YEAR_ALL = "all";
 const SEGMENT_ALL = "all";
 
-const currentYear = new Date().getFullYear();
-const yearOptions = [YEAR_ALL, ...Array.from({ length: 5 }, (_, i) => String(currentYear - i))];
-const monthOptions = [YEAR_ALL, ...Array.from({ length: 12 }, (_, i) => String(i + 1))];
-const monthLabels: Record<string, string> = {
-  all: "All months",
-  "1": "January", "2": "February", "3": "March", "4": "April",
-  "5": "May", "6": "June", "7": "July", "8": "August",
-  "9": "September", "10": "October", "11": "November", "12": "December",
-};
+const sortOptions: { label: string; value: CustomerSort }[] = [
+  { label: "Total spent", value: "total_spent" },
+  { label: "Orders", value: "orders_count" },
+  { label: "Last order", value: "last_order_at" },
+];
+const perPageOptions = [25, 50, 100].map((n) => ({ label: `${n} per page`, value: String(n) }));
 
 const segmentOptions: { label: string; value: string }[] = [
   { label: "All Segments", value: SEGMENT_ALL },
@@ -92,7 +98,11 @@ function formatRm(sen: number): string {
 }
 
 function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString();
+  return new Date(value).toLocaleDateString("en-MY", { timeZone: KL_TIMEZONE });
+}
+
+function isAbort(err: unknown): boolean {
+  return err instanceof DOMException && err.name === "AbortError";
 }
 
 export default function CustomerAnalyticsPage() {
@@ -103,12 +113,19 @@ export default function CustomerAnalyticsPage() {
   const [affiliateId, setAffiliateId] = useState<string>(AFFILIATE_ALL);
   const [resellers, setResellers] = useState<ResellerRow[]>([]);
   const [resellerId, setResellerId] = useState<string>(RESELLER_ALL);
-  const [year, setYear] = useState<string>(YEAR_ALL);
-  const [month, setMonth] = useState<string>(YEAR_ALL);
+  const [rangePreset, setRangePreset] = useState<DateRangePreset>("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [segment, setSegment] = useState<string>(SEGMENT_ALL);
-  const [summary, setSummary] = useState<CustomerAnalyticsSummary | null>(null);
-  const [rows, setRows] = useState<CustomerAnalyticsRow[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState("");
+  const [sort, setSort] = useState<CustomerSort>("total_spent");
+  const [perPage, setPerPage] = useState(25);
+  const [pageNumber, setPageNumber] = useState(1);
+  // Each answer remembers the request it belongs to; anything else on screen is "loading".
+  const [summaryResult, setSummaryResult] = useState<{ key: string; data: CustomerAnalyticsSummary } | null>(null);
+  const [pageResult, setPageResult] = useState<{ key: string; data: Paged<CustomerAnalyticsRow> } | null>(null);
+  const [loadError, setLoadError] = useState<{ key: string; message: string } | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
@@ -120,13 +137,34 @@ export default function CustomerAnalyticsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filters: CustomerAnalyticsFilters = {
-    year: year === YEAR_ALL ? undefined : Number(year),
-    month: year === YEAR_ALL || month === YEAR_ALL ? undefined : Number(month),
+  const { from, to } = resolveDateRange(rangePreset, useDebouncedValue(customFrom), useDebouncedValue(customTo));
+  const search = useDebouncedValue(searchInput.trim());
+  const statFilters = {
+    from,
+    to,
     affiliateId: affiliateId === AFFILIATE_ALL ? undefined : Number(affiliateId),
     resellerId: resellerId === RESELLER_ALL ? undefined : Number(resellerId),
-    segment: segment === SEGMENT_ALL ? undefined : (segment as CustomerSegment),
   };
+  const listFilters: CustomerListQuery = {
+    ...statFilters,
+    segment: segment === SEGMENT_ALL ? undefined : (segment as CustomerSegment),
+    // The API needs at least 2 characters; one is treated as no search.
+    search: search.length >= 2 ? search : undefined,
+    sort,
+  };
+  const statKey = JSON.stringify(statFilters);
+  const requestKey = JSON.stringify({ ...listFilters, pageNumber, perPage });
+  const summary = summaryResult?.key === statKey ? summaryResult.data : null;
+  const page = pageResult?.key === requestKey ? pageResult.data : null;
+  const error = exportError ?? (loadError && [statKey, requestKey].includes(loadError.key) ? loadError.message : null);
+
+  /** A filter change always goes back to page 1. */
+  function onFilter<T>(set: (value: T) => void) {
+    return (value: T) => {
+      set(value);
+      setPageNumber(1);
+    };
+  }
 
   useEffect(() => {
     if (!session) return;
@@ -134,29 +172,38 @@ export default function CustomerAnalyticsPage() {
     listResellers().then((res) => setResellers(res.resellers)).catch(() => undefined);
   }, [session]);
 
-  const refresh = useCallback((f: CustomerAnalyticsFilters) => {
-    getCustomerAnalyticsSummary(f)
-      .then(setSummary)
-      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load stats."));
-    getCustomerAnalyticsCustomers(f)
-      .then((res) => setRows(res.customers))
-      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load customers."));
-  }, []);
+  useEffect(() => {
+    if (!session) return;
+    const controller = new AbortController();
+    getCustomerAnalyticsSummary(statFilters, controller.signal)
+      .then((data) => setSummaryResult({ key: statKey, data }))
+      .catch((err: unknown) => {
+        if (!isAbort(err)) setLoadError({ key: statKey, message: err instanceof ApiError ? err.message : "Could not load stats." });
+      });
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, statKey]);
 
   useEffect(() => {
     if (!session) return;
-    refresh(filters);
+    const controller = new AbortController();
+    getCustomerAnalyticsCustomers({ ...listFilters, page: pageNumber, perPage }, controller.signal)
+      .then((data) => setPageResult({ key: requestKey, data }))
+      .catch((err: unknown) => {
+        if (!isAbort(err)) setLoadError({ key: requestKey, message: err instanceof ApiError ? err.message : "Could not load customers." });
+      });
+    return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, year, month, affiliateId, resellerId, segment]);
+  }, [session, requestKey]);
 
   async function handleExport() {
     if (!session) return;
     setExporting(true);
-    setError(null);
+    setExportError(null);
     try {
-      await exportCustomerAnalytics(filters);
+      await exportCustomerAnalytics(listFilters);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not export customers.");
+      setExportError(err instanceof ApiError ? err.message : "Could not export customers.");
     } finally {
       setExporting(false);
     }
@@ -229,31 +276,32 @@ export default function CustomerAnalyticsPage() {
 
       {/* ANL-4: filters */}
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <FilterSelect label="Affiliate" value={affiliateId} onChange={setAffiliateId} options={affiliateOptions} />
-        <FilterSelect label="Reseller" value={resellerId} onChange={setResellerId} options={resellerOptions} />
-        <FilterSelect label="Segment" value={segment} onChange={setSegment} options={segmentOptions} />
-        <FilterSelect
-          label="Year"
-          value={year}
-          onChange={(v) => {
-            setYear(v);
-            if (v === YEAR_ALL) setMonth(YEAR_ALL);
-          }}
-          options={yearOptions.map((y) => ({ label: y === YEAR_ALL ? "All time" : y, value: y }))}
-        />
-        <FilterSelect
-          label="Month"
-          value={month}
-          onChange={setMonth}
-          disabled={year === YEAR_ALL}
-          options={monthOptions.map((m) => ({ label: monthLabels[m], value: m }))}
+        <FilterSelect label="Date" value={rangePreset} onChange={onFilter((v: string) => setRangePreset(v as DateRangePreset))} options={DATE_RANGE_PRESETS} />
+        {rangePreset === "custom" && (
+          <div className="flex items-center gap-2">
+            <Input type="date" aria-label="From" value={customFrom} onChange={(e) => onFilter(setCustomFrom)(e.target.value)} className="w-[9.5rem]" />
+            <span className="text-theme-xs text-gray-500 dark:text-gray-400">to</span>
+            <Input type="date" aria-label="To" value={customTo} onChange={(e) => onFilter(setCustomTo)(e.target.value)} className="w-[9.5rem]" />
+          </div>
+        )}
+        <FilterSelect label="Affiliate" value={affiliateId} onChange={onFilter(setAffiliateId)} options={affiliateOptions} />
+        <FilterSelect label="Reseller" value={resellerId} onChange={onFilter(setResellerId)} options={resellerOptions} />
+        <FilterSelect label="Segment" value={segment} onChange={onFilter(setSegment)} options={segmentOptions} />
+        <FilterSelect label="Sort" value={sort} onChange={onFilter((v: string) => setSort(v as CustomerSort))} options={sortOptions} />
+        <Input
+          type="search"
+          aria-label="Search email"
+          placeholder="Search email"
+          value={searchInput}
+          onChange={(e) => onFilter(setSearchInput)(e.target.value)}
+          className="w-[14rem]"
         />
       </div>
 
       {/* ANL-3: customer table */}
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <DataTable data={rows ?? []} dataKey="customer_email">
+          <DataTable data={page?.data ?? []} dataKey="customer_email">
             <DataTableTableContainer>
               <DataTableTable>
                 <DataTableTHead>
@@ -284,10 +332,10 @@ export default function CustomerAnalyticsPage() {
                           {row.customer_name ?? "—"}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          {row.reseller_name ? (
-                            <Tag severity="info">{`Reseller: ${row.reseller_name}`}</Tag>
+                          {row.has_reseller_orders ? (
+                            <Tag severity="info">{row.source_label}</Tag>
                           ) : (
-                            <span className="text-gray-500 dark:text-gray-400">Retail</span>
+                            <span className="text-gray-500 dark:text-gray-400">{row.source_label}</span>
                           )}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
@@ -309,14 +357,31 @@ export default function CustomerAnalyticsPage() {
               </DataTableTable>
             </DataTableTableContainer>
           </DataTable>
-          {rows?.length === 0 && (
+          {page?.data.length === 0 && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No customers found.</p>
           )}
-          {rows === null && !error && (
+          {page === null && !error && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
           )}
         </div>
       </div>
+
+      {page && page.total > 0 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-gray-500 dark:text-gray-400">
+          <span>
+            Page {page.current_page} of {page.last_page} ({page.total} customers)
+          </span>
+          <div className="flex items-center gap-2">
+            <FilterSelect label="Show" value={String(perPage)} onChange={onFilter((v: string) => setPerPage(Number(v)))} options={perPageOptions} />
+            <Button size="small" variant="outlined" disabled={page.current_page <= 1} onClick={() => setPageNumber((p) => p - 1)}>
+              Previous
+            </Button>
+            <Button size="small" variant="outlined" disabled={page.current_page >= page.last_page} onClick={() => setPageNumber((p) => p + 1)}>
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
