@@ -209,6 +209,21 @@ final class ReportService
     }
 
     /**
+     * ADR-104 2026-10-15 — Compare for the Dashboard's Top games: each
+     * listed game's sales against the same game's previous-range sales
+     * (zero when it sold nothing then, so "new"). Keyed by game_id.
+     */
+    public function gameComparison(array $games, ?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId, bool $monthToDate): ?array
+    {
+        $current = array_column($games, 'sales', 'game_id');
+
+        return $this->compareWith($from, $toExclusive, $monthToDate,
+            fn ($prevFrom, $prevTo) => array_intersect_key(array_column($this->gameBreakdown($prevFrom, $prevTo, $affiliateId), 'sales', 'game_id'), $current),
+            fn (array $previous) => $this->changes($current, $previous + array_fill_keys(array_keys($current), 0), array_keys($current)),
+        );
+    }
+
+    /**
      * The one Compare seam (R12–R14): `$fetch` re-runs the tab's own
      * breakdown over the previous range, `$changes` turns current vs
      * previous into `PeriodComparison` results. Null for an unbounded

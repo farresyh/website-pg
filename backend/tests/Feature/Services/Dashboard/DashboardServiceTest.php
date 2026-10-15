@@ -4,28 +4,23 @@ namespace Tests\Feature\Services\Dashboard;
 
 use App\Models\AdminUser;
 use App\Models\BackupRun;
-use App\Models\Game;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\PaymentMethod;
 use App\Models\Review;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
-use App\Models\Voucher;
 use App\Models\Withdrawal;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Currency\CurrencyRateService;
 use App\Services\Dashboard\DashboardService;
 use App\Services\Ledger\LedgerOwnerType;
-use App\Services\Ledger\LedgerService;
 use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
-use App\Services\Report\ReportService;
 use App\Services\Scheduling\SchedulerLiveness;
 use App\Services\Withdrawal\WithdrawalStatus;
-use App\Support\MalaysiaTime;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -47,7 +42,7 @@ class DashboardServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->dashboard = new DashboardService(new ReportService, new OpenWaSessionStatus, new CurrencyRateService, new SchedulerLiveness);
+        $this->dashboard = new DashboardService(new OpenWaSessionStatus, new CurrencyRateService, new SchedulerLiveness);
     }
 
     /**
@@ -88,110 +83,6 @@ class DashboardServiceTest extends TestCase
     }
 
     // --- summary() / DASH-1 ---------------------------------------------
-
-    public function test_summary_sales_orders_match_report_service_definitions(): void
-    {
-        $order = $this->order(['final_amount' => 5000]);
-        (new LedgerService)->credit('platform', null, $order->platform_profit, 'order_profit', 'order', $order->id);
-
-        $summary = $this->dashboard->summary();
-
-        $this->assertSame(5000, $summary['sales_today']['value']);
-        $this->assertSame(1, $summary['orders_today']['value']);
-        $this->assertSame(100, $summary['profit_today']['value']);
-    }
-
-    public function test_summary_excludes_orders_paid_yesterday(): void
-    {
-        $this->order(['final_amount' => 5000, 'paid_at' => now()->subDay()]);
-
-        $summary = $this->dashboard->summary();
-
-        $this->assertSame(0, $summary['sales_today']['value']);
-    }
-
-    public function test_summary_comparison_is_percentage_change_vs_yesterday(): void
-    {
-        $this->order(['final_amount' => 1000]);
-        $this->order(['final_amount' => 1000, 'paid_at' => now()->subDay()]);
-        $this->order(['final_amount' => 1000, 'paid_at' => now()->subDay()]);
-
-        $summary = $this->dashboard->summary();
-
-        // Today: 1 order, Yesterday: 2 orders -> -50%
-        $this->assertSame(-50.0, -1 * $summary['orders_today']['comparison']['pct'] * ($summary['orders_today']['comparison']['direction'] === 'down' ? 1 : -1));
-        $this->assertSame('down', $summary['orders_today']['comparison']['direction']);
-        $this->assertSame(50.0, $summary['orders_today']['comparison']['pct']);
-    }
-
-    public function test_summary_comparison_is_new_when_yesterday_was_zero(): void
-    {
-        $this->order(['final_amount' => 1000]);
-
-        $summary = $this->dashboard->summary();
-
-        $this->assertNull($summary['sales_today']['comparison']['pct']);
-        $this->assertSame('new', $summary['sales_today']['comparison']['direction']);
-    }
-
-    public function test_summary_comparison_is_flat_when_both_days_are_zero(): void
-    {
-        $summary = $this->dashboard->summary();
-
-        $this->assertSame('flat', $summary['orders_today']['comparison']['direction']);
-    }
-
-    public function test_vouchers_issued_today_counts_only_path_b_order_triggered_vouchers(): void
-    {
-        $order = $this->order();
-
-        Voucher::query()->create([
-            'order_id' => $order->id,
-            'affiliate_id' => $order->affiliate_id,
-            'code' => 'PATHB-'.uniqid(),
-            'customer_email' => 'buyer@example.com',
-            'amount' => 500,
-            'remaining' => 500,
-            'status' => 'active',
-            'reason' => 'Order delivery failed',
-        ]);
-
-        Voucher::query()->create([
-            'order_id' => null,
-            'affiliate_id' => $this->primaryAffiliate()->id,
-            'code' => 'PATHA-'.uniqid(),
-            'customer_email' => 'promo@example.com',
-            'amount' => 2000,
-            'remaining' => 2000,
-            'status' => 'active',
-            'reason' => 'Goodwill promo',
-        ]);
-
-        $summary = $this->dashboard->summary();
-
-        $this->assertSame(1, $summary['vouchers_issued_today']['value']);
-        $this->assertSame(500, $summary['vouchers_issued_today']['amount_sen']);
-    }
-
-    public function test_vouchers_issued_today_excludes_vouchers_on_test_orders(): void
-    {
-        $testOrder = $this->order(['is_test' => true]);
-
-        Voucher::query()->create([
-            'order_id' => $testOrder->id,
-            'affiliate_id' => $testOrder->affiliate_id,
-            'code' => 'TESTVCH-'.uniqid(),
-            'customer_email' => 'buyer@example.com',
-            'amount' => 500,
-            'remaining' => 500,
-            'status' => 'active',
-            'reason' => 'Sandbox test voucher',
-        ]);
-
-        $summary = $this->dashboard->summary();
-
-        $this->assertSame(0, $summary['vouchers_issued_today']['value']);
-    }
 
     // --- health() / DASH-2 -----------------------------------------------
 
@@ -417,133 +308,9 @@ class DashboardServiceTest extends TestCase
 
     // --- funnel() / DASH-3 ------------------------------------------------
 
-    public function test_funnel_is_a_cohort_by_created_at_not_three_independent_windows(): void
-    {
-        // Created today, paid today, delivered.
-        $this->order();
-
-        // Created today, still pending payment (never paid) — counts in
-        // Created, not in Payment Confirmed or Delivered.
-        $this->order(['payment_status' => PaymentStatus::Pending->value, 'paid_at' => null, 'delivery_status' => DeliveryStatus::NotStarted->value]);
-
-        // Created OUTSIDE the 7-day window — must not count at all,
-        // even though it's Paid/Delivered.
-        $outside = $this->order();
-        DB::table('orders')->where('id', $outside->id)->update(['created_at' => now()->subDays(10)]);
-
-        $funnel = $this->dashboard->funnel();
-
-        $this->assertSame(2, $funnel['created']['value']);
-        $this->assertSame(1, $funnel['payment_confirmed']['value']);
-        $this->assertSame(1, $funnel['delivered']['value']);
-    }
-
-    public function test_funnel_delivered_uses_current_status_not_a_delivered_at_window(): void
-    {
-        // Created 6 days ago, delivered just now (delivered_at is recent,
-        // but the order itself is still inside the 7-day creation window).
-        $order = $this->order();
-        DB::table('orders')->where('id', $order->id)->update(['created_at' => now()->subDays(6)]);
-
-        $funnel = $this->dashboard->funnel();
-
-        $this->assertSame(1, $funnel['delivered']['value']);
-    }
-
-    public function test_funnel_excludes_test_orders(): void
-    {
-        $this->order(['is_test' => true]);
-
-        $funnel = $this->dashboard->funnel();
-
-        $this->assertSame(0, $funnel['created']['value']);
-    }
-
     // --- topGames() / DASH-4 -----------------------------------------------
 
-    public function test_top_games_reuses_report_service_game_breakdown(): void
-    {
-        $order = $this->order(['final_amount' => 3000]);
-
-        $topGames = $this->dashboard->topGames(5);
-
-        $this->assertCount(1, $topGames['games']);
-        $this->assertSame($order->game_id, $topGames['games'][0]['game_id']);
-        $this->assertSame(3000, $topGames['games'][0]['sales']);
-    }
-
-    public function test_top_games_comparison_is_new_when_game_had_no_sales_last_week(): void
-    {
-        $this->order(['final_amount' => 3000]);
-
-        $topGames = $this->dashboard->topGames(5);
-
-        $this->assertSame('new', $topGames['games'][0]['comparison']['direction']);
-    }
-
-    public function test_top_games_comparison_vs_prior_seven_day_window(): void
-    {
-        $game = Game::query()->create(['name' => 'Test Game', 'slug' => 'test-game-'.uniqid()]);
-
-        $this->order(['final_amount' => 2000, 'game_id' => $game->id]);
-        $lastWeek = $this->order(['final_amount' => 1000, 'game_id' => $game->id]);
-        DB::table('orders')->where('id', $lastWeek->id)->update([
-            'paid_at' => CarbonImmutable::now()->subDays(10),
-            'created_at' => CarbonImmutable::now()->subDays(10),
-        ]);
-
-        $topGames = $this->dashboard->topGames(5);
-        $row = collect($topGames['games'])->firstWhere('game_id', $game->id);
-
-        $this->assertSame('up', $row['comparison']['direction']);
-        $this->assertSame(100.0, $row['comparison']['pct']);
-    }
-
     // --- hourlyActivity() / DASH-5 ------------------------------------------
-
-    public function test_hourly_activity_groups_by_hour_of_day_in_kl_timezone(): void
-    {
-        $today = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->startOfDay();
-
-        $order = $this->order();
-        DB::table('orders')->where('id', $order->id)->update([
-            'created_at' => $today->addHours(14)->setTimezone('UTC'),
-        ]);
-
-        $activity = $this->dashboard->hourlyActivity($today->toDateString());
-
-        $this->assertCount(24, $activity['hours']);
-        $this->assertSame(1, $activity['hours'][14]['count']);
-        $this->assertSame(0, $activity['hours'][0]['count']);
-    }
-
-    public function test_hourly_activity_counts_created_orders_regardless_of_payment_status(): void
-    {
-        $today = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->startOfDay();
-
-        $order = $this->order(['payment_status' => PaymentStatus::Failed->value, 'paid_at' => null]);
-        DB::table('orders')->where('id', $order->id)->update([
-            'created_at' => $today->addHours(9)->setTimezone('UTC'),
-        ]);
-
-        $activity = $this->dashboard->hourlyActivity($today->toDateString());
-
-        $this->assertSame(1, $activity['hours'][9]['count']);
-    }
-
-    public function test_hourly_activity_excludes_test_orders(): void
-    {
-        $today = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->startOfDay();
-
-        $order = $this->order(['is_test' => true]);
-        DB::table('orders')->where('id', $order->id)->update([
-            'created_at' => $today->addHours(9)->setTimezone('UTC'),
-        ]);
-
-        $activity = $this->dashboard->hourlyActivity($today->toDateString());
-
-        $this->assertSame(0, $activity['hours'][9]['count']);
-    }
 
     // --- attention (ADR-104 2026-10-15 grill Q9 / S4) -------------------
 
