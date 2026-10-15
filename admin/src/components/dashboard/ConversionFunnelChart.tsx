@@ -47,7 +47,7 @@ export function ConversionFunnelChart({ funnel, theme }: { funnel: DashboardFunn
           );
         })}
       </ul>
-      <p className="mt-3 text-theme-xs text-gray-400 dark:text-gray-500">
+      <p className="mt-3 text-theme-xs text-ink-subtle">
         Recent orders may still be in progress — a low Delivered count near the end of the {funnel.window_days}-day window doesn&apos;t
         necessarily mean a problem.
       </p>

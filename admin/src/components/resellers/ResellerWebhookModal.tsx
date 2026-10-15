@@ -110,7 +110,7 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
       setFreshSecret(null);
     }, "Could not remove the endpoint.");
 
-  if (!loaded) return <p className="text-sm text-gray-400">Loading…</p>;
+  if (!loaded) return <p className="text-sm text-ink-subtle">Loading…</p>;
 
   return (
     <div className="space-y-6">
@@ -196,7 +196,7 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
             ))}
             {deliveries.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-gray-400">No deliveries yet.</td>
+                <td colSpan={6} className="px-4 py-6 text-center text-ink-subtle">No deliveries yet.</td>
               </tr>
             )}
           </tbody>

@@ -157,7 +157,7 @@ export function MonthClosePanel({ year, month, data, onChanged }: Props) {
                 <div key={acc.id}>
                   <div className="flex items-baseline justify-between">
                     <Label htmlFor={`cash_${acc.id}`}>{acc.name}</Label>
-                    <button type="button" onClick={() => void run(() => updateCashAccount(acc.id, { is_active: false }))} className="text-theme-xs text-gray-400 hover:underline">
+                    <button type="button" onClick={() => void run(() => updateCashAccount(acc.id, { is_active: false }))} className="text-theme-xs text-ink-subtle hover:underline">
                       Archive
                     </button>
                   </div>
@@ -210,7 +210,7 @@ function Figure({ label, sen, hint }: { label: string; sen: number; hint: string
     <div className="rounded-lg bg-gray-50 p-3 dark:bg-white/[0.02]">
       <p className="text-theme-xs text-gray-500 dark:text-gray-400">{label}</p>
       <p className={`mt-1 font-mono text-lg font-semibold ${sen < 0 ? "text-danger-ink" : "text-gray-800 dark:text-white/90"}`}>{formatRm(sen)}</p>
-      <p className="mt-1 text-theme-xs text-gray-400">{hint}</p>
+      <p className="mt-1 text-theme-xs text-ink-subtle">{hint}</p>
     </div>
   );
 }

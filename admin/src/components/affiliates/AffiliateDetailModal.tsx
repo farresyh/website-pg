@@ -140,10 +140,10 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
 
         {sub ? (
           <div className="mb-3 grid grid-cols-2 gap-2 text-theme-xs text-gray-600 dark:text-gray-400 sm:grid-cols-4">
-            <div><span className="text-gray-400">Tier</span><br />{sub.tier_name ?? "—"}</div>
-            <div><span className="text-gray-400">Fee</span><br />{formatRm(sub.monthly_fee_sen)}/mo</div>
-            <div><span className="text-gray-400">Next charge</span><br />{formatDate(sub.next_charge_at)}</div>
-            <div><span className="text-gray-400">Grace until</span><br />{formatDate(sub.grace_until)}</div>
+            <div><span className="text-ink-subtle">Tier</span><br />{sub.tier_name ?? "—"}</div>
+            <div><span className="text-ink-subtle">Fee</span><br />{formatRm(sub.monthly_fee_sen)}/mo</div>
+            <div><span className="text-ink-subtle">Next charge</span><br />{formatDate(sub.next_charge_at)}</div>
+            <div><span className="text-ink-subtle">Grace until</span><br />{formatDate(sub.grace_until)}</div>
           </div>
         ) : (
           <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">

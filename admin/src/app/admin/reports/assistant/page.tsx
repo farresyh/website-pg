@@ -98,7 +98,7 @@ export default function ReportAssistantPage() {
       <div className="flex-1 space-y-4 overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
         {messages.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-            <p className="text-sm text-gray-400 dark:text-gray-500">Try asking:</p>
+            <p className="text-sm text-ink-subtle">Try asking:</p>
             <div className="flex flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((s) => (
                 <button
@@ -135,7 +135,7 @@ export default function ReportAssistantPage() {
 
         {sending && (
           <div className="flex justify-start">
-            <div className="rounded-2xl bg-gray-100 px-4 py-2.5 text-sm text-gray-400 dark:bg-gray-800">
+            <div className="rounded-2xl bg-gray-100 px-4 py-2.5 text-sm text-ink-muted dark:bg-gray-800">
               Thinking…
             </div>
           </div>

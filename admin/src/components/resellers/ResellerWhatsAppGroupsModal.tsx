@@ -131,7 +131,7 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
               ))}
               {groups !== null && groups.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-4 py-6 text-center text-gray-400">No groups linked yet.</td>
+                  <td colSpan={3} className="px-4 py-6 text-center text-ink-subtle">No groups linked yet.</td>
                 </tr>
               )}
             </tbody>
@@ -153,7 +153,7 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
                   <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
                     {p.last_message_at ? formatDate(p.last_message_at) : "—"}
                     {p.last_message_preview && (
-                      <span className="ml-2 italic text-gray-400">&ldquo;{p.last_message_preview}&rdquo;</span>
+                      <span className="ml-2 italic text-ink-subtle">&ldquo;{p.last_message_preview}&rdquo;</span>
                     )}
                   </td>
                   <td className="px-4 py-2 text-right">
@@ -170,7 +170,7 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
               ))}
               {pending !== null && linkablePending.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-4 py-6 text-center text-gray-400">No pending groups right now.</td>
+                  <td colSpan={3} className="px-4 py-6 text-center text-ink-subtle">No pending groups right now.</td>
                 </tr>
               )}
             </tbody>

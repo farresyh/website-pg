@@ -26,7 +26,7 @@ export function StatCard({
       <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-lg ${ICON_THEME[color]}`}>{icon}</div>
       <p className="text-theme-xs text-gray-500 dark:text-gray-400">{label}</p>
       <p className="mt-1 truncate text-lg font-semibold text-gray-800 dark:text-white/90">{value}</p>
-      {sub && <p className="mt-0.5 text-theme-xs text-gray-400 dark:text-gray-500">{sub}</p>}
+      {sub && <p className="mt-0.5 text-theme-xs text-ink-subtle">{sub}</p>}
     </div>
   );
 }

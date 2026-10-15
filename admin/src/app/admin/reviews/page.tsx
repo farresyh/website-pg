@@ -285,7 +285,7 @@ export default function ReviewsPage() {
                               </Button>
                             </div>
                           ) : (
-                            <span className="text-gray-400">—</span>
+                            <span className="text-ink-subtle">—</span>
                           )}
                         </DataTableCell>
                       </DataTableRow>

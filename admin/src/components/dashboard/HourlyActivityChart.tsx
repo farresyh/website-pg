@@ -30,7 +30,7 @@ export function HourlyActivityChart({
             {h.count}
           </span>
           {h.hour % 3 === 0 && (
-            <span className="mt-1 text-[9px] text-gray-400 dark:text-gray-500">{h.hour}</span>
+            <span className="mt-1 text-[9px] text-ink-subtle">{h.hour}</span>
           )}
         </div>
       ))}

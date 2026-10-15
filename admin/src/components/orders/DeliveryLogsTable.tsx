@@ -141,7 +141,7 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
                               <span>{entry.typeLabel}</span>
                             </div>
                             {entry.triggeredBy && (
-                              <div className="text-theme-xs text-gray-400">
+                              <div className="text-theme-xs text-ink-subtle">
                                 {entry.triggeredBy}
                               </div>
                             )}
@@ -149,12 +149,12 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
 
                           <DataTableCell className="px-3 py-3 text-theme-sm">
                             <div className="font-medium text-ink">{entry.packageName}</div>
-                            <div className="font-mono text-theme-xs text-gray-400">{entry.sku}</div>
+                            <div className="font-mono text-theme-xs text-ink-subtle">{entry.sku}</div>
                           </DataTableCell>
 
                           <DataTableCell className="px-3 py-3 text-theme-sm whitespace-nowrap">
                             {entry.priceDiffSen === null ? (
-                              <span className="text-gray-400">—</span>
+                              <span className="text-ink-subtle">—</span>
                             ) : (
                               <span
                                 className={
@@ -192,7 +192,7 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
                                 View JSON
                               </Button>
                             ) : (
-                              <span className="text-theme-xs text-gray-400">—</span>
+                              <span className="text-theme-xs text-ink-subtle">—</span>
                             )}
                           </DataTableCell>
                         </DataTableRow>

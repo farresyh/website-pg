@@ -186,7 +186,7 @@ export default function MemberDetailPage() {
                           <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{formatMemberRm(f.amount_sen)}</DataTableCell>
                           <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{f.source}</DataTableCell>
                           <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{f.reason ?? "—"}</DataTableCell>
-                          <DataTableCell className="px-5 py-4 text-theme-sm text-gray-400 dark:text-gray-500">{f.ledger_entry_id ?? "—"}</DataTableCell>
+                          <DataTableCell className="px-5 py-4 text-theme-sm text-ink-subtle">{f.ledger_entry_id ?? "—"}</DataTableCell>
                         </DataTableRow>
                       );
                     }}

@@ -82,7 +82,7 @@ function PromoteProductFields({
         </span>
       </div>
 
-      <p className="mb-4 text-theme-xs text-gray-400">
+      <p className="mb-4 text-theme-xs text-ink-subtle">
         Affiliate markup is set afterward in Games &amp; Packages, not here.
       </p>
 
@@ -106,7 +106,7 @@ function PromoteProductFields({
             onChange={(e) => setDenomination(e.target.value)}
             placeholder="e.g. 14 for 14 Diamonds"
           />
-          <p className="mt-1 text-theme-xs text-gray-400">
+          <p className="mt-1 text-theme-xs text-ink-subtle">
             Set this to let the storefront hide a pricier duplicate from another supplier selling the same amount.
           </p>
         </div>

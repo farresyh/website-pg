@@ -118,7 +118,7 @@ export default function AccountingSuppliersPage() {
             </DataTableTableContainer>
           </DataTable>
           {suppliers.length === 0 && (
-            <p className="px-5 py-6 text-center text-theme-sm text-gray-400">
+            <p className="px-5 py-6 text-center text-theme-sm text-ink-subtle">
               No suppliers yet — add one under Middleware → Suppliers first.
             </p>
           )}

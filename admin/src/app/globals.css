@@ -107,6 +107,7 @@
   --color-overlay: rgb(242 239 233 / 5%);
   --color-ink: #f2efe9;
   --color-ink-muted: #bdb7ad;
+  --color-ink-subtle: #9a948a;
 
   --color-border: #2e2c28;
   --color-border-strong: #3a3833;
@@ -301,6 +302,8 @@
 
   --color-ink: #1b1a17;
   --color-ink-muted: #56514a;
+  /* PRD §16 item 101: the artifact's tertiary text (4.6:1+). Replaces light `text-gray-400` (2.3:1). */
+  --color-ink-subtle: #716b62;
 
   --color-cyan-50: #e6f4f6;
   --color-cyan-600: #0b7285;

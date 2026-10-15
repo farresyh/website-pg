@@ -10,11 +10,11 @@ import type { MetricComparison } from "@/lib/dashboard";
 
 export function ComparisonBadge({ comparison }: { comparison: MetricComparison }) {
   if (comparison.direction === "new") {
-    return <span className="text-theme-xs font-medium text-gray-400 dark:text-gray-500">New</span>;
+    return <span className="text-theme-xs font-medium text-ink-subtle">New</span>;
   }
 
   if (comparison.direction === "flat") {
-    return <span className="text-theme-xs font-medium text-gray-400 dark:text-gray-500">— 0%</span>;
+    return <span className="text-theme-xs font-medium text-ink-subtle">— 0%</span>;
   }
 
   const isUp = comparison.direction === "up";

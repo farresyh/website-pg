@@ -184,7 +184,7 @@ export default function GalleryPage() {
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Drag and drop images here, or use the &quot;Upload Image&quot; button above.
         </p>
-        <p className="mt-1 text-theme-xs text-gray-400">JPG, PNG, WEBP, or GIF — up to 5MB each.</p>
+        <p className="mt-1 text-theme-xs text-ink-subtle">JPG, PNG, WEBP, or GIF — up to 5MB each.</p>
       </div>
 
       <input
@@ -207,7 +207,7 @@ export default function GalleryPage() {
               <p className="truncate text-theme-xs font-medium text-gray-700 dark:text-gray-300" title={image.original_name}>
                 {image.original_name}
               </p>
-              <p className="text-theme-xs text-gray-400">{formatSize(image.size_bytes)}</p>
+              <p className="text-theme-xs text-ink-subtle">{formatSize(image.size_bytes)}</p>
               <div className="mt-2 flex gap-1.5">
                 <Button size="small" variant="outlined" className="flex-1" onClick={() => handleCopyUrl(image)}>
                   {copiedId === image.id ? "Copied!" : "Copy URL"}
@@ -261,7 +261,7 @@ export default function GalleryPage() {
               &quot;{deletingImage.original_name}&quot; will be permanently deleted.
             </p>
             {loadingReferences && (
-              <p className="mt-3 text-theme-xs text-gray-400">Checking what still uses this image…</p>
+              <p className="mt-3 text-theme-xs text-ink-subtle">Checking what still uses this image…</p>
             )}
             {!loadingReferences && deletingReferences && deletingReferences.length > 0 && (
               <div className="mt-3 rounded-lg bg-warning-50 px-3 py-2 dark:bg-warning-500/15">
@@ -276,7 +276,7 @@ export default function GalleryPage() {
               </div>
             )}
             {!loadingReferences && deletingReferences && deletingReferences.length === 0 && (
-              <p className="mt-3 text-theme-xs text-gray-400">Nothing else currently uses this image.</p>
+              <p className="mt-3 text-theme-xs text-ink-subtle">Nothing else currently uses this image.</p>
             )}
             <div className="mt-6 flex justify-end gap-2">
               <Button

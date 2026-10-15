@@ -314,7 +314,7 @@ export default function SandboxOrdersPage() {
                         <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{order.order_number}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
                           {order.game?.name ?? "—"}
-                          {order.package?.name && <span className="text-theme-xs text-gray-400"> · {order.package.name}</span>}
+                          {order.package?.name && <span className="text-theme-xs text-ink-subtle"> · {order.package.name}</span>}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{formatRm(order.final_amount)}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">

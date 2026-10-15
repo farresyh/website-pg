@@ -51,3 +51,16 @@ test("every project colour shade used in a class has a token in globals.css", ()
     "Define the token in globals.css or use a shade that exists.",
   );
 });
+
+/**
+ * PRD §16 item 101: light `text-gray-400` measured 2.3:1 and `text-error-500`
+ * stayed #b42318 (2.5:1) in dark mode. Use `text-ink-subtle` / `text-danger-ink`,
+ * which carry their own `.dark` values. Variant-prefixed uses (`dark:`, `hover:`) are fine.
+ */
+test("no low-contrast text-gray-400 / text-error-500 as a base text colour", () => {
+  const BANNED = /(?<![:\w-])text-(?:gray-400|error-500)(?![\w/-])/g;
+  const hits = sourceFiles(SRC).flatMap((file) =>
+    [...readFileSync(file, "utf8").matchAll(BANNED)].map((m) => `${m[0]} (${file.slice(SRC.length + 1)})`),
+  );
+  assert.deepEqual(hits, [], "Use text-ink-subtle or text-danger-ink.");
+});
