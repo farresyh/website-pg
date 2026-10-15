@@ -7,10 +7,11 @@
  * ReportService::dateRangeFromDates()'s own doc comment on the backend
  * side for how it's turned into a UTC instant range.
  */
-export type DateRangePreset = "all" | "this_month" | "7d" | "14d" | "30d" | "90d" | "custom";
+export type DateRangePreset = "all" | "today" | "this_month" | "7d" | "14d" | "30d" | "90d" | "custom";
 
 export const DATE_RANGE_PRESETS: { value: DateRangePreset; label: string }[] = [
   { value: "all", label: "All time" },
+  { value: "today", label: "Today" },
   { value: "this_month", label: "This month" },
   { value: "7d", label: "Last 7 days" },
   { value: "14d", label: "Last 14 days" },
@@ -66,6 +67,8 @@ export function resolveDateRange(preset: DateRangePreset, customFrom?: string, c
   switch (preset) {
     case "all":
       return {};
+    case "today":
+      return { from: today, to: today };
     case "this_month":
       return { from: `${today.slice(0, 7)}-01`, to: today };
     case "7d":

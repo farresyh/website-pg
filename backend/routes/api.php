@@ -508,11 +508,7 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
     // DASH-1..6 (ADR-045) — same read-only-overview role tier as
     // Reports, no reason to restrict further.
     Route::middleware('admin.role:super_admin,admin')->prefix('dashboard')->group(function () {
-        Route::get('/summary', [DashboardController::class, 'summary']);
         Route::get('/health', [DashboardController::class, 'health']);
-        Route::get('/funnel', [DashboardController::class, 'funnel']);
-        Route::get('/top-games', [DashboardController::class, 'topGames']);
-        Route::get('/hourly-activity', [DashboardController::class, 'hourlyActivity']);
     });
 
     Route::middleware('admin.role:super_admin,admin')->prefix('reports')->group(function () {

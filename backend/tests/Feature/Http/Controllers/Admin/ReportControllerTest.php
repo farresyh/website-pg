@@ -3,6 +3,7 @@
 namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
+use App\Models\Game;
 use App\Models\Order;
 use App\Models\Reseller;
 use App\Services\Ledger\LedgerService;
@@ -276,6 +277,23 @@ class ReportControllerTest extends TestCase
         $response = $this->getJson('/api/reports/top-games?limit=5');
 
         $response->assertOk()->assertJsonStructure(['games']);
+    }
+
+    /** ADR-104 2026-10-15 grill Q14 — Dashboard Top games show each game's change, computed by the backend. */
+    public function test_top_games_compare_each_game_with_the_previous_period(): void
+    {
+        $mlbb = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+        $pubg = Game::query()->create(['name' => 'PUBG Mobile', 'slug' => 'pubg-mobile']);
+        $this->order(['game_id' => $mlbb->id, 'final_amount' => 3000, 'paid_at' => CarbonImmutable::parse('2026-10-05 12:00', 'Asia/Kuala_Lumpur')->utc()]);
+        $this->order(['game_id' => $mlbb->id, 'final_amount' => 2000, 'paid_at' => CarbonImmutable::parse('2026-09-28 12:00', 'Asia/Kuala_Lumpur')->utc()]);
+        $this->order(['game_id' => $pubg->id, 'final_amount' => 1000, 'paid_at' => CarbonImmutable::parse('2026-10-05 12:00', 'Asia/Kuala_Lumpur')->utc()]);
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/reports/top-games?from=2026-10-02&to=2026-10-08&limit=5&compare=previous')
+            ->assertOk()
+            ->assertJsonPath('compare.previous_range', ['from' => '2026-09-25', 'to' => '2026-10-01', 'until' => null])
+            ->assertJsonPath("compare.changes.{$mlbb->id}", ['pct' => 50, 'direction' => 'up'])
+            ->assertJsonPath("compare.changes.{$pubg->id}", ['pct' => null, 'direction' => 'new']);
     }
 
     public function test_game_breakdown_returns_rows(): void
