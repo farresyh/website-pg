@@ -925,9 +925,10 @@ refetched on search, no page-level horizontal scroll, no API errors.
 **Gotchas.**
 - `addcslashes()` escapes with a backslash, not the `!` the `LIKE … ESCAPE '!'`
   expects; `strtr()` does it. sqlite has no default LIKE escape, hence `!`.
-- A MySQL run mixing a `DatabaseMigrations` test with `RefreshDatabase` ones
-  errored all 112 tests on leftover `llm_report_*` views (backend/AGENTS.md
-  gotcha 8). Dropping the views and running the two kinds apart fixed it.
+- The first local MySQL run errored all 112 tests from the first one on:
+  `llm_report_*` views left in docker `kerox` by an earlier run (backend/AGENTS.md
+  gotcha 8). Dropping them fixed it; the new `DatabaseMigrations` test was
+  checked afterwards and leaves no view behind.
 - Admin lint rejects `setState` inside an effect: loading is derived from
   which request an answer belongs to, and page reset happens in handlers.
 - Left as is, with a `ponytail:` note: Profit Analysis costs one query per
@@ -935,3 +936,14 @@ refetched on search, no page-level horizontal scroll, no API errors.
   OrderController and Accounting). The "All time" list is 124–137 ms at 10k,
   just over the 100 ms aim, from two scans per call (count + page, totals +
   top spender) and `netSalesSql()`'s correlated subquery.
+
+## 2026-10-15 — Docs sync for the item 103 session (docs only)
+
+- PRD §16 gained item 104 (reseller wallet top-up KPIs, group D with item 28;
+  not part of ADR-115, which forecasts supplier drain, #457) and item 105
+  (Profit Analysis one query per order via `Order::cashCompensationSen()`,
+  Pulse trigger, #460).
+- PRD §14: the staging list now runs #450–#460 and names item 103's API change.
+- ADR-088 decision 4 ("`dateRangeForYearMonth()` is kept for Customer
+  Analytics") retired by ADR-049's 2026-10-15 addendum: dated addendum added,
+  index date updated.
