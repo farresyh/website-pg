@@ -705,10 +705,10 @@ items dropped, listed under Recently closed). Re-verify before building.
   then an instant retry). Fixed 2026-10-15 (ADR-069 addendum: own 30s
   timeout, no retry), not live. Ships with the next release; then check the
   `exception` count drops.
-- **100** Admin dark mode: `dark:text-error-400` (145 uses) points to an
-  undefined token, so error text renders at 1.83:1 (also `success-400`,
-  `warning-400`). Define the `-400`
-  status tokens in `globals.css` (needs a look at every screen).
+- **100** Admin colour tokens: dark `-400` status text (~190 uses) had no
+  token and rendered at 1.83:1. Fixed 2026-10-15: aliased to the ADR-104
+  status inks (now 7.86:1), 22 light classes moved off shades that never
+  existed, plus a CI guard test. Not live; ships with the next release.
 
 **B. Needs a short grill / ADR addendum first**
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
@@ -797,6 +797,17 @@ items dropped, listed under Recently closed). Re-verify before building.
     (#8f1c13) on `gray-900`, 1.83:1 (e.g. the Dashboard queue "(N failed)").
     Same gap for `success-400` (26 uses) and `warning-400` (18). Fix: define the dark
     `-400` tokens, then check the screens that use them.
+    **Fixed 2026-10-15 (grilled with the founder):**
+    - `--color-{error,success,warning}-400` alias `--color-{danger,success,warning}-ink`
+      in the `@theme static` block, so dark error text is #f59c93 at 7.86:1.
+      Light mode is unchanged: the `-400` classes are only used under `dark:`.
+    - A full scan also found 22 light-mode classes naming shades that never
+      existed (`error-700/800`, `success-700`, `warning-700`, `border-warning-300`).
+      They now use `-600` / `warning-500/30`.
+    - A dead `hover:text-dark-900` was removed.
+    - `admin/src/lib/color-tokens.test.ts` (run by CI's `npm test`) fails on any
+      project-colour shade with no token in `globals.css` or the
+      `tailwindcss-primeui` plugin.
 
 4. **Bot-host capacity (+$20/mo resize)** — resize only when capacity actually
    calls for it. It is also the moment to revisit the OpenWA engine (item 59:
