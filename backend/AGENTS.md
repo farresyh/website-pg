@@ -79,6 +79,15 @@ Laravel-specific, loaded only when working inside `backend/`.
   (was `database`), which does *not* corrupt nested objects, so this is now
   belt-and-braces / portability discipline rather than load-bearing — but keep
   following it. Full story: ADR-014's addendum + ADR-077 (`docs/adr/`).
+- **Every scheduled task lives in `App\Console\TaskSchedule`** (ADR-122), not
+  in `routes/console.php`: a unique `name()`, a tier in `CRITICAL` or
+  `ROUTINE`, and `withoutOverlapping(TaskSchedule::OVERLAP_EXPIRY_MINUTES)`.
+  `TaskScheduleTest` fails CI otherwise. A stale `CRITICAL` task fails
+  `/api/health`. Prefer `Schedule::command()` over a closure wrapping
+  `Artisan::call()`, which hides a failing exit code.
+- **The app timezone is UTC** (`config/app.php` hardcodes it; prod's
+  `APP_TIMEZONE` env is unused), so `daily()` runs at 00:00 UTC = 08:00 MYT.
+  Malaysia days go through `App\Support\MalaysiaTime`.
 - **Every mutating route gets a `Http\Requests\*` FormRequest** — structural
   validation (types, `exists:`) lives in the FormRequest; cross-field/DB-
   dependent business rules live in the controller. Don't validate via
