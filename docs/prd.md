@@ -628,7 +628,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Area | Status | Key ADRs |
 | --- | --- | --- |
 | Auth & Admin Users (AUTH-1..7) | ✅ Live. Login rate-limited + logged. Admin MFA (AUTH-7) and the cookie-session admin login live since 2026-10-14 (#437) | ADR-019, ADR-121 |
-| Admin Dashboard (DASH-1..6) | ✅ Live — KPIs, System Health, funnel, top games, hourly activity. **Scheduler liveness (ADR-122, §16 item 98):** built 2026-10-15 on `staging`, not live. Per-task heartbeat (`scheduled_task_heartbeats`); a stale critical task fails `/api/health` (`checks.scheduler`); a "Scheduled tasks" row on System Health | ADR-045, ADR-122 |
+| Admin Dashboard (DASH-1..6) | ✅ Live — KPIs, System Health, funnel, top games, hourly activity. **Scheduler liveness (ADR-122, §16 item 98):** live 2026-10-15 via #449. Per-task heartbeat (`scheduled_task_heartbeats`); a stale critical task fails `/api/health` (`checks.scheduler`); a "Scheduled tasks" row on System Health | ADR-045, ADR-122 |
 | Money core (Pricing, Ledger, Voucher, Order status, idempotency) | ✅ Live — full service layer, concurrency-proven. The most mature part of the codebase | ADR-002 |
 | Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end. PR #273's invite/session and compensation visibility fixes, plus ADR-112's role-aware shell, dashboard recent orders, and responsive Orders presentation, shipped in PRs #273, #275 and #276, released to `main` via #278 (2026-09-24) | ADR-056–061, 078, 112 |
 | Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live — prepaid wallet (admin manual credit + self-serve CHIP top-up, unpayable while payment methods are off, §14), one order-placement contract (`ResellerOrderPlacementService`), `reseller_code`/`catalog_code`, REST API v1.5.0 (keys, IP allowlist, delivery webhook, optional `max_price_sen`, per-account rate limits: orders 60/min and reads 120/min, ADR-074 2026-10-13 addendum, live via #425), WhatsApp Bot (OpenWA), shared role-aware portal (ADR-112), per-game player-input contract (ADR-097), own queue lane (ADR-048). Real customer orders run on this channel. Detail: build-log + ADRs | ADR-072–076, 084, 091, 093, 112, 048, 097 |
@@ -646,7 +646,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. Renewal-reminder emails at H-3 and H+1 (Malaysia days), listed on the admin member page (item 64, live via #416 2026-10-13). WhatsApp reminders designed, waiting on a trigger (§16 item 85) | ADR-027, 055, 068, 080 |
 | Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. The voucher path was live-tested 2026-10-06 (a failed order's Issue Voucher code arrived on WhatsApp), along with the status card and not-found reply. Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14). **2026-10-12 (§16 item 69):** every order-number message gets a card or a not-found reply; the silent repeat throttles are removed (live via #416; the founder confirmed on a real phone 2026-10-13) | ADR-116 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
-| Backups (BAK-1..5) | ⚠️ Live on Cloudflare R2 (`pekangame-backups`, private): full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, nightly at 02:07. **Every nightly run since 2026-10-01 is `failed` (§16 item 97): the archive uploads, but the restore test can't create its throwaway database.** Fixed in code on 2026-10-14. The fix adds one restore path shared by the nightly test and a new `app:restore-backup` command; restores go only into an empty database; DEFINER clauses are dropped on restore; verification is real (no missing table, no pending migration); 300s timeout on `redis-long`; and killed runs close themselves. Released 2026-10-15 (#441); the ADR-117 2026-10-15 grant is in place (2026-10-15), but the restore test still fails until the fixed-name follow-up (#442, staging) is released. The last restore-verified backup is #25 (2026-09-24). Earlier history: the 2026-09-14 GTID fix, build-log-archive | ADR-039, ADR-095, ADR-117 |
+| Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private): full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, nightly at 02:07. **Restore test verified again 2026-10-15** (run #47, `restore_test_passed = 1`, 72s, after release #449); nightly runs 2026-10-01..15 had failed (§16 item 97, closed). Fixed in code on 2026-10-14. The fix adds one restore path shared by the nightly test and a new `app:restore-backup` command; restores go only into an empty database; DEFINER clauses are dropped on restore; verification is real (no missing table, no pending migration); 300s timeout on `redis-long`; and killed runs close themselves. Released 2026-10-15 (#441, then the fixed-name follow-up #442 via #449) with the ADR-117 exact-name grant. Earlier history: the 2026-09-14 GTID fix, build-log-archive | ADR-039, ADR-095, ADR-117 |
 | Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-form picker (`ImageUrlInput`, live via #406, 2026-10-12) on Edit Game, Hero Slide and the two SEO OG-image fields; the URL stays a plain text field | ADR-095 |
 | SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage. **ADR-120 (live 2026-10-08):** tokens in every SEO field, per-brand canonical origin (canonical/sitemap/robots/llms/JSON-LD), all packages in HTML, Product `offers` + `aggregateRating`, fact line, admin FAQ + `FAQPage` | ADR-029, ADR-042, ADR-120 |
 | Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 (Telegram) dropped and its fields removed (live via #406, 2026-10-12). Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this. A re-upload shows at once (`?v=` on the URL, #409, live via #416; founder-checked 2026-10-13) | ADR-028, 089 |
@@ -691,25 +691,18 @@ code and production on 2026-10-09; re-checked on 2026-10-13 after release
 items dropped, listed under Recently closed). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- **97** Backup restore test fails every night since 2026-10-01. The main fix
-  was released on 2026-10-15 (#441). The wildcard grant does not work on
-  prod (`partial_revokes = 1`), so a fixed-name follow-up (#442) is on
-  staging and not live; the founder ran the replacement grant on 2026-10-15
-  (verified). Left to do: release #442 with the next backlog bundle (founder's
-  call), then "Backup Now" and a check for `restore_test_passed = 1`. Until
-  then every nightly run still fails and alerts.
-- **98** Scheduler liveness (ADR-122): built 2026-10-15, not live. It ships with
-  #442 in the next release; then check that `scheduled_task_heartbeats`
-  fills and `/api/health` stays 200.
+- **98** Scheduler liveness (ADR-122): live 2026-10-15 (#449). Heartbeats fill
+  and health is 200; it caught a real stuck wallet-reconcile lock on day one
+  (build-log). Close after the first 00:00 UTC run gives every daily task a row.
 - **99** Digiflazz `[83]` price-list rate limit: self-inflicted (10s timeout,
   then an instant retry). Fixed 2026-10-15 (ADR-069 addendum: own 30s
-  timeout, no retry), not live. Ships with the next release; then check the
-  `exception` count drops.
+  timeout, no retry), live 2026-10-15 (#449). Close once a day of logs shows
+  the `exception` count down and no rc 83.
 - **100** Admin colour tokens: dark `-400` status text (~190 uses) had no
   token and rendered at 1.83:1. Fixed 2026-10-15: aliased to the ADR-104
   status inks (now 7.86:1), 22 light classes moved off shades that never
   existed, plus a CI guard test; `body` gets `text-ink` (uncoloured text was
-  browser black in dark mode). Not live; ships with the next release.
+  browser black in dark mode). Live 2026-10-15 (#449).
 - **101** Admin low-contrast leftovers (seen in the 2026-10-15 sweep, not
   built): light `gray-400` secondary text and info icons at 2.3–2.6:1 (~70),
   dark-mode `error-500` Delete buttons at 2.5:1 (23). Needs a design call
@@ -749,31 +742,6 @@ items dropped, listed under Recently closed). Re-verify before building.
 - **94** Best-selling products per game in Reports.
 
 ## Details
-
-97. **Backup restore test fails every night (found 2026-10-14, after release
-    #437).** `backup_runs` #31–#44 (2026-10-01 → 10-14) are all `failed`.
-    **Verified cause:** `ERROR 1044 Access denied for user 'pekangame_app' to
-    database 'defaultdb_restore_test_…'`. ADR-117's grants cover only
-    `defaultdb.*`, and its cutover check used `backup:run`, which skips the
-    restore test. Underneath sat three more faults: runs #26–#30 killed by the
-    60s worker timeout and left `running`; two views owned by `doadmin`
-    (`ERROR 1227` on restore); and a verification that passed a dump cut short
-    after the `migrations` table. **Fixed in code on 2026-10-14** (ADR-039,
-    ADR-117 and ADR-111 2026-10-14 addenda; build-log 2026-10-14), together
-    with one FX rate per Price Sync run and price sync's 300s timeout. **Left
-    to do:** release; the founder runs the grant as `doadmin` *after* the
-    release (granting before it would let tonight's run reach the restore and
-    die at the old 60s timeout); then "Backup Now" and check that
-    `restore_test_passed = 1`. The nightly alert went to a dead mailbox until
-    2026-10-14.
-    **2026-10-15:** released (#441), and the founder ran the wildcard grant.
-    The verification run (#45) still failed with `1044`: prod's
-    `partial_revokes = 1` makes `_`/`%` in a GRANT literal. Follow-up: the
-    restore test uses one fixed database name, `defaultdb_restore_test`
-    (ADR-039 and ADR-117 2026-10-15 addenda). It is on staging (#442), not
-    live. The replacement grant was run by the founder and verified on
-    2026-10-15. The founder holds the release for the next backlog bundle, so
-    nightly runs keep failing (and alerting) until then.
 
 98. **Scheduler liveness alert (found 2026-10-14, item 97 stress test).**
     UptimeRobot polls `/api/health` (DB, Redis, Horizon), but nothing notices
@@ -1031,6 +999,7 @@ items dropped, listed under Recently closed). Re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
 
+- **97** 2026-10-15: the nightly backup restore test works again (released #441 + #442 via #449; exact-name grant, ADR-117). Backup #47 `success`, `restore_test_passed = 1`, 72s.
 - **10** 2026-10-14: admin MFA (TOTP) and a cookie-session admin login (ADR-121). The login lasts 7 days at most, ends after 2 days unused, and is shared by every tab. MFA is opt-in per account ("Require MFA" in Admin Users, one-way; set up on `/login`). Five actions need a code within the last 5 minutes and are refused without MFA: CHIP credentials, supplier credentials, manual reseller wallet credit, withdrawal approval, admin account changes. Eight recovery codes; `php artisan admin:mfa-reset {email}` over SSH. Released 2026-10-14 (#437); the founder's MFA is active. Details: build-log 2026-10-14.
 - **95** 2026-10-14: `GET /api/health/whatsapp` asks OpenWA for both sessions and answers 503 unless both are `ready` (`unreachable`, `not_configured`, or the session's own status otherwise); throttled 30/min. Released 2026-10-14 (#437); UptimeRobot monitor added. Details: build-log 2026-10-14.
 - **73** 2026-10-14: every Reseller API rejection a known reseller gets is logged (`warning`, since prod runs `LOG_LEVEL=warning`) from the one render hook: reseller, key, code, status, path, IP, details. A missing or wrong key is not logged (anonymous noise, already rate-limited per IP); `RATE_LIMITED` logs once a minute per reseller (ADR-074 2026-10-14 addendum). Released 2026-10-14 (#437).

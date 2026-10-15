@@ -1039,3 +1039,22 @@ No live call: a price-list from a local machine shares the production account's 
 **Seen, not fixed (pre-existing, outside this change).**
 - Light-mode `gray-400` (#a8a192) secondary text and info icons measure 2.3–2.6:1 (around 70 instances, e.g. package unit suffixes, "i" tooltips).
 - Dark-mode "Delete" buttons in `error-500` (#b42318) measure 2.5:1 (23 instances).
+
+## 2026-10-15 — Release #449 live and verified; the new scheduler monitor caught a real stuck lock on day one
+
+**Release #449 (`staging`→`main`, merged by the founder; items 97–100) verified on the box.**
+- `current` = `30687ac`. `create_scheduled_task_heartbeats_table` ran.
+- `/api/health` returns `{"database":true,"queue":true,"horizon":true,"scheduler":true}`.
+
+**Item 97 closed.** Claude triggered "Backup Now" (`php artisan app:run-backup --triggered-by="Claude (release #449 verify)"`). Run #47: `success`, `restore_test_passed = 1`, 3.19 MB, 72s (under the 300s timeout). This is the first restore-verified backup since #25 (2026-09-24).
+
+**Item 98: first real catch.** Within minutes, `wallet-topup-reconciliation` had no heartbeat while the other 15-minute tasks did. Read-only trace:
+- At 06:44 UTC, unattended-upgrade installed `libsystemd` (among others), which restarted Redis (Redis uptime started 06:44:54). `laravel.log` shows `Predis ConnectionException`s at 06:45:03–06.
+- The wallet task, starting at 06:45, took its `withoutOverlapping` lock but could not release it. The lock was the old code's 1440-minute one, with about 21h left, so the task would have been skipped silently every 15 minutes until about 06:45 the next day. No reconcile process was running (`ps`). No wallet top-up was pending, so there was no customer impact.
+- With ADR-122 live, health would have gone 503 at about 10:15 UTC.
+- **Remediation (prod write, run by the founder after Claude gave the exact command):** `Cache::forget('framework/schedule-5a0dc6393f179e512444bcf24d7381da6e3bd869')`.
+  - Before: lock held, ttl 77,085s, heartbeat empty.
+  - After: lock gone. The 09:30 run recorded `last_ok_at 09:30:06` (0.98s), and health stayed 200.
+- New locks are 30 minutes (ADR-122), so this class now clears itself.
+
+**Item 99:** too early to judge (the 09:00 price-list took 7.0s and succeeded). Re-check the `exception` count after a day.
