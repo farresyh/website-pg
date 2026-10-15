@@ -882,3 +882,56 @@ Swept the docs this session touched for claims it made untrue (docs only).
   - ADR-045's Standing records that ADR-104's 2026-10-15 addenda replace DASH-1, 3, 4 and 5. DASH-2 health stays.
   - ADR-045 gets a 2026-10-15 addendum saying the same.
   - ADR-104's banner and index row name the revision.
+
+## 2026-10-15 — Customer Analytics reads that scale (item 103)
+
+**Why.** Audit of item 103: every Customer Analytics request loaded every
+customer (and, for names, every order of them, any payment status) into
+PHP; the list was unpaginated and rendered in full; the detail page loaded
+all of a customer's orders. Synthetic benchmark on local MySQL 8.4 at 10k
+orders / ~2.7k customers: 0.4–0.5 s and 46 MB per call, against 63–130 ms
+for the Reports aggregates. Also found: two copies of net sales (SQL list,
+PHP detail), a segment that changed with the Affiliate/Reseller filter, and
+`MAX(wallet_reseller_id)` labelling `faris9745@` (4 wallet + 3 Affiliate
+orders, prod) "Reseller" for all 7.
+
+**What.** Grilled in four rounds, stress-tested, ADR-049/050 2026-10-15
+addendum. Backend PR: one per-customer SQL aggregate for stats, list,
+export and detail stats; segment as a SQL `CASE` with cut-offs bound from
+PHP (same SQL on sqlite and MySQL; Carbon 3's fractional `diffInDays()`
+makes `< now − 60 days` exact); segment, repeat rate and Source from every
+paid order whatever the filters; paged/sorted/searched list; export via
+`cursor()`; paged detail order history; `CustomerAnalyticsFilterRequest`
+(bad value = 422); Source `Reseller: A + Retail`; `from`/`to` dates, and
+`ReportService::dateRangeForYearMonth()` removed (last caller);
+`MalaysiaTime::dateSql()` now holds the day-bucket SQL Reports had.
+Profit Analysis keeps the per-order `Order` methods (the only copy of the
+ADR-094/105/111 cost rules), read in chunks. Frontend PR: paginator, sort,
+debounced email search, Reports date presets, Source tag, KL dates, and a
+filter change aborts the request it replaces.
+
+**Verified.** Parity test pins the old implementation's figures for a fixed
+data set (every segment boundary, a wallet refund, a mixed email, excluded
+orders). Old vs new on the whole local dev DB (183 orders, 40 customers):
+0 differences in list, range list, stats, row order and every detail page.
+Fast suite 2828/2828; the 51 Customer Analytics tests also on MySQL; new
+`tests/Concurrency/CustomerAnalyticsMysqlTest` proves letter-case variants
+are one customer on MySQL. Benchmark at 10k orders, old → new: stats
+409 → 137 ms, customers 502 → 124 ms, month filter 455–480 → 84–89 ms,
+46 MB → 0.1 MB, list JSON 620 KB → 8 KB. Browser (local, light/dark/phone):
+40 customers over 2 pages, one request per typed search, stat cards not
+refetched on search, no page-level horizontal scroll, no API errors.
+
+**Gotchas.**
+- `addcslashes()` escapes with a backslash, not the `!` the `LIKE … ESCAPE '!'`
+  expects; `strtr()` does it. sqlite has no default LIKE escape, hence `!`.
+- A MySQL run mixing a `DatabaseMigrations` test with `RefreshDatabase` ones
+  errored all 112 tests on leftover `llm_report_*` views (backend/AGENTS.md
+  gotcha 8). Dropping the views and running the two kinds apart fixed it.
+- Admin lint rejects `setState` inside an effect: loading is derived from
+  which request an answer belongs to, and page reset happens in handlers.
+- Left as is, with a `ponytail:` note: Profit Analysis costs one query per
+  realised order, from `Order::cashCompensationSen()` (shared with
+  OrderController and Accounting). The "All time" list is 124–137 ms at 10k,
+  just over the 100 ms aim, from two scans per call (count + page, totals +
+  top spender) and `netSalesSql()`'s correlated subquery.
