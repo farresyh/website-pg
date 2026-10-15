@@ -221,9 +221,9 @@ Requests come from Affiliates, through their portal (ADR-059). The platform owne
 | ID | Functional Requirement | Priority |
 | --- | --- | --- |
 | **ANL-1** | System displays stats: total customers, avg order value, repeat rate, top spender | **MVP** |
-| **ANL-2** | System provides customer segmentation: VIP (≥ threshold), Frequent (10+ orders), New (< 30 days), Dormant (> 90 days), One-time | **MVP** |
+| **ANL-2** | System provides customer segmentation: VIP (≥ threshold), Frequent (20+ orders), Dormant (last order > 60 days ago), New (first order < 30 days ago), One-time, first match wins (ADR-049 decision 4) | **MVP** |
 | **ANL-3** | System displays customer table: email, name, segment, orders count, total spent, last order date | **MVP** |
-| **ANL-4** | Admin can filter by segment and date range, export CSV | **MVP** |
+| **ANL-4** | Admin can filter by date range (the Reports presets), Affiliate, Reseller and segment, search by email, sort, page through the list, and export CSV (ADR-049 2026-10-15 addendum) | **MVP** |
 | **ANL-5** | Admin can drill into one customer's full detail: stats, profit-reconciliation breakdown, monthly spend trend, top packages/affiliates, and full order history (added post-launch, ADR-050) | **MVP** |
 
 ## 6.13 Admin — Review Management
@@ -650,7 +650,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Reports (RPT-1..4) | 🟢 Live — redesigned per ADR-104 (2026-10-08 addendum R1–R21 + 2026-10-09 R8 addendum), live via #385 (2026-10-09). 7 tabs on Recharts. **Paid sales** (money collected, net of wallet refunds, `Order::netSalesSql()`) with a **Bridge to Accounting** to recognised revenue from one `RecognisedRevenue` seam shared with the Monthly Summary. Ledger-sourced profit, `paid_at` scoping, KL days. **Failed & compensated** per delivery status plus outstanding store credit. Compare period on every tab, sales by channel + API vs Bot (`orders.placed_via`), Delivery by game. CSV/PDF carry Paid / Wallet refund / Paid sales. Default range All time. LLM assistant at `/admin/reports/assistant` (ADR-087, `super_admin`) matches the page. History: ADR-086 grouped-SQL rewrite, ADR-088 unified date filter **On `staging`, not live (#454/#455, ADR-104 2026-10-15):** Compare for a range ending today runs to the same time (`previous_range.until`, label "…, to 10:30 AM"), a Today preset, `/reports/busy-hours`, `/reports/highlights` and `/reports/top-games?compare=` (the new Dashboard reads them). | ADR-086, 087, 088, 104 |
 | Withdrawals (WTH-1..5) | ✅ Live. Maker-checker threshold RM 2,000 (`WITHDRAWAL_MAKER_CHECKER_THRESHOLD_SEN`). **Live via #393 (2026-10-10):** the platform-owner request (button, "Available balance", `POST /api/withdrawals`) is removed; the screen reviews Affiliate requests only | ADR-059, ADR-083 |
 | Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), a typed expiry date valid through that Malaysia day (ADR-024 2026-10-13 addendum, live via #425), Path A double-submit key, Voucher Merge. Maker-checker RM 500. **2026-10-04 (ADR-024 addendum, live via #354):** a lost voucher or member-quota reservation now fails the checkout closed (Failed order, coded 422 `checkout_closed`, link never handed out) on every path, including idempotent replay; admin "Voucher Paid" reads the redemption. **2026-10-12 (ADR-036 addendum, item 80):** a merge rejects an expired source voucher. **2026-10-12 (ADR-024 addendum, item 79):** only an admin-issued voucher debits the platform ledger; the 4 old compensation-voucher debits were reversed on release (live via #416, 2026-10-13, verified on prod). **2026-10-13 (item 84):** expiry stays `expires_at` alone; the admin list, detail and order Refund cards show an active voucher past it as expired (`display_status`), and it can't be ticked for merge (live via #425) | ADR-024, 035, 036 |
-| Customer Analytics (ANL-1..5) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments | ADR-049 |
+| Customer Analytics (ANL-1..5) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments. **Item 103 on `staging`, not live:** one SQL aggregate, server-paged list with sort, email search and the Reports date presets, mixed Source label, paged detail order history | ADR-049, ADR-050 |
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. Renewal-reminder emails at H-3 and H+1 (Malaysia days), listed on the admin member page (item 64, live via #416 2026-10-13). WhatsApp reminders designed, waiting on a trigger (§16 item 85) | ADR-027, 055, 068, 080 |
 | Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. The voucher path was live-tested 2026-10-06 (a failed order's Issue Voucher code arrived on WhatsApp), along with the status card and not-found reply. Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14). **2026-10-12 (§16 item 69):** every order-number message gets a card or a not-found reply; the silent repeat throttles are removed (live via #416; the founder confirmed on a real phone 2026-10-13) | ADR-116 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
@@ -706,11 +706,11 @@ production on 2026-10-15 after release #449. Re-verify before building.
   then an instant retry). Fixed 2026-10-15 (ADR-069 addendum: own 30s
   timeout, no retry), live 2026-10-15 (#449). Close once a day of logs shows
   the `exception` count down and no rc 83.
-- **103** Customer Analytics `stats()` loads every lifetime customer per call
-  (whereIn over all emails). Fine at ~36 orders; fix before or soon after
-  launch. Next session's first item (founder, 2026-10-15).
 
 **On `staging`, waiting for release (check on prod, then close)**
+- **103** Customer Analytics reads that scale (ADR-049/050 2026-10-15
+  addendum): backend and frontend PRs. On prod, check the list, search,
+  paging and a mixed customer's Source (`faris9745@`) against Reports.
 - **101** Admin low-contrast leftovers: light `gray-400` text (2.3:1) and dark
   `error-500` Delete links (2.5:1) now use the artifact's `ink-subtle` /
   `danger-ink` tokens, with a CI guard (#451, ADR-104 2026-10-15 addendum).
@@ -1018,24 +1018,13 @@ production on 2026-10-15 after release #449. Re-verify before building.
     order was 2026-10-10 (payments off since 10-07) and the cards are
     today-only. The agreed brief is in the ADR-104 2026-10-15 addendum.
 
-103. **Customer Analytics stats don't scale (found 2026-10-15, item 102 stress test).**
-    `CustomerAnalyticsService::stats()` with a date filter runs a lifetime
-    per-email aggregate, then a `whereIn` over every returned email for
-    names, on each page load. Repeat rate needs only each in-range
-    customer's lifetime count, so it can be one grouped query with a
-    `HAVING`/subquery instead. Not urgent at today's volume; fix before or
-    soon after launch.
-    **Audit 2026-10-15:** wider than `stats()`. `customers()` (list and CSV
-    export) also loads every lifetime customer and returns every row, with
-    no pagination; segment filter and sort run in PHP and the page renders
-    every row. The name lookup in `aggregatesByEmail()` fetches every order
-    of those emails (any payment status) to keep one name each. One page
-    load with a date filter runs 4 per-email GROUP BYs plus 4 name scans.
-    Reports does not share the problem: it aggregates in SQL and returns
-    one row per day/game/channel (ADR-086 PR-1). Prod: 32 paid orders,
-    3 customers, `stats()` ~40 ms. Pulse already flags requests over 500 ms
-    and queries over 200 ms. Also fix PRD §6.12 ANL-2: it says Frequent 10+
-    and Dormant > 90 days; ADR-049 and the code use 20 and 60.
+103. **Customer Analytics reads that scale (found 2026-10-15, item 102 stress test; built 2026-10-15).**
+    Every request loaded every customer into PHP (0.4–0.5 s and 46 MB per
+    call at 10k orders). Grilled with the founder, stress-tested and built
+    as the ADR-049/050 2026-10-15 addendum: one SQL aggregate, server-paged
+    list, segment as a SQL CASE, mixed Source label, Reports date presets,
+    email search, paged detail order history. Now ~85–140 ms and 0.1 MB at
+    10k orders. Details: build-log 2026-10-15.
 
 104. **Reseller wallet top-up KPIs (founder, 2026-10-15) — design not started.**
     Nothing shows how often or how much Resellers top up their wallets. Today

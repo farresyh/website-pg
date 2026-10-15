@@ -62,29 +62,6 @@ use Illuminate\Support\Facades\DB;
 final class ReportService
 {
     /**
-     * Resolves RPT-3's year/month filter into a [from, toExclusive) UTC
-     * instant pair ready to feed into paid_at comparisons. Null year
-     * means "no filter" (all-time) — both null.
-     *
-     * Kept alongside `dateRangeFromDates()` below (added 2026-09-11 for
-     * the Reports page's own filter-unification) because
-     * `CustomerAnalyticsController` (ANL-1..4, ADR-049) still uses this
-     * one for its own, unrelated year/month filter — Customer Analytics'
-     * UX wasn't part of that change and stays as it is.
-     */
-    public function dateRangeForYearMonth(?int $year, ?int $month): array
-    {
-        if ($year === null) {
-            return [null, null];
-        }
-
-        $start = CarbonImmutable::create($year, $month ?? 1, 1, 0, 0, 0, MalaysiaTime::TIMEZONE);
-        $end = $month !== null ? $start->addMonth() : $start->addYear();
-
-        return [$start->setTimezone('UTC'), $end->setTimezone('UTC')];
-    }
-
-    /**
      * ADR-086 filter-unification follow-up (2026-09-11) — replaces the
      * Reports page's old separate Year/Month picker with one date-range
      * filter that every tab, including the trend chart, resolves the
@@ -1133,9 +1110,6 @@ final class ReportService
 
     private function dayBucketExpr(string $column): string
     {
-        return match (DB::connection()->getDriverName()) {
-            'sqlite' => "date({$column}, '+8 hours')",
-            default => "DATE(CONVERT_TZ({$column}, '+00:00', '+08:00'))",
-        };
+        return MalaysiaTime::dateSql($column);
     }
 }

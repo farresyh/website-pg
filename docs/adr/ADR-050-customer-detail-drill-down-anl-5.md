@@ -28,3 +28,7 @@ The reference's profit table (`Total Revenue − Supplier Cost − Reseller Comm
 - **Fix: "Top Affiliates" → "Top Sources," "Affiliate" column → "Source."** Both now group/label by a composite rule — `Reseller: {business_name}` when `wallet_reseller_id` is set, the affiliate's `business_name` otherwise — the exact "Reseller: {name}" wording `Admin\OrderController`'s own Source column already established (ADR-074's "Orders visibility follow-up"), so the same term means the same thing everywhere in the admin. `topSpendBreakdown()`'s grouping key was generalized from a bare column name to an optional callable (plus a companion id-resolver) to support this composite key — `top_packages` above is unaffected, still grouped by the plain `package_id` column.
 - Decisions 2/3/5/6 above (Profit Analysis scope, Monthly Trend, delivery-gated `—` columns, always-lifetime-across-every-affiliate) are all unchanged — this addendum only touches the *label*, not the underlying money/scope rules.
 - Test + verification detail is recorded once, under ADR-049's own addendum above (same PR, same session).
+
+### 2026-10-15 addendum — paged order history, stats from the shared seam
+
+Part of ADR-049's 2026-10-15 addendum (decision 11, PRD §16 item 103). The order history is paged (25 per page). Stats, monthly trend, top packages and top sources come from SQL aggregates of `Order::netSalesSql()`; the segment comes from ADR-049's SQL `CASE`. Profit Analysis keeps the per-order `Order` methods, read in chunks. Decisions 2–6 are unchanged.
