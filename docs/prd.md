@@ -742,6 +742,7 @@ production on 2026-10-15 after release #449. Re-verify before building.
   first admin-issued voucher.
 - **85** Membership renewal reminder on WhatsApp (designed), at 10 active members
   or when members don't renew despite the email.
+- **104** Reseller wallet top-up KPIs (how often, how much), with item 28.
 
 **E. New features: after the backlog** (each needs its own ADR + grill)
 - **13** Self-serve reseller signup.
@@ -1024,6 +1025,33 @@ production on 2026-10-15 after release #449. Re-verify before building.
     customer's lifetime count, so it can be one grouped query with a
     `HAVING`/subquery instead. Not urgent at today's volume; fix before or
     soon after launch.
+    **Audit 2026-10-15:** wider than `stats()`. `customers()` (list and CSV
+    export) also loads every lifetime customer and returns every row, with
+    no pagination; segment filter and sort run in PHP and the page renders
+    every row. The name lookup in `aggregatesByEmail()` fetches every order
+    of those emails (any payment status) to keep one name each. One page
+    load with a date filter runs 4 per-email GROUP BYs plus 4 name scans.
+    Reports does not share the problem: it aggregates in SQL and returns
+    one row per day/game/channel (ADR-086 PR-1). Prod: 32 paid orders,
+    3 customers, `stats()` ~40 ms. Pulse already flags requests over 500 ms
+    and queries over 200 ms. Also fix PRD §6.12 ANL-2: it says Frequent 10+
+    and Dormant > 90 days; ADR-049 and the code use 20 and 60.
+
+104. **Reseller wallet top-up KPIs (founder, 2026-10-15) — design not started.**
+    Nothing shows how often or how much Resellers top up their wallets. Today
+    there are only current balances (`/admin/balance`), the total owed
+    (Dashboard), one reseller's ledger (wallet modal) and single top-up rows
+    (Accounting → Transactions); Reports' reseller section counts order spend,
+    not top-ups. Not part of item 28: ADR-115 forecasts supplier drain from
+    orders, blended over channels (its decision 3), while top-ups are money
+    coming in. Closest related: ADR-083 decision 8 (wallet liability vs
+    supplier balance, raw numbers until real reseller volume). Idea, to grill:
+    per reseller and period, top-up count, total, average, last top-up and
+    average days between, on `/admin/balance` or Reports; source is
+    `ledger_entries` type `wallet_topup` (CHIP and manual admin credit both
+    write it; `reference_type` tells them apart). Prod 2026-10-15: 2 resellers, 3 paid top-ups (RM464.01), 2
+    expired, 2 failed, too little data to read a pattern from. Trigger: with
+    item 28 (two weeks after launch).
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-13, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
