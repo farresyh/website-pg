@@ -947,3 +947,26 @@ refetched on search, no page-level horizontal scroll, no API errors.
 - ADR-088 decision 4 ("`dateRangeForYearMonth()` is kept for Customer
   Analytics") retired by ADR-049's 2026-10-15 addendum: dated addendum added,
   index date updated.
+
+## 2026-10-15 — Release #462 (`staging`→`main`): items 101–103, verified
+
+Founder merged #462 (`9b5ff74`, #450–#461). CI deploy green; the prod box's
+`current` is release 80314022 at `9b5ff74`; `/api/health` 200.
+
+Checks (read-only tinker over SSH, and the founder's logged-in Chrome):
+- Item 103: 3 customers; list total 22070 sen equals Reports' `total_sales`,
+  4 + 21 + 7 = 32 orders equals Reports; `faris9745@` shows
+  `Reseller: FixFast + Retail`; search `FA`, the October filter and the
+  `faris9745@` detail page (7 orders, Top Sources FixFast and Ohahastore) work.
+  The admin page renders it, names from paid orders included.
+- Item 102: Last 30 days on the Dashboard (RM210.10, 27 orders) equals
+  `/api/reports/summary` for 16 Sept–15 Oct (21010 sen, 27). Dark and narrow
+  (606 px, Chrome's minimum) render with no horizontal scroll.
+- Item 101: `getComputedStyle` contrast on prod: `text-ink-subtle` 4.80:1
+  light / 5.45:1 dark, `text-ink-muted` 7.86 / 8.82, `text-danger-ink`
+  5.70 / 8.42.
+- The Dashboard's "7 failed jobs" are old rows, not this release: reseller-bot
+  OpenWA 401s on 2026-09-25 (box migration) and backup timeouts 26–30 Sept
+  (fixed by item 97). Clearing them is a prod write, left to the founder.
+
+Items 101, 102 and 103 closed (PRD §16).

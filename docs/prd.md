@@ -588,24 +588,14 @@ founder's choice (confirmed 2026-10-13). Until they are re-enabled, storefront
 checkout and the reseller wallet's self-serve top-up can't be paid; wallet
 orders against an existing balance still work.
 
-**Latest release 2026-10-15 (`staging`→`main`, PR #449), deploy verified.**
-Merged as `30687ac`; the prod box runs it. Ships items 97–100: the backup
-restore test works again (#442; backup #47 restore-verified), scheduler
-liveness (#445, ADR-122: a stale critical task fails `/api/health`), the
-Digiflazz price-list's own 30s timeout without retry (#446, ADR-069
-addendum), and the admin status-colour tokens plus `body` `text-ink` (#447,
-#448). The same day #441 shipped item 97's main fix and #438 (changing your
-own admin password no longer logs you out).
-
-**Waiting on `staging`, not live (2026-10-15):** #450–#460. These carry item
-101 (admin low-contrast tokens), the admin dead-code sweep, the Dashboard
-redesign (item 102: daily briefing, status strip, busy hours, highlights) and
-Customer Analytics at scale (item 103, #458 + #459: server-paged list, search,
-Reports date presets, mixed Source label). The same release changes Reports'
-Compare: a range ending today is compared up to the same time. It also adds a
-Today date preset. Item 103 changes the `/customer-analytics/customers` API
-shape, so its backend and admin halves ship in the same release. Release
-`staging`→`main` when the founder asks.
+**Latest release 2026-10-15 (`staging`→`main`, PR #462), deploy verified.**
+Merged as `9b5ff74`; the prod box runs it. Ships items 101–103: the admin
+low-contrast tokens (#451), the Dashboard redesign as a daily briefing (#452,
+#454, #455; Reports' Compare now compares a range ending today up to the same
+time, plus a Today preset) and Customer Analytics at scale (#458, #459:
+server-paged list, email search, Reports date presets, mixed Source label,
+paged detail order history). Earlier the same day #449 shipped items 97–100.
+Nothing is waiting on `staging`.
 
 **Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
 hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
@@ -639,7 +629,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Area | Status | Key ADRs |
 | --- | --- | --- |
 | Auth & Admin Users (AUTH-1..7) | ✅ Live. Login rate-limited + logged. Admin MFA (AUTH-7) and the cookie-session admin login live since 2026-10-14 (#437) | ADR-019, ADR-121 |
-| Admin Dashboard (DASH-1..6) | ✅ Live — KPIs, System Health, funnel, top games, hourly activity. **Redesign (§16 item 102, ADR-104 2026-10-15) built on `staging`, not live:** daily briefing with a period filter, status strip, trend, channels, top games, busy hours, highlights; the funnel and single-day hourly chart are removed. **Scheduler liveness (ADR-122, §16 item 98):** live 2026-10-15 via #449. Per-task heartbeat (`scheduled_task_heartbeats`); a stale critical task fails `/api/health` (`checks.scheduler`); a "Scheduled tasks" row on System Health | ADR-045, ADR-122 |
+| Admin Dashboard (DASH-1..6) | ✅ Live — **redesign (§16 item 102, ADR-104 2026-10-15), live 2026-10-15 via #462:** daily briefing with a period filter, status strip, trend, channels, top games, busy hours, highlights; the funnel and single-day hourly chart are removed. **Scheduler liveness (ADR-122, §16 item 98):** live 2026-10-15 via #449. Per-task heartbeat (`scheduled_task_heartbeats`); a stale critical task fails `/api/health` (`checks.scheduler`); a "Scheduled tasks" row on System Health | ADR-045, ADR-122 |
 | Money core (Pricing, Ledger, Voucher, Order status, idempotency) | ✅ Live — full service layer, concurrency-proven. The most mature part of the codebase | ADR-002 |
 | Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end. PR #273's invite/session and compensation visibility fixes, plus ADR-112's role-aware shell, dashboard recent orders, and responsive Orders presentation, shipped in PRs #273, #275 and #276, released to `main` via #278 (2026-09-24) | ADR-056–061, 078, 112 |
 | Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live — prepaid wallet (admin manual credit + self-serve CHIP top-up, unpayable while payment methods are off, §14), one order-placement contract (`ResellerOrderPlacementService`), `reseller_code`/`catalog_code`, REST API v1.5.0 (keys, IP allowlist, delivery webhook, optional `max_price_sen`, per-account rate limits: orders 60/min and reads 120/min, ADR-074 2026-10-13 addendum, live via #425), WhatsApp Bot (OpenWA), shared role-aware portal (ADR-112), per-game player-input contract (ADR-097), own queue lane (ADR-048). Real customer orders run on this channel. Detail: build-log + ADRs | ADR-072–076, 084, 091, 093, 112, 048, 097 |
@@ -653,7 +643,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Reports (RPT-1..4) | 🟢 Live — redesigned per ADR-104 (2026-10-08 addendum R1–R21 + 2026-10-09 R8 addendum), live via #385 (2026-10-09). 7 tabs on Recharts. **Paid sales** (money collected, net of wallet refunds, `Order::netSalesSql()`) with a **Bridge to Accounting** to recognised revenue from one `RecognisedRevenue` seam shared with the Monthly Summary. Ledger-sourced profit, `paid_at` scoping, KL days. **Failed & compensated** per delivery status plus outstanding store credit. Compare period on every tab, sales by channel + API vs Bot (`orders.placed_via`), Delivery by game. CSV/PDF carry Paid / Wallet refund / Paid sales. Default range All time. LLM assistant at `/admin/reports/assistant` (ADR-087, `super_admin`) matches the page. History: ADR-086 grouped-SQL rewrite, ADR-088 unified date filter **On `staging`, not live (#454/#455, ADR-104 2026-10-15):** Compare for a range ending today runs to the same time (`previous_range.until`, label "…, to 10:30 AM"), a Today preset, `/reports/busy-hours`, `/reports/highlights` and `/reports/top-games?compare=` (the new Dashboard reads them). | ADR-086, 087, 088, 104 |
 | Withdrawals (WTH-1..5) | ✅ Live. Maker-checker threshold RM 2,000 (`WITHDRAWAL_MAKER_CHECKER_THRESHOLD_SEN`). **Live via #393 (2026-10-10):** the platform-owner request (button, "Available balance", `POST /api/withdrawals`) is removed; the screen reviews Affiliate requests only | ADR-059, ADR-083 |
 | Vouchers (VCH-1..6) | ✅ Live — + voucher-at-checkout (wallet model, partial/full cover), a typed expiry date valid through that Malaysia day (ADR-024 2026-10-13 addendum, live via #425), Path A double-submit key, Voucher Merge. Maker-checker RM 500. **2026-10-04 (ADR-024 addendum, live via #354):** a lost voucher or member-quota reservation now fails the checkout closed (Failed order, coded 422 `checkout_closed`, link never handed out) on every path, including idempotent replay; admin "Voucher Paid" reads the redemption. **2026-10-12 (ADR-036 addendum, item 80):** a merge rejects an expired source voucher. **2026-10-12 (ADR-024 addendum, item 79):** only an admin-issued voucher debits the platform ledger; the 4 old compensation-voucher debits were reversed on release (live via #416, 2026-10-13, verified on prod). **2026-10-13 (item 84):** expiry stays `expires_at` alone; the admin list, detail and order Refund cards show an active voucher past it as expired (`display_status`), and it can't be ticked for merge (live via #425) | ADR-024, 035, 036 |
-| Customer Analytics (ANL-1..5) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments. **Item 103 on `staging`, not live:** one SQL aggregate, server-paged list with sort, email search and the Reports date presets, mixed Source label, paged detail order history | ADR-049, ADR-050 |
+| Customer Analytics (ANL-1..5) | ✅ Live — `/admin/customer-analytics`, derived `customer_email` grouping (no new entity), VIP/Frequent/Dormant/New/One-time segments. **Item 103, live 2026-10-15 via #462:** one SQL aggregate, server-paged list with sort, email search and the Reports date presets, mixed Source label, paged detail order history | ADR-049, ADR-050 |
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. Renewal-reminder emails at H-3 and H+1 (Malaysia days), listed on the admin member page (item 64, live via #416 2026-10-13). WhatsApp reminders designed, waiting on a trigger (§16 item 85) | ADR-027, 055, 068, 080 |
 | Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. The voucher path was live-tested 2026-10-06 (a failed order's Issue Voucher code arrived on WhatsApp), along with the status card and not-found reply. Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14). **2026-10-12 (§16 item 69):** every order-number message gets a card or a not-found reply; the silent repeat throttles are removed (live via #416; the founder confirmed on a real phone 2026-10-13) | ADR-116 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
@@ -709,17 +699,6 @@ production on 2026-10-15 after release #449. Re-verify before building.
   then an instant retry). Fixed 2026-10-15 (ADR-069 addendum: own 30s
   timeout, no retry), live 2026-10-15 (#449). Close once a day of logs shows
   the `exception` count down and no rc 83.
-
-**On `staging`, waiting for release (check on prod, then close)**
-- **103** Customer Analytics reads that scale (ADR-049/050 2026-10-15
-  addendum): backend and frontend PRs. On prod, check the list, search,
-  paging and a mixed customer's Source (`faris9745@`) against Reports.
-- **101** Admin low-contrast leftovers: light `gray-400` text (2.3:1) and dark
-  `error-500` Delete links (2.5:1) now use the artifact's `ink-subtle` /
-  `danger-ink` tokens, with a CI guard (#451, ADR-104 2026-10-15 addendum).
-- **102** Dashboard redesign: grilled, mockup approved, built 2026-10-15 as
-  #452 (dead code), #454 (backend) and #455 (frontend). On prod, check the
-  Dashboard against Reports and real data in light, dark and phone views.
 
 **B. Needs a short grill / ADR addendum first**
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
@@ -996,41 +975,6 @@ production on 2026-10-15 after release #449. Re-verify before building.
     timed-out request. Fixed (ADR-069 2026-10-15 addendum): price-list gets
     its own 30s timeout and no retry.
 
-101. **Admin low-contrast leftovers (found 2026-10-15, item 100 sweep).**
-    A light/dark sweep of every static admin page (82 views, text under 3:1
-    against its first opaque background) still finds two pre-existing
-    groups: light-mode `gray-400` (#a8a192) secondary text and "i" tooltip
-    icons at 2.3–2.6:1 (~70, e.g. package unit suffixes), and dark-mode
-    `error-500` (#b42318) "Delete" buttons at 2.5:1 (23). Both are token
-    choices on screens outside the ADR-104 reskin (decision 7: those wait
-    for the founder's mockups), so this needs a design call, not a patch.
-    **Fixed 2026-10-15 (founder chose the design-system tokens over waiting
-    for mockups; ADR-104 2026-10-15 addendum):**
-    - New token `ink-subtle` (artifact values: light #716b62, dark #9a948a).
-      All 135 base `text-gray-400` classes (66 files) use it; a `dark:text-gray-500/600`
-      partner is dropped so the token's own dark value applies.
-    - The 5 base `text-error-500` classes use `danger-ink` (light unchanged,
-      dark #f59c93); two `dark:text-{error,success}-500` become `-400`.
-    - `color-tokens.test.ts` fails on a base `text-gray-400` / `text-error-500`.
-    - Live browser, 10 pages × light/dark: every changed element ≥ 4.8:1
-      light, ≥ 5.45:1 dark (SEO FAQ Delete 2.5 → 7.86:1 dark).
-
-102. **Dashboard redesign (brief agreed, grilled and built 2026-10-15; on `staging`).** The
-    Dashboard is the one high-traffic admin page still on the pre-ADR-104
-    look (38 TailAdmin-era classes) and its KPIs date from before resellers,
-    wallets, combos and membership. Prod check 2026-10-15: every Dashboard
-    figure matches raw order data; it looks broken only because the last
-    order was 2026-10-10 (payments off since 10-07) and the cards are
-    today-only. The agreed brief is in the ADR-104 2026-10-15 addendum.
-
-103. **Customer Analytics reads that scale (found 2026-10-15, item 102 stress test; built 2026-10-15).**
-    Every request loaded every customer into PHP (0.4–0.5 s and 46 MB per
-    call at 10k orders). Grilled with the founder, stress-tested and built
-    as the ADR-049/050 2026-10-15 addendum: one SQL aggregate, server-paged
-    list, segment as a SQL CASE, mixed Source label, Reports date presets,
-    email search, paged detail order history. Now ~85–140 ms and 0.1 MB at
-    10k orders. Details: build-log 2026-10-15.
-
 104. **Reseller wallet top-up KPIs (founder, 2026-10-15) — design not started.**
     Nothing shows how often or how much Resellers top up their wallets. Today
     there are only current balances (`/admin/balance`), the total owed
@@ -1060,6 +1004,10 @@ production on 2026-10-15 after release #449. Re-verify before building.
     patch. Trigger: Pulse shows the detail endpoint over 500 ms.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-13, `docs/build-log-archive.md`; why in `docs/adr.md`)
+
+- **103** 2026-10-15: Customer Analytics reads that scale (ADR-049/050 2026-10-15 addendum): one SQL aggregate for stats, list, export and detail stats; server-paged, sorted, searchable list; segment as a SQL CASE; segment and repeat rate from every paid order whatever the filters; Source `Reseller: A + Retail`; Reports date presets; paged detail order history. At 10k orders 409–502 ms / 46 MB became 84–137 ms / 0.1 MB. Released and verified 2026-10-15 (#462): 3 customers, list total equals Reports (RM220.70, 32 orders), `faris9745@` shows `Reseller: FixFast + Retail`. Details: build-log 2026-10-15.
+- **102** 2026-10-15: Dashboard redesign as a daily briefing (ADR-104 2026-10-15 addendum). Released and verified 2026-10-15 (#462): Last 30 days RM210.10 / 27 orders equals Reports for the same range; light, dark and narrow views render. Details: build-log 2026-10-15.
+- **101** 2026-10-15: admin low-contrast leftovers use the `ink-subtle` / `danger-ink` tokens, with a CI guard (ADR-104 2026-10-15 addendum). Released and verified 2026-10-15 (#462): on prod `ink-subtle` 4.80:1 light / 5.45:1 dark, `danger-ink` 5.70:1 / 8.42:1. Details: build-log 2026-10-15.
 
 - **100** 2026-10-15: admin dark-mode status text had no `-400` token (1.83:1). It is now aliased to the ADR-104 status inks (7.86:1), 22 light classes no longer name shades that never existed, `body` gets `text-ink`, and a CI guard catches a class with no token. Released and verified 2026-10-15 (#449). Details: build-log 2026-10-15.
 - **97** 2026-10-15: the nightly backup restore test works again (released #441 + #442 via #449; exact-name grant, ADR-117). Backup #47 `success`, `restore_test_passed = 1`, 72s.
