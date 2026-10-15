@@ -711,9 +711,12 @@ production on 2026-10-15 after release #449. Re-verify before building.
   CI guard. Not live: ships with the next release.
 
 **B. Needs a short grill / ADR addendum first**
-- **102** Dashboard redesign: brief agreed with the founder 2026-10-15
-  (ADR-104 2026-10-15 addendum). Next: grill, then a Dashboard mockup in the
-  design-system artifact for approval, then build.
+- **102** Dashboard redesign: grilled, stress-tested and mockup approved
+  2026-10-15 (ADR-104 2026-10-15 addenda). PR-0 (#452) merged; the backend
+  PR (#454) is built; the frontend PR is next. Not live.
+- **103** Customer Analytics `stats()` loads every lifetime customer per call
+  (whereIn over all emails). Fine at ~36 orders; fix before or soon after
+  launch.
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
   the accountant's monthly document list first.
 
@@ -1029,6 +1032,14 @@ production on 2026-10-15 after release #449. Re-verify before building.
     figure matches raw order data; it looks broken only because the last
     order was 2026-10-10 (payments off since 10-07) and the cards are
     today-only. The agreed brief is in the ADR-104 2026-10-15 addendum.
+
+103. **Customer Analytics stats don't scale (found 2026-10-15, item 102 stress test).**
+    `CustomerAnalyticsService::stats()` with a date filter runs a lifetime
+    per-email aggregate, then a `whereIn` over every returned email for
+    names, on each page load. Repeat rate needs only each in-range
+    customer's lifetime count, so it can be one grouped query with a
+    `HAVING`/subquery instead. Not urgent at today's volume; fix before or
+    soon after launch.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-13, `docs/build-log-archive.md`; why in `docs/adr.md`)
 

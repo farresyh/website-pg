@@ -197,8 +197,6 @@
 
   --breakpoint-*: initial;
   --breakpoint-2xsm: 375px;
-  --breakpoint-xsm: 425px;
-  --breakpoint-3xl: 2000px;
   --breakpoint-sm: 640px;
   --breakpoint-md: 768px;
   --breakpoint-lg: 1024px;
@@ -209,8 +207,6 @@
      sizes (14/20 and 12/18) and used in 63 and 83 files respectively;
      not worth the diff of a values-only rename. New named sizes below are
      additive, for anything PR-2/3 writes fresh against the artifact. */
-  --text-theme-xl: 20px;
-  --text-theme-xl--line-height: 30px;
   --text-theme-sm: 14px;
   --text-theme-sm--line-height: 20px;
   --text-theme-xs: 12px;
@@ -242,7 +238,6 @@
    * palette immediately (ADR-104 decision 7). Orders/Reports (PR-2/3)
    * use the new named tokens further down directly, not these aliases.
    */
-  --color-brand-25: #fafdfe;
   --color-brand-50: #e6f4f6;
   --color-brand-100: #cde9ed;
   --color-brand-200: #a3d6dd;
@@ -255,10 +250,6 @@
   --color-brand-900: #0c3c45;
   --color-brand-950: #07262c;
 
-  --color-blue-light-50: #e6f4f6;
-  --color-blue-light-500: #0b7285;
-
-  --color-gray-25: #fdfcfa;
   --color-gray-50: #f6f4f0;
   --color-gray-100: #f0eee9;
   --color-gray-200: #e4e0d8;
@@ -270,7 +261,6 @@
   --color-gray-800: #33302a;
   --color-gray-900: #221f1b;
   --color-gray-950: #14120f;
-  --color-gray-dark: #1a1917;
 
   --color-success-50: #e7f5ec;
   --color-success-500: #1c6b3d;

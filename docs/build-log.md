@@ -794,6 +794,22 @@ No live call: a price-list from a local machine shares the production account's 
 
 **Not live.** It ships with the next release bundle.
 
+## 2026-10-15 — Admin dead-code sweep (PR-0 of the Dashboard redesign, item 102)
+
+**Why.** The founder asked for an inventory of unused TailAdmin-era leftovers before the Dashboard grill, so they could decide what to delete. This PR removes only things with zero references.
+
+**Removed.**
+- `zod` from `admin/package.json`. It had 0 imports in `admin/src`. It stays in the lockfile as `eslint-plugin-react-hooks`'s own dependency.
+- The 5 create-next-app SVGs in `admin/public/` (`file`, `globe`, `next`, `vercel`, `window`), with 0 references.
+- Unused `globals.css` tokens, all with 0 class uses and 0 `var()` uses:
+  - `--color-brand-25`, `--color-blue-light-50/500`, `--color-gray-25`, `--color-gray-dark`
+  - `--text-theme-xl`
+  - `--breakpoint-xsm` and `--breakpoint-3xl`. This revises ADR-104 decision 2's "structural tokens untouched" for these two; `2xsm` is still used once and stays.
+
+**Kept on purpose.** These TailAdmin-era classes are still live on the screens that haven't been reskinned yet: `gray-*` (~3,000 uses), `text-theme-*` (~1,000), `brand-*` (216), `rounded-2xl` (138), `bg-white/[0.03]` (144), `shadow-theme` (35), and the `menu-item` utilities in `PanelSidebar`. They go as each screen is reskinned, not by deletion. Dashboard-only components and endpoints are deleted in the Dashboard build PR itself.
+
+**Verified.** Admin `npm test` 10/10, `tsc`, eslint and build are clean.
+
 ## 2026-10-15 — Dashboard redesign, backend PR (item 102)
 
 **Why.** This is the backend half of the redesigned Dashboard (ADR-104 2026-10-15 grill-outcome addendum). The founder approved the mockup in the design-system artifact first: one Sales trend card, not a sparkline per KPI.
