@@ -708,7 +708,12 @@ items dropped, listed under Recently closed). Re-verify before building.
 - **100** Admin colour tokens: dark `-400` status text (~190 uses) had no
   token and rendered at 1.83:1. Fixed 2026-10-15: aliased to the ADR-104
   status inks (now 7.86:1), 22 light classes moved off shades that never
-  existed, plus a CI guard test. Not live; ships with the next release.
+  existed, plus a CI guard test; `body` gets `text-ink` (uncoloured text was
+  browser black in dark mode). Not live; ships with the next release.
+- **101** Admin low-contrast leftovers (seen in the 2026-10-15 sweep, not
+  built): light `gray-400` secondary text and info icons at 2.3–2.6:1 (~70),
+  dark-mode `error-500` Delete buttons at 2.5:1 (23). Needs a design call
+  (ADR-104 decision 7: screens outside the reskin wait for mockups).
 
 **B. Needs a short grill / ADR addendum first**
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get

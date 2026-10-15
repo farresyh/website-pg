@@ -402,8 +402,11 @@
   [role="button"]:not(:disabled) {
     cursor: pointer;
   }
+  /* PRD §16 item 100 follow-up: without a text colour here, text with no
+     colour class (e.g. the Dashboard h1) fell back to the browser's black,
+     unreadable on the dark canvas. `ink` flips with `.dark`. */
   body {
-    @apply relative font-normal font-figtree bg-canvas;
+    @apply relative font-normal font-figtree bg-canvas text-ink;
   }
 }
 

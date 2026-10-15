@@ -1023,3 +1023,19 @@ No live call: a price-list from a local machine shares the production account's 
 **Seen, not fixed (asked the founder).** Two headings with no colour class, the Dashboard `h1` and the login `h1`, show near-black on the dark canvas, because `body` sets `bg-canvas` but no text colour.
 
 **Not live.** It ships with the next release bundle.
+
+## 2026-10-15 — Item 100 follow-up: `body` gets `text-ink` (founder-approved)
+
+**Why.** Text with no colour class inherited the browser's black, because `body` set `bg-canvas` but no text colour. On the dark canvas that was 1.28:1 (the Dashboard `h1`) and 1.20:1 (Recharts axis ticks on Reports).
+
+**Shipped (branch `fix/admin-body-text-ink`).** `body` now applies `text-ink`, which flips with `.dark`.
+
+**Verified with a before/after sweep.** Every static admin page plus `/login` (41 × light and dark = 82 views) was swept for text under 3:1 against its first opaque background.
+- 158 items before, 140 after.
+- Fixed: the Dashboard `h1`, the Reports axis ticks, and a Reports `-30` label.
+- New: none. The one apparent "new" row was the Monthly Summary's own timestamp changing between runs.
+- In light mode, unstyled text moves from #000 to ink #1b1a17.
+
+**Seen, not fixed (pre-existing, outside this change).**
+- Light-mode `gray-400` (#a8a192) secondary text and info icons measure 2.3–2.6:1 (around 70 instances, e.g. package unit suffixes, "i" tooltips).
+- Dark-mode "Delete" buttons in `error-500` (#b42318) measure 2.5:1 (23 instances).
