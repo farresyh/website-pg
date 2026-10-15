@@ -743,6 +743,8 @@ production on 2026-10-15 after release #449. Re-verify before building.
 - **85** Membership renewal reminder on WhatsApp (designed), at 10 active members
   or when members don't renew despite the email.
 - **104** Reseller wallet top-up KPIs (how often, how much), with item 28.
+- **105** Batch `Order::cashCompensationSen()`'s wallet-refund lookup, when the
+  Customer Detail page is slow for a big reseller (Pulse > 500 ms).
 
 **E. New features: after the backlog** (each needs its own ADR + grill)
 - **13** Self-serve reseller signup.
@@ -1041,6 +1043,18 @@ production on 2026-10-15 after release #449. Re-verify before building.
     write it; `reference_type` tells them apart). Prod 2026-10-15: 2 resellers, 3 paid top-ups (RM464.01), 2
     expired, 2 failed, too little data to read a pattern from. Trigger: with
     item 28 (two weeks after launch).
+
+105. **Customer Detail Profit Analysis: one query per order (found 2026-10-15, item 103).**
+    `Order::cashCompensationSen()` sums the order's wallet refunds with its
+    own query, so Profit Analysis costs one query per realised order of that
+    customer (`ponytail:` note in `CustomerAnalyticsService::profitAnalysis()`,
+    pinned by `CustomerAnalyticsListingTest`'s query-count guard). Fine today
+    (biggest prod customer: 21 orders). The fix is in the money model, shared
+    with `Admin\OrderController` and Accounting's `RecognisedRevenue`: read a
+    preloaded refund when the caller loaded them (`Order::walletRefundEntriesFor()`
+    already batches the lookup). Needs the money-bug code trace (every reader
+    of `cashCompensationSen()` / `compensationAmountSen()`), not a one-site
+    patch. Trigger: Pulse shows the detail endpoint over 500 ms.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-13, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
