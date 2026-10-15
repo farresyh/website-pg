@@ -195,6 +195,7 @@ class AppServiceProvider extends ServiceProvider
                     proxyUrl: $proxy['enabled'] ? $proxy['url'] : null,
                     timeoutSeconds: $config['timeout'],
                     connectTimeoutSeconds: $config['connect_timeout'],
+                    priceListTimeoutSeconds: $config['price_list_timeout'],
                 );
 
                 $breakerConfig = config('services.circuit_breaker');

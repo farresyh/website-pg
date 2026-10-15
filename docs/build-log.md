@@ -978,3 +978,25 @@ call still answers 401. The `ready` path is checked on prod after release.
 - **100:** the admin's `dark:text-error-400` (145 uses) points to an undefined token, so dark-mode error text falls back to `error-600` at 1.83:1.
 
 **Not live.** It ships in the next release bundle with #442.
+
+## 2026-10-15 — Item 99: Digiflazz price-list rate limit was self-inflicted; own 30s timeout, no retry
+
+**Found.** From production `supplier_request_logs`, 2026-10-11 to 2026-10-15, read-only:
+- Digiflazz `/v1/price-list` takes 4.7s median, 8.5s p90.
+- 42 of 249 calls hit the shared 10s timeout. Each was retried at once (a read timeout is a `ConnectionException`, so ADR-014 retries it), and 7 retries got `rc 83`, because Digiflazz had counted the timed-out request.
+- Gamevion's price-list never timed out.
+
+**Shipped (ADR-069 2026-10-15 addendum, branch `fix/digiflazz-price-list-timeout`).**
+- `DigiflazzAdapter::listProducts()` uses `DIGIFLAZZ_PRICE_LIST_TIMEOUT_SECONDS` (default 30) and no retry.
+- Transactions and `checkBalance` keep 10s plus the retry.
+- `client()` gained `timeoutSeconds`/`retry` parameters. The provider passes the new config.
+
+**Tests.** Red first:
+- The price-list call gets 30s while `cek-saldo` gets 10s.
+- A price-list connection failure is sent once.
+- `checkBalance` still retries (4 sends).
+- Fast suite 2811/2811.
+
+No live call: a price-list from a local machine shares the production account's rate limit.
+
+**Not live.** It ships with the next release bundle. Afterwards, watch the Digiflazz `listProducts` `exception` count and `rc 83` in `laravel.log`.

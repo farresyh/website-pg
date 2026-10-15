@@ -8,8 +8,10 @@ use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierOutcome;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Sleep;
 use Tests\TestCase;
 
 /**
@@ -870,5 +872,67 @@ class DigiflazzAdapterTest extends TestCase
         ));
 
         Http::assertSentCount(1);
+    }
+
+    /**
+     * ADR-069 2026-10-15 addendum (item 99): a full price-list takes
+     * 4.7s median, 8.5s p90 in production, so it gets its own 30s
+     * timeout. Transactions keep the shorter one: they run inside the
+     * order's row lock.
+     */
+    public function test_price_list_uses_its_own_longer_timeout_and_transactions_keep_theirs(): void
+    {
+        $timeouts = [];
+        Http::fake(function ($request, array $options) use (&$timeouts) {
+            $timeouts[parse_url($request->url(), PHP_URL_PATH)] = $options['timeout'];
+
+            return Http::response(['data' => []], 200);
+        });
+
+        $adapter = new DigiflazzAdapter(
+            baseUrl: 'https://api.digiflazz.com',
+            username: 'test-username',
+            apiKey: 'test-api-key',
+            timeoutSeconds: 10,
+            priceListTimeoutSeconds: 30,
+        );
+        $adapter->listProducts();
+        $adapter->checkBalance();
+
+        $this->assertSame(30, $timeouts['/v1/price-list']);
+        $this->assertSame(10, $timeouts['/v1/cek-saldo']);
+    }
+
+    /**
+     * Item 99: Digiflazz counts a price-list request it received even when
+     * our side timed out, so an instant retry hit rc 83 ("limitasi
+     * pengecekan pricelist") 7 times in 4 days. The next scheduled sync is
+     * the retry.
+     */
+    public function test_a_price_list_connection_failure_is_not_retried(): void
+    {
+        Sleep::fake();
+        Http::fake(['api.digiflazz.com/*' => Http::failedConnection()]);
+
+        try {
+            $this->adapter()->listProducts();
+            $this->fail('A connection failure should surface to the caller.');
+        } catch (ConnectionException) {
+        }
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_other_calls_still_retry_a_connection_failure(): void
+    {
+        Sleep::fake();
+        Http::fake(['api.digiflazz.com/*' => Http::failedConnection()]);
+
+        try {
+            $this->adapter()->checkBalance();
+        } catch (ConnectionException) {
+        }
+
+        Http::assertSentCount(4);
     }
 }
