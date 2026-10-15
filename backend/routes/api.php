@@ -530,6 +530,8 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::get('/accounting-bridge', [ReportController::class, 'accountingBridge']);
         Route::get('/failed-compensated', [ReportController::class, 'failedCompensated']);
         Route::get('/order-status-funnel', [ReportController::class, 'orderStatusFunnel']);
+        Route::get('/busy-hours', [ReportController::class, 'busyHours']);
+        Route::get('/highlights', [ReportController::class, 'highlights']);
         Route::get('/membership-breakdown', [ReportController::class, 'membershipBreakdown']);
         Route::get('/export', [ReportController::class, 'export']);
     });

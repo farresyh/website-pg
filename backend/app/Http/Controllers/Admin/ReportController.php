@@ -52,6 +52,18 @@ class ReportController extends Controller
         return response()->json($this->withCompare($request, 'summary', 'summaryComparison'));
     }
 
+    /** ADR-104 2026-10-15 — Dashboard Busy hours: paid orders per KL hour over the range. */
+    public function busyHours(Request $request): JsonResponse
+    {
+        return response()->json(['hours' => $this->reports->busyHours(...[...$this->rangeFromRequest($request), $this->affiliateId($request)])]);
+    }
+
+    /** ADR-104 2026-10-15 — Dashboard Highlights: best day, top reseller, biggest order. */
+    public function highlights(Request $request): JsonResponse
+    {
+        return response()->json($this->reports->highlights(...[...$this->rangeFromRequest($request), $this->affiliateId($request)]));
+    }
+
     public function trend(Request $request): JsonResponse
     {
         [$from, $toExclusive] = $this->trendRangeFromRequest($request);

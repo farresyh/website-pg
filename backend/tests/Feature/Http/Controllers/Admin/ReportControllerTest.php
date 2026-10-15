@@ -8,6 +8,7 @@ use App\Models\Reseller;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -75,7 +76,7 @@ class ReportControllerTest extends TestCase
         $response->assertOk()->assertJson([
             'total_sales' => 1500,
             'compare' => [
-                'previous_range' => ['from' => '2026-09-25', 'to' => '2026-10-01'],
+                'previous_range' => ['from' => '2026-09-25', 'to' => '2026-10-01', 'until' => null],
                 'previous' => ['total_sales' => 1000, 'orders_count' => 1],
                 'changes' => [
                     'total_sales' => ['pct' => 50, 'direction' => 'up'],
@@ -92,7 +93,46 @@ class ReportControllerTest extends TestCase
 
         $this->getJson('/api/reports/summary?from=2026-10-01&to=2026-10-08&compare=month_to_date')
             ->assertOk()
-            ->assertJsonPath('compare.previous_range', ['from' => '2026-09-01', 'to' => '2026-09-08']);
+            ->assertJsonPath('compare.previous_range', ['from' => '2026-09-01', 'to' => '2026-09-08', 'until' => null]);
+    }
+
+    /** ADR-104 2026-10-15 grill Q3 / S2: today is compared with yesterday up to the same time, and the label says so. */
+    public function test_a_range_still_running_compares_up_to_the_same_time(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-15 10:30', 'Asia/Kuala_Lumpur'));
+        $this->order(['final_amount' => 1000, 'paid_at' => CarbonImmutable::parse('2026-10-15 09:00', 'Asia/Kuala_Lumpur')->utc()]);
+        $this->order(['final_amount' => 4000, 'paid_at' => CarbonImmutable::parse('2026-10-14 09:00', 'Asia/Kuala_Lumpur')->utc()]);
+        $this->order(['final_amount' => 9000, 'paid_at' => CarbonImmutable::parse('2026-10-14 15:00', 'Asia/Kuala_Lumpur')->utc()]);
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/reports/summary?from=2026-10-15&to=2026-10-15&compare=previous')
+            ->assertOk()
+            ->assertJsonPath('compare.previous_range', ['from' => '2026-10-14', 'to' => '2026-10-14', 'until' => '10:30'])
+            ->assertJsonPath('compare.previous.total_sales', 4000);
+    }
+
+    /** ADR-104 2026-10-15 — the Dashboard's two new Reports facts. */
+    public function test_busy_hours_and_highlights_endpoints(): void
+    {
+        $this->order(['final_amount' => 1500, 'paid_at' => CarbonImmutable::parse('2026-10-03 21:15', 'Asia/Kuala_Lumpur')->utc()]);
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/reports/busy-hours?from=2026-10-02&to=2026-10-08')
+            ->assertOk()
+            ->assertJsonCount(24, 'hours')
+            ->assertJsonPath('hours.21', ['hour' => 21, 'orders_count' => 1]);
+
+        $this->getJson('/api/reports/highlights?from=2026-10-02&to=2026-10-08')
+            ->assertOk()
+            ->assertJsonPath('best_day.date', '2026-10-03')
+            ->assertJsonPath('biggest_order.amount', 1500)
+            ->assertJsonPath('top_reseller', null);
+    }
+
+    public function test_busy_hours_and_highlights_require_authentication(): void
+    {
+        $this->getJson('/api/reports/busy-hours')->assertUnauthorized();
+        $this->getJson('/api/reports/highlights')->assertUnauthorized();
     }
 
     /** R12 — All time has no previous period. */
@@ -120,7 +160,7 @@ class ReportControllerTest extends TestCase
         $this->getJson('/api/reports/membership-breakdown?from=2026-10-02&to=2026-10-08&compare=previous')
             ->assertOk()
             ->assertJsonPath('standard_sales', 1500)
-            ->assertJsonPath('compare.previous_range', ['from' => '2026-09-25', 'to' => '2026-10-01'])
+            ->assertJsonPath('compare.previous_range', ['from' => '2026-09-25', 'to' => '2026-10-01', 'until' => null])
             ->assertJsonPath('compare.previous.standard_sales', 1000)
             ->assertJsonPath('compare.changes.standard_sales', ['pct' => 50, 'direction' => 'up'])
             ->assertJsonPath('compare.changes.member_sales', ['pct' => null, 'direction' => 'flat']);

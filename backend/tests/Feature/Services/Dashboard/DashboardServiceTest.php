@@ -2,12 +2,17 @@
 
 namespace Tests\Feature\Services\Dashboard;
 
+use App\Models\AdminUser;
+use App\Models\BackupRun;
 use App\Models\Game;
 use App\Models\LedgerEntry;
 use App\Models\Order;
+use App\Models\PaymentMethod;
+use App\Models\Review;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Models\Voucher;
+use App\Models\Withdrawal;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Currency\CurrencyRateService;
@@ -19,6 +24,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
 use App\Services\Scheduling\SchedulerLiveness;
+use App\Services\Withdrawal\WithdrawalStatus;
 use App\Support\MalaysiaTime;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -537,5 +543,107 @@ class DashboardServiceTest extends TestCase
         $activity = $this->dashboard->hourlyActivity($today->toDateString());
 
         $this->assertSame(0, $activity['hours'][9]['count']);
+    }
+
+    // --- attention (ADR-104 2026-10-15 grill Q9 / S4) -------------------
+
+    /** @return array<string, array{key: string, level: string, count: int, subject: string|null}> */
+    private function attentionItems(): array
+    {
+        return collect($this->dashboard->health()['attention']['items'])
+            ->keyBy(fn (array $item) => $item['key'].($item['subject'] ? ':'.$item['subject'] : ''))
+            ->all();
+    }
+
+    public function test_attention_is_empty_when_all_is_well(): void
+    {
+        $attention = $this->dashboard->health()['attention'];
+
+        $this->assertSame([], $attention['items']);
+        $this->assertSame(0, $attention['needs_action_count']);
+    }
+
+    public function test_a_needs_review_order_is_not_counted_again_as_stuck(): void
+    {
+        $this->order(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $stale = $this->order(['delivery_status' => DeliveryStatus::Processing->value]);
+        DB::table('orders')->where('id', $stale->id)->update(['updated_at' => now()->subDay()]);
+
+        $items = $this->attentionItems();
+
+        $this->assertSame(['key' => 'needs_review', 'level' => 'red', 'count' => 1, 'subject' => null], $items['needs_review']);
+        $this->assertSame(1, $items['stuck_orders']['count']);
+        $this->assertSame(2, $this->dashboard->health()['attention']['needs_action_count']);
+    }
+
+    public function test_failed_uncompensated_orders_need_action(): void
+    {
+        $this->order(['delivery_status' => DeliveryStatus::Failed->value]);
+
+        $this->assertSame(['key' => 'needs_action_orders', 'level' => 'red', 'count' => 1, 'subject' => null], $this->attentionItems()['needs_action_orders']);
+    }
+
+    public function test_supplier_low_balance_is_amber_and_names_the_supplier(): void
+    {
+        $this->fakeNoFxRateAvailable();
+        Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz-'.uniqid(), 'currency' => 'IDR', 'balance' => 5000, 'api_config' => ['low_balance_threshold' => 10000]]);
+
+        $this->assertSame(['key' => 'supplier_low_balance', 'level' => 'amber', 'count' => 1, 'subject' => 'Digiflazz'], $this->attentionItems()['supplier_low_balance:Digiflazz']);
+    }
+
+    public function test_withdrawals_to_process_count_pending_and_approved(): void
+    {
+        $admin = AdminUser::factory()->create();
+        foreach ([WithdrawalStatus::Pending, WithdrawalStatus::Approved, WithdrawalStatus::Completed] as $status) {
+            Withdrawal::query()->create(['owner_type' => 'platform', 'amount' => 1000, 'bank_name' => 'Maybank', 'bank_account_no' => '1', 'bank_account_holder' => 'KRS', 'status' => $status, 'requested_by' => $admin->id]);
+        }
+
+        $this->assertSame(2, $this->attentionItems()['withdrawals_to_process']['count']);
+    }
+
+    public function test_payments_off_and_pending_reviews_are_neutral_and_not_counted(): void
+    {
+        PaymentMethod::query()->create(['channel_code' => 'fpx', 'label' => 'FPX', 'category' => 'fpx', 'gateway' => 'chip', 'is_active' => false, 'percentage_rate' => 0.0, 'flat_fee_sen' => 100]);
+        Review::query()->create(['order_id' => $this->order()->id, 'rating' => 5]);
+
+        $items = $this->attentionItems();
+
+        $this->assertSame('neutral', $items['payments_off']['level']);
+        $this->assertSame(['key' => 'reviews_pending', 'level' => 'neutral', 'count' => 1, 'subject' => null], $items['reviews_pending']);
+        $this->assertSame(0, $this->dashboard->health()['attention']['needs_action_count']);
+    }
+
+    public function test_payments_are_not_off_while_one_method_is_active(): void
+    {
+        PaymentMethod::query()->create(['channel_code' => 'fpx', 'label' => 'FPX', 'category' => 'fpx', 'gateway' => 'chip', 'is_active' => true, 'percentage_rate' => 0.0, 'flat_fee_sen' => 100]);
+        PaymentMethod::query()->create(['channel_code' => 'qr', 'label' => 'QR', 'category' => 'fpx', 'gateway' => 'chip', 'is_active' => false, 'percentage_rate' => 0.0, 'flat_fee_sen' => 100]);
+
+        $this->assertArrayNotHasKey('payments_off', $this->attentionItems());
+    }
+
+    public function test_a_disconnected_reseller_bot_is_red_but_no_recent_event_is_not(): void
+    {
+        $this->assertArrayNotHasKey('reseller_bot_disconnected', $this->attentionItems());
+
+        (new OpenWaSessionStatus)->record('disconnected');
+
+        $this->assertSame('red', $this->attentionItems()['reseller_bot_disconnected']['level']);
+    }
+
+    public function test_the_last_backup_failing_is_amber(): void
+    {
+        BackupRun::query()->create(['status' => 'success', 'triggered_by' => 'system']);
+        BackupRun::query()->create(['status' => 'failed', 'triggered_by' => 'system']);
+
+        $this->assertSame('amber', $this->attentionItems()['backup_failed']['level']);
+    }
+
+    public function test_attention_carries_the_last_paid_order_time(): void
+    {
+        $this->assertNull($this->dashboard->health()['attention']['last_paid_at']);
+
+        $this->order(['paid_at' => CarbonImmutable::parse('2026-10-10 10:00', 'UTC')]);
+
+        $this->assertSame('2026-10-10T18:00:00+08:00', $this->dashboard->health()['attention']['last_paid_at']);
     }
 }
