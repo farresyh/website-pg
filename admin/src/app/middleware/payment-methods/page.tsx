@@ -81,11 +81,11 @@ function FeeCell({
           onChange={(e) => setPercentage(e.target.value)}
           className="h-9 w-16 rounded-lg border border-gray-300 px-2 pr-4 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
         />
-        <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+        <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-ink-subtle">%</span>
       </div>
-      <span className="text-xs text-gray-400">+</span>
+      <span className="text-xs text-ink-subtle">+</span>
       <div className="relative">
-        <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">¢</span>
+        <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-ink-subtle">¢</span>
         <input
           type="text"
           value={flatSen}
@@ -221,7 +221,7 @@ export default function PaymentMethodsPage() {
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <span className="font-medium text-gray-800 dark:text-white/90">{method.label}</span>
                           <br />
-                          <span className="text-theme-xs text-gray-400">{method.channel_code} · {method.gateway}</span>
+                          <span className="text-theme-xs text-ink-subtle">{method.channel_code} · {method.gateway}</span>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <FeeCell
@@ -232,7 +232,7 @@ export default function PaymentMethodsPage() {
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
                           {method.last_test_result ? (
-                            <span className={method.last_test_result === "success" ? "text-success-600 dark:text-success-500" : "text-error-600 dark:text-error-500"}>
+                            <span className={method.last_test_result === "success" ? "text-success-600 dark:text-success-400" : "text-error-600 dark:text-error-400"}>
                               {method.last_test_result}
                             </span>
                           ) : (

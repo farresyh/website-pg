@@ -46,7 +46,7 @@ function PreviewCard({ preview }: { preview: MembershipPricingPreview }) {
           </span>
           <div className="text-right">
             <p className="text-sm font-bold text-success-600 dark:text-success-400">RM{(preview.member_price_sen / 100).toFixed(2)}</p>
-            <p className="text-theme-xs text-gray-400 line-through dark:text-gray-500">RM{(preview.normal_price_sen / 100).toFixed(2)}</p>
+            <p className="text-theme-xs text-ink-subtle line-through">RM{(preview.normal_price_sen / 100).toFixed(2)}</p>
           </div>
         </div>
       </div>

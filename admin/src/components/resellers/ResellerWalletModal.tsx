@@ -208,7 +208,7 @@ function Content({ reseller, onCredited }: Omit<Props, "isOpen" | "onClose">) {
                 ))}
                 {wallet.entries.data.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-gray-400">No ledger entries yet.</td>
+                    <td colSpan={5} className="px-4 py-6 text-center text-ink-subtle">No ledger entries yet.</td>
                   </tr>
                 )}
               </tbody>

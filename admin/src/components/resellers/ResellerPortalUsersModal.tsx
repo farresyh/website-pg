@@ -127,7 +127,7 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
           </li>
         ))}
         {users !== null && users.length === 0 && (
-          <li className="py-4 text-center text-theme-sm text-gray-400">No portal users yet.</li>
+          <li className="py-4 text-center text-theme-sm text-ink-subtle">No portal users yet.</li>
         )}
       </ul>
 

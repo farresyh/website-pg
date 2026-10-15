@@ -157,7 +157,7 @@ export function PostingForm({ index, defaultEnvelopeId, onRecorded }: Props) {
               <option key={t.value} value={t.value}>{t.label}</option>
             ))}
           </select>
-          <span className="mt-1 block text-theme-xs text-gray-400">{HINTS[type]}</span>
+          <span className="mt-1 block text-theme-xs text-ink-subtle">{HINTS[type]}</span>
         </div>
 
         {needsDirector && (
@@ -170,7 +170,7 @@ export function PostingForm({ index, defaultEnvelopeId, onRecorded }: Props) {
               ))}
             </select>
             {type === "repayment" && owed !== undefined && (
-              <span className="mt-1 block text-theme-xs text-gray-400">The company owes them {formatRm(owed)}.</span>
+              <span className="mt-1 block text-theme-xs text-ink-subtle">The company owes them {formatRm(owed)}.</span>
             )}
           </div>
         )}

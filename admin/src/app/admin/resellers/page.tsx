@@ -207,10 +207,10 @@ export default function ResellersPage() {
                         <DataTableCell className={TD}>
                           {r.tier_name ? (
                             <span>
-                              {r.tier_name} <span className="text-theme-xs text-gray-400">(+{r.markup_percent}%)</span>
+                              {r.tier_name} <span className="text-theme-xs text-ink-subtle">(+{r.markup_percent}%)</span>
                             </span>
                           ) : (
-                            <span className="text-gray-400">— no tier —</span>
+                            <span className="text-ink-subtle">— no tier —</span>
                           )}
                         </DataTableCell>
                         <DataTableCell className={TD}>{formatRm(r.wallet_balance_sen)}</DataTableCell>

@@ -43,7 +43,7 @@ function Input({ className, disabled, error, hint, ...props }: InputProps) {
                 className={cn(inputVariants({ disabled: Boolean(disabled), error: Boolean(error) }), className)}
                 {...props}
             />
-            {hint && <p className={cn('mt-1.5 text-xs', error ? 'text-error-500' : 'text-gray-500')}>{hint}</p>}
+            {hint && <p className={cn('mt-1.5 text-xs', error ? 'text-danger-ink' : 'text-gray-500')}>{hint}</p>}
         </div>
     );
 }

@@ -130,7 +130,7 @@ function GameSeoListPageInner() {
                           <Tag severity={STATUS_TAG[game.seo_status].severity}>{STATUS_TAG[game.seo_status].label}</Tag>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          {game.no_index ? <Tag severity="secondary">Noindex</Tag> : <span className="text-gray-400">—</span>}
+                          {game.no_index ? <Tag severity="secondary">Noindex</Tag> : <span className="text-ink-subtle">—</span>}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <Link href={`/admin/seo/games/${game.id}`} className="text-brand-500 hover:underline">

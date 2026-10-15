@@ -1,6 +1,6 @@
 # ADR-104: Admin panel visual redesign — retire TailAdmin token layer, adopt "PekanGame Admin" design system
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-15):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — grilled (`/mattpocock-skills:grilling`) 2026-09-17, against the founder's own Design-canvas artifact ("PekanGame Admin", `https://claude.ai/artifact/Jr2dGDUAFasPMedVayHPHe`). **PR-1 (foundation) merged 2026-09-17 (PR #233). PR-2 (Orders) built (PR #234), then corrected the same session** — the Artifact tool's own read/read_db/list_assets paths return only an empty shell for this artifact type; re-opening it directly in a browser (works fine) surfaced two real mistakes: purple had been wrongly generalized from "Orders' urgency accent" to "profit, everywhere" (reverted), and the artifact's own `border`/`border-strong`/`border-control` tokens were missing from PR-1's extraction (added). **PR-2b (header action-bar + compact summary strip) built (PR #235)**, grilled with the founder to a strict layout-only scope (no rename/reorganize/functionality change) before any code. **The founder then logged into the local dev server and drove a real live-browser audit (light+dark) against the artifact's own screenshots — correctly rejecting an initial "no contrast issue"/"confirmed match" claim.** Found and fixed 2 real dark-mode token bugs verified via `getComputedStyle`: every unstyled `<dd>` in `OrderDetailCards.tsx` silently rendered `rgb(0,0,0)` (pure black) on a dark card — fixed with explicit `text-ink`; `info-surface`/`info-ink` had no `.dark` override at all (PR-1 wrongly filed it under "inherits light") and rendered as a bright light-cyan island — fixed by mirroring cyan's own dark pair. Re-grilled scope under a strict rule (current implementation = functional source of truth, mockup = visual source of truth only) and built, same session: card-merge into "Game & fulfillment"/"Payment & supplier" + structured "Latest supplier result", card-heading icons, `RefundInformationCards` emoji→icon + responsive grid, info-strip's 5th "Channel" column, uniform header-button styling, KpiCards icon consistency, and — the app shell explicitly brought into ADR-104 scope for the first time — `AppSidebar.tsx` regrouped into 6 titled sections matching the artifact exactly (zero route/permission change, pure JS-array reshuffle) plus a shared-component retint and logo-box treatment (also benefits the Middleware Panel, confirmed unaffected live). PR #233–#235 merged and live 2026-09-17. **PR-3 (Reports) was re-scoped by the 2026-10-08 addendum below and built as PR-A/B/C, live via #385 (2026-10-09).** The lesson stands: re-open the artifact live and audit by screenshot before declaring a match.
 
@@ -171,3 +171,40 @@ See `docs/build-log-archive.md`, 2026-10-09.
 **Rejected.** Rewording the copy only (the sum beside it would still mix statuses). Showing partial compensation only in the Bridge (hides money from the Orders tab). Weighting a partial delivery in the success rate (a new formula that is hard to explain).
 
 **Audit claim corrected.** One audit layer reported that the Bridge invariant test has no partial combo. It has both a settled and an unsettled one (`ReportAccountingBridgeTest::seedEveryShape`), so nothing changed there.
+
+### 2026-10-15 addendum — token-level fixes outside the reskin; the Dashboard enters scope
+
+**1. Decision 7 reading.** Decision 7 holds back *layout* work on screens with
+no mockup. It does not hold back swapping an old colour class for a token the
+artifact already defines. PRD §16 item 101 (light `gray-400` text at 2.3:1,
+dark `error-500` Delete links at 2.5:1) was fixed that way: the artifact's
+`ink-subtle` (its usage note names "package size, time under the date") and
+`danger-ink` ("Destructive button label"). `ink-subtle` had been left out of
+PR-1's token extraction, like the `border-*` tokens before it.
+
+**2. The Dashboard joins the reskin (design only; build after a grill and a
+mockup the founder approves).** It is the one high-traffic page still on the
+old look, and its KPIs date from before resellers, wallets, combos and
+membership. Prod on 2026-10-15: every figure is correct; the page looks broken
+because the cards are today-only and there were no orders after 2026-10-10.
+The brief agreed with the founder (PRD §16 item 102):
+- **Job:** answer "does anything need action?" and "how is the business
+  doing?" equally, for the founder only (all money figures may show).
+- **Layout ("morning briefing"):**
+  1. A one-line summary built from data.
+  2. A status strip: "All systems OK" or "N need action". Each item links to
+     its screen; today's health detail sits behind it.
+  3. KPIs with a trend.
+  4. Channel split (Store / Affiliate / Reseller).
+  5. Top games.
+  6. **Busy hours**.
+  7. Highlights (true facts only).
+- **One period filter for the page:** default Today, plus 7 days, 30 days
+  and custom. Status items always show the current state.
+- **Empty periods:** say why (last order date, payments off), never a bare 0.
+- **Busy hours:** paid orders by `paid_at` hour (KL time), summed over the
+  selected period. This replaces the single-day Hourly Activity.
+- **Conversion funnel:** moves to Reports.
+- **Copy:** stays English.
+- **Money figures:** reuse `ReportService` definitions. The Dashboard never
+  computes its own profit.

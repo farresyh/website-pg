@@ -158,7 +158,7 @@ function ManualCheckResultView({ result }: { result: ManualCheckResult }) {
       <div className="space-y-4">
         {result.legs.map((leg) => (
           <div key={leg.leg_number}>
-            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400">Leg {leg.leg_number}</p>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-subtle">Leg {leg.leg_number}</p>
             <ManualCheckOutcomeLine outcome={leg.outcome} applied={leg.applied} />
             <ManualCheckJson data={leg.data} errorCode={leg.error_code} errorMessage={leg.error_message} />
           </div>

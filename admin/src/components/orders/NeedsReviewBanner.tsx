@@ -33,7 +33,7 @@ export default function NeedsReviewBanner({ order, sandbox }: { order: OrderDeta
       {(errorCode || errorMessage) && (
         <p className="mt-1 text-ink-muted">
           Recorded reason: <span className="font-medium text-ink">{errorMessage ?? errorCode}</span>
-          {errorCode && errorMessage && <span className="text-gray-400"> ({errorCode})</span>}
+          {errorCode && errorMessage && <span className="text-ink-subtle"> ({errorCode})</span>}
         </p>
       )}
       {/* ADR-102 decision 13 — plain-language explanation for why the Resend/Retry button below is disabled (or requires an override reason), on top of the raw error_code/message above. */}
@@ -54,9 +54,9 @@ export default function NeedsReviewBanner({ order, sandbox }: { order: OrderDeta
         )}
       </p>
       <dl className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-3">
-        <div><dt className="text-gray-400">Created</dt><dd className="font-medium text-ink">{new Date(order.created_at).toLocaleString()}</dd></div>
-        <div><dt className="text-gray-400">Player ID</dt><dd className="font-medium text-ink">{order.player_id}</dd></div>
-        <div><dt className="text-gray-400">Game</dt><dd className="font-medium text-ink">{order.game?.name ?? "—"}</dd></div>
+        <div><dt className="text-ink-subtle">Created</dt><dd className="font-medium text-ink">{new Date(order.created_at).toLocaleString()}</dd></div>
+        <div><dt className="text-ink-subtle">Player ID</dt><dd className="font-medium text-ink">{order.player_id}</dd></div>
+        <div><dt className="text-ink-subtle">Game</dt><dd className="font-medium text-ink">{order.game?.name ?? "—"}</dd></div>
       </dl>
     </div>
   );

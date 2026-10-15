@@ -168,7 +168,7 @@ export default function BalanceOverviewPage() {
               </DataTableTableContainer>
             </DataTable>
             {suppliers.length === 0 && (
-              <p className="px-5 py-6 text-center text-theme-sm text-gray-400">No suppliers configured yet.</p>
+              <p className="px-5 py-6 text-center text-theme-sm text-ink-subtle">No suppliers configured yet.</p>
             )}
           </div>
         </div>
@@ -216,11 +216,11 @@ export default function BalanceOverviewPage() {
               </DataTableTableContainer>
             </DataTable>
             {resellers.length === 0 && (
-              <p className="px-5 py-6 text-center text-theme-sm text-gray-400">No resellers yet.</p>
+              <p className="px-5 py-6 text-center text-theme-sm text-ink-subtle">No resellers yet.</p>
             )}
           </div>
         </div>
-        <p className="mt-2 text-theme-xs text-gray-400">
+        <p className="mt-2 text-theme-xs text-ink-subtle">
           Read-only — to credit a wallet or manage a reseller, use{" "}
           <Link href="/admin/resellers" className="underline">
             Resellers

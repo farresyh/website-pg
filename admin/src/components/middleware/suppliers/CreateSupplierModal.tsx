@@ -120,7 +120,7 @@ function CreateSupplierFields({
                   </SelectPositioner>
                 </SelectPortal>
               </Select>
-              <p className="mt-1 text-theme-xs text-gray-400">
+              <p className="mt-1 text-theme-xs text-ink-subtle">
                 Only adapters already implemented in code can be added here — a typo&apos;d slug would otherwise sit
                 silently broken until the first real order.
               </p>
@@ -160,7 +160,7 @@ function CreateSupplierFields({
               />
             </div>
 
-            <p className="text-theme-xs text-gray-400">
+            <p className="text-theme-xs text-ink-subtle">
               Credentials aren&apos;t set here — add this supplier first, then open Edit to configure its api_config.
             </p>
           </form>

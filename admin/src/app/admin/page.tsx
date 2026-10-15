@@ -237,13 +237,13 @@ export default function AdminDashboardPage() {
                         {formatSupplierBalance(s.balance, s.currency)}
                       </span>
                       {formatMyrEquivalent(s.balance_myr_equivalent) && (
-                        <span className="ml-1 text-theme-xs tabular-nums text-gray-400">{formatMyrEquivalent(s.balance_myr_equivalent)}</span>
+                        <span className="ml-1 text-theme-xs tabular-nums text-ink-subtle">{formatMyrEquivalent(s.balance_myr_equivalent)}</span>
                       )}
                     </span>
                   </li>
                 ))}
                 {health.suppliers.length === 0 && (
-                  <li className="text-theme-sm text-gray-400 dark:text-gray-500">No suppliers configured yet.</li>
+                  <li className="text-theme-sm text-ink-subtle">No suppliers configured yet.</li>
                 )}
                 {/* PR-F build addendum decision 5 — OpenWA sessions as active chips (never a silent gap): the Reseller Bot is a reseller's live paid ordering path; Customer WhatsApp (ADR-116) carries voucher codes. */}
                 {([
@@ -260,7 +260,7 @@ export default function AdminDashboardPage() {
                       )}
                     </span>
                     {session && (
-                      <span className="text-theme-xs text-gray-400 dark:text-gray-500">
+                      <span className="text-theme-xs text-ink-subtle">
                         {new Date(session.at).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })}
                       </span>
                     )}
@@ -270,7 +270,7 @@ export default function AdminDashboardPage() {
                 <ScheduledTasksRow scheduled={health.scheduled_tasks} />
               </ul>
               <div className="flex items-center gap-1.5 pb-1">
-                <span className="text-theme-xs text-gray-400 dark:text-gray-500">Supplier status/balance</span>
+                <span className="text-theme-xs text-ink-subtle">Supplier status/balance</span>
                 <InfoTooltip definition={health.suppliers_definition} />
               </div>
               {/* 2026-09-28 addendum — reseller-wallet-float vs supplier-balance treasury check. Side-by-side numbers only, no alert threshold yet. */}
@@ -283,26 +283,26 @@ export default function AdminDashboardPage() {
                   <span className="tabular-nums text-gray-500 dark:text-gray-400">
                     {formatRm(health.reseller_wallet_liability_sen)}
                   </span>
-                  <span className="ml-1 text-theme-xs tabular-nums text-gray-400">
+                  <span className="ml-1 text-theme-xs tabular-nums text-ink-subtle">
                     vs {formatRm(Math.round(health.total_supplier_balance_myr_equivalent * 100))} supplier balance
                   </span>
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-3 border-t border-gray-100 pt-3 dark:border-gray-800">
                 <div>
-                  <p className="flex items-center gap-1 text-theme-xs text-gray-400 dark:text-gray-500">
+                  <p className="flex items-center gap-1 text-theme-xs text-ink-subtle">
                     Stuck Orders <InfoTooltip definition={health.stuck_orders.definition} />
                   </p>
                   <p className="text-base font-semibold text-gray-800 dark:text-white/90">{health.stuck_orders.value}</p>
                 </div>
                 <div>
-                  <p className="flex items-center gap-1 text-theme-xs text-gray-400 dark:text-gray-500">
+                  <p className="flex items-center gap-1 text-theme-xs text-ink-subtle">
                     Pending Payments <InfoTooltip definition={health.pending_payments.definition} />
                   </p>
                   <p className="text-base font-semibold text-gray-800 dark:text-white/90">{health.pending_payments.value}</p>
                 </div>
                 <div>
-                  <p className="flex items-center gap-1 text-theme-xs text-gray-400 dark:text-gray-500">
+                  <p className="flex items-center gap-1 text-theme-xs text-ink-subtle">
                     Queue <InfoTooltip definition={health.queue.definition} />
                   </p>
                   <p className="text-base font-semibold text-gray-800 dark:text-white/90">

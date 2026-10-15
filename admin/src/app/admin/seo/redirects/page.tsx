@@ -119,7 +119,7 @@ export default function RedirectsPage() {
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <div className="flex gap-3">
                             <button type="button" className="text-brand-500 hover:underline" onClick={() => { setEditing(r); setModalOpen(true); }}>Edit</button>
-                            <button type="button" className="text-error-500 hover:underline" disabled={deletingId === r.id} onClick={() => handleDelete(r)}>Delete</button>
+                            <button type="button" className="text-danger-ink hover:underline" disabled={deletingId === r.id} onClick={() => handleDelete(r)}>Delete</button>
                           </div>
                         </DataTableCell>
                       </DataTableRow>

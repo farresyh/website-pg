@@ -200,7 +200,7 @@ export default function PaymentSettlementsPage() {
           onChange={handleUpload}
           className="block w-full text-theme-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-theme-xs dark:text-gray-400 dark:file:bg-gray-800"
         />
-        {uploading && <p className="mt-2 text-theme-xs text-gray-400">Uploading and reconciling…</p>}
+        {uploading && <p className="mt-2 text-theme-xs text-ink-subtle">Uploading and reconciling…</p>}
       </div>
 
       {error && (
@@ -311,7 +311,7 @@ export default function PaymentSettlementsPage() {
                 </DataTableTableContainer>
               </DataTable>
               {settlements.data.length === 0 && (
-                <p className="px-5 py-6 text-center text-theme-sm text-gray-400">No settlements uploaded yet.</p>
+                <p className="px-5 py-6 text-center text-theme-sm text-ink-subtle">No settlements uploaded yet.</p>
               )}
             </div>
           </div>
@@ -406,7 +406,7 @@ export default function PaymentSettlementsPage() {
                       })}
                       {dateRangeData.data.length === 0 && (
                         <tr>
-                          <td colSpan={8} className="px-5 py-6 text-center text-theme-sm text-gray-400">No matched transactions in this range.</td>
+                          <td colSpan={8} className="px-5 py-6 text-center text-theme-sm text-ink-subtle">No matched transactions in this range.</td>
                         </tr>
                       )}
                     </tbody>

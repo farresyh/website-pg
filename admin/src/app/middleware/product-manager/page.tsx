@@ -409,14 +409,14 @@ export default function ProductManagerPage() {
                                 <DataTableCell className="px-5 py-4 text-theme-sm">
                                   <span className="font-medium text-gray-800 dark:text-white/90">{product.name}</span>
                                   <br />
-                                  <span className="text-theme-xs text-gray-400">ID: {product.external_ref}</span>
+                                  <span className="text-theme-xs text-ink-subtle">ID: {product.external_ref}</span>
                                 </DataTableCell>
                                 <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
                                   {formatRm(product.price_sen)}
                                   {formatRaw(product.raw_price, product.raw_currency, product.price_sen) && (
                                     <>
                                       <br />
-                                      <span className="text-theme-xs text-gray-400">
+                                      <span className="text-theme-xs text-ink-subtle">
                                         {formatRaw(product.raw_price, product.raw_currency, product.price_sen)}
                                       </span>
                                     </>
@@ -429,7 +429,7 @@ export default function ProductManagerPage() {
                                 </DataTableCell>
                                 <DataTableCell className="px-5 py-4 text-theme-sm">
                                   {product.is_promoted ? (
-                                    <span className="text-gray-400">—</span>
+                                    <span className="text-ink-subtle">—</span>
                                   ) : (
                                     <Button
                                       size="small"
@@ -475,7 +475,7 @@ export default function ProductManagerPage() {
                                 <DataTableCell className="px-5 py-4 text-theme-sm">
                                   <span className="font-medium text-gray-800 dark:text-white/90">{pkg.name}</span>
                                   <br />
-                                  <span className="text-theme-xs text-gray-400">Supplier ID: {pkg.supplier_package_ref}</span>
+                                  <span className="text-theme-xs text-ink-subtle">Supplier ID: {pkg.supplier_package_ref}</span>
                                 </DataTableCell>
                                 <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(pkg.cost_price)}</DataTableCell>
                                 <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(pkg.standard_selling_price)}</DataTableCell>

@@ -998,7 +998,7 @@ function OrdersPageInner() {
         {rangePreset === "custom" && (
           <>
             <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="w-[9.5rem]" />
-            <span className="text-theme-xs text-gray-400 dark:text-gray-500">to</span>
+            <span className="text-theme-xs text-ink-subtle">to</span>
             <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="w-[9.5rem]" />
           </>
         )}
@@ -1064,7 +1064,7 @@ function OrdersPageInner() {
                         {!hiddenColumns.has("game") && (
                           <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                             {order.game?.name ?? "—"}
-                            {order.package?.name && <span className="text-theme-xs text-gray-400"> · {order.package.name}</span>}
+                            {order.package?.name && <span className="text-theme-xs text-ink-subtle"> · {order.package.name}</span>}
                           </DataTableCell>
                         )}
                         {!hiddenColumns.has("source") && (

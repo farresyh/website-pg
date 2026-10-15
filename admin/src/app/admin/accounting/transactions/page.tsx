@@ -219,7 +219,7 @@ export default function TransactionRegisterPage() {
                         <DataTableCell className={`${TD} ${isVoided ? "line-through" : ""}`}>{formatRm(r.fee_sen)}</DataTableCell>
                         <DataTableCell className={TD}>{formatRm(r.cost_sen)}</DataTableCell>
                         <DataTableCell className="px-5 py-4">
-                          <span className={isVoided ? "text-gray-400 line-through" : "text-theme-sm text-gray-500 dark:text-gray-400"}>
+                          <span className={isVoided ? "text-ink-subtle line-through" : "text-theme-sm text-gray-500 dark:text-gray-400"}>
                             {formatRm(r.net_sen)}
                           </span>
                           {isVoided && <Tag severity="danger" className="ml-2">Voided</Tag>}
@@ -233,7 +233,7 @@ export default function TransactionRegisterPage() {
             </DataTableTableContainer>
           </DataTable>
           {page.data.length === 0 && (
-            <p className="px-5 py-6 text-center text-theme-sm text-gray-400">No transactions in this range.</p>
+            <p className="px-5 py-6 text-center text-theme-sm text-ink-subtle">No transactions in this range.</p>
           )}
         </div>
       </div>

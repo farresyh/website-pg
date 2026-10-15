@@ -119,14 +119,14 @@ export default function FooterSettingsSection({
         />
       </div>
 
-      <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">Legal pages</h2>
+      <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-subtle">Legal pages</h2>
       <div className="mb-6 space-y-5">
         <LegalField label="Terms & Conditions content" route="/terms" value={terms} onChange={setTerms} storeName={storeName} />
         <LegalField label="Privacy Policy content" route="/privacy" value={privacy} onChange={setPrivacy} storeName={storeName} />
         <LegalField label="About Us content" route="/about-us" value={aboutUs} onChange={setAboutUs} storeName={storeName} />
       </div>
 
-      <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">Footer games</h2>
+      <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-subtle">Footer games</h2>
       <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
         Pick up to {MAX_FOOTER_GAMES} active games to feature in the storefront footer&apos;s &quot;Top Up Games&quot; section.
       </p>

@@ -127,7 +127,7 @@ function Content({ supplier }: Omit<Props, "isOpen" | "onClose">) {
           <div>
             <p className="text-theme-xs text-gray-500 dark:text-gray-400">Funding ledger balance ({ledger.currency})</p>
             <p className="text-2xl font-semibold text-gray-800 dark:text-white/90">{formatForeign(ledger.ledger_balance, ledger.currency)}</p>
-            <p className="mt-1 text-theme-xs text-gray-400 dark:text-gray-500">
+            <p className="mt-1 text-theme-xs text-ink-subtle">
               API-polled balance: {supplier.balance ?? "—"} {supplier.currency} — for reference only, not auto-reconciled here.
             </p>
           </div>
@@ -152,7 +152,7 @@ function Content({ supplier }: Omit<Props, "isOpen" | "onClose">) {
           <div>
             <Label htmlFor="transfer_date">Transfer date</Label>
             <Input id="transfer_date" type="date" value={transferredOn} onChange={(e) => setTransferredOn(e.target.value)} max={todayInKL()} required />
-            <p className="mt-1 text-theme-xs text-gray-400">The day the money left the bank, from the receipt — not today if you&apos;re recording it late.</p>
+            <p className="mt-1 text-theme-xs text-ink-subtle">The day the money left the bank, from the receipt — not today if you&apos;re recording it late.</p>
           </div>
           <div>
             <Label htmlFor="transfer_channel">Sent via</Label>
@@ -202,7 +202,7 @@ function Content({ supplier }: Omit<Props, "isOpen" | "onClose">) {
               placeholder={supplier.currency === "IDR" ? "3700000" : "1000.00"}
               required
             />
-            <p className="mt-1 text-theme-xs text-gray-400">Gross — the literal &quot;total to supplier&quot; figure on the receipt, before the supplier&apos;s own fee below.</p>
+            <p className="mt-1 text-theme-xs text-ink-subtle">Gross — the literal &quot;total to supplier&quot; figure on the receipt, before the supplier&apos;s own fee below.</p>
           </div>
           <div>
             <Label htmlFor="transfer_supplier_fee">Supplier&apos;s own fee ({supplier.currency}, optional)</Label>
@@ -212,7 +212,7 @@ function Content({ supplier }: Omit<Props, "isOpen" | "onClose">) {
               onChange={(e) => setSupplierFee(e.target.value)}
               placeholder={supplier.currency === "IDR" ? "15000" : "0.00"}
             />
-            <p className="mt-1 text-theme-xs text-gray-400">e.g. Digiflazz&apos;s own deposit-side cut — the ledger credits net (received − this fee), not the gross figure above.</p>
+            <p className="mt-1 text-theme-xs text-ink-subtle">e.g. Digiflazz&apos;s own deposit-side cut — the ledger credits net (received − this fee), not the gross figure above.</p>
           </div>
           <div>
             <Label htmlFor="transfer_receipt">Receipt (optional)</Label>
