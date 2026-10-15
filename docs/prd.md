@@ -711,7 +711,6 @@ items dropped, listed under Recently closed). Re-verify before building.
   status tokens in `globals.css` (needs a look at every screen).
 
 **B. Needs a short grill / ADR addendum first**
-
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
   the accountant's monthly document list first.
 
