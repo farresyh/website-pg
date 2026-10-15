@@ -809,3 +809,29 @@ No live call: a price-list from a local machine shares the production account's 
 **Kept on purpose.** These TailAdmin-era classes are still live on the screens that haven't been reskinned yet: `gray-*` (~3,000 uses), `text-theme-*` (~1,000), `brand-*` (216), `rounded-2xl` (138), `bg-white/[0.03]` (144), `shadow-theme` (35), and the `menu-item` utilities in `PanelSidebar`. They go as each screen is reskinned, not by deletion. Dashboard-only components and endpoints are deleted in the Dashboard build PR itself.
 
 **Verified.** Admin `npm test` 10/10, `tsc`, eslint and build are clean.
+
+## 2026-10-15 — Dashboard redesign, backend PR (item 102)
+
+**Why.** This is the backend half of the redesigned Dashboard (ADR-104 2026-10-15 grill-outcome addendum). The founder approved the mockup in the design-system artifact first: one Sales trend card, not a sparkline per KPI.
+
+**Shipped (branch `feature/dashboard-backend`, test-first).**
+- **`PeriodComparison::previousRange`, which Reports uses too.** A range still running is compared up to the same elapsed time: today to 10:30 vs yesterday to 10:30, and likewise 7/30 days and month to date. `previous_range` gains `until` (`"10:30"`, else null), and `to` names the clipped day. Reports' Compare figures for ranges ending today change accordingly.
+- **`ReportService::busyHours()` on `/reports/busy-hours`.** Paid orders per KL hour of `paid_at`, 24 rows, zero-filled. It uses the same population as Sales (`scopedOrders`) and a new `hourBucketExpr` (sqlite + MySQL).
+- **`ReportService::highlights()` on `/reports/highlights`.**
+  - `best_day`, with `is_all_time_record`. It is null for a one-day range, and ties go to the earlier day.
+  - `top_reseller`, from `resellerBreakdown()`.
+  - `biggest_order`, using net sales like Sales.
+  - Each fact is null without data.
+- **`attention` inside `/dashboard/health`**, so the status strip and the health panel come from the same poll and the same numbers. Items are `{key, level, count, subject}`, plus `needs_action_count` (red and amber items only) and `last_paid_at`. Choices found while building:
+  - `stuck_orders` in health already includes NeedsReview, so the attention `stuck_orders` item counts only stale processing/pending orders. `needs_review` is its own item, and no order is counted twice.
+  - A null OpenWA session only means no event in the last hour, so it is never flagged. Only an explicit non-connected status is.
+  - "Withdrawals to process" counts Pending and Approved: an approved one still waits for the admin's transfer.
+  - "Payments off" is neutral, and only when at least one method exists and none is active.
+  - "Backup failed" means the latest finished run failed.
+- The old `/dashboard/summary`, `/funnel`, `/top-games` and `/hourly-activity` stay until the frontend PR replaces their caller.
+
+**Verified.**
+- Full backend suite: 2,835 passed.
+- The 71 Report/Dashboard tests also pass on real MySQL, which exercises `HOUR(CONVERT_TZ())` and the aliased `ORDER BY`.
+
+**Not live.** It ships with the frontend PR in the next release.

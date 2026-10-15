@@ -711,10 +711,9 @@ production on 2026-10-15 after release #449. Re-verify before building.
   CI guard. Not live: ships with the next release.
 
 **B. Needs a short grill / ADR addendum first**
-- **102** Dashboard redesign: grilled and stress-tested 2026-10-15 (ADR-104
-  2026-10-15 grill-outcome addendum). PR-0 dead-code sweep is #452. Next: a
-  Dashboard mockup in the design-system artifact for approval, then the
-  backend and frontend PRs.
+- **102** Dashboard redesign: grilled, stress-tested and mockup approved
+  2026-10-15 (ADR-104 2026-10-15 addenda). PR-0 (#452) merged; the backend
+  PR (#454) is built; the frontend PR is next. Not live.
 - **103** Customer Analytics `stats()` loads every lifetime customer per call
   (whereIn over all emails). Fine at ~36 orders; fix before or soon after
   launch.

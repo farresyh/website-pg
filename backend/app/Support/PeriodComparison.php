@@ -56,6 +56,10 @@ final class PeriodComparison
      * immediately before. Day arithmetic runs in KL, where the bounds are
      * midnights.
      *
+     * ADR-104 2026-10-15 (grill Q3): a range still running (it ends after
+     * now) is compared up to the same elapsed time, e.g. today to 10:30
+     * vs yesterday to 10:30, never vs all of yesterday.
+     *
      * @return array{0: CarbonImmutable, 1: CarbonImmutable}
      */
     public static function previousRange(CarbonImmutable $from, CarbonImmutable $toExclusive, bool $monthToDate): array
@@ -67,10 +71,16 @@ final class PeriodComparison
         if ($monthToDate) {
             $start = $fromKl->startOfMonth()->subMonthNoOverflow();
             $end = $start->addDays($days)->min($start->addMonthNoOverflow());
-
-            return [$start->setTimezone('UTC'), $end->setTimezone('UTC')];
+        } else {
+            $start = $fromKl->subDays($days);
+            $end = $fromKl;
         }
 
-        return [$fromKl->subDays($days)->setTimezone('UTC'), $from];
+        $now = CarbonImmutable::now();
+        if ($now->gt($from) && $now->lt($toExclusive)) {
+            $end = $end->min($start->addSeconds((int) $from->diffInSeconds($now)));
+        }
+
+        return [$start->setTimezone('UTC'), $end->setTimezone('UTC')];
     }
 }

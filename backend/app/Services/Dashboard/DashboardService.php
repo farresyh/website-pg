@@ -2,10 +2,16 @@
 
 namespace App\Services\Dashboard;
 
+use App\Models\BackupRun;
 use App\Models\LedgerEntry;
 use App\Models\Order;
+use App\Models\PaymentMethod;
+use App\Models\PendingPriceChange;
+use App\Models\ResellerWhatsAppPendingLink;
+use App\Models\Review;
 use App\Models\Supplier;
 use App\Models\Voucher;
+use App\Models\Withdrawal;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Currency\CurrencyRateService;
 use App\Services\Currency\CurrencyRateUnavailableException;
@@ -15,6 +21,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
 use App\Services\Scheduling\SchedulerLiveness;
+use App\Services\Withdrawal\WithdrawalStatus;
 use App\Support\MalaysiaTime;
 use App\Support\PeriodComparison;
 use Carbon\CarbonImmutable;
@@ -192,8 +199,12 @@ final class DashboardService
             ->count();
 
         $openWaSession = $this->openWaSessionStatus->current();
+        $openWaCsSession = $this->openWaSessionStatus->current(OpenWaSessionStatus::CUSTOMER_SUPPORT);
+        $scheduledTasks = $this->schedulerLiveness->tasks();
+        $failedJobs = (int) DB::table('failed_jobs')->whereIn('queue', self::MONITORED_QUEUES)->count();
 
         return [
+            'attention' => $this->attention($suppliers, $needsReviewCount, $staleProcessingCount + $stalePendingCount, $failedJobs, $scheduledTasks, $openWaSession, $openWaCsSession),
             'suppliers' => $suppliers,
             'suppliers_definition' => 'circuit_state read from CircuitBreaker::state() (cache-backed, per-supplier breaker keyed by Supplier.slug) — never a live ping to the supplier. balance mirrors Supplier.balance, the last value the supplier\'s own API reported (not ledger-governed, ADR-002 does not apply to it), in that supplier\'s own currency — never assume MYR. balance_myr_equivalent is a display-only conversion (CurrencyRateService, cached ~24h) for comparing suppliers at a glance; null means the conversion is unavailable right now, not that the balance is zero. drift (ADR-083 decision 6) compares that same balance against SUM(supplier_ledger_entries) — null when no drift_threshold is configured for this supplier, meaning "not watched", not "not drifted".',
             // 2026-09-28 addendum: real-time reseller-wallet-float vs
@@ -215,7 +226,7 @@ final class DashboardService
             // 'disconnected' state.
             'openwa_session' => $openWaSession,
             // ADR-116 decision 11 — the customer-support session, same shape.
-            'openwa_cs_session' => $this->openWaSessionStatus->current(OpenWaSessionStatus::CUSTOMER_SUPPORT),
+            'openwa_cs_session' => $openWaCsSession,
             'openwa_session_definition' => 'Last-known session.status event OpenWaWebhookController received, cache-backed (no live ping), 1h TTL. Null means no event in the last hour, not confirmed healthy.',
             'stuck_orders' => [
                 'value' => $needsReviewCount + $staleProcessingCount + $stalePendingCount,
@@ -229,14 +240,89 @@ final class DashboardService
                 // Live Redis queue size (waiting + delayed + reserved) — the
                 // `jobs` table this used to read is unused since ADR-048.
                 'pending' => (int) collect(self::MONITORED_QUEUES)->sum(fn (string $queue) => Queue::size($queue)),
-                'failed' => (int) DB::table('failed_jobs')->whereIn('queue', self::MONITORED_QUEUES)->count(),
+                'failed' => $failedJobs,
                 'definition' => 'Pending = live Redis queue size (waiting + delayed + in-flight); failed = COUNT(*) from failed_jobs. Order lanes only ('.implode(', ', self::MONITORED_QUEUES).') — the delivery-critical FulfillOrderJob/ResendOrderDeliveryJob/CheckSupplierDeliveryJob path. The default/price-sync/backups queues aren\'t part of the money-critical customer-facing path this screen monitors.',
             ],
             // ADR-122 — the detail behind /api/health's `scheduler` boolean.
             'scheduled_tasks' => [
-                'tasks' => $this->schedulerLiveness->tasks(),
+                'tasks' => $scheduledTasks,
                 'definition' => 'One row per scheduled task (scheduled_task_heartbeats). last_ok_at = the scheduler last ran it with exit code 0 (a run skipped by its overlap lock does not count). stale = it missed its due runs: a task that runs more than once a day may miss one, then 30 minutes grace; a daily task may miss none, 60 minutes grace. A stale critical task fails /api/health (UptimeRobot alerts); a stale routine task shows here only. This is whether the task ran, not whether a job it dispatched (backup, price sync) succeeded.',
             ],
+        ];
+    }
+
+    /**
+     * ADR-104 2026-10-15 (grill Q9, S4) — the Dashboard status strip, built
+     * from the same figures as the health panel so the two can't disagree.
+     * Red and amber items count toward "N need action"; neutral ones show
+     * but don't count. Stuck orders here are only the stale processing /
+     * pending ones: needs_review is its own item, never counted twice.
+     * A null OpenWA session means no event in the last hour, not
+     * disconnected, so only an explicit non-connected status is flagged.
+     *
+     * @return array{items: list<array{key: string, level: string, count: int, subject: string|null}>, needs_action_count: int, last_paid_at: string|null}
+     */
+    private function attention(array $suppliers, int $needsReview, int $staleOrders, int $failedJobs, array $scheduledTasks, ?array $openWaSession, ?array $openWaCsSession): array
+    {
+        $item = fn (string $key, string $level, int $count = 1, ?string $subject = null) => compact('key', 'level', 'count', 'subject');
+        $items = [];
+
+        foreach ($suppliers as $supplier) {
+            if ($supplier['circuit_state'] === 'open') {
+                $items[] = $item('supplier_circuit_open', 'red', 1, $supplier['name']);
+            }
+        }
+
+        $criticalStale = collect($scheduledTasks)->where('tier', 'critical')->where('stale', true)->count();
+        $needsActionOrders = Order::query()->where('is_test', false)->needsAction()->count();
+        $red = [
+            'scheduler_critical_stale' => $criticalStale,
+            'queue_failed' => $failedJobs,
+            'stuck_orders' => $staleOrders,
+            'needs_action_orders' => $needsActionOrders,
+            'needs_review' => $needsReview,
+            'reseller_bot_disconnected' => (int) ($openWaSession !== null && $openWaSession['status'] !== 'connected'),
+        ];
+
+        foreach ($suppliers as $supplier) {
+            if ($supplier['low_balance']) {
+                $items[] = $item('supplier_low_balance', 'amber', 1, $supplier['name']);
+            }
+            if ($supplier['drift']['is_drifted'] ?? false) {
+                $items[] = $item('supplier_drift', 'amber', 1, $supplier['name']);
+            }
+        }
+
+        $lastBackup = BackupRun::query()->whereIn('status', ['success', 'failed'])->latest('id')->value('status');
+        $amber = [
+            'withdrawals_to_process' => Withdrawal::query()->whereIn('status', [WithdrawalStatus::Pending, WithdrawalStatus::Approved])->count(),
+            'price_changes_pending' => PendingPriceChange::query()->where('status', 'pending')->count(),
+            'whatsapp_links_pending' => ResellerWhatsAppPendingLink::query()->count(),
+            'backup_failed' => (int) ($lastBackup === 'failed'),
+            'customer_whatsapp_disconnected' => (int) ($openWaCsSession !== null && $openWaCsSession['status'] !== 'connected'),
+        ];
+
+        $methods = PaymentMethod::query()->selectRaw('COUNT(*) as total, SUM(CASE WHEN is_active THEN 1 ELSE 0 END) as active')->first();
+        $neutral = [
+            'payments_off' => (int) ($methods->total > 0 && (int) $methods->active === 0),
+            'reviews_pending' => Review::query()->where('status', 'pending')->count(),
+        ];
+
+        foreach (['red' => $red, 'amber' => $amber, 'neutral' => $neutral] as $level => $counts) {
+            foreach ($counts as $key => $count) {
+                if ($count > 0) {
+                    $items[] = $item($key, $level, $count);
+                }
+            }
+        }
+
+        usort($items, fn (array $a, array $b) => array_search($a['level'], ['red', 'amber', 'neutral']) <=> array_search($b['level'], ['red', 'amber', 'neutral']));
+        $lastPaidAt = Order::query()->where('is_test', false)->where('payment_status', PaymentStatus::Paid->value)->max('paid_at');
+
+        return [
+            'items' => $items,
+            'needs_action_count' => collect($items)->where('level', '!=', 'neutral')->count(),
+            'last_paid_at' => $lastPaidAt === null ? null : CarbonImmutable::parse($lastPaidAt, 'UTC')->setTimezone(MalaysiaTime::TIMEZONE)->toIso8601String(),
         ];
     }
 
