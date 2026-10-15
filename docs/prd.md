@@ -569,7 +569,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 # 14. Build Status
 
-**Where things stand (2026-10-14).** The platform is feature-complete and live
+**Where things stand (2026-10-15).** The platform is feature-complete and live
 in production: storefront (plus every Affiliate whitelabel brand), admin panel,
 Affiliate/Reseller portal, and the developer-docs site. CHIP FPX payments and
 the CHIP + Digiflazz webhooks are proven end-to-end with real money.
@@ -588,23 +588,24 @@ founder's choice (confirmed 2026-10-13). Until they are re-enabled, storefront
 checkout and the reseller wallet's self-serve top-up can't be paid; wallet
 orders against an existing balance still work.
 
-**Latest release 2026-10-14 (`staging`→`main`, PR #437), deploy verified.**
-Merged as `4fefc43`; the prod box runs it. Ships #431–#436: item 10 (admin
-MFA and the cookie-session admin login, ADR-121), item 73 (Reseller API
-rejection log) and item 95 (`/api/health/whatsapp`, both sessions `ready`),
-plus docs. The founder's admin account has MFA active. **Not yet released:**
-#438 (changing your own admin password no longer logs you out; the edit
-form no longer autofills the password).
+**Latest release 2026-10-15 (`staging`→`main`, PR #449), deploy verified.**
+Merged as `30687ac`; the prod box runs it. Ships items 97–100: the backup
+restore test works again (#442; backup #47 restore-verified), scheduler
+liveness (#445, ADR-122: a stale critical task fails `/api/health`), the
+Digiflazz price-list's own 30s timeout without retry (#446, ADR-069
+addendum), and the admin status-colour tokens plus `body` `text-ink` (#447,
+#448). The same day #441 shipped item 97's main fix and #438 (changing your
+own admin password no longer logs you out). No code is waiting on `staging`.
 
 **Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
 hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
 `cdn.` stay on `pekangame.space`.
 
-**Earlier releases** (#425 on 2026-10-13, #416 and #406 on 2026-10-12/13, #393 Envelope Ledger,
+**Earlier releases** (#437 on 2026-10-14: admin MFA, ADR-121; #430 and #425 on 2026-10-13, #416 and #406 on 2026-10-12/13, #393 Envelope Ledger,
 #385 Reports redesign, #376 Reseller API `max_price_sen` / Assistant = Reports /
 `r2_accounting`, #369 ADR-120 SEO/GEO, #362, #354, #346, #342, #332,
 #320 and the 2026-09-28 audit waves) are recorded release by release in
-`docs/build-log.md` (2026-10-11 onward) and `docs/build-log-archive.md`
+`docs/build-log.md` (2026-10-13 onward) and `docs/build-log-archive.md`
 (before that). This section keeps only the current state.
 
 **Infrastructure:**
@@ -615,7 +616,7 @@ hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
 - Cloudflare sits in front of `api.`.
 
 - **Per-feature-area status:** §15 below.
-- **Full chronological build record** (every session, what shipped, the gotchas): `docs/build-log.md` (entries before 2026-10-11 in `docs/build-log-archive.md`).
+- **Full chronological build record** (every session, what shipped, the gotchas): `docs/build-log.md` (entries before 2026-10-13 in `docs/build-log-archive.md`).
 - **Decision rationale** (Context → Decision → Rationale → Consequence): `docs/adr.md`.
 
 ---
@@ -654,7 +655,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Blacklist / Fraud (FRAUD-1..4) | ✅ Live — `BlacklistService` + `CheckoutVelocityGuard` wired into checkout; `/admin/blacklist` screen. `foundation-security.md` §4 fully checked | ADR-007 |
 | Middleware Panel (MID-1..13, MUI-1..11) | ✅ Live — sync/matching/catalog (Product Manager), price sync + FX, player validation, test orders, request logging, supplier credentials, landing page. MUI-4 (export) dropped | ADR-051, 052 |
 | Storefront (checkout flow) | 🟢 Live in prod — all catalog/checkout/validate/track endpoints; server-side validation enforcement; PekanGame neo-brutalist redesign, mobile pass, read-path perf (Redis cache), dynamic payment SVGs + UX polish. Logo/favicon upload UI + aspect-preserving sizing + preset background/dark-mode groundwork shipped (ADR-089/090). Real logo/hero artwork uploaded 2026-09-14 (§16 item 2); the placeholder mark is only the fallback when no logo is set. Per-game "How to Buy" info popup (description/important notes) + admin-editable instant/manual delivery badge, `EditGameModal` gained Basic Info/Content tabs (ADR-109) — admin Content tab live-verified 2026-10-08 (§16 item 67). **2026-10-05 (ADR-097 addendum, #356 — released via #362, 2026-10-06):** the ID fields follow the game's contract — digits-only fields get the numeric keypad and block typed non-digits, a paste is kept with an inline error, a Text game (e.g. Riot ID) gets a normal keyboard; the backend refuses the same input on checkout and Check ID | ADR-062–065, 071, 077–079, 089, 090, 097, 109 |
-| Internal Accounting (supplier funding ledger + CHIP settlement recon) | 🟢 PR-1 built 2026-09-11 — `supplier_transfers`/`supplier_ledger_entries` (append-only, foreign-currency), Record Supplier Transfer UI (`/admin/accounting`), `ORDER_DRAWDOWN` capture (Digiflazz webhook + Gamevion sync response — a `Gagal` after `Pending` writes no `REFUND`, grilled), drift check + amber chip on Dashboard Health, Transaction Register + CSV export. **2026-09-15 addendum built:** `supplier_fee` field (the supplier's own deposit-side cut, e.g. Digiflazz's flat IDR fee — ledger now credits net, not gross) + Adjust/Void correction actions (never edits/deletes the append-only ledger, always a new `MANUAL_ADJUSTMENT` entry). **PR-2 built 2026-09-19 (ADR-110 PR-B)** — CHIP `.xlsx` settlement reconciliation (`payment_settlements` + `chip_settled_transactions` dedup guard) + Monthly Accounting Summary screen, verified against a real PekanGame CHIP settlement file. **2026-10-08 (ADR-083 addendum, live via #376):** neutral "Affiliate tier fees (from earnings, no cash)" line, also in the Envelope Ledger's rough P&L. **2026-10-10 (ADR-083 addendum, §16 item 78) PR-1 (#390), live via #393:** Envelope Ledger postings with typed lines (funding loan/share capital, transfer, expense, director-paid expense, repayment, distribution), per-director loan balances, whole-posting void, zero-balance archive; `supplier_transfers.transferred_on`; `LedgerEntry` append-only guard. **PR-2 (#391), live via #393:** month close on the Monthly Summary (exact operating-profit allocation per KL month from September 2026, prior-month drift carried forward, reopen of the latest close only), "where is the money" cash equation with a cash-account snapshot and gap note, operating profit + new lines (voucher breakage, admin-issued vouchers, supplier corrections, envelope expenses), FX rate as of month end; the manual "Allocate Monthly Profit" and the platform "Request Withdrawal" are gone. **2026-10-11 (ADR-083 addendum, item 75), live via #406 (2026-10-12):** the Monthly Summary's issued-voucher lines are split into "Admin-issued vouchers (no order)" (a profit cost) and "Failed-order store credit issued" (information only); a merge result is in neither | ADR-083, ADR-110 |
+| Internal Accounting (supplier funding ledger + CHIP settlement recon) | 🟢 Live — PR-1 built 2026-09-11: `supplier_transfers`/`supplier_ledger_entries` (append-only, foreign-currency), Record Supplier Transfer UI (`/admin/accounting`), `ORDER_DRAWDOWN` capture (Digiflazz webhook + Gamevion sync response — a `Gagal` after `Pending` writes no `REFUND`, grilled), drift check + amber chip on Dashboard Health, Transaction Register + CSV export. **2026-09-15 addendum built:** `supplier_fee` field (the supplier's own deposit-side cut, e.g. Digiflazz's flat IDR fee — ledger now credits net, not gross) + Adjust/Void correction actions (never edits/deletes the append-only ledger, always a new `MANUAL_ADJUSTMENT` entry). **PR-2 built 2026-09-19 (ADR-110 PR-B)** — CHIP `.xlsx` settlement reconciliation (`payment_settlements` + `chip_settled_transactions` dedup guard) + Monthly Accounting Summary screen, verified against a real PekanGame CHIP settlement file. **2026-10-08 (ADR-083 addendum, live via #376):** neutral "Affiliate tier fees (from earnings, no cash)" line, also in the Envelope Ledger's rough P&L. **2026-10-10 (ADR-083 addendum, §16 item 78) PR-1 (#390), live via #393:** Envelope Ledger postings with typed lines (funding loan/share capital, transfer, expense, director-paid expense, repayment, distribution), per-director loan balances, whole-posting void, zero-balance archive; `supplier_transfers.transferred_on`; `LedgerEntry` append-only guard. **PR-2 (#391), live via #393:** month close on the Monthly Summary (exact operating-profit allocation per KL month from September 2026, prior-month drift carried forward, reopen of the latest close only), "where is the money" cash equation with a cash-account snapshot and gap note, operating profit + new lines (voucher breakage, admin-issued vouchers, supplier corrections, envelope expenses), FX rate as of month end; the manual "Allocate Monthly Profit" and the platform "Request Withdrawal" are gone. **2026-10-11 (ADR-083 addendum, item 75), live via #406 (2026-10-12):** the Monthly Summary's issued-voucher lines are split into "Admin-issued vouchers (no order)" (a profit cost) and "Failed-order store credit issued" (information only); a merge result is in neither | ADR-083, ADR-110 |
 | Balance / Wallet Visibility | 🟢 Part A live (released 2026-09-29, #320) — standalone `/admin/balance` (deliberately not nested under Accounting — a Commerce-level item, since Part B grows it into operational monitoring, not bookkeeping): live-refreshable supplier balance per supplier + every Reseller's prepaid wallet balance (total + per-row), zero new backend, reuses ADR-046/073. Part B (learned "comfortable buffer" forecast) is grilled and designed as ADR-115, with the build parked (§16 item 28) | ADR-046, ADR-073, ADR-115 |
 
 **PrimeReact migration (ADR-038):** complete 2026-08-29 — every hand-rolled
@@ -674,7 +675,7 @@ for the 2026-09-17 audit that found two dark-mode token bugs).
 # 16. Open Items & Backlog
 
 **Restructured 2026-10-12; re-checked against git and production on
-2026-10-13, after release #425.** This list holds only **open** items. "Next up"
+2026-10-15, after release #449.** This list holds only **open** items. "Next up"
 is the one place they are sorted, one line each; "Details" holds each item's
 full text once, by number. Everything closed is one line under "Recently
 closed", pointing to where the full story lives (`docs/build-log.md` /
@@ -685,10 +686,10 @@ against real code or production before building on it.
 ## Next up
 
 **Founder's rule (2026-10-08): clear the backlog below before any new
-feature.** Every open item sorted by what it needs to finish. Verified against
-code and production on 2026-10-09; re-checked on 2026-10-13 after release
-#425; group D reviewed item by item with the founder on 2026-10-14 (seven
-items dropped, listed under Recently closed). Re-verify before building.
+feature.** Every open item sorted by what it needs to finish. Group D was
+reviewed item by item with the founder on 2026-10-14 (seven items dropped,
+listed under Recently closed). Every open item re-verified against code and
+production on 2026-10-15 after release #449. Re-verify before building.
 
 **A. Buildable now: code, no new design**
 - **98** Scheduler liveness (ADR-122): live 2026-10-15 (#449). Heartbeats fill
@@ -743,49 +744,11 @@ items dropped, listed under Recently closed). Re-verify before building.
 
 ## Details
 
-98. **Scheduler liveness alert (found 2026-10-14, item 97 stress test).**
-    UptimeRobot polls `/api/health` (DB, Redis, Horizon), but nothing notices
-    if the Laravel scheduler (cron) stops. Backups, price sync, payment
-    reconciliation and the membership jobs would then all stop without an
-    alert. Needs a short design: where the heartbeat lives, and whether a
-    stale heartbeat should fail `/api/health` or send its own alert.
-    **Designed and built 2026-10-15 as ADR-122** (per-task heartbeat, stale
-    critical task fails `/api/health`, closures to `Schedule::command`, 30-min
-    overlap locks). Close after the release check.
-99. **Digiflazz `[83]` rate limit (found 2026-10-15, item 98 audit).**
-    `laravel.log` shows `SyncSupplierPricesJob` failing with Digiflazz `[83]
-    Anda telah mencapai limitasi pengecekan pricelist` 8 times between
-    2026-10-11 and 2026-10-15. The old box that once double-ran price sync is
-    destroyed, so another caller shares the limit (price sync every 30 min,
-    the daily balance refresh, Product Manager sync, Developer Tools?). Each
-    failure is a recorded `PriceSyncRun`; the next run usually succeeds.
-    **Root cause found 2026-10-15:** no second caller. The price-list takes
-    4.7s median / 8.5s p90; 42 of 249 calls hit the shared 10s timeout and were
-    retried at once, and 7 retries got rc 83 because Digiflazz had counted the
-    timed-out request. Fixed (ADR-069 2026-10-15 addendum): price-list gets
-    its own 30s timeout and no retry.
-100. **Admin dark-mode error colour (found 2026-10-15, item 98 browser check).**
-    `globals.css` defines `--color-error-500/600` but no `-400`, so the 145
-    `dark:text-error-400` classes do nothing and dark mode shows `error-600`
-    (#8f1c13) on `gray-900`, 1.83:1 (e.g. the Dashboard queue "(N failed)").
-    Same gap for `success-400` (26 uses) and `warning-400` (18). Fix: define the dark
-    `-400` tokens, then check the screens that use them.
-    **Fixed 2026-10-15 (grilled with the founder):**
-    - `--color-{error,success,warning}-400` alias `--color-{danger,success,warning}-ink`
-      in the `@theme static` block, so dark error text is #f59c93 at 7.86:1.
-      Light mode is unchanged: the `-400` classes are only used under `dark:`.
-    - A full scan also found 22 light-mode classes naming shades that never
-      existed (`error-700/800`, `success-700`, `warning-700`, `border-warning-300`).
-      They now use `-600` / `warning-500/30`.
-    - A dead `hover:text-dark-900` was removed.
-    - `admin/src/lib/color-tokens.test.ts` (run by CI's `npm test`) fails on any
-      project-colour shade with no token in `globals.css` or the
-      `tailwindcss-primeui` plugin.
-
 4. **Bot-host capacity (+$20/mo resize)** — resize only when capacity actually
    calls for it. It is also the moment to revisit the OpenWA engine (item 59:
    Baileys stays until then). OpenWA now shares `pekangame-prod-lwf` with the API
    (ADR-114).
+
 11. **External uptime monitor added 2026-10-10 (founder-reported, UptimeRobot on
     `https://api.pekangame.space/api/health`); error tracking (Sentry) is still
     not set up.** ADR-019's accepted deferral. Since 2026-09-29 `/api/health`
@@ -893,8 +856,6 @@ items dropped, listed under Recently closed). Re-verify before building.
     (`ENGINE_TYPE` is global, so a switch would also move `customer-support`), and
     plan the QR re-pairing of both numbers.
 
-66. **Combo edit-composition UI: parked 2026-10-14** (see Parked below; ADR-094 2026-10-14 addendum). Original note: no edit-composition UI (delete and recreate only); an edit would need the paid-but-not-yet-fulfilled window settled, and 3 readers use the live `components->first()->supplier`. The per-leg attempt history and each component's supplier SKU are shown (live via #406); orders before 2026-09-21 have no leg attempt rows.
-
 71. **GSC recheck around 2026-10-22** (Pages report: duplicate / canonical reasons, indexed vs not indexed). ADR-120 went live 2026-10-08 (#369); the admin SEO › FAQ click-through was done by the founder on 2026-10-10. Founder-deferred: GA4, default OG image, Bing.
 
 74. **Ask the external reviewer before the first non-zero affiliate tier
@@ -997,7 +958,57 @@ items dropped, listed under Recently closed). Re-verify before building.
       the new `.env` is confirmed (they hold the gateway's secrets, as
       item 87's backups did).
 
-## Recently closed (full detail in `docs/build-log.md` / `docs/adr.md`)
+98. **Scheduler liveness alert (found 2026-10-14, item 97 stress test).**
+    UptimeRobot polls `/api/health` (DB, Redis, Horizon), but nothing notices
+    if the Laravel scheduler (cron) stops. Backups, price sync, payment
+    reconciliation and the membership jobs would then all stop without an
+    alert. Needs a short design: where the heartbeat lives, and whether a
+    stale heartbeat should fail `/api/health` or send its own alert.
+    **Designed and built 2026-10-15 as ADR-122** (per-task heartbeat, stale
+    critical task fails `/api/health`, closures to `Schedule::command`, 30-min
+    overlap locks). Close after the release check.
+
+99. **Digiflazz `[83]` rate limit (found 2026-10-15, item 98 audit).**
+    `laravel.log` shows `SyncSupplierPricesJob` failing with Digiflazz `[83]
+    Anda telah mencapai limitasi pengecekan pricelist` 8 times between
+    2026-10-11 and 2026-10-15. The old box that once double-ran price sync is
+    destroyed, so another caller shares the limit (price sync every 30 min,
+    the daily balance refresh, Product Manager sync, Developer Tools?). Each
+    failure is a recorded `PriceSyncRun`; the next run usually succeeds.
+    **Root cause found 2026-10-15:** no second caller. The price-list takes
+    4.7s median / 8.5s p90; 42 of 249 calls hit the shared 10s timeout and were
+    retried at once, and 7 retries got rc 83 because Digiflazz had counted the
+    timed-out request. Fixed (ADR-069 2026-10-15 addendum): price-list gets
+    its own 30s timeout and no retry.
+
+100. **Admin dark-mode error colour (found 2026-10-15, item 98 browser check).**
+    `globals.css` defines `--color-error-500/600` but no `-400`, so the 145
+    `dark:text-error-400` classes do nothing and dark mode shows `error-600`
+    (#8f1c13) on `gray-900`, 1.83:1 (e.g. the Dashboard queue "(N failed)").
+    Same gap for `success-400` (26 uses) and `warning-400` (18). Fix: define the dark
+    `-400` tokens, then check the screens that use them.
+    **Fixed 2026-10-15 (grilled with the founder):**
+    - `--color-{error,success,warning}-400` alias `--color-{danger,success,warning}-ink`
+      in the `@theme static` block, so dark error text is #f59c93 at 7.86:1.
+      Light mode is unchanged: the `-400` classes are only used under `dark:`.
+    - A full scan also found 22 light-mode classes naming shades that never
+      existed (`error-700/800`, `success-700`, `warning-700`, `border-warning-300`).
+      They now use `-600` / `warning-500/30`.
+    - A dead `hover:text-dark-900` was removed.
+    - `admin/src/lib/color-tokens.test.ts` (run by CI's `npm test`) fails on any
+      project-colour shade with no token in `globals.css` or the
+      `tailwindcss-primeui` plugin.
+
+101. **Admin low-contrast leftovers (found 2026-10-15, item 100 sweep).**
+    A light/dark sweep of every static admin page (82 views, text under 3:1
+    against its first opaque background) still finds two pre-existing
+    groups: light-mode `gray-400` (#a8a192) secondary text and "i" tooltip
+    icons at 2.3–2.6:1 (~70, e.g. package unit suffixes), and dark-mode
+    `error-500` (#b42318) "Delete" buttons at 2.5:1 (23). Both are token
+    choices on screens outside the ADR-104 reskin (decision 7: those wait
+    for the founder's mockups), so this needs a design call, not a patch.
+
+## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-13, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
 - **97** 2026-10-15: the nightly backup restore test works again (released #441 + #442 via #449; exact-name grant, ADR-117). Backup #47 `success`, `restore_test_passed = 1`, 72s.
 - **10** 2026-10-14: admin MFA (TOTP) and a cookie-session admin login (ADR-121). The login lasts 7 days at most, ends after 2 days unused, and is shared by every tab. MFA is opt-in per account ("Require MFA" in Admin Users, one-way; set up on `/login`). Five actions need a code within the last 5 minutes and are refused without MFA: CHIP credentials, supplier credentials, manual reseller wallet credit, withdrawal approval, admin account changes. Eight recovery codes; `php artisan admin:mfa-reset {email}` over SSH. Released 2026-10-14 (#437); the founder's MFA is active. Details: build-log 2026-10-14.
@@ -1024,10 +1035,10 @@ items dropped, listed under Recently closed). Re-verify before building.
 - **87** 2026-10-13: the founder deleted the two old `.env` backups on the prod box (`.env.bak-before-dbtls`, `.env.bak-2026-09-30-doadmin-least-privilege`; both held the DB password). Verified read-only: only `.env` remains in the site root.
 - **84** 2026-10-13: the admin voucher list, voucher detail and order Refund cards show an active voucher past `expires_at` as expired (`display_status`); the stats split active/expired by it and an expired voucher can't be ticked for merge. `Voucher::isExpired()` is now the one expiry rule (checkout and merge use it). `status` is not backfilled. Live via #425 (2026-10-13). Details: build-log 2026-10-13.
 - **64** 2026-10-13: membership renewal-reminder emails at H-3 and H+1, in Malaysia days, one per period (`membership_reminders`), listed on the admin member page (ADR-068 2026-10-13 addendum). The same change fixes the squashed email logo, the receipt's day-early end date and its missing link, and makes email and WhatsApp share one brand lookup. WhatsApp reminders are item 85. Live via #416 (2026-10-13). Details: build-log 2026-10-13.
-- **79** 2026-10-12: a compensation voucher (issued for an order) no longer debits the platform ledger; only an admin-issued voucher does, matching `Voucher::scopeCompensation()` (ADR-024 2026-10-12 addendum). The 4 old debits (RM13.18) get one reasoned reversal each from a migration that runs on release. Live via #416 (2026-10-13). Details: build-log 2026-10-12.
+- **79** 2026-10-12: a compensation voucher (issued for an order) no longer debits the platform ledger; only an admin-issued voucher does, matching `Voucher::scopeCompensation()` (ADR-024 2026-10-12 addendum). The 4 old debits (RM13.18) get one reasoned reversal each from a migration that runs on release. Live via #416 (2026-10-13). Details: build-log-archive 2026-10-12.
 - **80** 2026-10-12: a voucher merge rejects an expired source (ADR-036 2026-10-12 addendum, #412). Live via #416 (2026-10-13).
-- **69** 2026-10-12: the WhatsApp status card and the "order not found" reply are now sent on every order-number message; the 30-minute and 10-minute `Cache::add` throttles are gone (ADR-116 2026-10-12 addendum). No per-number cap, by the founder's call and the chatbot project's six months of data (worst 10-minute window: 3 messages). Live via #416 (2026-10-13). Details: build-log 2026-10-12.
-- **66 (history view)** 2026-10-12: a combo's per-leg attempt history shows under each leg on Order Detail; leg `initial` rows no longer swallow each other in the order log (red test first). Admin only. Edit-composition parked 2026-10-14. Live via #406 (2026-10-12). Details: build-log 2026-10-12.
+- **69** 2026-10-12: the WhatsApp status card and the "order not found" reply are now sent on every order-number message; the 30-minute and 10-minute `Cache::add` throttles are gone (ADR-116 2026-10-12 addendum). No per-number cap, by the founder's call and the chatbot project's six months of data (worst 10-minute window: 3 messages). Live via #416 (2026-10-13). Details: build-log-archive 2026-10-12.
+- **66 (history view)** 2026-10-12: a combo's per-leg attempt history shows under each leg on Order Detail; leg `initial` rows no longer swallow each other in the order log (red test first). Admin only. Edit-composition parked 2026-10-14. Live via #406 (2026-10-12). Details: build-log-archive 2026-10-12.
 - **75** 2026-10-11: the Monthly Summary's "voucher liability issued" split into "Admin-issued vouchers (no order)" (profit cost, was "Goodwill") and "Failed-order store credit issued" (information only); a merge result is in neither (ADR-083 2026-10-11 addendum, build-log). The accountant still owns expense-at-issue vs at-redemption. Live via #406 (2026-10-12).
 - **76** 2026-10-10: server-side search is debounced (300 ms) and stale-guarded on `/admin/orders`, `/admin/games`, `/admin/seo/games`, `/admin/gallery`, Middleware Sandbox and Product Manager, plus Reports' custom dates. Two shared admin hooks: `useDebouncedValue`, `useLatestRequest`. Admin only; the other apps have no affected search. Live via #406 (2026-10-12).
 - **77** 2026-10-10: `next` 16.3.5 → 16.3.8 in admin, storefront and reseller (the critical `next/og` RCE and the `next/image` SSRF); `npm audit --omit=dev` is now 0 in all three. docs-site: `sharp` 0.35.5 and a lockfile fix, no high left. Remaining: dev-only eslint `braces` (3 apps) and 11 moderate in docs-site (`postcss-selector-parser` under Starlight); both need `npm audit fix --force`, which downgrades Starlight, so left. Live via #406 (2026-10-12).
