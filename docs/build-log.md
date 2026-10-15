@@ -868,3 +868,17 @@ No live call: a price-list from a local machine shares the production account's 
   - Every text element is ≥ 4.5:1, with no horizontal scroll.
 
 **Not live.** It ships with the next `staging`→`main` release.
+
+## 2026-10-15 — Docs sync for the session (items 100–103)
+
+Swept the docs this session touched for claims it made untrue (docs only).
+- **PRD §14:** "No code is waiting on `staging`" was untrue. It now names #450–#455 (item 101, the dead-code sweep, the Dashboard redesign) and the Reports Compare change they carry.
+- **PRD §15:** the Reports row records the same-time Compare, the Today preset and the three new `/reports/*` endpoints as on `staging`.
+- **PRD §16:**
+  - Item 100 closed (released and verified in #449).
+  - Items 101 and 102 moved to a new "On `staging`, waiting for release" group.
+  - Item 103 moved to "Buildable now" as the next session's first item.
+- **ADRs:**
+  - ADR-045's Standing records that ADR-104's 2026-10-15 addenda replace DASH-1, 3, 4 and 5. DASH-2 health stays.
+  - ADR-045 gets a 2026-10-15 addendum saying the same.
+  - ADR-104's banner and index row name the revision.
