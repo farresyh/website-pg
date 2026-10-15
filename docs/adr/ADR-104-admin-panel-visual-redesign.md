@@ -208,3 +208,89 @@ The brief agreed with the founder (PRD §16 item 102):
 - **Copy:** stays English.
 - **Money figures:** reuse `ReportService` definitions. The Dashboard never
   computes its own profit.
+
+### 2026-10-15 addendum — Dashboard grill outcome (overrides the brief above where they differ)
+
+Grilled with the founder (Q1–Q18), then stress-tested against the code and prod
+(S1–S6). Money figures stay read-only reuses of `ReportService`, so no new
+money definition is introduced.
+
+**Data**
+- **No new money queries.** KPIs, trend, channels and top games call the
+  existing `/reports/*` endpoints, so they equal Reports by construction.
+- **New, both in `ReportService` next to the Sales definition:**
+  - `busyHours()` on `/reports/busy-hours`: paid orders by `paid_at` hour,
+    KL time, `is_test` excluded. Indexed by `(is_test, payment_status, paid_at)`.
+  - The Highlights facts.
+- **Needs action** is computed by `DashboardService::attention()` and returned
+  inside the existing `/dashboard/health` response, so there is one 60s poll
+  and one source for both the status strip and the health panel.
+- **Removed:** the old `/dashboard/summary`, `/funnel`, `/top-games` and
+  `/hourly-activity`, and their components.
+
+**Comparison (one seam, Reports too)**
+- `PeriodComparison::previousRange` clips the previous range to the same
+  elapsed time when the current range ends after now. Today is compared with
+  yesterday up to the same time; 7/14/30/90 days and This month likewise.
+- `previous_range` gains `until`, and `previousLabelOf` shows it
+  ("vs yesterday to 10:00").
+- Reports' Compare numbers for ranges ending today change accordingly.
+  Reports has no response cache.
+- A shared **Today** preset is added to `date-range.ts`. The Dashboard offers
+  Today / Last 7 days / Last 30 days / Custom. It always opens on Today
+  (no memory).
+
+**Content**
+1. **Summary line.** A fixed template, never AI.
+   - With orders: "Today: RM X from N orders, ±Y% vs yesterday so far."
+   - Empty: "No paid orders today. Last order <date>."
+   - "Storefront payments are off." is appended only when every payment
+     method is inactive. There is no date, because nothing records when they
+     were switched off.
+2. **Status strip.** "All systems OK" or "N need action". Only red and amber
+   items count; neutral items are shown but not counted. The health panel
+   below the strip keeps every current health detail. It is collapsed when
+   all is OK and opens itself when there is a red item.
+
+   | Level | Items |
+   | --- | --- |
+   | Red | supplier circuit open, critical scheduler stale, failed queue jobs, Reseller Bot disconnected, stuck orders, `Order::needsAction`, NeedsReview orders |
+   | Amber | supplier low balance, funding drift, pending withdrawals, pending price changes, pending WhatsApp group links, last backup failed, Customer WhatsApp disconnected |
+   | Neutral | payments off, pending reviews |
+
+   Each item links to its screen. Orders already takes `?status=`; Reviews
+   gains `?status=pending`.
+3. **KPIs.** Sales, Orders, Platform profit and Margin % (from
+   `/reports/summary`), each with a change line and a trend. For a period
+   under 7 days, the trend shows the last 14 days with today marked.
+4. **Channels.** Reports' three channels (Own brand / Reseller wallet /
+   External affiliate): share bar, RM and orders, with the wallet split by
+   Portal / API / Bot. No per-channel profit, which stays on Reports.
+5. **Top games.** Top 5 with icon, RM, orders and change, plus a link to
+   Reports.
+6. **Busy hours.** 24 bars over the selected period, with the peak named.
+7. **Highlights.** Best day (with an all-time-record mark), Top reseller and
+   Biggest order (net of wallet refunds, like Sales).
+   - Each fact hides when it has no data or no meaning, and the card hides
+     when all three are empty.
+   - Repeat rate is dropped (S1): `CustomerAnalyticsService::stats()` loads
+     every lifetime customer per call. That cost is PRD §16 item 103.
+
+**Dropped**
+- The conversion funnel. Reports already has the delivery funnel, and
+  checkout conversion means little until launch.
+- The "Vouchers issued today" KPI. Uncompensated failures are in Needs
+  action; compensated ones are in Reports → Failed & compensated.
+
+**Other**
+- **Layout:** works at phone width (one column, status strip first).
+- **Copy:** English.
+- **Polling:** only the health/status response polls (60s).
+
+**Order of work**
+1. PR-0: dead-code sweep (#452).
+2. A Dashboard mockup in the design-system artifact (light/dark,
+   desktop/mobile), approved by the founder.
+3. A backend PR, test-first.
+4. A frontend PR that also deletes the B2 leftovers.
+5. Docs: PRD §6.2 DASH-1..6 rewritten.
