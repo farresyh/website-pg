@@ -943,3 +943,38 @@ call still answers 401. The `ready` path is checked on prod after release.
 - The founder ran the ADR-117 2026-10-15 SQL. Verified read-only: `pekangame_app` holds the exact-name grant on `defaultdb_restore_test`, and the wildcard grant is gone.
 - The founder chose to release #442 together with the next backlog items, so release PR #443 was closed unmerged.
 - Until that release, each nightly run still fails with `1044`, because the live code uses a timestamped name. Each run alerts the admins, and archives still upload.
+
+## 2026-10-15 — Item 98: scheduler liveness (ADR-122), built on `feature/scheduler-liveness`
+
+**Why.** Nothing noticed if scheduled work stopped. Prod runs `schedule:run` from one `/etc/crontab` line whose log is overwritten every minute. Five silent ways for scheduled work to stop: cron stops, `schedule:run` crashes at boot, a `withoutOverlapping` lock left by a killed process (1440-minute default, so a whole day), a task throwing every run, and seven `Schedule::call(fn () => Artisan::call(...))` tasks that swallowed a `FAILURE` exit code. Grilled in three rounds, then stress-tested against Laravel v13.21.1's scheduler source.
+
+**What shipped.**
+- `App\Console\TaskSchedule` is now the one schedule definition. `routes/console.php` calls it, and so does the liveness check: an HTTP request never loads `routes/console.php`, so its `Schedule` is empty. The tiers (`CRITICAL` / `ROUTINE`) live in the same class.
+- The seven closures are now `Schedule::command`, and every task uses `withoutOverlapping(30)`. `horizon:snapshot` got a name.
+- `scheduled_task_heartbeats` holds one row per task: `last_ok_at`, runtime, last failure and error. It is written by `RecordScheduledTaskHeartbeat` on `ScheduledTaskFinished` / `ScheduledTaskFailed`.
+- `SchedulerLiveness` judges each task from its own cron expression and timezone:
+  - Grace is 30 minutes, or 60 for a daily task.
+  - A sub-daily task may miss one due run; a daily task may not.
+  - A task with no row is seeded on first sight.
+  - Rows for removed tasks are ignored.
+- `/api/health` gained `checks.scheduler`: 503 when a critical task is stale. The response shows no task names. The admin Dashboard System Health panel gained a "Scheduled tasks" row listing stale tasks with their last OK time and last error.
+
+**Tests.**
+- `TaskScheduleTest` (invariant: unique name, one tier, 30-minute lock; the real scheduler registers the same set).
+- `RecordScheduledTaskHeartbeatTest` covers: OK, a non-zero exit, an overlap skip not counted as OK, a failure keeping the last OK, and a write failure never escaping.
+- `SchedulerLivenessTest` covers: seeding, sub-daily vs daily, the task's own timezone, the creation baseline, a removed task, critical vs routine.
+- Health and Dashboard cases.
+- Fast suite 2808/2808.
+- One real local `schedule:run` at :05 wrote `horizon-snapshot` OK (0.3s).
+- Admin `tsc`/lint/build are clean. Browser check in light and dark with a staged stale row: the chip and list render, and the error text measures 5.68:1 in dark.
+
+**Gotchas hit (both from the stress test, both would have hidden real failures).**
+- Laravel fires `ScheduledTaskFinished` for a task skipped by its overlap lock, with a `null` exit code. `null != 0` is false, so a naive listener records success for exactly the stuck-lock case. The listener checks `skippedBecauseOverlapping` and `exitCode === 0`.
+- `ScheduledTaskFailed` is dispatched inside `ScheduleRunCommand`'s `catch`, so a listener throw would abort every other task due that minute. The listener catches and logs.
+- The app timezone is `UTC` (hardcoded in `config/app.php`; prod's `APP_TIMEZONE` env is unused), so daily tasks run at 00:00 UTC (08:00 MYT). The liveness check uses the same default.
+
+**Found on the way, not fixed (new §16 items).**
+- **99:** Digiflazz `[83]` pricelist rate limit, 8 times since 2026-10-11, although the old box is gone.
+- **100:** the admin's `dark:text-error-400` (145 uses) points to an undefined token, so dark-mode error text falls back to `error-600` at 1.83:1.
+
+**Not live.** It ships in the next release bundle with #442.

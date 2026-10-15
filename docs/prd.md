@@ -628,7 +628,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Area | Status | Key ADRs |
 | --- | --- | --- |
 | Auth & Admin Users (AUTH-1..7) | ✅ Live. Login rate-limited + logged. Admin MFA (AUTH-7) and the cookie-session admin login live since 2026-10-14 (#437) | ADR-019, ADR-121 |
-| Admin Dashboard (DASH-1..6) | ✅ Live — KPIs, System Health, funnel, top games, hourly activity | ADR-045 |
+| Admin Dashboard (DASH-1..6) | ✅ Live — KPIs, System Health, funnel, top games, hourly activity. **Scheduler liveness (ADR-122, §16 item 98):** built 2026-10-15 on `staging`, not live. Per-task heartbeat (`scheduled_task_heartbeats`); a stale critical task fails `/api/health` (`checks.scheduler`); a "Scheduled tasks" row on System Health | ADR-045, ADR-122 |
 | Money core (Pricing, Ledger, Voucher, Order status, idempotency) | ✅ Live — full service layer, concurrency-proven. The most mature part of the codebase | ADR-002 |
 | Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end. PR #273's invite/session and compensation visibility fixes, plus ADR-112's role-aware shell, dashboard recent orders, and responsive Orders presentation, shipped in PRs #273, #275 and #276, released to `main` via #278 (2026-09-24) | ADR-056–061, 078, 112 |
 | Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live — prepaid wallet (admin manual credit + self-serve CHIP top-up, unpayable while payment methods are off, §14), one order-placement contract (`ResellerOrderPlacementService`), `reseller_code`/`catalog_code`, REST API v1.5.0 (keys, IP allowlist, delivery webhook, optional `max_price_sen`, per-account rate limits: orders 60/min and reads 120/min, ADR-074 2026-10-13 addendum, live via #425), WhatsApp Bot (OpenWA), shared role-aware portal (ADR-112), per-game player-input contract (ADR-097), own queue lane (ADR-048). Real customer orders run on this channel. Detail: build-log + ADRs | ADR-072–076, 084, 091, 093, 112, 048, 097 |
@@ -698,10 +698,18 @@ items dropped, listed under Recently closed). Re-verify before building.
   (verified). Left to do: release #442 with the next backlog bundle (founder's
   call), then "Backup Now" and a check for `restore_test_passed = 1`. Until
   then every nightly run still fails and alerts.
+- **98** Scheduler liveness (ADR-122): built 2026-10-15, not live. It ships with
+  #442 in the next release; then check that `scheduled_task_heartbeats`
+  fills and `/api/health` stays 200.
+- **100** Admin dark mode: `dark:text-error-400` (145 uses) points to an
+  undefined token, so error text renders at 1.83:1 (also `success-400`,
+  `warning-400`). Define the `-400`
+  status tokens in `globals.css` (needs a look at every screen).
 
 **B. Needs a short grill / ADR addendum first**
-- **98** Scheduler liveness alert: nothing notices if cron stops (backups,
-  price sync and payment reconciliation would all stop silently).
+- **99** Digiflazz `[83]` pricelist rate limit still hit now and then (8 times
+  since 2026-10-11) although the old box is gone: find which callers share
+  the limit.
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
   the accountant's monthly document list first.
 
@@ -767,6 +775,22 @@ items dropped, listed under Recently closed). Re-verify before building.
     reconciliation and the membership jobs would then all stop without an
     alert. Needs a short design: where the heartbeat lives, and whether a
     stale heartbeat should fail `/api/health` or send its own alert.
+    **Designed and built 2026-10-15 as ADR-122** (per-task heartbeat, stale
+    critical task fails `/api/health`, closures to `Schedule::command`, 30-min
+    overlap locks). Close after the release check.
+99. **Digiflazz `[83]` rate limit (found 2026-10-15, item 98 audit).**
+    `laravel.log` shows `SyncSupplierPricesJob` failing with Digiflazz `[83]
+    Anda telah mencapai limitasi pengecekan pricelist` 8 times between
+    2026-10-11 and 2026-10-15. The old box that once double-ran price sync is
+    destroyed, so another caller shares the limit (price sync every 30 min,
+    the daily balance refresh, Product Manager sync, Developer Tools?). Each
+    failure is a recorded `PriceSyncRun`; the next run usually succeeds.
+100. **Admin dark-mode error colour (found 2026-10-15, item 98 browser check).**
+    `globals.css` defines `--color-error-500/600` but no `-400`, so the 145
+    `dark:text-error-400` classes do nothing and dark mode shows `error-600`
+    (#8f1c13) on `gray-900`, 1.83:1 (e.g. the Dashboard queue "(N failed)").
+    Same gap for `success-400` (26 uses) and `warning-400` (18). Fix: define the dark
+    `-400` tokens, then check the screens that use them.
 
 4. **Bot-host capacity (+$20/mo resize)** — resize only when capacity actually
    calls for it. It is also the moment to revisit the OpenWA engine (item 59:
