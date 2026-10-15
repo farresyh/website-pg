@@ -36,8 +36,12 @@ class BackupRestoreMysqlTest extends TestCase
     {
         parent::setUp();
 
+        // Prod's DigitalOcean cluster runs partial_revokes = ON, which makes
+        // `_` and `%` in a database-level GRANT literal: the 2026-10-14
+        // wildcard grant matched nothing there (item 97, run #45). Mirror it.
         $root = $this->root();
-        $root->exec("GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, REFERENCES, INDEX, ALTER, CREATE VIEW, SHOW VIEW, LOCK TABLES ON `kerox\\_restore\\_test\\_%`.* TO 'kerox'@'%'");
+        $root->exec('SET GLOBAL partial_revokes = ON');
+        $root->exec("GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, REFERENCES, INDEX, ALTER, CREATE VIEW, SHOW VIEW, LOCK TABLES ON `kerox_restore_test`.* TO 'kerox'@'%'");
         $root->exec('CREATE OR REPLACE DEFINER=`root`@`%` SQL SECURITY DEFINER VIEW kerox.foreign_definer_probe AS SELECT 1 AS one');
     }
 
@@ -46,7 +50,10 @@ class BackupRestoreMysqlTest extends TestCase
 
     protected function tearDown(): void
     {
-        $this->root()->exec('DROP VIEW IF EXISTS kerox.foreign_definer_probe');
+        $root = $this->root();
+        $root->exec('DROP VIEW IF EXISTS kerox.foreign_definer_probe');
+        $root->exec('REVOKE ALL ON `kerox_restore_test`.* FROM \'kerox\'@\'%\'');
+        $root->exec('SET GLOBAL partial_revokes = OFF');
         array_map(fn (string $path) => @unlink($path), $this->dumps);
 
         parent::tearDown();
@@ -74,8 +81,19 @@ class BackupRestoreMysqlTest extends TestCase
     {
         app(BackupRestoreTester::class)->test($this->dump());
 
-        $leftover = DB::select("SHOW DATABASES LIKE 'kerox\\_restore\\_test\\_%'");
+        $leftover = DB::select("SHOW DATABASES LIKE 'kerox\\_restore\\_test'");
         $this->assertSame([], $leftover);
+    }
+
+    /** A run killed mid-restore leaves the throwaway database behind. */
+    public function test_a_leftover_throwaway_database_does_not_block_the_next_run(): void
+    {
+        DB::statement('CREATE DATABASE kerox_restore_test');
+        DB::statement('CREATE TABLE kerox_restore_test.half_restored (id INT)');
+
+        $result = app(BackupRestoreTester::class)->test($this->dump());
+
+        $this->assertTrue($result['passed'], json_encode($result['details']));
     }
 
     public function test_a_dump_missing_a_live_table_fails(): void

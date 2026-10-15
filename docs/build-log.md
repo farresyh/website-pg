@@ -915,3 +915,127 @@ call still answers 401. The `ready` path is checked on prod after release.
 - Local: no `mysqldump` on PATH. Used DBngin's 8.0.33 client for the run. `BackupRestoreTesterTest` had left 2,280 dump files in `storage/app/backup-temp`; it now cleans up after itself.
 
 **Not live.** Next steps: release, then the founder's grant (ADR-117 addendum; after the release, not before), then "Backup Now" and a check for `restore_test_passed = 1`.
+
+## 2026-10-15 — Release #441 live; item 97 verification run failed on `partial_revokes`; fixed-name follow-up
+
+**Release #441 (`staging`→`main`, merged by the founder) verified live:**
+- `main` = `bd80f27` on the box.
+- Horizon is running; `supervisor-backups` and `supervisor-price-sync` are on `redis-long`.
+- `fail_stuck_backup_runs` ran, and #26–#30 are now `failed`.
+- `app:restore-backup` exists, the schedule is 02:07, and `/api/health` returns 200.
+- The latest Price Sync run succeeded with `fx_rates_used` 0.000228. There were 31 `currency_rate` cache reads in the last 30 minutes, against 1,521 per run before.
+
+**Grant + verification run.**
+- The founder ran the 2026-10-14 wildcard grant. `SHOW GRANTS` showed it.
+- A manual run (#45, `triggered_by` "Claude (item 97 verify)") still failed: `1044 Access denied … 'defaultdb_restore_test_1792001735'`. Its failure alert went to the admins.
+- Cause: the cluster has `@@global.partial_revokes = 1`, while local Docker and CI have `0`. With it on, `_`/`%` in a database GRANT are literal, so the grant matched nothing.
+- The 2026-10-14 stress test missed this because the MySQL test ran under different server settings from prod.
+
+**Follow-up (branch `fix/restore-test-fixed-db-name`).**
+- The restore test always uses `<db>_restore_test`, dropping any leftover from a killed run first.
+- `BackupRestoreMysqlTest` now runs with `partial_revokes = ON` and an exact-name grant. Red first: it reproduced the prod `1044`. A new case covers a leftover half-restored database.
+- ADR-039 and ADR-117 2026-10-15 addenda (the replacement SQL revokes the useless literal grant).
+
+**Left to do:** release, the founder's replacement grant, then "Backup Now" and a check for `restore_test_passed = 1`.
+
+**Later 2026-10-15.**
+- PR #442 is merged to `staging`, with CI green (the `backend-concurrency` job now runs under `partial_revokes = ON`).
+- The founder ran the ADR-117 2026-10-15 SQL. Verified read-only: `pekangame_app` holds the exact-name grant on `defaultdb_restore_test`, and the wildcard grant is gone.
+- The founder chose to release #442 together with the next backlog items, so release PR #443 was closed unmerged.
+- Until that release, each nightly run still fails with `1044`, because the live code uses a timestamped name. Each run alerts the admins, and archives still upload.
+
+## 2026-10-15 — Item 98: scheduler liveness (ADR-122), built on `feature/scheduler-liveness`
+
+**Why.** Nothing noticed if scheduled work stopped. Prod runs `schedule:run` from one `/etc/crontab` line whose log is overwritten every minute. Five silent ways for scheduled work to stop: cron stops, `schedule:run` crashes at boot, a `withoutOverlapping` lock left by a killed process (1440-minute default, so a whole day), a task throwing every run, and seven `Schedule::call(fn () => Artisan::call(...))` tasks that swallowed a `FAILURE` exit code. Grilled in three rounds, then stress-tested against Laravel v13.21.1's scheduler source.
+
+**What shipped.**
+- `App\Console\TaskSchedule` is now the one schedule definition. `routes/console.php` calls it, and so does the liveness check: an HTTP request never loads `routes/console.php`, so its `Schedule` is empty. The tiers (`CRITICAL` / `ROUTINE`) live in the same class.
+- The seven closures are now `Schedule::command`, and every task uses `withoutOverlapping(30)`. `horizon:snapshot` got a name.
+- `scheduled_task_heartbeats` holds one row per task: `last_ok_at`, runtime, last failure and error. It is written by `RecordScheduledTaskHeartbeat` on `ScheduledTaskFinished` / `ScheduledTaskFailed`.
+- `SchedulerLiveness` judges each task from its own cron expression and timezone:
+  - Grace is 30 minutes, or 60 for a daily task.
+  - A sub-daily task may miss one due run; a daily task may not.
+  - A task with no row is seeded on first sight.
+  - Rows for removed tasks are ignored.
+- `/api/health` gained `checks.scheduler`: 503 when a critical task is stale. The response shows no task names. The admin Dashboard System Health panel gained a "Scheduled tasks" row listing stale tasks with their last OK time and last error.
+
+**Tests.**
+- `TaskScheduleTest` (invariant: unique name, one tier, 30-minute lock; the real scheduler registers the same set).
+- `RecordScheduledTaskHeartbeatTest` covers: OK, a non-zero exit, an overlap skip not counted as OK, a failure keeping the last OK, and a write failure never escaping.
+- `SchedulerLivenessTest` covers: seeding, sub-daily vs daily, the task's own timezone, the creation baseline, a removed task, critical vs routine.
+- Health and Dashboard cases.
+- Fast suite 2808/2808.
+- One real local `schedule:run` at :05 wrote `horizon-snapshot` OK (0.3s).
+- Admin `tsc`/lint/build are clean. Browser check in light and dark with a staged stale row: the chip and list render, and the error text measures 5.68:1 in dark.
+
+**Gotchas hit (both from the stress test, both would have hidden real failures).**
+- Laravel fires `ScheduledTaskFinished` for a task skipped by its overlap lock, with a `null` exit code. `null != 0` is false, so a naive listener records success for exactly the stuck-lock case. The listener checks `skippedBecauseOverlapping` and `exitCode === 0`.
+- `ScheduledTaskFailed` is dispatched inside `ScheduleRunCommand`'s `catch`, so a listener throw would abort every other task due that minute. The listener catches and logs.
+- The app timezone is `UTC` (hardcoded in `config/app.php`; prod's `APP_TIMEZONE` env is unused), so daily tasks run at 00:00 UTC (08:00 MYT). The liveness check uses the same default.
+
+**Found on the way, not fixed (new §16 items).**
+- **99:** Digiflazz `[83]` pricelist rate limit, 8 times since 2026-10-11, although the old box is gone.
+- **100:** the admin's `dark:text-error-400` (145 uses) points to an undefined token, so dark-mode error text falls back to `error-600` at 1.83:1.
+
+**Not live.** It ships in the next release bundle with #442.
+
+## 2026-10-15 — Item 99: Digiflazz price-list rate limit was self-inflicted; own 30s timeout, no retry
+
+**Found.** From production `supplier_request_logs`, 2026-10-11 to 2026-10-15, read-only:
+- Digiflazz `/v1/price-list` takes 4.7s median, 8.5s p90.
+- 42 of 249 calls hit the shared 10s timeout. Each was retried at once (a read timeout is a `ConnectionException`, so ADR-014 retries it), and 7 retries got `rc 83`, because Digiflazz had counted the timed-out request.
+- Gamevion's price-list never timed out.
+
+**Shipped (ADR-069 2026-10-15 addendum, branch `fix/digiflazz-price-list-timeout`).**
+- `DigiflazzAdapter::listProducts()` uses `DIGIFLAZZ_PRICE_LIST_TIMEOUT_SECONDS` (default 30) and no retry.
+- Transactions and `checkBalance` keep 10s plus the retry.
+- `client()` gained `timeoutSeconds`/`retry` parameters. The provider passes the new config.
+
+**Tests.** Red first:
+- The price-list call gets 30s while `cek-saldo` gets 10s.
+- A price-list connection failure is sent once.
+- `checkBalance` still retries (4 sends).
+- Fast suite 2811/2811.
+
+No live call: a price-list from a local machine shares the production account's rate limit.
+
+**Not live.** It ships with the next release bundle. Afterwards, watch the Digiflazz `listProducts` `exception` count and `rc 83` in `laravel.log`.
+
+## 2026-10-15 — Item 100: admin status colours had no tokens; aliased to the ADR-104 inks, plus a CI guard
+
+**Found.** In the item 98 browser check, dark-mode error text measured 1.83:1.
+- `globals.css` defines `error/success/warning` 50, 500 and 600 only, so the ~190 `dark:text-*-400` classes produced no rule: Tailwind v4 silently drops a utility whose token is missing. Dark mode kept the light `-600`.
+- A scan of every colour class found 22 more, in light mode, naming shades that don't exist: `text-error-700/800`, `text-success-700`, `text-warning-700`, `border-warning-300`. Those rendered in the inherited colour.
+
+**Shipped (branch `fix/admin-status-color-tokens`).**
+- `-400` aliases to the ADR-104 `*-ink` tokens, in `@theme static` next to the chart aliases (`.dark` sits on `<html>`, so each alias follows its ink's dark value).
+- The 22 light classes now use existing shades.
+- A dead `hover:text-dark-900` is removed.
+- `color-tokens.test.ts` is the guard: red without the `globals.css` change (it listed the three `-400` tokens), green with it. The first version also flagged `primary-*`/`surface-*`; those come from `tailwindcss-primeui`, so the test reads that plugin's `theme/colors.css` instead of hardcoding exceptions.
+
+**Verified.**
+- Admin `npm test` 9/9, `tsc`, eslint and build are clean.
+- Local browser with `getComputedStyle`:
+  - Dark resolves error #f59c93, success #7fd6a0, warning #f0bd6a.
+  - Light is unchanged (the 600s).
+  - Dashboard "(12 failed)" and the Balance page's failed line measure 7.86:1 dark (was 1.83) and 8.96:1 light.
+
+**Seen, not fixed (asked the founder).** Two headings with no colour class, the Dashboard `h1` and the login `h1`, show near-black on the dark canvas, because `body` sets `bg-canvas` but no text colour.
+
+**Not live.** It ships with the next release bundle.
+
+## 2026-10-15 — Item 100 follow-up: `body` gets `text-ink` (founder-approved)
+
+**Why.** Text with no colour class inherited the browser's black, because `body` set `bg-canvas` but no text colour. On the dark canvas that was 1.28:1 (the Dashboard `h1`) and 1.20:1 (Recharts axis ticks on Reports).
+
+**Shipped (branch `fix/admin-body-text-ink`).** `body` now applies `text-ink`, which flips with `.dark`.
+
+**Verified with a before/after sweep.** Every static admin page plus `/login` (41 × light and dark = 82 views) was swept for text under 3:1 against its first opaque background.
+- 158 items before, 140 after.
+- Fixed: the Dashboard `h1`, the Reports axis ticks, and a Reports `-30` label.
+- New: none. The one apparent "new" row was the Monthly Summary's own timestamp changing between runs.
+- In light mode, unstyled text moves from #000 to ink #1b1a17.
+
+**Seen, not fixed (pre-existing, outside this change).**
+- Light-mode `gray-400` (#a8a192) secondary text and info icons measure 2.3–2.6:1 (around 70 instances, e.g. package unit suffixes, "i" tooltips).
+- Dark-mode "Delete" buttons in `error-500` (#b42318) measure 2.5:1 (23 instances).

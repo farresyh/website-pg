@@ -107,3 +107,21 @@ ON `defaultdb\_restore\_test\_%`.* TO `pekangame_app`@`%`;
 This adds almost nothing to the user's reach: it can already write all of `defaultdb`, and this covers only databases named by that pattern. `LOCK TABLES` is needed because a `mysqldump` file contains `LOCK TABLES … WRITE`.
 
 **Rule from now on:** a change to the app DB user is verified with a full `app:run-backup` (restore test included) and a `restore_test_passed = 1` row, never with `backup:run` alone.
+
+### 2026-10-15 addendum — the restore-test grant names one exact database (supersedes the 2026-10-14 SQL)
+
+The 2026-10-14 wildcard grant did not work in production. The founder ran it, and the verification run (#45) still failed with `ERROR 1044` on `defaultdb_restore_test_1792001735`. The cause: the DigitalOcean cluster runs **`partial_revokes = 1`**, which makes `_` and `%` in a database-level GRANT literal. That grant therefore matched only a database literally named `defaultdb\_restore\_test\_%`. Local Docker and CI MySQL run with `partial_revokes = 0`, so the test that "proved" the grant passed there. The MySQL restore test now sets `partial_revokes = ON` to mirror prod.
+
+**Replacement** (run as `doadmin`; the first statement removes the useless literal grant):
+
+```sql
+REVOKE ALL ON `defaultdb\_restore\_test\_%`.* FROM `pekangame_app`@`%`;
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, REFERENCES, INDEX, ALTER,
+      CREATE VIEW, SHOW VIEW, LOCK TABLES
+ON `defaultdb_restore_test`.* TO `pekangame_app`@`%`;
+SHOW GRANTS FOR `pekangame_app`@`%`;
+```
+
+One exact name is also narrower than a pattern. The restore test always uses that name (ADR-039 2026-10-15 addendum).
+
+**Rule:** on this cluster, never use a wildcard in a database-level GRANT.

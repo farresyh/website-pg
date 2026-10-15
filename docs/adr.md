@@ -61,7 +61,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-036](./adr/ADR-036-voucher-merge.md) | Voucher Merge — admin-triggered consolidation into a new code, no ledger write | In force | 2026-10-12 |
 | [ADR-037](./adr/ADR-037-staging-production-git-branch-model-staging.md) | Staging/production git branch model + staging environment infra | In force | 2026-09-01 |
 | [ADR-038](./adr/ADR-038-admin-ui-component-library.md) | Admin UI component library — adopt PrimeReact (Tailwind mode), opportunistic migration off hand-rolled TailAdmin primitives | In force | 2026-08-26 |
-| [ADR-039](./adr/ADR-039-database-backups.md) | Database backups — app-level, host-agnostic backup/restore mechanism (BAK-1..5) | In force | 2026-10-14 |
+| [ADR-039](./adr/ADR-039-database-backups.md) | Database backups — app-level, host-agnostic backup/restore mechanism (BAK-1..5) | In force | 2026-10-15 |
 | [ADR-040](./adr/ADR-040-gamevion-sandbox-integration.md) | Gamevion sandbox integration — investigation saga, `telp` normalization, `callback_url` fix (2026-07-25 – 2026-08-14) | In force | 2026-08-13 |
 | [ADR-041](./adr/ADR-041-checkout-level-idempotency-key.md) | Checkout-level idempotency key — client-generated key, unique DB constraint, replay/resume branching | In force | 2026-07-29 |
 | [ADR-042](./adr/ADR-042-seo-module-scope-widened.md) | SEO module scope widened — structured data, scripts manager, crawler/robots management, sitemap & overview panels, per-game SEO UX | In force | 2026-10-08 |
@@ -91,7 +91,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-066](./adr/ADR-066-production-deploy-via-laravel-forge.md) | Production deploy via Laravel Forge — reverses ADR-020's Docker Compose containerisation | In force | 2026-09-02 |
 | [ADR-067](./adr/ADR-067-digiflazz-adapter-completion.md) | Digiflazz adapter completion — buyer-area scoping, dual product status, per-supplier Product Manager grouping | In force | 2026-09-02 |
 | [ADR-068](./adr/ADR-068-self-serve-membership-subscription-payment.md) | Self-serve membership subscription payment — customer pays for a tier through the CHIP checkout, membership auto-created on webhook (ADR-027 Phase 7); renewal reminders by email, WhatsApp designed (2026-10-13 addendum) | In force | 2026-10-13 |
-| [ADR-069](./adr/ADR-069-digiflazz-supplier-hardening.md) | Digiflazz supplier hardening — inbound webhook, credential-rotation surfacing, raw-price visibility, balance freshness | In force | 2026-09-03 |
+| [ADR-069](./adr/ADR-069-digiflazz-supplier-hardening.md) | Digiflazz supplier hardening — inbound webhook, credential-rotation surfacing, raw-price visibility, balance freshness | In force | 2026-10-15 |
 | [ADR-070](./adr/ADR-070-reserved.md) | RESERVED — supplier-deposit / FX-history ledger → subsumed by ADR-083 | Reserved number — subsumed by ADR-083 |  |
 | [ADR-071](./adr/ADR-071-storefront-perceived-performance.md) | Storefront perceived-performance — loading states, prefetchable routes, tag-based revalidation, and mobile buy-flow layout fixes | In force | 2026-09-24 |
 | [ADR-072](./adr/ADR-072-reseller-system-split.md) | Reseller-system split — `Affiliate` (whitelabel) vs `Reseller` (prepaid wallet), full rename, shared portal architecture | In force | 2026-09-04 |
@@ -139,8 +139,9 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-114](./adr/ADR-114-production-infra-split-off-digitalocean-s-shared.md) | Production infra split off DigitalOcean's shared team — droplet + managed MySQL rebuilt into a new DO team (`LWF Group Sdn Bhd`) | In force | 2026-10-14 |
 | [ADR-115](./adr/ADR-115-supplier-balance-comfortable-buffer-forecast.md) | Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold | Parked (designed); builds two weeks after launch, with the low-balance email | 2026-10-14 |
 | [ADR-116](./adr/ADR-116-customer-order-notifications-over-whatsapp.md) | Customer order notifications over WhatsApp (OpenWA), not email — closes audit M-11 | In force | 2026-10-12 |
-| [ADR-117](./adr/ADR-117-prod-db-least-privilege.md) | Prod DB least-privilege — `doadmin` superuser replaced by a dedicated scoped app user | In force | 2026-10-14 |
+| [ADR-117](./adr/ADR-117-prod-db-least-privilege.md) | Prod DB least-privilege — `doadmin` superuser replaced by a dedicated scoped app user | In force | 2026-10-15 |
 | [ADR-118](./adr/ADR-118-marketing-campaigns.md) | Marketing Campaigns — multi-use KOL discount codes, separate from `Voucher` | Accepted (design) | 2026-10-02 |
 | [ADR-119](./adr/ADR-119-package-delete-guards.md) | Package delete guards — block a hard-delete that already has order history or is a live combo component | In force |  |
 | [ADR-120](./adr/ADR-120-seo-geo-overhaul.md) | SEO/GEO overhaul — brand-correct meta, per-brand canonical origin, machine-readable catalog | In force |  |
 | [ADR-121](./adr/ADR-121-admin-mfa-and-session-login.md) | Admin MFA (TOTP), opt-in per account, step-up on five dangerous actions; admin login moves to a cookie session | In force | 2026-10-14 |
+| [ADR-122](./adr/ADR-122-scheduler-liveness.md) | Scheduler liveness — per-task heartbeat; a stale critical task fails `/api/health` | In force |  |

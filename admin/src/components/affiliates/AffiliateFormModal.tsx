@@ -199,12 +199,12 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
             </label>
           )}
           {isOwned && !membershipEnabled && (
-            <p className="mt-2 rounded-lg bg-warning-50 px-3 py-2 text-theme-xs text-warning-700 dark:bg-warning-500/15 dark:text-warning-400">
+            <p className="mt-2 rounded-lg bg-warning-50 px-3 py-2 text-theme-xs text-warning-600 dark:bg-warning-500/15 dark:text-warning-400">
               Until you tick the box above, this storefront shows standard pricing only — member prices and the <code>/membership</code> section stay hidden, even with the global membership switch on (ADR-061 makes Membership a per-brand opt-in).
             </p>
           )}
           {willDisableMembershipWithMembers && (
-            <div className="mt-3 rounded-lg bg-error-50 px-3 py-2 text-theme-xs text-error-700 dark:bg-error-500/15 dark:text-error-400">
+            <div className="mt-3 rounded-lg bg-error-50 px-3 py-2 text-theme-xs text-error-600 dark:bg-error-500/15 dark:text-error-400">
               <p>
                 <strong>{activeMemberCount} active member{activeMemberCount === 1 ? "" : "s"}</strong> {activeMemberCount === 1 ? "belongs" : "belong"} to this brand. Turning Membership off stops them renewing and removes member pricing; once their session lapses they can no longer sign in to <code>/membership</code>. Existing memberships are left to expire — there is no automatic refund. Handle any refund manually.
               </p>

@@ -95,7 +95,7 @@ function CompensationCard({
       ? "border-success-500/20 bg-success-50 dark:border-success-500/30 dark:bg-success-500/15"
       : "border-gray-200 bg-subtle dark:border-gray-800";
   const iconClasses = tone === "used" ? "text-success-600 dark:text-success-400" : "text-ink-muted";
-  const titleClasses = tone === "used" ? "text-success-700 dark:text-success-400" : "text-ink";
+  const titleClasses = tone === "used" ? "text-success-600 dark:text-success-400" : "text-ink";
 
   return (
     <div className={`rounded-lg border p-3 text-sm ${toneClasses}`}>

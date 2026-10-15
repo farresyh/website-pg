@@ -91,6 +91,7 @@ class DashboardControllerTest extends TestCase
             'stuck_orders' => ['value', 'definition'],
             'pending_payments' => ['value', 'definition'],
             'queue' => ['pending', 'failed', 'definition'],
+            'scheduled_tasks' => ['tasks' => [['name', 'tier', 'stale', 'last_ok_at', 'last_failed_at', 'last_error', 'last_runtime_seconds']], 'definition'],
         ]);
     }
 
