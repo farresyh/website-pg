@@ -225,8 +225,8 @@ function TestPanel({
             <pre
               className={`overflow-x-auto rounded-lg p-3 text-xs ${
                 outcome.success
-                  ? "bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-400"
-                  : "bg-error-50 text-error-700 dark:bg-error-500/10 dark:text-error-400"
+                  ? "bg-success-50 text-success-600 dark:bg-success-500/10 dark:text-success-400"
+                  : "bg-error-50 text-error-600 dark:bg-error-500/10 dark:text-error-400"
               }`}
             >
               {JSON.stringify(outcome.result ?? { error: outcome.error }, null, 2)}

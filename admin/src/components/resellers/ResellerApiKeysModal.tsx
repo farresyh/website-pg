@@ -131,8 +131,8 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
       )}
 
       {freshPlainTextKey && (
-        <div className="space-y-2 rounded-lg border border-warning-300 bg-warning-50 p-4 dark:border-warning-500/30 dark:bg-warning-500/10">
-          <p className="text-theme-xs font-medium text-warning-700 dark:text-warning-400">
+        <div className="space-y-2 rounded-lg border border-warning-500/30 bg-warning-50 p-4 dark:border-warning-500/30 dark:bg-warning-500/10">
+          <p className="text-theme-xs font-medium text-warning-600 dark:text-warning-400">
             Copy this key now — it will never be shown again.
           </p>
           <code className="block break-all rounded-md bg-white px-3 py-2 text-theme-sm text-gray-800 dark:bg-gray-900 dark:text-white/90">

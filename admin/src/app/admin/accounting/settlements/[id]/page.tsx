@@ -89,7 +89,7 @@ export default function PaymentSettlementDetailPage() {
 
       {paidButNotSettled.length > 0 && (
         <div className="mb-6 rounded-lg bg-warning-50 p-4 text-theme-sm dark:bg-warning-500/15">
-          <p className="font-medium text-warning-700 dark:text-warning-400">
+          <p className="font-medium text-warning-600 dark:text-warning-400">
             {paidButNotSettled.length} paid-but-not-yet-settled — likely why Expected Net is higher than File/Bank
           </p>
           <p className="mt-1 text-warning-600 dark:text-warning-400">
@@ -99,7 +99,7 @@ export default function PaymentSettlementDetailPage() {
           </p>
           <ul className="mt-2 space-y-1">
             {paidButNotSettled.map((row) => (
-              <li key={row.reference} className="flex justify-between text-warning-700 dark:text-warning-400">
+              <li key={row.reference} className="flex justify-between text-warning-600 dark:text-warning-400">
                 <span>{row.reference}</span>
                 <span>{rm(row.amount_sen)}</span>
               </li>
