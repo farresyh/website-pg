@@ -55,7 +55,8 @@ export type CompareMode = "previous" | "month_to_date";
 
 /** ADR-104 R12–R14 — backend `ReportService::compareWith()`: the same figures over the previous range, plus each change. */
 export interface Comparison<Previous, Changes> {
-  previous_range: { from: string; to: string };
+  /** `until` (KL "HH:MM") is set when the range is still running and the previous one stops at the same time. */
+  previous_range: { from: string; to: string; until: string | null };
   previous: Previous;
   changes: Changes;
 }
@@ -227,6 +228,19 @@ export interface ReportMembershipBreakdown {
   compare?: Comparison<unknown, Record<Exclude<keyof ReportMembershipBreakdown, "compare">, PercentChange>> | null;
 }
 
+/** ADR-104 2026-10-15 — paid orders per KL hour of payment, 0–23. */
+export interface ReportBusyHour {
+  hour: number;
+  orders_count: number;
+}
+
+/** ADR-104 2026-10-15 — each fact is null when it has no data; best_day is also null for a one-day range. */
+export interface ReportHighlights {
+  best_day: { date: string; sales: number; orders_count: number; is_all_time_record: boolean } | null;
+  top_reseller: { reseller_id: number; reseller_name: string; sales: number; orders_count: number } | null;
+  biggest_order: { id: number; order_number: string; amount: number; game_name: string | null; package_name: string | null } | null;
+}
+
 export interface ReportAffiliate {
   id: number;
   business_name: string;
@@ -281,9 +295,10 @@ export function getReportDailyBreakdown(filters: ReportFilters) {
   return apiFetch<{ days: ReportDailyBreakdownRow[] }>(`/api/reports/daily-breakdown${query}`);
 }
 
-export function getTopGames(filters: ReportFilters, limit = 5) {
-  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId, limit });
-  return apiFetch<{ games: ReportGameRow[] }>(`/api/reports/top-games${query}`);
+/** ADR-104 2026-10-15 — with `compare`, each listed game's sales change, keyed by game_id. */
+export function getTopGames(filters: ReportFilters, limit = 5, compare?: CompareMode) {
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId, limit, compare });
+  return apiFetch<{ games: ReportGameRow[]; compare?: Comparison<unknown, Record<string, PercentChange>> | null }>(`/api/reports/top-games${query}`);
 }
 
 export function getGameBreakdown(filters: ReportFilters) {
@@ -309,6 +324,16 @@ export function getResellerBreakdown(filters: ReportFilters) {
 export function getOrderStatusFunnel(filters: ReportFilters) {
   const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
   return apiFetch<ReportOrderStatusFunnel>(`/api/reports/order-status-funnel${query}`);
+}
+
+export function getBusyHours(filters: ReportFilters) {
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
+  return apiFetch<{ hours: ReportBusyHour[] }>(`/api/reports/busy-hours${query}`);
+}
+
+export function getHighlights(filters: ReportFilters) {
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
+  return apiFetch<ReportHighlights>(`/api/reports/highlights${query}`);
 }
 
 export function getMembershipBreakdown(filters: ReportFilters, compare?: CompareMode) {

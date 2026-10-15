@@ -1,409 +1,340 @@
 "use client";
 
 /**
- * DASH-1..6 (docs/prd.md §6.2, ADR-045). The auth guard calls GET /api/me
- * through the session cookie (ADR-121) and keeps the `cancelled` guard against the abort race ADR-023 already fixed
- * live (a page navigation aborting this fetch was previously misread
- * as "session invalid" and wiped a valid session).
+ * The Dashboard (ADR-104 2026-10-15): a daily briefing. One summary
+ * sentence, what needs action now (`/dashboard/health`, polled every 60s),
+ * then how the business did in the chosen period. Every business figure
+ * comes from `/reports/*`, so it always equals Reports; this page only
+ * phrases and lays them out. It always opens on Today.
  */
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, ApiError } from "@/lib/api-client";
+import Link from "next/link";
+import { Refresh } from "@primeicons/react/refresh";
+import { Input } from "@/components/ui/input";
+import { useClientSession } from "@/hooks/useClientSession";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { getClientSession } from "@/lib/session";
-import { useTheme } from "@/context/ThemeContext";
-import { Tag } from "@/components/ui/tag";
-import { ChartLine as ChartLineIcon, ChartLine as TrendUpIcon } from "@primeicons/react/chart-line";
-import { List as ListIcon } from "@primeicons/react/list";
-import { Tag as TagIcon } from "@primeicons/react/tag";
-import { DashboardKpiCard } from "@/components/dashboard/DashboardKpiCard";
-import { InfoTooltip } from "@/components/dashboard/InfoTooltip";
-import { ConversionFunnelChart } from "@/components/dashboard/ConversionFunnelChart";
-import { HourlyActivityChart } from "@/components/dashboard/HourlyActivityChart";
-import { HorizontalBarList } from "@/components/reports/HorizontalBarList";
-import { formatRm, toRm } from "@/components/reports/format";
-import { KL_TIMEZONE, todayInKL } from "@/lib/date-range";
+import { resolveDateRange, todayInKL, type DateRangePreset } from "@/lib/date-range";
+import { getDashboardHealth, type DashboardHealth } from "@/lib/dashboard";
+import { summarySentence } from "@/lib/dashboard-briefing";
+import { autoBucket } from "@/lib/report-buckets";
 import {
-  getDashboardSummary,
-  getDashboardHealth,
-  getDashboardFunnel,
-  getDashboardTopGames,
-  getDashboardHourlyActivity,
-  formatSupplierBalance,
-  formatMyrEquivalent,
-  type DashboardSummary,
-  type DashboardHealth,
-  type DashboardFunnel,
-  type DashboardTopGames,
-  type DashboardHourlyActivity,
-} from "@/lib/dashboard";
+  CHANNEL_LABELS,
+  getBusyHours,
+  getChannelBreakdown,
+  getHighlights,
+  getReportSummary,
+  getReportTrend,
+  getTopGames,
+  type PercentChange,
+  type ReportFilters,
+} from "@/lib/reports";
+import { KpiCard, Pending, ReportCard, SegmentedControl, ToolbarButton, previousLabelOf, useReport } from "@/components/reports/ReportKit";
+import { HorizontalBarList } from "@/components/reports/HorizontalBarList";
+import { TrendChart } from "@/components/reports/TrendChart";
+import { formatRm, formatRmTick, formatRmValue, formatShortRange, toRm } from "@/components/reports/format";
+import { StatusStrip } from "@/components/dashboard/StatusStrip";
+import { BusyHours } from "@/components/dashboard/BusyHours";
+import { Highlights } from "@/components/dashboard/Highlights";
 
-interface Admin {
-  id: number;
-  name: string;
-  email: string;
-  role: "super_admin" | "admin";
-}
+type Period = Extract<DateRangePreset, "today" | "7d" | "30d" | "custom">;
+
+const PERIODS: { value: Period; label: string }[] = [
+  { value: "today", label: "Today" },
+  { value: "7d", label: "Last 7 days" },
+  { value: "30d", label: "Last 30 days" },
+  { value: "custom", label: "Custom" },
+];
 
 const HEALTH_POLL_MS = 60_000;
+const PLACED_VIA: Record<string, string> = { reseller_bot: "WhatsApp bot", reseller_api: "API", storefront: "Portal" };
 
-function lastSevenDays(): string[] {
-  const days: string[] = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push(d.toLocaleDateString("en-CA", { timeZone: KL_TIMEZONE }));
-  }
-  return days;
+function addDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function dayCount(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
+}
+
+function changeText(change: PercentChange | undefined): string {
+  if (!change || change.direction === "flat") return "No change";
+  if (change.direction === "new") return "New";
+  return `${change.direction === "up" ? "▲" : "▼"} ${change.pct?.toFixed(1)}%`;
 }
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const { theme } = useTheme();
-  const [admin, setAdmin] = useState<Admin | null>(null);
-  const [authError, setAuthError] = useState<string | null>(null);
-
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const session = useClientSession();
+  const [period, setPeriod] = useState<Period>("today");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [health, setHealth] = useState<DashboardHealth | null>(null);
-  const [funnel, setFunnel] = useState<DashboardFunnel | null>(null);
-  const [topGames, setTopGames] = useState<DashboardTopGames | null>(null);
-  const [hourly, setHourly] = useState<DashboardHourlyActivity | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>(todayInKL());
-  const [sectionError, setSectionError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [updatedAt, setUpdatedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    const session = getClientSession();
-
-    if (!session) {
-      router.replace("/login");
-      return;
-    }
-
-    let cancelled = false;
-
-    apiFetch<Admin>("/api/me")
-      .then((data) => {
-        if (!cancelled) {
-          setAdmin(data);
-        }
-      })
-      .catch((err: unknown) => {
-        // A 401 is handled centrally by api-client (clears the profile cache,
-        // redirects to /login). Anything else — an aborted fetch on navigation,
-        // a network blip — must not log every tab out (ADR-121: the cache is
-        // shared across tabs), so it only shows the message.
-        if (cancelled) return;
-        setAuthError(err instanceof ApiError ? err.message : "Could not verify your session.");
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    if (!getClientSession()) router.replace("/login");
   }, [router]);
 
-  // DASH-1
   useEffect(() => {
-    if (!admin) return;
-    getDashboardSummary()
-      .then(setSummary)
-      .catch((err: unknown) => setSectionError(err instanceof ApiError ? err.message : "Could not load dashboard summary."));
-  }, [admin]);
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
-  // DASH-2 — the only section polled on a timer (60s, always-on, ADR-045 decision 22/23).
+  // ADR-045 decision 22 — the only figures polled on a timer.
   useEffect(() => {
-    if (!admin) return;
-
-    let cancelled = false;
-    const load = () => {
+    if (!session) return;
+    let current = true;
+    const load = () =>
       getDashboardHealth()
-        .then((data) => {
-          if (!cancelled) setHealth(data);
-        })
+        .then((data) => current && setHealth(data))
         .catch(() => undefined);
-    };
-
     load();
-    const interval = setInterval(load, HEALTH_POLL_MS);
-
+    const id = setInterval(load, HEALTH_POLL_MS);
     return () => {
-      cancelled = true;
-      clearInterval(interval);
+      current = false;
+      clearInterval(id);
     };
-  }, [admin]);
+  }, [session, refreshKey]);
 
-  // DASH-3
-  useEffect(() => {
-    if (!admin) return;
-    getDashboardFunnel().then(setFunnel).catch(() => undefined);
-  }, [admin]);
+  const settledFrom = useDebouncedValue(customFrom);
+  const settledTo = useDebouncedValue(customTo);
+  const { from, to } = resolveDateRange(period, settledFrom, settledTo);
 
-  // DASH-4
-  useEffect(() => {
-    if (!admin) return;
-    getDashboardTopGames(5).then(setTopGames).catch(() => undefined);
-  }, [admin]);
-
-  // DASH-5
-  useEffect(() => {
-    if (!admin) return;
-    getDashboardHourlyActivity(selectedDate).then(setHourly).catch(() => undefined);
-  }, [admin, selectedDate]);
-
-  if (authError) {
-    return <p className="text-sm text-red-600 dark:text-red-400">{authError}</p>;
+  function refetch(fn: () => void) {
+    const t = Date.now();
+    setUpdatedAt(t);
+    setNow(t);
+    fn();
   }
 
-  if (!admin) {
-    return <p className="text-sm text-black/60 dark:text-white/60">Loading…</p>;
-  }
+  const minutesAgo = Math.floor((now - updatedAt) / 60_000);
 
   return (
-    <div>
-      <h1 className="text-xl font-semibold">Dashboard</h1>
-      <p className="mt-1 mb-6 text-sm text-black/60 dark:text-white/60">
-        Signed in as {admin.name} ({admin.role}).
-      </p>
-
-      {sectionError && (
-        <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
-          {sectionError}
-        </p>
+    <div className="flex flex-col gap-6">
+      {session && (
+        <Briefing
+          key={`${from}|${to}|${refreshKey}`}
+          period={period}
+          filters={{ from, to }}
+          health={health}
+          actions={
+            <div className="flex items-center gap-2">
+              <span className="mr-2 flex items-center gap-1.5 whitespace-nowrap text-theme-xs text-ink-muted" aria-live="polite">
+                <span className="size-1.5 rounded-full bg-success-ink" />
+                {minutesAgo < 1 ? "Updated just now" : `Updated ${minutesAgo} min ago`}
+              </span>
+              <ToolbarButton aria-label="Refresh" title="Refresh" className="w-9 justify-center px-0" onClick={() => refetch(() => setRefreshKey((k) => k + 1))}>
+                <Refresh width={14} height={14} />
+              </ToolbarButton>
+            </div>
+          }
+          periodControl={
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="max-sm:w-full max-sm:[&>div]:flex max-sm:[&>div]:w-full max-sm:[&_button]:flex-1">
+                <SegmentedControl label="Period" options={PERIODS} value={period} onChange={(v) => refetch(() => setPeriod(v))} />
+              </div>
+              {period === "custom" && (
+                <span className="flex items-center gap-2">
+                  <Input type="date" aria-label="From" value={customFrom} max={todayInKL()} onChange={(e) => refetch(() => setCustomFrom(e.target.value))} className="w-[9.5rem]" />
+                  <span className="text-theme-xs text-ink-muted">to</span>
+                  <Input type="date" aria-label="To" value={customTo} max={todayInKL()} onChange={(e) => refetch(() => setCustomTo(e.target.value))} className="w-[9.5rem]" />
+                </span>
+              )}
+              {from && to && (
+                <span className="text-theme-xs text-ink-subtle">
+                  {formatShortRange(from, to)}
+                  {to === todayInKL() && `, to ${new Date(now).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kuala_Lumpur" })}`}
+                </span>
+              )}
+              <span className="ml-auto text-theme-xs text-ink-muted max-md:ml-0 max-md:w-full">Paid orders only · Malaysia time (GMT+8)</span>
+            </div>
+          }
+        />
       )}
-
-      {/* DASH-1 — KPI cards */}
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <DashboardKpiCard
-          icon={<ChartLineIcon width={18} height={18} />}
-          color="blue"
-          label="Sales Today"
-          value={summary ? formatRm(summary.sales_today.value) : "—"}
-          metric={summary?.sales_today ?? null}
-        />
-        <DashboardKpiCard
-          icon={<ListIcon width={18} height={18} />}
-          color="indigo"
-          label="Orders Today"
-          value={summary ? summary.orders_today.value.toLocaleString() : "—"}
-          metric={summary?.orders_today ?? null}
-        />
-        <DashboardKpiCard
-          icon={<TrendUpIcon width={18} height={18} />}
-          color="green"
-          label="Profit Today"
-          value={summary ? formatRm(summary.profit_today.value) : "—"}
-          metric={summary?.profit_today ?? null}
-        />
-        <DashboardKpiCard
-          icon={<TagIcon width={18} height={18} />}
-          color="amber"
-          label="Vouchers Issued Today"
-          value={summary ? summary.vouchers_issued_today.value.toLocaleString() : "—"}
-          sub={summary ? formatRm(summary.vouchers_issued_today.amount_sen) : undefined}
-          metric={summary?.vouchers_issued_today ?? null}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* DASH-2 — System Health, auto-refreshes every 60s */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-          <h2 className="mb-4 text-sm font-semibold text-gray-800 dark:text-white/90">System Health</h2>
-          {health ? (
-            <div>
-              <ul className="mb-4 space-y-2">
-                {health.suppliers.map((s) => (
-                  <li key={s.id} className="flex items-center justify-between text-theme-sm">
-                    <span className="flex items-center gap-2 font-medium text-gray-700 dark:text-gray-200">
-                      {s.name}
-                      <Tag severity={s.circuit_state === "closed" ? "success" : "danger"}>{s.circuit_state}</Tag>
-                      {s.low_balance && <Tag severity="warn">low balance</Tag>}
-                      {/* ADR-083 decision 6 — drift is null when this supplier has no drift_threshold configured, not when it's in sync; only ever shown once it's actually drifted. */}
-                      {s.drift?.is_drifted && (
-                        <Tag
-                          severity="warn"
-                          title={`Ledger ${s.drift.ledger_balance.toLocaleString()} vs polled ${s.drift.polled_balance.toLocaleString()} — variance ${s.drift.variance.toLocaleString()} (threshold ${s.drift.threshold.toLocaleString()})`}
-                        >
-                          funding drift
-                        </Tag>
-                      )}
-                    </span>
-                    <span className="text-right">
-                      <span
-                        className={
-                          s.low_balance
-                            ? "tabular-nums font-medium text-warning-600 dark:text-warning-400"
-                            : "tabular-nums text-gray-500 dark:text-gray-400"
-                        }
-                      >
-                        {formatSupplierBalance(s.balance, s.currency)}
-                      </span>
-                      {formatMyrEquivalent(s.balance_myr_equivalent) && (
-                        <span className="ml-1 text-theme-xs tabular-nums text-ink-subtle">{formatMyrEquivalent(s.balance_myr_equivalent)}</span>
-                      )}
-                    </span>
-                  </li>
-                ))}
-                {health.suppliers.length === 0 && (
-                  <li className="text-theme-sm text-ink-subtle">No suppliers configured yet.</li>
-                )}
-                {/* PR-F build addendum decision 5 — OpenWA sessions as active chips (never a silent gap): the Reseller Bot is a reseller's live paid ordering path; Customer WhatsApp (ADR-116) carries voucher codes. */}
-                {([
-                  ["Reseller Bot (WhatsApp)", health.openwa_session],
-                  ["Customer WhatsApp", health.openwa_cs_session],
-                ] as const).map(([label, session]) => (
-                  <li key={label} className="flex items-center justify-between text-theme-sm">
-                    <span className="flex items-center gap-2 font-medium text-gray-700 dark:text-gray-200">
-                      {label}
-                      {session ? (
-                        <Tag severity={session.status === "connected" ? "success" : "danger"}>{session.status}</Tag>
-                      ) : (
-                        <Tag severity="secondary">not provisioned</Tag>
-                      )}
-                    </span>
-                    {session && (
-                      <span className="text-theme-xs text-ink-subtle">
-                        {new Date(session.at).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    )}
-                  </li>
-                ))}
-                {/* ADR-122 — scheduler liveness; the names behind /api/health's `scheduler` boolean. */}
-                <ScheduledTasksRow scheduled={health.scheduled_tasks} />
-              </ul>
-              <div className="flex items-center gap-1.5 pb-1">
-                <span className="text-theme-xs text-ink-subtle">Supplier status/balance</span>
-                <InfoTooltip definition={health.suppliers_definition} />
-              </div>
-              {/* 2026-09-28 addendum — reseller-wallet-float vs supplier-balance treasury check. Side-by-side numbers only, no alert threshold yet. */}
-              <div className="flex items-center justify-between border-t border-gray-100 py-3 text-theme-sm dark:border-gray-800">
-                <span className="flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-200">
-                  Reseller wallet liability
-                  <InfoTooltip definition={health.reseller_wallet_liability_definition} />
-                </span>
-                <span className="text-right">
-                  <span className="tabular-nums text-gray-500 dark:text-gray-400">
-                    {formatRm(health.reseller_wallet_liability_sen)}
-                  </span>
-                  <span className="ml-1 text-theme-xs tabular-nums text-ink-subtle">
-                    vs {formatRm(Math.round(health.total_supplier_balance_myr_equivalent * 100))} supplier balance
-                  </span>
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-3 border-t border-gray-100 pt-3 dark:border-gray-800">
-                <div>
-                  <p className="flex items-center gap-1 text-theme-xs text-ink-subtle">
-                    Stuck Orders <InfoTooltip definition={health.stuck_orders.definition} />
-                  </p>
-                  <p className="text-base font-semibold text-gray-800 dark:text-white/90">{health.stuck_orders.value}</p>
-                </div>
-                <div>
-                  <p className="flex items-center gap-1 text-theme-xs text-ink-subtle">
-                    Pending Payments <InfoTooltip definition={health.pending_payments.definition} />
-                  </p>
-                  <p className="text-base font-semibold text-gray-800 dark:text-white/90">{health.pending_payments.value}</p>
-                </div>
-                <div>
-                  <p className="flex items-center gap-1 text-theme-xs text-ink-subtle">
-                    Queue <InfoTooltip definition={health.queue.definition} />
-                  </p>
-                  <p className="text-base font-semibold text-gray-800 dark:text-white/90">
-                    {health.queue.pending}
-                    {health.queue.failed > 0 && <span className="ml-1 text-error-600 dark:text-error-400">({health.queue.failed} failed)</span>}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
-          )}
-        </div>
-
-        {/* DASH-3 — Conversion Funnel */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-          <h2 className="mb-4 text-sm font-semibold text-gray-800 dark:text-white/90">Conversion Funnel (last 7 days)</h2>
-          {funnel ? <ConversionFunnelChart funnel={funnel} theme={theme} /> : <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>}
-        </div>
-
-        {/* DASH-4 — Top Games Weekly */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-          <div className="mb-4 flex items-center gap-1.5">
-            <h2 className="text-sm font-semibold text-gray-800 dark:text-white/90">Top Games This Week</h2>
-            {topGames && <InfoTooltip definition={topGames.definition} />}
-          </div>
-          {topGames ? (
-            <HorizontalBarList
-              items={topGames.games.map((g) => ({
-                label: g.game_name,
-                value: toRm(g.sales),
-                sublabel: `${g.orders_count} orders · ${
-                  g.comparison.direction === "new" ? "New" : g.comparison.direction === "flat" ? "—" : `${g.comparison.direction === "up" ? "▲" : "▼"} ${g.comparison.pct}%`
-                }`,
-              }))}
-              formatValue={(v) => `RM ${v.toLocaleString("en-MY", { maximumFractionDigits: 0 })}`}
-            />
-          ) : (
-            <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
-          )}
-        </div>
-
-        {/* DASH-5 — Hourly Activity */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5">
-              <h2 className="text-sm font-semibold text-gray-800 dark:text-white/90">Hourly Activity</h2>
-              {hourly && <InfoTooltip definition={hourly.definition} />}
-            </div>
-            <div className="flex flex-wrap justify-end gap-1">
-              {lastSevenDays().map((date) => (
-                <button
-                  key={date}
-                  type="button"
-                  onClick={() => setSelectedDate(date)}
-                  className={`rounded-md px-2 py-1 text-theme-xs font-medium ${
-                    selectedDate === date
-                      ? "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400"
-                      : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/[0.05]"
-                  }`}
-                >
-                  {new Date(`${date}T00:00:00`).toLocaleDateString("en-MY", { day: "numeric", month: "short" })}
-                </button>
-              ))}
-            </div>
-          </div>
-          {hourly ? <HourlyActivityChart hours={hourly.hours} theme={theme} /> : <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>}
-        </div>
-      </div>
     </div>
   );
 }
 
-function ScheduledTasksRow({ scheduled }: { scheduled: DashboardHealth["scheduled_tasks"] }) {
-  const stale = scheduled.tasks.filter((t) => t.stale);
-  const criticalStale = stale.filter((t) => t.tier === "critical").length;
+/** Everything the period drives. Remounted (by key) when the period or Refresh changes. */
+function Briefing({
+  period,
+  filters,
+  health,
+  actions,
+  periodControl,
+}: {
+  period: Period;
+  filters: ReportFilters;
+  health: DashboardHealth | null;
+  actions: React.ReactNode;
+  periodControl: React.ReactNode;
+}) {
+  const bounded = Boolean(filters.from && filters.to);
+  const compare = bounded ? "previous" : undefined;
+  const days = bounded ? dayCount(filters.from!, filters.to!) : 0;
+  // A one-day trend is one bar, so short periods show the last 14 days (grill S3).
+  const trendFilters: ReportFilters = bounded && days < 7 ? { from: addDays(filters.to!, -13), to: filters.to } : filters;
+  const ctx = { filters, compare } as const;
+
+  const summary = useReport(ctx, () => getReportSummary(filters, compare));
+  const trend = useReport(ctx, () => getReportTrend(trendFilters));
+  const channels = useReport(ctx, () => getChannelBreakdown(filters));
+  const games = useReport(ctx, () => getTopGames(filters, 5, compare));
+  const hours = useReport(ctx, () => getBusyHours(filters));
+  const facts = useReport(ctx, () => getHighlights(filters));
+
+  const periodLabel = period === "today" ? "Today" : period === "7d" ? "Last 7 days" : period === "30d" ? "Last 30 days" : bounded ? formatShortRange(filters.from!, filters.to!) : "All time";
+  const previousPhrase = period === "today" ? "yesterday so far" : period === "custom" ? "the previous period" : `the ${days} days before`;
+  const emptyText = period === "today" ? "No paid orders today" : "No paid orders in this period";
+  const paymentsOff = health?.attention.items.some((i) => i.key === "payments_off") ?? false;
+  const s = summary.data;
+  const prev = previousLabelOf(s?.compare);
+  const topGame = games.data?.games[0];
+
+  const sentence =
+    s && health
+      ? summarySentence({
+          periodLabel,
+          previousLabel: previousPhrase,
+          sales: s.total_sales,
+          orders: s.orders_count,
+          change: s.compare?.changes.total_sales ?? null,
+          topGame: topGame && s.orders_count > 0 ? { name: topGame.game_name, sales: topGame.sales } : null,
+          lastPaidAt: health.attention.last_paid_at,
+          paymentsOff,
+        })
+      : "Loading today's briefing…";
+
+  const channelTotal = channels.data?.channels.reduce((sum, c) => sum + c.sales, 0) ?? 0;
+  const walletSplit = (channels.data?.reseller_wallet_by_placed_via ?? []).filter((v) => v.sales > 0);
 
   return (
-    <li className="text-theme-sm">
-      <span className="flex items-center gap-2 font-medium text-gray-700 dark:text-gray-200">
-        Scheduled tasks
-        {criticalStale > 0 ? (
-          <Tag severity="danger">{criticalStale} critical stale</Tag>
-        ) : stale.length > 0 ? (
-          <Tag severity="warn">{stale.length} stale</Tag>
+    <>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-page-title font-semibold tracking-tight text-ink">Dashboard</h1>
+          <p className="mt-1 max-w-3xl text-theme-sm text-ink-muted">{sentence}</p>
+        </div>
+        {actions}
+      </div>
+
+      {periodControl}
+
+      {health ? <StatusStrip health={health} /> : <Pending error={null} />}
+
+      <section aria-label="Key figures" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {s ? (
+          <>
+            <div className="max-sm:col-span-2 [&>*]:h-full">
+              <KpiCard lead label="Sales" value={formatRm(s.total_sales)} change={s.compare?.changes.total_sales} previousLabel={prev} sub={s.orders_count === 0 ? emptyText : undefined} />
+            </div>
+            <div className="max-sm:col-span-2 [&>*]:h-full">
+              <KpiCard lead label="Owner profit" value={formatRm(s.platform_profit)} change={s.compare?.changes.platform_profit} previousLabel={prev} />
+            </div>
+            <KpiCard label="Orders" value={s.orders_count.toLocaleString()} change={s.compare?.changes.orders_count} previousLabel={prev} />
+            <KpiCard
+              label="Margin"
+              value={s.orders_count > 0 ? `${s.margin_pct.toFixed(2)}%` : "—"}
+              change={s.orders_count > 0 ? s.compare?.changes.margin_pct : undefined}
+              previousLabel={prev}
+              sub={s.orders_count > 0 ? undefined : "Needs at least one paid order"}
+            />
+          </>
         ) : (
-          <Tag severity="success">running</Tag>
+          <Pending error={summary.error} className="col-span-full" />
         )}
-        <InfoTooltip definition={scheduled.definition} />
-      </span>
-      {stale.length > 0 && (
-        <ul className="mt-1 space-y-0.5 pl-1 text-theme-xs text-gray-500 dark:text-gray-400">
-          {stale.map((t) => (
-            <li key={t.name} title={t.last_error ?? undefined}>
-              {t.name} ({t.tier}) — last OK{" "}
-              {t.last_ok_at ? new Date(t.last_ok_at).toLocaleString("en-MY", { dateStyle: "short", timeStyle: "short" }) : "never"}
-              {t.last_error && <span className="text-error-600 dark:text-red-400"> · {t.last_error.slice(0, 80)}</span>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </li>
+      </section>
+
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <ReportCard title="Sales trend" subtitle={days > 0 && days < 7 ? "Short periods show the last 14 days; today is the last bar. Profit has its own scale." : "Daily paid sales and owner profit. Profit has its own scale."}>
+          {trend.data ? (
+            <TrendChart
+              dates={trend.data.days.map((d) => d.date)}
+              bucket={autoBucket(trend.data.days.length)}
+              panels={[
+                { title: "Sales (RM)", kind: "bar", series: [{ label: "Sales", values: trend.data.days.map((d) => toRm(d.sales)), color: "chart-1" }], formatValue: formatRmValue, formatTick: formatRmTick },
+                { title: "Owner profit (RM)", kind: "bar", height: 110, series: [{ label: "Owner profit", values: trend.data.days.map((d) => toRm(d.platform_profit)), color: "chart-2" }], formatValue: formatRmValue, formatTick: formatRmTick },
+              ]}
+              emptyText="No paid orders in the last 14 days."
+            />
+          ) : (
+            <Pending error={trend.error} />
+          )}
+        </ReportCard>
+
+        <ReportCard title="Channels" subtitle="Who the orders came through">
+          {channels.data ? (
+            channelTotal === 0 ? (
+              <p className="py-10 text-center text-sm text-ink-muted">{emptyText}</p>
+            ) : (
+              <HorizontalBarList
+                items={channels.data.channels.map((c) => ({
+                  label: CHANNEL_LABELS[c.channel],
+                  value: c.sales,
+                  sublabel: `${c.orders_count} ${c.orders_count === 1 ? "order" : "orders"}`,
+                  meta: `${((c.sales / channelTotal) * 100).toFixed(1)}% of sales`,
+                  muted: c.sales === 0,
+                }))}
+                formatValue={formatRm}
+                footer={
+                  <>
+                    <span>{walletSplit.length > 0 ? `Reseller wallet: ${walletSplit.map((v) => `${PLACED_VIA[v.placed_via] ?? v.placed_via} ${formatRm(v.sales)}`).join(" · ")}` : "Reseller wallet is checked first"}</span>
+                    <Link href="/admin/reports" className="shrink-0 font-medium text-cyan-ink hover:underline">
+                      Reports →
+                    </Link>
+                  </>
+                }
+              />
+            )
+          ) : (
+            <Pending error={channels.error} />
+          )}
+        </ReportCard>
+      </div>
+
+      <div className="grid items-start gap-4 xl:grid-cols-2">
+        <ReportCard title="Top games" subtitle="By paid sales">
+          {games.data ? (
+            games.data.games.length === 0 ? (
+              <p className="py-10 text-center text-sm text-ink-muted">{emptyText}</p>
+            ) : (
+              <HorizontalBarList
+                ranked
+                items={games.data.games.map((g) => ({
+                  label: g.game_name,
+                  value: g.sales,
+                  sublabel: `${g.orders_count} ${g.orders_count === 1 ? "order" : "orders"}`,
+                  meta: games.data?.compare ? `${changeText(games.data.compare.changes[String(g.game_id)])} vs ${previousLabelOf(games.data.compare)}` : `${g.pct_of_sales.toFixed(1)}% of sales`,
+                }))}
+                formatValue={formatRm}
+                footer={
+                  <>
+                    <span>Top {games.data.games.length} by paid sales</span>
+                    <Link href="/admin/reports" className="font-medium text-cyan-ink hover:underline">
+                      All games →
+                    </Link>
+                  </>
+                }
+              />
+            )
+          ) : (
+            <Pending error={games.error} />
+          )}
+        </ReportCard>
+
+        <ReportCard title="Busy hours" subtitle="Paid orders by hour, summed over this period">
+          {hours.data ? <BusyHours hours={hours.data.hours} emptyText={period === "today" ? "No paid orders today. Choose Last 30 days to see when orders usually come in." : "No paid orders in this period."} /> : <Pending error={hours.error} />}
+        </ReportCard>
+      </div>
+
+      {facts.data && <Highlights facts={facts.data} />}
+    </>
   );
 }

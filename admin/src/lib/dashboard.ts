@@ -1,31 +1,12 @@
 import { apiFetch } from "@/lib/api-client";
+import type { AttentionItem } from "@/lib/dashboard-briefing";
 
 /**
- * DASH-1..6 (ADR-045). Mirrors backend/app/Services/Dashboard/DashboardService.php
- * — see that file's own doc comments for the grilled/pinned definitions
- * (cohort funnel, derived circuit-breaker state, reused delivery_reconciliation
- * thresholds, etc). This client only forwards params and renders whatever the
- * backend returns — no calculation here. Every metric also carries its own
- * `definition` string (decision 25), rendered via InfoTooltip.
+ * DASH-2 (ADR-045) system health, plus the ADR-104 2026-10-15 `attention`
+ * block the Dashboard status strip reads. Mirrors
+ * backend/app/Services/Dashboard/DashboardService.php; no calculation here.
+ * The Dashboard's business figures come from `@/lib/reports` (one definition).
  */
-
-export interface MetricComparison {
-  pct: number | null;
-  direction: "up" | "down" | "flat" | "new";
-}
-
-export interface DashboardMetric {
-  value: number;
-  comparison: MetricComparison;
-  definition: string;
-}
-
-export interface DashboardSummary {
-  sales_today: DashboardMetric;
-  orders_today: DashboardMetric;
-  profit_today: DashboardMetric;
-  vouchers_issued_today: DashboardMetric & { amount_sen: number };
-}
 
 /** ADR-083 decision 6 — null means drift_threshold isn't configured (not watched), never "in sync". */
 export interface SupplierFundingDrift {
@@ -83,6 +64,8 @@ export interface ScheduledTaskHealth {
 }
 
 export interface DashboardHealth {
+  /** ADR-104 2026-10-15 — the status strip: red/amber items count toward needs_action_count, neutral ones don't. */
+  attention: { items: AttentionItem[]; needs_action_count: number; last_paid_at: string | null };
   suppliers: DashboardHealthSupplier[];
   suppliers_definition: string;
   /** PR-F build addendum decision 5 — last-known OpenWA session.status event, push- not poll-driven. Null = no event has ever arrived (not provisioned/linked), never assumed healthy. */
@@ -107,53 +90,7 @@ export interface DashboardHealth {
   reseller_wallet_liability_definition: string;
 }
 
-export interface DashboardFunnel {
-  window_days: number;
-  created: { value: number; definition: string };
-  payment_confirmed: { value: number; definition: string };
-  delivered: { value: number; definition: string };
-}
-
-export interface DashboardTopGame {
-  game_id: number | null;
-  game_name: string;
-  sales: number;
-  orders_count: number;
-  platform_profit: number;
-  affiliate_profit: number;
-  avg_order_value: number;
-  pct_of_sales: number;
-  comparison: MetricComparison;
-}
-
-export interface DashboardTopGames {
-  window_days: number;
-  games: DashboardTopGame[];
-  definition: string;
-}
-
-export interface DashboardHourlyActivity {
-  date: string;
-  hours: Array<{ hour: number; count: number }>;
-  definition: string;
-}
-
-export function getDashboardSummary() {
-  return apiFetch<DashboardSummary>("/api/dashboard/summary");
-}
 
 export function getDashboardHealth() {
   return apiFetch<DashboardHealth>("/api/dashboard/health");
-}
-
-export function getDashboardFunnel() {
-  return apiFetch<DashboardFunnel>("/api/dashboard/funnel");
-}
-
-export function getDashboardTopGames(limit = 5) {
-  return apiFetch<DashboardTopGames>(`/api/dashboard/top-games?limit=${limit}`);
-}
-
-export function getDashboardHourlyActivity(date: string) {
-  return apiFetch<DashboardHourlyActivity>(`/api/dashboard/hourly-activity?date=${encodeURIComponent(date)}`);
 }

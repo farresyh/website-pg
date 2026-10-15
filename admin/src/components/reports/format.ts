@@ -28,5 +28,11 @@ export function formatShortRange(from: string, to: string): string {
   const sameYear = from.slice(0, 4) === to.slice(0, 4);
   const fmt = (d: string) =>
     new Date(`${d}T00:00:00Z`).toLocaleDateString("en-MY", sameYear ? opts : { ...opts, year: "numeric" });
-  return `${fmt(from)} – ${fmt(to)}`;
+  return from === to ? fmt(from) : `${fmt(from)} – ${fmt(to)}`;
+}
+
+/** "18:40" (KL wall clock) → "6:40 PM". */
+export function formatClock(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 }
