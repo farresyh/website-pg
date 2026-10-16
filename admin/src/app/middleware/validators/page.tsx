@@ -26,6 +26,7 @@ import {
   type PlayerRegionMapping,
   type PlayerValidatorProfile,
   type AvailableValidatorKey,
+  type UpdatePlayerValidatorProfileValues,
   listPlayerValidatorProfiles,
   listAvailableValidatorKeys,
   createPlayerValidatorProfile,
@@ -91,14 +92,14 @@ export default function ValidatorsPage() {
     setCreateOpen(false);
   }
 
-  async function handleRename(validator: PlayerValidatorProfile, name: string) {
+  async function handleUpdate(validator: PlayerValidatorProfile, values: UpdatePlayerValidatorProfileValues) {
     if (!session) return;
     setError(null);
     try {
-      const updated = await updatePlayerValidatorProfile(validator.id, { name });
+      const updated = await updatePlayerValidatorProfile(validator.id, values);
       setValidators((prev) => prev?.map((v) => (v.id === validator.id ? updated : v)) ?? null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not rename validator.");
+      setError(err instanceof ApiError ? err.message : "Could not update validator.");
     }
   }
 
@@ -217,7 +218,7 @@ export default function ValidatorsPage() {
             key={validator.id}
             validator={validator}
             games={games}
-            onRename={(name) => handleRename(validator, name)}
+            onUpdate={(values) => handleUpdate(validator, values)}
             onDelete={() => handleDeleteValidator(validator)}
             onTest={(playerId, serverId) => handleTest(validator, playerId, serverId)}
             onCreateMapping={(countryCode, countryName, gameId) =>
