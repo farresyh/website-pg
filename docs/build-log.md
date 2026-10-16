@@ -521,8 +521,14 @@ Settings flagged to the founder, not changed (prod data is theirs):
 - Free Fire Singapore is still active, with its validator on. With `SG` →
   Free Fire Malaysia, every MY/SG account there gets `wrong_region` → "Go to
   Free Fire Malaysia", so it can't be bought validated.
-- Mobile Legends Vietnam has its validator on, but `VN` → Mobile legends
-  Global, so a Vietnamese account there gets `wrong_region` → Global.
+- MLBB mapping `VN` was labelled "Venezuela" → Mobile legends Global. The
+  system reads only the code, and `VN` is Vietnam (Venezuela is `VE`): a
+  Venezuelan account got `region_unknown`, a Vietnamese one at Mobile
+  Legends Vietnam got `wrong_region` → Global. **Fixed by the founder the
+  same day:** `VE` → Mobile legends Global, `VN` → Mobile Legends Vietnam
+  (verified). Cross-check of every mapping's code against its typed name:
+  only cosmetic spellings left (`CO` "Columbia", `KR` "Korea"); Free Fire's
+  seven all match.
 - The MLBB profile's last panel test is still the 2026-10-09 AcidGameShop
   one (real checks since the deploy all ran through redxgame).
 
