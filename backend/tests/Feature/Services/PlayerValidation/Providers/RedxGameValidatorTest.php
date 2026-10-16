@@ -250,4 +250,44 @@ class RedxGameValidatorTest extends TestCase
 
         $this->freeFireValidator()->validate('16742877347', null);
     }
+
+    private function genshinValidator(): RedxGameValidator
+    {
+        return new RedxGameValidator(baseUrl: 'https://redxgame.com', game: 'genshin-impact', statusFalseMeansInvalid: true, regionIsServer: true);
+    }
+
+    /**
+     * Redx says "Americas"; our zone (and the supplier's order format)
+     * is "America" (founder, 2026-10-16).
+     */
+    public function test_a_hoyoverse_server_is_translated_to_our_zone_value(): void
+    {
+        Http::fake([
+            'redxgame.com/tools/genshin-impact-id-checker' => $this->checkerPage(),
+            'redxgame.com/tools/check' => Http::response(['status' => true, 'nickname' => 'Lumine', 'region' => 'Americas']),
+        ]);
+
+        $result = $this->genshinValidator()->validate('610000001', 'America');
+
+        $this->assertTrue($result->valid);
+        $this->assertSame('Americas', $result->server);
+        $this->assertSame('America', $result->zone);
+        $this->assertNull($result->countryCode);
+        Http::assertSent(fn (Request $request) => $request->url() === 'https://redxgame.com/tools/check'
+            && $request['game'] === 'genshin-impact'
+            && $request['inputs'] === ['user_id' => '610000001']);
+    }
+
+    public function test_a_server_we_do_not_sell_has_no_zone(): void
+    {
+        Http::fake([
+            'redxgame.com/tools/genshin-impact-id-checker' => $this->checkerPage(),
+            'redxgame.com/tools/check' => Http::response(['status' => true, 'nickname' => 'Lumine', 'region' => 'China']),
+        ]);
+
+        $result = $this->genshinValidator()->validate('123456789', 'Asia');
+
+        $this->assertSame('China', $result->server);
+        $this->assertNull($result->zone);
+    }
 }

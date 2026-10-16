@@ -17,10 +17,14 @@ import { parseResponse } from "@/lib/schema-validation";
  */
 
 const ValidatePlayerResultSchema = z.object({
-  status: z.enum(["invalid", "region_unknown", "wrong_region", "valid"]),
+  status: z.enum(["invalid", "region_unknown", "wrong_region", "wrong_zone", "valid"]),
   nickname: z.string().nullable(),
   country_code: z.string().nullable(),
   redirect_game: z.object({ slug: z.string(), name: z.string() }).nullable(),
+  // ADR-005 2026-10-16 third addendum — a zone game's UID server; `zone` is
+  // the zone this store sells for it, null when it sells none.
+  server: z.string().nullable().optional(),
+  zone: z.string().nullable().optional(),
 });
 
 export type ValidatePlayerResult = z.infer<typeof ValidatePlayerResultSchema>;

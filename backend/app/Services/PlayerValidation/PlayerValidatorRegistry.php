@@ -26,6 +26,9 @@ final class PlayerValidatorRegistry
     public const AVAILABLE_KEYS = [
         'mlbb' => 'Mobile Legends: Bang Bang',
         'freefire' => 'Free Fire',
+        'genshin' => 'Genshin Impact',
+        'hsr' => 'Honkai: Star Rail',
+        'zzz' => 'Zenless Zone Zero',
     ];
 
     public function __construct(private readonly Container $container) {}

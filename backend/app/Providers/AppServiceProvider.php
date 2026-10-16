@@ -357,11 +357,27 @@ class AppServiceProvider extends ServiceProvider
 
             return new RedxGameValidator(
                 baseUrl: $config['base_url'],
-                timeoutSeconds: $config['timeout'],
+                timeoutSeconds: $config['standalone_timeout'],
                 game: 'free-fire',
                 statusFalseMeansInvalid: true,
             );
         });
+
+        // Genshin, HSR, ZZZ: Redx reports the UID's server, checked against
+        // the chosen zone by ZoneCheck (ADR-005 2026-10-16 third addendum).
+        foreach (['genshin' => 'genshin-impact', 'hsr' => 'honkai-star-rail', 'zzz' => 'zenless-zone-zero'] as $key => $redxGame) {
+            $this->app->bind("player-validator.{$key}", function () use ($redxGame) {
+                $config = config('services.player_validators.redxgame');
+
+                return new RedxGameValidator(
+                    baseUrl: $config['base_url'],
+                    timeoutSeconds: $config['standalone_timeout'],
+                    game: $redxGame,
+                    statusFalseMeansInvalid: true,
+                    regionIsServer: true,
+                );
+            });
+        }
 
         $this->app->singleton(PlayerValidatorRegistry::class);
 
