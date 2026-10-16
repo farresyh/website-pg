@@ -219,6 +219,23 @@ final class ResellerBotReplyFormatter
         );
     }
 
+    /**
+     * ADR-005 2026-10-16 third addendum — the UID's server isn't the zone
+     * given; `$zone` is the zone to use instead, null for a server this
+     * game doesn't sell.
+     */
+    public static function checkIdWrongZone(PlayerValidationResult $result, ?string $zone): string
+    {
+        return self::wrap(
+            "⚠️ ID SAH — ZONE LAIN\n\n"
+            .'Nama   : '.($result->nickname ?? '-')."\n"
+            .'Server : '.$result->server."\n\n"
+            .($zone !== null
+                ? "UID ini di server {$result->server}. Guna zone {$zone} untuk .order."
+                : "Server {$result->server} tidak dijual untuk game ini.")
+        );
+    }
+
     public static function checkIdInvalid(): string
     {
         return '❌ ID tidak sah atau tidak dijumpai.';

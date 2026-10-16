@@ -356,12 +356,15 @@ export default function OrderForm({
     }
   }
 
-  async function handleVerify() {
+  // `zone` = the "Switch to X" button on a wrong_zone result: pick that
+  // zone and verify again in one click.
+  async function handleVerify(zone?: string) {
+    if (zone !== undefined) updateServerId(zone);
     setVerifying(true);
     setVerifyError(null);
     setValidationResult(null);
     try {
-      const result = await validatePlayer(game.id, playerId, game.extraField ? serverId : undefined);
+      const result = await validatePlayer(game.id, playerId, game.extraField ? (zone ?? serverId) : undefined);
       setValidationResult(result);
       if (result.status === "valid") setStep1Continued(true);
     } catch (err) {

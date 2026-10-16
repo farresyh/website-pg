@@ -179,4 +179,69 @@ class PlayerValidationControllerTest extends TestCase
 
         $this->assertSame(0, PlayerValidation::query()->count());
     }
+
+    private function zoneGame(PlayerValidatorProfile $profile): Game
+    {
+        return $this->game([
+            'player_validator_enabled' => true,
+            'player_validator_profile_id' => $profile->id,
+            'validation_rules' => ['extra_field' => 'zone_id', 'zone_options' => ['Asia', 'America', 'Europe']],
+        ]);
+    }
+
+    public function test_a_uid_on_the_chosen_zone_is_valid(): void
+    {
+        $game = $this->zoneGame($this->profile());
+        $this->bindFakeValidator(PlayerValidationResult::valid('redxgame', 'Lumine', null, server: 'Americas', zone: 'America'));
+
+        $response = $this->postJson("/api/games/{$game->id}/validate-player", ['player_id' => '610000001', 'server_id' => 'America']);
+
+        $response->assertOk()->assertJson(['status' => 'valid', 'nickname' => 'Lumine', 'zone' => 'America', 'server' => 'Americas']);
+        $this->assertSame('valid', PlayerValidation::query()->sole()->status);
+    }
+
+    public function test_a_uid_on_another_zone_is_wrong_zone_with_the_right_zone(): void
+    {
+        $game = $this->zoneGame($this->profile());
+        $this->bindFakeValidator(PlayerValidationResult::valid('redxgame', 'Lumine', null, server: 'Asia', zone: 'Asia'));
+
+        $response = $this->postJson("/api/games/{$game->id}/validate-player", ['player_id' => '834140081', 'server_id' => 'America']);
+
+        $response->assertOk()->assertJson(['status' => 'wrong_zone', 'zone' => 'Asia', 'server' => 'Asia', 'redirect_game' => null]);
+        $this->assertSame('wrong_zone', PlayerValidation::query()->sole()->status);
+    }
+
+    /**
+     * Founder's call 2026-10-16: a server we don't sell is blocked, not
+     * left for the supplier to reject.
+     */
+    public function test_a_uid_on_a_server_we_do_not_sell_is_wrong_zone_with_no_zone(): void
+    {
+        $game = $this->zoneGame($this->profile());
+        $this->bindFakeValidator(PlayerValidationResult::valid('redxgame', 'Lumine', null, server: 'China', zone: null));
+
+        $response = $this->postJson("/api/games/{$game->id}/validate-player", ['player_id' => '123456789', 'server_id' => 'Asia']);
+
+        $response->assertOk()->assertJson(['status' => 'wrong_zone', 'zone' => null, 'server' => 'China']);
+    }
+
+    /**
+     * A zone value can be in the game's options and still be one this
+     * game doesn't sell (an admin trimmed the options): that is a
+     * server we don't sell here.
+     */
+    public function test_the_right_zone_is_offered_only_when_this_game_sells_it(): void
+    {
+        $profile = $this->profile();
+        $game = $this->game([
+            'player_validator_enabled' => true,
+            'player_validator_profile_id' => $profile->id,
+            'validation_rules' => ['extra_field' => 'zone_id', 'zone_options' => ['Asia']],
+        ]);
+        $this->bindFakeValidator(PlayerValidationResult::valid('redxgame', 'Lumine', null, server: 'Europe', zone: 'Europe'));
+
+        $response = $this->postJson("/api/games/{$game->id}/validate-player", ['player_id' => '710000001', 'server_id' => 'Asia']);
+
+        $response->assertOk()->assertJson(['status' => 'wrong_zone', 'zone' => null, 'server' => 'Europe']);
+    }
 }

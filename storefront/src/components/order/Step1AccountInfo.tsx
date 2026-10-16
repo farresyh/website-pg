@@ -13,7 +13,7 @@ interface Step1AccountInfoProps {
   setPlayerId: (value: string) => void;
   serverId: string;
   setServerId: (value: string) => void;
-  onVerify: () => void;
+  onVerify: (zone?: string) => void;
   onContinue: () => void;
   verifying: boolean;
   verifyError: string | null;
@@ -183,7 +183,7 @@ export default function Step1AccountInfo({
       <div className={`mt-3.5 flex items-center ${hasInfoContent ? "justify-between" : "justify-end"}`}>
         {hasInfoContent && <GameInfoTriggerButton onClick={() => setInfoOpen(true)} />}
         {game.playerValidatorEnabled ? (
-          <Button type="button" variant="outline" size="sm" onClick={onVerify} disabled={verifying || !idReady}>
+          <Button type="button" variant="outline" size="sm" onClick={() => onVerify()} disabled={verifying || !idReady}>
             {verifying ? "Verifying…" : "Verify Account"}
           </Button>
         ) : (
@@ -216,6 +216,22 @@ export default function Step1AccountInfo({
           <WarningCircle size={16} weight="fill" className="shrink-0" />
           We couldn&apos;t confirm this account&apos;s region. Contact WhatsApp support before paying.
         </p>
+      )}
+
+      {game.playerValidatorEnabled && result?.status === "wrong_zone" && (
+        <div className="mt-3 rounded-md border-2 border-ink bg-warning p-3 text-[13px] text-on-warning">
+          <p className="flex items-center gap-2 font-bold">
+            <WarningCircle size={16} weight="fill" className="shrink-0" />
+            {result.zone
+              ? `This UID is on the ${result.server} server, not ${serverId}.`
+              : `This UID is on the ${result.server} server, which this store doesn't sell.`}
+          </p>
+          {result.zone && (
+            <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => onVerify(result.zone ?? undefined)} disabled={verifying}>
+              Switch to {result.zone}
+            </Button>
+          )}
+        </div>
       )}
 
       {game.playerValidatorEnabled && result?.status === "wrong_region" && result.redirect_game && (

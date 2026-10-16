@@ -222,6 +222,11 @@ return [
         'redxgame' => [
             'base_url' => env('REDXGAME_BASE_URL', 'https://redxgame.com'),
             'timeout' => (int) env('REDXGAME_TIMEOUT_SECONDS', 5),
+            // Games where Redx is the only provider (Free Fire, Genshin,
+            // HSR, ZZZ): nothing to fall back to, and an unknown UID took
+            // 6.6s on Redx's first lookup (2026-10-16), so a 5s cut-off
+            // would turn a typo into "contact support".
+            'standalone_timeout' => (int) env('REDXGAME_STANDALONE_TIMEOUT_SECONDS', 10),
         ],
         'moogold' => [
             'base_url' => env('MOOGOLD_BASE_URL', 'https://moogold.com'),

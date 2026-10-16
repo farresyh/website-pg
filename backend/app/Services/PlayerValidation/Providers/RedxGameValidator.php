@@ -37,6 +37,17 @@ final class RedxGameValidator implements PlayerValidator
 {
     public const SESSION_CACHE_KEY = 'player-validator:redxgame:session';
 
+    /**
+     * Redx's HoYoverse server label => our zone value, which is what the
+     * supplier takes in the order ("America", not "Americas"). Any other
+     * label (China, TW/HK/MO) is a server we don't sell.
+     */
+    private const SERVER_ZONES = [
+        'Asia' => 'Asia',
+        'Americas' => 'America',
+        'Europe' => 'Europe',
+    ];
+
     /** Under Laravel's default 120-minute session lifetime. */
     private const SESSION_TTL_SECONDS = 3600;
 
@@ -45,6 +56,7 @@ final class RedxGameValidator implements PlayerValidator
         private readonly int $timeoutSeconds = 5,
         private readonly string $game = 'mobile-legends',
         private readonly bool $statusFalseMeansInvalid = false,
+        private readonly bool $regionIsServer = false,
     ) {}
 
     public function validate(string $playerId, ?string $serverId): PlayerValidationResult
@@ -78,6 +90,23 @@ final class RedxGameValidator implements PlayerValidator
         }
 
         $region = $response->json('region');
+
+        if ($this->regionIsServer) {
+            $zone = self::SERVER_ZONES[$region] ?? null;
+
+            if ($zone === null) {
+                Log::info('RedxGame server not sold', ['game' => $this->game, 'server' => $region]);
+            }
+
+            return PlayerValidationResult::valid(
+                provider: 'redxgame',
+                nickname: $response->json('nickname'),
+                countryCode: null,
+                server: $region,
+                zone: $zone,
+            );
+        }
+
         $countryCode = CountryCodeDecoder::fromCountryName($region);
 
         if ($countryCode === null && filled($region)) {
@@ -127,7 +156,7 @@ final class RedxGameValidator implements PlayerValidator
                 ])
                 ->post('/tools/check', [
                     'game' => $this->game,
-                    'inputs' => $serverId === null
+                    'inputs' => $serverId === null || $this->regionIsServer
                         ? ['user_id' => $playerId]
                         : ['user_id' => $playerId, 'server_id' => $serverId],
                 ]);
