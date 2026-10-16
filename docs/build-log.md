@@ -747,3 +747,30 @@ at moderate and passes at high; `npm audit` works with no `node_modules`.
 On this PR, the composer job runs against staging's pre-#474 lock and is
 expected to fail. That is the alert path working, and it goes green once
 #474 merges.
+
+## 2026-10-17 — Release #476 (`staging`→`main`), verified; docs cleanup
+
+**Release.** #476 merged as `69cf00f` with #473, #474 and #475. The `deploy`
+job ran; the box's `current` points at the new release. Checked read-only:
+`Composer\InstalledVersions` reports `symfony/http-foundation` v8.1.9, and
+`composer.lock` has `laravel/framework` v13.35.0. `api.pekangame.space/api/health`
+returned 200, the `pekangame.com` HTML carries the new skeleton markup, and
+the `Dependency audit` workflow is active on `main`. The `main` run's
+`playwright` job failed on the Google Fonts build flake and passed on a
+re-run of the failed job (now PRD §16 item 109).
+
+**FPX test.** Read-only checks found FPX `is_active` since 2026-10-16 16:07
+UTC with one storefront order paid at 16:19. The founder confirmed it was
+their own test and switched FPX off again (19:16 UTC); all three methods are
+off. The PRD §14 "payments off" line stays true, with the test noted, and
+item 28's launch trigger has not started.
+
+**Docs cleanup.** PRD §14 headline → release #476. §15's storefront row
+now says #474 is released. §16 has three new items: 109 (fonts without
+Google Fonts), 110 (security check follow-ups: per-email login throttle,
+missing headers, one upload cap) and 111 (Turnstile on logins, needs a
+grill). §16's open items 106, 11 and 96 were re-verified: no fix commit,
+no Sentry package, OpenWA 0.23.7. A scripted check of all 123 ADR files
+against the `adr.md` index found every file indexed and every
+last-addendum date matching. The one wording drift (ADR-045's Standing)
+was aligned to its file banner.

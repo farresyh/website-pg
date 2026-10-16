@@ -67,7 +67,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-042](./adr/ADR-042-seo-module-scope-widened.md) | SEO module scope widened — structured data, scripts manager, crawler/robots management, sitemap & overview panels, per-game SEO UX | In force | 2026-10-08 |
 | [ADR-043](./adr/ADR-043-llms-txt.md) | `llms.txt` — auto-generated AI/LLM-context route | In force | 2026-08-22 |
 | [ADR-044](./adr/ADR-044-zod-runtime-schema-validation-at-the-admin.md) | Zod runtime schema validation at the admin/storefront API boundary | In force |  |
-| [ADR-045](./adr/ADR-045-admin-dashboard.md) | Admin Dashboard — DASH-1..6, `orders.delivered_at`, and a per-metric self-documenting `definition` convention | In force; DASH-1, 3, 4, 5 replaced by ADR-104 (2026-10-15) | 2026-10-15 |
+| [ADR-045](./adr/ADR-045-admin-dashboard.md) | Admin Dashboard — DASH-1..6, `orders.delivered_at`, and a per-metric self-documenting `definition` convention | Partly superseded — DASH-1, 3, 4, 5 replaced by ADR-104 (2026-10-15) | 2026-10-15 |
 | [ADR-046](./adr/ADR-046-supplier-management-screen.md) | Supplier Management screen — trimmed to config/health (SUPP-1/CRUD/SUPP-5), `Supplier.api_config` becomes the live credential source, per-supplier/per-game bulk deactivation | In force | 2026-09-24 |
 | [ADR-047](./adr/ADR-047-realtime-broadcasting.md) | Realtime broadcasting — Laravel Reverb + Echo, replacing application-level polling | In force | 2026-09-28 |
 | [ADR-048](./adr/ADR-048-queue-driver-migration-to-redis-plus-horizon.md) | Queue driver migration to Redis, plus Horizon + Pulse — reverses ADR-014 decision #1 / ADR-020 decision #3's "queue stays on `database`" | In force | 2026-09-29 |
