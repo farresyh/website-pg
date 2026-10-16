@@ -970,3 +970,37 @@ Checks (read-only tinker over SSH, and the founder's logged-in Chrome):
   (fixed by item 97). Clearing them is a prod write, left to the founder.
 
 Items 101, 102 and 103 closed (PRD §16).
+
+## 2026-10-16 — Items 98 and 99 closed after a day of prod data (docs only)
+
+Read-only checks over SSH (tinker, `laravel.log`, `/api/health`) at
+05:05 UTC, about 20 hours after #449 went live (release 80273185,
+2026-10-15 09:08 UTC).
+
+- **Item 98 (ADR-122).** `scheduled_task_heartbeats` holds 19 rows, one per
+  task in `TaskSchedule` (11 `CRITICAL`, 8 `ROUTINE`). Every row has a
+  `last_ok_at` on 2026-10-16 and `last_failed_at` null. The daily tasks ran at
+  00:00, then `membership-renewal-reminders` at 02:00, `database-backup` at
+  02:07 (its `BackupRun` is `success`) and `database-backup-cleanup` at 03:00.
+  `/api/health` returns 200 with `checks.scheduler: true`. Longest runtime
+  12.29 s (`database-backup-cleanup`), so the 60-minute daily grace has a lot
+  of room; revisit it after a week of runtimes, as ADR-122 says.
+- **Item 99 (ADR-069 2026-10-15 addendum).** Digiflazz `supplier_request_logs`,
+  before vs after the deploy: `listProducts` 212 success / 42 exception (max
+  10,008 ms, the old 10 s timeout) from 2026-10-11, against 40 success / 0
+  exception (max 19,530 ms) since. That 19.5 s call would have timed out and
+  been retried under the old setting. `laravel.log` has 7 rc 83 lines, the last
+  at 2026-10-15 03:00:23, before the deploy. `PriceSyncRun`: 48 a day, every
+  one `success`.
+
+Seen during the check, not part of either item:
+- Gamevion's `listProducts` timed out twice (2026-10-16 02:00 and 02:30 UTC,
+  `cURL error 28` at 10 s, 0 bytes received). The next run succeeded. Gamevion
+  still uses the shared 10 s timeout. Its `PriceSyncRun`s were still recorded
+  `success`, because one supplier failing doesn't fail the run, so the failure
+  shows only in `laravel.log`.
+- A Redis connection blip on 2026-10-15 06:45 (about 30 Predis errors over
+  5 s, on the release before #449). It recovered by itself, and nothing
+  followed it.
+
+Items 98 and 99 closed (PRD §16).

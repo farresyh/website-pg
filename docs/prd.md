@@ -692,13 +692,7 @@ listed under Recently closed). Every open item re-verified against code and
 production on 2026-10-15 after release #449. Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- **98** Scheduler liveness (ADR-122): live 2026-10-15 (#449). Heartbeats fill
-  and health is 200; it caught a real stuck wallet-reconcile lock on day one
-  (build-log). Close after the first 00:00 UTC run gives every daily task a row.
-- **99** Digiflazz `[83]` price-list rate limit: self-inflicted (10s timeout,
-  then an instant retry). Fixed 2026-10-15 (ADR-069 addendum: own 30s
-  timeout, no retry), live 2026-10-15 (#449). Close once a day of logs shows
-  the `exception` count down and no rc 83.
+- None open (98 and 99 closed 2026-10-16).
 
 **B. Needs a short grill / ADR addendum first**
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
@@ -952,29 +946,6 @@ production on 2026-10-15 after release #449. Re-verify before building.
       the new `.env` is confirmed (they hold the gateway's secrets, as
       item 87's backups did).
 
-98. **Scheduler liveness alert (found 2026-10-14, item 97 stress test).**
-    UptimeRobot polls `/api/health` (DB, Redis, Horizon), but nothing notices
-    if the Laravel scheduler (cron) stops. Backups, price sync, payment
-    reconciliation and the membership jobs would then all stop without an
-    alert. Needs a short design: where the heartbeat lives, and whether a
-    stale heartbeat should fail `/api/health` or send its own alert.
-    **Designed and built 2026-10-15 as ADR-122** (per-task heartbeat, stale
-    critical task fails `/api/health`, closures to `Schedule::command`, 30-min
-    overlap locks). Close after the release check.
-
-99. **Digiflazz `[83]` rate limit (found 2026-10-15, item 98 audit).**
-    `laravel.log` shows `SyncSupplierPricesJob` failing with Digiflazz `[83]
-    Anda telah mencapai limitasi pengecekan pricelist` 8 times between
-    2026-10-11 and 2026-10-15. The old box that once double-ran price sync is
-    destroyed, so another caller shares the limit (price sync every 30 min,
-    the daily balance refresh, Product Manager sync, Developer Tools?). Each
-    failure is a recorded `PriceSyncRun`; the next run usually succeeds.
-    **Root cause found 2026-10-15:** no second caller. The price-list takes
-    4.7s median / 8.5s p90; 42 of 249 calls hit the shared 10s timeout and were
-    retried at once, and 7 retries got rc 83 because Digiflazz had counted the
-    timed-out request. Fixed (ADR-069 2026-10-15 addendum): price-list gets
-    its own 30s timeout and no retry.
-
 104. **Reseller wallet top-up KPIs (founder, 2026-10-15) — design not started.**
     Nothing shows how often or how much Resellers top up their wallets. Today
     there are only current balances (`/admin/balance`), the total owed
@@ -1005,6 +976,8 @@ production on 2026-10-15 after release #449. Re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-13, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **98** 2026-10-16: Scheduler liveness (ADR-122, #449). After the first 00:00 UTC run all 19 tasks (11 critical, 8 routine) had a heartbeat with `last_ok_at` that day and no failure; `/api/health` 200 with `scheduler: true`. Longest daily task 12.3 s (backup cleanup); the 60-minute grace is reviewed after a week (ADR-122 consequence). Details: build-log 2026-10-16.
+- **99** 2026-10-16: Digiflazz `[83]` price-list rate limit (ADR-069 2026-10-15 addendum, #449). Since the deploy (2026-10-15 09:08 UTC): 40 `listProducts` calls, 0 exceptions (was 42 of 254), no rc 83 in `laravel.log` (last 2026-10-15 03:00, before the deploy), slowest call 19.5 s succeeded. Details: build-log 2026-10-16.
 - **103** 2026-10-15: Customer Analytics reads that scale (ADR-049/050 2026-10-15 addendum): one SQL aggregate for stats, list, export and detail stats; server-paged, sorted, searchable list; segment as a SQL CASE; segment and repeat rate from every paid order whatever the filters; Source `Reseller: A + Retail`; Reports date presets; paged detail order history. At 10k orders 409–502 ms / 46 MB became 84–137 ms / 0.1 MB. Released and verified 2026-10-15 (#462): 3 customers, list total equals Reports (RM220.70, 32 orders), `faris9745@` shows `Reseller: FixFast + Retail`. Details: build-log 2026-10-15.
 - **102** 2026-10-15: Dashboard redesign as a daily briefing (ADR-104 2026-10-15 addendum). Released and verified 2026-10-15 (#462): Last 30 days RM210.10 / 27 orders equals Reports for the same range; light, dark and narrow views render. Details: build-log 2026-10-15.
 - **101** 2026-10-15: admin low-contrast leftovers use the `ink-subtle` / `danger-ink` tokens, with a CI guard (ADR-104 2026-10-15 addendum). Released and verified 2026-10-15 (#462): on prod `ink-subtle` 4.80:1 light / 5.45:1 dark, `danger-ink` 5.70:1 / 8.42:1. Details: build-log 2026-10-15.
