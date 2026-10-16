@@ -670,3 +670,34 @@ checker's anti-proxy protections).
 
 **Local cleanup.** The temporary local MLBB profile, mapping and game
 change were removed from the dev DB; the local servers were stopped.
+
+## 2026-10-17 — Weekly dependency audit (alert only)
+
+**Why.** PR #474 found `symfony/http-foundation` 8.1.1 live on `main` with an
+unauthenticated ReDoS advisory published a month earlier. Nothing scanned
+lockfiles on a schedule, so it was found only by a manual check.
+
+**What.** `.github/workflows/dependency-audit.yml`: every Monday 09:00 MYT
+(plus manual `workflow_dispatch`, plus any PR touching a lockfile) runs
+`composer audit --locked` and `npm audit --omit=dev` per app. It reads
+lockfiles only, with no install, so it takes a few CI minutes a week. npm
+thresholds: moderate for backend/admin/storefront/reseller; high for
+docs-site, whose only moderate (Starlight's expressive-code chain) has no
+fix short of a downgrade. Composer fails on any severity, because
+CVE-2026-108082 arrived with no rating. It is a separate workflow from `CI`
+and not in `deploy`'s `needs`, so a new advisory never blocks a release.
+It never upgrades anything: the response is a targeted upgrade branch,
+not `--with-dependencies` (#474 showed that pulls unrelated majors).
+
+**Where alerts land.** GitHub emails a failed scheduled run to the account
+that last changed the workflow's cron, i.e. the founder's. The schedule
+runs only from the default branch, so it starts after the next
+`staging`→`main` release. Dependabot PRs were considered and not chosen:
+one PR stream per app directory is noise for a solo founder, and its
+upgrades can be broader than the advisory needs.
+
+**Verified.** Locally: every npm app passes its threshold; docs-site fails
+at moderate and passes at high; `npm audit` works with no `node_modules`.
+On this PR, the composer job runs against staging's pre-#474 lock and is
+expected to fail. That is the alert path working, and it goes green once
+#474 merges.
