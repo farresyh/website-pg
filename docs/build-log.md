@@ -1076,3 +1076,33 @@ binding from local: ID, TH, SG, SG (the Malaysian account) and a made-up ID
 `freefire`, map the countries (`SG` → Free Fire Malaysia, `ID`, `TH`, `PH`,
 the rest → Free Fire Global), deactivate Free Fire Singapore, then turn on
 "Requires Player Validation" per Free Fire game and run "Test this validator".
+
+## 2026-10-16 — Genshin / HSR / ZZZ zone validation via RedxGame (ADR-005 third addendum)
+
+**Found.** Redx answers these three with the UID's server: "Asia" for the
+founder's six UIDs; one public UID per range gave "Americas" and "Europe"
+(Genshin, ZZZ) and "China" (Genshin 1xxxxxxxx). Our zone value is "America",
+the supplier's format, so the label is translated, never compared raw.
+Valorant: four MY Riot IDs → "Malaysia", one (`nothingtosee#007`)
+"Couldn't verify" twice; not built.
+
+**Built.**
+- `genshin`/`hsr`/`zzz` keys; `RedxGameValidator(regionIsServer)` fills
+  `PlayerValidationResult::$server`/`$zone`.
+- `ZoneCheck`, applied by `PlayerValidationController` and both bot paths:
+  new `wrong_zone` state.
+- Storefront: the `wrong_zone` message with a "Switch to X" button.
+- Admin test panel shows the server.
+- Redx-only games (Free Fire too) now time out at 10 s, not 5.
+
+**Verified.** Fast suite green, plus storefront `tsc`, lint and build.
+Real calls: Asia UID + Asia → valid, + America → `wrong_zone` (zone Asia);
+Americas UID + America → valid; China UID → `wrong_zone`, no zone; Europe ZZZ
+UID + Asia → `wrong_zone` (zone Europe); an unknown UID → invalid in 6.9 s
+(it had timed out at 5 s). Browser (local, 420 px, a temporary local game
+removed afterwards): wrong zone → "Switch to Asia" → zone select set to Asia,
+"Valid account found"; China UID → "doesn't sell"; warning text
+rgb(25,25,47) on rgb(255,215,0).
+
+**Gotcha.** `vendor/bin/pint app` reformats about 30 unrelated files; run
+Pint on the changed files only.

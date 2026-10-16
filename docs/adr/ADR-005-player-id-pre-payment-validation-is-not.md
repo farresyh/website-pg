@@ -71,3 +71,19 @@ The same check surfaced a related, previously-undocumented gap: `POST /api/order
 - With validation on, a Redx outage blocks every Free Fire checkout. The kill switch is the per-game "Requires Player Validation" toggle on `/admin/games`; turning it off restores today's validate-at-order-time behaviour.
 - Philippines' spelling is untested (expected "Philippines"); a `RedxGame region not mapped` log line says otherwise.
 - If Free Fire Singapore is ever reactivated, `SG` can map to only one game: the mapping model would need a region accepted by several games.
+
+### 2026-10-16 third addendum — Genshin, Honkai: Star Rail, Zenless Zone Zero: the UID's server must be the chosen zone
+
+**Context.** Redx's Genshin, HSR and ZZZ checkers take a UID only and answer the UID's **game server**, not a country: "Asia", "Americas", "Europe", "China" (tested 2026-10-16 with the founder's Asia UIDs and one public UID per server range). Our three games are one game each, with the customer picking a zone from `zone_options` (`Asia`/`America`/`Europe`), the value the supplier takes in the order (`uid|America`; the supplier rejects "Americas", founder). So the country → game mapping in `/middleware/validators` (2-letter ISO codes) doesn't apply: what can go wrong is the zone.
+
+**Decision** (founder's calls, 2026-10-16):
+1. **Validator keys `genshin`, `hsr`, `zzz`**, each `RedxGameValidator(regionIsServer: true)`. Redx's label is translated to our zone value in code (`Asia`→`Asia`, `Americas`→`America`, `Europe`→`Europe`); any other label (China, TW/HK/MO) has no zone. `PlayerValidationResult` carries `server` (Redx's label) and `zone` (ours) instead of a country.
+2. **One rule, `ZoneCheck`, applied by the storefront endpoint and the reseller bot** (`.checkid` and the `.order` pre-check): valid only when the UID's zone is the chosen zone and in this game's `zone_options`; otherwise the new state **`wrong_zone`**, recorded in `player_validations` like the others, so checkout's "recent `valid` row" rule blocks it.
+3. **Storefront:** `wrong_zone` shows "This UID is on the Asia server, not America." with a **"Switch to Asia"** button that picks that zone and verifies again; a server we don't sell shows "…which this store doesn't sell." and blocks. The response gains `server` and `zone` (the zone to switch to, null when none).
+4. Redx `status:false` = invalid ID (no second provider), as for Free Fire.
+5. **Timeout 10 s for every Redx-only game** (Free Fire included, `redxgame.standalone_timeout`): an unknown UID took 6.6 s on Redx's first lookup, so 5 s turned a typo into "contact support". MLBB keeps 5 s so MooGold fits its 8 s chain deadline.
+6. Admin: create the profile (key from the dropdown) and turn on the game's toggle. No country mappings for these three.
+
+**Consequence to track:**
+- If Redx renames a server, every customer on it gets "doesn't sell" (blocked, never a wrong-zone order); the log line `RedxGame server not sold` shows the new label for `SERVER_ZONES`.
+- Valorant is not built: Redx answered "Malaysia" for MY accounts, and its other-region behaviour is unknown without a non-MY Riot ID.
