@@ -206,11 +206,7 @@ class CatalogController extends Controller
      */
     private function hiddenGameIds(): array
     {
-        return $this->hiddenGameIds ??= AffiliateGame::query()
-            ->where('affiliate_id', $this->storefrontBrand->get()->id)
-            ->where('is_visible', false)
-            ->pluck('game_id')
-            ->all();
+        return $this->hiddenGameIds ??= AffiliateGame::hiddenGameIdsFor($this->storefrontBrand->get()->id);
     }
 
     /**

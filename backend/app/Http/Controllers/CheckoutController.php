@@ -496,11 +496,7 @@ class CheckoutController extends Controller
      */
     private function isHiddenOnThisBrand(Game $game): bool
     {
-        return AffiliateGame::query()
-            ->where('affiliate_id', $this->storefrontBrand->get()->id)
-            ->where('game_id', $game->id)
-            ->where('is_visible', false)
-            ->exists();
+        return in_array($game->id, AffiliateGame::hiddenGameIdsFor($this->storefrontBrand->get()->id), true);
     }
 
     private function assertNotBlacklisted(string $playerId, string $email, ?string $phone, ?string $ip): void
