@@ -1005,3 +1005,46 @@ Seen during the check, not part of either item:
   followed it.
 
 Items 98 and 99 closed (PRD §16).
+
+## 2026-10-16 — MLBB player validation: RedxGame → MooGold (ADR-005 addendum)
+
+**Found (read-only, prod).** `player_validations` showed the last
+AcidGameShop result on 2026-10-09; from 2026-10-10 only MooGold answered.
+Fallback warnings in `laravel.log`: AcidGameShop 502 then, since its site
+rebuild, `response missing nickname on a 200` (the endpoint now serves the
+SPA's HTML); Nexone's `/idchecker` 403. MooGold, re-run once on prod with an
+ID AcidGameShop had mapped to `MY`, returned `valid` with no country. So every
+MLBB check ended `region_unknown`, which blocks checkout. No customer hit:
+payments have been off since 2026-10-07.
+
+AcidGameShop's new "Check Region ML" page calls an obfuscated API behind a
+token step; left alone on purpose (ADR-005 addendum). RedxGame's checker
+(`redxgame.com/tools`) is plain: `POST /tools/check` with its session cookie
+and CSRF token, answering nickname plus an English country name. Founder's
+real accounts (MY, ID, RU, BR, TR, KR) all mapped correctly, from local and
+from the prod box.
+
+**Built.**
+- `RedxGameValidator`: cached session (60 min), one renewal on a rejected
+  cached session, `status:false` thrown as unavailable so MooGold decides
+  (founder's call), 5 s timeout.
+- `CountryCodeDecoder::fromCountryName()` via ICU over the timezone DB's
+  current codes, alias `Turkey` → `TR`, unknown → null + a log line.
+- Removed `AcidGameShopValidator`, `NexoneValidator`, their config and tests,
+  and `fromFlagEmoji()`. Comments and test labels naming them updated.
+
+**Verified.** Fast suite 2834/2834. The real chain from local (tinker, the
+`mlbb` registry binding): six real IDs → `redxgame` with MY, ID, RU, BR, TR,
+KR in 1.5–2.2 s; a made-up ID → `moogold` invalid in 3.96 s. The HTTP
+endpoint wasn't exercised locally (the dev DB has no validator profile or
+mappings); `PlayerValidationController` is unchanged and its tests pass.
+After release: run "Test this validator" on `/middleware/validators` in prod.
+
+**Gotchas.**
+- ICU names retired codes with today's names (`BU` "Myanmar (Burma)", `DD`
+  Germany, `SU` Russia, `YU` Serbia), so walking AA..ZZ maps Myanmar to `BU`.
+  The timezone database lists only current codes (247).
+- Prod ICU is 74.2, local 77.1; names can differ between ICU versions, so the
+  tests assert only names Redx was seen returning.
+- The auto-mode classifier blocked sending a prod customer's player ID to
+  Redx; the founder's own test accounts were used instead.
