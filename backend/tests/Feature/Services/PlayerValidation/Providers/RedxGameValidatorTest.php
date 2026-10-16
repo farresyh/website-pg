@@ -200,4 +200,54 @@ class RedxGameValidatorTest extends TestCase
         $this->assertTrue($result->valid);
         $this->assertNull($result->countryCode);
     }
+
+    private function freeFireValidator(): RedxGameValidator
+    {
+        return new RedxGameValidator(baseUrl: 'https://redxgame.com', game: 'free-fire', statusFalseMeansInvalid: true);
+    }
+
+    public function test_free_fire_sends_the_player_id_only(): void
+    {
+        Http::fake([
+            'redxgame.com/tools/free-fire-id-checker' => $this->checkerPage(),
+            'redxgame.com/tools/check' => Http::response(['status' => true, 'nickname' => 'Ace', 'region' => 'Thailand']),
+        ]);
+
+        $result = $this->freeFireValidator()->validate('16742877347', null);
+
+        $this->assertSame('TH', $result->countryCode);
+        Http::assertSent(fn (Request $request) => $request->url() === 'https://redxgame.com/tools/check'
+            && $request['game'] === 'free-fire'
+            && $request['inputs'] === ['user_id' => '16742877347']);
+    }
+
+    /**
+     * Founder's call 2026-10-16: Free Fire has no second provider, so
+     * Redx's "Couldn't verify that ID" is shown as an invalid ID the
+     * customer can correct, not region unknown.
+     */
+    public function test_free_fire_treats_status_false_as_invalid(): void
+    {
+        Http::fake([
+            'redxgame.com/tools/free-fire-id-checker' => $this->checkerPage(),
+            'redxgame.com/tools/check' => Http::response(['status' => false, 'message' => "Couldn't verify that ID. Please double-check and try again."]),
+        ]);
+
+        $result = $this->freeFireValidator()->validate('99999999', null);
+
+        $this->assertFalse($result->valid);
+        $this->assertSame('redxgame', $result->provider);
+    }
+
+    public function test_free_fire_still_throws_when_redx_is_down(): void
+    {
+        Http::fake([
+            'redxgame.com/tools/free-fire-id-checker' => $this->checkerPage(),
+            'redxgame.com/tools/check' => Http::response('Bad Gateway', 502),
+        ]);
+
+        $this->expectException(ProviderUnavailableException::class);
+
+        $this->freeFireValidator()->validate('16742877347', null);
+    }
 }

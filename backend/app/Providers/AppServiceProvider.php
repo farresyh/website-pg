@@ -348,6 +348,21 @@ class AppServiceProvider extends ServiceProvider
             ]);
         });
 
+        // Free Fire: RedxGame alone (MooGold's checker is MLBB-only), so
+        // its "couldn't verify" is an invalid ID (ADR-005 2026-10-16
+        // second addendum). Redx reports the Garena server: Malaysian
+        // accounts come back "Singapore".
+        $this->app->bind('player-validator.freefire', function () {
+            $config = config('services.player_validators.redxgame');
+
+            return new RedxGameValidator(
+                baseUrl: $config['base_url'],
+                timeoutSeconds: $config['timeout'],
+                game: 'free-fire',
+                statusFalseMeansInvalid: true,
+            );
+        });
+
         $this->app->singleton(PlayerValidatorRegistry::class);
 
         // ADR-060 PR-6 — the GD-driver image manager ImageIngestService

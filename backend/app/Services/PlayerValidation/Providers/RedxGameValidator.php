@@ -24,10 +24,14 @@ use Throwable;
  * request; a rejected session (419, a redirect page instead of JSON) is
  * renewed once.
  *
- * `status: false` is never trusted as "invalid": Redx sends the same
- * "Couldn't verify that ID" for a wrong ID and for a failure on its own
- * side, so it is thrown as unavailable and MooGold, next in the chain,
- * decides (founder's call 2026-10-16).
+ * One instance per Redx game (`mobile-legends`, `free-fire`); they share
+ * the one cached session, which belongs to the site, not a game.
+ *
+ * `status: false` is the same "Couldn't verify that ID" for a wrong ID and
+ * for a failure on Redx's own side. Where a second provider exists (MLBB:
+ * MooGold) it is thrown as unavailable so that provider decides; where
+ * none does (Free Fire) it is an invalid ID the customer can correct
+ * (founder's calls, 2026-10-16).
  */
 final class RedxGameValidator implements PlayerValidator
 {
@@ -36,11 +40,11 @@ final class RedxGameValidator implements PlayerValidator
     /** Under Laravel's default 120-minute session lifetime. */
     private const SESSION_TTL_SECONDS = 3600;
 
-    private const CHECKER_PATH = '/tools/mobile-legends-id-checker';
-
     public function __construct(
         private readonly string $baseUrl,
         private readonly int $timeoutSeconds = 5,
+        private readonly string $game = 'mobile-legends',
+        private readonly bool $statusFalseMeansInvalid = false,
     ) {}
 
     public function validate(string $playerId, ?string $serverId): PlayerValidationResult
@@ -66,6 +70,10 @@ final class RedxGameValidator implements PlayerValidator
         }
 
         if ($response->json('status') !== true) {
+            if ($this->statusFalseMeansInvalid) {
+                return PlayerValidationResult::invalid('redxgame');
+            }
+
             throw new ProviderUnavailableException('RedxGame could not verify the ID: '.$response->json('message'));
         }
 
@@ -91,7 +99,7 @@ final class RedxGameValidator implements PlayerValidator
         $jar = new CookieJar;
 
         try {
-            $page = $this->client($jar)->get(self::CHECKER_PATH);
+            $page = $this->client($jar)->get($this->checkerPath());
         } catch (Throwable $e) {
             throw new ProviderUnavailableException('RedxGame checker page request failed: '.$e->getMessage(), 0, $e);
         }
@@ -115,11 +123,13 @@ final class RedxGameValidator implements PlayerValidator
             return $this->client(new CookieJar(false, $session['cookies']))
                 ->withHeaders([
                     'X-CSRF-TOKEN' => $session['token'],
-                    'Referer' => rtrim($this->baseUrl, '/').self::CHECKER_PATH,
+                    'Referer' => rtrim($this->baseUrl, '/').$this->checkerPath(),
                 ])
                 ->post('/tools/check', [
-                    'game' => 'mobile-legends',
-                    'inputs' => ['user_id' => $playerId, 'server_id' => $serverId],
+                    'game' => $this->game,
+                    'inputs' => $serverId === null
+                        ? ['user_id' => $playerId]
+                        : ['user_id' => $playerId, 'server_id' => $serverId],
                 ]);
         } catch (Throwable $e) {
             throw new ProviderUnavailableException('RedxGame check request failed: '.$e->getMessage(), 0, $e);
@@ -133,6 +143,11 @@ final class RedxGameValidator implements PlayerValidator
     private function isCheckResponse(Response $response): bool
     {
         return $response->successful() && is_bool($response->json('status'));
+    }
+
+    private function checkerPath(): string
+    {
+        return "/tools/{$this->game}-id-checker";
     }
 
     private function client(CookieJar $jar): PendingRequest
