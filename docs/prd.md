@@ -738,6 +738,8 @@ production on 2026-10-15 after release #449. Re-verify before building.
 - **25** Portal "needs attention" aggregate.
 - **57** Marketing Campaigns (ADR-118, designed).
 - **94** Best-selling products per game in Reports.
+- **107** Public player-ID checker page (like redxgame.com/tools), protected so
+  it can't become a free proxy to the provider. Build after the Redx validators are live.
 
 ## Details
 
@@ -1010,6 +1012,34 @@ production on 2026-10-15 after release #449. Re-verify before building.
       `PriceSyncRunObserver` → `PriceSyncRunUpdated` broadcast, admin
       `/middleware/price-sync` and `SyncDetailsModal`; the Dashboard and
       `SchedulerLiveness` don't read it).
+
+107. **Public player-ID checker page — idea, design not started (founder,
+    2026-10-16).** A storefront page where anyone checks an ID (nickname plus
+    region or server) without opening a game's order page, as
+    redxgame.com/tools does; the SEO and "Top up now" value is why Redx has
+    one. It would reuse the validators built 2026-10-16 (ADR-005's three
+    2026-10-16 addenda: MLBB, Free Fire, Genshin/HSR/ZZZ).
+    - **Hiding the provider:** already true for checkout. Checks run
+      server-side and `POST /api/games/{game}/validate-player` returns no
+      provider name or provider error text (`provider` lives only in
+      `player_validations` and the admin test panel). A public page must
+      also show our own wording, never Redx's raw labels ("Americas") or
+      messages. It can't be hidden completely: matching quirks (a Malaysian
+      Free Fire account shows "Singapore"; Redx's caching latency) are
+      hints, not proof.
+    - **The real risk is traffic, not discovery.** Every check from the page
+      is a request to Redx from our server's IP. A public page used by
+      bots or other shops raises the chance Redx blocks that IP, which
+      would also break checkout validation (AcidGameShop went this way,
+      ADR-005 2026-10-16 addendum).
+    - **For the grill:** a captcha (Cloudflare Turnstile; Cloudflare already
+      fronts `api.`); a stricter per-IP limit than checkout's
+      `throttle:10,1`; reusing a recent `player_validations` result for the
+      same ID instead of calling Redx again (how long); which games;
+      a "Top up now" link to the right game (a fresh check already counts
+      for checkout's 30-minute window); page design.
+    - Trigger: after the release that carries #465–#467, once the validators
+      are confirmed working in prod.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-13, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
