@@ -55,3 +55,19 @@ The same check surfaced a related, previously-undocumented gap: `POST /api/order
 - Its rate limit is unknown (no rate-limit headers; not load-tested, deliberately). A checkout burst is softened by Redx's own cache and our 30-minute `player_validations` checkout window, not by anything we control.
 - A `RedxGame region not mapped` log line means a spelling to add to `CountryCodeDecoder::ALIASES`.
 - Other games' checkers on Redx: not built. Each needs its own validator profile, its own inputs and a decision on what "region" means for that game.
+
+### 2026-10-16 second addendum — Free Fire validator (`freefire` key), RedxGame only
+
+**Context.** Redx's checker list (`/tools`) overlaps our catalogue on Free Fire (6 region games), Valorant (5), Genshin, Honkai: Star Rail and Zenless Zone Zero. Free Fire's checker takes a Player ID only and answers like MLBB's. Tested with the founder's real accounts 2026-10-16: Indonesia → "Indonesia", Thailand → "Thailand", Singapore → "Singapore", **Malaysia → "Singapore"**. Redx reports the Garena server, and Malaysian and Singaporean accounts share the one labelled Singapore. Valorant, Genshin, HSR and ZZZ answer differently (a store-region verdict, or a game server rather than a country) and are not covered here.
+
+**Decision:**
+1. **New validator key `freefire`** in `PlayerValidatorRegistry::AVAILABLE_KEYS`, bound to `RedxGameValidator(game: 'free-fire')`. The admin creates the profile and sets every country → game mapping in `/middleware/validators`, as for MLBB.
+2. **No MY/SG split in code.** The founder deactivates Free Fire Singapore (dearer than Free Fire Malaysia) and maps `SG` → Free Fire Malaysia, other countries to Free Fire Global, so the existing one-country-one-game mapping holds unchanged.
+3. **RedxGame alone, no fallback** (MooGold's checker is MLBB-only). So `status: false` is an **invalid ID** for Free Fire, which the customer can correct, not `region_unknown` (founder's call, 2026-10-16). Redx unreachable (timeout, 5xx, rejected session) still throws, giving `region_unknown`.
+4. `RedxGameValidator` takes the Redx game slug and sends `server_id` only when there is one. All games share the one cached Redx session.
+5. Invariant test: every key in `AVAILABLE_KEYS` resolves to a bound validator.
+
+**Consequence to track:**
+- With validation on, a Redx outage blocks every Free Fire checkout. The kill switch is the per-game "Requires Player Validation" toggle on `/admin/games`; turning it off restores today's validate-at-order-time behaviour.
+- Philippines' spelling is untested (expected "Philippines"); a `RedxGame region not mapped` log line says otherwise.
+- If Free Fire Singapore is ever reactivated, `SG` can map to only one game: the mapping model would need a region accepted by several games.
