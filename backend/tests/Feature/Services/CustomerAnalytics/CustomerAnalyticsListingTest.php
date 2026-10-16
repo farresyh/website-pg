@@ -75,6 +75,9 @@ class CustomerAnalyticsListingTest extends TestCase
 
     public function test_sorts_by_orders_or_last_order_with_email_as_tie_break(): void
     {
+        // b and c must share one paid_at for the email tie-break to decide;
+        // unfrozen, a slow run put c a second later (CI, 2026-10-16).
+        $this->freezeTime();
         $this->order('b@example.com', 5000, ['paid_at' => now()->subDays(1)]);
         $this->order('a@example.com', 1000, ['paid_at' => now()->subDays(9)]);
         $this->order('a@example.com', 1000, ['paid_at' => now()->subDays(8)]);
