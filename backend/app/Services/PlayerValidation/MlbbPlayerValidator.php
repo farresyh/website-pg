@@ -5,9 +5,9 @@ namespace App\Services\PlayerValidation;
 use Illuminate\Support\Facades\Log;
 
 /**
- * MLBB's fallback chain — AcidGameShop -> Nexone -> MooGold, in that
- * priority order (the founder's own reliability ranking). Each
- * provider's ProviderUnavailableException is caught and logged, then
+ * MLBB's fallback chain — RedxGame -> MooGold, in that priority order
+ * (ADR-005 2026-10-16 addendum). Each provider's
+ * ProviderUnavailableException is caught and logged, then
  * the next is tried; only when every provider is unavailable does
  * this itself throw. Callers treat that identically to
  * "region_unknown" (per the founder's decision): block checkout,

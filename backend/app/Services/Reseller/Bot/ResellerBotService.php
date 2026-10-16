@@ -119,8 +119,8 @@ final class ResellerBotService
 
         // ADR-076 decision 8 — a separate, stricter limit for `.checkid`
         // specifically: every other command here is a plain DB read,
-        // this one can call a paid external provider (Moogold/
-        // AcidGameShop/Nexone) per invocation.
+        // this one can call an external provider (RedxGame/MooGold)
+        // per invocation.
         if ($command->type === ResellerBotCommandType::CheckId
             && ! RateLimiter::attempt("reseller-bot-checkid:{$reseller->id}", 10, fn () => true, 60)) {
             $this->openWa->sendText($whatsappGroupId, 'Terlalu banyak permintaan semakan ID. Sila cuba sebentar lagi.');
