@@ -103,7 +103,9 @@ class PlayerValidatorProfileController extends Controller
             $validator->update([
                 'last_tested_at' => now(),
                 'last_test_result' => $result->valid
-                    ? "valid — nickname: {$result->nickname}, country: {$result->countryCode}, via {$result->provider}"
+                    ? "valid — nickname: {$result->nickname}, "
+                        .($result->server !== null ? "server: {$result->server}" : "country: {$result->countryCode}")
+                        .", via {$result->provider}"
                     : "invalid ID (confirmed by {$result->provider})",
             ]);
 
@@ -114,6 +116,8 @@ class PlayerValidatorProfileController extends Controller
                     'valid' => $result->valid,
                     'nickname' => $result->nickname,
                     'country_code' => $result->countryCode,
+                    'server' => $result->server,
+                    'zone' => $result->zone,
                     'provider' => $result->provider,
                 ],
             ]);

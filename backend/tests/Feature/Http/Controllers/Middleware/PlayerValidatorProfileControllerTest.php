@@ -174,7 +174,7 @@ class PlayerValidatorProfileControllerTest extends TestCase
     public function test_test_action_returns_the_live_normalized_result_on_success(): void
     {
         $profile = $this->profile();
-        $this->bindFakeValidator(PlayerValidationResult::valid('acidgameshop', 'Prime.', 'MY'));
+        $this->bindFakeValidator(PlayerValidationResult::valid('redxgame', 'Prime.', 'MY'));
         $this->actingAsAdmin();
 
         $response = $this->postJson("/api/middleware/validators/{$profile->id}/test", [
@@ -202,7 +202,7 @@ class PlayerValidatorProfileControllerTest extends TestCase
         $game = Game::query()->create(['name' => 'Mobile Legends (Malaysia)', 'slug' => 'mobile-legends-malaysia']);
         $profile = $this->profile();
         $profile->mappings()->create(['country_code' => 'MY', 'country_name' => 'Malaysia', 'game_id' => $game->id]);
-        $this->bindFakeValidator(PlayerValidationResult::valid('acidgameshop', 'Prime.', 'MY'));
+        $this->bindFakeValidator(PlayerValidationResult::valid('redxgame', 'Prime.', 'MY'));
         $this->actingAsAdmin();
 
         $response = $this->postJson("/api/middleware/validators/{$profile->id}/test", [

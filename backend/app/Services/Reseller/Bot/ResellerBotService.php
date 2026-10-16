@@ -19,6 +19,7 @@ use App\Services\Order\PlacedVia;
 use App\Services\PlayerValidation\PlayerValidatorRegistry;
 use App\Services\PlayerValidation\ProviderUnavailableException;
 use App\Services\PlayerValidation\UnsupportedPlayerValidatorException;
+use App\Services\PlayerValidation\ZoneCheck;
 use App\Services\Pricing\OrderPricingResolver;
 use App\Services\Reseller\InvalidWalletTopupAmountException;
 use App\Services\Reseller\NoResellerTierAssignedException;
@@ -119,8 +120,8 @@ final class ResellerBotService
 
         // ADR-076 decision 8 — a separate, stricter limit for `.checkid`
         // specifically: every other command here is a plain DB read,
-        // this one can call a paid external provider (Moogold/
-        // AcidGameShop/Nexone) per invocation.
+        // this one can call an external provider (RedxGame/MooGold)
+        // per invocation.
         if ($command->type === ResellerBotCommandType::CheckId
             && ! RateLimiter::attempt("reseller-bot-checkid:{$reseller->id}", 10, fn () => true, 60)) {
             $this->openWa->sendText($whatsappGroupId, 'Terlalu banyak permintaan semakan ID. Sila cuba sebentar lagi.');
@@ -358,6 +359,8 @@ final class ResellerBotService
             }
         }
 
+        $zoneState = ZoneCheck::state($result, $command->serverId, $game->zoneOptions());
+
         // Same audit trail handleCheckId() already writes for every
         // attempt — this is the identical underlying check, just
         // triggered from .order instead of .checkid.
@@ -365,7 +368,7 @@ final class ResellerBotService
             'game_id' => $game->id,
             'player_id' => (string) $command->playerId,
             'server_id' => $command->serverId,
-            'status' => $this->checkIdStatus($result->valid, $wrongRegionGame),
+            'status' => $this->checkIdStatus($result->valid, $wrongRegionGame, $zoneState),
             'country_code' => $result->countryCode,
             'nickname' => $result->nickname,
             'provider' => $result->provider,
@@ -382,6 +385,12 @@ final class ResellerBotService
             $this->logFailure($reseller, $groupId, $command->raw, 'wrong_region_player_id');
 
             return ResellerBotReplyFormatter::checkIdWrongRegion($result, $wrongRegionGame);
+        }
+
+        if ($zoneState === 'wrong_zone') {
+            $this->logFailure($reseller, $groupId, $command->raw, 'wrong_zone_player_id');
+
+            return ResellerBotReplyFormatter::checkIdWrongZone($result, ZoneCheck::sellableZone($result, $game->zoneOptions()));
         }
 
         return null;
@@ -457,13 +466,15 @@ final class ResellerBotService
             }
         }
 
+        $zoneState = ZoneCheck::state($result, $command->serverId, $game->zoneOptions());
+
         // Same audit trail every other validation attempt writes to
         // (`PlayerValidationController::record()`).
         PlayerValidation::query()->create([
             'game_id' => $game->id,
             'player_id' => (string) $command->playerId,
             'server_id' => $command->serverId,
-            'status' => $this->checkIdStatus($result->valid, $wrongRegionGame),
+            'status' => $this->checkIdStatus($result->valid, $wrongRegionGame, $zoneState),
             'country_code' => $result->countryCode,
             'nickname' => $result->nickname,
             'provider' => $result->provider,
@@ -478,6 +489,10 @@ final class ResellerBotService
 
         if ($wrongRegionGame !== null) {
             return ResellerBotReplyFormatter::checkIdWrongRegion($result, $wrongRegionGame);
+        }
+
+        if ($zoneState === 'wrong_zone') {
+            return ResellerBotReplyFormatter::checkIdWrongZone($result, ZoneCheck::sellableZone($result, $game->zoneOptions()));
         }
 
         return ResellerBotReplyFormatter::checkIdValid($result);
@@ -511,10 +526,14 @@ final class ResellerBotService
         return ResellerBotReplyFormatter::inputRejected($error, $game, $code, $verb);
     }
 
-    private function checkIdStatus(bool $valid, ?Game $wrongRegionGame): string
+    private function checkIdStatus(bool $valid, ?Game $wrongRegionGame, ?string $zoneState): string
     {
         if (! $valid) {
             return 'invalid';
+        }
+
+        if ($zoneState !== null) {
+            return $zoneState;
         }
 
         return $wrongRegionGame !== null ? 'wrong_region' : 'valid';

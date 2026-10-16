@@ -947,3 +947,162 @@ refetched on search, no page-level horizontal scroll, no API errors.
 - ADR-088 decision 4 ("`dateRangeForYearMonth()` is kept for Customer
   Analytics") retired by ADR-049's 2026-10-15 addendum: dated addendum added,
   index date updated.
+
+## 2026-10-15 — Release #462 (`staging`→`main`): items 101–103, verified
+
+Founder merged #462 (`9b5ff74`, #450–#461). CI deploy green; the prod box's
+`current` is release 80314022 at `9b5ff74`; `/api/health` 200.
+
+Checks (read-only tinker over SSH, and the founder's logged-in Chrome):
+- Item 103: 3 customers; list total 22070 sen equals Reports' `total_sales`,
+  4 + 21 + 7 = 32 orders equals Reports; `faris9745@` shows
+  `Reseller: FixFast + Retail`; search `FA`, the October filter and the
+  `faris9745@` detail page (7 orders, Top Sources FixFast and Ohahastore) work.
+  The admin page renders it, names from paid orders included.
+- Item 102: Last 30 days on the Dashboard (RM210.10, 27 orders) equals
+  `/api/reports/summary` for 16 Sept–15 Oct (21010 sen, 27). Dark and narrow
+  (606 px, Chrome's minimum) render with no horizontal scroll.
+- Item 101: `getComputedStyle` contrast on prod: `text-ink-subtle` 4.80:1
+  light / 5.45:1 dark, `text-ink-muted` 7.86 / 8.82, `text-danger-ink`
+  5.70 / 8.42.
+- The Dashboard's "7 failed jobs" are old rows, not this release: reseller-bot
+  OpenWA 401s on 2026-09-25 (box migration) and backup timeouts 26–30 Sept
+  (fixed by item 97). Clearing them is a prod write, left to the founder.
+
+Items 101, 102 and 103 closed (PRD §16).
+
+## 2026-10-16 — Items 98 and 99 closed after a day of prod data (docs only)
+
+Read-only checks over SSH (tinker, `laravel.log`, `/api/health`) at
+05:05 UTC, about 20 hours after #449 went live (release 80273185,
+2026-10-15 09:08 UTC).
+
+- **Item 98 (ADR-122).** `scheduled_task_heartbeats` holds 19 rows, one per
+  task in `TaskSchedule` (11 `CRITICAL`, 8 `ROUTINE`). Every row has a
+  `last_ok_at` on 2026-10-16 and `last_failed_at` null. The daily tasks ran at
+  00:00, then `membership-renewal-reminders` at 02:00, `database-backup` at
+  02:07 (its `BackupRun` is `success`) and `database-backup-cleanup` at 03:00.
+  `/api/health` returns 200 with `checks.scheduler: true`. Longest runtime
+  12.29 s (`database-backup-cleanup`), so the 60-minute daily grace has a lot
+  of room; revisit it after a week of runtimes, as ADR-122 says.
+- **Item 99 (ADR-069 2026-10-15 addendum).** Digiflazz `supplier_request_logs`,
+  before vs after the deploy: `listProducts` 212 success / 42 exception (max
+  10,008 ms, the old 10 s timeout) from 2026-10-11, against 40 success / 0
+  exception (max 19,530 ms) since. That 19.5 s call would have timed out and
+  been retried under the old setting. `laravel.log` has 7 rc 83 lines, the last
+  at 2026-10-15 03:00:23, before the deploy. `PriceSyncRun`: 48 a day, every
+  one `success`.
+
+Seen during the check, not part of either item:
+- Gamevion's `listProducts` timed out twice (2026-10-16 02:00 and 02:30 UTC,
+  `cURL error 28` at 10 s, 0 bytes received). The next run succeeded. Gamevion
+  still uses the shared 10 s timeout. Its `PriceSyncRun`s were still recorded
+  `success`, because one supplier failing doesn't fail the run, so the failure
+  shows only in `laravel.log`. Logged as PRD §16 item 106 (outage clusters, not
+  slowness: p99 5.9 s over 1,252 calls).
+- A Redis connection blip on 2026-10-15 06:45 (about 30 Predis errors over
+  5 s, on the release before #449). It recovered by itself, and nothing
+  followed it.
+
+Items 98 and 99 closed (PRD §16).
+
+## 2026-10-16 — MLBB player validation: RedxGame → MooGold (ADR-005 addendum)
+
+**Found (read-only, prod).** `player_validations` showed the last
+AcidGameShop result on 2026-10-09; from 2026-10-10 only MooGold answered.
+Fallback warnings in `laravel.log`: AcidGameShop 502 then, since its site
+rebuild, `response missing nickname on a 200` (the endpoint now serves the
+SPA's HTML); Nexone's `/idchecker` 403. MooGold, re-run once on prod with an
+ID AcidGameShop had mapped to `MY`, returned `valid` with no country. So every
+MLBB check ended `region_unknown`, which blocks checkout. No customer hit:
+payments have been off since 2026-10-07.
+
+AcidGameShop's new "Check Region ML" page calls an obfuscated API behind a
+token step; left alone on purpose (ADR-005 addendum). RedxGame's checker
+(`redxgame.com/tools`) is plain: `POST /tools/check` with its session cookie
+and CSRF token, answering nickname plus an English country name. Founder's
+real accounts (MY, ID, RU, BR, TR, KR) all mapped correctly, from local and
+from the prod box.
+
+**Built.**
+- `RedxGameValidator`: cached session (60 min), one renewal on a rejected
+  cached session, `status:false` thrown as unavailable so MooGold decides
+  (founder's call), 5 s timeout.
+- `CountryCodeDecoder::fromCountryName()` via ICU over the timezone DB's
+  current codes, alias `Turkey` → `TR`, unknown → null + a log line.
+- Removed `AcidGameShopValidator`, `NexoneValidator`, their config and tests,
+  and `fromFlagEmoji()`. Comments and test labels naming them updated.
+
+**Verified.** Fast suite 2834/2834. The real chain from local (tinker, the
+`mlbb` registry binding): six real IDs → `redxgame` with MY, ID, RU, BR, TR,
+KR in 1.5–2.2 s; a made-up ID → `moogold` invalid in 3.96 s. The HTTP
+endpoint wasn't exercised locally (the dev DB has no validator profile or
+mappings); `PlayerValidationController` is unchanged and its tests pass.
+After release: run "Test this validator" on `/middleware/validators` in prod.
+
+**Gotchas.**
+- ICU names retired codes with today's names (`BU` "Myanmar (Burma)", `DD`
+  Germany, `SU` Russia, `YU` Serbia), so walking AA..ZZ maps Myanmar to `BU`.
+  The timezone database lists only current codes (247).
+- Prod ICU is 74.2, local 77.1; names can differ between ICU versions, so the
+  tests assert only names Redx was seen returning.
+- The auto-mode classifier blocked sending a prod customer's player ID to
+  Redx; the founder's own test accounts were used instead.
+
+## 2026-10-16 — Free Fire player validation via RedxGame (ADR-005 second addendum)
+
+Surveyed Redx's other checkers against our catalogue (read-only, test IDs):
+Free Fire answers like MLBB (country name); Genshin and HSR answered a
+server ("China" for UID 123456789); Valorant answered Redx's own store verdict
+("registered in another region, so it cannot be topped up here"); ZZZ
+answered `status:false` for the test UID. Only Free Fire is built.
+
+Founder's real Free Fire accounts: Indonesia → "Indonesia", Thailand →
+"Thailand", Singapore → "Singapore", Malaysia → "Singapore" (the Garena
+server MY and SG share). The founder will deactivate Free Fire Singapore and
+map `SG` → Free Fire Malaysia themselves, so no mapping-model change.
+
+**Built.** `freefire` key in `PlayerValidatorRegistry::AVAILABLE_KEYS` and
+its binding; `RedxGameValidator` takes the Redx game slug, sends `server_id`
+only when present, and for Free Fire treats `status:false` as invalid (no
+second provider; founder's call). New invariant test: every selectable key
+resolves to a bound validator.
+
+**Verified.** Fast suite 2839/2839. Real calls through the `freefire`
+binding from local: ID, TH, SG, SG (the Malaysian account) and a made-up ID
+→ invalid, 2.2–2.7 s; `mlbb` still → MY.
+
+**After release (founder, admin):** create a "Free Fire" profile with key
+`freefire`, map the countries (`SG` → Free Fire Malaysia, `ID`, `TH`, `PH`,
+the rest → Free Fire Global), deactivate Free Fire Singapore, then turn on
+"Requires Player Validation" per Free Fire game and run "Test this validator".
+
+## 2026-10-16 — Genshin / HSR / ZZZ zone validation via RedxGame (ADR-005 third addendum)
+
+**Found.** Redx answers these three with the UID's server: "Asia" for the
+founder's six UIDs; one public UID per range gave "Americas" and "Europe"
+(Genshin, ZZZ) and "China" (Genshin 1xxxxxxxx). Our zone value is "America",
+the supplier's format, so the label is translated, never compared raw.
+Valorant: four MY Riot IDs → "Malaysia", one (`nothingtosee#007`)
+"Couldn't verify" twice; not built.
+
+**Built.**
+- `genshin`/`hsr`/`zzz` keys; `RedxGameValidator(regionIsServer)` fills
+  `PlayerValidationResult::$server`/`$zone`.
+- `ZoneCheck`, applied by `PlayerValidationController` and both bot paths:
+  new `wrong_zone` state.
+- Storefront: the `wrong_zone` message with a "Switch to X" button.
+- Admin test panel shows the server.
+- Redx-only games (Free Fire too) now time out at 10 s, not 5.
+
+**Verified.** Fast suite green, plus storefront `tsc`, lint and build.
+Real calls: Asia UID + Asia → valid, + America → `wrong_zone` (zone Asia);
+Americas UID + America → valid; China UID → `wrong_zone`, no zone; Europe ZZZ
+UID + Asia → `wrong_zone` (zone Europe); an unknown UID → invalid in 6.9 s
+(it had timed out at 5 s). Browser (local, 420 px, a temporary local game
+removed afterwards): wrong zone → "Switch to Asia" → zone select set to Asia,
+"Valid account found"; China UID → "doesn't sell"; warning text
+rgb(25,25,47) on rgb(255,215,0).
+
+**Gotcha.** `vendor/bin/pint app` reformats about 30 unrelated files; run
+Pint on the changed files only.

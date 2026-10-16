@@ -209,20 +209,24 @@ return [
         'connect_timeout' => (int) env('PLUNK_CONNECT_TIMEOUT_SECONDS', 5),
     ],
 
-    // Unofficial third-party MLBB validators (docs/prd.md research,
-    // confirmed live 2026-07-25) — no API keys, since all three are
-    // public unauthenticated form/JSON endpoints. Short timeouts since
+    // Unofficial third-party MLBB validators (ADR-005 and its 2026-10-16
+    // addendum) — no API keys, since both are public unauthenticated
+    // form/JSON endpoints. Short timeouts since
     // MlbbPlayerValidator tries them in sequence synchronously within
     // one storefront request; a slow/hung provider must fail fast so
     // the next one in the chain still gets a chance.
     'player_validators' => [
-        'acidgameshop' => [
-            'base_url' => env('ACIDGAMESHOP_BASE_URL', 'https://acidgameshop.com'),
-            'timeout' => (int) env('ACIDGAMESHOP_TIMEOUT_SECONDS', 8),
-        ],
-        'nexone' => [
-            'base_url' => env('NEXONE_BASE_URL', 'https://nexone.ph'),
-            'timeout' => (int) env('NEXONE_TIMEOUT_SECONDS', 8),
+        // 5s (not 8) so MooGold still starts inside MlbbPlayerValidator's
+        // 8s deadline when Redx times out. Typical: ~1.5s cold, ~0.15s
+        // repeat (Redx caches), measured 2026-10-16.
+        'redxgame' => [
+            'base_url' => env('REDXGAME_BASE_URL', 'https://redxgame.com'),
+            'timeout' => (int) env('REDXGAME_TIMEOUT_SECONDS', 5),
+            // Games where Redx is the only provider (Free Fire, Genshin,
+            // HSR, ZZZ): nothing to fall back to, and an unknown UID took
+            // 6.6s on Redx's first lookup (2026-10-16), so a 5s cut-off
+            // would turn a typo into "contact support".
+            'standalone_timeout' => (int) env('REDXGAME_STANDALONE_TIMEOUT_SECONDS', 10),
         ],
         'moogold' => [
             'base_url' => env('MOOGOLD_BASE_URL', 'https://moogold.com'),

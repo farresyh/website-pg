@@ -11,6 +11,7 @@ use App\Services\PlayerValidation\PlayerValidationResult;
 use App\Services\PlayerValidation\PlayerValidatorRegistry;
 use App\Services\PlayerValidation\ProviderUnavailableException;
 use App\Services\PlayerValidation\UnsupportedPlayerValidatorException;
+use App\Services\PlayerValidation\ZoneCheck;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
 
@@ -25,7 +26,9 @@ use Illuminate\Validation\ValidationException;
  * looks up the returned country in `player_region_mappings` scoped to
  * that profile, and returns one of four states the storefront reacts
  * to: `invalid` / `region_unknown` / `wrong_region` (+ `redirect_game`
- * for the "Go to X Store" CTA) / `valid`. Writes a `player_validations`
+ * for the "Go to X Store" CTA) / `valid`. A zone game (ZoneCheck) can
+ * instead answer `wrong_zone`, with `zone` = the UID's zone when this game
+ * sells it (the "Switch to X" button), null otherwise. Writes a `player_validations`
  * row on every attempt that actually reaches a provider — the first
  * thing that ever writes to that table.
  */
@@ -60,16 +63,20 @@ class PlayerValidationController extends Controller
             return $this->respond($this->record($game, $data, 'region_unknown'));
         }
 
-        return $this->respond($this->record($game, $data, ...$this->resolveState($game, $profile->id, $result)));
+        return $this->respond($this->record($game, $data, ...$this->resolveState($game, $profile->id, $result, $data['server_id'] ?? null)));
     }
 
     /**
      * @return array{0: string, 1: PlayerValidationResult, 2: ?PlayerRegionMapping}
      */
-    private function resolveState(Game $game, int $profileId, PlayerValidationResult $result): array
+    private function resolveState(Game $game, int $profileId, PlayerValidationResult $result, ?string $chosenZone): array
     {
         if (! $result->valid) {
             return ['invalid', $result, null];
+        }
+
+        if ($zoneState = ZoneCheck::state($result, $chosenZone, $game->zoneOptions())) {
+            return [$zoneState, $result, null];
         }
 
         if ($result->countryCode === null) {
@@ -121,6 +128,8 @@ class PlayerValidationController extends Controller
             'redirect_game' => $redirectMapping !== null
                 ? ['slug' => $redirectMapping->game->slug, 'name' => $redirectMapping->game->name]
                 : null,
+            'server' => $result?->server,
+            'zone' => $result !== null ? ZoneCheck::sellableZone($result, $game->zoneOptions()) : null,
         ];
     }
 

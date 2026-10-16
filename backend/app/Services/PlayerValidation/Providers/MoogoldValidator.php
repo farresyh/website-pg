@@ -15,8 +15,8 @@ use Throwable;
  * a free-text `message` string, and the shape isn't even internally
  * consistent (a "Country" line is sometimes present, sometimes not,
  * for the identical account — confirmed by re-testing the same ID
- * twice). Last in the fallback chain: only reached when both
- * AcidGameShop and Nexone are unavailable.
+ * twice). Last in the fallback chain: only reached when RedxGame is
+ * unavailable or answers `status: false` (see RedxGameValidator).
  *
  * `status` (not `icon`) is the real validity flag — `icon` stays
  * "success" even on a confirmed-invalid ID (confirmed live), so it

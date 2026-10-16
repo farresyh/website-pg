@@ -693,6 +693,65 @@ class ResellerBotServiceTest extends TestCase
         ]);
     }
 
+    private function makeZoneGame(string $resellerCode): Game
+    {
+        $fake = new class implements PlayerValidator
+        {
+            public function validate(string $playerId, ?string $serverId): PlayerValidationResult
+            {
+                return PlayerValidationResult::valid('redxgame', 'Lumine', null, server: 'Asia', zone: 'Asia');
+            }
+        };
+        $this->app->bind('player-validator.genshin', fn () => $fake);
+
+        $game = $this->makePackage(resellerCode: $resellerCode)->game;
+        $profile = PlayerValidatorProfile::query()->create(['name' => 'Genshin Validator', 'key' => 'genshin']);
+        $game->update([
+            'player_validator_enabled' => true,
+            'player_validator_profile_id' => $profile->id,
+            'validation_rules' => ['extra_field' => 'zone_id', 'zone_options' => ['Asia', 'America', 'Europe']],
+        ]);
+
+        return $game;
+    }
+
+    /** ADR-005 2026-10-16 third addendum — same ZoneCheck as the storefront. */
+    public function test_checkid_flags_a_uid_whose_server_is_not_the_given_zone(): void
+    {
+        $game = $this->makeZoneGame('GSMY');
+        $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid GSMY 834140081 America', 'msg-1');
+
+        $this->assertDatabaseHas('player_validations', [
+            'game_id' => $game->id, 'player_id' => '834140081', 'server_id' => 'America', 'status' => 'wrong_zone',
+        ]);
+    }
+
+    public function test_checkid_is_valid_when_the_uids_server_is_the_given_zone(): void
+    {
+        $game = $this->makeZoneGame('GSMY');
+        $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid GSMY 834140081 Asia', 'msg-1');
+
+        $this->assertDatabaseHas('player_validations', ['game_id' => $game->id, 'status' => 'valid']);
+    }
+
+    public function test_order_rejects_a_uid_whose_server_is_not_the_given_zone(): void
+    {
+        $this->makeZoneGame('GSMY');
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order GSMY-14 834140081 America', 'msg-1');
+
+        $this->assertSame(0, Order::query()->count());
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'wrong_zone_player_id',
+        ]);
+    }
+
     public function test_checkid_stays_valid_when_the_region_maps_to_the_same_game_code(): void
     {
         $fake = new class implements PlayerValidator
