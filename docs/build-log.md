@@ -998,7 +998,8 @@ Seen during the check, not part of either item:
   `cURL error 28` at 10 s, 0 bytes received). The next run succeeded. Gamevion
   still uses the shared 10 s timeout. Its `PriceSyncRun`s were still recorded
   `success`, because one supplier failing doesn't fail the run, so the failure
-  shows only in `laravel.log`.
+  shows only in `laravel.log`. Logged as PRD §16 item 106 (outage clusters, not
+  slowness: p99 5.9 s over 1,252 calls).
 - A Redis connection blip on 2026-10-15 06:45 (about 30 Predis errors over
   5 s, on the release before #449). It recovered by itself, and nothing
   followed it.

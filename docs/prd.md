@@ -697,6 +697,8 @@ production on 2026-10-15 after release #449. Re-verify before building.
 **B. Needs a short grill / ADR addendum first**
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
   the accountant's monthly document list first.
+- **106** A supplier that fails inside a price-sync run is invisible: the run
+  still says `success` (found 2026-10-16, Gamevion). Short grill: where to record it.
 
 **C. Founder actions (no code)**
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
@@ -973,6 +975,34 @@ production on 2026-10-15 after release #449. Re-verify before building.
     already batches the lookup). Needs the money-bug code trace (every reader
     of `cashCompensationSen()` / `compensationAmountSen()`), not a one-site
     patch. Trigger: Pulse shows the detail endpoint over 500 ms.
+
+106. **A supplier's price-sync failure is hidden when another supplier succeeds
+    (found 2026-10-16, item 98/99 check).** `SyncSupplierPricesJob` marks the
+    run `failed` only when *every* supplier fails. When one fails and another
+    succeeds, the run is `success`, `error_message` stays empty and `stats`
+    holds only the successful suppliers' sums. Sync History therefore shows
+    green, and the failure lives only in `laravel.log`
+    (`SyncSupplierPricesJob: supplier sync failed`). Gamevion did this on
+    2026-10-16 at 02:00 and 02:30 UTC (runs 2305, 2306).
+    - **Not a timeout problem, unlike item 99.** Gamevion `listProducts` on
+      prod (2026-10-16): 1,252 successful calls, p50 0.95 s, p90 1.7 s, p99
+      5.9 s. Failures arrive in clusters where every attempt (the call plus
+      the shared client's 3 retries) gets `cURL 28`, 0 bytes in 10 s:
+      2026-09-21, 09-29, 09-30, 10-15 17:00, 10-16 02:00–02:30. That is
+      Gamevion not answering, so a longer timeout wouldn't help. Leave the 10 s
+      unless the slow tail grows (the max on 2026-10-16 was 10.0 s on a
+      successful call, the first time a success came that close).
+    - **Cost of a miss today:** that supplier's prices and deactivations are
+      30 minutes late, and the next run fixes them. A long outage would
+      leave prices stale with Sync History green throughout.
+    - For the grill: store the failed supplier(s) and error on the run (e.g. a
+      `partial` status or `stats.failed_suppliers`) and show it in Sync History
+      (ADR-015/016); whether N consecutive misses for one supplier should alert
+      (`BackupFailureAlerter`/Plunk path) or reach the Dashboard. Check every
+      reader of `PriceSyncRun.status` first (2026-10-16: `PriceSyncController`,
+      `PriceSyncRunObserver` → `PriceSyncRunUpdated` broadcast, admin
+      `/middleware/price-sync` and `SyncDetailsModal`; the Dashboard and
+      `SchedulerLiveness` don't read it).
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-13, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
