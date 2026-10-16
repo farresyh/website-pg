@@ -628,3 +628,45 @@ each validator profile. Until then the pages exist, but no family is listed
 - Founder's Chrome run: an ID with a space was blocked in the form; wrong
   Server ID → "No account found"; 51049607/2005 → "Prime.", Top up →
   order page prefilled, not verified.
+
+## 2026-10-16 — Release #472 (`staging`→`main`): Game ID Checker live, verified; docs sync
+
+Founder merged #471 into `staging` (merge commit) and released #472
+(`c48659d`). The prod box runs it; `migrate:status` shows both 2026-10-16
+migrations ran.
+
+**Founder's prod setup, same day.**
+- Cloudflare Turnstile widget "PekanGame Game ID Checker" (Managed mode,
+  pre-clearance off), created with the founder in their Chrome. Hostnames
+  `pekangame.com`, `pekangame.space`, `fixfastapp.com` (the one active
+  affiliate domain, read from `affiliate_domains`); 3 of the widget's 10.
+  Site key `0x4AAAAAAFYZZNQMJTpU31qh` (public); the secret was copied by the
+  founder only.
+- `NEXT_PUBLIC_TURNSTILE_SITE_KEY` on the storefront Vercel project and
+  `TURNSTILE_SECRET_KEY` in the Forge `.env`, set by the founder.
+- Name, slug and image on all five validator profiles.
+
+**Verified on prod.**
+- Before the slugs, `/check-id` was 404 and the families list empty:
+  by design (a family without a slug isn't listed). That looked like a bug
+  to the founder, so the empty state is worth knowing.
+- After: `GET /api/catalog/player-check/families` lists `free-fire`,
+  `genshin-impact`, `honkai-star-rail`, `mobile-legends`,
+  `zenless-zone-zero`, each with a gallery image. `/check-id` and
+  `/check-id/mobile-legends` 200; `sitemap.xml` has the six checker URLs;
+  no robots meta on the primary brand; `llms.txt` 200.
+- In the founder's Chrome on `pekangame.com/check-id/mobile-legends`: the
+  Turnstile token arrived ("Ready to check."), the founder's MLBB
+  51049607/2005 → "Account found: Prime.", "tops up at Mobile Legends
+  Malaysia". `public_player_checks`: row 1 the founder's own check
+  (`cache_hit` false), row 2 this one (`cache_hit` true, within 10
+  minutes); `player_validations` had no new row.
+
+**Docs sync.** PRD §14 headline (latest release #472), §15 Game ID Checker
+row live, §16 item 107 closed and item 108 added (Turnstile widget hostnames
+follow affiliate domains, waiting on ~5 active affiliate domains), §13
+glossary (Game ID Checker, Game family), `foundation-security.md` §4 (the
+checker's anti-proxy protections).
+
+**Local cleanup.** The temporary local MLBB profile, mapping and game
+change were removed from the dev DB; the local servers were stopped.

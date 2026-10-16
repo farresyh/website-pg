@@ -545,6 +545,8 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 - **Player ID :** Unique identifier for a player within a game (username, user ID, or character ID).
 - **Server ID :** Server identifier within a game (for games with multiple servers).
 - **Region Validator :** Mapping of country codes to game variants (e.g. MY → Malaysia variant, ID → Indonesia variant).
+- **Game ID Checker :** The public storefront page (`/check-id`, [ADR-123](./adr/ADR-123-public-game-id-checker.md)) where anyone checks a player ID and is told the nickname and **our store** for that account. Separate from checkout's validation: its own endpoint, limits and table (`public_player_checks`), and it never approves a checkout.
+- **Game family (checker) :** One validator profile shown on the Game ID Checker (Mobile Legends, Free Fire, …), with its own public name, URL slug and image. A family spans the region stores that profile maps to (e.g. Mobile Legends → Mobile Legends Malaysia / Indonesia / …).
 - **Dry Run :** Testing mode for API calls without creating real orders or deducting balance.
 - **Stuck Order :** Order that is "paid" but not yet "delivered" beyond a threshold (e.g. 5 minutes).
 - **Multi-Tenant :** Architecture where a single system instance serves multiple affiliates (tenants) with data isolation. Schema-ready from MVP (ADR-003); feature-exposed in Phase 2.
@@ -590,20 +592,24 @@ orders against an existing balance still work. Player-ID validation, which
 had blocked every MLBB checkout since 2026-10-10, works again since release
 #469, so it no longer stands in the way of re-enabling payments.
 
-**Latest release 2026-10-16 (`staging`→`main`, PR #469), deploy verified.**
-Merged as `12643a7`; the prod box runs it. Ships player-ID validation through
-RedxGame (ADR-005's three 2026-10-16 addenda): the MLBB fix (RedxGame →
-MooGold, #465; AcidGameShop and Nexone removed), a Free Fire validator (#466)
-and Genshin / HSR / ZZZ zone validators (#467). The founder set up the
-profiles, mappings and per-game toggles the same day and tested storefront
-and bot. Docs: items 98/99 closed, 106 and 107 added (#464, #468).
-Nothing is waiting on `staging`.
+**Latest release 2026-10-16 (`staging`→`main`, PR #472), deploy verified.**
+Merged as `c48659d`; the prod box runs it and both 2026-10-16 migrations ran.
+Ships the public **Game ID Checker** (ADR-123, #471): `/check-id` and one page
+per game family, Cloudflare Turnstile, per-IP limit plus an hourly budget,
+RedxGame only, its own `public_player_checks` table; the mobile bottom bar's
+centre button became **More** (Menu / Info drawer) and the header highlight
+follows the page. The founder created the Turnstile widget, set both keys and
+filled the five families' name, slug and image; a check on `pekangame.com`
+with the founder's own MLBB test account answered "Prime." → Mobile Legends
+Malaysia. Before it, #469 (same day): player-ID validation through RedxGame
+(ADR-005's three 2026-10-16 addenda).
+Waiting on `staging`: docs only (§16 item 108, this sync).
 
 **Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
 hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
 `cdn.` stay on `pekangame.space`.
 
-**Earlier releases** (#462 and #449 on 2026-10-15: items 97–103; #441; #437 on 2026-10-14: admin MFA, ADR-121; #430 and #425 on 2026-10-13, #416 and #406 on 2026-10-12/13, #393 Envelope Ledger,
+**Earlier releases** (#469 on 2026-10-16: RedxGame player validation; #462 and #449 on 2026-10-15: items 97–103; #441; #437 on 2026-10-14: admin MFA, ADR-121; #430 and #425 on 2026-10-13, #416 and #406 on 2026-10-12/13, #393 Envelope Ledger,
 #385 Reports redesign, #376 Reseller API `max_price_sen` / Assistant = Reports /
 `r2_accounting`, #369 ADR-120 SEO/GEO, #362, #354, #346, #342, #332,
 #320 and the 2026-09-28 audit waves) are recorded release by release in
@@ -657,7 +663,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Blacklist / Fraud (FRAUD-1..4) | ✅ Live — `BlacklistService` + `CheckoutVelocityGuard` wired into checkout; `/admin/blacklist` screen. `foundation-security.md` §4 fully checked | ADR-007 |
 | Middleware Panel (MID-1..13, MUI-1..11) | ✅ Live — sync/matching/catalog (Product Manager), price sync + FX, player validation, test orders, request logging, supplier credentials, landing page. MUI-4 (export) dropped. **Player validation, live 2026-10-16 via #469** (ADR-005's three 2026-10-16 addenda): MLBB RedxGame → MooGold (it had been broken since 2026-10-10, when AcidGameShop and Nexone stopped answering); Free Fire (RedxGame, country mappings); Genshin / HSR / ZZZ (RedxGame, the UID's server must match the chosen zone, `wrong_zone`). Validators: MLBB, Free Fire, Genshin, HSR, ZZZ, all toggled on for their games | ADR-005, 051, 052 |
 | Storefront (checkout flow) | 🟢 Live in prod — all catalog/checkout/validate/track endpoints; server-side validation enforcement; PekanGame neo-brutalist redesign, mobile pass, read-path perf (Redis cache), dynamic payment SVGs + UX polish. Logo/favicon upload UI + aspect-preserving sizing + preset background/dark-mode groundwork shipped (ADR-089/090). Real logo/hero artwork uploaded 2026-09-14 (§16 item 2); the placeholder mark is only the fallback when no logo is set. Per-game "How to Buy" info popup (description/important notes) + admin-editable instant/manual delivery badge, `EditGameModal` gained Basic Info/Content tabs (ADR-109) — admin Content tab live-verified 2026-10-08 (§16 item 67). **2026-10-05 (ADR-097 addendum, #356 — released via #362, 2026-10-06):** the ID fields follow the game's contract — digits-only fields get the numeric keypad and block typed non-digits, a paste is kept with an inline error, a Text game (e.g. Riot ID) gets a normal keyboard; the backend refuses the same input on checkout and Check ID | ADR-062–065, 071, 077–079, 089, 090, 097, 109 |
-| Game ID Checker (ADR-123) | 🟡 Built, not released — `/check-id` + `/check-id/<slug>`, Turnstile, per-IP + hourly budget, Redx-only, `public_player_checks`; mobile More drawer. Needs the founder's Turnstile keys and profile slugs after release (§16 item 107) | ADR-123 |
+| Game ID Checker (ADR-123) | ✅ Live 2026-10-16 via #472 — `/check-id` + `/check-id/<slug>` for the five families (Mobile Legends, Free Fire, Genshin Impact, Honkai Star Rail, Zenless Zone Zero), Turnstile (widget "PekanGame Game ID Checker"), 5/min + 30/hour per IP, 200/hour provider budget, RedxGame only, `public_player_checks`; in the sitemap and `llms.txt` on the primary brand, `noindex` on affiliates. Mobile More drawer; header highlight follows the page. A new affiliate custom domain must be added to the widget by hand until §16 item 108 | ADR-123 |
 | Internal Accounting (supplier funding ledger + CHIP settlement recon) | 🟢 Live — PR-1 built 2026-09-11: `supplier_transfers`/`supplier_ledger_entries` (append-only, foreign-currency), Record Supplier Transfer UI (`/admin/accounting`), `ORDER_DRAWDOWN` capture (Digiflazz webhook + Gamevion sync response — a `Gagal` after `Pending` writes no `REFUND`, grilled), drift check + amber chip on Dashboard Health, Transaction Register + CSV export. **2026-09-15 addendum built:** `supplier_fee` field (the supplier's own deposit-side cut, e.g. Digiflazz's flat IDR fee — ledger now credits net, not gross) + Adjust/Void correction actions (never edits/deletes the append-only ledger, always a new `MANUAL_ADJUSTMENT` entry). **PR-2 built 2026-09-19 (ADR-110 PR-B)** — CHIP `.xlsx` settlement reconciliation (`payment_settlements` + `chip_settled_transactions` dedup guard) + Monthly Accounting Summary screen, verified against a real PekanGame CHIP settlement file. **2026-10-08 (ADR-083 addendum, live via #376):** neutral "Affiliate tier fees (from earnings, no cash)" line, also in the Envelope Ledger's rough P&L. **2026-10-10 (ADR-083 addendum, §16 item 78) PR-1 (#390), live via #393:** Envelope Ledger postings with typed lines (funding loan/share capital, transfer, expense, director-paid expense, repayment, distribution), per-director loan balances, whole-posting void, zero-balance archive; `supplier_transfers.transferred_on`; `LedgerEntry` append-only guard. **PR-2 (#391), live via #393:** month close on the Monthly Summary (exact operating-profit allocation per KL month from September 2026, prior-month drift carried forward, reopen of the latest close only), "where is the money" cash equation with a cash-account snapshot and gap note, operating profit + new lines (voucher breakage, admin-issued vouchers, supplier corrections, envelope expenses), FX rate as of month end; the manual "Allocate Monthly Profit" and the platform "Request Withdrawal" are gone. **2026-10-11 (ADR-083 addendum, item 75), live via #406 (2026-10-12):** the Monthly Summary's issued-voucher lines are split into "Admin-issued vouchers (no order)" (a profit cost) and "Failed-order store credit issued" (information only); a merge result is in neither | ADR-083, ADR-110 |
 | Balance / Wallet Visibility | 🟢 Part A live (released 2026-09-29, #320) — standalone `/admin/balance` (deliberately not nested under Accounting — a Commerce-level item, since Part B grows it into operational monitoring, not bookkeeping): live-refreshable supplier balance per supplier + every Reseller's prepaid wallet balance (total + per-row), zero new backend, reuses ADR-046/073. Part B (learned "comfortable buffer" forecast) is grilled and designed as ADR-115, with the build parked (§16 item 28) | ADR-046, ADR-073, ADR-115 |
 
@@ -679,7 +685,7 @@ for the 2026-09-17 audit that found two dark-mode token bugs).
 
 **Restructured 2026-10-12; every open item re-checked against git and
 production on 2026-10-15 after release #449; items 98, 99, 106 and 107
-checked again on 2026-10-16, after release #469.** This list holds only **open** items. "Next up"
+checked again on 2026-10-16, after release #469; 107 closed after release #472.** This list holds only **open** items. "Next up"
 is the one place they are sorted, one line each; "Details" holds each item's
 full text once, by number. Everything closed is one line under "Recently
 closed", pointing to where the full story lives (`docs/build-log.md` /
@@ -725,6 +731,8 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
   first admin-issued voucher.
 - **85** Membership renewal reminder on WhatsApp (designed), at 10 active members
   or when members don't renew despite the email.
+- **108** Add affiliate custom domains to the Turnstile widget automatically
+  (ADR-123), when ~5 affiliate domains are active.
 - **104** Reseller wallet top-up KPIs (how often, how much), with item 28.
 - **105** Batch `Order::cashCompensationSen()`'s wallet-refund lookup, when the
   Customer Detail page is slow for a big reseller (Pulse > 500 ms).
@@ -736,9 +744,6 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
 - **25** Portal "needs attention" aggregate.
 - **57** Marketing Campaigns (ADR-118, designed).
 - **94** Best-selling products per game in Reports.
-- **107** Public Game ID Checker (ADR-123). Built on
-  `feature/2026-10-16-game-id-checker`; open until it is released and the
-  founder's prod setup (Turnstile keys, profile slugs) is done.
 
 ## Details
 
@@ -1012,42 +1017,29 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
       `/middleware/price-sync` and `SyncDetailsModal`; the Dashboard and
       `SchedulerLiveness` don't read it).
 
-107. **Public Game ID Checker — designed and built 2026-10-16 (ADR-123,
-    build-log 2026-10-16).** Left to close it: release, then the founder's
-    setup (Turnstile widget + `NEXT_PUBLIC_TURNSTILE_SITE_KEY` on Vercel +
-    `TURNSTILE_SECRET_KEY` in the Forge `.env`; name/slug/image on each
-    validator profile), then a live check with the founder's own test
-    account. After two weeks, tune the budget and cooldown from
-    `public_player_checks` (ADR-123 consequence). The original notes: A storefront page where anyone checks an ID (nickname plus
-    region or server) without opening a game's order page, as
-    redxgame.com/tools does; the SEO and "Top up now" value is why Redx has
-    one. It would reuse the validators built 2026-10-16 (ADR-005's three
-    2026-10-16 addenda: MLBB, Free Fire, Genshin/HSR/ZZZ).
-    - **Hiding the provider:** already true for checkout. Checks run
-      server-side and `POST /api/games/{game}/validate-player` returns no
-      provider name or provider error text (`provider` lives only in
-      `player_validations` and the admin test panel). A public page must
-      also show our own wording, never Redx's raw labels ("Americas") or
-      messages. It can't be hidden completely: matching quirks (a Malaysian
-      Free Fire account shows "Singapore"; Redx's caching latency) are
-      hints, not proof.
-    - **The real risk is traffic, not discovery.** Every check from the page
-      is a request to Redx from our server's IP. A public page used by
-      bots or other shops raises the chance Redx blocks that IP, which
-      would also break checkout validation (AcidGameShop went this way,
-      ADR-005 2026-10-16 addendum).
-    - **For the grill:** a captcha (Cloudflare Turnstile; Cloudflare already
-      fronts `api.`); a stricter per-IP limit than checkout's
-      `throttle:10,1`; reusing a recent `player_validations` result for the
-      same ID instead of calling Redx again (how long); which games;
-      a "Top up now" link to the right game (a fresh check already counts
-      for checkout's 30-minute window); page design.
-    - Trigger met 2026-10-16: release #469 carries the validators and the
-      founder confirmed them in prod (storefront and bot). Next step is
-      the grill.
+108. **Turnstile widget hostnames follow affiliate domains — waiting on a
+    trigger (founder, 2026-10-16).** The Game ID Checker's Cloudflare
+    Turnstile widget ("PekanGame Game ID Checker", site key
+    `0x4AAAAAAFYZZNQMJTpU31qh`) only renders on hostnames listed on it. On
+    2026-10-16 it lists 3 of its 10: `pekangame.com`, `pekangame.space`,
+    `fixfastapp.com` (the one active affiliate domain); subdomains are
+    covered. Until this is built, a new affiliate custom domain must be
+    added to the widget by hand in the Cloudflare dashboard, or the checker
+    on that domain shows a Turnstile error (fails closed; checkout is
+    unaffected).
+    - **Trigger:** about 5 active affiliate domains, or the first time one
+      is missed.
+    - **For the grill:** update the widget's domains through Cloudflare's
+      Turnstile widget API from the affiliate custom-domain attach and
+      detach flow (ADR-060), with a token scoped to Turnstile only; what
+      happens when the API call fails (retry, admin alert). Re-check the
+      10-hostname limit and the Enterprise "any hostname" option against
+      current Cloudflare docs before designing past 10 (several widgets
+      would need a per-host site key on the storefront).
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **107** 2026-10-16: public Game ID Checker (ADR-123, #471, released via #472). Verified on prod: five families listed, `/check-id` and every family page 200, six checker URLs in `sitemap.xml`, no `noindex` on the primary brand; a check with the founder's own MLBB test account → "Prime." → Mobile Legends Malaysia, the repeat a cache hit, `player_validations` untouched. Open follow-up: item 108 (widget hostnames). Details: build-log 2026-10-16.
 - **98** 2026-10-16: Scheduler liveness (ADR-122, #449). After the first 00:00 UTC run all 19 tasks (11 critical, 8 routine) had a heartbeat with `last_ok_at` that day and no failure; `/api/health` 200 with `scheduler: true`. Longest daily task 12.3 s (backup cleanup); the 60-minute grace is reviewed after a week (ADR-122 consequence). Details: build-log 2026-10-16.
 - **99** 2026-10-16: Digiflazz `[83]` price-list rate limit (ADR-069 2026-10-15 addendum, #449). Since the deploy (2026-10-15 09:08 UTC): 40 `listProducts` calls, 0 exceptions (was 42 of 254), no rc 83 in `laravel.log` (last 2026-10-15 03:00, before the deploy), slowest call 19.5 s succeeded. Details: build-log 2026-10-16.
 - **103** 2026-10-15: Customer Analytics reads that scale (ADR-049/050 2026-10-15 addendum): one SQL aggregate for stats, list, export and detail stats; server-paged, sorted, searchable list; segment as a SQL CASE; segment and repeat rate from every paid order whatever the filters; Source `Reseller: A + Retail`; Reports date presets; paged detail order history. At 10k orders 409–502 ms / 46 MB became 84–137 ms / 0.1 MB. Released and verified 2026-10-15 (#462): 3 customers, list total equals Reports (RM220.70, 32 orders), `faris9745@` shows `Reseller: FixFast + Retail`. Details: build-log 2026-10-15.
