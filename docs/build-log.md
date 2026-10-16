@@ -609,3 +609,22 @@ Cloudflare for every storefront hostname (affiliate custom domains too). Set
 `TURNSTILE_SECRET_KEY` in the Forge `.env`. Fill name, slug and image on
 each validator profile. Until then the pages exist, but no family is listed
 (no slugs yet) and the endpoint answers 503.
+
+**Same day, after the founder's review in their own Chrome (PR #471).**
+- `/check-id` picks a family from large cards in the home page's
+  `ProductCard` style (16:10 image, "Check ID" where the price sits),
+  centred; the family page keeps the compact switcher. At 390 px the card
+  footer drops "Free ID check" so "Check ID" stays on one line.
+- Header nav: "All Products" had always been underlined in purple. The
+  highlight now follows the page (`aria-current`): All Products on home and
+  order pages, Membership and Game ID Checker on their own pages, none
+  elsewhere. Checked with `getComputedStyle` on six pages (active
+  `rgb(107, 56, 212)`, others transparent border).
+- CI's first run failed one unrelated test,
+  `CustomerAnalyticsListingTest::…tie_break`. Two orders built with
+  `now()->subDays(1)` a moment apart landed in different seconds on a slow
+  run, so the email tie-break never decided. Fixed with `freezeTime()`. It
+  had passed five local reruns.
+- Founder's Chrome run: an ID with a space was blocked in the form; wrong
+  Server ID → "No account found"; 51049607/2005 → "Prime.", Top up →
+  order page prefilled, not verified.
