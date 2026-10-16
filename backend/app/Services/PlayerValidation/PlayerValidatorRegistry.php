@@ -43,4 +43,19 @@ final class PlayerValidatorRegistry
 
         return $this->container->make($bindingKey);
     }
+
+    /**
+     * ADR-123 decision 6: the validator the public Game ID Checker may
+     * use for this key. Never falls back to resolve(): a chain with a
+     * supplier in it must not reach the public page by accident.
+     */
+    public function resolvePublic(string $key): PlayerValidator
+    {
+        return $this->resolve("public.{$key}");
+    }
+
+    public function hasPublic(string $key): bool
+    {
+        return $this->container->bound("player-validator.public.{$key}");
+    }
 }

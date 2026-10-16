@@ -14,14 +14,26 @@ import { resolveWhatsappHref } from "@/lib/whatsapp";
  *  - `membershipEnabled` — the ADR-055 dual kill switch (`listPlans()`
  *    returned rows).
  *  - `branding` — the admin Store Branding record.
+ *  - `priceListEnabled` / `checkIdEnabled` — whether `/price-list`
+ *    (ADR-091) and the Game ID Checker (ADR-123) render on this brand,
+ *    for the mobile More drawer and the header.
  *  - `whatsappHref` — the resolved support link (ADR-071 PR0), or null
  *    when no WhatsApp target is configured.
  *  - `orderWhatsappHref` — ADR-116 decision 6: the order status page's
  *    WhatsApp link, always the platform customer-support number (the one
  *    OpenWA reads), whatever the brand. Falls back to `whatsappHref`.
  */
+interface SiteConfigInput {
+  membershipEnabled: boolean;
+  priceListEnabled: boolean;
+  checkIdEnabled: boolean;
+  branding: Branding;
+}
+
 interface SiteConfig {
   membershipEnabled: boolean;
+  priceListEnabled: boolean;
+  checkIdEnabled: boolean;
   branding: Branding;
   whatsappHref: string | null;
   orderWhatsappHref: string | null;
@@ -33,7 +45,7 @@ export function SiteConfigProvider({
   value,
   children,
 }: {
-  value: { membershipEnabled: boolean; branding: Branding };
+  value: SiteConfigInput;
   children: ReactNode;
 }) {
   const whatsappHref = resolveWhatsappHref(value.branding);

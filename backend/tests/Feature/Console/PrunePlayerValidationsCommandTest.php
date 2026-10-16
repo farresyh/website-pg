@@ -4,6 +4,8 @@ namespace Tests\Feature\Console;
 
 use App\Models\Game;
 use App\Models\PlayerValidation;
+use App\Models\PlayerValidatorProfile;
+use App\Models\PublicPlayerCheck;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -41,6 +43,23 @@ class PrunePlayerValidationsCommandTest extends TestCase
         $this->artisan('app:prune-player-validations')->assertExitCode(0);
 
         $this->assertSame(0, PlayerValidation::query()->count());
+    }
+
+    /** ADR-123 decision 8: Game ID Checker rows follow the same window. */
+    public function test_prunes_public_player_checks_on_the_same_window(): void
+    {
+        config(['services.player_validation.retention_days' => 7]);
+        $profile = PlayerValidatorProfile::query()->create(['name' => 'Mobile Legends Validator', 'key' => 'mlbb']);
+        $row = fn () => PublicPlayerCheck::query()->create([
+            'player_validator_profile_id' => $profile->id, 'player_id' => '123456', 'status' => 'found',
+        ]);
+        $row()->forceFill(['created_at' => now()->subDays(8)])->save();
+        $fresh = $row();
+        $fresh->forceFill(['created_at' => now()->subDays(2)])->save();
+
+        $this->artisan('app:prune-player-validations')->assertExitCode(0);
+
+        $this->assertSame([$fresh->id], PublicPlayerCheck::query()->pluck('id')->all());
     }
 
     public function test_keeps_a_validation_row_within_the_retention_window(): void

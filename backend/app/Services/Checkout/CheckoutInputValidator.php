@@ -45,6 +45,22 @@ final class CheckoutInputValidator
             ?? $this->checkExtraField($rules['extra_field'] ?? null, $serverId, $game->zoneOptions());
     }
 
+    /**
+     * ADR-123 decision 3: the public Game ID Checker never asks for a
+     * zone (the check returns it), so a zone game takes the ID alone.
+     *
+     * @return array{field: string, reason: string, message: string}|null
+     */
+    public function validateWithoutZone(Game $game, ?string $playerId, ?string $serverId): ?array
+    {
+        if (($game->validation_rules['extra_field'] ?? null) !== 'zone_id') {
+            return $this->validate($game, $playerId, $serverId);
+        }
+
+        return $this->checkPlayerId($playerId, $game->playerIdFormat() === 'text')
+            ?? $this->checkExtraField(null, $serverId, null);
+    }
+
     private function checkPlayerId(?string $value, bool $text): ?array
     {
         $label = 'User ID';

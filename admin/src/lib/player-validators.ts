@@ -24,6 +24,10 @@ export interface PlayerValidatorProfile {
   id: number;
   name: string;
   key: string;
+  /** ADR-123: the family on the public Game ID Checker; no slug = not listed. */
+  public_name: string | null;
+  public_slug: string | null;
+  public_image_url: string | null;
   last_tested_at: string | null;
   last_test_result: string | null;
   mappings: PlayerRegionMapping[];
@@ -61,7 +65,14 @@ export function createPlayerValidatorProfile(values: { name: string; key: string
   });
 }
 
-export function updatePlayerValidatorProfile(id: number, values: { name: string }) {
+export interface UpdatePlayerValidatorProfileValues {
+  name: string;
+  public_name?: string | null;
+  public_slug?: string | null;
+  public_image_url?: string | null;
+}
+
+export function updatePlayerValidatorProfile(id: number, values: UpdatePlayerValidatorProfileValues) {
   return apiFetch<PlayerValidatorProfile>(`/api/middleware/validators/${id}`, {
     method: "PUT",
     body: values,

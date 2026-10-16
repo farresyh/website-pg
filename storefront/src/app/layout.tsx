@@ -11,6 +11,8 @@ import SiteHeader from "@/components/layout/SiteHeader";
 import BottomNav from "@/components/layout/BottomNav";
 import { getBranding } from "@/lib/branding";
 import { listPlans } from "@/lib/membership";
+import { listPlayerCheckFamilies } from "@/lib/player-check";
+import { getResellerPriceList } from "@/lib/reseller-price-list";
 import { getSeoSettings, jsonLdHtml } from "@/lib/seo";
 import { resolveSiteMeta } from "@/lib/seo-meta";
 import { getThemePreset, generateThemeCss } from "@/lib/theme-presets";
@@ -68,12 +70,16 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [branding, settings, plans] = await Promise.all([
+  const [branding, settings, plans, priceList, playerCheck] = await Promise.all([
     getBranding(),
     getSeoSettings(),
     listPlans(),
+    getResellerPriceList(),
+    listPlayerCheckFamilies(),
   ]);
   const membershipEnabled = plans.length > 0;
+  const priceListEnabled = priceList.tiers.length > 0;
+  const checkIdEnabled = playerCheck.families.length > 0;
 
   const themePreset = getThemePreset(branding.themePreset);
   const themeCss = generateThemeCss(themePreset, branding.themeMode);
@@ -146,7 +152,7 @@ export default async function RootLayout({
           * client components with no server fetch, so they add no
           * Suspense point to the layout. SiteFooter (async) stays
           * per-page — it is below the fold during any navigation. */}
-        <SiteConfigProvider value={{ membershipEnabled, branding }}>
+        <SiteConfigProvider value={{ membershipEnabled, priceListEnabled, checkIdEnabled, branding }}>
           <SearchProvider>
             <SiteHeader />
             {children}

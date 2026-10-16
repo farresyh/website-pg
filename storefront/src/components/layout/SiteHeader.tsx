@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { MagnifyingGlass } from "@phosphor-icons/react/dist/ssr";
 import Logo from "@/components/ui/Logo";
 import Button from "@/components/ui/Button";
@@ -16,10 +17,23 @@ import { useSiteConfig } from "@/context/SiteConfigContext";
  * enabled for this storefront (ADR-061's dual kill-switch). ADR-071
  * PR1: `membershipEnabled` comes from `SiteConfigProvider` (resolved
  * once server-side), not a per-mount `listPlans()` fetch.
+ *
+ * The nav highlight follows the page (2026-10-16): "All Products" on the
+ * home page and a game's order page, "Membership" and "Game ID Checker"
+ * on their own pages, none elsewhere. It used to be fixed on "All Products".
  */
+const NAV_LINK = "border-b-2 pb-0.5";
+const NAV_ACTIVE = "border-primary text-primary-on-surface";
+const NAV_IDLE = "border-transparent hover:text-primary-on-surface";
 export default function SiteHeader() {
   const { query, setQuery } = useSearch();
-  const { membershipEnabled, branding } = useSiteConfig();
+  const { membershipEnabled, checkIdEnabled, branding } = useSiteConfig();
+  const pathname = usePathname();
+  const productsActive = pathname === "/" || (pathname.startsWith("/order/") && !pathname.startsWith("/order/status"));
+
+  function navClass(active: boolean): string {
+    return `${NAV_LINK} ${active ? NAV_ACTIVE : NAV_IDLE}`;
+  }
 
   return (
     <header className="sticky top-0 z-40 border-b-2 border-ink bg-surface">
@@ -41,12 +55,25 @@ export default function SiteHeader() {
         </div>
 
         <nav className="hidden items-center gap-6 font-display text-[13px] font-bold uppercase tracking-wide text-on-surface-variant lg:flex">
-          <Link href="/#popular-picks" className="border-b-2 border-primary pb-0.5 text-primary-on-surface">
+          <Link href="/#popular-picks" aria-current={productsActive ? "page" : undefined} className={navClass(productsActive)}>
             All Products
           </Link>
           {membershipEnabled && (
-            <Link href="/membership" className="pb-0.5 hover:text-primary-on-surface">
+            <Link
+              href="/membership"
+              aria-current={pathname.startsWith("/membership") ? "page" : undefined}
+              className={navClass(pathname.startsWith("/membership"))}
+            >
               Membership
+            </Link>
+          )}
+          {checkIdEnabled && (
+            <Link
+              href="/check-id"
+              aria-current={pathname.startsWith("/check-id") ? "page" : undefined}
+              className={navClass(pathname.startsWith("/check-id"))}
+            >
+              Game ID Checker
             </Link>
           )}
         </nav>

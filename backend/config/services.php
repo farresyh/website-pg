@@ -250,6 +250,23 @@ return [
         'retention_days' => (int) env('PLAYER_VALIDATION_RETENTION_DAYS', 7),
     ],
 
+    // ADR-123 decision 7: the public Game ID Checker's own protection.
+    // The hourly budget caps provider calls across every brand; a cache
+    // hit spends none. Cooldown follows a provider failure on this path.
+    'player_check' => [
+        'hourly_budget' => (int) env('PLAYER_CHECK_HOURLY_BUDGET', 200),
+        'cache_minutes' => (int) env('PLAYER_CHECK_CACHE_MINUTES', 10),
+        'cooldown_seconds' => (int) env('PLAYER_CHECK_COOLDOWN_SECONDS', 120),
+    ],
+
+    // ADR-123 decision 7.2: Cloudflare Turnstile for the Game ID Checker.
+    // No secret = the checker refuses every check (fails closed).
+    'turnstile' => [
+        'secret_key' => env('TURNSTILE_SECRET_KEY'),
+        'verify_url' => env('TURNSTILE_VERIFY_URL', 'https://challenges.cloudflare.com/turnstile/v0/siteverify'),
+        'timeout' => (int) env('TURNSTILE_TIMEOUT', 5),
+    ],
+
     // ADR-051 decision 7: `validate_player` rows carry the same
     // player-account nickname/ID category player_validation.retention_days
     // above already governs, so they follow that same 7-day window

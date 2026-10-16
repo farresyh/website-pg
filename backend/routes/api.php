@@ -78,6 +78,7 @@ use App\Http\Controllers\Middleware\SupplierController;
 use App\Http\Controllers\Middleware\SupplierProductController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\PaymentMethodCatalogController;
+use App\Http\Controllers\PlayerCheckController;
 use App\Http\Controllers\PlayerValidationController;
 use App\Http\Controllers\PublicResellerPriceListController;
 use App\Http\Controllers\ResellerApi\BalanceController as ResellerApiBalanceController;
@@ -185,6 +186,12 @@ Route::post('/checkout/preview-totals', [CheckoutController::class, 'previewTota
 // 8s chain deadline already bounds each call's cost.
 Route::post('/games/{game}/validate-player', [PlayerValidationController::class, 'store'])->middleware('throttle:30,1,validate-player');
 
+// ADR-123: the public Game ID Checker. Its own endpoint and limiter
+// (5/min + 30/hour per IP), then Turnstile, a result cache, a cooldown
+// and an hourly budget in PublicPlayerCheckService, so it can't spend
+// the provider checkout depends on. Family listing lives in `catalog/`.
+Route::post('/player-check/{slug}', [PlayerCheckController::class, 'check'])->middleware(['throttle:player-check', 'storefront.brand']);
+
 // Public "Track Order" lookup (ADR-011) — order_number (12 random
 // base-36 chars, ~4.7e18 space — see OrderNumberService; no longer a
 // ULID) is high-entropy enough to be treated as proof of ownership on its own,
@@ -271,6 +278,10 @@ Route::prefix('catalog')->middleware('storefront.brand')->group(function () {
     Route::get('/games/{slug}', [CatalogController::class, 'show']);
     Route::get('/games/{slug}/packages', [CatalogController::class, 'packages']);
     Route::get('/games/{slug}/reviews', [ReviewCatalogController::class, 'gameReviews']);
+
+    // ADR-123 decision 2: Game ID Checker families on this brand.
+    Route::get('/player-check/families', [PlayerCheckController::class, 'families']);
+    Route::get('/player-check/families/{slug}', [PlayerCheckController::class, 'family']);
 
     // Hero Banner (docs/prd.md §14/§15 backlog) — no secret-field
     // concern here (no cost/margin data on this model), grouped under

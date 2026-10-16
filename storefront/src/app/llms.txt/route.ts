@@ -1,6 +1,7 @@
 import { getBranding } from "@/lib/branding";
 import { getSeoSettings } from "@/lib/seo";
 import { listGames } from "@/lib/catalog";
+import { listPlayerCheckFamilies } from "@/lib/player-check";
 import { resolveSiteMeta } from "@/lib/seo-meta";
 
 /**
@@ -21,7 +22,12 @@ import { resolveSiteMeta } from "@/lib/seo-meta";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const [branding, settings, games] = await Promise.all([getBranding(), getSeoSettings(), listGames()]);
+  const [branding, settings, games, playerCheck] = await Promise.all([
+    getBranding(),
+    getSeoSettings(),
+    listGames(),
+    listPlayerCheckFamilies(),
+  ]);
 
   // ADR-120 decisions 1 + 4: the serving brand's own origin, tokens rendered.
   const origin = branding.canonicalOrigin;
@@ -41,6 +47,16 @@ export async function GET() {
       const price = game.priceFromRm !== null ? ` - from RM${game.priceFromRm.toFixed(2)}` : "";
       const category = game.category ? ` (${game.category})` : "";
       lines.push(`- [${game.name}](${origin}/order/${game.slug})${category}${price}`);
+    }
+    lines.push("");
+  }
+
+  // ADR-123 decision 10: primary brand only, same rule as the sitemap.
+  if (playerCheck.indexable && playerCheck.families.length > 0) {
+    lines.push("## Game ID Checker");
+    lines.push(`- [Game ID Checker](${origin}/check-id): free lookup of a game account's nickname and the store that tops it up`);
+    for (const family of playerCheck.families) {
+      lines.push(`- [${family.name} ID Checker](${origin}/check-id/${family.slug})`);
     }
     lines.push("");
   }

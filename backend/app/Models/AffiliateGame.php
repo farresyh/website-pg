@@ -34,6 +34,23 @@ class AffiliateGame extends Model
         'is_visible' => 'boolean',
     ];
 
+    /**
+     * The game ids a brand turned off on its storefront. Absent row =
+     * visible, so this is the whole exclusion set. The one place the
+     * storefront's catalog, checkout and Game ID Checker read it (ADR-123
+     * decision 9).
+     *
+     * @return list<int>
+     */
+    public static function hiddenGameIdsFor(int $affiliateId): array
+    {
+        return static::query()
+            ->where('affiliate_id', $affiliateId)
+            ->where('is_visible', false)
+            ->pluck('game_id')
+            ->all();
+    }
+
     public function game(): BelongsTo
     {
         return $this->belongsTo(Game::class);
