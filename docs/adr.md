@@ -145,3 +145,4 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-120](./adr/ADR-120-seo-geo-overhaul.md) | SEO/GEO overhaul — brand-correct meta, per-brand canonical origin, machine-readable catalog | In force |  |
 | [ADR-121](./adr/ADR-121-admin-mfa-and-session-login.md) | Admin MFA (TOTP), opt-in per account, step-up on five dangerous actions; admin login moves to a cookie session | In force | 2026-10-14 |
 | [ADR-122](./adr/ADR-122-scheduler-liveness.md) | Scheduler liveness — per-task heartbeat; a stale critical task fails `/api/health` | In force |  |
+| [ADR-123](./adr/ADR-123-public-game-id-checker.md) | Public Game ID Checker — own endpoint, Turnstile, per-IP + global budget, Redx-only, own table | In force |  |
