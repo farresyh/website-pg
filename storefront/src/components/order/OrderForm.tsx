@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError } from "@/lib/api-client";
 import {
   validatePlayer,
@@ -178,8 +178,12 @@ export default function OrderForm({
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     window.scrollTo({ top, behavior: reduceMotion ? "auto" : "smooth" });
   }, [selectedPackageId]);
-  const [playerId, setPlayerIdRaw] = useState("");
-  const [serverId, setServerIdRaw] = useState("");
+  // ADR-123 decision 5: the Game ID Checker's "Top up now" prefills the
+  // ID (and server or zone). Only prefilled: the customer still presses
+  // Verify, so opening a link never costs a provider call.
+  const searchParams = useSearchParams();
+  const [playerId, setPlayerIdRaw] = useState(() => (searchParams.get("player_id") ?? "").slice(0, 64));
+  const [serverId, setServerIdRaw] = useState(() => (game.extraField ? (searchParams.get("server_id") ?? "").slice(0, 64) : ""));
   const [step1Continued, setStep1Continued] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);

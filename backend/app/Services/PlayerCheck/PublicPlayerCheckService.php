@@ -51,7 +51,7 @@ class PublicPlayerCheckService
     /**
      * Families listed on this brand (ADR-123 decision 2).
      *
-     * @return list<array{slug: string, name: string, image_url: ?string, player_id_format: string, requires_server_id: bool}>
+     * @return list<array{key: string, slug: string, name: string, image_url: ?string, player_id_format: string, requires_server_id: bool}>
      */
     public function families(Affiliate $brand): array
     {
@@ -68,7 +68,7 @@ class PublicPlayerCheckService
     }
 
     /**
-     * @return array{slug: string, name: string, image_url: ?string, player_id_format: string, requires_server_id: bool}|null
+     * @return array{key: string, slug: string, name: string, image_url: ?string, player_id_format: string, requires_server_id: bool}|null
      */
     public function findFamily(Affiliate $brand, string $slug): ?array
     {
@@ -234,7 +234,7 @@ class PublicPlayerCheckService
     /**
      * @param  list<int>  $hidden
      * @param  Collection<int, Game>|null  $stores
-     * @return array{slug: string, name: string, image_url: ?string, player_id_format: string, requires_server_id: bool}|null
+     * @return array{key: string, slug: string, name: string, image_url: ?string, player_id_format: string, requires_server_id: bool}|null
      */
     private function family(PlayerValidatorProfile $profile, array $hidden, ?Collection $stores = null): ?array
     {
@@ -263,6 +263,9 @@ class PublicPlayerCheckService
         $reference = $stores->first();
 
         return [
+            // The validator key: the storefront picks each family's
+            // "how to find your ID" guide by it, not by the editable slug.
+            'key' => $profile->key,
             'slug' => $profile->public_slug,
             'name' => $profile->public_name ?? $profile->name,
             'image_url' => $profile->public_image_url,

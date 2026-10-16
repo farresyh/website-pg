@@ -254,7 +254,7 @@ class PlayerCheckControllerTest extends TestCase
         $this->getJson('/api/catalog/player-check/families')->assertOk()->assertExactJson([
             'indexable' => true,
             'families' => [[
-                'slug' => 'mobile-legends', 'name' => 'Mobile Legends', 'image_url' => null,
+                'key' => 'mlbb', 'slug' => 'mobile-legends', 'name' => 'Mobile Legends', 'image_url' => null,
                 'player_id_format' => 'numeric', 'requires_server_id' => true,
             ]],
         ]);

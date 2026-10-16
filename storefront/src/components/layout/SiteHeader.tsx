@@ -19,7 +19,7 @@ import { useSiteConfig } from "@/context/SiteConfigContext";
  */
 export default function SiteHeader() {
   const { query, setQuery } = useSearch();
-  const { membershipEnabled, branding } = useSiteConfig();
+  const { membershipEnabled, checkIdEnabled, branding } = useSiteConfig();
 
   return (
     <header className="sticky top-0 z-40 border-b-2 border-ink bg-surface">
@@ -47,6 +47,11 @@ export default function SiteHeader() {
           {membershipEnabled && (
             <Link href="/membership" className="pb-0.5 hover:text-primary-on-surface">
               Membership
+            </Link>
+          )}
+          {checkIdEnabled && (
+            <Link href="/check-id" className="pb-0.5 hover:text-primary-on-surface">
+              Game ID Checker
             </Link>
           )}
         </nav>
