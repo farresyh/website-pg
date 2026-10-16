@@ -31,10 +31,10 @@ export default async function CheckIdPage() {
     <>
       <main className="pb-nav lg:pb-0">
         <div className="mx-auto max-w-[1200px] px-4 py-12 lg:py-16">
-          <h1 className="font-display text-3xl font-bold uppercase tracking-tight text-on-surface lg:text-headline-lg">
+          <h1 className="text-center font-display text-3xl font-bold uppercase tracking-tight text-on-surface lg:text-headline-lg">
             Game ID Checker
           </h1>
-          <p className="mt-3 max-w-[62ch] text-sm leading-relaxed text-on-surface-variant">
+          <p className="mx-auto mt-3 max-w-[62ch] text-center text-sm leading-relaxed text-on-surface-variant">
             Check an account before you top up. Pick your game, enter the ID, and we&apos;ll show the nickname and the
             store that tops up that account. Free, no login.
           </p>
@@ -43,7 +43,7 @@ export default async function CheckIdPage() {
             <FamilyCards families={families} />
           </div>
 
-          <div className="max-w-[760px]">
+          <div className="mx-auto max-w-[760px]">
             <CheckIdFaq items={faqFor(null, branding.storeName)} />
           </div>
         </div>

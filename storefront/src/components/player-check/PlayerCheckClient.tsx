@@ -249,12 +249,12 @@ function ResultCard({ result, storeName }: { result: PlayerCheckResult; storeNam
  */
 export function FamilyCards({ families }: { families: PlayerCheckFamily[] }) {
   return (
-    <nav aria-label="Choose a game" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <nav aria-label="Choose a game" className="flex flex-wrap justify-center gap-4">
       {families.map((f) => (
         <Link
           key={f.slug}
           href={`/check-id/${f.slug}`}
-          className="group flex flex-col overflow-hidden rounded-lg border-2 border-ink bg-surface-container-lowest neo neo-hover transition-all"
+          className="group flex w-[calc(50%-0.5rem)] flex-col lg:w-[calc(25%-0.75rem)] overflow-hidden rounded-lg border-2 border-ink bg-surface-container-lowest neo neo-hover transition-all"
         >
           <div className="relative aspect-16/10">
             {f.image_url ? (
@@ -265,9 +265,9 @@ export function FamilyCards({ families }: { families: PlayerCheckFamily[] }) {
           </div>
           <div className="flex flex-col gap-1.5 p-3.5">
             <span className="font-display text-[15px] font-bold leading-tight">{f.name}</span>
-            <div className="mt-2 flex items-center justify-between gap-2 border-t border-dashed border-ink/40 pt-2">
-              <span className="text-[11px] text-on-surface-variant">Free ID check</span>
-              <span className="inline-flex items-center gap-1 font-display text-[13px] font-bold uppercase text-primary-on-surface">
+            <div className="mt-2 flex items-center justify-end gap-2 border-t border-dashed border-ink/40 pt-2 sm:justify-between">
+              <span className="hidden text-[11px] text-on-surface-variant sm:inline">Free ID check</span>
+              <span className="inline-flex items-center gap-1 whitespace-nowrap font-display text-[13px] font-bold uppercase text-primary-on-surface">
                 Check ID <ArrowRight size={14} weight="bold" />
               </span>
             </div>
