@@ -23,6 +23,9 @@ class PlayerValidatorProfile extends Model
     protected $fillable = [
         'name',
         'key',
+        'public_name',
+        'public_slug',
+        'public_image_url',
         'last_tested_at',
         'last_test_result',
     ];

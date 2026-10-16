@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { listGames } from "@/lib/catalog";
 import { getResellerPriceList } from "@/lib/reseller-price-list";
 import { getBranding } from "@/lib/branding";
+import { listPlayerCheckFamilies } from "@/lib/player-check";
 
 /**
  * Forces this to fetch at request time rather than build time — a
@@ -19,7 +20,12 @@ export const dynamic = "force-dynamic";
  * brand's own canonical origin, never the platform's.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [branding, games, resellerPriceList] = await Promise.all([getBranding(), listGames(), getResellerPriceList()]);
+  const [branding, games, resellerPriceList, playerCheck] = await Promise.all([
+    getBranding(),
+    listGames(),
+    getResellerPriceList(),
+    listPlayerCheckFamilies(),
+  ]);
   const origin = branding.canonicalOrigin;
 
   const staticRoutes: MetadataRoute.Sitemap = [
@@ -39,6 +45,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // same "empty tiers = no page" signal as /price-list and SiteFooter.
   if (resellerPriceList.tiers.length > 0) {
     staticRoutes.push({ url: `${origin}/price-list`, lastModified: new Date() });
+  }
+
+  // ADR-123 decision 10: the Game ID Checker is listed on the primary
+  // brand only; an affiliate's pages work but carry noindex.
+  if (playerCheck.indexable && playerCheck.families.length > 0) {
+    staticRoutes.push({ url: `${origin}/check-id`, lastModified: new Date() });
+    for (const family of playerCheck.families) {
+      staticRoutes.push({ url: `${origin}/check-id/${family.slug}`, lastModified: new Date() });
+    }
   }
 
   return [...staticRoutes, ...gameRoutes];

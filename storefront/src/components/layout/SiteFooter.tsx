@@ -3,6 +3,7 @@ import Image from "next/image";
 import { FacebookIcon, InstagramIcon, TikTokIcon, YouTubeIcon, WhatsAppIcon } from "@/components/icons/SocialIcons";
 import Logo from "@/components/ui/Logo";
 import { getBranding } from "@/lib/branding";
+import { listPlayerCheckFamilies } from "@/lib/player-check";
 import { resolveWhatsappHref } from "@/lib/whatsapp";
 
 const SOCIAL_ICONS = [
@@ -24,7 +25,7 @@ const SOCIAL_ICONS = [
  * to reflect real active gateways (is_active=true) with official SVG badges.
  */
 export default async function SiteFooter() {
-  const branding = await getBranding();
+  const [branding, playerCheck] = await Promise.all([getBranding(), listPlayerCheckFamilies()]);
   const currentYear = new Date().getFullYear();
   // WhatsApp falls back to a wa.me link built from `support_phone` when
   // no explicit `social_links.whatsapp` URL is set (ADR-071 PR0).
@@ -104,6 +105,11 @@ export default async function SiteFooter() {
               <li>
                 <Link href="/track-order" className="hover:text-primary-on-surface">Track Order</Link>
               </li>
+              {playerCheck.families.length > 0 && (
+                <li>
+                  <Link href="/check-id" className="hover:text-primary-on-surface">Game ID Checker</Link>
+                </li>
+              )}
             </ul>
           </div>
         </div>

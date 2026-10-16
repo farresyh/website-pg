@@ -348,35 +348,43 @@ class AppServiceProvider extends ServiceProvider
             ]);
         });
 
-        // Free Fire: RedxGame alone (MooGold's checker is MLBB-only), so
-        // its "couldn't verify" is an invalid ID (ADR-005 2026-10-16
-        // second addendum). Redx reports the Garena server: Malaysian
-        // accounts come back "Singapore".
-        $this->app->bind('player-validator.freefire', function () {
+        // A standalone RedxGame check: its "couldn't verify" is an invalid
+        // ID the customer can correct, since no second provider decides.
+        $standaloneRedx = function (string $redxGame, bool $regionIsServer) {
             $config = config('services.player_validators.redxgame');
 
             return new RedxGameValidator(
                 baseUrl: $config['base_url'],
                 timeoutSeconds: $config['standalone_timeout'],
-                game: 'free-fire',
+                game: $redxGame,
                 statusFalseMeansInvalid: true,
+                regionIsServer: $regionIsServer,
             );
-        });
+        };
 
+        // Free Fire: RedxGame alone (MooGold's checker is MLBB-only)
+        // (ADR-005 2026-10-16 second addendum). Redx reports the Garena
+        // server: Malaysian accounts come back "Singapore".
         // Genshin, HSR, ZZZ: Redx reports the UID's server, checked against
         // the chosen zone by ZoneCheck (ADR-005 2026-10-16 third addendum).
-        foreach (['genshin' => 'genshin-impact', 'hsr' => 'honkai-star-rail', 'zzz' => 'zenless-zone-zero'] as $key => $redxGame) {
-            $this->app->bind("player-validator.{$key}", function () use ($redxGame) {
-                $config = config('services.player_validators.redxgame');
+        $redxGames = [
+            'mlbb' => ['mobile-legends', false],
+            'freefire' => ['free-fire', false],
+            'genshin' => ['genshin-impact', true],
+            'hsr' => ['honkai-star-rail', true],
+            'zzz' => ['zenless-zone-zero', true],
+        ];
 
-                return new RedxGameValidator(
-                    baseUrl: $config['base_url'],
-                    timeoutSeconds: $config['standalone_timeout'],
-                    game: $redxGame,
-                    statusFalseMeansInvalid: true,
-                    regionIsServer: true,
-                );
-            });
+        foreach ($redxGames as $key => [$redxGame, $regionIsServer]) {
+            if ($key !== 'mlbb') {
+                $this->app->bind("player-validator.{$key}", fn () => $standaloneRedx($redxGame, $regionIsServer));
+            }
+
+            // ADR-123 decision 6: the public Game ID Checker calls RedxGame
+            // alone for every family, MLBB included (never its MooGold
+            // fallback: MooGold is our supplier). Bound explicitly per key;
+            // a key with no public binding has no public family.
+            $this->app->bind("player-validator.public.{$key}", fn () => $standaloneRedx($redxGame, $regionIsServer));
         }
 
         $this->app->singleton(PlayerValidatorRegistry::class);
@@ -552,6 +560,12 @@ class AppServiceProvider extends ServiceProvider
                 Limit::perMinute(60)->by('ip:'.$request->ip()),
             ];
         });
+
+        // ADR-123 decision 7.1: the public Game ID Checker, per IP.
+        RateLimiter::for('player-check', fn (Request $request) => [
+            Limit::perMinute(5)->by('player-check-min:'.$request->ip()),
+            Limit::perHour(30)->by('player-check-hour:'.$request->ip()),
+        ]);
 
         RateLimiter::for('otp-request', function (Request $request) {
             return [

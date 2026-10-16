@@ -2,8 +2,14 @@
 
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ImageUrlInput } from "@/components/gallery/ImageUrlInput";
 import type { Game } from "@/lib/games";
-import type { PlayerRegionMapping, PlayerValidatorProfile, TestValidatorResult } from "@/lib/player-validators";
+import type {
+  PlayerRegionMapping,
+  PlayerValidatorProfile,
+  TestValidatorResult,
+  UpdatePlayerValidatorProfileValues,
+} from "@/lib/player-validators";
 
 const inputClasses =
   "h-9 w-full rounded-lg border border-gray-300 px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
@@ -238,10 +244,94 @@ function TestPanel({
   );
 }
 
+/**
+ * ADR-123 decision 2: this family on the public Game ID Checker
+ * (`/check-id/<slug>`). The slug is the SEO URL, so it is chosen here
+ * and left stable; an empty slug keeps the family off the page.
+ */
+function PublicCheckerPanel({
+  validator,
+  onSave,
+}: {
+  validator: PlayerValidatorProfile;
+  onSave: (values: Omit<UpdatePlayerValidatorProfileValues, "name">) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [publicName, setPublicName] = useState(validator.public_name ?? "");
+  const [publicSlug, setPublicSlug] = useState(validator.public_slug ?? "");
+  const [imageUrl, setImageUrl] = useState(validator.public_image_url ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await onSave({
+        public_name: publicName.trim() || null,
+        public_slug: publicSlug.trim() || null,
+        public_image_url: imageUrl.trim() || null,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-3">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="text-sm font-medium text-brand-500 hover:text-brand-600 dark:text-brand-400"
+      >
+        {open ? "Hide Game ID Checker" : "Game ID Checker"}
+        <span className="ml-2 text-xs font-normal text-ink-subtle">
+          {validator.public_slug ? `/check-id/${validator.public_slug}` : "not listed"}
+        </span>
+      </button>
+
+      {open && (
+        <div className="mt-2 space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-white/5">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Shown on the public Game ID Checker when a slug is set and this family has an active store with
+            validation on. Changing the slug changes the page&apos;s URL, so set it once.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm text-gray-700 dark:text-gray-300">
+              Public name
+              <input
+                value={publicName}
+                onChange={(e) => setPublicName(e.target.value)}
+                placeholder="Mobile Legends"
+                className={`${inputClasses} mt-1`}
+              />
+            </label>
+            <label className="block text-sm text-gray-700 dark:text-gray-300">
+              URL slug
+              <input
+                value={publicSlug}
+                onChange={(e) => setPublicSlug(e.target.value.toLowerCase())}
+                placeholder="mobile-legends"
+                className={`${inputClasses} mt-1 font-mono`}
+              />
+            </label>
+          </div>
+          <div className="text-sm text-gray-700 dark:text-gray-300">
+            <label htmlFor={`validator-${validator.id}-image`}>Image</label>
+            <div className="mt-1">
+              <ImageUrlInput id={`validator-${validator.id}-image`} value={imageUrl} onChange={setImageUrl} />
+            </div>
+          </div>
+          <Button size="small" disabled={saving} onClick={handleSave}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ValidatorCard({
   validator,
   games,
-  onRename,
+  onUpdate,
   onDelete,
   onTest,
   onCreateMapping,
@@ -250,7 +340,7 @@ export default function ValidatorCard({
 }: {
   validator: PlayerValidatorProfile;
   games: Game[];
-  onRename: (name: string) => Promise<void>;
+  onUpdate: (values: UpdatePlayerValidatorProfileValues) => Promise<void>;
   onDelete: () => Promise<void>;
   onTest: (playerId: string, serverId: string) => Promise<TestValidatorResult>;
   onCreateMapping: (countryCode: string, countryName: string, gameId: number) => Promise<void>;
@@ -265,7 +355,7 @@ export default function ValidatorCard({
   async function handleSaveName() {
     setSavingName(true);
     try {
-      await onRename(name);
+      await onUpdate({ name });
       setRenaming(false);
     } finally {
       setSavingName(false);
@@ -340,6 +430,7 @@ export default function ValidatorCard({
         <AddMappingRow games={games} onCreate={onCreateMapping} />
       </div>
 
+      <PublicCheckerPanel validator={validator} onSave={(values) => onUpdate({ name: validator.name, ...values })} />
       <TestPanel onTest={onTest} />
     </div>
   );
