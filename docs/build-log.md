@@ -1048,3 +1048,31 @@ After release: run "Test this validator" on `/middleware/validators` in prod.
   tests assert only names Redx was seen returning.
 - The auto-mode classifier blocked sending a prod customer's player ID to
   Redx; the founder's own test accounts were used instead.
+
+## 2026-10-16 — Free Fire player validation via RedxGame (ADR-005 second addendum)
+
+Surveyed Redx's other checkers against our catalogue (read-only, test IDs):
+Free Fire answers like MLBB (country name); Genshin and HSR answered a
+server ("China" for UID 123456789); Valorant answered Redx's own store verdict
+("registered in another region, so it cannot be topped up here"); ZZZ
+answered `status:false` for the test UID. Only Free Fire is built.
+
+Founder's real Free Fire accounts: Indonesia → "Indonesia", Thailand →
+"Thailand", Singapore → "Singapore", Malaysia → "Singapore" (the Garena
+server MY and SG share). The founder will deactivate Free Fire Singapore and
+map `SG` → Free Fire Malaysia themselves, so no mapping-model change.
+
+**Built.** `freefire` key in `PlayerValidatorRegistry::AVAILABLE_KEYS` and
+its binding; `RedxGameValidator` takes the Redx game slug, sends `server_id`
+only when present, and for Free Fire treats `status:false` as invalid (no
+second provider; founder's call). New invariant test: every selectable key
+resolves to a bound validator.
+
+**Verified.** Fast suite 2839/2839. Real calls through the `freefire`
+binding from local: ID, TH, SG, SG (the Malaysian account) and a made-up ID
+→ invalid, 2.2–2.7 s; `mlbb` still → MY.
+
+**After release (founder, admin):** create a "Free Fire" profile with key
+`freefire`, map the countries (`SG` → Free Fire Malaysia, `ID`, `TH`, `PH`,
+the rest → Free Fire Global), deactivate Free Fire Singapore, then turn on
+"Requires Player Validation" per Free Fire game and run "Test this validator".

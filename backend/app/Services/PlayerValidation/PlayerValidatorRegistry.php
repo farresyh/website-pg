@@ -7,10 +7,9 @@ use Illuminate\Contracts\Container\Container;
 /**
  * Resolves a PlayerValidator by name, keyed on
  * `player_validator_profiles.key` — mirrors PaymentGatewayFactory's
- * role for `payment_methods.gateway`. Only 'mlbb' is bound today
- * (AppServiceProvider); a future validator for another game family
- * with its own region split is added the same way, without touching
- * this class or any existing binding.
+ * role for `payment_methods.gateway`. Each key is bound in
+ * AppServiceProvider; another game family with its own region split is
+ * added the same way, without touching any existing binding.
  */
 final class PlayerValidatorRegistry
 {
@@ -26,6 +25,7 @@ final class PlayerValidatorRegistry
      */
     public const AVAILABLE_KEYS = [
         'mlbb' => 'Mobile Legends: Bang Bang',
+        'freefire' => 'Free Fire',
     ];
 
     public function __construct(private readonly Container $container) {}
