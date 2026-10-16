@@ -571,7 +571,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 # 14. Build Status
 
-**Where things stand (2026-10-16).** The platform is feature-complete and live
+**Where things stand (2026-10-17).** The platform is feature-complete and live
 in production: storefront (plus every Affiliate whitelabel brand), admin panel,
 Affiliate/Reseller portal, and the developer-docs site. CHIP FPX payments and
 the CHIP + Digiflazz webhooks are proven end-to-end with real money.
@@ -590,26 +590,27 @@ founder's choice (confirmed 2026-10-13). Until they are re-enabled, storefront
 checkout and the reseller wallet's self-serve top-up can't be paid; wallet
 orders against an existing balance still work. Player-ID validation, which
 had blocked every MLBB checkout since 2026-10-10, works again since release
-#469, so it no longer stands in the way of re-enabling payments.
+#469, so it no longer stands in the way of re-enabling payments. The
+founder switched FPX on for one test order on 2026-10-16 (16:07 → 19:16 UTC,
+one storefront order paid) and off again, so all three are off (checked
+2026-10-17).
 
-**Latest release 2026-10-16 (`staging`→`main`, PR #472), deploy verified.**
-Merged as `c48659d`; the prod box runs it and both 2026-10-16 migrations ran.
-Ships the public **Game ID Checker** (ADR-123, #471): `/check-id` and one page
-per game family, Cloudflare Turnstile, per-IP limit plus an hourly budget,
-RedxGame only, its own `public_player_checks` table; the mobile bottom bar's
-centre button became **More** (Menu / Info drawer) and the header highlight
-follows the page. The founder created the Turnstile widget, set both keys and
-filled the five families' name, slug and image; a check on `pekangame.com`
-with the founder's own MLBB test account answered "Prime." → Mobile Legends
-Malaysia. Before it, #469 (same day): player-ID validation through RedxGame
-(ADR-005's three 2026-10-16 addenda).
-Waiting on `staging`: docs only (§16 item 108, this sync).
+**Latest release 2026-10-17 (`staging`→`main`, PR #476), deploy verified.**
+Merged as `69cf00f`; the prod box runs it (`symfony/http-foundation` v8.1.9,
+`laravel/framework` v13.35.0 installed). Ships #474: five dependency
+advisories closed, including an unauthenticated `Cache-Control` ReDoS
+(CVE-2026-108082), and a matched loading skeleton on every storefront route,
+with a CI guard (ADR-071 2026-10-17 addendum). Also #475: the weekly
+`Dependency audit` workflow (alert-only email, Monday 09:00 MYT), and #473
+(docs). The release's `playwright` job hit the Google Fonts build flake
+(§16 item 109) and passed on re-run.
+Waiting on `staging`: docs only (this sync).
 
 **Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
 hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
 `cdn.` stay on `pekangame.space`.
 
-**Earlier releases** (#469 on 2026-10-16: RedxGame player validation; #462 and #449 on 2026-10-15: items 97–103; #441; #437 on 2026-10-14: admin MFA, ADR-121; #430 and #425 on 2026-10-13, #416 and #406 on 2026-10-12/13, #393 Envelope Ledger,
+**Earlier releases** (#472 on 2026-10-16: Game ID Checker, ADR-123; #469 on 2026-10-16: RedxGame player validation; #462 and #449 on 2026-10-15: items 97–103; #441; #437 on 2026-10-14: admin MFA, ADR-121; #430 and #425 on 2026-10-13, #416 and #406 on 2026-10-12/13, #393 Envelope Ledger,
 #385 Reports redesign, #376 Reseller API `max_price_sen` / Assistant = Reports /
 `r2_accounting`, #369 ADR-120 SEO/GEO, #362, #354, #346, #342, #332,
 #320 and the 2026-09-28 audit waves) are recorded release by release in
@@ -662,7 +663,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Developer Tools (DEV-1..2) | ✅ Live — `/middleware/developer-tools`, all 5 adapter methods, typed-DTO editor, dry-run default. Same screen as MUI-11 | ADR-054 |
 | Blacklist / Fraud (FRAUD-1..4) | ✅ Live — `BlacklistService` + `CheckoutVelocityGuard` wired into checkout; `/admin/blacklist` screen. `foundation-security.md` §4 fully checked | ADR-007 |
 | Middleware Panel (MID-1..13, MUI-1..11) | ✅ Live — sync/matching/catalog (Product Manager), price sync + FX, player validation, test orders, request logging, supplier credentials, landing page. MUI-4 (export) dropped. **Player validation, live 2026-10-16 via #469** (ADR-005's three 2026-10-16 addenda): MLBB RedxGame → MooGold (it had been broken since 2026-10-10, when AcidGameShop and Nexone stopped answering); Free Fire (RedxGame, country mappings); Genshin / HSR / ZZZ (RedxGame, the UID's server must match the chosen zone, `wrong_zone`). Validators: MLBB, Free Fire, Genshin, HSR, ZZZ, all toggled on for their games | ADR-005, 051, 052 |
-| Storefront (checkout flow) | 🟢 Live in prod — all catalog/checkout/validate/track endpoints; server-side validation enforcement; PekanGame neo-brutalist redesign, mobile pass, read-path perf (Redis cache), dynamic payment SVGs + UX polish. Logo/favicon upload UI + aspect-preserving sizing + preset background/dark-mode groundwork shipped (ADR-089/090). Real logo/hero artwork uploaded 2026-09-14 (§16 item 2); the placeholder mark is only the fallback when no logo is set. Per-game "How to Buy" info popup (description/important notes) + admin-editable instant/manual delivery badge, `EditGameModal` gained Basic Info/Content tabs (ADR-109) — admin Content tab live-verified 2026-10-08 (§16 item 67). **2026-10-05 (ADR-097 addendum, #356 — released via #362, 2026-10-06):** the ID fields follow the game's contract — digits-only fields get the numeric keypad and block typed non-digits, a paste is kept with an inline error, a Text game (e.g. Riot ID) gets a normal keyboard; the backend refuses the same input on checkout and Check ID **2026-10-17 (ADR-071 addendum, PR #474, staging):** every route has a matched `loading.tsx` (home, price list, Check ID, membership, legal pages were missing one and froze on navigation), enforced by a CI guard. | ADR-062–065, 071, 077–079, 089, 090, 097, 109 |
+| Storefront (checkout flow) | 🟢 Live in prod — all catalog/checkout/validate/track endpoints; server-side validation enforcement; PekanGame neo-brutalist redesign, mobile pass, read-path perf (Redis cache), dynamic payment SVGs + UX polish. Logo/favicon upload UI + aspect-preserving sizing + preset background/dark-mode groundwork shipped (ADR-089/090). Real logo/hero artwork uploaded 2026-09-14 (§16 item 2); the placeholder mark is only the fallback when no logo is set. Per-game "How to Buy" info popup (description/important notes) + admin-editable instant/manual delivery badge, `EditGameModal` gained Basic Info/Content tabs (ADR-109) — admin Content tab live-verified 2026-10-08 (§16 item 67). **2026-10-05 (ADR-097 addendum, #356 — released via #362, 2026-10-06):** the ID fields follow the game's contract — digits-only fields get the numeric keypad and block typed non-digits, a paste is kept with an inline error, a Text game (e.g. Riot ID) gets a normal keyboard; the backend refuses the same input on checkout and Check ID **2026-10-17 (ADR-071 addendum, #474, released via #476):** every route has a matched `loading.tsx` (home, price list, Check ID, membership, legal pages were missing one and froze on navigation), enforced by a CI guard. | ADR-062–065, 071, 077–079, 089, 090, 097, 109 |
 | Game ID Checker (ADR-123) | ✅ Live 2026-10-16 via #472 — `/check-id` + `/check-id/<slug>` for the five families (Mobile Legends, Free Fire, Genshin Impact, Honkai Star Rail, Zenless Zone Zero), Turnstile (widget "PekanGame Game ID Checker"), 5/min + 30/hour per IP, 200/hour provider budget, RedxGame only, `public_player_checks`; in the sitemap and `llms.txt` on the primary brand, `noindex` on affiliates. Mobile More drawer; header highlight follows the page. A new affiliate custom domain must be added to the widget by hand until §16 item 108 | ADR-123 |
 | Internal Accounting (supplier funding ledger + CHIP settlement recon) | 🟢 Live — PR-1 built 2026-09-11: `supplier_transfers`/`supplier_ledger_entries` (append-only, foreign-currency), Record Supplier Transfer UI (`/admin/accounting`), `ORDER_DRAWDOWN` capture (Digiflazz webhook + Gamevion sync response — a `Gagal` after `Pending` writes no `REFUND`, grilled), drift check + amber chip on Dashboard Health, Transaction Register + CSV export. **2026-09-15 addendum built:** `supplier_fee` field (the supplier's own deposit-side cut, e.g. Digiflazz's flat IDR fee — ledger now credits net, not gross) + Adjust/Void correction actions (never edits/deletes the append-only ledger, always a new `MANUAL_ADJUSTMENT` entry). **PR-2 built 2026-09-19 (ADR-110 PR-B)** — CHIP `.xlsx` settlement reconciliation (`payment_settlements` + `chip_settled_transactions` dedup guard) + Monthly Accounting Summary screen, verified against a real PekanGame CHIP settlement file. **2026-10-08 (ADR-083 addendum, live via #376):** neutral "Affiliate tier fees (from earnings, no cash)" line, also in the Envelope Ledger's rough P&L. **2026-10-10 (ADR-083 addendum, §16 item 78) PR-1 (#390), live via #393:** Envelope Ledger postings with typed lines (funding loan/share capital, transfer, expense, director-paid expense, repayment, distribution), per-director loan balances, whole-posting void, zero-balance archive; `supplier_transfers.transferred_on`; `LedgerEntry` append-only guard. **PR-2 (#391), live via #393:** month close on the Monthly Summary (exact operating-profit allocation per KL month from September 2026, prior-month drift carried forward, reopen of the latest close only), "where is the money" cash equation with a cash-account snapshot and gap note, operating profit + new lines (voucher breakage, admin-issued vouchers, supplier corrections, envelope expenses), FX rate as of month end; the manual "Allocate Monthly Profit" and the platform "Request Withdrawal" are gone. **2026-10-11 (ADR-083 addendum, item 75), live via #406 (2026-10-12):** the Monthly Summary's issued-voucher lines are split into "Admin-issued vouchers (no order)" (a profit cost) and "Failed-order store credit issued" (information only); a merge result is in neither | ADR-083, ADR-110 |
 | Balance / Wallet Visibility | 🟢 Part A live (released 2026-09-29, #320) — standalone `/admin/balance` (deliberately not nested under Accounting — a Commerce-level item, since Part B grows it into operational monitoring, not bookkeeping): live-refreshable supplier balance per supplier + every Reseller's prepaid wallet balance (total + per-row), zero new backend, reuses ADR-046/073. Part B (learned "comfortable buffer" forecast) is grilled and designed as ADR-115, with the build parked (§16 item 28) | ADR-046, ADR-073, ADR-115 |
@@ -685,7 +686,8 @@ for the 2026-09-17 audit that found two dark-mode token bugs).
 
 **Restructured 2026-10-12; every open item re-checked against git and
 production on 2026-10-15 after release #449; items 98, 99, 106 and 107
-checked again on 2026-10-16, after release #469; 107 closed after release #472.** This list holds only **open** items. "Next up"
+checked again on 2026-10-16, after release #469; 107 closed after release #472;
+106, 11, 96 and the payment state re-checked 2026-10-17 after release #476.** This list holds only **open** items. "Next up"
 is the one place they are sorted, one line each; "Details" holds each item's
 full text once, by number. Everything closed is one line under "Recently
 closed", pointing to where the full story lives (`docs/build-log.md` /
@@ -703,13 +705,18 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
 2026-10-16). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- None open (98 and 99 closed 2026-10-16).
+- **109** Build fonts without Google Fonts (`next/font/local`): the CI
+  `playwright` job fails when the build can't fetch them.
+- **110** Security audit follow-ups (2026-10-17): per-account login throttle,
+  missing HTTP headers, one upload size cap.
 
 **B. Needs a short grill / ADR addendum first**
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
   the accountant's monthly document list first.
 - **106** A supplier that fails inside a price-sync run is invisible: the run
   still says `success` (found 2026-10-16, Gamevion). Short grill: where to record it.
+- **111** Bot check (Turnstile) on the admin and portal login forms; ties to
+  item 108's hostname list.
 
 **C. Founder actions (no code)**
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
@@ -1036,6 +1043,52 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
       10-hostname limit and the Enterprise "any hostname" option against
       current Cloudflare docs before designing past 10 (several widgets
       would need a per-host site key on the storefront).
+
+109. **Builds fetch Google Fonts over the network — the CI `playwright` job
+    flakes on it (found 2026-10-17).** `admin`, `storefront` and `reseller`
+    load fonts with `next/font/google`, so `next build` downloads them. When
+    the download fails, Turbopack aborts with `Can't resolve
+    '@vercel/turbopack-next/internal/font/google/font'`. It hit the e2e
+    boot twice in one day (PR #474's first run; release #476's `main` run,
+    green on re-run). An older form of the same crash was item 27 (2026-10-08,
+    `next dev` → `next build` in e2e). Vercel builds use the same download
+    and have not failed yet. `playwright` is not a deploy gate (ADR-066), so a
+    flake only costs a re-run.
+    - **Fix:** commit the font files and switch to `next/font/local` in the
+      three apps (storefront also references the font in `globals.css`).
+      Then no build depends on Google's servers. Check that the rendered
+      font matches before and after (screenshot plus `getComputedStyle`).
+
+110. **Security audit follow-ups (founder's 10-point check, 2026-10-17).**
+    Dependencies (item 1 of the check) were fixed in #474 and are now
+    scanned weekly. The other gaps found, all small:
+    - **Login throttle is per IP only:** `/login`, `/login/mfa` and the
+      affiliate login allow 5/min per IP (`routes/api.php`); there is no
+      per-email limit, so a guess spread over many IPs isn't slowed. Add a
+      per-email bucket, as `otp-request` already has
+      (`AppServiceProvider`). Admin MFA (opt-in) softens it for admins.
+    - **Headers:** `api.pekangame.space` sends no HSTS. No app sends
+      `Referrer-Policy` or `Permissions-Policy`. The reseller portal lacks
+      `X-Content-Type-Options: nosniff`, and the storefront sends
+      `x-powered-by: Next.js` (`poweredByHeader: false`). All four
+      frontends already have HSTS and a CSP.
+    - **Upload cap:** `CorrectSupplierTransferRequest`'s `receipt` has no
+      `max:5120`, unlike its siblings (super_admin only, so low risk).
+    - Checked and fine: HTTPS redirect on every host, upload type allowlists
+      and WebP re-encoding, bcrypt passwords and hashed API keys,
+      FormRequest validation and Purifier on rich text, no raw SQL built
+      from input, no secret in any `NEXT_PUBLIC_*`. Accepted, per its ADR:
+      the portal's bearer token in `sessionStorage` (ADR-009).
+
+111. **Bot check on the login forms (founder's 10-point check,
+    2026-10-17) — needs a short grill.** Turnstile protects only the Game ID
+    Checker (ADR-123). The admin login, the affiliate/reseller portal login
+    and checkout rely on rate limits alone (checkout also has
+    `CheckoutVelocityGuard`). For the grill: which forms (logins first;
+    checkout adds friction to the money path), the hostnames involved (the
+    portal and admin are on `pekangame.space`; storefront checkout runs on
+    every affiliate domain, item 108), and fail-closed vs fail-open when
+    Cloudflare is down.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
