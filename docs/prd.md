@@ -725,6 +725,8 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
   first admin-issued voucher.
 - **85** Membership renewal reminder on WhatsApp (designed), at 10 active members
   or when members don't renew despite the email.
+- **108** Add affiliate custom domains to the Turnstile widget automatically
+  (ADR-123), when ~5 affiliate domains are active.
 - **104** Reseller wallet top-up KPIs (how often, how much), with item 28.
 - **105** Batch `Order::cashCompensationSen()`'s wallet-refund lookup, when the
   Customer Detail page is slow for a big reseller (Pulse > 500 ms).
@@ -1045,6 +1047,26 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
     - Trigger met 2026-10-16: release #469 carries the validators and the
       founder confirmed them in prod (storefront and bot). Next step is
       the grill.
+
+108. **Turnstile widget hostnames follow affiliate domains — waiting on a
+    trigger (founder, 2026-10-16).** The Game ID Checker's Cloudflare
+    Turnstile widget ("PekanGame Game ID Checker", site key
+    `0x4AAAAAAFYZZNQMJTpU31qh`) only renders on hostnames listed on it. On
+    2026-10-16 it lists 3 of its 10: `pekangame.com`, `pekangame.space`,
+    `fixfastapp.com` (the one active affiliate domain); subdomains are
+    covered. Until this is built, a new affiliate custom domain must be
+    added to the widget by hand in the Cloudflare dashboard, or the checker
+    on that domain shows a Turnstile error (fails closed; checkout is
+    unaffected).
+    - **Trigger:** about 5 active affiliate domains, or the first time one
+      is missed.
+    - **For the grill:** update the widget's domains through Cloudflare's
+      Turnstile widget API from the affiliate custom-domain attach and
+      detach flow (ADR-060), with a token scoped to Turnstile only; what
+      happens when the API call fails (retry, admin alert). Re-check the
+      10-hostname limit and the Enterprise "any hostname" option against
+      current Cloudflare docs before designing past 10 (several widgets
+      would need a per-host site key on the storefront).
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
