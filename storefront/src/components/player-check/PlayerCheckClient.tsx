@@ -4,7 +4,8 @@ import Script from "next/script";
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircle, WarningCircle, XCircle, Hourglass } from "@phosphor-icons/react/dist/ssr";
+import { CheckCircle, WarningCircle, XCircle, Hourglass, ArrowRight } from "@phosphor-icons/react/dist/ssr";
+import PlaceholderTile from "@/components/ui/PlaceholderTile";
 import Button from "@/components/ui/Button";
 import { ApiError } from "@/lib/api-client";
 import { checkPlayer, orderHrefWithPrefill, type PlayerCheckFamily, type PlayerCheckResult } from "@/lib/player-check";
@@ -242,6 +243,42 @@ function ResultCard({ result, storeName }: { result: PlayerCheckResult; storeNam
   }
 }
 
+/**
+ * `/check-id`'s family picker: the same card as the home page's
+ * ProductCard (16:10 image, name), with "Check ID" where the price sits.
+ */
+export function FamilyCards({ families }: { families: PlayerCheckFamily[] }) {
+  return (
+    <nav aria-label="Choose a game" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {families.map((f) => (
+        <Link
+          key={f.slug}
+          href={`/check-id/${f.slug}`}
+          className="group flex flex-col overflow-hidden rounded-lg border-2 border-ink bg-surface-container-lowest neo neo-hover transition-all"
+        >
+          <div className="relative aspect-16/10">
+            {f.image_url ? (
+              <Image src={f.image_url} alt={f.name} fill sizes="(min-width: 1024px) 25vw, 50vw" className="border-b-2 border-ink object-cover" />
+            ) : (
+              <PlaceholderTile label={f.name} />
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5 p-3.5">
+            <span className="font-display text-[15px] font-bold leading-tight">{f.name}</span>
+            <div className="mt-2 flex items-center justify-between gap-2 border-t border-dashed border-ink/40 pt-2">
+              <span className="text-[11px] text-on-surface-variant">Free ID check</span>
+              <span className="inline-flex items-center gap-1 font-display text-[13px] font-bold uppercase text-primary-on-surface">
+                Check ID <ArrowRight size={14} weight="bold" />
+              </span>
+            </div>
+          </div>
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+/** The family page's compact switcher, so the form stays near the top. */
 export function FamilyTiles({ families, activeSlug }: { families: PlayerCheckFamily[]; activeSlug?: string }) {
   return (
     <nav aria-label="Choose a game" className="grid grid-cols-3 gap-2 sm:grid-cols-5">

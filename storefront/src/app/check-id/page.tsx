@@ -2,7 +2,7 @@ import type { Metadata, ResolvingMetadata } from "next";
 import { notFound } from "next/navigation";
 import SiteFooter from "@/components/layout/SiteFooter";
 import CheckIdFaq from "@/components/player-check/CheckIdFaq";
-import { FamilyTiles } from "@/components/player-check/PlayerCheckClient";
+import { FamilyCards } from "@/components/player-check/PlayerCheckClient";
 import { faqFor } from "@/components/player-check/guides";
 import { getBranding } from "@/lib/branding";
 import { listPlayerCheckFamilies } from "@/lib/player-check";
@@ -30,7 +30,7 @@ export default async function CheckIdPage() {
   return (
     <>
       <main className="pb-nav lg:pb-0">
-        <div className="mx-auto max-w-[760px] px-4 py-12 lg:py-16">
+        <div className="mx-auto max-w-[1200px] px-4 py-12 lg:py-16">
           <h1 className="font-display text-3xl font-bold uppercase tracking-tight text-on-surface lg:text-headline-lg">
             Game ID Checker
           </h1>
@@ -40,10 +40,12 @@ export default async function CheckIdPage() {
           </p>
 
           <div className="mt-8">
-            <FamilyTiles families={families} />
+            <FamilyCards families={families} />
           </div>
 
-          <CheckIdFaq items={faqFor(null, branding.storeName)} />
+          <div className="max-w-[760px]">
+            <CheckIdFaq items={faqFor(null, branding.storeName)} />
+          </div>
         </div>
       </main>
       <SiteFooter />
