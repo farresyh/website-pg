@@ -30,36 +30,36 @@ class MlbbPlayerValidatorTest extends TestCase
 
     public function test_returns_the_first_providers_result_when_it_succeeds(): void
     {
-        $first = $this->fakeProvider(PlayerValidationResult::valid('acidgameshop', 'Prime.', 'MY'));
-        $second = $this->fakeProvider(PlayerValidationResult::valid('nexone', 'Prime.', 'MY'));
+        $first = $this->fakeProvider(PlayerValidationResult::valid('redxgame', 'Prime.', 'MY'));
+        $second = $this->fakeProvider(PlayerValidationResult::valid('moogold', 'Prime.', 'MY'));
 
         $chain = new MlbbPlayerValidator([$first, $second]);
         $result = $chain->validate('51049607', '2005');
 
-        $this->assertSame('acidgameshop', $result->provider);
+        $this->assertSame('redxgame', $result->provider);
     }
 
     public function test_falls_back_to_the_next_provider_when_the_first_is_unavailable(): void
     {
         $first = $this->fakeProvider(null, new ProviderUnavailableException('down'));
-        $second = $this->fakeProvider(PlayerValidationResult::valid('nexone', 'Prime.', 'MY'));
+        $second = $this->fakeProvider(PlayerValidationResult::valid('moogold', 'Prime.', 'MY'));
 
         $chain = new MlbbPlayerValidator([$first, $second]);
         $result = $chain->validate('51049607', '2005');
 
-        $this->assertSame('nexone', $result->provider);
+        $this->assertSame('moogold', $result->provider);
     }
 
     public function test_does_not_fall_back_on_a_confirmed_invalid_result(): void
     {
-        $first = $this->fakeProvider(PlayerValidationResult::invalid('acidgameshop'));
-        $second = $this->fakeProvider(PlayerValidationResult::valid('nexone', 'Prime.', 'MY'));
+        $first = $this->fakeProvider(PlayerValidationResult::invalid('redxgame'));
+        $second = $this->fakeProvider(PlayerValidationResult::valid('moogold', 'Prime.', 'MY'));
 
         $chain = new MlbbPlayerValidator([$first, $second]);
         $result = $chain->validate('99999999', '9999');
 
         $this->assertFalse($result->valid);
-        $this->assertSame('acidgameshop', $result->provider);
+        $this->assertSame('redxgame', $result->provider);
     }
 
     /**
@@ -78,7 +78,7 @@ class MlbbPlayerValidatorTest extends TestCase
                 throw new ProviderUnavailableException('timed out');
             }
         };
-        $second = $this->fakeProvider(PlayerValidationResult::valid('nexone', 'Prime.', 'MY'));
+        $second = $this->fakeProvider(PlayerValidationResult::valid('moogold', 'Prime.', 'MY'));
 
         $chain = new MlbbPlayerValidator([$slowDown, $second], deadlineSeconds: 8);
 

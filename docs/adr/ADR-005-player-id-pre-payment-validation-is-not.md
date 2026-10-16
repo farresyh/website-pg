@@ -1,6 +1,6 @@
 # ADR-005 (D5): Player-ID pre-payment validation is not universal
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-16):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — 2026-07-23
 
@@ -29,3 +29,29 @@ The same check surfaced a related, previously-undocumented gap: `POST /api/order
 **Addendum, 2026-07-27 — `CheckoutController` server-side enforcement built, closing the bypass flagged above:** surfaced by a full project audit as a real, exploitable gap — `POST /api/checkout` never checked `player_validations` at all, so any direct API call (skipping `POST /api/games/{game}/validate-player` entirely) reached a real Xendit charge and a real Gamevion order on an unconfirmed Player ID. Given ADR-004's no-cash-refund policy, the only resolution for a resulting misdelivery is retry or voucher — this made the bypass a genuine money/dispute risk, not just a spec gap.
 
 `CheckoutController::assertPlayerIdIsValidated()` now runs whenever `game.player_validator_enabled` is true: it requires a `player_validations` row matching the exact `game_id`/`player_id`/`server_id` tuple, `status='valid'`, within a rolling window (`services.player_validation.checkout_window_minutes`, default 30, env `PLAYER_VALIDATION_CHECKOUT_WINDOW_MINUTES`) — otherwise rejects with a `422` on `player_id` before any Order/payment is created. Deliberately matched on the data tuple, not a per-session/per-request token: guest checkout (this ADR, ADR-011) has no session to bind a token to, and founder confirmed data-tuple matching is sufficient — it closes "checkout with an ID that was never validated," which is the actual risk, without adding a token-issuance mechanism to solve a session-binding problem this architecture doesn't have. 6 new tests in `CheckoutControllerTest` (expired validation, wrong player_id, wrong status, matching server_id); full suite 367 tests, all green.
+
+### 2026-10-16 addendum — MLBB chain is now RedxGame → MooGold; AcidGameShop and Nexone removed
+
+**Context.** Found 2026-10-16 while checking the validators (read-only, prod):
+- **AcidGameShop** rebuilt its site. `POST /api/validate-mlbb` now returns the new SPA's HTML (HTTP 200, `text/html`), after returning 502 on 2026-10-10. Its new "Check Region ML" page calls an API whose code is deliberately obfuscated, behind a token step. We did not reverse it: a provider that actively hides its endpoint will break again.
+- **Nexone**'s `/idchecker` token page returns 403 since 2026-10-10.
+- **MooGold** still answers, ID and nickname correct, but with no country, as recorded in the 2026-07-25 addendum (re-tested on prod with an ID AcidGameShop had mapped to `MY`: `valid`, `countryCode` null).
+- So every MLBB validation since 2026-10-10 that reached a provider ended `region_unknown` or `invalid`, and `region_unknown` blocks checkout. No customer was hit, because all payment methods have been off since 2026-10-07; it was a launch blocker.
+
+**Replacement found:** RedxGame's public ID checker (`redxgame.com/tools`, a Laravel + Inertia app behind Cloudflare). Its page calls `POST /tools/check` with `{"game":"mobile-legends","inputs":{"user_id","server_id"}}`, a session cookie and the page's CSRF token. The JS is plain, with no captcha. Answers `{"status":true,"nickname","region":"<English country name>"}` or `{"status":false,"message":"Couldn't verify that ID…"}`. Tested 2026-10-16 with the founder's real accounts: Malaysia, Indonesia, Russia, Brazil, Turkey and South Korea all came back with the right region, the same on repeat calls. About 1.5–2 s cold, about 0.15 s on a repeat (Redx caches); reachable from the prod box (DigitalOcean IP), not challenged by Cloudflare. It also lists checkers for Free Fire, Genshin, Honkai: Star Rail, ZZZ, Roblox, Valorant, AOV and others (not built, see below).
+
+**Decision:**
+1. **The MLBB chain is RedxGame → MooGold.** `AcidGameShopValidator`, `NexoneValidator`, their config and tests are deleted, not kept as dead fallbacks.
+2. **Redx's session is cached and reused** (`player-validator:redxgame:session`, 60-minute TTL, under Laravel's default 120-minute session lifetime). A check is one request; a cold cache adds one `GET` of the checker page. A cached session that is rejected (419, or the HTML redirect Redx sends instead of JSON) is renewed once and the check retried; a freshly started session that is rejected is not retried, and the cache is cleared.
+3. **`status: false` is never trusted as "invalid"** (founder's call, 2026-10-16). Redx gives the same message for a wrong ID and for a failure on its own side. It is thrown as `ProviderUnavailableException`, so MooGold decides: MooGold invalid → `invalid`; MooGold valid → `region_unknown` (contact support). A genuinely wrong ID therefore costs two provider calls (about 4 s, measured).
+4. **Country names map to ISO codes with ICU, not a hand-kept table.** `CountryCodeDecoder::fromCountryName()` takes candidate codes from the timezone database (current codes only; walking AA..ZZ would map "Myanmar" to the retired `BU`, "Germany" to `DD`), names them with `Locale::getDisplayRegion(…, 'en')`, ignores case and ICU's parenthetical ("Myanmar (Burma)"). One alias so far: `Turkey` → `TR` (ICU says "Türkiye"). An unknown name is `null`, so `region_unknown`, never a guess, and logs `RedxGame region not mapped to a country code` with the name so an alias can be added. `fromFlagEmoji()` is removed (only the two dead providers used it).
+5. **Redx timeout 5 s** (was 8 s for AcidGameShop), so MooGold still starts inside `MlbbPlayerValidator`'s 8 s deadline when Redx times out.
+6. Nothing else changes: the `mlbb` profile, the 22 country → game mappings in `/middleware/validators` (keyed by ISO code), `PlayerValidationController`'s states, checkout enforcement and the reseller bot's `.checkid` all go through the same registry binding.
+
+**Rationale:** Redx is the only checker found that returns a region, has an unobfuscated public call, and answers fast from the prod box. Keeping MooGold behind it keeps ID + nickname checks working when Redx is down, at the cost of `region_unknown` (blocked checkout) rather than a wrong-region delivery.
+
+**Consequence to track:**
+- Redx is unofficial and can change or block us like AcidGameShop did. Signs: the chain's `Player validator provider unavailable, falling back` warnings for `RedxGameValidator`, and `player_validations.provider = 'moogold'` rows replacing `redxgame`.
+- Its rate limit is unknown (no rate-limit headers; not load-tested, deliberately). A checkout burst is softened by Redx's own cache and our 30-minute `player_validations` checkout window, not by anything we control.
+- A `RedxGame region not mapped` log line means a spelling to add to `CountryCodeDecoder::ALIASES`.
+- Other games' checkers on Redx: not built. Each needs its own validator profile, its own inputs and a decision on what "region" means for that game.

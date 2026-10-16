@@ -2,35 +2,72 @@
 
 namespace App\Services\PlayerValidation;
 
+use DateTimeZone;
+use Locale;
+
 /**
- * Decodes a flag emoji (e.g. "Malaysia 🇲🇾" or bare "🇲🇾") into its ISO
- * alpha-2 code algorithmically — a flag emoji is exactly two Unicode
- * Regional Indicator Symbols (U+1F1E6-U+1F1FF), one per letter, so no
- * country-name lookup table is needed. Chosen as the canonical
- * cross-provider signal since AcidGameShop (name + emoji) and Nexone
- * (emoji only) both carry it; MooGold's response has neither, so it
- * normalizes to null there, which is a real "no country data"
- * outcome the caller must handle, not an error.
+ * Maps an English country name (RedxGame's `region`, e.g. "Malaysia")
+ * to its ISO alpha-2 code, the key `player_region_mappings` uses.
+ *
+ * Names come from ICU (`intl`), so no hand-kept table. The candidate
+ * codes come from the timezone database, which lists only codes in
+ * current use: ICU still names retired codes (BU, SU, DD, YU) with
+ * today's country names, so walking AA..ZZ would map "Myanmar" to BU.
+ * An unknown name is null, which the caller treats as region unknown
+ * (checkout blocked), never a guess.
  */
 final class CountryCodeDecoder
 {
-    public static function fromFlagEmoji(?string $text): ?string
+    /**
+     * Names RedxGame uses that ICU spells differently (confirmed with a
+     * real account 2026-10-16). Add one when a "region not mapped" log
+     * line shows a new spelling.
+     */
+    private const ALIASES = [
+        'turkey' => 'TR',
+    ];
+
+    /** @var array<string, string>|null */
+    private static ?array $byName = null;
+
+    public static function fromCountryName(?string $name): ?string
     {
-        if ($text === null) {
+        $key = self::normalise((string) $name);
+
+        if ($key === '') {
             return null;
         }
 
-        if (! preg_match_all('/[\x{1F1E6}-\x{1F1FF}]/u', $text, $matches) || count($matches[0]) < 2) {
-            return null;
-        }
-
-        [$first, $second] = array_slice($matches[0], 0, 2);
-
-        return self::letterFromRegionalIndicator($first).self::letterFromRegionalIndicator($second);
+        return self::byName()[$key] ?? null;
     }
 
-    private static function letterFromRegionalIndicator(string $char): string
+    /**
+     * @return array<string, string>
+     */
+    private static function byName(): array
     {
-        return chr(ord('A') + (mb_ord($char, 'UTF-8') - 0x1F1E6));
+        if (self::$byName !== null) {
+            return self::$byName;
+        }
+
+        $map = self::ALIASES;
+
+        foreach (DateTimeZone::listIdentifiers() as $zone) {
+            $code = (new DateTimeZone($zone))->getLocation()['country_code'] ?? '??';
+
+            if ($code !== '??') {
+                $map[self::normalise(Locale::getDisplayRegion("-{$code}", 'en'))] ??= $code;
+            }
+        }
+
+        return self::$byName = $map;
+    }
+
+    /**
+     * Lower-case, and drop ICU's parenthetical ("Myanmar (Burma)").
+     */
+    private static function normalise(string $name): string
+    {
+        return trim(mb_strtolower(preg_replace('/\s*\(.*\)\s*/u', ' ', $name)));
     }
 }

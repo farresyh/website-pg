@@ -147,8 +147,8 @@ class CheckoutControllerTest extends TestCase
     private function validatorEnabledGameAndPackage(array $gameOverrides = []): array
     {
         $profile = PlayerValidatorProfile::query()->create([
-            'name' => 'AcidGameShop',
-            'key' => 'acidgameshop',
+            'name' => 'Mobile Legends Validator',
+            'key' => 'mlbb',
         ]);
 
         return $this->gameAndPackage(array_merge([

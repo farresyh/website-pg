@@ -35,9 +35,8 @@ use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\PlayerValidation\MlbbPlayerValidator;
 use App\Services\PlayerValidation\PlayerValidatorRegistry;
-use App\Services\PlayerValidation\Providers\AcidGameShopValidator;
 use App\Services\PlayerValidation\Providers\MoogoldValidator;
-use App\Services\PlayerValidation\Providers\NexoneValidator;
+use App\Services\PlayerValidation\Providers\RedxGameValidator;
 use App\Services\ReportAssistant\Gemini\FakeGeminiClient;
 use App\Services\ReportAssistant\Gemini\GeminiApiClient;
 use App\Services\ReportAssistant\Gemini\GeminiClient;
@@ -330,21 +329,17 @@ class AppServiceProvider extends ServiceProvider
             );
         });
 
-        // MLBB's validator chain — AcidGameShop -> Nexone -> MooGold,
-        // priority order per the founder's own reliability ranking.
+        // MLBB's validator chain — RedxGame -> MooGold (ADR-005 2026-10-16
+        // addendum: AcidGameShop and Nexone stopped working 2026-10-10).
         // Bound under 'player-validator.mlbb' so PlayerValidatorRegistry
         // resolves it the same way it would any future validator key.
         $this->app->bind('player-validator.mlbb', function () {
             $config = config('services.player_validators');
 
             return new MlbbPlayerValidator([
-                new AcidGameShopValidator(
-                    baseUrl: $config['acidgameshop']['base_url'],
-                    timeoutSeconds: $config['acidgameshop']['timeout'],
-                ),
-                new NexoneValidator(
-                    baseUrl: $config['nexone']['base_url'],
-                    timeoutSeconds: $config['nexone']['timeout'],
+                new RedxGameValidator(
+                    baseUrl: $config['redxgame']['base_url'],
+                    timeoutSeconds: $config['redxgame']['timeout'],
                 ),
                 new MoogoldValidator(
                     baseUrl: $config['moogold']['base_url'],
