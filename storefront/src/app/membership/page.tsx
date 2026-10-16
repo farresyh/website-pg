@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import SiteFooter from "@/components/layout/SiteFooter";
 import MembershipClient from "@/components/order/MembershipClient";
+import { MembershipFormSkeleton } from "@/components/skeletons/ContentPageSkeletons";
 import { getBranding } from "@/lib/branding";
 import { listPlans } from "@/lib/membership";
 
@@ -33,9 +34,7 @@ export default async function MembershipPage() {
   return (
     <>
       <main className="pb-nav lg:pb-0">
-        <Suspense
-          fallback={<p className="mx-auto max-w-[560px] px-4 py-10 text-sm text-on-surface-variant">Loading…</p>}
-        >
+        <Suspense fallback={<MembershipFormSkeleton />}>
           <MembershipClient />
         </Suspense>
       </main>

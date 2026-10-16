@@ -671,6 +671,52 @@ checker's anti-proxy protections).
 **Local cleanup.** The temporary local MLBB profile, mapping and game
 change were removed from the dev DB; the local servers were stopped.
 
+## 2026-10-17 — Dependency advisories + storefront route skeletons (ADR-071 addendum, PR #474)
+
+**Why.** A read-only security check of the 10 standard controls found
+`composer audit` reporting 5 advisories on the live lock. The founder also
+noticed that tapping the header logo from a game page froze on the old
+page, then jumped to home with no skeleton.
+
+**Dependencies.** Targeted `composer update` of `laravel/framework`
+(13.21.1 → 13.35.0), `symfony/http-foundation` + `http-kernel` (8.1.1 →
+8.1.9), `league/commonmark` (2.10.3), `league/flysystem` (+`-local`). The
+one that mattered: `symfony/http-foundation` 8.1.1 had an unauthenticated
+ReDoS through the `Cache-Control` request header (CVE-2026-108082).
+`--with-dependencies` was rejected because it pulled two major bumps
+(`brick/math` 0.18 → 1.0, `guzzlehttp/uri-template` 1 → 2) that no
+advisory needed. `composer audit` is now clean; `php artisan test`
+2869/2869 passed. npm: admin, storefront, reseller and e2e had 0
+advisories. docs-site has one moderate (`postcss-selector-parser`, through
+Starlight's expressive-code). It is build-time only, and npm's only offered
+fix is a Starlight downgrade, so it was left alone.
+
+**Skeletons, root cause.** ADR-071 left `/` and the legal pages without
+`loading.tsx` because they were static/ISR. ADR-060 PR-3 (`51a0fa2c`) made
+every SSR fetch read `headers()` for the per-Host brand, so `next build`
+now lists every route as `ƒ` dynamic. A dynamic route with no loading
+boundary keeps the old page until the new render ends. Only the three
+order/track routes had one; the planned progress-bar catch-all was never
+built. Fix: matched skeletons for `/`, `/price-list`, `/check-id`,
+`/check-id/[slug]`, `/membership`, `/about-us`, `/terms` and `/privacy`.
+`/membership`'s text "Loading…" Suspense fallback now uses the same form
+skeleton. `storefront/scripts/check-loading-boundaries.mjs` runs in the
+storefront CI job and fails a `page.tsx` without a `loading.tsx` (exempt:
+`/store-unavailable`, which never suspends). Verified that the guard fails
+when one is removed.
+
+**Verified.** In the e2e harness (production `next build` + throwaway
+backend), with RSC responses delayed 1.5s in Playwright: header logo
+`/order/<slug>` → `/` showed the home skeleton after 15ms, and
+`/membership` / `/track-order` after 8–9ms. Routes reached only through
+off-screen footer links aren't prefetched, so their skeleton waits for the
+server's first byte. The screenshot matched the home layout.
+
+**Gotcha.** The Vercel preview (`*.vercel.app`) can't be used to check
+storefront pages since ADR-060 PR-5: `proxy.ts` rewrites an unknown host to
+`/store-unavailable` (503). Use the e2e harness, where `localhost` is a
+primary host.
+
 ## 2026-10-17 — Weekly dependency audit (alert only)
 
 **Why.** PR #474 found `symfony/http-foundation` 8.1.1 live on `main` with an

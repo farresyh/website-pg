@@ -93,7 +93,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-068](./adr/ADR-068-self-serve-membership-subscription-payment.md) | Self-serve membership subscription payment — customer pays for a tier through the CHIP checkout, membership auto-created on webhook (ADR-027 Phase 7); renewal reminders by email, WhatsApp designed (2026-10-13 addendum) | In force | 2026-10-13 |
 | [ADR-069](./adr/ADR-069-digiflazz-supplier-hardening.md) | Digiflazz supplier hardening — inbound webhook, credential-rotation surfacing, raw-price visibility, balance freshness | In force | 2026-10-15 |
 | [ADR-070](./adr/ADR-070-reserved.md) | RESERVED — supplier-deposit / FX-history ledger → subsumed by ADR-083 | Reserved number — subsumed by ADR-083 |  |
-| [ADR-071](./adr/ADR-071-storefront-perceived-performance.md) | Storefront perceived-performance — loading states, prefetchable routes, tag-based revalidation, and mobile buy-flow layout fixes | In force | 2026-09-24 |
+| [ADR-071](./adr/ADR-071-storefront-perceived-performance.md) | Storefront perceived-performance — loading states, prefetchable routes, tag-based revalidation, and mobile buy-flow layout fixes | In force | 2026-10-17 |
 | [ADR-072](./adr/ADR-072-reseller-system-split.md) | Reseller-system split — `Affiliate` (whitelabel) vs `Reseller` (prepaid wallet), full rename, shared portal architecture | In force | 2026-09-04 |
 | [ADR-073](./adr/ADR-073-reseller-wallet.md) | Reseller wallet — fee-less tiers, prepaid-deposit ledger, order-placement contract, profit booking, delivery-failure handling | In force | 2026-09-04 |
 | [ADR-074](./adr/ADR-074-reseller-api-channel.md) | Reseller API channel — per-tenant API keys, order-placement/status endpoints | In force | 2026-10-14 |
