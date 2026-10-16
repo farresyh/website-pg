@@ -544,3 +544,68 @@ shows "Not valid — cannot resend"); only the type is behind.
   root `AGENTS.md`, PRD §14 and §16.
 - PRD §14: latest release #469, nothing on `staging`. §15: player
   validation live. §16: item 107's trigger met; re-check note made exact.
+
+## 2026-10-16 — Public Game ID Checker (ADR-123, PRD §16 item 107)
+
+**Design.** Grilled with the founder in seven rounds, then stress-tested
+against code and prod (read-only) before the build. Prod scale: 13
+`player_validations` rows ever, 18 validator-enabled stores over 5 families.
+The stress test changed one decision: the founder's `source` column on
+`player_validations` became a separate `public_player_checks` table, because
+`player_validations.game_id` is NOT NULL (a family check with no store has
+no game) and two readers already approve from it (checkout and
+`OrderResendService`), so a forgotten filter would let a public check
+approve a payment. Other findings fixed in the design: MLBB's public path
+binds RedxGame alone (MooGold is our supplier); a 2-minute cooldown after a
+provider failure; the brand-hidden-game filter existed twice and now has one
+home (`AffiliateGame::hiddenGameIdsFor`); Turnstile fails closed.
+
+**Built.**
+- Backend: `POST /api/player-check/{slug}` (`throttle:player-check`
+  5/min + 30/hour per IP, then Turnstile, input format, 10-minute Redis
+  result cache, cooldown, 200/hour global budget with a once-a-Malaysia-day
+  admin email through `BackupFailureAlerter`), `GET
+  /api/catalog/player-check/families[/{slug}]` with `indexable` from
+  `affiliates.is_primary`. `player-validator.public.{key}` for the five keys;
+  the standalone RedxGame bindings now come from one factory.
+  `public_player_checks` is pruned by `app:prune-player-validations`.
+  Validator profiles gained `public_name` / `public_slug` / `public_image_url`.
+- Admin: a "Game ID Checker" panel on each validator card (name, slug,
+  gallery image).
+- Storefront: `/check-id` and `/check-id/<slug>` (how-to-find-your-ID steps,
+  FAQ with `FAQPage` JSON-LD, our own copy; redxgame.com/tools renders by
+  JavaScript, so it couldn't serve as more than a topic list), sitemap and
+  `llms.txt` on the primary brand only, `noindex` elsewhere. The order page
+  prefills `?player_id=&server_id=` and doesn't validate on load. Mobile
+  bottom bar: [Home, Membership] · centre **More** (native `<dialog>`
+  drawer: Menu = Game ID Checker, Price List; Info = About Us, Terms,
+  Privacy) · [Track Order, Support]. Header and footer link the checker.
+  CSP allows `challenges.cloudflare.com` (script + frame). The ID-field
+  helpers moved from `Step1AccountInfo` to `order/idFields.ts`.
+
+**Verified.**
+- Fast suite green (2,869 tests, 14 new in `PlayerCheckControllerTest`
+  plus a prune test). Admin `tsc` + lint; storefront `tsc`, lint, build.
+- Local real run (Cloudflare's always-pass test keys passed as process env,
+  `.env` untouched; a temporary local MLBB profile and game removed
+  afterwards). The founder's MLBB 51049607/2005 → `found`, "Prime.", store
+  Mobile Legends, no provider or country in the response. Second check
+  `cache_hit = true`; `player_validations` stayed at 0.
+- Browser: the check shows the result card; "Top up" opened
+  `/order/mobile-legends?player_id=51049607&server_id=2005` with both fields
+  filled and no automatic verify. Playwright at 390 px: the drawer sits at
+  the bottom with full width, Escape closes it, it opens again, a drawer
+  link navigates and closes it, no horizontal scroll.
+
+**Gotchas.**
+- `php artisan serve` drops exported env vars (backend gotcha 3), so the
+  local run used `php -S` from `public/` with `server.php`.
+- Turnstile keeps the network busy, so Playwright's `networkidle` never
+  settles on a checker page; wait for `load`.
+
+**Founder setup before it works in prod.** Create a Turnstile widget in
+Cloudflare for every storefront hostname (affiliate custom domains too). Set
+`NEXT_PUBLIC_TURNSTILE_SITE_KEY` on the storefront Vercel project and
+`TURNSTILE_SECRET_KEY` in the Forge `.env`. Fill name, slug and image on
+each validator profile. Until then the pages exist, but no family is listed
+(no slugs yet) and the endpoint answers 503.
