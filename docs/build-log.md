@@ -628,3 +628,122 @@ each validator profile. Until then the pages exist, but no family is listed
 - Founder's Chrome run: an ID with a space was blocked in the form; wrong
   Server ID → "No account found"; 51049607/2005 → "Prime.", Top up →
   order page prefilled, not verified.
+
+## 2026-10-16 — Release #472 (`staging`→`main`): Game ID Checker live, verified; docs sync
+
+Founder merged #471 into `staging` (merge commit) and released #472
+(`c48659d`). The prod box runs it; `migrate:status` shows both 2026-10-16
+migrations ran.
+
+**Founder's prod setup, same day.**
+- Cloudflare Turnstile widget "PekanGame Game ID Checker" (Managed mode,
+  pre-clearance off), created with the founder in their Chrome. Hostnames
+  `pekangame.com`, `pekangame.space`, `fixfastapp.com` (the one active
+  affiliate domain, read from `affiliate_domains`); 3 of the widget's 10.
+  Site key `0x4AAAAAAFYZZNQMJTpU31qh` (public); the secret was copied by the
+  founder only.
+- `NEXT_PUBLIC_TURNSTILE_SITE_KEY` on the storefront Vercel project and
+  `TURNSTILE_SECRET_KEY` in the Forge `.env`, set by the founder.
+- Name, slug and image on all five validator profiles.
+
+**Verified on prod.**
+- Before the slugs, `/check-id` was 404 and the families list empty:
+  by design (a family without a slug isn't listed). That looked like a bug
+  to the founder, so the empty state is worth knowing.
+- After: `GET /api/catalog/player-check/families` lists `free-fire`,
+  `genshin-impact`, `honkai-star-rail`, `mobile-legends`,
+  `zenless-zone-zero`, each with a gallery image. `/check-id` and
+  `/check-id/mobile-legends` 200; `sitemap.xml` has the six checker URLs;
+  no robots meta on the primary brand; `llms.txt` 200.
+- In the founder's Chrome on `pekangame.com/check-id/mobile-legends`: the
+  Turnstile token arrived ("Ready to check."), the founder's MLBB
+  51049607/2005 → "Account found: Prime.", "tops up at Mobile Legends
+  Malaysia". `public_player_checks`: row 1 the founder's own check
+  (`cache_hit` false), row 2 this one (`cache_hit` true, within 10
+  minutes); `player_validations` had no new row.
+
+**Docs sync.** PRD §14 headline (latest release #472), §15 Game ID Checker
+row live, §16 item 107 closed and item 108 added (Turnstile widget hostnames
+follow affiliate domains, waiting on ~5 active affiliate domains), §13
+glossary (Game ID Checker, Game family), `foundation-security.md` §4 (the
+checker's anti-proxy protections).
+
+**Local cleanup.** The temporary local MLBB profile, mapping and game
+change were removed from the dev DB; the local servers were stopped.
+
+## 2026-10-17 — Dependency advisories + storefront route skeletons (ADR-071 addendum, PR #474)
+
+**Why.** A read-only security check of the 10 standard controls found
+`composer audit` reporting 5 advisories on the live lock. The founder also
+noticed that tapping the header logo from a game page froze on the old
+page, then jumped to home with no skeleton.
+
+**Dependencies.** Targeted `composer update` of `laravel/framework`
+(13.21.1 → 13.35.0), `symfony/http-foundation` + `http-kernel` (8.1.1 →
+8.1.9), `league/commonmark` (2.10.3), `league/flysystem` (+`-local`). The
+one that mattered: `symfony/http-foundation` 8.1.1 had an unauthenticated
+ReDoS through the `Cache-Control` request header (CVE-2026-108082).
+`--with-dependencies` was rejected because it pulled two major bumps
+(`brick/math` 0.18 → 1.0, `guzzlehttp/uri-template` 1 → 2) that no
+advisory needed. `composer audit` is now clean; `php artisan test`
+2869/2869 passed. npm: admin, storefront, reseller and e2e had 0
+advisories. docs-site has one moderate (`postcss-selector-parser`, through
+Starlight's expressive-code). It is build-time only, and npm's only offered
+fix is a Starlight downgrade, so it was left alone.
+
+**Skeletons, root cause.** ADR-071 left `/` and the legal pages without
+`loading.tsx` because they were static/ISR. ADR-060 PR-3 (`51a0fa2c`) made
+every SSR fetch read `headers()` for the per-Host brand, so `next build`
+now lists every route as `ƒ` dynamic. A dynamic route with no loading
+boundary keeps the old page until the new render ends. Only the three
+order/track routes had one; the planned progress-bar catch-all was never
+built. Fix: matched skeletons for `/`, `/price-list`, `/check-id`,
+`/check-id/[slug]`, `/membership`, `/about-us`, `/terms` and `/privacy`.
+`/membership`'s text "Loading…" Suspense fallback now uses the same form
+skeleton. `storefront/scripts/check-loading-boundaries.mjs` runs in the
+storefront CI job and fails a `page.tsx` without a `loading.tsx` (exempt:
+`/store-unavailable`, which never suspends). Verified that the guard fails
+when one is removed.
+
+**Verified.** In the e2e harness (production `next build` + throwaway
+backend), with RSC responses delayed 1.5s in Playwright: header logo
+`/order/<slug>` → `/` showed the home skeleton after 15ms, and
+`/membership` / `/track-order` after 8–9ms. Routes reached only through
+off-screen footer links aren't prefetched, so their skeleton waits for the
+server's first byte. The screenshot matched the home layout.
+
+**Gotcha.** The Vercel preview (`*.vercel.app`) can't be used to check
+storefront pages since ADR-060 PR-5: `proxy.ts` rewrites an unknown host to
+`/store-unavailable` (503). Use the e2e harness, where `localhost` is a
+primary host.
+
+## 2026-10-17 — Weekly dependency audit (alert only)
+
+**Why.** PR #474 found `symfony/http-foundation` 8.1.1 live on `main` with an
+unauthenticated ReDoS advisory published a month earlier. Nothing scanned
+lockfiles on a schedule, so it was found only by a manual check.
+
+**What.** `.github/workflows/dependency-audit.yml`: every Monday 09:00 MYT
+(plus manual `workflow_dispatch`, plus any PR touching a lockfile) runs
+`composer audit --locked` and `npm audit --omit=dev` per app. It reads
+lockfiles only, with no install, so it takes a few CI minutes a week. npm
+thresholds: moderate for backend/admin/storefront/reseller; high for
+docs-site, whose only moderate (Starlight's expressive-code chain) has no
+fix short of a downgrade. Composer fails on any severity, because
+CVE-2026-108082 arrived with no rating. It is a separate workflow from `CI`
+and not in `deploy`'s `needs`, so a new advisory never blocks a release.
+It never upgrades anything: the response is a targeted upgrade branch,
+not `--with-dependencies` (#474 showed that pulls unrelated majors).
+
+**Where alerts land.** GitHub emails a failed scheduled run to the account
+that last changed the workflow's cron, i.e. the founder's. The schedule
+runs only from the default branch, so it starts after the next
+`staging`→`main` release. Dependabot PRs were considered and not chosen:
+one PR stream per app directory is noise for a solo founder, and its
+upgrades can be broader than the advisory needs.
+
+**Verified.** Locally: every npm app passes its threshold; docs-site fails
+at moderate and passes at high; `npm audit` works with no `node_modules`.
+On this PR, the composer job runs against staging's pre-#474 lock and is
+expected to fail. That is the alert path working, and it goes green once
+#474 merges.
