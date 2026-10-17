@@ -774,3 +774,15 @@ no Sentry package, OpenWA 0.23.7. A scripted check of all 123 ADR files
 against the `adr.md` index found every file indexed and every
 last-addendum date matching. The one wording drift (ADR-045's Standing)
 was aligned to its file banner.
+
+## 2026-10-17 — PRD §16 item 116: Failed-order card copy matches the voucher
+
+`OrderStatusCard`'s Failed closing line promised "a voucher for the full
+amount", but `OrderSettlementService::amounts()` issues
+`final_amount − transaction_fee` for a retail order (the gateway fee is
+never refunded). The card only reaches retail, non-test orders
+(`CustomerNotificationService::inScope()`), so one wording fits every case:
+"you'll receive a voucher here for what you paid, excluding the payment fee."
+A grep of backend, storefront, admin and portal found no other copy making
+the promise. `CustomerWhatsAppOptInTest` now asserts the new wording and
+that "full amount" is gone (red first, then green); full suite 2869 passed.
