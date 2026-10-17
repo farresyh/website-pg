@@ -4,11 +4,18 @@ import { apiFetch } from "@/lib/api-client";
 export interface MonthlyAccountingSummary {
   sales_revenue_sen: number;
   membership_revenue_sen: number;
+  /** At funded cost: the deposit's MYR per unit, ADR-083 2026-10-17 addendum. */
   cogs_sen: number;
+  /** Information only: COGS at the per-order cost the Transaction Register shows; this + the difference = COGS. */
+  cogs_at_order_cost_sen: number;
+  cogs_funding_difference_sen: number;
+  /** A count, not sen: recognised orders costed at their own cost because a drawdown or a rate was missing. */
+  cogs_fallback_order_count: number;
+  /** Information only: drawdowns recorded this month whose order is not in this month's COGS. */
+  drawdowns_not_in_cogs_sen: number;
   payment_processing_gain_loss_sen: number;
   supplier_prepaid_topup_sen: number;
   bank_transfer_fees_sen: number;
-  supplier_prepaid_fx_variance_sen: number;
   affiliate_commission_expense_sen: number;
   affiliate_tier_fees_sen: number;
   voucher_breakage_sen: number;

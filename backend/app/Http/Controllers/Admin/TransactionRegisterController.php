@@ -39,7 +39,7 @@ class TransactionRegisterController extends Controller
 
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Date', 'Type', 'Reference', 'Description', 'Supplier', 'Currency', 'Gross (RM)', 'Fee (RM)', 'Cost (RM)', 'Net (RM)', 'Amount (foreign)', 'Status', 'Funding source']);
+            fputcsv($out, ['Date', 'Type', 'Reference', 'Description', 'Supplier', 'Currency', 'Gross (RM)', 'Fee (RM)', 'Cost at delivery rate (RM)', 'Net (RM)', 'Amount (foreign)', 'Status', 'Funding source']);
 
             foreach ($rows as $row) {
                 // 2026-09-30 audit fix: a voided row already carries a

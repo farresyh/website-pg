@@ -35,7 +35,7 @@ final class CashPositionService
     public const ESTIMATED_CHIP_FEE_SEN = 100;
 
     public function __construct(
-        private readonly MonthlyAccountingSummaryService $summary,
+        private readonly FundedCostOfSales $costOfSales,
         private readonly SettlementReconciliationService $settlements,
     ) {}
 
@@ -118,7 +118,7 @@ final class CashPositionService
             ->get();
 
         // ponytail: a supplier with no transfer by the month end has no rate; its balance is then only drawdowns, valued at 0.
-        return (int) $balances->sum(fn ($row) => (int) round(((float) $row->balance) * ($this->summary->weightedAverageRate((int) $row->supplier_id, $lastDay) ?? 0.0) * 100));
+        return (int) $balances->sum(fn ($row) => (int) round(((float) $row->balance) * ($this->costOfSales->weightedAverageRate((int) $row->supplier_id, $lastDay) ?? 0.0) * 100));
     }
 
     private function ledgerBalance(LedgerOwnerType $owner, Carbon $toExclusive): int
