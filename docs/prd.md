@@ -709,6 +709,11 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
   `playwright` job fails when the build can't fetch them.
 - **110** Security audit follow-ups (2026-10-17): per-account login throttle,
   missing HTTP headers, one upload size cap.
+- **115** Cost readers still show the checkout estimate after ADR-111's real
+  cost: Customer Detail profit analysis, Transaction Register and COGS
+  (found 2026-10-17). COGS waits on item 81's accountant answer.
+- **116** The Failed-order WhatsApp copy promises "a voucher for the full
+  amount", but the voucher excludes the gateway fee.
 
 **B. Needs a short grill / ADR addendum first**
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
@@ -751,6 +756,14 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
 - **25** Portal "needs attention" aggregate.
 - **57** Marketing Campaigns (ADR-118, designed).
 - **94** Best-selling products per game in Reports.
+- **112** Customer account credentials (ADR-124, accepted design): the
+  shared base for 113 and 114.
+- **113** Login Top-up for Roblox and eFootball (ADR-125, accepted design):
+  manual suppliers, Manual Queue, supplier WhatsApp group bot. Two PRs,
+  with 112.
+- **114** Joki MLBB on owned brands (ADR-126, accepted design): `/joki`
+  rank calculator + route packages, penjoki as pay-after manual suppliers.
+  After 113.
 
 ## Details
 
@@ -911,6 +924,16 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
         stored path, so moving them means a prod data patch for no gain.
     - Before the grill: get the accountant's own monthly document list, so
       the pack follows what they actually ask for.
+    - Also ask the accountant (added 2026-10-17, from ADR-125's addendum and
+      ADR-126):
+      - how to present supplier balances that are payables (pay-after
+        suppliers and penjoki) next to prepaid deposits;
+      - whether an order paid in one month and delivered in the next
+        should take its supplier cost in the month it was paid (FX
+        true-up scoped by the order's `paid_at`);
+      - what the COGS line should mean once it uses the real cost
+        (`effectiveCostPriceSen()`, item 115) rather than the checkout
+        estimate.
 
 83. **An admin-issued voucher's ledger debit is never given back — waiting on
     the first admin-issued voucher** (ADR-024 2026-10-12 addendum, founder's
@@ -1089,6 +1112,51 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
     portal and admin are on `pekangame.space`; storefront checkout runs on
     every affiliate domain, item 108), and fail-closed vs fail-open when
     Cloudflare is down.
+
+112. **Customer account credentials (ADR-124, accepted design 2026-10-17).** The
+    base for 113 and 114: an own encrypted `order_credentials` table left
+    out of the DB dump, reveal by `super_admin` with MFA step-up and an
+    audit row, wiped by one 15-minute sweep once the order is closed
+    (delivered or compensated + 24 h, payment failed, abandoned 24 h, or a
+    14-day ceiling). Built with 113.
+
+113. **Login Top-up, Roblox and eFootball (ADR-125, accepted design
+    2026-10-17).** PekanGame and Affiliates, not Reseller. PR 1 (with 112):
+    `suppliers.driver` + capabilities on `Supplier` (sync selects by driver,
+    not `api_config`), one stale-Pending rule for reconciler and Dashboard,
+    admin-entered manual packages at an agreed cost, login-game rule, per-game
+    credential schema, `member_pricing_enabled` per game, Manual Queue whose
+    Delivered/Failed call `finalizePendingDelivery()`. PR 2: one
+    `whatsapp_groups` registry for resellers and suppliers, order post with a
+    signed one-time login link through the persisted notification queue,
+    `.done` / `.gagal` / `.pending`, 30-minute SLA reminder.
+
+114. **Joki MLBB (ADR-126, accepted design 2026-10-17).** Owned brands only,
+    gated in `hiddenGameIdsFor()` (two drifted copies route through it).
+    `PricingBasis::Fixed`: selling price from the admin rate table, cost =
+    payout share (default 100%) × selling price. A real `Package` per order
+    (calculator + route packages); package-swap resend blocked. Each penjoki
+    a pay-after manual supplier with its own group; "Joki – Unassigned" then
+    Assign. `.progress` updates shown on Order Detail, Track Order and
+    WhatsApp (at most one per 2 hours). Full store-credit refund; partial
+    penjoki pay is an envelope expense. Launch needs the MLBB rank model and
+    an RM rate table the founder approves. After 113.
+
+115. **Cost readers show the estimate, not the real cost (found
+    2026-10-17).** With ADR-111 on in production, `platform_profit` and the
+    ledger use the real cost, but three readers use `orders.cost_price` for
+    Delivered orders: `CustomerAnalyticsService.php:344` (Customer Detail
+    profit analysis), `TransactionRegisterService.php:156` and
+    `MonthlyAccountingSummaryService::cogs()`. Revenue − cost − commission −
+    fees then differs from profit in the same row. Fix: use
+    `Order::effectiveCostPriceSen()` in all three. The COGS change waits on
+    item 81's accountant answer (operating profit is unchanged either way).
+
+116. **Failed-order WhatsApp copy over-promises (found 2026-10-17).**
+    `OrderStatusCard` tells the customer a failed order gets "a voucher for
+    the full amount", but `OrderSettlementService` refunds
+    `final_amount − transaction_fee`. Reword to match. ADR-125 decision 24
+    later words the card by fulfilment kind in the same class.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
