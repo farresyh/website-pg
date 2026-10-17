@@ -17,6 +17,8 @@ export interface TransactionRegisterRow {
   date: string;
   type:
     | "order"
+    /** ADR-083 2026-10-18 addendum: a manual correction to an order's platform profit, dated when made; `reference` is the order number. */
+    | "order_profit_correction"
     | "supplier_transfer"
     | "supplier_refund"
     | "voucher_issued"
