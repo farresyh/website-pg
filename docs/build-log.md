@@ -1206,3 +1206,33 @@ first real lockout will be its live check.
 **Checked and not changed: tests that look duplicated across layers.** 40 controller/service pairs with similar names were read side by side. None is a true duplicate. Controller tests check the HTTP wiring: parameters, the 422 status, and that no job is queued when a rule fails. Service tests check the logic. Some rules exist only in the controller (`retryDelivery`'s guards, refunded-to-wallet, voucher-restored), so those controller tests are the only coverage of that rule. Name matches across the portal, REST API and WhatsApp bot are different channels, each needing its own test. Nothing was removed.
 
 **Gotcha.** `git rm`/`git mv` staged before a path-limited `git add` + commit end up in that commit. The branch's commits had to be rebuilt (it was not yet pushed).
+
+## 2026-10-18 — §16 item 120: keep accounting source files
+
+**Why.** LHDN expects payment-gateway statements and original receipts to be kept for seven years. The CHIP settlement `.xlsx` was parsed and discarded, and receipts had no dated layout.
+
+**Grill + stress test (founder).** The founder chose: refuse a file with nothing new (broadened from "byte-identical only" once the stress test showed a CHIP re-export has different bytes), folders by `date_to`, an "Attach original file" for the four old settlements, and keep a receipt a correction replaces. The stress test found four gaps (ADR-083 2026-10-18 addendum, "keep accounting source files"):
+- orphaned files from supplier-transfer and wallet-credit saves;
+- a correction deleting the receipt it replaced;
+- a settlement row created outside its transaction, leaving an empty `pending` row on re-upload;
+- a 500 on an unreadable file.
+
+**Checked first (prod, read-only).** `accounting_disk` and `wallet_receipts_disk` are `r2_accounting`. The bucket holds 29 files: 26 envelope receipts and 3 supplier receipts. 4 settlements (#1–#4, 3 Sep – 6 Oct), none with a file. The app's R2 token can't read the bucket's lifecycle rules (`AccessDenied`, least privilege), so the founder checks them in Cloudflare.
+
+**Shipped.**
+- `AccountingFileStore::storeThen()`: the one store for CHIP settlements, supplier transfers (and corrections), envelope postings and manual wallet credits.
+- Migration `payment_settlements.file_path` + `file_sha256` (unique).
+- `SettlementReconciliationService::ingest()` takes the `UploadedFile`, refuses a file with nothing new, and keeps the original only when the whole ingest commits.
+- `attachOriginal()` accepts only an exact date + total match.
+- `GET`/`POST /api/accounting/settlements/{id}/file`.
+- Admin: download / attach on the settlement detail page and updated upload copy.
+
+Tests: 4 + 8 new, 4 updated. Full suite 2816/2816. Admin tsc, lint and build are clean.
+
+**Live check.** A built admin on `localhost:3000` against `serve --no-reload` on a copy of the dev DB, covering upload, same-file refusal ("…already reconciled (settlement #3)…"), download as `settlements-20261016.xlsx`, a refused attach of a non-matching file, and an accepted attach of the matching one. Screenshots checked. The copy was deleted afterwards.
+
+**Gotchas.**
+- The first full test run wrote 10 real `.xlsx` files into `storage/app/private/accounting/chip-settlements/`. `PaymentSettlementControllerTest` uploads through the endpoint without `Storage::fake()`, which used to be harmless because upload kept nothing. Fixed in that test's `setUp`, and the stray files were deleted. A second full run wrote nothing.
+- `UploadedFile::hashName()` is cached per instance. A test reusing one instance for two uploads gets the same storage path, so the failed second write's cleanup deleted the first file. Real requests always carry a new instance; the test now uses two.
+
+**Founder follow-ups.** Check R2 lifecycle rules. After release, attach the originals of settlements #1–#4.
