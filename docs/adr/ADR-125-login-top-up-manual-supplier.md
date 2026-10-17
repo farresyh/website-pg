@@ -91,3 +91,7 @@ Decisions added:
 24. **Readers:** `llm_report_orders` adds `COALESCE(real_cost_price_sen, cost_price) AS effective_cost_price`; the Orders list gets a "Profit flagged" filter; `OrderStatusCard` words its copy by the game's fulfilment kind (uid / login / joki).
 
 Must not change: `recordOrderDrawdown`'s contract and idempotency key, `operatingProfit()`'s formula, MonthClose's prior adjustment, API suppliers' polled-balance and drift path, and `SupplierTransfer` as capital rather than P&L.
+
+### 2026-10-17 addendum — the report view's effective cost mirrors `effectiveCostPriceSen()`
+
+Found in the 2026-10-17 docs audit. Decision 24's `COALESCE(real_cost_price_sen, cost_price) AS effective_cost_price` is replaced. That expression is wrong in two cases: a combo keeps its real cost only on `order_delivery_legs.real_cost_price_sen` (the order's own column stays null, so the catalog cost would show), and a non-combo order's stored real cost counts only when it satisfies the profit residual (flag off or no FX rate means it was not used). `llm_report_orders.effective_cost_price` must give the same number as `Order::effectiveCostPriceSen()`: the residual check for a single order, and the sum of the legs for a combo. The same fix covers the live Report Assistant prompt (PRD §16 item 118), which today points at `cost_price`.

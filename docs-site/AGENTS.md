@@ -55,6 +55,5 @@ npm run check    # astro check (tsc)       (CI gate)
 
 Vercel project `pekangame-docs`, root directory `docs-site/`, framework preset
 Astro, auto-deploys from `main`. The domain + DNS are set up once — see
-`scripts/adr-084-docs-site-wizard.sh`. Once the domain is verified, set
-`DOCS_SITE_URL=https://docs.pekangame.space` on the backend (Forge) so
-`/docs/api` 301-redirects here.
+`scripts/adr-084-docs-site-wizard.sh`. `DOCS_SITE_URL=https://docs.pekangame.space`
+is set on the backend (Forge), so `/docs/api` 301-redirects here.

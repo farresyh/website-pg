@@ -33,7 +33,7 @@ reseller-guard endpoint, not just a hidden nav tab.
   the same `/api/affiliate/login`. A completely separate guard from
   `admin/`'s — this app physically cannot render an admin screen (ADR-059
   decision 1).
-- **Same browser-calls-Laravel-directly model as `admin/`** (ADR-009):
+- **Browser calls Laravel directly** (ADR-009; the admin has used a cookie session instead since ADR-121):
   the bearer token lives in `sessionStorage` (`lib/session.ts`), a
   presence-only httpOnly cookie drives `proxy.ts`'s optimistic redirect
   (never a security boundary — Laravel enforces on every request).

@@ -62,3 +62,7 @@ Decisions (grilled, each confirmed against real code before building):
 - This ADR's own decision 4c framing ("two exits opened, one deliberately not") is now "three exits opened, deliberately not collapsing Confirm Failed and Issue Voucher into one action" — the double-compensation guard the original decision protected is unchanged, since Confirm Failed itself credits nothing.
 - No fact exists yet about Digiflazz's own dashboard capabilities (unlike Gamevion's, confirmed via a founder-reviewed screenshot) — the banner's generic Digiflazz copy should be sharpened to name real capabilities once/if that's ever confirmed live.
 - Tests: +2 `OrderStatusServiceTest`, +3 `OrderFulfillmentServiceTest`, +6 `OrderTest` (model), +6 `Admin\OrderControllerTest` (incl. the partial-combo-delivery exclusion), +3 `SandboxOrderControllerTest`. Full backend suite **2029/2029** green, Pint clean. `admin/` `tsc --noEmit`/`eslint`/`next build` all clean.
+
+### 2026-10-17 addendum — cross-reference only
+
+Docs audit. Decision 7's `Order::deliveryRetryLikelyFutile()` was renamed `deliveryRetryUnsafeWithSameReference()`, with `resendUnsafeToOverride()` added, by [ADR-102](./ADR-102-order-delivery-failure-guard-unification.md). No decision changes here.

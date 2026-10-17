@@ -865,3 +865,45 @@ Prod scale (read-only tinker, 2026-10-17): 29 realised orders, all
 Delivered; 4 have a real cost that differs (2 of them combos, 2 customers),
 RM59.23 estimate vs RM59.49 real, so RM0.26 in total. Two red→green tests;
 full suite 2874 passed.
+
+## 2026-10-17 — Docs audit: outdated and contradicting facts
+
+Three read-only forks (PRD; ADR index and files; AGENTS/README/security
+docs) checked every doc against git, code and prod; the top findings were
+re-checked by hand. Fixed in one docs PR:
+
+- **Money/design.** ADR-125 decision 24's `COALESCE(real_cost_price_sen,
+  cost_price)` for the report view was wrong for combos (real cost lives on
+  the legs) and for an unused stored real cost; a 2026-10-17 addendum
+  requires it to mirror `Order::effectiveCostPriceSen()`. The live Report
+  Assistant prompt has the same gap: new PRD §16 item 118. ADR-050 gets an
+  addendum for item 115's Supplier Cost. ADR-107's Standing now says what
+  ADR-111 and ADR-094 replaced.
+- **Status.** PRD §14 "waiting on staging: docs only" listed #478–#482;
+  §15 Reports said "on staging" for #454/#455 (live via #462); §15
+  Accounting now says the drift chip watches only a supplier with
+  `drift_threshold` set (DigiFlazz has none); README notes payments are
+  off and that build-log starts 2026-10-15.
+- **Admin auth.** README, root `AGENTS.md`, `reseller/AGENTS.md`, PRD §5
+  and AUTH-2 still described admin auth as a bearer token; it has been a
+  cookie session since ADR-121. `foundation-security.md`'s token-expiry line
+  cited a removed test; it now covers the session limits, and gains lines
+  for `AccountLoginThrottle` and the #481 headers (missing it is why the
+  110 audit misreported the throttle).
+- **Spec.** PRD MID-8/§7.1 and the `Validator` entity now describe
+  `PlayerValidatorProfile`/`PlayerRegionMapping`; §8 Order lists
+  `real_cost_price_sen` and how `platform_profit` is recomputed; §9 says the
+  storefront is English-only, with more languages and currencies recorded as
+  a long-term expansion item (§16 item 117, founder 2026-10-17); glossary
+  gains the ADR-124/125/126 terms before 112–114 are built.
+- **Smaller.** Dropped-item references (89, 58), the third UptimeRobot
+  monitor, "Phase 2" for live Affiliate storefronts, the §16 intro date,
+  `AGENTS.md`'s non-existent "Buildable when triggered" heading and its
+  `ignoreCommand` pointer (the logic is `scripts/vercel-ignore-build.sh`),
+  the admin's local API URL, docs-site's `DOCS_SITE_URL` (already set),
+  and cross-reference addenda or banner fixes for ADR-022, 026, 033, 071,
+  076, 083, 093 and 121.
+
+Left as is: the "(built YYYY-MM-DD)" suffix on 20 old ADR titles (dated
+history) and ADR-025's Gamevion wording (history; the guard is
+supplier-agnostic in code).
