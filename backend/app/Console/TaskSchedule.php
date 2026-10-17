@@ -53,6 +53,7 @@ class TaskSchedule
         'stale-cache-pruning',
         'affiliate-domain-status-sync',
         'horizon-snapshot',
+        'price-sync-staleness-check',
     ];
 
     public static function isCritical(string $name): bool
@@ -91,6 +92,14 @@ class TaskSchedule
             SyncSupplierPricesJob::dispatch($run);
         })->cron("*/{$priceSyncIntervalMinutes} * * * *")
             ->name('price-sync')
+            ->withoutOverlapping($overlap);
+
+        // ADR-015 2026-10-17 addendum (PRD §16 item 106) — emails admins when a
+        // supplier's prices stop syncing. Inline in the scheduler, so it still
+        // fires when the queue that runs price-sync is down.
+        $schedule->command('app:check-price-sync-staleness')
+            ->cron('*/15 * * * *')
+            ->name('price-sync-staleness-check')
             ->withoutOverlapping($overlap);
 
         // ADR-021 (PAY-3) — catches orders whose payment webhook never

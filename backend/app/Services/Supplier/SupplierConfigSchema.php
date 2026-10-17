@@ -57,13 +57,19 @@ final class SupplierConfigSchema
         // `/accounting`) because it's compared against the SAME polled
         // `balance` this schema already gates, and the edit form is the
         // one place that number is entered.
+        //
+        // ADR-015 2026-10-17 addendum — `price_sync_stale_alert_minutes`:
+        // CheckPriceSyncStalenessCommand emails admins once this supplier's
+        // prices haven't synced for that long. Unlike the two above, absent
+        // means the default (90), not off; 0 turns it off.
         'digiflazz' => [
             'category_whitelist' => 'list',
             'webhook_secret' => 'secret',
             'low_balance_threshold' => 'text',
             'drift_threshold' => 'text',
+            'price_sync_stale_alert_minutes' => 'text',
         ],
-        'gamevion' => ['low_balance_threshold' => 'text', 'drift_threshold' => 'text'],
+        'gamevion' => ['low_balance_threshold' => 'text', 'drift_threshold' => 'text', 'price_sync_stale_alert_minutes' => 'text'],
     ];
 
     /**

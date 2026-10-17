@@ -37,7 +37,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-012](./adr/ADR-012-admin-panel-ui-built-on-the-free-tailadmin.md) | Admin Panel UI built on the free TailAdmin template as a component/layout reference | In force |  |
 | [ADR-013](./adr/ADR-013-platform-owner-is-the-first-reseller-row-not-a.md) | Platform owner is the first Reseller row, not a parallel single-tenant concept | Superseded by ADR-061 |  |
 | [ADR-014](./adr/ADR-014-24-7-burst-resilience-baseline.md) | 24/7 burst-resilience baseline — queue, retry, indexing, caching, rate-limiting, observability | In force; queue driver revised by ADR-048, cache driver by ADR-077 | 2026-09-29 |
-| [ADR-015](./adr/ADR-015-price-sync.md) | Price Sync — cost propagation + deactivation detection | In force; decision 3 (manual-only reactivation) reversed by ADR-100 | 2026-07-26 |
+| [ADR-015](./adr/ADR-015-price-sync.md) | Price Sync — cost propagation + deactivation detection | In force; decision 3 (manual-only reactivation) reversed by ADR-100 | 2026-10-17 |
 | [ADR-016](./adr/ADR-016-price-sync-center.md) | Price Sync Center — admin UI design | In force | 2026-07-27 |
 | [ADR-017](./adr/ADR-017-order-resend-delivery.md) | Order Resend Delivery — same-game package swap + live price reconciliation | In force; decisions 2/4 revised by ADR-105 (2026-10-06) | 2026-10-06 |
 | [ADR-018](./adr/ADR-018-sandbox-test-orders.md) | Sandbox Test Orders — a middleware-only tool for exercising the real Order lifecycle without touching real data or real money | In force | 2026-07-30 |
@@ -136,7 +136,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-111](./adr/ADR-111-real-cost-profit-reconciliation-at-delivery-time.md) | Real-cost profit reconciliation at delivery time — widens ADR-033's FX conversion boundary to a second call site | In force | 2026-10-14 |
 | [ADR-112](./adr/ADR-112-affiliate-reseller-portal-mobile-first-redesign.md) | Affiliate/Reseller portal mobile-first redesign — role-aware shell, dashboards, and Orders | In force |  |
 | [ADR-113](./adr/ADR-113-affiliate-theme-preset-dark-mode-for-all-4.md) | Affiliate theme-preset dark mode for all 4 affiliate-selectable presets, `storefront/DESIGN.md`, Digital Architect retired from the affiliate picker | In force |  |
-| [ADR-114](./adr/ADR-114-production-infra-split-off-digitalocean-s-shared.md) | Production infra split off DigitalOcean's shared team — droplet + managed MySQL rebuilt into a new DO team (`LWF Group Sdn Bhd`) | In force | 2026-10-14 |
+| [ADR-114](./adr/ADR-114-production-infra-split-off-digitalocean-s-shared.md) | Production infra split off DigitalOcean's shared team — droplet + managed MySQL rebuilt into a new DO team (`LWF Group Sdn Bhd`) | In force | 2026-10-17 |
 | [ADR-115](./adr/ADR-115-supplier-balance-comfortable-buffer-forecast.md) | Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold | Parked (designed); builds two weeks after launch, with the low-balance email | 2026-10-14 |
 | [ADR-116](./adr/ADR-116-customer-order-notifications-over-whatsapp.md) | Customer order notifications over WhatsApp (OpenWA), not email — closes audit M-11 | In force; send queue generalised to (session, chat) by ADR-125 (design) | 2026-10-12 |
 | [ADR-117](./adr/ADR-117-prod-db-least-privilege.md) | Prod DB least-privilege — `doadmin` superuser replaced by a dedicated scoped app user | In force | 2026-10-15 |

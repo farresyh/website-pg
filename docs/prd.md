@@ -485,7 +485,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 | **Gamevion** | Supplier — game credit catalog, price feed, order creation/fulfillment | **Integrated but deliberately unfunded (2026-09-24, Digiflazz-only).** First real `SupplierAdapter`. Static Bearer + API-key, `referenceNumber` + `409 Duplicate` idempotency, per-purchase `callback_url`. Sandbox via `GAMEVION_SANDBOX=true`. ADR-006/040. |
 | **Digiflazz** | Second supplier — Indonesian H2H aggregator (486 game SKUs + data SKUs) | **The only live supplier.** Prod key wired 2026-09-02, **funded 2026-09-15**, delivering real orders. IDR→MYR FX conversion at the sync boundary (ADR-033). Inbound `POST /api/webhooks/digiflazz` (HMAC-SHA1 `X-Hub-Signature` + IP allowlist). Topup has no rate limit; the full price list is limited to 1 call per 5 min (`rc 83`), per Digiflazz CS on 2026-09-29. Same-`ref_id` re-submit replays the stored outcome, which ADR-102's 2026-09-29 addendum relies on. ADR-030/067/069. |
 | **Supplier API(s) — general** | The Adapter contract all suppliers implement | Confirmed to vary significantly per supplier (auth, response envelopes, validation availability per-game, idempotency). All access goes through the Adapter layer (§6.21), resolved per-order by `supplier_id` (`SupplierAdapterFactory`, ADR-031). Onboarding a new supplier = a new adapter, enforced from MVP (ADR-006). |
-| **OpenWA** | WhatsApp gateway, two sessions. `reseller-bot` runs the Reseller Bot channel (`.order` / `.baki` / `.listharga` / `.topupbaki`). `customer-support` (+60 11-4301 3150) sends customer voucher codes and opted-in Delivered receipts, and receives opt-in/`STOP` (ADR-116) | Self-hosted on the prod box, v0.23.7 (v0.24.0 upgrade: §16 item 96), Baileys engine, `AUTO_START_SESSIONS=true` since 2026-10-14 (sessions come back by themselves after a restart). `SEND_PACING` is on (warm-up and cold caps) and `SIMULATE_TYPING` is on. Inbound `OpenWaWebhookController` (HMAC `X-OpenWA-Signature`) routes by `sessionId`. ADR-075/076/116. |
+| **OpenWA** | WhatsApp gateway, two sessions. `reseller-bot` runs the Reseller Bot channel (`.order` / `.baki` / `.listharga` / `.topupbaki`). `customer-support` (+60 11-4301 3150) sends customer voucher codes and opted-in Delivered receipts, and receives opt-in/`STOP` (ADR-116) | Self-hosted on the prod box, v0.23.7 (v0.24.0 upgrade: §16 item 96), Baileys engine, `AUTO_START_SESSIONS=true` since 2026-10-14 (sessions come back by themselves after a restart), `BAILEYS_MARK_ONLINE_ON_CONNECT=false` since 2026-10-17 (the paired phones keep their notifications). `SEND_PACING` is on (warm-up and cold caps) and `SIMULATE_TYPING` is on. Inbound `OpenWaWebhookController` (HMAC `X-OpenWA-Signature`) routes by `sessionId`. ADR-075/076/116. |
 | **Plunk** | Transactional email — membership OTP, receipts and renewal reminders, partner-portal invites, domain-status mails, and ops alerts (backup failure, Horizon long-wait, stale FX rate). Customer order notifications go by WhatsApp instead (ADR-116) | API-based (`PLUNK_API_KEY`). Replaced the generic "SMTP or API" placeholder. ADR-027/068. |
 | **Laravel Reverb** | Realtime broadcasting — order-status push, replaces application-level polling on the customer buy-flow | Self-hosted WebSocket server + Echo client. ADR-047, ADR-071 PR4. |
 | **Vercel** | Custom-domain provisioning for Affiliate whitelabel storefronts | `AffiliateDomainProvider` seam (Vercel / no-op). `affiliate_domains` table, self-serve onboarding, provider opacity in the portal. ADR-060 (reverses decision 3's Cloudflare-for-SaaS), ADR-078. |
@@ -602,22 +602,29 @@ founder switched FPX on for one test order on 2026-10-16 (16:07 → 19:16 UTC,
 one storefront order paid) and off again, so all three are off (checked
 2026-10-17).
 
-**Latest release 2026-10-17 (`staging`→`main`, PR #476), deploy verified.**
-Merged as `69cf00f`; the prod box runs it (`symfony/http-foundation` v8.1.9,
-`laravel/framework` v13.35.0 installed). Ships #474: five dependency
-advisories closed, including an unauthenticated `Cache-Control` ReDoS
-(CVE-2026-108082), and a matched loading skeleton on every storefront route,
-with a CI guard (ADR-071 2026-10-17 addendum). Also #475: the weekly
-`Dependency audit` workflow (alert-only email, Monday 09:00 MYT), and #473
-(docs). The release's `playwright` job hit the Google Fonts build flake
-(§16 item 109) and passed on re-run.
-Waiting on `staging` (not live until the next release): #478 (ADR-124/125/126 design), #479 (§16 item 116), #480 (109), #481 (110), #482 (115, part), #483 (docs audit) and item 118.
+**Latest release 2026-10-17 (`staging`→`main`, PR #485), deploy verified.**
+Merged as `d030484`; the prod box's `current` is that commit (release
+`80455580`). Ships §16 items 116 (#479, Failed-order card copy), 109 (#480,
+fonts from committed files, no Google Fonts fetch), 110 (#481, security
+headers on the API and the three Next apps, a 5 MB correction-receipt cap),
+115 part (#482, Customer Detail and Transaction Register show the real cost)
+and 118 (#484, Report Assistant margin uses `platform_profit`), plus docs
+#477, #478 (ADR-124/125/126 design) and #483 (docs audit). No migration, no
+config change. Checked live: the new headers on `api.pekangame.space`,
+`pekangame.com`, `admin.` and `reseller.`, no `x-powered-by`, the storefront
+loads only its own woff2 files, `/api/health` 200. The box built the release
+10 seconds after the merge, before CI finished. Cause found the same day: the
+CI deploy hook still pointed at the destroyed old server and the new site had
+"Push to deploy" on; both fixed 2026-10-17, to be verified on the next
+release (§16 item 119).
+Waiting on `staging`: item 106 (#487: price-sync `partial` status + stale-supplier
+email, one migration).
 
 **Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
 hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
 `cdn.` stay on `pekangame.space`.
 
-**Earlier releases** (#472 on 2026-10-16: Game ID Checker, ADR-123; #469 on 2026-10-16: RedxGame player validation; #462 and #449 on 2026-10-15: items 97–103; #441; #437 on 2026-10-14: admin MFA, ADR-121; #430 and #425 on 2026-10-13, #416 and #406 on 2026-10-12/13, #393 Envelope Ledger,
+**Earlier releases** (#476 on 2026-10-17: dependency advisories, storefront route skeletons, weekly dependency audit; #472 on 2026-10-16: Game ID Checker, ADR-123; #469 on 2026-10-16: RedxGame player validation; #462 and #449 on 2026-10-15: items 97–103; #441; #437 on 2026-10-14: admin MFA, ADR-121; #430 and #425 on 2026-10-13, #416 and #406 on 2026-10-12/13, #393 Envelope Ledger,
 #385 Reports redesign, #376 Reseller API `max_price_sen` / Assistant = Reports /
 `r2_accounting`, #369 ADR-120 SEO/GEO, #362, #354, #346, #342, #332,
 #320 and the 2026-09-28 audit waves) are recorded release by release in
@@ -653,7 +660,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). All three methods (`fpx`, `fpx_b2b1`, `duitnow_qr`) inactive since 2026-10-07, the founder's choice (§14). Xendit deleted (archived). **ADR-110 PR-A built 2026-09-19** — `overdue`/`expired`/`blocked` now map to `Failed` (were silently stuck `Pending` forever); every purchase now sets `due`+`due_strict` so CHIP itself closes it after 30 min. **PR-C built 2026-09-19** — credentials moved to encrypted `payment_gateways` DB row + `/middleware/payment-gateways` admin screen, binding is DB-first; the founder completed the cutover 2026-09-24, and the `.env` fallback is kept deliberately (§16 Parked). **PR-B built 2026-09-19** — CHIP settlement `.xlsx` reconciliation + Monthly Accounting Summary, fills ADR-083 PR-2 (see §16 item 12). All three ADR-110 PRs now built | ADR-022, ADR-110 |
 | Games & Packages (GAME-1..11) | 🟢 Live — GAME-1..11 all shipped (list/detail, markup %, activate/deactivate, delete, bulk markup via `/admin/settings`, SEO fields via `/admin/seo/games`, drag-drop reorder via `/admin/games`'s "Reorder Games", folded with the storefront's Quick Top-Up widget). GAME-12 dropped, 2026-09-13 (dead requirement, see §16). **2026-10-02:** package delete now blocks a package with order history or live combo-component usage instead of silently orphaning order history or crashing with a raw DB error (ADR-119) | ADR-029, ADR-119 |
 | Combo Package | 🟢 Live — several catalog Packages sold as one opaque SKU (one FPX fee), sum-of-components pricing with optional `combo_override_price` (never below cost), up to 5 legs, per-leg references and attempt rows, `partially_delivered` + `OrderSettlementService` settlement (voucher or wallet refund), real-cost profit residual (ADR-107/111), component cascade on/off, bulk markup routed through `ComboPricingService` (ADR-028), component SKU in the Edit Combo modal. Per-leg attempt history shown under each leg on Order Detail (live via #406, 2026-10-12, item 66). **2026-10-13 (ADR-094 addendum, item 93):** the stored price stays current while a combo is off and is recomputed before the reactivation cascade; a component markup reprices its combos; a markup on a combo itself is rejected; live since 2026-10-14 (#430). Edit-composition parked 2026-10-14 (§16 Parked) | ADR-094, ADR-100, ADR-046, ADR-106, ADR-107, ADR-028 |
-| Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening | ADR-015/016, 025, 033, 034, 067 |
+| Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening. On `staging` (item 106): `partial` run status with failed suppliers listed, stale-supplier email (default 90 min) | ADR-015/016, 025, 033, 034, 067 |
 | Supplier Management (SUPP-1..5) | ✅ Live — SUPP-1/CRUD/SUPP-5; credentials in encrypted `Supplier.api_config`; balance refresh + low-balance chip; credential-rotation probe on save. **2026-09-24:** the bulk "Deactivate All"/"Deactivate by Game"/"Reactivate" toggle now cascades onto dependent combos (found while auditing the Pending Reactivation combo gap above — the bulk toggle had never called `ComboPricingService`'s cascade at all, deactivate or reactivate). Released `main` via PR #286, 2026-09-24 | ADR-046, 069 |
 | Orders Management (ORD-1..11) | ✅ Live — checkout + fulfillment, Resend (same-game swap, one resend seam, ADR-105), ORD-10 reconciliation, async `pending`, manual "Check from Supplier/Gateway" (ADR-096), one compensation guard `isAlreadyCompensated()` (ADR-102/103), restore-only voucher (ADR-024), six KPI cards (ADR-092), ADR-104 reskin, ADR-108 toolbar (Need Action excludes compensated, Source/Game/date filters, Columns, 2-sheet Excel export with earned profit) and a Failed pill (#385). Detail: build-log + ADRs | ADR-017, 024, 026, 032, 092, 096, 102, 103, 104, 105, 108 |
 | Reports (RPT-1..4) | 🟢 Live — redesigned per ADR-104 (2026-10-08 addendum R1–R21 + 2026-10-09 R8 addendum), live via #385 (2026-10-09). 7 tabs on Recharts. **Paid sales** (money collected, net of wallet refunds, `Order::netSalesSql()`) with a **Bridge to Accounting** to recognised revenue from one `RecognisedRevenue` seam shared with the Monthly Summary. Ledger-sourced profit, `paid_at` scoping, KL days. **Failed & compensated** per delivery status plus outstanding store credit. Compare period on every tab, sales by channel + API vs Bot (`orders.placed_via`), Delivery by game. CSV/PDF carry Paid / Wallet refund / Paid sales. Default range All time. LLM assistant at `/admin/reports/assistant` (ADR-087, `super_admin`) matches the page. History: ADR-086 grouped-SQL rewrite, ADR-088 unified date filter **Live via #462 (2026-10-15; #454/#455, ADR-104 2026-10-15):** Compare for a range ending today runs to the same time (`previous_range.until`, label "…, to 10:30 AM"), a Today preset, `/reports/busy-hours`, `/reports/highlights` and `/reports/top-games?compare=` (the new Dashboard reads them). | ADR-086, 087, 088, 104 |
@@ -719,8 +726,6 @@ git in the 2026-10-17 docs audit. Re-verify before building.
 - **115** Monthly Summary COGS still sums the checkout estimate for
   Delivered orders, not ADR-111's real cost. Decide with item 81's
   accountant answer (operating profit is the same either way).
-- **106** A supplier that fails inside a price-sync run is invisible: the run
-  still says `success` (found 2026-10-16, Gamevion). Short grill: where to record it.
 - **111** Bot check (Turnstile) on the admin and portal login forms; ties to
   item 108's hostname list.
 
@@ -730,6 +735,9 @@ git in the 2026-10-17 docs audit. Re-verify before building.
   added and alert-tested by the founder 2026-10-14).
 - **71** GSC recheck around 2026-10-22.
 - **96** Upgrade OpenWA to v0.24.0 (with the founder standing by).
+- **119** Forge deploy gate fixed 2026-10-17 (CI hook re-pointed, "Push to
+  deploy" off, old server and unused secret removed). Left: confirm on the
+  next release.
 
 **D. Waiting on a trigger: don't build early**
 - **4** Bot-host resize, when capacity calls for it.
@@ -1022,34 +1030,6 @@ git in the 2026-10-17 docs audit. Re-verify before building.
     of `cashCompensationSen()` / `compensationAmountSen()`), not a one-site
     patch. Trigger: Pulse shows the detail endpoint over 500 ms.
 
-106. **A supplier's price-sync failure is hidden when another supplier succeeds
-    (found 2026-10-16, item 98/99 check).** `SyncSupplierPricesJob` marks the
-    run `failed` only when *every* supplier fails. When one fails and another
-    succeeds, the run is `success`, `error_message` stays empty and `stats`
-    holds only the successful suppliers' sums. Sync History therefore shows
-    green, and the failure lives only in `laravel.log`
-    (`SyncSupplierPricesJob: supplier sync failed`). Gamevion did this on
-    2026-10-16 at 02:00 and 02:30 UTC (runs 2305, 2306).
-    - **Not a timeout problem, unlike item 99.** Gamevion `listProducts` on
-      prod (2026-10-16): 1,252 successful calls, p50 0.95 s, p90 1.7 s, p99
-      5.9 s. Failures arrive in clusters where every attempt (the call plus
-      the shared client's 3 retries) gets `cURL 28`, 0 bytes in 10 s:
-      2026-09-21, 09-29, 09-30, 10-15 17:00, 10-16 02:00–02:30. That is
-      Gamevion not answering, so a longer timeout wouldn't help. Leave the 10 s
-      unless the slow tail grows (the max on 2026-10-16 was 10.0 s on a
-      successful call, the first time a success came that close).
-    - **Cost of a miss today:** that supplier's prices and deactivations are
-      30 minutes late, and the next run fixes them. A long outage would
-      leave prices stale with Sync History green throughout.
-    - For the grill: store the failed supplier(s) and error on the run (e.g. a
-      `partial` status or `stats.failed_suppliers`) and show it in Sync History
-      (ADR-015/016); whether N consecutive misses for one supplier should alert
-      (`BackupFailureAlerter`/Plunk path) or reach the Dashboard. Check every
-      reader of `PriceSyncRun.status` first (2026-10-16: `PriceSyncController`,
-      `PriceSyncRunObserver` → `PriceSyncRunUpdated` broadcast, admin
-      `/middleware/price-sync` and `SyncDetailsModal`; the Dashboard and
-      `SchedulerLiveness` don't read it).
-
 108. **Turnstile widget hostnames follow affiliate domains — waiting on a
     trigger (founder, 2026-10-16).** The Game ID Checker's Cloudflare
     Turnstile widget ("PekanGame Game ID Checker", site key
@@ -1121,6 +1101,33 @@ git in the 2026-10-17 docs audit. Re-verify before building.
     variance) is the question for item 81. Prod scale on 2026-10-17: 4 of
     29 Delivered orders differ, RM0.26 in total.
 
+119. **Forge deployed before the CI gate (found 2026-10-17, release #485;
+    cause found and fixed the same day).** ADR-066 decision 5 says the
+    backend deploys only when CI's `deploy` job POSTs the Forge hook after
+    every test job passes. On the `pekangame-prod-lwf` box (ADR-114) the
+    release directory appeared about 10 seconds after each merge (#485:
+    merged 09:20:07 UTC, release `80455580` built 09:20:17, while
+    `backend-concurrency` was still running; #476 the same).
+    - **Cause (Forge UI + `gh secret list`):** the ADR-114 migration missed
+      two steps. The `FORGE_DEPLOY_HOOK` secret (last set 2026-09-02) still
+      held the old `pekangame-prod` site's hook, so every CI `deploy` job hit
+      the destroyed box (Forge logged a failed "via Custom" deployment there
+      each time, while curl still got a 2xx). The new site had Forge "Push
+      to deploy" (formerly "Quick Deploy") on, so it deployed every push to
+      `main` by itself, with no CI gate, from 2026-09-25 to 2026-10-17.
+    - **Fixed 2026-10-17 by the founder:** `FORGE_DEPLOY_HOOK` re-set to the
+      lwf site's hook (site 3397779, checked without printing it), then
+      "Push to deploy" turned off (checked in Forge).
+    - **Also done 2026-10-17 (founder):** the orphaned `pekangame-prod`
+      server (Forge id 1247825; its droplet was destroyed 2026-09-30, SSH to
+      157.245.203.250 unreachable) deleted from Forge, checked: Forge lists
+      only `pekangame-prod-lwf` and `nakhoda-prod`. The unused
+      `DIGITALOCEAN_ACCESS_TOKEN` repo secret deleted (no workflow read it;
+      ADR-066 planned its removal after cutover), checked: `gh secret list`
+      shows only `FORGE_DEPLOY_HOOK`.
+    - **Left:** on the next release, the lwf site shows exactly one "via
+      Custom" deployment, created after the CI `deploy` job. Then close.
+
 117. **Expansion outside Malaysia: languages and currencies (founder,
     2026-10-17).** The storefront is English-only and prices are MYR-only
     (CHIP, a Malaysian gateway, is the one payment gateway;
@@ -1132,11 +1139,12 @@ git in the 2026-10-17 docs audit. Re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
-- **118** 2026-10-17: the Report Assistant prompt calls an order's `cost_price` the checkout estimate and sends a past order's margin to `platform_profit` (already ledger-sourced, so it carries ADR-111's real cost), never to `cost_price`. Prompt only; the view is unchanged (ADR-125's addendum still governs the `effective_cost_price` column it will add). Staging only until the next release. Details: build-log 2026-10-17.
-- **115 (part)** 2026-10-17: Customer Detail profit analysis and the Transaction Register (screen and CSV) show each realised order's `effectiveCostPriceSen()`, the cost its profit used, for Delivered as well as settled partial orders. Before, Delivered rows showed the checkout estimate, so revenue − cost − commission − fees did not match profit in the same row. COGS stays open as item 115. Staging only until the next release. Details: build-log 2026-10-17.
-- **110** 2026-10-17: security check follow-ups. The API sends HSTS (HTTPS only, no `includeSubDomains`), `Referrer-Policy` and `Permissions-Policy` (`SecurityHeaders` middleware); admin, storefront and portal send `Referrer-Policy` and `Permissions-Policy`, the portal now sends `nosniff`, and none sends `x-powered-by`; a supplier-transfer correction receipt is capped at 5 MB like its siblings. The audit's "login throttle is per IP only" was wrong: `AccountLoginThrottle` (ADR-019 2026-09-29 addendum) already locks an email for 15 minutes after 10 failures from any IPs, on admin login, MFA code, step-up and affiliate login, so nothing was added. Staging only until the next release. Details: build-log 2026-10-17.
-- **109** 2026-10-17: admin, storefront and portal load fonts with `next/font/local` from committed latin woff2 files (the same variable files Google Fonts serves), so no build downloads fonts and the CI `playwright` font flake has no cause left. Verified on local production builds: every face `loaded`, 0 requests to Google, glyphs match prod. Staging only until the next release. Details: build-log 2026-10-17.
-- **116** 2026-10-17: the Failed-order status card no longer promises "a voucher for the full amount"; it now says "a voucher here for what you paid, excluding the payment fee", matching `OrderSettlementService` (`final_amount − transaction_fee` for every order the card can reach, since wallet and test orders are out of scope). The only copy with that promise. Staging only until the next release. Details: build-log 2026-10-17.
+- **106** 2026-10-17: a supplier that fails inside a price-sync run is no longer hidden (ADR-015 2026-10-17 addendum). The run is `partial` (warn tag) with `stats.failed_suppliers` listed in admin Price Sync; `suppliers.last_price_sync_at` records each supplier's last good sync, and `app:check-price-sync-staleness` (scheduler, every 15 min) emails admins once when a supplier passes `price_sync_stale_alert_minutes` (Middleware → Suppliers; blank = 90, 0 = off) and once when it recovers. On `staging`, not live. Details: build-log 2026-10-17.
+- **118** 2026-10-17: the Report Assistant prompt calls an order's `cost_price` the checkout estimate and sends a past order's margin to `platform_profit` (already ledger-sourced, so it carries ADR-111's real cost), never to `cost_price`. Prompt only; the view is unchanged (ADR-125's addendum still governs the `effective_cost_price` column it will add). Live via #485 (2026-10-17). Details: build-log 2026-10-17.
+- **115 (part)** 2026-10-17: Customer Detail profit analysis and the Transaction Register (screen and CSV) show each realised order's `effectiveCostPriceSen()`, the cost its profit used, for Delivered as well as settled partial orders. Before, Delivered rows showed the checkout estimate, so revenue − cost − commission − fees did not match profit in the same row. COGS stays open as item 115. Live via #485 (2026-10-17). Details: build-log 2026-10-17.
+- **110** 2026-10-17: security check follow-ups. The API sends HSTS (HTTPS only, no `includeSubDomains`), `Referrer-Policy` and `Permissions-Policy` (`SecurityHeaders` middleware); admin, storefront and portal send `Referrer-Policy` and `Permissions-Policy`, the portal now sends `nosniff`, and none sends `x-powered-by`; a supplier-transfer correction receipt is capped at 5 MB like its siblings. The audit's "login throttle is per IP only" was wrong: `AccountLoginThrottle` (ADR-019 2026-09-29 addendum) already locks an email for 15 minutes after 10 failures from any IPs, on admin login, MFA code, step-up and affiliate login, so nothing was added. Live via #485 (2026-10-17). Details: build-log 2026-10-17.
+- **109** 2026-10-17: admin, storefront and portal load fonts with `next/font/local` from committed latin woff2 files (the same variable files Google Fonts serves), so no build downloads fonts and the CI `playwright` font flake has no cause left. Verified on local production builds: every face `loaded`, 0 requests to Google, glyphs match prod. Live via #485 (2026-10-17). Details: build-log 2026-10-17.
+- **116** 2026-10-17: the Failed-order status card no longer promises "a voucher for the full amount"; it now says "a voucher here for what you paid, excluding the payment fee", matching `OrderSettlementService` (`final_amount − transaction_fee` for every order the card can reach, since wallet and test orders are out of scope). The only copy with that promise. Live via #485 (2026-10-17). Details: build-log 2026-10-17.
 - **107** 2026-10-16: public Game ID Checker (ADR-123, #471, released via #472). Verified on prod: five families listed, `/check-id` and every family page 200, six checker URLs in `sitemap.xml`, no `noindex` on the primary brand; a check with the founder's own MLBB test account → "Prime." → Mobile Legends Malaysia, the repeat a cache hit, `player_validations` untouched. Open follow-up: item 108 (widget hostnames). Details: build-log 2026-10-16.
 - **98** 2026-10-16: Scheduler liveness (ADR-122, #449). After the first 00:00 UTC run all 19 tasks (11 critical, 8 routine) had a heartbeat with `last_ok_at` that day and no failure; `/api/health` 200 with `scheduler: true`. Longest daily task 12.3 s (backup cleanup); the 60-minute grace is reviewed after a week (ADR-122 consequence). Details: build-log 2026-10-16.
 - **99** 2026-10-16: Digiflazz `[83]` price-list rate limit (ADR-069 2026-10-15 addendum, #449). Since the deploy (2026-10-15 09:08 UTC): 40 `listProducts` calls, 0 exceptions (was 42 of 254), no rc 83 in `laravel.log` (last 2026-10-15 03:00, before the deploy), slowest call 19.5 s succeeded. Details: build-log 2026-10-16.

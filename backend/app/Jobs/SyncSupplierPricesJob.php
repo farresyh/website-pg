@@ -60,6 +60,12 @@ final class SyncSupplierPricesJob implements ShouldQueue
      * SyncSupplierProductsCommand's own per-supplier isolation. The
      * whole run is only marked 'failed' if every active supplier
      * failed; a partial success still records real, useful stats.
+     *
+     * ADR-015 2026-10-17 addendum (PRD §16 item 106): when some supplier
+     * failed and another succeeded the run is 'partial', not 'success',
+     * and every run lists `stats.failed_suppliers` ({slug, error}). Each
+     * supplier that synced gets `last_price_sync_at`, which
+     * CheckPriceSyncStalenessCommand alerts on.
      */
     public function handle(ProductSyncService $productSync, PackagePriceSyncService $packageSync, SupplierAdapterFactory $supplierAdapters, PendingReactivationAutoApprover $autoApprover): void
     {
@@ -89,6 +95,7 @@ final class SyncSupplierPricesJob implements ShouldQueue
             // MYR-only run (Gamevion alone, today's only real case)
             // simply leaves this empty, not null/absent.
             'fx_rates_used' => [],
+            'failed_suppliers' => [],
         ];
         $affectedGameIds = [];
         $succeeded = 0;
@@ -101,6 +108,7 @@ final class SyncSupplierPricesJob implements ShouldQueue
                 $stage2 = $packageSync->apply($supplier, $stage1->syncedAt, $this->run->id);
             } catch (Throwable $e) {
                 $lastError = $e->getMessage();
+                $stats['failed_suppliers'][] = ['slug' => $supplier->slug, 'error' => $lastError];
                 Log::error('SyncSupplierPricesJob: supplier sync failed', [
                     'run_id' => $this->run->id,
                     'supplier_slug' => $supplier->slug,
@@ -111,6 +119,7 @@ final class SyncSupplierPricesJob implements ShouldQueue
             }
 
             $succeeded++;
+            $supplier->update(['last_price_sync_at' => now()]);
             $stats['catalog_total'] += $stage1->total;
             $stats['catalog_created'] += $stage1->created;
             $stats['catalog_updated'] += $stage1->updated;
@@ -149,6 +158,7 @@ final class SyncSupplierPricesJob implements ShouldQueue
                 'status' => 'failed',
                 'finished_at' => now(),
                 'error_message' => $lastError,
+                'stats' => $stats,
             ]);
 
             return;
@@ -165,7 +175,7 @@ final class SyncSupplierPricesJob implements ShouldQueue
         }
 
         $this->run->update([
-            'status' => 'success',
+            'status' => $stats['failed_suppliers'] === [] ? 'success' : 'partial',
             'finished_at' => now(),
             'stats' => $stats,
         ]);

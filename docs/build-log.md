@@ -920,3 +920,108 @@ estimate and sends a past order's margin to `platform_profit` (and
 `affiliate_profit`). Prompt only: no view change, so no migration (the
 `effective_cost_price` column stays ADR-125's, per its 2026-10-17
 addendum). One red→green prompt test; full suite 2875 passed.
+
+## 2026-10-17 — Release #485 (`staging`→`main`), verified
+
+Merged as `d030484` with #477–#484 (items 116, 109, 110, 115 part, 118 and
+three docs PRs); no migration, no config or env change. The `main` CI run
+passed every job, `deploy` included. Checked live: `current` →
+`releases/80455580` at `d030484`, with `SecurityHeaders` in
+`bootstrap/app.php`; `api.pekangame.space` sends HSTS, `Referrer-Policy` and
+`Permissions-Policy`; `pekangame.com`, `admin.` and `reseller.` send
+`Referrer-Policy`, `Permissions-Policy` and `nosniff` with no
+`x-powered-by`; the storefront HTML references only its own
+`/_next/static/immutable/media/*_latin*.woff2` files and nothing from Google;
+`/api/health` 200; the released `OrderStatusCard`, Report Assistant prompt and
+Transaction Register code are on the box.
+
+**Gotcha: Forge deploys before CI.** The release directory was built at
+09:20:17 UTC, 10 seconds after the 09:20:07 merge and while
+`backend-concurrency` was still running; the later CI `deploy` job made no
+new release. #476 shows the same gap. ADR-066 says Quick Deploy stays off,
+so the CI gate isn't working on the ADR-114 box. Recorded as PRD §16 item
+119 (founder, Forge UI).
+
+## 2026-10-17 — Item 106: price-sync `partial` status + stale-supplier email (`staging`)
+
+**Why:** `SyncSupplierPricesJob` marked a run `failed` only when every
+supplier failed. One supplier failing beside a good one left the run
+`success` with an empty `error_message`, and the failure was visible only in
+`laravel.log`. Prod log from 2026-09-27 showed 23 hidden supplier failures:
+20 Digiflazz `[83]` (all before item 99's fix deployed 2026-10-15 09:08 UTC,
+none since) and 3 Gamevion `cURL 28` (run 1494, and 2305–2306 on
+2026-10-16). The longest consecutive failure was 2 runs. Gamevion's failures
+are outages, not slowness (2026-10-16: 1,252 good `listProducts` calls,
+p50 0.95 s, p99 5.9 s; every failed attempt got 0 bytes in 10 s), so the
+10 s timeout stays.
+
+**Shipped (ADR-015 2026-10-17 addendum):** a `partial` run status with
+`stats.failed_suppliers` ({slug, error}), shown on admin Price Sync as a
+warn tag plus one line per failed supplier; `suppliers.last_price_sync_at`
+(backfilled to the deploy time) and `price_sync_alerted_at`;
+`app:check-price-sync-staleness` in `TaskSchedule` (routine,
+every 15 min, inline in the scheduler) emailing all admins once when a
+supplier passes `price_sync_stale_alert_minutes` (new Middleware →
+Suppliers field, blank = 90, 0 = off) and once on recovery.
+
+**Design change after a stress test:** the grill first chose "N consecutive
+failed runs" counted from run history. Rejected before any code: Sync Now
+clicks and the interval env change what N means, a `failed()` run would
+have to claim every supplier failed, a check inside the job never runs with
+the queue down, and history-derived "already alerted" races a concurrent
+manual run.
+
+**Verified:** 9 new tests (job: partial, success, failed list; command:
+threshold, default, off, recovery once, off-doesn't-fake-recovery,
+inactive/unconfigured skipped, never-synced) plus the full suite green;
+admin `tsc` and lint clean; local production admin build with a seeded
+`partial` run: Last Sync card and Sync History show the warn tag (text
+`#8a5100` on `#fdf1dc`) and the failed supplier's error. Local dev DB
+migrated with plain `php artisan migrate`.
+
+## 2026-10-17 — Item 119 cause: CI deploy hook pointed at the old box (fixed, verify on next release)
+
+Forge's dashboard showed every release on the lwf site deployed "via Push to
+deploy", and a matching failed "via Custom" deployment on the old
+`pekangame-prod` site (Forge server 1247825, Disconnected; its droplet was
+destroyed 2026-09-30, SSH to 157.245.203.250 unreachable). `gh secret list`:
+`FORGE_DEPLOY_HOOK` last set 2026-09-02, before the ADR-114 move. So CI's
+`deploy` job had been POSTing to the dead site since 2026-09-25, and the new
+site deployed each push by itself before CI finished.
+
+**Production change (founder, 2026-10-17 ~12:11–12:15 UTC):** re-set
+`FORGE_DEPLOY_HOOK` from the clipboard (`pbpaste | gh secret set`; the first
+attempt through `!` had no prompt and stored an empty value, corrected a
+minute later). Checked without printing it: one line, a Forge deploy URL for
+site 3397779 (lwf `api.pekangame.space`). Then turned the site's "Push to
+deploy" off (checked in Forge: switch off). Before: Push to deploy on,
+secret → old site. After: Push to deploy off, secret → lwf site.
+
+**Cleanup, same session (founder):** deleted the unused
+`DIGITALOCEAN_ACCESS_TOKEN` repo secret (`gh secret list` now shows only
+`FORGE_DEPLOY_HOOK`) and the orphaned `pekangame-prod` server from Forge
+(Forge now lists only `pekangame-prod-lwf` and `nakhoda-prod`). This also
+closes ADR-114's "remove the orphaned Forge server entry" hygiene note.
+
+**Left (PRD §16 item 119):** verify the next release is a single "via Custom"
+deployment after the CI `deploy` job. ADR-114 got
+a 2026-10-17 addendum with the box-move checklist; the `ci.yml` header
+comment now names the setting "Push to deploy".
+
+## 2026-10-17 — OpenWA: phone notifications restored
+
+The founder noticed that both WhatsApp numbers got no phone notification
+for incoming messages while they were connected to OpenWA. Notifications
+came back once a session was disconnected. The cause is Baileys'
+`markOnlineOnConnect`, which defaults to true. The linked device announces
+itself "online", and WhatsApp then stops pushing to the phone (OpenWA
+#871). Our backend sends no read receipts.
+
+**Production change (founder, 2026-10-17 ~12:31 UTC):** added
+`BAILEYS_MARK_ONLINE_ON_CONNECT=false` to `~/OpenWA/.env` (backup
+`.env.bak-20261017`), then restarted the daemon from Forge. Before: the
+line was only a comment, so the default (true) applied. After: line 795
+has `=false`, the process started at 12:34:00 UTC, `reseller-bot` was
+ready at 12:34:09 and `customer-support` at 12:36:01. The founder
+confirmed the phones get notifications again. Recorded in the ADR-114
+2026-10-17 addendum, along with the open `SIMULATE_TYPING` note.

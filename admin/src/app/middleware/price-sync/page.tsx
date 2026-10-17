@@ -78,6 +78,7 @@ const runStatusSeverity: Record<PriceSyncRun["status"], "secondary" | "warn" | "
   queued: "secondary",
   running: "warn",
   success: "success",
+  partial: "warn",
   failed: "danger",
 };
 
@@ -474,10 +475,19 @@ export default function PriceSyncPage() {
                     <span className="ml-2 text-theme-xs text-ink-subtle">triggered by {shown.triggered_by}</span>
                   )}
                 </p>
-                {shown.status === "failed" && shown.error_message && (
-                  <p className="mt-1 text-sm text-error-600 dark:text-error-400">{shown.error_message}</p>
+                {shown.stats?.failed_suppliers?.length ? (
+                  <ul className="mt-1 text-sm text-error-600 dark:text-error-400">
+                    {shown.stats.failed_suppliers.map((f) => (
+                      <li key={f.slug}>
+                        {f.slug} failed: {f.error}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  shown.status === "failed" &&
+                  shown.error_message && <p className="mt-1 text-sm text-error-600 dark:text-error-400">{shown.error_message}</p>
                 )}
-                {shown.status === "success" && shown.stats && (
+                {(shown.status === "success" || shown.status === "partial") && shown.stats && (
                   <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                     Catalog: {shown.stats.catalog_total} total ({shown.stats.catalog_created} new,{" "}
                     {shown.stats.catalog_updated} updated) · {shown.stats.price_changed} package
@@ -491,7 +501,7 @@ export default function PriceSyncPage() {
                   </p>
                 )}
                 {/* ADR-033 addendum decision 1/3: only ever non-empty once a real non-MYR supplier's sync runs. */}
-                {shown.status === "success" && !!shown.stats?.fx_rates_used?.length && (
+                {(shown.status === "success" || shown.status === "partial") && !!shown.stats?.fx_rates_used?.length && (
                   <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                     Rate used: {shown.stats.fx_rates_used.map((r) => `1 ${r.from} = ${r.rate} ${r.to}`).join(", ")}
                   </p>
