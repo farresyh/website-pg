@@ -705,8 +705,6 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
 2026-10-16). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- **110** Security audit follow-ups (2026-10-17): per-account login throttle,
-  missing HTTP headers, one upload size cap.
 - **115** Cost readers still show the checkout estimate after ADR-111's real
   cost: Customer Detail profit analysis, Transaction Register and COGS
   (found 2026-10-17). COGS waits on item 81's accountant answer.
@@ -1063,27 +1061,6 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
       current Cloudflare docs before designing past 10 (several widgets
       would need a per-host site key on the storefront).
 
-110. **Security audit follow-ups (founder's 10-point check, 2026-10-17).**
-    Dependencies (item 1 of the check) were fixed in #474 and are now
-    scanned weekly. The other gaps found, all small:
-    - **Login throttle is per IP only:** `/login`, `/login/mfa` and the
-      affiliate login allow 5/min per IP (`routes/api.php`); there is no
-      per-email limit, so a guess spread over many IPs isn't slowed. Add a
-      per-email bucket, as `otp-request` already has
-      (`AppServiceProvider`). Admin MFA (opt-in) softens it for admins.
-    - **Headers:** `api.pekangame.space` sends no HSTS. No app sends
-      `Referrer-Policy` or `Permissions-Policy`. The reseller portal lacks
-      `X-Content-Type-Options: nosniff`, and the storefront sends
-      `x-powered-by: Next.js` (`poweredByHeader: false`). All four
-      frontends already have HSTS and a CSP.
-    - **Upload cap:** `CorrectSupplierTransferRequest`'s `receipt` has no
-      `max:5120`, unlike its siblings (super_admin only, so low risk).
-    - Checked and fine: HTTPS redirect on every host, upload type allowlists
-      and WebP re-encoding, bcrypt passwords and hashed API keys,
-      FormRequest validation and Purifier on rich text, no raw SQL built
-      from input, no secret in any `NEXT_PUBLIC_*`. Accepted, per its ADR:
-      the portal's bearer token in `sessionStorage` (ADR-009).
-
 111. **Bot check on the login forms (founder's 10-point check,
     2026-10-17) — needs a short grill.** Turnstile protects only the Game ID
     Checker (ADR-123). The admin login, the affiliate/reseller portal login
@@ -1135,6 +1112,7 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **110** 2026-10-17: security check follow-ups. The API sends HSTS (HTTPS only, no `includeSubDomains`), `Referrer-Policy` and `Permissions-Policy` (`SecurityHeaders` middleware); admin, storefront and portal send `Referrer-Policy` and `Permissions-Policy`, the portal now sends `nosniff`, and none sends `x-powered-by`; a supplier-transfer correction receipt is capped at 5 MB like its siblings. The audit's "login throttle is per IP only" was wrong: `AccountLoginThrottle` (ADR-019 2026-09-29 addendum) already locks an email for 15 minutes after 10 failures from any IPs, on admin login, MFA code, step-up and affiliate login, so nothing was added. Staging only until the next release. Details: build-log 2026-10-17.
 - **109** 2026-10-17: admin, storefront and portal load fonts with `next/font/local` from committed latin woff2 files (the same variable files Google Fonts serves), so no build downloads fonts and the CI `playwright` font flake has no cause left. Verified on local production builds: every face `loaded`, 0 requests to Google, glyphs match prod. Staging only until the next release. Details: build-log 2026-10-17.
 - **116** 2026-10-17: the Failed-order status card no longer promises "a voucher for the full amount"; it now says "a voucher here for what you paid, excluding the payment fee", matching `OrderSettlementService` (`final_amount − transaction_fee` for every order the card can reach, since wallet and test orders are out of scope). The only copy with that promise. Staging only until the next release. Details: build-log 2026-10-17.
 - **107** 2026-10-16: public Game ID Checker (ADR-123, #471, released via #472). Verified on prod: five families listed, `/check-id` and every family page 200, six checker URLs in `sitemap.xml`, no `noindex` on the primary brand; a check with the founder's own MLBB test account → "Prime." → Mobile Legends Malaysia, the repeat a cache hit, `player_validations` untouched. Open follow-up: item 108 (widget hostnames). Details: build-log 2026-10-16.

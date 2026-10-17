@@ -40,11 +40,18 @@ const cspDirectives = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  poweredByHeader: false,
   async headers() {
     return [
       {
         source: "/(.*)",
-        headers: [{ key: "Content-Security-Policy", value: cspDirectives }],
+        headers: [
+          { key: "Content-Security-Policy", value: cspDirectives },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          // PRD §16 item 110.
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+        ],
       },
     ];
   },
