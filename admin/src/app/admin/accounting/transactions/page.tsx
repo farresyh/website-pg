@@ -47,6 +47,7 @@ const TD = "px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400";
 
 const typeSeverity: Record<TransactionRegisterRow["type"], "info" | "success" | "warn" | "secondary"> = {
   order: "info",
+  order_profit_correction: "warn",
   supplier_transfer: "success",
   supplier_refund: "warn",
   voucher_issued: "secondary",
@@ -59,6 +60,7 @@ const typeSeverity: Record<TransactionRegisterRow["type"], "info" | "success" | 
 
 const typeLabel: Record<TransactionRegisterRow["type"], string> = {
   order: "Order",
+  order_profit_correction: "Order profit correction",
   supplier_transfer: "Supplier transfer",
   supplier_refund: "Supplier refund",
   voucher_issued: "Voucher issued",
