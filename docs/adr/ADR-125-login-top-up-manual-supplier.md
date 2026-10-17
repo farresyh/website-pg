@@ -66,3 +66,28 @@
 - Generalising `SendCustomerWhatsAppJob` to `(session, chatId)` must keep customer receipts on the customer-support session and their pacing unchanged.
 - Build in two PRs: PR 1 decisions 1–10 and 17 (plus ADR-124), PR 2 decisions 11–16.
 - Opening hours are not built; revisit if customers complain about night orders.
+
+### 2026-10-17 addendum — funding mode, ledger-only suppliers in accounting, and readers that would show the estimate
+
+A money-critical trace of supplier funding, accounting, reports and analytics (two read-only forks, top findings re-checked by hand), run while designing [ADR-126](./ADR-126-joki-mlbb.md). Production on 2026-10-17: two suppliers (Digiflazz ledger = polled IDR 1,721,624; Gamevion 0), 5 transfers, 32 drawdowns, 2 manual adjustments.
+
+Findings that change this ADR:
+
+- `MonthlyAccountingSummaryService::weightedAverageRate()` returns null for a supplier with no transfers; `CashPositionService::supplierPrepaid()` then values its balance at 0 and the FX true-up skips it. A pay-after supplier owed RM65 before its first payment would vanish from the cash gap.
+- `recordOrderDrawdown()` runs after commit and swallows any error, relying on the drift check, which a ledger-only supplier does not have.
+- `CashPositionService` sums signed supplier balances as "Supplier prepaid balance" (asset); a pay-after balance is a payable.
+- `DashboardService` reads `suppliers.balance` (null → 0) and sums every supplier into the reseller-wallet coverage total.
+- Revenue and COGS are scoped by `paid_at`, drawdowns by their own `created_at`: an order paid on the 31st and delivered on the 3rd moves profit across the month boundary (whole in total through MonthClose's prior adjustment, wrong per month).
+- `llm_report_orders` exposes only `cost_price`; `profit_reconciled_flagged` has no list filter; `OrderStatusCard` says "Delivery to Player ID … your top-up is in your game account" for every order.
+
+Decisions added:
+
+18. **`suppliers.funding_mode`** (`prepaid` | `pay_after`), read only through `Supplier`. API-backed suppliers are always `prepaid` and behave exactly as today (polled balance, drift, low-balance). A manual supplier picks either in the panel (default `prepaid`; every penjoki `pay_after`), because the founder does not yet know how a login supplier will want to be paid. `displayBalance()` gives the ledger balance for a manual supplier; low-balance applies to `prepaid` only; `pay_after` shows "Owed: RM X" when negative. Labels for a transfer read "top-up" for `prepaid` and "payment" for `pay_after` (wording only; still a capital movement, not P&L).
+19. **`weightedAverageRate()` returns 1.0 for an MYR supplier with no transfers**, fixing all three callers at once.
+20. **Cash position splits supplier balances:** positive → `assets.supplier_prepaid_sen`, negative → `claims.supplier_payable_sen` (absolute). The gap identity is unchanged. Presentation goes to the accountant (PRD §16 item 81).
+21. **Dashboard:** the reseller-wallet coverage total sums `scopeApiBacked()` suppliers only; each manual supplier shows its own line. A health item counts Delivered orders on manual suppliers with no `ORDER_DRAWDOWN` row.
+22. **Month close** previews "N orders paid this month are still undelivered" (reusing `ReportService::accountingBridge()['not_recognised']`). Scoping the FX true-up by the order's `paid_at` waits for the accountant (item 81).
+23. **Real cost at confirmation defaults to the order's own `cost_price` snapshot** (the agreed cost at checkout), passed as RM to `finalizePendingDelivery`, unless the admin overrides it. This restates decision 8's cost source (grill Q16).
+24. **Readers:** `llm_report_orders` adds `COALESCE(real_cost_price_sen, cost_price) AS effective_cost_price`; the Orders list gets a "Profit flagged" filter; `OrderStatusCard` words its copy by the game's fulfilment kind (uid / login / joki).
+
+Must not change: `recordOrderDrawdown`'s contract and idempotency key, `operatingProfit()`'s formula, MonthClose's prior adjustment, API suppliers' polled-balance and drift path, and `SupplierTransfer` as capital rather than P&L.
