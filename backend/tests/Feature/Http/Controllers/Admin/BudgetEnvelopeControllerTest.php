@@ -161,6 +161,7 @@ class BudgetEnvelopeControllerTest extends TestCase
         ], ['Accept' => 'application/json'])->assertCreated();
 
         $postingId = $response->json('posting.id');
+        $this->assertStringStartsWith('accounting/budget-envelopes/2026/09/', $response->json('posting.receipt_path'));
         Storage::disk(config('filesystems.accounting_disk'))->assertExists($response->json('posting.receipt_path'));
         $this->get("/api/accounting/envelope-postings/{$postingId}/receipt")->assertOk();
     }

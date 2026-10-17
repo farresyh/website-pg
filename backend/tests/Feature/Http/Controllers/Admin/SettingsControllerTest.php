@@ -60,13 +60,6 @@ class SettingsControllerTest extends TestCase
         ], $overrides));
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/settings')->assertForbidden();
-    }
-
     public function test_index_returns_all_three_sections_creating_defaults_on_first_access(): void
     {
         $this->actingAsSuperAdmin();

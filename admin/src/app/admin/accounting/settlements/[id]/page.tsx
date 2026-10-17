@@ -27,6 +27,8 @@ import {
   type Paginated,
   type PaidButNotSettledRow,
   getPaymentSettlement,
+  downloadSettlementFile,
+  attachSettlementFile,
 } from "@/lib/payment-settlements";
 
 const TH = "px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400";
@@ -47,6 +49,8 @@ export default function PaymentSettlementDetailPage() {
   const [paidButNotSettled, setPaidButNotSettled] = useState<PaidButNotSettledRow[]>([]);
   const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [attaching, setAttaching] = useState(false);
 
   useEffect(() => {
     const s = getClientSession();
@@ -63,6 +67,18 @@ export default function PaymentSettlementDetailPage() {
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load this settlement."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settlementId, page]);
+
+  async function attach(file: File) {
+    setAttaching(true);
+    setFileError(null);
+    try {
+      setSettlement(await attachSettlementFile(settlementId, file));
+    } catch (err: unknown) {
+      setFileError(err instanceof ApiError ? err.message : "Could not attach this file.");
+    } finally {
+      setAttaching(false);
+    }
+  }
 
   if (error) {
     return <p className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>;
@@ -85,6 +101,37 @@ export default function PaymentSettlementDetailPage() {
           Uploaded from {settlement.original_filename}. Matched net {rm(settlement.matched_net_sen)}, CHIP&apos;s own
           file reports net {rm(settlement.file_net_sen)}.
         </p>
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-theme-sm">
+          {settlement.file_path ? (
+            <Button size="small" variant="outlined" onClick={() => downloadSettlementFile(settlement).catch(() => setFileError("Could not download the file."))}>
+              Download original file
+            </Button>
+          ) : (
+            <>
+              <span className="text-gray-500 dark:text-gray-400">
+                No original file kept (uploaded before files were stored). Attach CHIP&apos;s original export: it is
+                accepted only if its dates and totals match this settlement.
+              </span>
+              <label className="cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/[0.03]">
+                {attaching ? "Attaching…" : "Attach original file"}
+                <input
+                  type="file"
+                  accept=".xlsx"
+                  className="sr-only"
+                  disabled={attaching}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) void attach(file);
+                  }}
+                />
+              </label>
+            </>
+          )}
+        </div>
+        {fileError && (
+          <p className="mt-2 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{fileError}</p>
+        )}
       </div>
 
       {paidButNotSettled.length > 0 && (

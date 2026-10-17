@@ -46,3 +46,17 @@
 - **Pint** was run only against the 63 files this PR's rename touched (not the ~67 other files already flagged by `pint --test` before this PR started, which are pre-existing repo drift unrelated to this change) — scoped deliberately per the founder's own "don't touch unrelated files" instruction for this refactor.
 - `docs/prd.md` §6.7 (`RES-1..6` → renamed heading/body, IDs kept), §8 data-model rows (`Affiliate`, `LedgerEntry`, `Order`), and §13 Glossary (`Affiliate Markup`, `Affiliate Wholesale Tier`, `is_owned`/`is_primary affiliate`, `Multi-Tenant`, `Ledger Entry`, xenPlatform) updated to the new names. §14/§15 build-log entries left untouched (historical record of what was true when each entry was written, same principle as this file's own historical entries) — not in this PR's stated scope.
 - **Next:** PR-B (new `Reseller`/wallet entity — not started by this PR; no wallet code, tables, or concepts were added here).
+
+### 2026-10-18 addendum — decision 4's per-endpoint tests become one route-table test
+
+**Context.** Decision 4 asked for a test per reseller-guard endpoint. `EnsureAccountTypeTest` held 18, one per portal route as of PR-G. A test audit (2026-10-18) found the weakness of that shape: each test covers a route that existed when it was written. A new portal route added without `EnsureAccountType` would fail nothing. The same pattern repeated across 59 admin controller test files ("regular admin is forbidden", "requires authentication").
+
+**Decision.** `tests/Feature/Http/RouteAccessTest.php` reads the live route table and checks:
+- every `api/affiliate/` route carries `auth:affiliate` + `EnsureAccountType:affiliate`;
+- every `api/reseller-portal/` route carries `auth:affiliate` + `EnsureAccountType:reseller`;
+- every `api/reseller/v1/` route carries `EnsureResellerApiKey`;
+- no route carries one of those guards outside its own prefix.
+
+The only exceptions are the pinned public routes (login, set-password) and the pinned session routes (`me`, `logout`). The same test pins every public `/api` route, the admin routes with no role check, and the routes open to a regular admin, and it requires `auth:sanctum` + `EnsureAdminSessionFresh` on every admin-role route. `EnsureAccountTypeTest` keeps one refusal in each direction, the deactivated-reseller case and `me`. The 16 other per-route tests and 94 per-controller guard-only tests were removed.
+
+**Rationale.** Decision 4's purpose was that no endpoint goes untested under time pressure. A per-route list only checks the routes someone remembered to list. The route table covers every route, including the next one. Behaviour is still proven over real HTTP: `EnsureAccountTypeTest` (both directions), `EnsureAdminRoleTest` and `UnauthenticatedApiRequestTest`. The route-table test was checked by breaking real routes on purpose: an unguarded route, a group widened to `admin`, and a portal route outside its group each failed it.

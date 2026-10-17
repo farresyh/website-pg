@@ -60,18 +60,6 @@ class ReportAssistantControllerTest extends TestCase
         ], $overrides));
     }
 
-    public function test_ask_requires_authentication(): void
-    {
-        $this->postJson('/api/reports/assistant/ask', ['question' => 'top game?'])->assertUnauthorized();
-    }
-
-    public function test_ask_is_forbidden_for_a_regular_admin(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->postJson('/api/reports/assistant/ask', ['question' => 'top game?'])->assertForbidden();
-    }
-
     public function test_ask_runs_a_planned_query_against_the_curated_view_and_grounds_the_answer(): void
     {
         $admin = $this->actingAsSuperAdmin();

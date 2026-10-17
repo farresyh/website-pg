@@ -40,10 +40,8 @@ final class BudgetEnvelopeService
         $this->assertHeader($type, $counterparty, $fundType, $expenseCategory);
         $this->assertLines($type, $lines);
 
-        $receiptPath = null;
-
-        try {
-            return DB::transaction(function () use ($type, $lines, $transactionDate, $description, $adminUserId, $counterparty, $fundType, $expenseCategory, $referenceNo, $receipt, &$receiptPath) {
+        return AccountingFileStore::storeThen($receipt, config('filesystems.accounting_disk'), 'accounting/budget-envelopes', $transactionDate,
+            fn (?string $receiptPath) => DB::transaction(function () use ($type, $lines, $transactionDate, $description, $adminUserId, $counterparty, $fundType, $expenseCategory, $referenceNo, $receiptPath) {
                 $envelopes = $this->lockEnvelopes();
 
                 foreach ($lines as $line) {
@@ -61,18 +59,8 @@ final class BudgetEnvelopeService
                     }
                 }
 
-                $receiptPath = $receipt?->store('accounting/budget-envelopes', config('filesystems.accounting_disk'));
-
                 return $this->write($type, $amount, $lines, $transactionDate, $description, $adminUserId, $counterparty, $fundType, $expenseCategory, $referenceNo, $receiptPath);
-            });
-        } catch (\Throwable $e) {
-            // The write rolled back — don't leave an orphan receipt behind. A storage error here must not replace $e.
-            if ($receiptPath !== null) {
-                rescue(fn () => Storage::disk(config('filesystems.accounting_disk'))->delete($receiptPath));
-            }
-
-            throw $e;
-        }
+            }));
     }
 
     /**

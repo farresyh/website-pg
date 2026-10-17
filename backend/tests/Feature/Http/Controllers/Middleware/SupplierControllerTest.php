@@ -73,13 +73,6 @@ class SupplierControllerTest extends TestCase
         };
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        $this->actingAsSteppedUp(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/middleware/suppliers')->assertForbidden();
-    }
-
     public function test_index_never_leaks_api_config_and_reports_status(): void
     {
         $this->actingAsAdmin();

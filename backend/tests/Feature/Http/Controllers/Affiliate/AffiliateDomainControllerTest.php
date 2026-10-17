@@ -152,13 +152,4 @@ class AffiliateDomainControllerTest extends TestCase
             ->postJson("/api/affiliate/domains/{$row->id}/recheck")
             ->assertNotFound();
     }
-
-    public function test_a_deactivated_affiliate_screen_is_read_only(): void
-    {
-        $affiliate = $this->affiliate(['status' => 'inactive']);
-
-        $this->withToken($this->tokenFor($affiliate))
-            ->postJson('/api/affiliate/domains', ['hostname' => 'shop.acme.com'])
-            ->assertForbidden();
-    }
 }

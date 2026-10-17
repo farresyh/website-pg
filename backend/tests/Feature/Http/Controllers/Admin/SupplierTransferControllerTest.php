@@ -42,14 +42,6 @@ class SupplierTransferControllerTest extends TestCase
         ]);
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-        $supplier = $this->makeSupplier();
-
-        $this->getJson("/api/accounting/suppliers/{$supplier->id}/transfers")->assertForbidden();
-    }
-
     public function test_store_records_the_transfer_and_the_topup_ledger_entry(): void
     {
         $admin = $this->actAsSuperAdmin();
@@ -143,7 +135,7 @@ class SupplierTransferControllerTest extends TestCase
 
         $response->assertCreated();
         $transfer = SupplierTransfer::query()->firstOrFail();
-        $this->assertNotNull($transfer->receipt_path);
+        $this->assertStringStartsWith('accounting/supplier-transfers/2026/10/', $transfer->receipt_path);
         Storage::disk('local')->assertExists($transfer->receipt_path);
     }
 
@@ -612,17 +604,17 @@ class SupplierTransferControllerTest extends TestCase
     }
 
     /**
-     * §16 item 56: `r2_accounting` throws on a storage error. Deleting the
-     * replaced receipt runs after commit, so a failure there must not 500 a
-     * correction that was saved.
+     * §16 item 120: a replacement receipt never deletes the old one (the
+     * correction's diff still points at it), and is filed by the
+     * corrected transfer date.
      */
-    public function test_correct_with_a_new_receipt_survives_a_failed_old_receipt_delete(): void
+    public function test_correct_with_a_new_receipt_keeps_the_old_one_and_files_the_new_one_by_the_corrected_date(): void
     {
         $this->actAsSuperAdmin();
         $supplier = $this->makeSupplier();
         $fake = Storage::fake('local');
         $this->post("/api/accounting/suppliers/{$supplier->id}/transfers", [
-            'transferred_on' => '2026-10-01',
+            'transferred_on' => '2026-09-30',
             'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR',
             'amount_foreign_received' => 832672,
             'receipt' => UploadedFile::fake()->create('old.pdf', 50, 'application/pdf'),
@@ -630,17 +622,18 @@ class SupplierTransferControllerTest extends TestCase
         $transfer = SupplierTransfer::query()->firstOrFail();
         $oldPath = $transfer->receipt_path;
 
-        $disk = \Mockery::mock($fake)->makePartial();
-        $disk->shouldReceive('delete')->andThrow(new \RuntimeException('R2 unreachable'));
-        Storage::set('local', $disk);
-
         $this->post("/api/accounting/supplier-transfers/{$transfer->id}/correct", [
+            'transferred_on' => '2026-10-01',
             'receipt' => UploadedFile::fake()->create('new.pdf', 50, 'application/pdf'),
             'reason' => 'Attaching the right receipt',
         ], ['Accept' => 'application/json'])->assertCreated();
 
-        $this->assertNotSame($oldPath, $transfer->fresh()->receipt_path);
-        $fake->assertExists($transfer->fresh()->receipt_path);
+        $newPath = $transfer->fresh()->receipt_path;
+        $this->assertStringStartsWith('accounting/supplier-transfers/2026/09/', $oldPath);
+        $this->assertStringStartsWith('accounting/supplier-transfers/2026/10/', $newPath);
+        $fake->assertExists($oldPath);
+        $fake->assertExists($newPath);
+        $this->assertSame([$oldPath, $newPath], SupplierTransferCorrection::query()->sole()->changes['receipt_path']);
     }
 
     // ── ADR-083 2026-09-28 addendum: "Edit Details" (metadata-only correction) ──

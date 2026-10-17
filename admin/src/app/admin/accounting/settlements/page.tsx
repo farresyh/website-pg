@@ -185,8 +185,9 @@ export default function PaymentSettlementsPage() {
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">CHIP Settlements</h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Upload CHIP&apos;s own dashboard settlement export (.xlsx). Re-uploading the same file, or one whose date
-          range overlaps an earlier upload, is safe — a transaction already reconciled is never counted twice.
+          Upload CHIP&apos;s own dashboard settlement export (.xlsx). The original file is kept with the settlement. A
+          file whose date range overlaps an earlier upload is safe: a transaction already reconciled is never counted
+          twice, and a file with nothing new is refused.
         </p>
       </div>
 

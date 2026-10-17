@@ -57,6 +57,7 @@ final class TransactionRegisterService
     {
         $rows = [
             ...$this->orderRows($from, $toExclusive),
+            ...$this->orderProfitCorrectionRows($from, $toExclusive),
             ...$this->supplierTransferRows($from, $toExclusive),
             ...$this->supplierAdjustmentRows($from, $toExclusive),
             ...$this->supplierRefundRows($from, $toExclusive),
@@ -125,12 +126,19 @@ final class TransactionRegisterService
         // "net" it never actually earned). `ledger_entries` (type
         // order_profit, credited only on delivery, ADR-024) is the real
         // source of truth; batch-fetched here rather than N+1 queries.
+        // ADR-083 2026-10-18 addendum: only the automatic credit
+        // (`reason` null — at most one per order, the `dedupe_key`
+        // backstop). A manual correction is its own row in
+        // `orderProfitCorrectionRows()`, dated when it was made.
         $realizedProfitByOrderId = LedgerEntry::query()
             ->where('type', 'order_profit')
             ->where('owner_type', LedgerOwnerType::Platform->value)
             ->where('reference_type', 'order')
+            ->whereNull('reason')
             ->whereIn('reference_id', $orders->pluck('id'))
-            ->pluck('amount', 'reference_id');
+            ->selectRaw('reference_id, SUM(amount) as total')
+            ->groupBy('reference_id')
+            ->pluck('total', 'reference_id');
 
         return $orders
             ->map(fn (Order $order) => [
@@ -170,6 +178,55 @@ final class TransactionRegisterService
                 // `description`) rather than a free-text label.
                 'funding_source' => $order->wallet_reseller_id !== null ? 'reseller_wallet' : 'chip',
             ])
+            ->all();
+    }
+
+    /**
+     * ADR-083 2026-10-18 addendum: a manual platform `order_profit`
+     * correction (a ledger row with a `reason`, e.g. order 15's −10 sen
+     * ADR-105 fix) is its own row, dated at its own `created_at` — the
+     * same "never rewrite history" rule `supplierAdjustmentRows()`
+     * follows. A correction made after a month closes lands in the month
+     * it was made (MPERS s.10 / IAS 8: an immaterial error is corrected
+     * in the current period), so a closed month's export never changes.
+     * Per order, the order row plus these rows = the platform ledger sum.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function orderProfitCorrectionRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
+    {
+        $entries = LedgerEntry::query()
+            ->where('type', 'order_profit')
+            ->where('owner_type', LedgerOwnerType::Platform->value)
+            ->where('reference_type', 'order')
+            ->whereNotNull('reason')
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
+            ->get();
+
+        $orderNumbersById = Order::query()
+            ->whereIn('id', $entries->pluck('reference_id')->unique())
+            ->where('is_test', false)
+            ->pluck('order_number', 'id');
+
+        return $entries
+            ->filter(fn (LedgerEntry $entry) => $orderNumbersById->has($entry->reference_id))
+            ->map(fn (LedgerEntry $entry) => [
+                'date' => $entry->created_at->toIso8601String(),
+                'type' => 'order_profit_correction',
+                'reference' => $orderNumbersById[$entry->reference_id],
+                'description' => "Order profit correction (ledger entry #{$entry->id}) — {$entry->reason}",
+                'supplier' => null,
+                'currency' => 'MYR',
+                'gross_sen' => null,
+                'fee_sen' => null,
+                'cost_sen' => null,
+                'net_sen' => $entry->amount,
+                'amount_foreign' => null,
+                'status' => 'active',
+                'funding_source' => null,
+            ])
+            ->values()
             ->all();
     }
 

@@ -11,6 +11,8 @@ use App\Services\Accounting\SettlementReconciliationService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * ADR-110 PR-B, fills ADR-083 decision 7 — "CHIP Settlements" screen.
@@ -79,13 +81,7 @@ class PaymentSettlementController extends Controller
 
     public function store(UploadPaymentSettlementRequest $request): JsonResponse
     {
-        $file = $request->file('file');
-
-        $result = $this->reconciliation->ingest(
-            $file->getRealPath(),
-            $file->getClientOriginalName(),
-            $request->user()->id,
-        );
+        $result = $this->reconciliation->ingest($request->file('file'), $request->user()->id);
 
         return response()->json([
             'settlement' => $result->settlement,
@@ -95,6 +91,20 @@ class PaymentSettlementController extends Controller
             'unmatched_transaction_ids' => $result->unmatchedTransactionIds,
             'paid_but_not_settled' => $result->paidButNotSettled,
         ], 201);
+    }
+
+    /** §16 item 120: attach the original .xlsx to a settlement uploaded before files were kept. */
+    public function attachFile(UploadPaymentSettlementRequest $request, PaymentSettlement $settlement): JsonResponse
+    {
+        return response()->json($this->reconciliation->attachOriginal($settlement, $request->file('file')));
+    }
+
+    /** §16 item 120: the original CHIP settlement file, under the name it was uploaded with. */
+    public function downloadFile(PaymentSettlement $settlement): StreamedResponse
+    {
+        abort_if($settlement->file_path === null, 404, 'This settlement has no stored file.');
+
+        return Storage::disk(config('filesystems.accounting_disk'))->download($settlement->file_path, $settlement->original_filename);
     }
 
     /**

@@ -64,14 +64,6 @@ class ResellerWalletControllerTest extends TestCase
             ->assertJsonValidationErrors('idempotency_key');
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        $this->actingAsSteppedUp(AdminUser::factory()->create(['role' => 'admin']));
-        $reseller = $this->makeReseller();
-
-        $this->getJson("/api/resellers/{$reseller->id}/wallet")->assertForbidden();
-    }
-
     public function test_credit_without_receipt_credits_the_ledger(): void
     {
         $admin = $this->actAsSuperAdmin();
@@ -114,6 +106,7 @@ class ResellerWalletControllerTest extends TestCase
         $receipt = WalletTopupReceipt::query()->firstOrFail();
         $this->assertSame('receipt.pdf', $receipt->original_name);
         $this->assertSame('local', $receipt->disk);
+        $this->assertStringStartsWith('wallet-topup-receipts/'.now('Asia/Kuala_Lumpur')->format('Y/m').'/', $receipt->path);
         Storage::disk('local')->assertExists($receipt->path);
         $response->assertJsonPath('entry.reference_id', $receipt->id);
     }

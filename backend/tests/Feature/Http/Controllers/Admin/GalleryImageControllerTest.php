@@ -26,20 +26,6 @@ class GalleryImageControllerTest extends TestCase
         return $admin;
     }
 
-    public function test_index_requires_authentication(): void
-    {
-        $this->getJson('/api/gallery/images')->assertUnauthorized();
-    }
-
-    public function test_store_requires_authentication(): void
-    {
-        Storage::fake('public');
-
-        $this->postJson('/api/gallery/images', [
-            'image' => UploadedFile::fake()->image('cover.png'),
-        ])->assertUnauthorized();
-    }
-
     public function test_store_uploads_an_image_and_records_the_uploader(): void
     {
         Storage::fake('public');

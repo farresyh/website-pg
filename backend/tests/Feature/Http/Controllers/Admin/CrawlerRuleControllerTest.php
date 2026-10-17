@@ -19,13 +19,6 @@ class CrawlerRuleControllerTest extends TestCase
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/seo/crawler-rules')->assertForbidden();
-    }
-
     public function test_index_orders_by_sort_order(): void
     {
         $this->actingAsSuperAdmin();

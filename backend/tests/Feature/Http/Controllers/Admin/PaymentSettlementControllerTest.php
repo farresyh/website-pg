@@ -9,6 +9,7 @@ use App\Models\PaymentSettlement;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\SettlementFixture;
 use Tests\TestCase;
@@ -17,19 +18,19 @@ class PaymentSettlementControllerTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Item 120: an upload now keeps the file; never write it to the real local disk.
+        Storage::fake(config('filesystems.accounting_disk'));
+    }
+
     private function actingAsAdmin(): AdminUser
     {
         $admin = AdminUser::factory()->create(['role' => 'super_admin']);
         Sanctum::actingAs($admin);
 
         return $admin;
-    }
-
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/accounting/settlements')->assertForbidden();
     }
 
     public function test_store_ingests_the_uploaded_file_and_returns_the_reconciliation_result(): void
@@ -119,10 +120,7 @@ class PaymentSettlementControllerTest extends TestCase
             'paid_at' => '2026-09-07 12:00:00',
             'final_amount' => 5000,
         ]);
-        $path = SettlementFixture::build('2026-09-07 to 2026-09-07', '0.00', '0.00', '0.00', []);
-        $file = new UploadedFile($path, 'settlement.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true);
-        $settlementId = $this->postJson('/api/accounting/settlements', ['file' => $file])->json('settlement.id');
-        unlink($path);
+        $settlementId = PaymentSettlement::query()->create($this->settlementAttributes(['date_from' => '2026-09-07', 'date_to' => '2026-09-07']))->id;
 
         $response = $this->getJson("/api/accounting/settlements/{$settlementId}")->assertOk();
 
@@ -281,13 +279,6 @@ class PaymentSettlementControllerTest extends TestCase
 
         $this->assertCount(2, $response->json('data'));
         $this->assertSame(3, $response->json('total'));
-    }
-
-    public function test_transactions_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/accounting/settlements/transactions')->assertForbidden();
     }
 
     /**

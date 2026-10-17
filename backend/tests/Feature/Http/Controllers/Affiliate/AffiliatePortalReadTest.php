@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Http\Controllers\Affiliate;
 
-use App\Models\AdminUser;
 use App\Models\Affiliate;
 use App\Models\AffiliateMembershipTier;
 use App\Models\AffiliateSubscription;
@@ -53,14 +52,6 @@ class AffiliatePortalReadTest extends TestCase
         foreach (['/api/affiliate/dashboard', '/api/affiliate/orders', '/api/affiliate/earnings', '/api/affiliate/subscription'] as $route) {
             $this->getJson($route)->assertUnauthorized();
         }
-    }
-
-    public function test_an_admin_token_cannot_reach_the_portal(): void
-    {
-        $admin = AdminUser::factory()->create();
-        $token = $admin->createToken('api')->plainTextToken;
-
-        $this->withToken($token)->getJson('/api/affiliate/dashboard')->assertUnauthorized();
     }
 
     public function test_dashboard_returns_the_earnings_and_sales_snapshot(): void

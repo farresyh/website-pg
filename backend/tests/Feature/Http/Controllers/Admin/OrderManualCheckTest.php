@@ -248,13 +248,6 @@ class OrderManualCheckTest extends TestCase
         $this->assertSame(DeliveryStatus::Delivered, $order->fresh()->delivery_status);
     }
 
-    public function test_check_supplier_requires_authentication(): void
-    {
-        $order = $this->pendingOrder();
-
-        $this->postJson("/api/orders/{$order->id}/check-supplier")->assertUnauthorized();
-    }
-
     // --- Check from Gateway ---
 
     private function pendingPaymentOrder(array $overrides = []): Order
@@ -331,13 +324,6 @@ class OrderManualCheckTest extends TestCase
 
         $second->assertStatus(422);
         $this->assertGreaterThan(0, $second->json('retry_after_seconds'));
-    }
-
-    public function test_check_gateway_requires_authentication(): void
-    {
-        $order = $this->pendingPaymentOrder();
-
-        $this->postJson("/api/orders/{$order->id}/check-gateway")->assertUnauthorized();
     }
 
     protected function tearDown(): void
