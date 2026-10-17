@@ -705,8 +705,6 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
 2026-10-16). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- **109** Build fonts without Google Fonts (`next/font/local`): the CI
-  `playwright` job fails when the build can't fetch them.
 - **110** Security audit follow-ups (2026-10-17): per-account login throttle,
   missing HTTP headers, one upload size cap.
 - **115** Cost readers still show the checkout estimate after ADR-111's real
@@ -1067,21 +1065,6 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
       current Cloudflare docs before designing past 10 (several widgets
       would need a per-host site key on the storefront).
 
-109. **Builds fetch Google Fonts over the network — the CI `playwright` job
-    flakes on it (found 2026-10-17).** `admin`, `storefront` and `reseller`
-    load fonts with `next/font/google`, so `next build` downloads them. When
-    the download fails, Turbopack aborts with `Can't resolve
-    '@vercel/turbopack-next/internal/font/google/font'`. It hit the e2e
-    boot twice in one day (PR #474's first run; release #476's `main` run,
-    green on re-run). An older form of the same crash was item 27 (2026-10-08,
-    `next dev` → `next build` in e2e). Vercel builds use the same download
-    and have not failed yet. `playwright` is not a deploy gate (ADR-066), so a
-    flake only costs a re-run.
-    - **Fix:** commit the font files and switch to `next/font/local` in the
-      three apps (storefront also references the font in `globals.css`).
-      Then no build depends on Google's servers. Check that the rendered
-      font matches before and after (screenshot plus `getComputedStyle`).
-
 110. **Security audit follow-ups (founder's 10-point check, 2026-10-17).**
     Dependencies (item 1 of the check) were fixed in #474 and are now
     scanned weekly. The other gaps found, all small:
@@ -1160,6 +1143,7 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **109** 2026-10-17: admin, storefront and portal load fonts with `next/font/local` from committed latin woff2 files (the same variable files Google Fonts serves), so no build downloads fonts and the CI `playwright` font flake has no cause left. Verified on local production builds: every face `loaded`, 0 requests to Google, glyphs match prod. Staging only until the next release. Details: build-log 2026-10-17.
 - **107** 2026-10-16: public Game ID Checker (ADR-123, #471, released via #472). Verified on prod: five families listed, `/check-id` and every family page 200, six checker URLs in `sitemap.xml`, no `noindex` on the primary brand; a check with the founder's own MLBB test account → "Prime." → Mobile Legends Malaysia, the repeat a cache hit, `player_validations` untouched. Open follow-up: item 108 (widget hostnames). Details: build-log 2026-10-16.
 - **98** 2026-10-16: Scheduler liveness (ADR-122, #449). After the first 00:00 UTC run all 19 tasks (11 critical, 8 routine) had a heartbeat with `last_ok_at` that day and no failure; `/api/health` 200 with `scheduler: true`. Longest daily task 12.3 s (backup cleanup); the 60-minute grace is reviewed after a week (ADR-122 consequence). Details: build-log 2026-10-16.
 - **99** 2026-10-16: Digiflazz `[83]` price-list rate limit (ADR-069 2026-10-15 addendum, #449). Since the deploy (2026-10-15 09:08 UTC): 40 `listProducts` calls, 0 exceptions (was 42 of 254), no rc 83 in `laravel.log` (last 2026-10-15 03:00, before the deploy), slowest call 19.5 s succeeded. Details: build-log 2026-10-16.
