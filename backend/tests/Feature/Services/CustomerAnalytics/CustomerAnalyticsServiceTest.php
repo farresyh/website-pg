@@ -66,6 +66,17 @@ class CustomerAnalyticsServiceTest extends TestCase
         ], $overrides));
     }
 
+    /** §16 item 115: a Delivered order's supplier cost is the real cost its profit used (ADR-111), not the checkout estimate. */
+    public function test_profit_analysis_uses_the_real_cost_of_a_delivered_order(): void
+    {
+        // real 850: platform_profit = 1000 − 850 − 20.
+        $this->order(['real_cost_price_sen' => 850, 'platform_profit' => 130]);
+
+        $detail = $this->analytics->customerDetail('buyer@example.com');
+
+        $this->assertSame(850, $detail['profit_analysis']['supplier_cost']);
+    }
+
     /** ADR-094 decision 41 — a settled partial order shows its credited profit, kept revenue and delivered cost. */
     public function test_customer_detail_counts_a_settled_partial_delivery(): void
     {

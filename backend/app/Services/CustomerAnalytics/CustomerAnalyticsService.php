@@ -341,7 +341,8 @@ final class CustomerAnalyticsService
 
                 foreach ($realised as $order) {
                     $totals['total_revenue'] += $order->final_amount - $order->cashCompensationSen();
-                    $totals['supplier_cost'] += $order->delivery_status === DeliveryStatus::Delivered ? $order->cost_price : $order->effectiveCostPriceSen();
+                    // §16 item 115: the cost its profit used (ADR-111), never the checkout estimate.
+                    $totals['supplier_cost'] += $order->effectiveCostPriceSen();
                     $totals['transaction_fees'] += $order->transaction_fee;
                 }
 

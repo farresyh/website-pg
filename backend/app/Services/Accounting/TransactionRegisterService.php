@@ -109,7 +109,8 @@ final class TransactionRegisterService
     private function orderRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
     {
         $orders = Order::query()
-            ->with('supplier')
+            // effectiveCostPriceSen() reads combo legs and, for a partial, its compensation.
+            ->with(['supplier', 'deliveryLegs.componentPackage:id,cost_price', 'voucher', 'voucherRedemption'])
             ->where('is_test', false)
             ->where('payment_status', PaymentStatus::Paid->value)
             ->when($from, fn ($q) => $q->where('paid_at', '>=', $from))
@@ -152,11 +153,10 @@ final class TransactionRegisterService
                 // `delivery_status = Delivered` gate
                 // `MonthlyAccountingSummaryService::cogs()` already uses.
                 // ADR-094 decision 41: a partial delivery drew down only its delivered legs.
-                'cost_sen' => match ($order->delivery_status) {
-                    DeliveryStatus::Delivered => $order->cost_price,
-                    DeliveryStatus::PartiallyDelivered => $order->effectiveCostPriceSen(),
-                    default => null,
-                },
+                // §16 item 115: the cost its profit used (ADR-111), never the checkout estimate.
+                'cost_sen' => in_array($order->delivery_status, [DeliveryStatus::Delivered, DeliveryStatus::PartiallyDelivered], true)
+                    ? $order->effectiveCostPriceSen()
+                    : null,
                 'net_sen' => (int) ($realizedProfitByOrderId[$order->id] ?? 0),
                 'amount_foreign' => null,
                 'status' => 'active',
