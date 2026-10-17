@@ -116,6 +116,38 @@ class TransactionRegisterControllerTest extends TestCase
      * filtered/grouped instead of double-counted against the top-up that
      * originally funded the wallet.
      */
+    /** §16 item 115: cost_sen is the real cost the order's profit used (ADR-111), not the checkout estimate. */
+    public function test_index_shows_the_real_cost_of_a_delivered_order(): void
+    {
+        $this->actAsSuperAdmin();
+        $supplier = $this->supplier();
+        $game = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb']);
+        Order::query()->create(['placed_via' => 'storefront',
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'order_number' => 'KRS-REG-REAL',
+            'customer_email' => 'buyer@example.com',
+            'player_id' => '1',
+            'game_id' => $game->id,
+            'supplier_id' => $supplier->id,
+            'supplier_product_ref' => 'A',
+            'cost_price' => 900,
+            'real_cost_price_sen' => 850,
+            'standard_selling_price' => 1000,
+            'selling_price' => 1000,
+            'transaction_fee' => 100,
+            'final_amount' => 1100,
+            'platform_profit' => 150,
+            'affiliate_profit' => 0,
+            'payment_status' => PaymentStatus::Paid->value,
+            'delivery_status' => DeliveryStatus::Delivered->value,
+            'paid_at' => now(),
+        ]);
+
+        $row = collect($this->getJson('/api/accounting/transactions')->assertOk()->json('data'))->firstWhere('reference', 'KRS-REG-REAL');
+
+        $this->assertSame(850, $row['cost_sen']);
+    }
+
     public function test_index_flags_a_reseller_wallet_paid_order(): void
     {
         $this->actAsSuperAdmin();

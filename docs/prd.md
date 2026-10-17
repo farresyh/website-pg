@@ -705,13 +705,13 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
 2026-10-16). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- **115** Cost readers still show the checkout estimate after ADR-111's real
-  cost: Customer Detail profit analysis, Transaction Register and COGS
-  (found 2026-10-17). COGS waits on item 81's accountant answer.
 
 **B. Needs a short grill / ADR addendum first**
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
   the accountant's monthly document list first.
+- **115** Monthly Summary COGS still sums the checkout estimate for
+  Delivered orders, not ADR-111's real cost. Decide with item 81's
+  accountant answer (operating profit is the same either way).
 - **106** A supplier that fails inside a price-sync run is invisible: the run
   still says `success` (found 2026-10-16, Gamevion). Short grill: where to record it.
 - **111** Bot check (Turnstile) on the admin and portal login forms; ties to
@@ -1100,18 +1100,21 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
     penjoki pay is an envelope expense. Launch needs the MLBB rank model and
     an RM rate table the founder approves. After 113.
 
-115. **Cost readers show the estimate, not the real cost (found
-    2026-10-17).** With ADR-111 on in production, `platform_profit` and the
-    ledger use the real cost, but three readers use `orders.cost_price` for
-    Delivered orders: `CustomerAnalyticsService.php:344` (Customer Detail
-    profit analysis), `TransactionRegisterService.php:156` and
-    `MonthlyAccountingSummaryService::cogs()`. Revenue − cost − commission −
-    fees then differs from profit in the same row. Fix: use
-    `Order::effectiveCostPriceSen()` in all three. The COGS change waits on
-    item 81's accountant answer (operating profit is unchanged either way).
+115. **COGS reads the estimate, not the real cost (found 2026-10-17).**
+    With ADR-111 on in production, `platform_profit` and the ledger use the
+    real cost, but `MonthlyAccountingSummaryService::cogs()` sums
+    `orders.cost_price` for Delivered orders. The other two readers
+    (Customer Detail, Transaction Register) were fixed 2026-10-17. COGS
+    also feeds the supplier FX variance true-up, so switching it to
+    `Order::effectiveCostPriceSen()` moves the variance line by the same
+    amount and operating profit stays the same. Whether the accountant wants
+    COGS at real cost (smaller variance) or at catalog cost (bigger
+    variance) is the question for item 81. Prod scale on 2026-10-17: 4 of
+    29 Delivered orders differ, RM0.26 in total.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **115 (part)** 2026-10-17: Customer Detail profit analysis and the Transaction Register (screen and CSV) show each realised order's `effectiveCostPriceSen()`, the cost its profit used, for Delivered as well as settled partial orders. Before, Delivered rows showed the checkout estimate, so revenue − cost − commission − fees did not match profit in the same row. COGS stays open as item 115. Staging only until the next release. Details: build-log 2026-10-17.
 - **110** 2026-10-17: security check follow-ups. The API sends HSTS (HTTPS only, no `includeSubDomains`), `Referrer-Policy` and `Permissions-Policy` (`SecurityHeaders` middleware); admin, storefront and portal send `Referrer-Policy` and `Permissions-Policy`, the portal now sends `nosniff`, and none sends `x-powered-by`; a supplier-transfer correction receipt is capped at 5 MB like its siblings. The audit's "login throttle is per IP only" was wrong: `AccountLoginThrottle` (ADR-019 2026-09-29 addendum) already locks an email for 15 minutes after 10 failures from any IPs, on admin login, MFA code, step-up and affiliate login, so nothing was added. Staging only until the next release. Details: build-log 2026-10-17.
 - **109** 2026-10-17: admin, storefront and portal load fonts with `next/font/local` from committed latin woff2 files (the same variable files Google Fonts serves), so no build downloads fonts and the CI `playwright` font flake has no cause left. Verified on local production builds: every face `loaded`, 0 requests to Google, glyphs match prod. Staging only until the next release. Details: build-log 2026-10-17.
 - **116** 2026-10-17: the Failed-order status card no longer promises "a voucher for the full amount"; it now says "a voucher here for what you paid, excluding the payment fee", matching `OrderSettlementService` (`final_amount − transaction_fee` for every order the card can reach, since wallet and test orders are out of scope). The only copy with that promise. Staging only until the next release. Details: build-log 2026-10-17.

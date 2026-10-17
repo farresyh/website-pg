@@ -838,3 +838,30 @@ limit), so no second limiter was added.
 
 Full backend suite 2872 passed; `tsc`, `eslint` and `next build` pass in
 the three apps.
+
+## 2026-10-17 — PRD §16 item 115 (part): cost readers use the real cost
+
+With ADR-111 on, a Delivered order's `platform_profit` and ledger credit
+use the real supplier cost, but two readers still showed
+`orders.cost_price` (the checkout estimate) for Delivered orders while
+already using `Order::effectiveCostPriceSen()` for settled partial ones:
+
+- `CustomerAnalyticsService::profitAnalysis()` (Customer Detail). ADR-049
+  §11 already names `effectiveCostPriceSen()` as this panel's cost; the
+  Delivered branch was a leftover from 2026-08-28, kept through item 103.
+- `TransactionRegisterService::orderRows()` (screen and CSV, one `rows()`
+  path). Now eager-loads `deliveryLegs.componentPackage:id,cost_price`,
+  `voucher` and `voucherRedemption`, which the method reads for a combo or
+  a partial, so no N+1.
+
+Both now use `effectiveCostPriceSen()` for every realised order. Already
+correct before: Order Detail and the Orders workbook export. Left open:
+`MonthlyAccountingSummaryService::cogs()`. It also feeds the FX variance
+true-up, so switching it moves that line by the same amount and operating
+profit stays the same; which presentation the accountant wants is an item
+81 question. PRD §16 item 115 now covers only COGS.
+
+Prod scale (read-only tinker, 2026-10-17): 29 realised orders, all
+Delivered; 4 have a real cost that differs (2 of them combos, 2 customers),
+RM59.23 estimate vs RM59.49 real, so RM0.26 in total. Two red→green tests;
+full suite 2874 passed.
