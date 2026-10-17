@@ -941,3 +941,40 @@ Transaction Register code are on the box.
 new release. #476 shows the same gap. ADR-066 says Quick Deploy stays off,
 so the CI gate isn't working on the ADR-114 box. Recorded as PRD §16 item
 119 (founder, Forge UI).
+
+## 2026-10-17 — Item 106: price-sync `partial` status + stale-supplier email (`staging`)
+
+**Why:** `SyncSupplierPricesJob` marked a run `failed` only when every
+supplier failed. One supplier failing beside a good one left the run
+`success` with an empty `error_message`, and the failure was visible only in
+`laravel.log`. Prod log from 2026-09-27 showed 23 hidden supplier failures:
+20 Digiflazz `[83]` (all before item 99's fix deployed 2026-10-15 09:08 UTC,
+none since) and 3 Gamevion `cURL 28` (run 1494, and 2305–2306 on
+2026-10-16). The longest consecutive failure was 2 runs. Gamevion's failures
+are outages, not slowness (2026-10-16: 1,252 good `listProducts` calls,
+p50 0.95 s, p99 5.9 s; every failed attempt got 0 bytes in 10 s), so the
+10 s timeout stays.
+
+**Shipped (ADR-015 2026-10-17 addendum):** a `partial` run status with
+`stats.failed_suppliers` ({slug, error}), shown on admin Price Sync as a
+warn tag plus one line per failed supplier; `suppliers.last_price_sync_at`
+(backfilled to the deploy time) and `price_sync_alerted_at`;
+`app:check-price-sync-staleness` in `TaskSchedule` (routine,
+every 15 min, inline in the scheduler) emailing all admins once when a
+supplier passes `price_sync_stale_alert_minutes` (new Middleware →
+Suppliers field, blank = 90, 0 = off) and once on recovery.
+
+**Design change after a stress test:** the grill first chose "N consecutive
+failed runs" counted from run history. Rejected before any code: Sync Now
+clicks and the interval env change what N means, a `failed()` run would
+have to claim every supplier failed, a check inside the job never runs with
+the queue down, and history-derived "already alerted" races a concurrent
+manual run.
+
+**Verified:** 9 new tests (job: partial, success, failed list; command:
+threshold, default, off, recovery once, off-doesn't-fake-recovery,
+inactive/unconfigured skipped, never-synced) plus the full suite green;
+admin `tsc` and lint clean; local production admin build with a seeded
+`partial` run: Last Sync card and Sync History show the warn tag (text
+`#8a5100` on `#fdf1dc`) and the failed supplier's error. Local dev DB
+migrated with plain `php artisan migrate`.
