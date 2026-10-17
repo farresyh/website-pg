@@ -24,17 +24,18 @@ behind them, not left implicit.
 | `reseller/` | Next.js 16 + React 19 + Tailwind v4 | Partner portal — one app, two account types: Affiliate (earnings ledger, withdrawals, wholesale tier, storefront config, custom domain — ADR-058/059/060) and Reseller (prepaid wallet, API keys, bot — ADR-072–076) |
 | `docs-site/` | Astro 7 + Starlight | Public Reseller API developer docs → `docs.pekangame.space` (ADR-084). OpenAPI spec is generated from the backend, not hand-written |
 
-Auth is bearer-token (Laravel Sanctum) end to end — there's no session-cookie
-auth and no CSRF surface between the frontends and the API (see ADR-009, ADR-019 and
-`docs/foundation-security.md`).
+Auth is Laravel Sanctum: the admin uses a cookie session with CSRF (ADR-121), the
+partner portal a bearer token (ADR-009), the Reseller API per-account keys
+(ADR-074); the storefront is guest-only (see `docs/foundation-security.md`).
 
 ## Getting started
 
 Requires PHP 8.4+, Composer, Node 22 (what CI uses), and Docker (local Redis for the queue,
 and the MySQL container used by concurrency tests — the app itself can run
 against SQLite locally). `./scripts/dev.sh` starts everything below at once.
-The frontends call `NEXT_PUBLIC_API_URL`, which locally is the Laravel Herd
-site for `backend/`, so Herd must be running (`backend/AGENTS.md`, gotcha 6).
+The storefront and portal call `NEXT_PUBLIC_API_URL`, which locally is the Laravel
+Herd site for `backend/`, so Herd must be running; the admin calls
+`http://localhost:8000` (`backend/AGENTS.md`, gotcha 6).
 
 ```bash
 # Backend
@@ -86,7 +87,7 @@ cd backend
 php artisan test                                              # fast suite, sqlite, no Docker needed
 docker compose up -d && php artisan test -c phpunit.concurrency.xml   # locking/concurrency proofs, needs real MySQL
 php artisan app:chip-smoke-test        # hits the real CHIP API
-php artisan app:gamevion-smoke-test    # hits the real Gamevion sandbox
+php artisan app:gamevion-smoke-test    # hits the real Gamevion API (GAMEVION_SANDBOX=true for sandbox)
 php artisan app:digiflazz-smoke-test   # hits the real Digiflazz API
 ```
 
@@ -105,7 +106,7 @@ cd e2e && npm test   # Playwright golden paths (ADR-023, 6 specs) — boots its 
 | Doc | What's in it |
 | --- | --- |
 | `docs/prd.md` | Full product spec (§1–13), the current-state headline (§14), a coarse per-feature tracker (§15) and the live backlog (§16) — check §15 first for "how much of X is actually built" |
-| `docs/build-log.md` | Chronological record of what shipped and why, 2026-10-09 onward; older entries in `docs/build-log-archive.md` |
+| `docs/build-log.md` | Chronological record of what shipped and why, 2026-10-15 onward; older entries in `docs/build-log-archive.md` |
 | `docs/adr.md` + `docs/adr/` | Architecture Decision Log — `adr.md` is the index (one row per decision, with its Standing), each decision is its own file in `docs/adr/`. Every non-trivial trade-off, numbered, with context/rationale, stress-tested before being accepted. The source of truth for *why* |
 | `docs/foundation-security.md` | Actionable security checklist derived from the ADRs |
 | `docs/legacy-reference-notes.md` | Notes from studying a prior/reference system — read as reference material, not as facts about this codebase |
@@ -114,7 +115,7 @@ cd e2e && npm test   # Playwright golden paths (ADR-023, 6 specs) — boots its 
 
 ## Current status
 
-**Live in production with real money.** The backend runs on a Laravel
+**Live in production with real money** (all payment methods switched off on purpose since 2026-10-07; see `docs/prd.md` §14). The backend runs on a Laravel
 Forge–managed DigitalOcean droplet at `api.pekangame.space`; the four
 frontends are on Vercel (storefront `pekangame.com`, `admin.pekangame.space`,
 `reseller.pekangame.space`, `docs.pekangame.space`) — see

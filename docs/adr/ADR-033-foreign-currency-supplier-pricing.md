@@ -1,6 +1,6 @@
 # ADR-033: Foreign-currency supplier pricing — FX-rate conversion at sync time (built 2026-08-25)
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-17):** In force; sync conversion uses one rate per run ([ADR-111](./ADR-111-real-cost-profit-reconciliation-at-delivery-time.md) 2026-10-14 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-08-24 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
 
@@ -34,3 +34,7 @@ The founder's earlier question — "rate berubah tiap hari, bukan patut fetch ik
 **Addendum — stale-fallback alert, 2026-09-29 (audit Wave 5 Low).** The fallback worked, but silently. A fallback rate was cached for the full live TTL (~24h), so there was no live retry for a day, and nothing reported how old the stored rate had become. Now a fallback rate is cached for 15 min only, and a stored rate older than 48h alerts every admin through `BackupFailureAlerter`'s Plunk path, area `FX`, at most once a day per pair. Both are class constants in `CurrencyRateService`, not config values: nothing has needed to tune them yet.
 
 **Cross-reference, 2026-10-12:** [ADR-111](./ADR-111-real-cost-profit-reconciliation-at-delivery-time.md) widens this FX conversion boundary to a second call site (delivery-time real cost). No change to this ADR's decisions.
+
+### 2026-10-17 addendum — cross-reference only
+
+Docs audit. [ADR-111](./ADR-111-real-cost-profit-reconciliation-at-delivery-time.md)'s 2026-10-14 addendum changes this ADR's sync-time conversion: one FX rate is read per sync run (`convertToSenAt`), not one per package. The 2026-10-12 note above ("no change to this ADR's decisions") predates it.

@@ -1,6 +1,6 @@
 # ADR-050: Customer Detail drill-down (ANL-5) — profit-panel scoping, kept consistent with the delivery-gated ledger rule
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-17):** In force; decision 2's Supplier Cost revised by the 2026-10-17 addendum (real cost, ADR-111). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-08-28 (grilled via `/mattpocock-skills:grilling`, one round, same session as ADR-049 — most prerequisites were already settled by that ADR)
 
@@ -32,3 +32,7 @@ The reference's profit table (`Total Revenue − Supplier Cost − Reseller Comm
 ### 2026-10-15 addendum — paged order history, stats from the shared seam
 
 Part of ADR-049's 2026-10-15 addendum (decision 11, PRD §16 item 103). The order history is paged (25 per page). Stats, monthly trend, top packages and top sources come from SQL aggregates of `Order::netSalesSql()`; the segment comes from ADR-049's SQL `CASE`. Profit Analysis keeps the per-order `Order` methods, read in chunks. Decisions 2–6 are unchanged.
+
+### 2026-10-17 addendum — Supplier Cost is the real cost the profit used
+
+PRD §16 item 115 (#482). Decision 2's "Supplier Cost = `SUM(cost_price)`" is revised: Supplier Cost is the sum of `Order::effectiveCostPriceSen()` over the realised set, the cost each order's `platform_profit` was actually computed from ([ADR-111](./ADR-111-real-cost-profit-reconciliation-at-delivery-time.md); combo legs and settled partials included). `cost_price` is the checkout estimate and, with ADR-111 on, no longer matches profit for an order whose real cost differed. This matches [ADR-049](./ADR-049-customer-analytics-anl-1-4.md) decision 11. The other decisions are unchanged.

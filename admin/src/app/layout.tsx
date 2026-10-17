@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
-import { Figtree } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { SidebarProvider } from "@/context/SidebarContext";
 import { PrimeProvider } from "@/components/prime-provider";
 
 // ADR-104: Outfit -> Figtree
-const figtree = Figtree({ subsets: ["latin"] });
+// PRD §16 item 109: committed latin woff2 files, so no build fetches Google Fonts.
+const figtree = localFont({ src: "./fonts/figtree-latin.woff2", weight: "300 900" });
 
 export const metadata: Metadata = {
   title: "PekanGame — Admin",

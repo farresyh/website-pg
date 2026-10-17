@@ -63,8 +63,10 @@ final class ReportAssistantService
           - affiliate_id, affiliate_name (the whitelabel storefront brand; null = primary brand)
           - wallet_reseller_id, reseller_name (a prepaid-wallet Reseller order; null = not one)
           - supplier_id, supplier_name (which supplier fulfilled this order)
-          - cost_price (what this order cost the platform, sen, AS OF WHEN IT WAS PLACED — use
-            llm_report_catalog instead for today's cost, they can legitimately differ)
+          - cost_price (the supplier cost as a checkout ESTIMATE, sen, frozen when the order was
+            placed; the real supplier charge at delivery can differ and is already reflected in
+            platform_profit — never treat cost_price as what the order actually cost. Use
+            llm_report_catalog for today's cost)
           - transaction_fee, voucher_discount (sen)
           - affiliate_markup_pct, wholesale_markup_pct (percent, whichever channel applied)
           - final_amount (what the customer paid, sen, before any wallet refund)
@@ -90,7 +92,8 @@ final class ReportAssistantService
         a package's cost/price can change over time via the weekly price sync; this is
         "as of right now", not "as of any particular past order"). Use this for "what
         does X cost today" / "which supplier" / "what's our current markup" questions;
-        use llm_report_orders' own cost_price for a specific past order's actual margin.
+        for a specific past order's actual margin, use llm_report_orders.platform_profit (and
+        affiliate_profit), never its cost_price.
           - package_id, package_name, denomination, is_active, sort_order
           - cost_price, standard_selling_price, markup_percent (sen/percent, current)
           - game_id, game_name, category

@@ -13,7 +13,7 @@
  * ADR (PRD §6.15) — a root token-set swap, not per-element `dark:`.
  *
  * Fonts: Space Grotesk (display/headings/CTA) + Inter (body) +
- * JetBrains Mono (prices/IDs), loaded via next/font/google in
+ * JetBrains Mono (prices/IDs), loaded via next/font/local in
  * layout.tsx and exposed here as CSS variables.
  */
 @theme {

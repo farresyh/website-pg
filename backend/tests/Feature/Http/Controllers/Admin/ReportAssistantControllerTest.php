@@ -265,6 +265,25 @@ class ReportAssistantControllerTest extends TestCase
         }
     }
 
+    /**
+     * §16 item 118: an order's cost_price is the checkout estimate (ADR-111
+     * reconciles the real cost into platform_profit), so the prompt never
+     * calls it the order's cost or sends a margin question to it.
+     */
+    public function test_plan_prompt_sends_an_orders_margin_to_platform_profit_not_cost_price(): void
+    {
+        $this->actingAsSuperAdmin();
+        $fake = new FakeGeminiClient([json_encode(['needs_query' => false, 'direct_answer' => null]), 'ok']);
+        $this->app->instance(GeminiClient::class, $fake);
+
+        $this->postJson('/api/reports/assistant/ask', ['question' => 'margin on my last order?'])->assertOk();
+
+        $planPrompt = $fake->calls[0]['systemPrompt'];
+        $this->assertStringContainsString('checkout ESTIMATE', $planPrompt);
+        $this->assertStringNotContainsString("own cost_price for a specific past order's actual margin", $planPrompt);
+        $this->assertStringContainsString("for a specific past order's actual margin, use llm_report_orders.platform_profit", $planPrompt);
+    }
+
     public function test_ask_answers_directly_without_a_query_for_pure_strategy_questions(): void
     {
         $this->actingAsSuperAdmin();

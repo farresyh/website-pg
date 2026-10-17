@@ -4,6 +4,7 @@ use App\Exceptions\ResellerApi\ResellerApiException;
 use App\Exceptions\ResellerApi\ResellerApiRejectionLog;
 use App\Http\Middleware\AllowActiveCustomDomainCors;
 use App\Http\Middleware\AllowAdminCorsCredentials;
+use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\EnsureAccountType;
 use App\Http\Middleware\EnsureAdminRole;
 use App\Http\Middleware\EnsureAdminSessionFresh;
@@ -68,6 +69,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prepend(AllowActiveCustomDomainCors::class);
         // ADR-121: CORS credentials for the admin origin only.
         $middleware->prepend(AllowAdminCorsCredentials::class);
+        // PRD §16 item 110: HSTS / Referrer-Policy / Permissions-Policy.
+        $middleware->append(SecurityHeaders::class);
 
         // Production is Laravel Forge (native nginx → php-fpm, ADR-066) with
         // Cloudflare proxying `api.pekangame.space` (ADR-020 decision 8 /

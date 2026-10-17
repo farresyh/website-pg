@@ -33,7 +33,7 @@ class CorrectSupplierTransferRequest extends FormRequest
             'amount_myr_sent' => ['sometimes', 'integer', 'min:1'],
             'fee_myr' => ['sometimes', 'integer', 'min:0'],
             'reference_no' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'receipt' => ['sometimes', 'file', 'mimes:jpg,jpeg,png,pdf'],
+            'receipt' => ['sometimes', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
             'reason' => ['required', 'string', 'max:1000'],
         ];
     }

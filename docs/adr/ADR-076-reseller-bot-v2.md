@@ -176,3 +176,7 @@ No new grilling round needed — every branch opened this session resolved to a 
 - Scoped deliberately narrow, per the founder's own call after the stress-test found the extra two games: fix the length bug only. A generic "any send failure gets a shorter fallback message" was considered and explicitly not built — the chunking fix removes the actual overflow case at its source, so there was nothing left for a fallback to catch.
 - Also surfaced, not fixed (data gap, not a bot bug): 6 reseller-coded games (`MLTR`, `MLRU`, `MCMY`, `WW`, `ZZZ`, `RM`) have zero curated packages — `.list` on each already correctly replies "Tiada package tersedia," so no code defect; just not yet stocked for reseller ordering.
 - Tests: **+3** (`ResellerBotReplyFormatterTest`: single-message case stays unchanged, a 79-item catalogue splits with every code appearing exactly once and no chunk over the cap; `ResellerBotServiceTest`: a 79-package `.list` dispatches more than one `SendResellerBotReplyJob`, none over 4096 chars). Full backend suite **1843/1843**. Pint clean. No migration (no schema change).
+
+### 2026-10-17 addendum — cross-reference only
+
+Docs audit. Of the validators named above, only MooGold remains, with RedxGame added; AcidGameShop and Nexone were removed after they stopped working on 2026-10-10 ([ADR-005](./ADR-005-player-id-pre-payment-validation-is-not.md) 2026-10-16 addenda). No decision changes here.

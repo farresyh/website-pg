@@ -1,6 +1,6 @@
 # ADR-071: Storefront perceived-performance — loading states, prefetchable routes, tag-based revalidation, and mobile buy-flow layout fixes
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-17):** In force; SWR `'max'` dropped by [ADR-077](./ADR-077-storefront-read-path.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — 2026-09-03 (grilled with the founder over four rounds via `/mattpocock-skills:grilling` before any code was written; this entry is that shared understanding). Built across PR0–PR3 off `staging`.
 

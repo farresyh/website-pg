@@ -747,3 +747,176 @@ at moderate and passes at high; `npm audit` works with no `node_modules`.
 On this PR, the composer job runs against staging's pre-#474 lock and is
 expected to fail. That is the alert path working, and it goes green once
 #474 merges.
+
+## 2026-10-17 — Release #476 (`staging`→`main`), verified; docs cleanup
+
+**Release.** #476 merged as `69cf00f` with #473, #474 and #475. The `deploy`
+job ran; the box's `current` points at the new release. Checked read-only:
+`Composer\InstalledVersions` reports `symfony/http-foundation` v8.1.9, and
+`composer.lock` has `laravel/framework` v13.35.0. `api.pekangame.space/api/health`
+returned 200, the `pekangame.com` HTML carries the new skeleton markup, and
+the `Dependency audit` workflow is active on `main`. The `main` run's
+`playwright` job failed on the Google Fonts build flake and passed on a
+re-run of the failed job (now PRD §16 item 109).
+
+**FPX test.** Read-only checks found FPX `is_active` since 2026-10-16 16:07
+UTC with one storefront order paid at 16:19. The founder confirmed it was
+their own test and switched FPX off again (19:16 UTC); all three methods are
+off. The PRD §14 "payments off" line stays true, with the test noted, and
+item 28's launch trigger has not started.
+
+**Docs cleanup.** PRD §14 headline → release #476. §15's storefront row
+now says #474 is released. §16 has three new items: 109 (fonts without
+Google Fonts), 110 (security check follow-ups: per-email login throttle,
+missing headers, one upload cap) and 111 (Turnstile on logins, needs a
+grill). §16's open items 106, 11 and 96 were re-verified: no fix commit,
+no Sentry package, OpenWA 0.23.7. A scripted check of all 123 ADR files
+against the `adr.md` index found every file indexed and every
+last-addendum date matching. The one wording drift (ADR-045's Standing)
+was aligned to its file banner.
+
+## 2026-10-17 — PRD §16 item 116: Failed-order card copy matches the voucher
+
+`OrderStatusCard`'s Failed closing line promised "a voucher for the full
+amount", but `OrderSettlementService::amounts()` issues
+`final_amount − transaction_fee` for a retail order (the gateway fee is
+never refunded). The card only reaches retail, non-test orders
+(`CustomerNotificationService::inScope()`), so one wording fits every case:
+"you'll receive a voucher here for what you paid, excluding the payment fee."
+A grep of backend, storefront, admin and portal found no other copy making
+the promise. `CustomerWhatsAppOptInTest` now asserts the new wording and
+that "full amount" is gone (red first, then green); full suite 2869 passed.
+
+## 2026-10-17 — PRD §16 item 109: fonts without Google Fonts
+
+`admin` (Figtree), `reseller` (Outfit) and `storefront` (Space Grotesk,
+Inter, JetBrains Mono) now load fonts with `next/font/local`. The files
+are the latin-subset variable woff2 files Google Fonts serves
+(`src/app/fonts/*.woff2`, 20–48 KB each), declared with the same weight
+ranges and the same CSS variable names, so `globals.css` is unchanged
+apart from a comment. No build fetches fonts any more, which removes the
+cause of the CI `playwright` boot crash (`Can't resolve
+'@vercel/turbopack-next/internal/font/google/font'`). Only latin is
+covered, as before (`subsets: ["latin"]`).
+
+Verified: `tsc`, `eslint` and `next build` pass in all three apps. On
+`next start` with Playwright, every face reports `loaded` with 0 requests
+to Google (JetBrains Mono loads on demand, and the homepage has no mono
+text). A storefront header next to prod's shows the same Space Grotesk
+glyphs; the layout differs only because the local build had no backend
+for the admin-configured logo and nav.
+
+## 2026-10-17 — PRD §16 item 110: security check follow-ups
+
+**Headers.** New `SecurityHeaders` middleware (appended globally in
+`bootstrap/app.php`) adds `Strict-Transport-Security: max-age=31536000`
+over HTTPS only (no `includeSubDomains`/`preload`, which would bind every
+`pekangame.space` host), `Referrer-Policy: strict-origin-when-cross-origin`
+and `Permissions-Policy: camera=(), microphone=(), geolocation=()`. It is
+done in Laravel, not in Forge's nginx (which already sends
+`X-Frame-Options` and `nosniff`), so it ships through staging → main with
+no hand-edit on the box. `SecurityHeadersTest` covers HTTPS, plain HTTP and
+an error response. Admin, storefront and portal `next.config.ts` add the
+same two policies, the portal gains `nosniff`, and all three set
+`poweredByHeader: false`. No frontend uses camera, microphone or
+geolocation. Checked with `curl -I` against `next start` builds of all
+three.
+
+**Upload cap.** `CorrectSupplierTransferRequest`'s `receipt` gets
+`max:5120`, like its three siblings (red→green test). Every other
+FormRequest with a file rule already has a `max:`.
+
+**Login throttle: no change.** The audit said `/login`, `/login/mfa` and
+the affiliate login are throttled per IP only. They are not:
+`App\Support\AccountLoginThrottle` (ADR-019 2026-09-29 addendum, Wave 3
+PR-B) locks an email for 15 minutes after 10 failures from any mix of IPs,
+on admin login, MFA code, step-up and affiliate login, with tests in
+`AuthControllerTest` and `AffiliateAuthControllerTest`. That is tighter
+than the 10/min + 30/hour bucket agreed before this was found (at most
+~40 guesses an hour instead of 30 an hour plus a separate per-minute
+limit), so no second limiter was added.
+
+Full backend suite 2872 passed; `tsc`, `eslint` and `next build` pass in
+the three apps.
+
+## 2026-10-17 — PRD §16 item 115 (part): cost readers use the real cost
+
+With ADR-111 on, a Delivered order's `platform_profit` and ledger credit
+use the real supplier cost, but two readers still showed
+`orders.cost_price` (the checkout estimate) for Delivered orders while
+already using `Order::effectiveCostPriceSen()` for settled partial ones:
+
+- `CustomerAnalyticsService::profitAnalysis()` (Customer Detail). ADR-049
+  §11 already names `effectiveCostPriceSen()` as this panel's cost; the
+  Delivered branch was a leftover from 2026-08-28, kept through item 103.
+- `TransactionRegisterService::orderRows()` (screen and CSV, one `rows()`
+  path). Now eager-loads `deliveryLegs.componentPackage:id,cost_price`,
+  `voucher` and `voucherRedemption`, which the method reads for a combo or
+  a partial, so no N+1.
+
+Both now use `effectiveCostPriceSen()` for every realised order. Already
+correct before: Order Detail and the Orders workbook export. Left open:
+`MonthlyAccountingSummaryService::cogs()`. It also feeds the FX variance
+true-up, so switching it moves that line by the same amount and operating
+profit stays the same; which presentation the accountant wants is an item
+81 question. PRD §16 item 115 now covers only COGS.
+
+Prod scale (read-only tinker, 2026-10-17): 29 realised orders, all
+Delivered; 4 have a real cost that differs (2 of them combos, 2 customers),
+RM59.23 estimate vs RM59.49 real, so RM0.26 in total. Two red→green tests;
+full suite 2874 passed.
+
+## 2026-10-17 — Docs audit: outdated and contradicting facts
+
+Three read-only forks (PRD; ADR index and files; AGENTS/README/security
+docs) checked every doc against git, code and prod; the top findings were
+re-checked by hand. Fixed in one docs PR:
+
+- **Money/design.** ADR-125 decision 24's `COALESCE(real_cost_price_sen,
+  cost_price)` for the report view was wrong for combos (real cost lives on
+  the legs) and for an unused stored real cost; a 2026-10-17 addendum
+  requires it to mirror `Order::effectiveCostPriceSen()`. The live Report
+  Assistant prompt has the same gap: new PRD §16 item 118. ADR-050 gets an
+  addendum for item 115's Supplier Cost. ADR-107's Standing now says what
+  ADR-111 and ADR-094 replaced.
+- **Status.** PRD §14 "waiting on staging: docs only" listed #478–#482;
+  §15 Reports said "on staging" for #454/#455 (live via #462); §15
+  Accounting now says the drift chip watches only a supplier with
+  `drift_threshold` set (DigiFlazz has none); README notes payments are
+  off and that build-log starts 2026-10-15.
+- **Admin auth.** README, root `AGENTS.md`, `reseller/AGENTS.md`, PRD §5
+  and AUTH-2 still described admin auth as a bearer token; it has been a
+  cookie session since ADR-121. `foundation-security.md`'s token-expiry line
+  cited a removed test; it now covers the session limits, and gains lines
+  for `AccountLoginThrottle` and the #481 headers (missing it is why the
+  110 audit misreported the throttle).
+- **Spec.** PRD MID-8/§7.1 and the `Validator` entity now describe
+  `PlayerValidatorProfile`/`PlayerRegionMapping`; §8 Order lists
+  `real_cost_price_sen` and how `platform_profit` is recomputed; §9 says the
+  storefront is English-only, with more languages and currencies recorded as
+  a long-term expansion item (§16 item 117, founder 2026-10-17); glossary
+  gains the ADR-124/125/126 terms before 112–114 are built.
+- **Smaller.** Dropped-item references (89, 58), the third UptimeRobot
+  monitor, "Phase 2" for live Affiliate storefronts, the §16 intro date,
+  `AGENTS.md`'s non-existent "Buildable when triggered" heading and its
+  `ignoreCommand` pointer (the logic is `scripts/vercel-ignore-build.sh`),
+  the admin's local API URL, docs-site's `DOCS_SITE_URL` (already set),
+  and cross-reference addenda or banner fixes for ADR-022, 026, 033, 071,
+  076, 083, 093 and 121.
+
+Left as is: the "(built YYYY-MM-DD)" suffix on 20 old ADR titles (dated
+history) and ADR-025's Gamevion wording (history; the guard is
+supplier-agnostic in code).
+
+## 2026-10-17 — PRD §16 item 118: Report Assistant margin uses profit, not the estimate
+
+The plan prompt (`ReportAssistantService::schemaDescription()`) described
+`llm_report_orders.cost_price` as "what this order cost the platform" and,
+under the catalog view, told the model to use it "for a specific past
+order's actual margin". With ADR-111 on, `cost_price` is the checkout
+estimate; the view's `platform_profit` already comes from the ledger and
+carries the real cost. The prompt now calls `cost_price` the checkout
+estimate and sends a past order's margin to `platform_profit` (and
+`affiliate_profit`). Prompt only: no view change, so no migration (the
+`effective_cost_price` column stays ADR-125's, per its 2026-10-17
+addendum). One red→green prompt test; full suite 2875 passed.
