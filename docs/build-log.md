@@ -1025,3 +1025,23 @@ has `=false`, the process started at 12:34:00 UTC, `reseller-bot` was
 ready at 12:34:09 and `customer-support` at 12:36:01. The founder
 confirmed the phones get notifications again. Recorded in the ADR-114
 2026-10-17 addendum, along with the open `SIMULATE_TYPING` note.
+
+## 2026-10-17 — Release #490 (`staging`→`main`), verified; item 119 closed
+
+Merged as `4ced680` at 12:47:37 UTC, with #487 (item 106) and docs #486,
+#488, #489. The `main` CI run passed every job. `deploy` ran
+12:54:40–12:54:43. Checked on the box: release `80463744` was built at
+12:54:49, and `current` points to it at `4ced680`. No release directory
+appeared at the merge (checked 12:47:53). The migration
+`2026_10_17_120000_add_price_sync_health_to_suppliers` shows Ran (batch 44).
+`schedule:list` shows `app:check-price-sync-staleness` every 15 minutes.
+`/up` returns 200.
+
+**Item 119 closed.** The deploy went through the CI gate: one release,
+built after the `deploy` job. Before 2026-10-17 the box built 10 seconds
+after each merge. A directory `80314022` showed up for a moment at 12:55:15.
+It was the oldest release being pruned by Forge (five are kept), not a
+second deploy.
+
+**Left for item 106:** the first real `partial` run or stale-supplier email
+in prod is its live check.
