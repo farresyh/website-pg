@@ -920,3 +920,24 @@ estimate and sends a past order's margin to `platform_profit` (and
 `affiliate_profit`). Prompt only: no view change, so no migration (the
 `effective_cost_price` column stays ADR-125's, per its 2026-10-17
 addendum). One red→green prompt test; full suite 2875 passed.
+
+## 2026-10-17 — Release #485 (`staging`→`main`), verified
+
+Merged as `d030484` with #477–#484 (items 116, 109, 110, 115 part, 118 and
+three docs PRs); no migration, no config or env change. The `main` CI run
+passed every job, `deploy` included. Checked live: `current` →
+`releases/80455580` at `d030484`, with `SecurityHeaders` in
+`bootstrap/app.php`; `api.pekangame.space` sends HSTS, `Referrer-Policy` and
+`Permissions-Policy`; `pekangame.com`, `admin.` and `reseller.` send
+`Referrer-Policy`, `Permissions-Policy` and `nosniff` with no
+`x-powered-by`; the storefront HTML references only its own
+`/_next/static/immutable/media/*_latin*.woff2` files and nothing from Google;
+`/api/health` 200; the released `OrderStatusCard`, Report Assistant prompt and
+Transaction Register code are on the box.
+
+**Gotcha: Forge deploys before CI.** The release directory was built at
+09:20:17 UTC, 10 seconds after the 09:20:07 merge and while
+`backend-concurrency` was still running; the later CI `deploy` job made no
+new release. #476 shows the same gap. ADR-066 says Quick Deploy stays off,
+so the CI gate isn't working on the ADR-114 box. Recorded as PRD §16 item
+119 (founder, Forge UI).

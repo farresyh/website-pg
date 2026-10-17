@@ -602,22 +602,26 @@ founder switched FPX on for one test order on 2026-10-16 (16:07 → 19:16 UTC,
 one storefront order paid) and off again, so all three are off (checked
 2026-10-17).
 
-**Latest release 2026-10-17 (`staging`→`main`, PR #476), deploy verified.**
-Merged as `69cf00f`; the prod box runs it (`symfony/http-foundation` v8.1.9,
-`laravel/framework` v13.35.0 installed). Ships #474: five dependency
-advisories closed, including an unauthenticated `Cache-Control` ReDoS
-(CVE-2026-108082), and a matched loading skeleton on every storefront route,
-with a CI guard (ADR-071 2026-10-17 addendum). Also #475: the weekly
-`Dependency audit` workflow (alert-only email, Monday 09:00 MYT), and #473
-(docs). The release's `playwright` job hit the Google Fonts build flake
-(§16 item 109) and passed on re-run.
-Waiting on `staging` (not live until the next release): #478 (ADR-124/125/126 design), #479 (§16 item 116), #480 (109), #481 (110), #482 (115, part), #483 (docs audit) and item 118.
+**Latest release 2026-10-17 (`staging`→`main`, PR #485), deploy verified.**
+Merged as `d030484`; the prod box's `current` is that commit (release
+`80455580`). Ships §16 items 116 (#479, Failed-order card copy), 109 (#480,
+fonts from committed files, no Google Fonts fetch), 110 (#481, security
+headers on the API and the three Next apps, a 5 MB correction-receipt cap),
+115 part (#482, Customer Detail and Transaction Register show the real cost)
+and 118 (#484, Report Assistant margin uses `platform_profit`), plus docs
+#477, #478 (ADR-124/125/126 design) and #483 (docs audit). No migration, no
+config change. Checked live: the new headers on `api.pekangame.space`,
+`pekangame.com`, `admin.` and `reseller.`, no `x-powered-by`, the storefront
+loads only its own woff2 files, `/api/health` 200. The box built the release
+10 seconds after the merge, before CI finished: Forge seems to deploy on
+every push (§16 item 119).
+Waiting on `staging`: nothing but this release record.
 
 **Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
 hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
 `cdn.` stay on `pekangame.space`.
 
-**Earlier releases** (#472 on 2026-10-16: Game ID Checker, ADR-123; #469 on 2026-10-16: RedxGame player validation; #462 and #449 on 2026-10-15: items 97–103; #441; #437 on 2026-10-14: admin MFA, ADR-121; #430 and #425 on 2026-10-13, #416 and #406 on 2026-10-12/13, #393 Envelope Ledger,
+**Earlier releases** (#476 on 2026-10-17: dependency advisories, storefront route skeletons, weekly dependency audit; #472 on 2026-10-16: Game ID Checker, ADR-123; #469 on 2026-10-16: RedxGame player validation; #462 and #449 on 2026-10-15: items 97–103; #441; #437 on 2026-10-14: admin MFA, ADR-121; #430 and #425 on 2026-10-13, #416 and #406 on 2026-10-12/13, #393 Envelope Ledger,
 #385 Reports redesign, #376 Reseller API `max_price_sen` / Assistant = Reports /
 `r2_accounting`, #369 ADR-120 SEO/GEO, #362, #354, #346, #342, #332,
 #320 and the 2026-09-28 audit waves) are recorded release by release in
@@ -730,6 +734,9 @@ git in the 2026-10-17 docs audit. Re-verify before building.
   added and alert-tested by the founder 2026-10-14).
 - **71** GSC recheck around 2026-10-22.
 - **96** Upgrade OpenWA to v0.24.0 (with the founder standing by).
+- **119** Turn Forge "Quick Deploy" off for `api.pekangame.space`: the box
+  deploys on every push to `main` before CI finishes (seen on releases #476
+  and #485).
 
 **D. Waiting on a trigger: don't build early**
 - **4** Bot-host resize, when capacity calls for it.
@@ -1121,6 +1128,20 @@ git in the 2026-10-17 docs audit. Re-verify before building.
     variance) is the question for item 81. Prod scale on 2026-10-17: 4 of
     29 Delivered orders differ, RM0.26 in total.
 
+119. **Forge deploys before the CI gate (found 2026-10-17, release #485).**
+    ADR-066 decision 5 says Forge "Quick Deploy" stays off, so the backend
+    deploys only when CI's `deploy` job POSTs the Forge hook after every
+    test job passes. On the `pekangame-prod-lwf` box (ADR-114) the release
+    directory appears about 10 seconds after the merge: #485 merged 09:20:07
+    UTC, release `80455580` built 09:20:17, while `backend-concurrency` was
+    still running; #476 shows the same gap (CI 18:49:05, release 18:49:17).
+    The later `deploy` job succeeded without a new release. So a push that
+    fails tests would still reach production. Fix (founder, Forge UI): site
+    `api.pekangame.space` → Deployments → turn "Quick Deploy" off, then
+    confirm the next release's directory appears only after the `deploy`
+    job. If it is already off, find the other trigger (e.g. a GitHub webhook
+    added during the ADR-114 migration).
+
 117. **Expansion outside Malaysia: languages and currencies (founder,
     2026-10-17).** The storefront is English-only and prices are MYR-only
     (CHIP, a Malaysian gateway, is the one payment gateway;
@@ -1132,11 +1153,11 @@ git in the 2026-10-17 docs audit. Re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
-- **118** 2026-10-17: the Report Assistant prompt calls an order's `cost_price` the checkout estimate and sends a past order's margin to `platform_profit` (already ledger-sourced, so it carries ADR-111's real cost), never to `cost_price`. Prompt only; the view is unchanged (ADR-125's addendum still governs the `effective_cost_price` column it will add). Staging only until the next release. Details: build-log 2026-10-17.
-- **115 (part)** 2026-10-17: Customer Detail profit analysis and the Transaction Register (screen and CSV) show each realised order's `effectiveCostPriceSen()`, the cost its profit used, for Delivered as well as settled partial orders. Before, Delivered rows showed the checkout estimate, so revenue − cost − commission − fees did not match profit in the same row. COGS stays open as item 115. Staging only until the next release. Details: build-log 2026-10-17.
-- **110** 2026-10-17: security check follow-ups. The API sends HSTS (HTTPS only, no `includeSubDomains`), `Referrer-Policy` and `Permissions-Policy` (`SecurityHeaders` middleware); admin, storefront and portal send `Referrer-Policy` and `Permissions-Policy`, the portal now sends `nosniff`, and none sends `x-powered-by`; a supplier-transfer correction receipt is capped at 5 MB like its siblings. The audit's "login throttle is per IP only" was wrong: `AccountLoginThrottle` (ADR-019 2026-09-29 addendum) already locks an email for 15 minutes after 10 failures from any IPs, on admin login, MFA code, step-up and affiliate login, so nothing was added. Staging only until the next release. Details: build-log 2026-10-17.
-- **109** 2026-10-17: admin, storefront and portal load fonts with `next/font/local` from committed latin woff2 files (the same variable files Google Fonts serves), so no build downloads fonts and the CI `playwright` font flake has no cause left. Verified on local production builds: every face `loaded`, 0 requests to Google, glyphs match prod. Staging only until the next release. Details: build-log 2026-10-17.
-- **116** 2026-10-17: the Failed-order status card no longer promises "a voucher for the full amount"; it now says "a voucher here for what you paid, excluding the payment fee", matching `OrderSettlementService` (`final_amount − transaction_fee` for every order the card can reach, since wallet and test orders are out of scope). The only copy with that promise. Staging only until the next release. Details: build-log 2026-10-17.
+- **118** 2026-10-17: the Report Assistant prompt calls an order's `cost_price` the checkout estimate and sends a past order's margin to `platform_profit` (already ledger-sourced, so it carries ADR-111's real cost), never to `cost_price`. Prompt only; the view is unchanged (ADR-125's addendum still governs the `effective_cost_price` column it will add). Live via #485 (2026-10-17). Details: build-log 2026-10-17.
+- **115 (part)** 2026-10-17: Customer Detail profit analysis and the Transaction Register (screen and CSV) show each realised order's `effectiveCostPriceSen()`, the cost its profit used, for Delivered as well as settled partial orders. Before, Delivered rows showed the checkout estimate, so revenue − cost − commission − fees did not match profit in the same row. COGS stays open as item 115. Live via #485 (2026-10-17). Details: build-log 2026-10-17.
+- **110** 2026-10-17: security check follow-ups. The API sends HSTS (HTTPS only, no `includeSubDomains`), `Referrer-Policy` and `Permissions-Policy` (`SecurityHeaders` middleware); admin, storefront and portal send `Referrer-Policy` and `Permissions-Policy`, the portal now sends `nosniff`, and none sends `x-powered-by`; a supplier-transfer correction receipt is capped at 5 MB like its siblings. The audit's "login throttle is per IP only" was wrong: `AccountLoginThrottle` (ADR-019 2026-09-29 addendum) already locks an email for 15 minutes after 10 failures from any IPs, on admin login, MFA code, step-up and affiliate login, so nothing was added. Live via #485 (2026-10-17). Details: build-log 2026-10-17.
+- **109** 2026-10-17: admin, storefront and portal load fonts with `next/font/local` from committed latin woff2 files (the same variable files Google Fonts serves), so no build downloads fonts and the CI `playwright` font flake has no cause left. Verified on local production builds: every face `loaded`, 0 requests to Google, glyphs match prod. Live via #485 (2026-10-17). Details: build-log 2026-10-17.
+- **116** 2026-10-17: the Failed-order status card no longer promises "a voucher for the full amount"; it now says "a voucher here for what you paid, excluding the payment fee", matching `OrderSettlementService` (`final_amount − transaction_fee` for every order the card can reach, since wallet and test orders are out of scope). The only copy with that promise. Live via #485 (2026-10-17). Details: build-log 2026-10-17.
 - **107** 2026-10-16: public Game ID Checker (ADR-123, #471, released via #472). Verified on prod: five families listed, `/check-id` and every family page 200, six checker URLs in `sitemap.xml`, no `noindex` on the primary brand; a check with the founder's own MLBB test account → "Prime." → Mobile Legends Malaysia, the repeat a cache hit, `player_validations` untouched. Open follow-up: item 108 (widget hostnames). Details: build-log 2026-10-16.
 - **98** 2026-10-16: Scheduler liveness (ADR-122, #449). After the first 00:00 UTC run all 19 tasks (11 critical, 8 routine) had a heartbeat with `last_ok_at` that day and no failure; `/api/health` 200 with `scheduler: true`. Longest daily task 12.3 s (backup cleanup); the 60-minute grace is reviewed after a week (ADR-122 consequence). Details: build-log 2026-10-16.
 - **99** 2026-10-16: Digiflazz `[83]` price-list rate limit (ADR-069 2026-10-15 addendum, #449). Since the deploy (2026-10-15 09:08 UTC): 40 `listProducts` calls, 0 exceptions (was 42 of 254), no rc 83 in `laravel.log` (last 2026-10-15 03:00, before the deploy), slowest call 19.5 s succeeded. Details: build-log 2026-10-16.
