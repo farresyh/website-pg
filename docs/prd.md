@@ -718,8 +718,6 @@ git in the 2026-10-17 docs audit. Re-verify before building.
 - **115** Monthly Summary COGS still sums the checkout estimate for
   Delivered orders, not ADR-111's real cost. Decide with item 81's
   accountant answer (operating profit is the same either way).
-- **111** Bot check (Turnstile) on the admin and portal login forms; ties to
-  item 108's hostname list.
 
 **C. Founder actions (no code)**
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
@@ -743,6 +741,9 @@ git in the 2026-10-17 docs audit. Re-verify before building.
   or when members don't renew despite the email.
 - **108** Add affiliate custom domains to the Turnstile widget automatically
   (ADR-123), when ~5 affiliate domains are active.
+- **111** Turnstile on the admin and portal logins (ADR-019 2026-10-17
+  addendum), at the first "Account locked" alert that isn't the founder, or
+  when the portal opens to public signup (item 13).
 - **104** Reseller wallet top-up KPIs (how often, how much), with item 28.
 - **105** Batch `Order::cashCompensationSen()`'s wallet-refund lookup, when the
   Customer Detail page is slow for a big reseller (Pulse > 500 ms).
@@ -1039,15 +1040,18 @@ git in the 2026-10-17 docs audit. Re-verify before building.
       current Cloudflare docs before designing past 10 (several widgets
       would need a per-host site key on the storefront).
 
-111. **Bot check on the login forms (founder's 10-point check,
-    2026-10-17) — needs a short grill.** Turnstile protects only the Game ID
-    Checker (ADR-123). The admin login, the affiliate/reseller portal login
-    and checkout rely on rate limits alone (checkout also has
-    `CheckoutVelocityGuard`). For the grill: which forms (logins first;
-    checkout adds friction to the money path), the hostnames involved (the
-    portal and admin are on `pekangame.space`; storefront checkout runs on
-    every affiliate domain, item 108), and fail-closed vs fail-open when
-    Cloudflare is down.
+111. **Turnstile on the login forms — parked 2026-10-17 (founder), waiting
+    on a trigger.** Why it waits (ADR-019 2026-10-17 addendum): 1 admin with
+    MFA, 3 invite-only portal accounts, no attack in the logs, and per-IP +
+    per-account limits already in place. A password lockout now emails the
+    admins, which is the signal. Turnstile Free's limits (20 widgets, 10
+    hostnames each, unlimited challenges) don't block it: `admin.` and
+    `reseller.` are covered by the existing widget's `pekangame.space`.
+    - **Trigger:** the first "Account locked" alert that isn't the founder,
+      or public portal signup (item 13).
+    - **For the grill then:** fail-open vs fail-closed when Cloudflare is
+      down (fail-closed can lock the founder out of admin), E2E test keys,
+      and whether checkout needs it too.
 
 112. **Customer account credentials (ADR-124, accepted design 2026-10-17).** The
     base for 113 and 114: an own encrypted `order_credentials` table left
@@ -1101,6 +1105,7 @@ git in the 2026-10-17 docs audit. Re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **Login lockout alert** 2026-10-17: when 10 wrong passwords lock an admin or portal account, every admin gets a `[PekanGame Security] Account locked` email with the email and last IP. Only real accounts trigger it, so made-up emails don't. Before this, only a lock from wrong MFA codes alerted. It came out of item 111's grill (Turnstile parked, ADR-019 2026-10-17 addendum). On `staging`, not live. Details: build-log 2026-10-17.
 - **119** 2026-10-17: the backend deploys only through CI's `deploy` job again (ADR-066 decision 5). Since the ADR-114 move, `FORGE_DEPLOY_HOOK` had pointed at the destroyed old site and the new site had Forge "Push to deploy" on, so it built each push before CI finished. The founder re-pointed the secret, turned Push to deploy off, and removed the old Forge server and the unused `DIGITALOCEAN_ACCESS_TOKEN` secret. Verified on release #490: one release directory, built after the CI `deploy` job. Details: build-log 2026-10-17.
 - **106** 2026-10-17: a supplier that fails inside a price-sync run is no longer hidden (ADR-015 2026-10-17 addendum). The run is `partial` (warn tag) with `stats.failed_suppliers` listed in admin Price Sync; `suppliers.last_price_sync_at` records each supplier's last good sync, and `app:check-price-sync-staleness` (scheduler, every 15 min) emails admins once when a supplier passes `price_sync_stale_alert_minutes` (Middleware → Suppliers; blank = 90, 0 = off) and once when it recovers. Live via #490 (2026-10-17). Details: build-log 2026-10-17.
 - **118** 2026-10-17: the Report Assistant prompt calls an order's `cost_price` the checkout estimate and sends a past order's margin to `platform_profit` (already ledger-sourced, so it carries ADR-111's real cost), never to `cost_price`. Prompt only; the view is unchanged (ADR-125's addendum still governs the `effective_cost_price` column it will add). Live via #485 (2026-10-17). Details: build-log 2026-10-17.

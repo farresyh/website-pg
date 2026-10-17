@@ -1045,3 +1045,24 @@ second deploy.
 
 **Left for item 106:** the first real `partial` run or stale-supplier email
 in prod is its live check.
+
+## 2026-10-17 — Item 111 parked; a password lockout now alerts
+
+The grill on item 111 (Turnstile on the admin and portal logins) found it
+isn't needed yet, and the founder parked it in group D. Prod: 1 admin
+(MFA active) and 3 invite-only portal accounts. Since 27 Sep the logs show
+33 failed logins: 32 from the founder's IP and 1 from an AWS Singapore IP
+on 9 Oct. The founder had asked about the free plan's limits. Checked
+against Cloudflare's docs, they don't block it: 20 widgets, 10 hostnames
+per widget, unlimited challenges, and `admin.`/`reseller.` are already
+covered by `pekangame.space` on the ADR-123 widget.
+
+**Gap found and fixed.** `AccountLoginThrottle::recordFailure()` returns
+true on the failure that locks the account. Only `AdminMfa` (wrong codes)
+used that return value. The admin and portal password logins ignored it,
+so a password lockout only wrote a log line. Now both email every admin
+(`BackupFailureAlerter`, area Security, "Account locked", with the email
+and last IP). Only real accounts alert, so an attacker cycling made-up
+emails can't flood the inbox. Test-first: 4 new tests in
+`AuthControllerTest` and `AffiliateAuthControllerTest` (red → green).
+Full suite 2888 passed. ADR-019 2026-10-17 addendum.
