@@ -1236,3 +1236,14 @@ Tests: 4 + 8 new, 4 updated. Full suite 2816/2816. Admin tsc, lint and build are
 - `UploadedFile::hashName()` is cached per instance. A test reusing one instance for two uploads gets the same storage path, so the failed second write's cleanup deleted the first file. Real requests always carry a new instance; the test now uses two.
 
 **Founder follow-ups.** Check R2 lifecycle rules. After release, attach the originals of settlements #1–#4.
+
+## 2026-10-18 — Release #500 live (items 123, 120, test audit)
+
+`staging`→`main` at the founder's request. #500 was opened, then held while item 120 was grilled and built (#501), then merged as `e127dcb` once CI was green on the head that included #501. The CI `deploy` job passed, and the prod `current` is release `80479848` at `e127dcb`. Migration `2026_10_18_120000_add_original_file_to_payment_settlements` ran (batch 45). `/up` 200.
+
+Checked live (read-only):
+- Transaction Register: PG-KWKBUHNDMKQT shows `order` +37 on 17 Sep and `order_profit_correction` −10 on 20 Sep.
+- `payment_settlements` has `file_path`/`file_sha256`, and #1–#4 have no file.
+- September's close: stored 464 = live 464.
+
+Founder follow-ups: check the R2 lifecycle rules on `pekangame-accounting`, and attach the originals of settlements #1–#4 from CHIP's dashboard.
