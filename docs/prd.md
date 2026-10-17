@@ -751,8 +751,8 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
 - **25** Portal "needs attention" aggregate.
 - **57** Marketing Campaigns (ADR-118, designed).
 - **94** Best-selling products per game in Reports.
-- **112** Customer account credentials (ADR-124, proposed): the shared base
-  for 113 and 114. Grill first.
+- **112** Customer account credentials (ADR-124, accepted design): the
+  shared base for 113 and 114.
 - **113** Login Top-up for Roblox and eFootball (ADR-125, proposed): Manual
   supplier, Manual Queue, admin-entered packages, real cost at delivery.
   After 112.
@@ -1097,11 +1097,12 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
     every affiliate domain, item 108), and fail-closed vs fail-open when
     Cloudflare is down.
 
-112. **Customer account credentials (ADR-124, proposed 2026-10-17).** The
+112. **Customer account credentials (ADR-124, accepted design 2026-10-17).** The
     base for 113 and 114: an own encrypted `order_credentials` table left
     out of the DB dump, reveal by `super_admin` with MFA step-up and an
-    audit row, wiped at the order's end plus a sweep (default 7 days). Grill
-    questions are at the end of the ADR.
+    audit row, wiped by one 15-minute sweep once the order is closed
+    (delivered or compensated + 24 h, payment failed, abandoned 24 h, or a
+    14-day ceiling). Built with 113.
 
 113. **Login Top-up, Roblox and eFootball (ADR-125, proposed 2026-10-17).**
     A `manual` supplier behind `SupplierAdapter`, a Manual Queue that is
