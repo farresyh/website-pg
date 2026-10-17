@@ -613,9 +613,12 @@ and 118 (#484, Report Assistant margin uses `platform_profit`), plus docs
 config change. Checked live: the new headers on `api.pekangame.space`,
 `pekangame.com`, `admin.` and `reseller.`, no `x-powered-by`, the storefront
 loads only its own woff2 files, `/api/health` 200. The box built the release
-10 seconds after the merge, before CI finished: Forge seems to deploy on
-every push (§16 item 119).
-Waiting on `staging`: item 106 (price-sync `partial` status + stale-supplier email, one migration).
+10 seconds after the merge, before CI finished. Cause found the same day: the
+CI deploy hook still pointed at the destroyed old server and the new site had
+"Push to deploy" on; both fixed 2026-10-17, to be verified on the next
+release (§16 item 119).
+Waiting on `staging`: item 106 (#487: price-sync `partial` status + stale-supplier
+email, one migration).
 
 **Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
 hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
@@ -732,9 +735,9 @@ git in the 2026-10-17 docs audit. Re-verify before building.
   added and alert-tested by the founder 2026-10-14).
 - **71** GSC recheck around 2026-10-22.
 - **96** Upgrade OpenWA to v0.24.0 (with the founder standing by).
-- **119** Turn Forge "Quick Deploy" off for `api.pekangame.space`: the box
-  deploys on every push to `main` before CI finishes (seen on releases #476
-  and #485).
+- **119** Forge deploy gate fixed 2026-10-17 (CI hook re-pointed, "Push to
+  deploy" off, old server and unused secret removed). Left: confirm on the
+  next release.
 
 **D. Waiting on a trigger: don't build early**
 - **4** Bot-host resize, when capacity calls for it.
@@ -1098,19 +1101,32 @@ git in the 2026-10-17 docs audit. Re-verify before building.
     variance) is the question for item 81. Prod scale on 2026-10-17: 4 of
     29 Delivered orders differ, RM0.26 in total.
 
-119. **Forge deploys before the CI gate (found 2026-10-17, release #485).**
-    ADR-066 decision 5 says Forge "Quick Deploy" stays off, so the backend
-    deploys only when CI's `deploy` job POSTs the Forge hook after every
-    test job passes. On the `pekangame-prod-lwf` box (ADR-114) the release
-    directory appears about 10 seconds after the merge: #485 merged 09:20:07
-    UTC, release `80455580` built 09:20:17, while `backend-concurrency` was
-    still running; #476 shows the same gap (CI 18:49:05, release 18:49:17).
-    The later `deploy` job succeeded without a new release. So a push that
-    fails tests would still reach production. Fix (founder, Forge UI): site
-    `api.pekangame.space` → Deployments → turn "Quick Deploy" off, then
-    confirm the next release's directory appears only after the `deploy`
-    job. If it is already off, find the other trigger (e.g. a GitHub webhook
-    added during the ADR-114 migration).
+119. **Forge deployed before the CI gate (found 2026-10-17, release #485;
+    cause found and fixed the same day).** ADR-066 decision 5 says the
+    backend deploys only when CI's `deploy` job POSTs the Forge hook after
+    every test job passes. On the `pekangame-prod-lwf` box (ADR-114) the
+    release directory appeared about 10 seconds after each merge (#485:
+    merged 09:20:07 UTC, release `80455580` built 09:20:17, while
+    `backend-concurrency` was still running; #476 the same).
+    - **Cause (Forge UI + `gh secret list`):** the ADR-114 migration missed
+      two steps. The `FORGE_DEPLOY_HOOK` secret (last set 2026-09-02) still
+      held the old `pekangame-prod` site's hook, so every CI `deploy` job hit
+      the destroyed box (Forge logged a failed "via Custom" deployment there
+      each time, while curl still got a 2xx). The new site had Forge "Push
+      to deploy" (formerly "Quick Deploy") on, so it deployed every push to
+      `main` by itself, with no CI gate, from 2026-09-25 to 2026-10-17.
+    - **Fixed 2026-10-17 by the founder:** `FORGE_DEPLOY_HOOK` re-set to the
+      lwf site's hook (site 3397779, checked without printing it), then
+      "Push to deploy" turned off (checked in Forge).
+    - **Also done 2026-10-17 (founder):** the orphaned `pekangame-prod`
+      server (Forge id 1247825; its droplet was destroyed 2026-09-30, SSH to
+      157.245.203.250 unreachable) deleted from Forge, checked: Forge lists
+      only `pekangame-prod-lwf` and `nakhoda-prod`. The unused
+      `DIGITALOCEAN_ACCESS_TOKEN` repo secret deleted (no workflow read it;
+      ADR-066 planned its removal after cutover), checked: `gh secret list`
+      shows only `FORGE_DEPLOY_HOOK`.
+    - **Left:** on the next release, the lwf site shows exactly one "via
+      Custom" deployment, created after the CI `deploy` job. Then close.
 
 117. **Expansion outside Malaysia: languages and currencies (founder,
     2026-10-17).** The storefront is English-only and prices are MYR-only

@@ -978,3 +978,32 @@ admin `tsc` and lint clean; local production admin build with a seeded
 `partial` run: Last Sync card and Sync History show the warn tag (text
 `#8a5100` on `#fdf1dc`) and the failed supplier's error. Local dev DB
 migrated with plain `php artisan migrate`.
+
+## 2026-10-17 — Item 119 cause: CI deploy hook pointed at the old box (fixed, verify on next release)
+
+Forge's dashboard showed every release on the lwf site deployed "via Push to
+deploy", and a matching failed "via Custom" deployment on the old
+`pekangame-prod` site (Forge server 1247825, Disconnected; its droplet was
+destroyed 2026-09-30, SSH to 157.245.203.250 unreachable). `gh secret list`:
+`FORGE_DEPLOY_HOOK` last set 2026-09-02, before the ADR-114 move. So CI's
+`deploy` job had been POSTing to the dead site since 2026-09-25, and the new
+site deployed each push by itself before CI finished.
+
+**Production change (founder, 2026-10-17 ~12:11–12:15 UTC):** re-set
+`FORGE_DEPLOY_HOOK` from the clipboard (`pbpaste | gh secret set`; the first
+attempt through `!` had no prompt and stored an empty value, corrected a
+minute later). Checked without printing it: one line, a Forge deploy URL for
+site 3397779 (lwf `api.pekangame.space`). Then turned the site's "Push to
+deploy" off (checked in Forge: switch off). Before: Push to deploy on,
+secret → old site. After: Push to deploy off, secret → lwf site.
+
+**Cleanup, same session (founder):** deleted the unused
+`DIGITALOCEAN_ACCESS_TOKEN` repo secret (`gh secret list` now shows only
+`FORGE_DEPLOY_HOOK`) and the orphaned `pekangame-prod` server from Forge
+(Forge now lists only `pekangame-prod-lwf` and `nakhoda-prod`). This also
+closes ADR-114's "remove the orphaned Forge server entry" hygiene note.
+
+**Left (PRD §16 item 119):** verify the next release is a single "via Custom"
+deployment after the CI `deploy` job. ADR-114 got
+a 2026-10-17 addendum with the box-move checklist; the `ci.yml` header
+comment now names the setting "Push to deploy".
