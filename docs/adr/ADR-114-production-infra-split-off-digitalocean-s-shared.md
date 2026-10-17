@@ -117,3 +117,9 @@ is still only visible on the Dashboard until item 95 ships.
 OpenWA for both sessions (`GET /api/sessions/{id}` with each session's own
 key) and answers 503 unless both are `ready`. It is an UptimeRobot target,
 alerting after 2 failed checks, since a stream drop reconnects in seconds.
+
+### 2026-10-17 addendum — the migration missed the CI deploy gate (PRD §16 item 119)
+
+The cutover to the new box left ADR-066 decision 5 (deploy only after CI is green) not in effect from 2026-09-25 to 2026-10-17. The `FORGE_DEPLOY_HOOK` GitHub secret still held the old site's hook, and the new `api.pekangame.space` site had Forge "Push to deploy" on (Forge's current name for "Quick Deploy"). So the new box deployed every push to `main` before CI finished, and CI's `deploy` job deployed to the destroyed box. Fixed 2026-10-17 by re-pointing the secret and turning "Push to deploy" off (details in PRD §16 item 119 and the build log).
+
+**For any future box move:** re-set `FORGE_DEPLOY_HOOK` to the new site's hook, turn "Push to deploy" off on the new site, and confirm the first release on the new box is a single "via Custom" deployment created after the CI `deploy` job.

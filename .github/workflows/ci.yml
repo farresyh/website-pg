@@ -9,8 +9,10 @@
 # image, no DO Container Registry, no SSH key in CI. The 3 Next.js apps
 # deploy on Vercel off the same `main` push. `deploy` needs one repo
 # secret, FORGE_DEPLOY_HOOK; until it exists that job fails at the curl
-# step and the test jobs above it are unaffected. Forge "Quick Deploy" is
-# OFF so a push only deploys after this CI gate is green.
+# step and the test jobs above it are unaffected. Forge "Push to deploy"
+# (formerly "Quick Deploy") is OFF so a push only deploys after this CI gate
+# is green. Moving boxes means re-pointing this secret (ADR-114 2026-10-17
+# addendum).
 #
 # CI-minute controls (ADR-066 addendum, 2026-09-07 — private repo, billed
 # minutes; ~135 runs/7d was burning ~1900 min/mo):
