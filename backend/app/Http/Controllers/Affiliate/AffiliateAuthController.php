@@ -7,6 +7,7 @@ use App\Http\Requests\Affiliate\AffiliateLoginRequest;
 use App\Http\Requests\Affiliate\AffiliateSetPasswordRequest;
 use App\Models\AffiliateImpersonationSession;
 use App\Models\AffiliateUser;
+use App\Services\Backup\BackupFailureAlerter;
 use App\Support\AccountLoginThrottle;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,6 +26,8 @@ use Illuminate\Validation\ValidationException;
  */
 class AffiliateAuthController extends Controller
 {
+    public function __construct(private readonly BackupFailureAlerter $alerter) {}
+
     public function login(AffiliateLoginRequest $request): JsonResponse
     {
         $email = $request->validated('email');
@@ -37,7 +40,10 @@ class AffiliateAuthController extends Controller
         // Hash::check() would throw on null, so short-circuit to the same
         // generic error an unknown email gets.
         if (! $user || $user->password === null || ! Hash::check($request->validated('password'), $user->password)) {
-            $throttle->recordFailure();
+            // Only a real account alerts: made-up emails can't flood the inbox.
+            if ($throttle->recordFailure() && $user) {
+                $this->alerter->alert('Account locked', "Portal account {$email} was locked for 15 minutes after too many wrong passwords (last from IP {$request->ip()}).", 'Security');
+            }
             Log::warning('Affiliate login failed: invalid credentials', [
                 'email' => $email,
                 'ip' => $request->ip(),

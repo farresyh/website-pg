@@ -7,8 +7,10 @@ use App\Models\Affiliate;
 use App\Models\AffiliateUser;
 use App\Models\Reseller;
 use App\Services\Affiliate\AffiliateInviteService;
+use App\Services\Backup\BackupFailureAlerter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Mockery;
 use Tests\TestCase;
 
 /**
@@ -269,5 +271,51 @@ class AffiliateAuthControllerTest extends TestCase
             ->assertJsonPath('affiliate', null)
             ->assertJsonPath('reseller.id', $user->owner_id)
             ->assertJsonPath('impersonation', null);
+    }
+
+    /**
+     * A password-guess lockout emails every admin, but only for a real
+     * account: a lock on an unknown email stays a log line, so an attacker
+     * cycling made-up emails can't flood the inbox.
+     */
+    private function captureAlerts(): \ArrayObject
+    {
+        $alerts = new \ArrayObject;
+        $alerter = Mockery::mock(BackupFailureAlerter::class);
+        $alerter->shouldReceive('alert')->andReturnUsing(function (string $context, string $message, string $area) use ($alerts) {
+            $alerts[] = "{$area}|{$context}|{$message}";
+        });
+        $this->app->instance(BackupFailureAlerter::class, $alerter);
+
+        return $alerts;
+    }
+
+    public function test_a_password_lockout_alerts_once_for_a_real_account(): void
+    {
+        $alerts = $this->captureAlerts();
+        $user = $this->affiliateUser();
+
+        for ($i = 1; $i <= 11; $i++) {
+            $this->withServerVariables(['REMOTE_ADDR' => "203.0.113.{$i}"])
+                ->postJson('/api/affiliate/login', ['email' => $user->email, 'password' => 'wrong']);
+        }
+
+        $this->assertCount(1, $alerts);
+        $this->assertStringStartsWith('Security|Account locked|', $alerts[0]);
+        $this->assertStringContainsString($user->email, $alerts[0]);
+        $this->assertStringContainsString('203.0.113.10', $alerts[0]);
+    }
+
+    public function test_a_lockout_on_an_unknown_email_does_not_alert(): void
+    {
+        $alerts = $this->captureAlerts();
+
+        for ($i = 1; $i <= 10; $i++) {
+            $this->withServerVariables(['REMOTE_ADDR' => "203.0.113.{$i}"])
+                ->postJson('/api/affiliate/login', ['email' => 'nobody@example.com', 'password' => 'wrong'])
+                ->assertStatus(422);
+        }
+
+        $this->assertCount(0, $alerts);
     }
 }

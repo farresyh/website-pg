@@ -48,7 +48,9 @@ class AuthController extends Controller
         $admin = AdminUser::query()->where('email', $email)->first();
 
         if (! $admin || ! Hash::check($request->validated('password'), $admin->password)) {
-            $throttle->recordFailure();
+            if ($throttle->recordFailure() && $admin) {
+                $this->mfa->alert($admin, 'Account locked', "{$email} was locked for 15 minutes after too many wrong passwords (last from IP {$request->ip()}).");
+            }
             // ADR-019: no audit trail existed for a brute-force attempt
             // or a compromised account before this line — email only,
             // never the attempted password.
