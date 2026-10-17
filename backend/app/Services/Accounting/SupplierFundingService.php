@@ -30,10 +30,10 @@ use Illuminate\Validation\ValidationException;
 final class SupplierFundingService
 {
     /**
-     * Stores the optional receipt first (if any), then the transfer row
-     * and its `TOPUP` ledger entry — one transaction, so a failed insert
-     * never leaves an orphan receipt file referenced by nothing, and the
-     * ledger entry always has a `supplier_transfers` row to point back to.
+     * Stores the optional receipt first (if any, `AccountingFileStore`:
+     * deleted again if the write fails), then the transfer row and its
+     * `TOPUP` ledger entry in one transaction, so the ledger entry always
+     * has a `supplier_transfers` row to point back to.
      *
      * ADR-083 2026-09-15 addendum: `$supplierFee` (optional, the
      * supplier's own deposit-side cut, e.g. Digiflazz's flat IDR fee —
@@ -61,7 +61,7 @@ final class SupplierFundingService
         int $adminUserId,
         ?PaidFrom $paidBy = null,
     ): SupplierTransfer {
-        return DB::transaction(function () use (
+        return AccountingFileStore::storeThen($receipt, config('filesystems.accounting_disk'), 'accounting/supplier-transfers', $transferredOn, fn (?string $receiptPath) => DB::transaction(function () use (
             $supplier,
             $transferredOn,
             $sourceChannel,
@@ -71,15 +71,10 @@ final class SupplierFundingService
             $amountForeignReceived,
             $supplierFee,
             $referenceNo,
-            $receipt,
+            $receiptPath,
             $adminUserId,
             $paidBy,
         ) {
-            $receiptPath = null;
-
-            if ($receipt !== null) {
-                $receiptPath = $receipt->store('accounting/supplier-transfers', config('filesystems.accounting_disk'));
-            }
 
             $netForeignReceived = number_format((float) $amountForeignReceived - (float) ($supplierFee ?? 0), 4, '.', '');
 
@@ -110,7 +105,7 @@ final class SupplierFundingService
             ]);
 
             return $transfer;
-        });
+        }));
     }
 
     /**
@@ -237,10 +232,8 @@ final class SupplierFundingService
      * and must stay Adjust/Void-only. Diff-computed against the current
      * row inside the lock; a no-op submit (nothing actually changed, no
      * new receipt) is rejected rather than writing an empty audit row.
-     * A newly-uploaded receipt is only deleted-if-replaced (the old
-     * file) AFTER the DB transaction commits — never inside it, so a
-     * rolled-back write never leaves the real, still-referenced old
-     * file deleted.
+     * A replacement receipt never deletes the old one (item 120): the
+     * correction's diff keeps the old path and the file stays in storage.
      */
     public function recordCorrection(
         SupplierTransfer $transfer,
@@ -252,15 +245,10 @@ final class SupplierFundingService
         $allowed = ['transferred_on', 'source_channel', 'paid_by', 'amount_myr_sent', 'fee_myr', 'reference_no'];
         $changes = array_intersect_key($changes, array_flip($allowed));
 
-        $newReceiptPath = null;
-        if ($receipt !== null) {
-            $newReceiptPath = $receipt->store('accounting/supplier-transfers', config('filesystems.accounting_disk'));
-        }
+        $accountingDate = $changes['transferred_on'] ?? $transfer->transferred_on;
 
-        $oldReceiptPathToDelete = null;
-
-        try {
-            $correction = DB::transaction(function () use ($transfer, $changes, $reason, $adminUserId, $newReceiptPath, &$oldReceiptPathToDelete) {
+        return AccountingFileStore::storeThen($receipt, config('filesystems.accounting_disk'), 'accounting/supplier-transfers', $accountingDate,
+            fn (?string $newReceiptPath) => DB::transaction(function () use ($transfer, $changes, $reason, $adminUserId, $newReceiptPath) {
                 $locked = $this->lockNotVoided($transfer);
 
                 $diff = [];
@@ -283,9 +271,10 @@ final class SupplierFundingService
                 }
 
                 $updates = $changes;
+                // The superseded receipt stays in storage: the diff keeps its
+                // path, and nothing is ever lost (item 120, LHDN seven years).
                 if ($newReceiptPath !== null) {
                     $diff['receipt_path'] = [$locked->receipt_path, $newReceiptPath];
-                    $oldReceiptPathToDelete = $locked->receipt_path;
                     $updates['receipt_path'] = $newReceiptPath;
                 }
 
@@ -321,24 +310,7 @@ final class SupplierFundingService
                     'reason' => $reason,
                     'admin_user_id' => $adminUserId,
                 ]);
-            });
-        } catch (\Throwable $e) {
-            // The write failed/rolled back — don't leave an orphan newly-uploaded receipt behind.
-            // Best-effort: a storage error here must not replace $e.
-            if ($newReceiptPath !== null) {
-                rescue(fn () => Storage::disk(config('filesystems.accounting_disk'))->delete($newReceiptPath));
-            }
-
-            throw $e;
-        }
-
-        // Already committed: an R2 hiccup here leaves an orphan file, never a
-        // 500 on a correction that was saved (r2_accounting throws).
-        if ($oldReceiptPathToDelete !== null) {
-            rescue(fn () => Storage::disk(config('filesystems.accounting_disk'))->delete($oldReceiptPathToDelete));
-        }
-
-        return $correction;
+            }));
     }
 
     /**

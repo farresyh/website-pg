@@ -106,6 +106,7 @@ class ResellerWalletControllerTest extends TestCase
         $receipt = WalletTopupReceipt::query()->firstOrFail();
         $this->assertSame('receipt.pdf', $receipt->original_name);
         $this->assertSame('local', $receipt->disk);
+        $this->assertStringStartsWith('wallet-topup-receipts/'.now('Asia/Kuala_Lumpur')->format('Y/m').'/', $receipt->path);
         Storage::disk('local')->assertExists($receipt->path);
         $response->assertJsonPath('entry.reference_id', $receipt->id);
     }
