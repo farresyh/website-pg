@@ -170,6 +170,64 @@ class SyncSupplierPricesJobTest extends TestCase
         $run->refresh();
         $this->assertSame('failed', $run->status);
         $this->assertNotNull($run->error_message);
+        $this->assertSame('gamevion', $run->stats['failed_suppliers'][0]['slug']);
+    }
+
+    /**
+     * ADR-015 2026-10-17 addendum (PRD §16 item 106): one supplier failing
+     * while another succeeds is `partial`, not `success`. The failed
+     * supplier and its error are on the run, and only the supplier that
+     * synced gets a fresh `last_price_sync_at`.
+     */
+    public function test_job_marks_the_run_partial_when_one_supplier_fails_and_another_succeeds(): void
+    {
+        $this->travelTo(now()->subDay());
+        $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR', 'last_price_sync_at' => now()]);
+        $other = Supplier::query()->create(['name' => 'Other', 'slug' => 'other-test', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR', 'last_price_sync_at' => now()]);
+        $this->travelBack();
+
+        $this->bindFakeAdapter(true, [], 'gamevion');
+        $this->bindFakeAdapter(false, [], 'other-test');
+
+        $run = PriceSyncRun::query()->create(['status' => 'queued']);
+
+        (new SyncSupplierPricesJob($run))->handle(
+            app(ProductSyncService::class),
+            app(PackagePriceSyncService::class),
+            app(SupplierAdapterFactory::class),
+            app(PendingReactivationAutoApprover::class),
+        );
+
+        $run->refresh();
+        $this->assertSame('partial', $run->status);
+        $this->assertNull($run->error_message);
+        $this->assertSame(0, $run->stats['price_changed']);
+        $this->assertCount(1, $run->stats['failed_suppliers']);
+        $this->assertSame('other-test', $run->stats['failed_suppliers'][0]['slug']);
+        $this->assertStringContainsString('Gamevion did not respond', $run->stats['failed_suppliers'][0]['error']);
+
+        $this->assertTrue($gamevion->refresh()->last_price_sync_at->isAfter(now()->subMinute()));
+        $this->assertTrue($other->refresh()->last_price_sync_at->isBefore(now()->subHours(23)));
+    }
+
+    public function test_a_successful_run_records_an_empty_failed_suppliers_list_and_the_sync_time(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR']);
+        $this->bindFakeAdapter(true);
+
+        $run = PriceSyncRun::query()->create(['status' => 'queued']);
+
+        (new SyncSupplierPricesJob($run))->handle(
+            app(ProductSyncService::class),
+            app(PackagePriceSyncService::class),
+            app(SupplierAdapterFactory::class),
+            app(PendingReactivationAutoApprover::class),
+        );
+
+        $run->refresh();
+        $this->assertSame('success', $run->status);
+        $this->assertSame([], $run->stats['failed_suppliers']);
+        $this->assertNotNull($supplier->refresh()->last_price_sync_at);
     }
 
     /**
