@@ -710,8 +710,6 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
 - **115** Cost readers still show the checkout estimate after ADR-111's real
   cost: Customer Detail profit analysis, Transaction Register and COGS
   (found 2026-10-17). COGS waits on item 81's accountant answer.
-- **116** The Failed-order WhatsApp copy promises "a voucher for the full
-  amount", but the voucher excludes the gateway fee.
 
 **B. Needs a short grill / ADR addendum first**
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
@@ -1135,15 +1133,10 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
     `Order::effectiveCostPriceSen()` in all three. The COGS change waits on
     item 81's accountant answer (operating profit is unchanged either way).
 
-116. **Failed-order WhatsApp copy over-promises (found 2026-10-17).**
-    `OrderStatusCard` tells the customer a failed order gets "a voucher for
-    the full amount", but `OrderSettlementService` refunds
-    `final_amount − transaction_fee`. Reword to match. ADR-125 decision 24
-    later words the card by fulfilment kind in the same class.
-
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
 - **109** 2026-10-17: admin, storefront and portal load fonts with `next/font/local` from committed latin woff2 files (the same variable files Google Fonts serves), so no build downloads fonts and the CI `playwright` font flake has no cause left. Verified on local production builds: every face `loaded`, 0 requests to Google, glyphs match prod. Staging only until the next release. Details: build-log 2026-10-17.
+- **116** 2026-10-17: the Failed-order status card no longer promises "a voucher for the full amount"; it now says "a voucher here for what you paid, excluding the payment fee", matching `OrderSettlementService` (`final_amount − transaction_fee` for every order the card can reach, since wallet and test orders are out of scope). The only copy with that promise. Staging only until the next release. Details: build-log 2026-10-17.
 - **107** 2026-10-16: public Game ID Checker (ADR-123, #471, released via #472). Verified on prod: five families listed, `/check-id` and every family page 200, six checker URLs in `sitemap.xml`, no `noindex` on the primary brand; a check with the founder's own MLBB test account → "Prime." → Mobile Legends Malaysia, the repeat a cache hit, `player_validations` untouched. Open follow-up: item 108 (widget hostnames). Details: build-log 2026-10-16.
 - **98** 2026-10-16: Scheduler liveness (ADR-122, #449). After the first 00:00 UTC run all 19 tasks (11 critical, 8 routine) had a heartbeat with `last_ok_at` that day and no failure; `/api/health` 200 with `scheduler: true`. Longest daily task 12.3 s (backup cleanup); the 60-minute grace is reviewed after a week (ADR-122 consequence). Details: build-log 2026-10-16.
 - **99** 2026-10-16: Digiflazz `[83]` price-list rate limit (ADR-069 2026-10-15 addendum, #449). Since the deploy (2026-10-15 09:08 UTC): 40 `listProducts` calls, 0 exceptions (was 42 of 254), no rc 83 in `laravel.log` (last 2026-10-15 03:00, before the deploy), slowest call 19.5 s succeeded. Details: build-log 2026-10-16.

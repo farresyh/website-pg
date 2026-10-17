@@ -122,7 +122,9 @@ class CustomerWhatsAppOptInTest extends TestCase
 
         $message = CustomerNotification::query()->sole()->message;
         $this->assertStringContainsString('❌ Delivery failed', $message);
-        $this->assertStringContainsString('voucher for the full amount', $message);
+        // Item 116: the voucher is final_amount − transaction_fee, never the full amount.
+        $this->assertStringContainsString('excluding the payment fee', $message);
+        $this->assertStringNotContainsString('full amount', $message);
     }
 
     public function test_every_message_with_the_order_number_gets_a_card_even_when_nothing_changed(): void
