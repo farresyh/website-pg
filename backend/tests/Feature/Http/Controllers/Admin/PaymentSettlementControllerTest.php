@@ -9,6 +9,7 @@ use App\Models\PaymentSettlement;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\SettlementFixture;
 use Tests\TestCase;
@@ -16,6 +17,13 @@ use Tests\TestCase;
 class PaymentSettlementControllerTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Item 120: an upload now keeps the file; never write it to the real local disk.
+        Storage::fake(config('filesystems.accounting_disk'));
+    }
 
     private function actingAsAdmin(): AdminUser
     {
@@ -112,10 +120,7 @@ class PaymentSettlementControllerTest extends TestCase
             'paid_at' => '2026-09-07 12:00:00',
             'final_amount' => 5000,
         ]);
-        $path = SettlementFixture::build('2026-09-07 to 2026-09-07', '0.00', '0.00', '0.00', []);
-        $file = new UploadedFile($path, 'settlement.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true);
-        $settlementId = $this->postJson('/api/accounting/settlements', ['file' => $file])->json('settlement.id');
-        unlink($path);
+        $settlementId = PaymentSettlement::query()->create($this->settlementAttributes(['date_from' => '2026-09-07', 'date_to' => '2026-09-07']))->id;
 
         $response = $this->getJson("/api/accounting/settlements/{$settlementId}")->assertOk();
 

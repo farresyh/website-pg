@@ -1,4 +1,4 @@
-import { apiFetch, apiUpload } from "@/lib/api-client";
+import { apiFetch, apiUpload, apiDownload } from "@/lib/api-client";
 
 /** Plain Laravel `LengthAwarePaginator` JSON shape — mirrors `OrderPage` (`lib/orders.ts`). */
 export interface Paginated<T> {
@@ -32,6 +32,8 @@ export interface PaymentSettlement {
   status: "pending" | "matched" | "variance";
   variance_note: string | null;
   original_filename: string;
+  /** §16 item 120: the kept original .xlsx — null only on a settlement uploaded before files were kept, until its original is attached. */
+  file_path: string | null;
   created_at: string;
 }
 
@@ -82,6 +84,19 @@ export function uploadPaymentSettlement(file: File) {
   formData.append("file", file);
 
   return apiUpload<SettlementIngestResult>("/api/accounting/settlements", formData);
+}
+
+/** §16 item 120: the original CHIP file, under the name it was uploaded with. */
+export async function downloadSettlementFile(settlement: PaymentSettlement): Promise<void> {
+  await apiDownload(`/api/accounting/settlements/${settlement.id}/file`, settlement.original_filename);
+}
+
+/** §16 item 120: attach the original to a settlement uploaded before files were kept — refused unless its dates and totals match exactly. */
+export function attachSettlementFile(id: number, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  return apiUpload<PaymentSettlement>(`/api/accounting/settlements/${id}/file`, formData);
 }
 
 /** ADR-110 PR-B addendum — a purely optional founder annotation, no cadence, never touches `status` (computed, read-only). */

@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\Reseller;
 use App\Models\WalletTopupAttempt;
 use App\Models\WalletTopupReceipt;
+use App\Services\Accounting\AccountingFileStore;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Reseller\Bot\ResellerBotWalletTopupNotifier;
@@ -103,9 +104,9 @@ final class ResellerWalletService
 
     /**
      * ADR-073 decision 3(b): admin manual-credit. Stores the optional
-     * receipt file first (if any), then the ledger credit references it
-     * — one transaction, so a failed upload never leaves an orphan
-     * ledger entry and vice versa.
+     * receipt file first (if any), then the receipt row and the ledger
+     * credit in one transaction. `AccountingFileStore` deletes the file
+     * again if that write fails, including the idempotent replay below.
      *
      * 2026-09-29 audit (Wave 5 Low): `$idempotencyKey` is minted once per
      * open credit form — a double-click or client retry returns the first
@@ -141,22 +142,17 @@ final class ResellerWalletService
         int $adminUserId,
         string $idempotencyKey,
     ): LedgerEntry {
-        return DB::transaction(function () use ($reseller, $amountSen, $note, $receipt, $adminUserId, $idempotencyKey) {
-            $receiptRow = null;
+        $disk = config('filesystems.wallet_receipts_disk');
 
-            if ($receipt !== null) {
-                $disk = config('filesystems.wallet_receipts_disk');
-                $path = $receipt->store('wallet-topup-receipts', $disk);
-
-                $receiptRow = WalletTopupReceipt::query()->create([
-                    'disk' => $disk,
-                    'path' => $path,
-                    'original_name' => $receipt->getClientOriginalName(),
-                    'mime_type' => $receipt->getMimeType(),
-                    'size_bytes' => $receipt->getSize(),
-                    'uploaded_by' => $adminUserId,
-                ]);
-            }
+        return AccountingFileStore::storeThen($receipt, $disk, 'wallet-topup-receipts', now(), fn (?string $path) => DB::transaction(function () use ($reseller, $amountSen, $note, $receipt, $adminUserId, $idempotencyKey, $disk, $path) {
+            $receiptRow = $path === null ? null : WalletTopupReceipt::query()->create([
+                'disk' => $disk,
+                'path' => $path,
+                'original_name' => $receipt->getClientOriginalName(),
+                'mime_type' => $receipt->getMimeType(),
+                'size_bytes' => $receipt->getSize(),
+                'uploaded_by' => $adminUserId,
+            ]);
 
             return $this->ledger->credit(
                 LedgerOwnerType::ResellerWallet,
@@ -169,7 +165,7 @@ final class ResellerWalletService
                 reason: $note,
                 idempotencyKey: $idempotencyKey,
             );
-        });
+        }));
     }
 
     /** Streams the receipt file back — super_admin only, enforced at the route. */

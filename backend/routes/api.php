@@ -765,6 +765,9 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::get('/settlements/transactions', [PaymentSettlementController::class, 'transactions']);
         Route::get('/settlements/{settlement}', [PaymentSettlementController::class, 'show']);
         Route::patch('/settlements/{settlement}', [PaymentSettlementController::class, 'update']);
+        // §16 item 120 — the kept original .xlsx; attach is only for a settlement uploaded before files were kept.
+        Route::get('/settlements/{settlement}/file', [PaymentSettlementController::class, 'downloadFile']);
+        Route::post('/settlements/{settlement}/file', [PaymentSettlementController::class, 'attachFile']);
 
         // ADR-083 decision 8 — read-only Monthly Accounting Summary.
         Route::get('/summary', [AccountingSummaryController::class, 'show']);

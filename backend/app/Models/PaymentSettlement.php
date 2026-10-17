@@ -33,6 +33,8 @@ class PaymentSettlement extends Model
         'status',
         'variance_note',
         'original_filename',
+        'file_path',
+        'file_sha256',
         'admin_user_id',
     ];
 
