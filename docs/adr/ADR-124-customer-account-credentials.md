@@ -53,3 +53,12 @@
 - A "request OTP from customer" button is a later item, not part of this ADR.
 
 **Build prerequisite:** the founder's `super_admin` account must have MFA enabled, or every reveal is refused (ADR-121). Check before the build.
+
+### 2026-10-17 addendum — a one-time supplier link is the second reader of the secret fields
+
+Decided in [ADR-125](./ADR-125-login-top-up-manual-supplier.md)'s grill (Q13) and shaped by its stress test. Overrides decision 4's "no notification template can reach `order_credentials`" for this one case.
+
+1. A supplier's order post (ADR-125 decision 13) carries a **signed URL** (`URL::temporarySignedRoute`, the pattern `OpsAccessController` already uses) for (order, supplier), served on the API domain from `routes/web.php`. No token table.
+2. **GET shows only the order summary and a "Show login" button**, with `noindex`, `Cache-Control: no-store` and `Referrer-Policy: no-referrer`, so a WhatsApp link-preview fetch never sees a secret.
+3. **The secret fields are returned only by a POST**, rate-limited per order, which re-checks that the order is still open, belongs to that supplier, and has `purged_at` null. The link therefore dies the moment the sweep wipes (decision 7), with no revoke list. Its expiry is the D ceiling.
+4. Each POST writes a `credential_reveals` row with actor = supplier (the group's supplier). The link may be opened more than once while the order is open; every opening is logged.

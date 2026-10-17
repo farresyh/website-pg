@@ -68,7 +68,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-043](./adr/ADR-043-llms-txt.md) | `llms.txt` — auto-generated AI/LLM-context route | In force | 2026-08-22 |
 | [ADR-044](./adr/ADR-044-zod-runtime-schema-validation-at-the-admin.md) | Zod runtime schema validation at the admin/storefront API boundary | In force |  |
 | [ADR-045](./adr/ADR-045-admin-dashboard.md) | Admin Dashboard — DASH-1..6, `orders.delivered_at`, and a per-metric self-documenting `definition` convention | Partly superseded — DASH-1, 3, 4, 5 replaced by ADR-104 (2026-10-15) | 2026-10-15 |
-| [ADR-046](./adr/ADR-046-supplier-management-screen.md) | Supplier Management screen — trimmed to config/health (SUPP-1/CRUD/SUPP-5), `Supplier.api_config` becomes the live credential source, per-supplier/per-game bulk deactivation | In force | 2026-09-24 |
+| [ADR-046](./adr/ADR-046-supplier-management-screen.md) | Supplier Management screen — trimmed to config/health (SUPP-1/CRUD/SUPP-5), `Supplier.api_config` becomes the live credential source, per-supplier/per-game bulk deactivation | In force; supplier `driver` column + capabilities added by ADR-125 (design) | 2026-09-24 |
 | [ADR-047](./adr/ADR-047-realtime-broadcasting.md) | Realtime broadcasting — Laravel Reverb + Echo, replacing application-level polling | In force | 2026-09-28 |
 | [ADR-048](./adr/ADR-048-queue-driver-migration-to-redis-plus-horizon.md) | Queue driver migration to Redis, plus Horizon + Pulse — reverses ADR-014 decision #1 / ADR-020 decision #3's "queue stays on `database`" | In force | 2026-09-29 |
 | [ADR-049](./adr/ADR-049-customer-analytics-anl-1-4.md) | Customer Analytics (ANL-1..4) — identity as a derived grouping, segmentation rules, and date-range scope | In force | 2026-10-15 |
@@ -97,7 +97,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-072](./adr/ADR-072-reseller-system-split.md) | Reseller-system split — `Affiliate` (whitelabel) vs `Reseller` (prepaid wallet), full rename, shared portal architecture | In force | 2026-09-04 |
 | [ADR-073](./adr/ADR-073-reseller-wallet.md) | Reseller wallet — fee-less tiers, prepaid-deposit ledger, order-placement contract, profit booking, delivery-failure handling | In force | 2026-09-04 |
 | [ADR-074](./adr/ADR-074-reseller-api-channel.md) | Reseller API channel — per-tenant API keys, order-placement/status endpoints | In force | 2026-10-14 |
-| [ADR-075](./adr/ADR-075-reseller-bot-channel.md) | Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology | In force | 2026-10-14 |
+| [ADR-075](./adr/ADR-075-reseller-bot-channel.md) | Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology | In force; group registry generalised to resellers and suppliers by ADR-125 (design) | 2026-10-14 |
 | [ADR-076](./adr/ADR-076-reseller-bot-v2.md) | Reseller Bot v2 — two-stage order-completion messaging, `.trackorder`/`.checkid`/`.info`, reply styling | In force | 2026-09-14 |
 | [ADR-077](./adr/ADR-077-storefront-read-path.md) | Storefront read-path — Redis cache cutover, eviction policy, invalidation fan-out, propagation freshness | In force | 2026-10-14 |
 | [ADR-078](./adr/ADR-078-custom-domain-storefront-gaps.md) | Custom-domain storefront gaps — dynamic CORS, edge-cache staleness, membership-toggle visibility | In force | 2026-09-08 |
@@ -138,7 +138,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-113](./adr/ADR-113-affiliate-theme-preset-dark-mode-for-all-4.md) | Affiliate theme-preset dark mode for all 4 affiliate-selectable presets, `storefront/DESIGN.md`, Digital Architect retired from the affiliate picker | In force |  |
 | [ADR-114](./adr/ADR-114-production-infra-split-off-digitalocean-s-shared.md) | Production infra split off DigitalOcean's shared team — droplet + managed MySQL rebuilt into a new DO team (`LWF Group Sdn Bhd`) | In force | 2026-10-14 |
 | [ADR-115](./adr/ADR-115-supplier-balance-comfortable-buffer-forecast.md) | Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold | Parked (designed); builds two weeks after launch, with the low-balance email | 2026-10-14 |
-| [ADR-116](./adr/ADR-116-customer-order-notifications-over-whatsapp.md) | Customer order notifications over WhatsApp (OpenWA), not email — closes audit M-11 | In force | 2026-10-12 |
+| [ADR-116](./adr/ADR-116-customer-order-notifications-over-whatsapp.md) | Customer order notifications over WhatsApp (OpenWA), not email — closes audit M-11 | In force; send queue generalised to (session, chat) by ADR-125 (design) | 2026-10-12 |
 | [ADR-117](./adr/ADR-117-prod-db-least-privilege.md) | Prod DB least-privilege — `doadmin` superuser replaced by a dedicated scoped app user | In force | 2026-10-15 |
 | [ADR-118](./adr/ADR-118-marketing-campaigns.md) | Marketing Campaigns — multi-use KOL discount codes, separate from `Voucher` | Accepted (design) | 2026-10-02 |
 | [ADR-119](./adr/ADR-119-package-delete-guards.md) | Package delete guards — block a hard-delete that already has order history or is a live combo component | In force |  |
@@ -146,6 +146,6 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-121](./adr/ADR-121-admin-mfa-and-session-login.md) | Admin MFA (TOTP), opt-in per account, step-up on five dangerous actions; admin login moves to a cookie session | In force | 2026-10-14 |
 | [ADR-122](./adr/ADR-122-scheduler-liveness.md) | Scheduler liveness — per-task heartbeat; a stale critical task fails `/api/health` | In force |  |
 | [ADR-123](./adr/ADR-123-public-game-id-checker.md) | Public Game ID Checker — own endpoint, Turnstile, per-IP + global budget, Redx-only, own table | In force |  |
-| [ADR-124](./adr/ADR-124-customer-account-credentials.md) | Customer account credentials — own encrypted table, super-admin reveal with MFA step-up + audit row, wiped by one sweep once the order closes | Accepted (design) |  |
-| [ADR-125](./adr/ADR-125-login-top-up-manual-supplier.md) | Login Top-up (Roblox, eFootball) — Manual supplier behind `SupplierAdapter`, Manual Queue, admin-entered packages, real cost at delivery | Proposed (design, grill pending) |  |
+| [ADR-124](./adr/ADR-124-customer-account-credentials.md) | Customer account credentials — own encrypted table, super-admin reveal with MFA step-up + audit row, wiped by one sweep once the order closes | Accepted (design) | 2026-10-17 |
+| [ADR-125](./adr/ADR-125-login-top-up-manual-supplier.md) | Login Top-up (Roblox, eFootball) — manual suppliers as a `driver`, one finalize seam, a supplier WhatsApp group per supplier, agreed-cost manual packages | Accepted (design) |  |
 | [ADR-126](./adr/ADR-126-joki-mlbb.md) | Joki MLBB — owned-brand `/joki` page, server-priced rate table, ordinary Order via the Manual Queue, penjoki payout booked as cost | Proposed (design, grill pending) |  |

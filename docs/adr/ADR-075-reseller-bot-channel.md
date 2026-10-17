@@ -1,6 +1,6 @@
 # ADR-075: Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-17):** In force; group registry generalised to resellers and suppliers by [ADR-125](./ADR-125-login-top-up-manual-supplier.md) (design). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-09-04, same grill session as ADR-072/073/074. Depends on ADR-073 (consumes the same order-placement contract as ADR-074, over a different transport).
 

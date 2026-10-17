@@ -753,9 +753,9 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
 - **94** Best-selling products per game in Reports.
 - **112** Customer account credentials (ADR-124, accepted design): the
   shared base for 113 and 114.
-- **113** Login Top-up for Roblox and eFootball (ADR-125, proposed): Manual
-  supplier, Manual Queue, admin-entered packages, real cost at delivery.
-  After 112.
+- **113** Login Top-up for Roblox and eFootball (ADR-125, accepted design):
+  manual suppliers, Manual Queue, supplier WhatsApp group bot. Two PRs,
+  with 112.
 - **114** Joki MLBB on owned brands (ADR-126, proposed): `/joki` rank
   calculator + route packages, penjoki payout as cost. After 113.
 
@@ -1104,12 +1104,16 @@ production on 2026-10-15 after release #449 (98, 99, 106 and 107 again on
     (delivered or compensated + 24 h, payment failed, abandoned 24 h, or a
     14-day ceiling). Built with 113.
 
-113. **Login Top-up, Roblox and eFootball (ADR-125, proposed 2026-10-17).**
-    A `manual` supplier behind `SupplierAdapter`, a Manual Queue that is
-    never auto-escalated (today a Pending order goes to NeedsReview after
-    2 h), admin-entered packages, per-game credential fields, real cost
-    entered at delivery. PekanGame and Affiliates, not Reseller. Needs the
-    grill plus the money-critical code-trace pass. After 112.
+113. **Login Top-up, Roblox and eFootball (ADR-125, accepted design
+    2026-10-17).** PekanGame and Affiliates, not Reseller. PR 1 (with 112):
+    `suppliers.driver` + capabilities on `Supplier` (sync selects by driver,
+    not `api_config`), one stale-Pending rule for reconciler and Dashboard,
+    admin-entered manual packages at an agreed cost, login-game rule, per-game
+    credential schema, `member_pricing_enabled` per game, Manual Queue whose
+    Delivered/Failed call `finalizePendingDelivery()`. PR 2: one
+    `whatsapp_groups` registry for resellers and suppliers, order post with a
+    signed one-time login link through the persisted notification queue,
+    `.done` / `.gagal` / `.pending`, 30-minute SLA reminder.
 
 114. **Joki MLBB (ADR-126, proposed 2026-10-17).** Owned brands only:
     `/joki` rank calculator (per-star tier rates, Reguler/Express) and route
