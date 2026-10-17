@@ -786,3 +786,22 @@ never refunded). The card only reaches retail, non-test orders
 A grep of backend, storefront, admin and portal found no other copy making
 the promise. `CustomerWhatsAppOptInTest` now asserts the new wording and
 that "full amount" is gone (red first, then green); full suite 2869 passed.
+
+## 2026-10-17 — PRD §16 item 109: fonts without Google Fonts
+
+`admin` (Figtree), `reseller` (Outfit) and `storefront` (Space Grotesk,
+Inter, JetBrains Mono) now load fonts with `next/font/local`. The files
+are the latin-subset variable woff2 files Google Fonts serves
+(`src/app/fonts/*.woff2`, 20–48 KB each), declared with the same weight
+ranges and the same CSS variable names, so `globals.css` is unchanged
+apart from a comment. No build fetches fonts any more, which removes the
+cause of the CI `playwright` boot crash (`Can't resolve
+'@vercel/turbopack-next/internal/font/google/font'`). Only latin is
+covered, as before (`subsets: ["latin"]`).
+
+Verified: `tsc`, `eslint` and `next build` pass in all three apps. On
+`next start` with Playwright, every face reports `loaded` with 0 requests
+to Google (JetBrains Mono loads on demand, and the homepage has no mono
+text). A storefront header next to prod's shows the same Space Grotesk
+glyphs; the layout differs only because the local build had no backend
+for the admin-configured logo and nav.
