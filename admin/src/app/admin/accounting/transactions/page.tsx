@@ -193,7 +193,7 @@ export default function TransactionRegisterPage() {
                     <DataTableTHeadCell className={TH}>Description</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Gross</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Fee</DataTableTHeadCell>
-                    <DataTableTHeadCell className={TH}>Cost</DataTableTHeadCell>
+                    <DataTableTHeadCell className={TH} title="The supplier price at the market rate on delivery day. The Monthly Summary's COGS is at the deposit's funded rate; its bridge lines tie the two.">Cost (delivery rate)</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Net</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Foreign amount</DataTableTHeadCell>
                   </DataTableTHeadRow>

@@ -11,7 +11,6 @@ use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\Voucher;
 use App\Services\Ledger\LedgerOwnerType;
-use App\Services\Order\DeliveryStatus;
 use App\Services\Report\ReportService;
 use App\Support\MalaysiaTime;
 use Illuminate\Support\Carbon;
@@ -33,9 +32,14 @@ use Illuminate\Support\Carbon;
  */
 final class MonthlyAccountingSummaryService
 {
-    public function __construct(private readonly RecognisedRevenue $revenue = new RecognisedRevenue) {}
+    public function __construct(
+        private readonly RecognisedRevenue $revenue = new RecognisedRevenue,
+        private readonly FundedCostOfSales $costOfSales = new FundedCostOfSales,
+    ) {}
 
     /**
+     * Every value is sen except `cogs_fallback_order_count`.
+     *
      * @return array<string, int>
      */
     public function forPeriod(int $year, int $month): array
@@ -48,11 +52,10 @@ final class MonthlyAccountingSummaryService
         $lines = [
             'sales_revenue_sen' => $this->salesRevenue($from, $toExclusive),
             'membership_revenue_sen' => $this->membershipRevenue($from, $toExclusive),
-            'cogs_sen' => $this->cogs($from, $toExclusive),
+            ...$this->costOfSales->forPeriod($from, $toExclusive),
             'payment_processing_gain_loss_sen' => $this->paymentProcessingGainLoss($from, $toExclusive),
             'supplier_prepaid_topup_sen' => $this->supplierPrepaidTopup($from, $toExclusive),
             'bank_transfer_fees_sen' => $this->bankTransferFees($from, $toExclusive),
-            'supplier_prepaid_fx_variance_sen' => $this->supplierPrepaidFxVarianceTrueUp($from, $toExclusive),
             'affiliate_commission_expense_sen' => $this->affiliateCommissionExpense($from, $toExclusive),
             'affiliate_tier_fees_sen' => $this->affiliateTierFees($from, $toExclusive),
             'voucher_breakage_sen' => $this->voucherBreakage($from, $toExclusive),
@@ -69,7 +72,9 @@ final class MonthlyAccountingSummaryService
     /**
      * ADR-083 2026-10-10 addendum, decision 11 — what a month close
      * allocates. A new line above must say which side it falls on.
-     * Deliberately left out: compensation vouchers (a liability — the cash
+     * COGS is at funded cost (2026-10-17 addendum), so no FX true-up is
+     * added back; the COGS bridge lines and drawdowns not in COGS are
+     * information only. Deliberately left out: compensation vouchers (a liability — the cash
      * was received and kept) and envelope expenses (they already reduced
      * their envelope; subtracting here again counts them twice). Capital
      * movements (supplier top-up, wallet balance) are not P&L at all.
@@ -81,7 +86,6 @@ final class MonthlyAccountingSummaryService
         return $lines['sales_revenue_sen']
             + $lines['membership_revenue_sen']
             - $lines['cogs_sen']
-            + $lines['supplier_prepaid_fx_variance_sen']
             + $lines['payment_processing_gain_loss_sen']
             - $lines['bank_transfer_fees_sen']
             - $lines['affiliate_commission_expense_sen']
@@ -179,7 +183,7 @@ final class MonthlyAccountingSummaryService
 
         $lastDay = self::klLastDay($toExclusive);
 
-        return (int) $rows->sum(fn ($row) => (int) round(((float) $row->total) * ($this->weightedAverageRate((int) $row->supplier_id, $lastDay) ?? 0.0) * 100));
+        return (int) $rows->sum(fn ($row) => (int) round(((float) $row->total) * ($this->costOfSales->weightedAverageRate((int) $row->supplier_id, $lastDay) ?? 0.0) * 100));
     }
 
     /** The KL calendar date of the last day before an exclusive UTC bound. */
@@ -220,17 +224,6 @@ final class MonthlyAccountingSummaryService
     private function salesRevenue(Carbon $from, Carbon $toExclusive): int
     {
         return $this->revenue->revenueSen($from, $toExclusive);
-    }
-
-    private function cogs(Carbon $from, Carbon $toExclusive): int
-    {
-        return (int) Order::query()
-            ->where('is_test', false)
-            ->where('delivery_status', DeliveryStatus::Delivered->value)
-            ->where('paid_at', '>=', $from)
-            ->where('paid_at', '<', $toExclusive)
-            ->sum('cost_price')
-            + (int) $this->revenue->settledPartialOrders($from, $toExclusive)->sum(fn (Order $o) => $o->effectiveCostPriceSen());
     }
 
     private function membershipRevenue(Carbon $from, Carbon $toExclusive): int
@@ -297,68 +290,6 @@ final class MonthlyAccountingSummaryService
             ->where('transferred_on', '>=', $from->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
             ->where('transferred_on', '<', $toExclusive->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
             ->sum('fee_myr');
-    }
-
-    /**
-     * ADR-083 decision 5 — "Σ orders.cost_price (delivered that month)
-     * minus Σ (foreign drawn that month × weighted-average rate of that
-     * supplier's transfers)". The weighted-average rate blends that
-     * supplier's whole non-voided transfer history up to the month's last
-     * KL day (the "true blended cost of funds" framing decision 5's own
-     * rationale uses). Not later transfers: 2026-10-10 addendum, decision
-     * 11 (Q24) — a closed month must stop moving on every new transfer.
-     */
-    private function supplierPrepaidFxVarianceTrueUp(Carbon $from, Carbon $toExclusive): int
-    {
-        $cogs = $this->cogs($from, $toExclusive);
-        $lastDay = self::klLastDay($toExclusive);
-
-        $drawdownsBySupplier = SupplierLedgerEntry::query()
-            ->where('type', SupplierLedgerEntryType::OrderDrawdown->value)
-            ->where('created_at', '>=', $from)
-            ->where('created_at', '<', $toExclusive)
-            ->selectRaw('supplier_id, SUM(ABS(amount)) as foreign_drawn')
-            ->groupBy('supplier_id')
-            ->get();
-
-        $foreignDrawnMyrSen = 0;
-
-        foreach ($drawdownsBySupplier as $row) {
-            $rate = $this->weightedAverageRate((int) $row->supplier_id, $lastDay);
-
-            if ($rate === null) {
-                continue; // no real transfer history yet for this supplier — nothing to true up against
-            }
-
-            $foreignDrawnMyrSen += (int) round(((float) $row->foreign_drawn) * $rate * 100);
-        }
-
-        return $cogs - $foreignDrawnMyrSen;
-    }
-
-    /**
-     * MYR per unit of foreign currency, weighted by each transfer's own
-     * net foreign amount received — `Σ amount_myr_sent / Σ net_foreign_received`
-     * across every non-voided transfer for this supplier sent on or before
-     * `$asOfDate` (a KL date). Public for the month close's supplier
-     * prepaid figure (2026-10-10 addendum, decision 13).
-     */
-    public function weightedAverageRate(int $supplierId, string $asOfDate): ?float
-    {
-        $transfers = SupplierTransfer::query()
-            ->where('supplier_id', $supplierId)
-            ->whereNull('voided_at')
-            ->where('transferred_on', '<=', $asOfDate)
-            ->get(['amount_myr_sent', 'amount_foreign_received', 'supplier_fee']);
-
-        $totalMyrSen = $transfers->sum('amount_myr_sent');
-        $totalForeign = $transfers->sum(fn (SupplierTransfer $t) => (float) $t->netForeignReceived());
-
-        if ($totalForeign <= 0.0) {
-            return null;
-        }
-
-        return ($totalMyrSen / 100) / $totalForeign;
     }
 
     /**

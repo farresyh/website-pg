@@ -242,7 +242,7 @@ export default function CustomerDetailPage() {
                 <td className="py-2 text-gray-500 dark:text-gray-400">100%</td>
               </tr>
               <tr>
-                <td className="py-2 text-gray-700 dark:text-gray-300">Supplier Cost</td>
+                <td className="py-2 text-gray-700 dark:text-gray-300">Supplier Cost (delivery rate)</td>
                 <td className="py-2 text-error-600 dark:text-error-400">-{formatRm(detail.profit_analysis.supplier_cost)}</td>
                 <td className="py-2 text-gray-500 dark:text-gray-400">{pct(detail.profit_analysis.supplier_cost, revenue)}</td>
               </tr>

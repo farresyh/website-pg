@@ -298,7 +298,7 @@ final class SupplierFundingService
                 // live: two real corrections this session left the
                 // Funding History page's own "Rate" column wrong, though
                 // with zero effect on any real total —
-                // `MonthlyAccountingSummaryService::weightedAverageRate()`
+                // `FundedCostOfSales::weightedAverageRate()`
                 // always recomputes fresh from `amount_myr_sent` directly,
                 // never reads this stored column.
                 if (array_key_exists('amount_myr_sent', $updates)) {

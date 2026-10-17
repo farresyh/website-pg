@@ -30,6 +30,23 @@ final class RecognisedRevenue
             + (int) $this->settledPartialOrders($from, $toExclusive)->sum(fn (Order $o) => $this->keptSen($o));
     }
 
+    /**
+     * Every order whose revenue is recognised in the range: the set the
+     * Monthly Summary's COGS is costed over (ADR-083 2026-10-17 addendum),
+     * so cost always follows revenue.
+     *
+     * @return Collection<int, Order>
+     */
+    public function recognisedOrders(?CarbonInterface $from, ?CarbonInterface $toExclusive): Collection
+    {
+        return $this->inRange(Order::query(), $from, $toExclusive)
+            ->where('delivery_status', DeliveryStatus::Delivered->value)
+            ->with('deliveryLegs.componentPackage:id,cost_price')
+            ->get()
+            ->concat($this->settledPartialOrders($from, $toExclusive))
+            ->values();
+    }
+
     /** What a settled partial order kept: the revenue it is recognised at. */
     public function keptSen(Order $order): int
     {

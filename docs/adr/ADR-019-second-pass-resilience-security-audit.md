@@ -78,3 +78,35 @@ each withdrawal is approved by hand with a "bank details changed" flag
 top-ups (prod 2026-10-14: affiliates RM 0.00 and RM 0.15, wallets RM 3.44
 and RM 306.85, 1 admin). The admin design gets its own ADR at the grill;
 the founder's choices so far are in PRD §16 item 10.
+
+### 2026-10-17 addendum — a password lockout alerts; login Turnstile parked
+
+**Context.** PRD §16 item 111 asked for a Turnstile bot check on the
+admin and portal logins. Prod scale on 2026-10-17: 1 admin, with MFA
+active, and 3 portal accounts. The portal is invite-only, with no public
+signup. Since 2026-09-27 the logs hold 33 failed logins: 32 from the
+founder's own IP on 27 Sep and 1 from an AWS Singapore IP on 9 Oct, so
+no attack so far. The per-IP limit (5 a minute) and the per-account
+lockout (10 failures, 15 minutes) already apply. Cost is not the
+problem: Turnstile Free has unlimited challenges, 20 widgets and 10
+hostnames per widget, and `admin.` and `reseller.` sit under
+`pekangame.space`, which the ADR-123 widget already lists. The trace
+found a real gap, though. Only a lock from wrong MFA codes emailed the
+admins (ADR-121). A lock from wrong passwords, at the admin or the portal
+login, only wrote a log line, so a credential attack would go unseen.
+
+**Decision.**
+1. When an account is locked by wrong passwords, every admin gets an email
+   through `BackupFailureAlerter` (area `Security`, "Account locked", with
+   the email and the last IP). This covers admin login and portal login.
+   It fires once per lock, like the MFA alert.
+2. The email goes out only when the email belongs to a real account. A lock
+   on a made-up email stays a log line, so an attacker cycling invented
+   emails cannot flood the admins' inbox.
+3. Turnstile on the logins is parked (PRD §16 group D, item 111). The
+   trigger is the first lockout alert that is not the founder, or the
+   portal opening to public signup (item 13).
+
+**Consequence to track.** If item 111 is reopened, the remaining
+questions are fail-open vs fail-closed when Cloudflare is down (a
+fail-closed admin login locks the founder out) and the E2E test keys.

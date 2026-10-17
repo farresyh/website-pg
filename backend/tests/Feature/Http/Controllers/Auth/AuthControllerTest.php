@@ -3,9 +3,11 @@
 namespace Tests\Feature\Http\Controllers\Auth;
 
 use App\Models\AdminUser;
+use App\Services\Backup\BackupFailureAlerter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
 use Laravel\Sanctum\Sanctum;
+use Mockery;
 use Tests\TestCase;
 
 class AuthControllerTest extends TestCase
@@ -195,5 +197,51 @@ class AuthControllerTest extends TestCase
         $response = $this->getJson('/api/me');
 
         $response->assertUnauthorized();
+    }
+
+    /**
+     * A password-guess lockout emails every admin, but only for a real
+     * account: a lock on an unknown email stays a log line, so an attacker
+     * cycling made-up emails can't flood the inbox.
+     */
+    private function captureAlerts(): \ArrayObject
+    {
+        $alerts = new \ArrayObject;
+        $alerter = Mockery::mock(BackupFailureAlerter::class);
+        $alerter->shouldReceive('alert')->andReturnUsing(function (string $context, string $message, string $area) use ($alerts) {
+            $alerts[] = "{$area}|{$context}|{$message}";
+        });
+        $this->app->instance(BackupFailureAlerter::class, $alerter);
+
+        return $alerts;
+    }
+
+    public function test_a_password_lockout_alerts_once_for_a_real_account(): void
+    {
+        $alerts = $this->captureAlerts();
+        $user = AdminUser::factory()->create(['password' => 'secret-password']);
+
+        for ($i = 1; $i <= 11; $i++) {
+            $this->withServerVariables(['REMOTE_ADDR' => "203.0.113.{$i}"])
+                ->postJson('/api/login', ['email' => $user->email, 'password' => 'wrong-password']);
+        }
+
+        $this->assertCount(1, $alerts);
+        $this->assertStringStartsWith('Security|Account locked|', $alerts[0]);
+        $this->assertStringContainsString($user->email, $alerts[0]);
+        $this->assertStringContainsString('203.0.113.10', $alerts[0]);
+    }
+
+    public function test_a_lockout_on_an_unknown_email_does_not_alert(): void
+    {
+        $alerts = $this->captureAlerts();
+
+        for ($i = 1; $i <= 10; $i++) {
+            $this->withServerVariables(['REMOTE_ADDR' => "203.0.113.{$i}"])
+                ->postJson('/api/login', ['email' => 'nobody@example.com', 'password' => 'wrong-password'])
+                ->assertStatus(422);
+        }
+
+        $this->assertCount(0, $alerts);
     }
 }

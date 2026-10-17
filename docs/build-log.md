@@ -1025,3 +1025,123 @@ has `=false`, the process started at 12:34:00 UTC, `reseller-bot` was
 ready at 12:34:09 and `customer-support` at 12:36:01. The founder
 confirmed the phones get notifications again. Recorded in the ADR-114
 2026-10-17 addendum, along with the open `SIMULATE_TYPING` note.
+
+## 2026-10-17 — Release #490 (`staging`→`main`), verified; item 119 closed
+
+Merged as `4ced680` at 12:47:37 UTC, with #487 (item 106) and docs #486,
+#488, #489. The `main` CI run passed every job. `deploy` ran
+12:54:40–12:54:43. Checked on the box: release `80463744` was built at
+12:54:49, and `current` points to it at `4ced680`. No release directory
+appeared at the merge (checked 12:47:53). The migration
+`2026_10_17_120000_add_price_sync_health_to_suppliers` shows Ran (batch 44).
+`schedule:list` shows `app:check-price-sync-staleness` every 15 minutes.
+`/up` returns 200.
+
+**Item 119 closed.** The deploy went through the CI gate: one release,
+built after the `deploy` job. Before 2026-10-17 the box built 10 seconds
+after each merge. A directory `80314022` showed up for a moment at 12:55:15.
+It was the oldest release being pruned by Forge (five are kept), not a
+second deploy.
+
+**Left for item 106:** the first real `partial` run or stale-supplier email
+in prod is its live check.
+
+## 2026-10-17 — Item 111 parked; a password lockout now alerts
+
+The grill on item 111 (Turnstile on the admin and portal logins) found it
+isn't needed yet, and the founder parked it in group D. Prod: 1 admin
+(MFA active) and 3 invite-only portal accounts. Since 27 Sep the logs show
+33 failed logins: 32 from the founder's IP and 1 from an AWS Singapore IP
+on 9 Oct. The founder had asked about the free plan's limits. Checked
+against Cloudflare's docs, they don't block it: 20 widgets, 10 hostnames
+per widget, unlimited challenges, and `admin.`/`reseller.` are already
+covered by `pekangame.space` on the ADR-123 widget.
+
+**Gap found and fixed.** `AccountLoginThrottle::recordFailure()` returns
+true on the failure that locks the account. Only `AdminMfa` (wrong codes)
+used that return value. The admin and portal password logins ignored it,
+so a password lockout only wrote a log line. Now both email every admin
+(`BackupFailureAlerter`, area Security, "Account locked", with the email
+and last IP). Only real accounts alert, so an attacker cycling made-up
+emails can't flood the inbox. Test-first: 4 new tests in
+`AuthControllerTest` and `AffiliateAuthControllerTest` (red → green).
+Full suite 2888 passed. ADR-019 2026-10-17 addendum.
+
+## 2026-10-17 — Item 115: Monthly Summary COGS at funded cost (on `staging`)
+
+The planned fix was to switch COGS from the checkout estimate to ADR-111's
+real cost. The founder asked for an accounting check first, and the check
+changed the fix. ADR-111's real cost is the supplier's IDR price at the
+**market** rate on delivery day. The Digiflazz deposit can't be withdrawn
+(founder), so it is a non-monetary prepayment, and under IFRIC 22 and IAS 2
+an order costs its drawdown × the MYR actually paid per IDR.
+
+Operating profit was already that number, by accident: COGS cancelled
+against the FX true-up. That hid three gaps: a supplier with no rate, an
+order with no drawdown, and drawdowns timed by `created_at`.
+
+**Built:**
+- `FundedCostOfSales` costs `RecognisedRevenue`'s orders (new
+  `recognisedOrders()`, so cost follows revenue) unit by unit: plain orders
+  and delivered combo legs. Funded units are summed per supplier and rounded
+  once. IDR is valued at the month-end blended rate, MYR at face value.
+  Anything else falls back to its own cost and is counted on the page.
+- The true-up left operating profit. The bridge lines are "COGS at
+  per-order cost" + "Deposit rate vs market rate" = COGS (tested exactly),
+  plus "Supplier drawdowns not in this month's COGS".
+- `weightedAverageRate()` moved to the new class. `CashPositionService` now
+  depends on it.
+- Per-order cost labels say "delivery rate": the Register screen and CSV,
+  Customer Detail, and the Orders export.
+
+**Stress test before build.** It found four gaps in the first design, all
+fixed: per-order rounding, unsettled partials, the bridge vs the Register,
+and no check that every drawdown is counted. Several scenarios were checked
+safe: sandbox orders (`FakeSupplierAdapter` price null, so no drawdown),
+resend, failed legs, pricing bases. My earlier claim that sandbox drawdowns
+polluted profit was wrong.
+
+**Checks.**
+- Tests: 11 new (`FundedCostOfSalesTest`, red → green), 2 superseded
+  true-up tests removed, full suite 2897 passed. Admin: tsc, lint, build
+  and node tests all pass.
+- Browser: Monthly Summary on a local production build showed the new
+  lines. The fallback warning wasn't seen live: it needs an order with no
+  drawdown, and the dev DB has none.
+- Read-only prod run of the new class: September and October operating
+  profit unchanged (RM4.64, RM3.64). COGS RM151.86 and RM169.69.
+
+**Corrections to what I told the founder:**
+- I had said September's funded COGS would be about RM149.34. It is
+  RM151.86: the deposit rate cost more than the market rate, not less.
+
+**Left:**
+- Release. Then reopen and re-close September (§16 C, item 115).
+- Item 121: estimated combo snapshot.
+- Item 120: keep CHIP files.
+
+## 2026-10-17 — Item 121: estimated combo cost no longer follows the catalog (on `staging`)
+
+The addendum decided on a checkout snapshot, but the trace before coding
+showed it was wrong. A delivered combo's profit is set from each leg's
+catalog cost **at delivery** (`resolveComboOutcome()`, ADR-107), and a
+settled partial's at settlement, so the snapshot can differ from what the
+profit used. The founder agreed to read the cost back from the profit
+identity instead, `revenue − platform_profit − affiliate_profit`, for a
+realised combo with no real-cost basis. Unrealised combos keep the delivered
+legs' catalog cost.
+
+**What changes:** reader only, `Order::comboCostReconciliation()`. Pricing,
+delivery, profit and the ledger are untouched.
+
+**Tests:** 3 new in `OrderTest`, red → green. One first version passed by
+coincidence (its numbers equalled the catalog) and was rewritten to
+separate them. Full suite: 2900 passed.
+
+**Prod (read-only):**
+- #7: 186 (was 184 live) and #28: 1065 (was 1074). Both equal their
+  profit identity.
+- September's per-order cost line drops by RM0.07. COGS and operating profit
+  are unchanged.
+
+**Left:** item 122, a stored per-leg cost for the leg-level COGS fallback.
