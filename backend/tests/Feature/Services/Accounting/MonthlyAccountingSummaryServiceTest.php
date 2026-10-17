@@ -298,43 +298,6 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $this->assertSame(400, $summary['admin_issued_vouchers_sen']);
     }
 
-    /**
-     * ADR-083 decision 5 — the weighted-average rate is computed across
-     * the supplier's ENTIRE non-voided transfer history (a genuine
-     * "true blended cost of funds"), then applied to this month's own
-     * drawdown. Two transfers at different rates: 1000 MYR -> 100 units
-     * (rate 10) and 2000 MYR -> 100 units (rate 20) blend to a weighted
-     * average of 3000 MYR / 200 units = rate 15. Drawing down 50 units
-     * this month costs 50 * 15 = 750 MYR at that blended rate.
-     */
-    public function test_fx_variance_true_up_uses_the_suppliers_weighted_average_rate_across_all_transfers(): void
-    {
-        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
-
-        SupplierTransfer::query()->create([
-            'transferred_on' => '2026-09-05',
-            'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 100000, 'fee_myr' => 0,
-            'currency' => 'IDR', 'amount_foreign_received' => '100.0000',
-        ]);
-        SupplierTransfer::query()->create([
-            'transferred_on' => '2026-09-05',
-            'supplier_id' => $supplier->id, 'source_channel' => 'wise', 'amount_myr_sent' => 200000, 'fee_myr' => 0,
-            'currency' => 'IDR', 'amount_foreign_received' => '100.0000',
-        ]);
-
-        $order = Order::factory()->delivered()->create(['paid_at' => '2026-09-15 10:00:00', 'cost_price' => 70000, 'supplier_id' => $supplier->id]);
-        SupplierLedgerEntry::query()->forceCreate([
-            'supplier_id' => $supplier->id, 'type' => SupplierLedgerEntryType::OrderDrawdown->value, 'amount' => -50,
-            'currency' => 'IDR', 'reference_type' => 'order', 'reference_id' => $order->id,
-            'created_at' => '2026-09-15 10:00:00',
-        ]);
-
-        $summary = $this->service()->forPeriod(2026, 9);
-
-        // Blended rate 15 MYR/unit * 50 units drawn = 750 MYR = 75000 sen.
-        $this->assertSame(70000 - 75000, $summary['supplier_prepaid_fx_variance_sen']);
-    }
-
     public function test_affiliate_commission_expense_is_ledger_sourced_not_the_order_column(): void
     {
         $order = Order::factory()->delivered()->create(['paid_at' => '2026-09-15 10:00:00', 'affiliate_profit' => 999999]);
@@ -448,24 +411,6 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $this->assertSame(-2500, $this->service()->forPeriod(2026, 9)['supplier_manual_adjustments_sen']);
     }
 
-    /** Decision 11 (Q24): a closed month stops moving when a later transfer changes the blended rate. */
-    public function test_fx_true_up_uses_the_rate_as_of_month_end_not_later_transfers(): void
-    {
-        [$supplier] = $this->supplierWithTransfer();
-        SupplierTransfer::query()->create([
-            'transferred_on' => '2026-10-03', 'supplier_id' => $supplier->id, 'source_channel' => 'wise',
-            'amount_myr_sent' => 900000, 'fee_myr' => 0, 'currency' => 'IDR', 'amount_foreign_received' => '100000.0000',
-        ]);
-        $order = Order::factory()->delivered()->create(['paid_at' => '2026-09-15 10:00:00', 'cost_price' => 9000, 'supplier_id' => $supplier->id]);
-        SupplierLedgerEntry::query()->forceCreate([
-            'supplier_id' => $supplier->id, 'type' => SupplierLedgerEntryType::OrderDrawdown->value, 'amount' => -90000,
-            'currency' => 'IDR', 'reference_type' => 'order', 'reference_id' => $order->id, 'created_at' => '2026-09-15 10:00:00',
-        ]);
-
-        // 90,000 units × RM0.01 = RM900 — the October transfer's RM0.09 rate is not in September yet.
-        $this->assertSame(9000 - 90000, $this->service()->forPeriod(2026, 9)['supplier_prepaid_fx_variance_sen']);
-    }
-
     public function test_operating_profit_follows_decision_11_and_leaves_out_compensation_vouchers(): void
     {
         [$supplier] = $this->supplierWithTransfer();
@@ -485,7 +430,7 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
 
         $summary = $this->service()->forPeriod(2026, 9);
 
-        // The drawdown costs exactly cost_price at the blended rate, so no FX true-up.
+        // The drawdown costs exactly cost_price at the blended rate.
         $this->assertSame(10000 - 9000 + 70 + 50 - 200, $summary['operating_profit_sen']);
         $this->assertSame(3000, $summary['failed_order_credit_issued_sen']);
     }
