@@ -800,6 +800,24 @@ class SupplierTransferControllerTest extends TestCase
         $this->assertSame(0, SupplierTransferCorrection::query()->count());
     }
 
+    /** §16 item 110: same 5 MB receipt cap as recording a transfer. */
+    public function test_correct_rejects_a_receipt_over_5_mb(): void
+    {
+        $this->actAsSuperAdmin();
+        Storage::fake('local');
+        $supplier = $this->makeSupplier();
+        $this->postJson("/api/accounting/suppliers/{$supplier->id}/transfers", [
+            'transferred_on' => '2026-10-01',
+            'source_channel' => 'wise', 'amount_myr_sent' => 19889, 'currency' => 'IDR', 'amount_foreign_received' => 832672,
+        ])->assertCreated();
+        $transfer = SupplierTransfer::query()->firstOrFail();
+
+        $this->post("/api/accounting/supplier-transfers/{$transfer->id}/correct", [
+            'receipt' => UploadedFile::fake()->create('big.pdf', 5121, 'application/pdf'),
+            'reason' => 'Attaching the right receipt',
+        ], ['Accept' => 'application/json'])->assertUnprocessable()->assertJsonValidationErrors('receipt');
+    }
+
     public function test_correct_requires_a_reason(): void
     {
         $this->actAsSuperAdmin();

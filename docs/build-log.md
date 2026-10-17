@@ -805,3 +805,36 @@ to Google (JetBrains Mono loads on demand, and the homepage has no mono
 text). A storefront header next to prod's shows the same Space Grotesk
 glyphs; the layout differs only because the local build had no backend
 for the admin-configured logo and nav.
+
+## 2026-10-17 — PRD §16 item 110: security check follow-ups
+
+**Headers.** New `SecurityHeaders` middleware (appended globally in
+`bootstrap/app.php`) adds `Strict-Transport-Security: max-age=31536000`
+over HTTPS only (no `includeSubDomains`/`preload`, which would bind every
+`pekangame.space` host), `Referrer-Policy: strict-origin-when-cross-origin`
+and `Permissions-Policy: camera=(), microphone=(), geolocation=()`. It is
+done in Laravel, not in Forge's nginx (which already sends
+`X-Frame-Options` and `nosniff`), so it ships through staging → main with
+no hand-edit on the box. `SecurityHeadersTest` covers HTTPS, plain HTTP and
+an error response. Admin, storefront and portal `next.config.ts` add the
+same two policies, the portal gains `nosniff`, and all three set
+`poweredByHeader: false`. No frontend uses camera, microphone or
+geolocation. Checked with `curl -I` against `next start` builds of all
+three.
+
+**Upload cap.** `CorrectSupplierTransferRequest`'s `receipt` gets
+`max:5120`, like its three siblings (red→green test). Every other
+FormRequest with a file rule already has a `max:`.
+
+**Login throttle: no change.** The audit said `/login`, `/login/mfa` and
+the affiliate login are throttled per IP only. They are not:
+`App\Support\AccountLoginThrottle` (ADR-019 2026-09-29 addendum, Wave 3
+PR-B) locks an email for 15 minutes after 10 failures from any mix of IPs,
+on admin login, MFA code, step-up and affiliate login, with tests in
+`AuthControllerTest` and `AffiliateAuthControllerTest`. That is tighter
+than the 10/min + 30/hour bucket agreed before this was found (at most
+~40 guesses an hour instead of 30 an hour plus a separate per-minute
+limit), so no second limiter was added.
+
+Full backend suite 2872 passed; `tsc`, `eslint` and `next build` pass in
+the three apps.
