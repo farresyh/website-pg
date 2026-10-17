@@ -1,6 +1,6 @@
 # ADR-121: Admin MFA (TOTP) and a cookie-session admin login: opt-in per account, step-up on five dangerous actions
 
-> **Standing (2026-10-14):** In force (built 2026-10-14; see the build addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-14):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-14. Grilled with the founder in five rounds via `/mattpocock-skills:grilling` (Q1–Q17), then stress-tested against code and production (read-only). PRD §16 item 10, AUTH-7.
 

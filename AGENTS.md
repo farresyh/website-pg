@@ -14,7 +14,7 @@ change to those paths with the same care the existing code already does.
 
 | Path | What | Notes |
 | --- | --- | --- |
-| `backend/` | Laravel 13 API (PHP 8.4) | Sanctum bearer-token auth, MySQL, Redis queue (Horizon, ADR-048) + Redis cache (ADR-077). Own `AGENTS.md`: Laravel conventions + local-dev gotchas |
+| `backend/` | Laravel 13 API (PHP 8.4) | Sanctum auth (admin: cookie session, ADR-121; portal: bearer token; Reseller API: keys), MySQL, Redis queue (Horizon, ADR-048) + Redis cache (ADR-077). Own `AGENTS.md`: Laravel conventions + local-dev gotchas |
 | `admin/` | Next.js 16 admin panel | Games, Orders, Withdrawals, Vouchers, Price Sync Center, Gallery, Affiliates, Resellers |
 | `storefront/` | Next.js 16 customer storefront | Guest checkout only — no customer accounts (ADR-011). Also renders every **Affiliate** whitelabel brand, resolved per `Host` / custom domain (ADR-060) |
 | `reseller/` | Next.js 16 partner portal | One app, two account types (ADR-072): **Affiliate** (whitelabel storefront owner — earnings ledger, withdrawals, wholesale tier, storefront config, custom domain) and **Reseller** (prepaid-wallet spend-only account — wallet top-up, API keys). Runs on `:3002` (ADR-059) |
@@ -36,7 +36,7 @@ banner). This file covers the whole repo.
 | Request | What to do |
 | --- | --- |
 | Question, explanation, audit, "check" / "semak" / "jangan ubah apa-apa" | Read and report only. No edits, branches, or commits until the founder asks for changes after seeing the report. |
-| Design only (new ADR or addendum, build later) | Lifecycle steps 1–3 (branch `docs/*`), 7 (ADR + index row + a PRD §16 "Buildable when triggered" line), 8. |
+| Design only (new ADR or addendum, build later) | Lifecycle steps 1–3 (branch `docs/*`), 7 (ADR + index row + a PRD §16 line in group D or E), 8. |
 | Build / fix | The full lifecycle below. |
 | Anything that writes to production (data patch, `.env`, DB users, infra) | **Production Access** below, on top of whatever else applies. |
 
@@ -197,7 +197,7 @@ banner). This file covers the whole repo.
   when nothing under its own directory changed. A PR showing fewer than 4
   Vercel builds (the rest `Canceled` / "Ignored Build Step") is working as
   intended. If a shared file outside an app's directory ever needs to trigger
-  that app's rebuild, update its `ignoreCommand` too.
+  that app's rebuild, update the shared `scripts/vercel-ignore-build.sh` that every `ignoreCommand` calls.
 
 ## Multi-Agent Work
 
@@ -218,8 +218,8 @@ banner). This file covers the whole repo.
 
 ```bash
 # All four at once (backend + admin + storefront + reseller); also starts local Redis.
-# The frontends call NEXT_PUBLIC_API_URL (the Herd site), so Herd must be
-# running — backend/AGENTS.md gotcha 6.
+# Storefront and portal call NEXT_PUBLIC_API_URL = the Herd site (Herd must be
+# running); the admin calls http://localhost:8000 — backend/AGENTS.md gotcha 6.
 ./scripts/dev.sh
 
 # Backend
