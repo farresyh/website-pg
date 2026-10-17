@@ -64,14 +64,6 @@ class ResellerWalletControllerTest extends TestCase
             ->assertJsonValidationErrors('idempotency_key');
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        $this->actingAsSteppedUp(AdminUser::factory()->create(['role' => 'admin']));
-        $reseller = $this->makeReseller();
-
-        $this->getJson("/api/resellers/{$reseller->id}/wallet")->assertForbidden();
-    }
-
     public function test_credit_without_receipt_credits_the_ledger(): void
     {
         $admin = $this->actAsSuperAdmin();

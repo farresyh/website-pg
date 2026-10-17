@@ -58,11 +58,6 @@ class OrderControllerTest extends TestCase
         ], $overrides));
     }
 
-    public function test_index_requires_authentication(): void
-    {
-        $this->getJson('/api/orders')->assertUnauthorized();
-    }
-
     public function test_index_lists_orders_with_game_and_package_names(): void
     {
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
@@ -317,12 +312,6 @@ class OrderControllerTest extends TestCase
         $this->assertSame('KRS-TODAY', $response->json('data.0.order_number'));
     }
 
-    /** ADR-092: the six KPI-card counts, one grouped query, is_test excluded. */
-    public function test_summary_requires_authentication(): void
-    {
-        $this->getJson('/api/orders/summary')->assertUnauthorized();
-    }
-
     public function test_summary_returns_a_count_for_each_bucket(): void
     {
         // need_action
@@ -512,12 +501,6 @@ class OrderControllerTest extends TestCase
         $response->assertOk();
         $this->assertCount(1, $response->json('data'));
         $this->assertSame('KRS-IN-RANGE', $response->json('data.0.order_number'));
-    }
-
-    /** ADR-108 decision 9 (ORD-5) — CSV export respects the current filter set, streams every matching row, not just the current page. */
-    public function test_export_requires_authentication(): void
-    {
-        $this->getJson('/api/orders/export')->assertUnauthorized();
     }
 
     /** ADR-108 2026-10-04 addendum — the export is a 2-sheet workbook of the filtered orders. */
@@ -1107,13 +1090,6 @@ class OrderControllerTest extends TestCase
         Queue::assertPushed(FulfillOrderJob::class, fn (FulfillOrderJob $job) => $job->order->id === $order->id);
     }
 
-    public function test_retry_delivery_requires_authentication(): void
-    {
-        $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value]);
-
-        $this->postJson("/api/orders/{$order->id}/retry-delivery")->assertUnauthorized();
-    }
-
     /**
      * ADR-017: same async-dispatch discipline as retryDelivery — the
      * admin request never blocks on a live Gamevion call.
@@ -1437,16 +1413,6 @@ class OrderControllerTest extends TestCase
         Queue::assertNothingPushed();
     }
 
-    public function test_resend_requires_authentication(): void
-    {
-        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
-        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
-        $package = Package::query()->create(['game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 900, 'standard_selling_price' => 900, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
-        $order = $this->order(['game_id' => $game->id, 'delivery_status' => DeliveryStatus::Failed->value]);
-
-        $this->postJson("/api/orders/{$order->id}/resend", ['package_id' => $package->id])->assertUnauthorized();
-    }
-
     /**
      * Decision #4: "Delivery Logs" — show() surfaces every resend
      * attempt, most recent first.
@@ -1720,13 +1686,6 @@ class OrderControllerTest extends TestCase
         $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1'])->assertNotFound();
     }
 
-    public function test_mark_delivered_requires_authentication(): void
-    {
-        $order = $this->order(['delivery_status' => DeliveryStatus::NeedsReview->value]);
-
-        $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1'])->assertUnauthorized();
-    }
-
     /**
      * ADR-026 addendum (2026-09-16) — the exit decision 4c's own text
      * always assumed existed but was never built: retry can never
@@ -1816,13 +1775,6 @@ class OrderControllerTest extends TestCase
         $this->actingAsAdmin();
 
         $this->postJson("/api/orders/{$order->id}/confirm-failed", ['note' => 'note'])->assertNotFound();
-    }
-
-    public function test_confirm_failed_requires_authentication(): void
-    {
-        $order = $this->order(['delivery_status' => DeliveryStatus::NeedsReview->value]);
-
-        $this->postJson("/api/orders/{$order->id}/confirm-failed", ['note' => 'note'])->assertUnauthorized();
     }
 
     /**

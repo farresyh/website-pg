@@ -54,11 +54,6 @@ class SendMembershipRemindersCommandTest extends TestCase
         ]);
     }
 
-    private function sentBodies(): array
-    {
-        return Http::recorded()->map(fn ($pair) => $pair[0]['subject'].' | '.$pair[0]['body'])->all();
-    }
-
     public function test_the_before_reminder_goes_out_three_malaysia_days_ahead_not_three_utc_days(): void
     {
         // Ends 01:00 on 24 Oct in Malaysia (17:00 UTC on the 23rd). H-3 is 21 Oct, not 20 Oct.

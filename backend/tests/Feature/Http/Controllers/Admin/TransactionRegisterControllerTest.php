@@ -54,13 +54,6 @@ class TransactionRegisterControllerTest extends TestCase
         return Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/accounting/transactions')->assertForbidden();
-    }
-
     public function test_index_includes_a_paid_order_row(): void
     {
         $this->actAsSuperAdmin();

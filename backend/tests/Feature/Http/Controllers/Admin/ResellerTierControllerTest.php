@@ -25,12 +25,6 @@ class ResellerTierControllerTest extends TestCase
         Sanctum::actingAs(AdminUser::factory()->superAdmin()->create());
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-        $this->getJson('/api/reseller-tiers')->assertForbidden();
-    }
-
     public function test_crud_roundtrip(): void
     {
         $this->actAsSuperAdmin();

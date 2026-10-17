@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use Tests\TestCase;
 
-class ExampleTest extends TestCase
+class RootIdentityTest extends TestCase
 {
     /**
      * The backend root (ADR-078 decision 4): a flat JSON identity, no

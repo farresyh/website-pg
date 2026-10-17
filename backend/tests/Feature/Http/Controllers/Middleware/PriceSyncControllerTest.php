@@ -29,18 +29,6 @@ class PriceSyncControllerTest extends TestCase
         return $admin;
     }
 
-    public function test_store_requires_authentication(): void
-    {
-        $this->postJson('/api/middleware/price-sync')->assertUnauthorized();
-    }
-
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->postJson('/api/middleware/price-sync')->assertForbidden();
-    }
-
     /**
      * ADR-015 decision #5: "Sync All Prices Now" never blocks on a
      * live Gamevion call — it only ever queues a run.

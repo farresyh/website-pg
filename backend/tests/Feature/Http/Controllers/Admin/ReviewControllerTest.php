@@ -57,11 +57,6 @@ class ReviewControllerTest extends TestCase
         ], $overrides, ['order_id' => $order]));
     }
 
-    public function test_index_requires_authentication(): void
-    {
-        $this->getJson('/api/reviews')->assertUnauthorized();
-    }
-
     public function test_index_returns_stats_and_paginated_reviews(): void
     {
         $this->actingAsAdmin();

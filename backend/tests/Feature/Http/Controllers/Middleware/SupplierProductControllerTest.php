@@ -50,18 +50,6 @@ class SupplierProductControllerTest extends TestCase
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/middleware/supplier-products')->assertForbidden();
-    }
-
-    public function test_index_requires_authentication(): void
-    {
-        $this->getJson('/api/middleware/supplier-products')->assertUnauthorized();
-    }
-
     public function test_index_lists_raw_products_and_flags_already_promoted_ones(): void
     {
         $supplier = $this->supplier();

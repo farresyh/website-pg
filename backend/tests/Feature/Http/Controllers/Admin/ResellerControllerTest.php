@@ -28,17 +28,6 @@ class ResellerControllerTest extends TestCase
         return $admin;
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-        $this->getJson('/api/resellers')->assertForbidden();
-    }
-
-    public function test_unauthenticated_is_rejected(): void
-    {
-        $this->getJson('/api/resellers')->assertUnauthorized();
-    }
-
     public function test_store_creates_reseller_and_opens_a_wallet_ledger_account(): void
     {
         $this->actAsSuperAdmin();

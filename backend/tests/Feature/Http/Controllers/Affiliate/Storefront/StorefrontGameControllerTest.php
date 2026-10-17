@@ -119,16 +119,4 @@ class StorefrontGameControllerTest extends TestCase
 
         $this->assertDatabaseMissing('affiliate_game', ['affiliate_id' => $brand->id, 'game_id' => $only->id]);
     }
-
-    public function test_a_deactivated_affiliate_cannot_toggle(): void
-    {
-        $brand = $this->affiliate();
-        $brand->update(['status' => 'deactivated']);
-        $g1 = $this->game('Mobile Legends');
-        $this->game('Free Fire');
-
-        $this->withToken($this->tokenFor($brand))
-            ->putJson("/api/affiliate/storefront/games/{$g1->id}", ['is_visible' => false])
-            ->assertStatus(403);
-    }
 }

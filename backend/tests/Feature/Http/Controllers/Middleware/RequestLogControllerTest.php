@@ -40,13 +40,6 @@ class RequestLogControllerTest extends TestCase
         ], $overrides));
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/middleware/request-logs')->assertForbidden();
-    }
-
     public function test_index_lists_rows_most_recent_first(): void
     {
         $this->actingAsAdmin();

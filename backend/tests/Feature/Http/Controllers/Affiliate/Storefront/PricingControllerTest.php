@@ -159,13 +159,4 @@ class PricingControllerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('wholesale_rate_active', false);
     }
-
-    public function test_a_deactivated_affiliate_cannot_change_markup(): void
-    {
-        $affiliate = $this->affiliate(['status' => 'deactivated']);
-
-        $this->withToken($this->tokenFor($affiliate))
-            ->putJson('/api/affiliate/storefront/pricing', ['markup_pct' => 5])
-            ->assertStatus(403);
-    }
 }

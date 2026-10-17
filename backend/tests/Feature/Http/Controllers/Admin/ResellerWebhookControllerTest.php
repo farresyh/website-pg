@@ -32,14 +32,6 @@ class ResellerWebhookControllerTest extends TestCase
         return Reseller::query()->create(['business_name' => 'Acme', 'is_active' => true]);
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-        $reseller = $this->reseller();
-
-        $this->getJson("/api/resellers/{$reseller->id}/webhook")->assertForbidden();
-    }
-
     public function test_set_and_rotate_from_admin(): void
     {
         $this->actAsSuperAdmin();

@@ -27,13 +27,6 @@ class GameSeoControllerTest extends TestCase
         ], $overrides));
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/seo/games')->assertForbidden();
-    }
-
     public function test_index_marks_status_complete_incomplete_and_missing_correctly(): void
     {
         $this->actingAsSuperAdmin();

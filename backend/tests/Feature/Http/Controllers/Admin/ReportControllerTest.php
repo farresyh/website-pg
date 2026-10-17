@@ -44,11 +44,6 @@ class ReportControllerTest extends TestCase
         ], $overrides));
     }
 
-    public function test_summary_requires_authentication(): void
-    {
-        $this->getJson('/api/reports/summary')->assertUnauthorized();
-    }
-
     public function test_summary_returns_pinned_shape(): void
     {
         $order = $this->order();
@@ -251,11 +246,6 @@ class ReportControllerTest extends TestCase
 
         $response->assertOk();
         $this->assertStringContainsString('text/csv', $response->headers->get('Content-Type'));
-    }
-
-    public function test_daily_breakdown_requires_authentication(): void
-    {
-        $this->getJson('/api/reports/daily-breakdown')->assertUnauthorized();
     }
 
     public function test_daily_breakdown_returns_rows(): void

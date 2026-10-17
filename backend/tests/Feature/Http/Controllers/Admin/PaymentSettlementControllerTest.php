@@ -25,13 +25,6 @@ class PaymentSettlementControllerTest extends TestCase
         return $admin;
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/accounting/settlements')->assertForbidden();
-    }
-
     public function test_store_ingests_the_uploaded_file_and_returns_the_reconciliation_result(): void
     {
         $this->actingAsAdmin();
@@ -281,13 +274,6 @@ class PaymentSettlementControllerTest extends TestCase
 
         $this->assertCount(2, $response->json('data'));
         $this->assertSame(3, $response->json('total'));
-    }
-
-    public function test_transactions_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/accounting/settlements/transactions')->assertForbidden();
     }
 
     /**

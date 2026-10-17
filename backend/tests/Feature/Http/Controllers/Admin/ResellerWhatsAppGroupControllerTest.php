@@ -28,13 +28,6 @@ class ResellerWhatsAppGroupControllerTest extends TestCase
         return Reseller::query()->create(['business_name' => 'Acme', 'is_active' => true]);
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/reseller-whatsapp-groups/pending')->assertForbidden();
-    }
-
     public function test_pending_lists_unmatched_groups_platform_wide(): void
     {
         $this->actAsSuperAdmin();

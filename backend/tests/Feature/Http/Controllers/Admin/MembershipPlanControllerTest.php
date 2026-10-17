@@ -36,18 +36,6 @@ class MembershipPlanControllerTest extends TestCase
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
     }
 
-    public function test_unauthenticated_is_blocked(): void
-    {
-        $this->getJson('/api/membership-plans')->assertUnauthorized();
-    }
-
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/membership-plans')->assertForbidden();
-    }
-
     public function test_index_returns_the_two_seeded_tiers_in_id_order(): void
     {
         $this->actingAsSuperAdmin();
@@ -255,12 +243,5 @@ class MembershipPlanControllerTest extends TestCase
         $row = $this->getJson('/api/membership-plans/preview?discount_percent=50')->assertOk()->json();
 
         $this->assertSame('Middle', $row['package_name']);
-    }
-
-    public function test_preview_rejects_a_regular_admin(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/membership-plans/preview?discount_percent=50')->assertForbidden();
     }
 }

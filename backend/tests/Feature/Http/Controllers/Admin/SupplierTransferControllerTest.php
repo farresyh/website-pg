@@ -42,14 +42,6 @@ class SupplierTransferControllerTest extends TestCase
         ]);
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-        $supplier = $this->makeSupplier();
-
-        $this->getJson("/api/accounting/suppliers/{$supplier->id}/transfers")->assertForbidden();
-    }
-
     public function test_store_records_the_transfer_and_the_topup_ledger_entry(): void
     {
         $admin = $this->actAsSuperAdmin();

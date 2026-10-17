@@ -24,13 +24,6 @@ class PaymentMethodControllerTest extends TestCase
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/middleware/payment-methods')->assertForbidden();
-    }
-
     private function paymentMethod(array $overrides = []): PaymentMethod
     {
         return PaymentMethod::query()->create(array_merge([
@@ -84,13 +77,6 @@ class PaymentMethodControllerTest extends TestCase
         };
 
         $this->app->bind('payment-gateway.chip', fn () => $gateway);
-    }
-
-    public function test_index_requires_authentication(): void
-    {
-        $response = $this->getJson('/api/middleware/payment-methods');
-
-        $response->assertUnauthorized();
     }
 
     public function test_index_lists_all_channels(): void

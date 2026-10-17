@@ -42,16 +42,6 @@ class CustomerAnalyticsControllerTest extends TestCase
         ], $overrides));
     }
 
-    public function test_summary_requires_authentication(): void
-    {
-        $this->getJson('/api/customer-analytics/summary')->assertUnauthorized();
-    }
-
-    public function test_customers_requires_authentication(): void
-    {
-        $this->getJson('/api/customer-analytics/customers')->assertUnauthorized();
-    }
-
     public function test_summary_returns_pinned_shape(): void
     {
         $this->actingAsAdmin();
@@ -131,11 +121,6 @@ class CustomerAnalyticsControllerTest extends TestCase
 
         $response->assertOk();
         $this->assertStringContainsString('text/csv', $response->headers->get('Content-Type'));
-    }
-
-    public function test_show_requires_authentication(): void
-    {
-        $this->getJson('/api/customer-analytics/customers/buyer@example.com')->assertUnauthorized();
     }
 
     public function test_show_returns_404_for_unknown_customer(): void

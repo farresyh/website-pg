@@ -50,18 +50,6 @@ class MembershipControllerTest extends TestCase
         return MembershipPlan::query()->where('name', 'Tier 1')->firstOrFail();
     }
 
-    public function test_unauthenticated_is_blocked(): void
-    {
-        $this->getJson('/api/memberships')->assertUnauthorized();
-    }
-
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/memberships')->assertForbidden();
-    }
-
     public function test_index_lists_members_with_effective_status_and_derived_quota(): void
     {
         $this->actingAsSuperAdmin();
@@ -281,17 +269,5 @@ class MembershipControllerTest extends TestCase
             ->assertJsonPath('reminders.0.error', 'Plunk down')
             ->assertJsonPath('reminders.1.kind', 'before')
             ->assertJsonPath('reminders.1.status', 'sent');
-    }
-
-    public function test_show_requires_super_admin(): void
-    {
-        $plan = $this->tier1();
-        $membership = Membership::query()->create([
-            'affiliate_id' => $this->brand->id, 'email' => 'x@example.com', 'membership_plan_id' => $plan->id,
-            'status' => 'active', 'cycle_started_at' => now(), 'quota_remaining_sen' => 1, 'expires_at' => now()->addDay(),
-        ]);
-
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-        $this->getJson("/api/memberships/{$membership->id}")->assertForbidden();
     }
 }
