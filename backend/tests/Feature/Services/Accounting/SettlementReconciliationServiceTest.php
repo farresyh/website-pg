@@ -11,11 +11,16 @@ use App\Models\Reseller;
 use App\Models\WalletTopupAttempt;
 use App\Services\Accounting\ChipTransactionMatchType;
 use App\Services\Accounting\SettlementFileParser;
+use App\Services\Accounting\SettlementIngestResult;
 use App\Services\Accounting\SettlementReconciliationService;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Tests\Support\SettlementFixture;
 use Tests\TestCase;
 
@@ -28,9 +33,31 @@ class SettlementReconciliationServiceTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Storage::fake(config('filesystems.accounting_disk'));
+    }
+
     private function service(): SettlementReconciliationService
     {
         return new SettlementReconciliationService(new SettlementFileParser);
+    }
+
+    private function ingest(string $path, string $name = 'settlement.xlsx'): SettlementIngestResult
+    {
+        return $this->service()->ingest(new UploadedFile($path, $name, null, null, true), null);
+    }
+
+    private function refusal(callable $upload): string
+    {
+        try {
+            $upload();
+        } catch (ValidationException $e) {
+            return $e->errors()['file'][0];
+        }
+
+        $this->fail('expected the upload to be refused');
     }
 
     private function paidMembershipAttempt(array $overrides = []): MembershipCheckoutAttempt
@@ -81,7 +108,7 @@ class SettlementReconciliationServiceTest extends TestCase
             ['transaction_id' => 'tx-order-1', 'reference' => 'PG-ABC123', 'amount' => '11.00', 'fee' => '1.00', 'net' => '10.00', 'settled_on' => '2026-09-07 12:32'],
         ]);
 
-        $result = $this->service()->ingest($path, 'settlement.xlsx', null);
+        $result = $this->ingest($path, 'settlement.xlsx');
 
         $this->assertSame(1, $result->newlyMatchedCount);
         $this->assertSame(0, $result->newlyUnmatchedCount);
@@ -103,7 +130,7 @@ class SettlementReconciliationServiceTest extends TestCase
             ['transaction_id' => 'tx-membership-1', 'reference' => $attempt->subscription_number, 'amount' => '10.00', 'fee' => '1.00', 'net' => '9.00', 'settled_on' => '2026-09-07 12:32'],
         ]);
 
-        $this->service()->ingest($path, 'settlement.xlsx', null);
+        $this->ingest($path, 'settlement.xlsx');
 
         $recorded = ChipSettledTransaction::query()->where('transaction_id', 'tx-membership-1')->first();
         $this->assertSame(ChipTransactionMatchType::MembershipCheckoutAttempt, $recorded->matched_type);
@@ -120,7 +147,7 @@ class SettlementReconciliationServiceTest extends TestCase
             ['transaction_id' => 'tx-wallet-1', 'reference' => $topup->reference, 'amount' => '10.00', 'fee' => '1.00', 'net' => '9.00', 'settled_on' => '2026-09-07 12:32'],
         ]);
 
-        $this->service()->ingest($path, 'settlement.xlsx', null);
+        $this->ingest($path, 'settlement.xlsx');
 
         $recorded = ChipSettledTransaction::query()->where('transaction_id', 'tx-wallet-1')->first();
         $this->assertSame(ChipTransactionMatchType::WalletTopupAttempt, $recorded->matched_type);
@@ -143,7 +170,7 @@ class SettlementReconciliationServiceTest extends TestCase
             ['transaction_id' => 'tx-orphan', 'reference' => 'UNKNOWN', 'amount' => '5.00', 'fee' => '0.50', 'net' => '4.50', 'settled_on' => '2026-09-07 12:32'],
         ]);
 
-        $result = $this->service()->ingest($path, 'settlement.xlsx', null);
+        $result = $this->ingest($path, 'settlement.xlsx');
 
         $this->assertSame(0, $result->newlyMatchedCount);
         $this->assertSame(1, $result->newlyUnmatchedCount);
@@ -159,9 +186,10 @@ class SettlementReconciliationServiceTest extends TestCase
 
     /**
      * The core fix this ADR's same-day addendum exists for: re-uploading
-     * the exact same file must never double-count.
+     * the exact same file must never double-count. Item 120: it is now
+     * refused outright, so no empty settlement row or second file is left.
      */
-    public function test_re_uploading_the_same_file_skips_every_already_reconciled_transaction(): void
+    public function test_re_uploading_the_same_file_is_refused_and_records_nothing(): void
     {
         Order::factory()->create(['payment_gateway' => 'chip', 'payment_ref' => 'tx-dup', 'payment_status' => PaymentStatus::Paid, 'paid_at' => '2026-09-07 12:00:00']);
 
@@ -169,17 +197,61 @@ class SettlementReconciliationServiceTest extends TestCase
             ['transaction_id' => 'tx-dup', 'reference' => 'PG-X', 'amount' => '11.00', 'fee' => '1.00', 'net' => '10.00', 'settled_on' => '2026-09-07 12:32'],
         ]);
 
-        $first = $this->service()->ingest($path, 'settlement.xlsx', null);
+        $first = $this->ingest($path);
         $this->assertSame(1, $first->newlyMatchedCount);
-        $this->assertSame(0, $first->alreadyReconciledSkippedCount);
 
-        $second = $this->service()->ingest($path, 'settlement.xlsx', null);
-        $this->assertSame(0, $second->newlyMatchedCount);
-        $this->assertSame(0, $second->newlyUnmatchedCount);
-        $this->assertSame(1, $second->alreadyReconciledSkippedCount);
+        $message = $this->refusal(fn () => $this->ingest($path));
 
-        $this->assertSame(1, ChipSettledTransaction::query()->where('transaction_id', 'tx-dup')->count());
-        $this->assertSame(2, PaymentSettlement::query()->count()); // one row per upload, even though the transaction itself wasn't double-counted
+        $this->assertStringContainsString("settlement #{$first->settlement->id}", $message);
+        $this->assertSame(1, ChipSettledTransaction::query()->count());
+        $this->assertSame(1, PaymentSettlement::query()->count());
+        $this->assertCount(1, Storage::disk(config('filesystems.accounting_disk'))->allFiles());
+
+        unlink($path);
+    }
+
+    /** A re-export of a period already uploaded has different bytes but nothing new: also refused. */
+    public function test_a_re_export_with_no_new_transaction_is_refused(): void
+    {
+        $tx = ['transaction_id' => 'tx-reexport', 'reference' => 'PG-X', 'amount' => '11.00', 'fee' => '1.00', 'net' => '10.00', 'settled_on' => '2026-09-07 12:32'];
+        $original = SettlementFixture::build('2026-09-07 to 2026-09-07', '11.00', '1.00', '10.00', [$tx]);
+        $reExport = SettlementFixture::build('2026-09-07 to 2026-09-07', '11.00', '1.00', '10.00', [$tx], sheetName: 'Card');
+        $this->assertNotSame(hash_file('sha256', $original), hash_file('sha256', $reExport));
+
+        $this->ingest($original, 'settlements-20260907120000.xlsx');
+        $this->refusal(fn () => $this->ingest($reExport, 'settlements-20260908090000.xlsx'));
+
+        $this->assertSame(1, PaymentSettlement::query()->count());
+
+        unlink($original);
+        unlink($reExport);
+    }
+
+    /** Item 120: the original is kept under its payout month (date_to), with the hash of what was reconciled. */
+    public function test_the_original_file_is_kept_under_its_date_to_month_with_its_hash(): void
+    {
+        $path = SettlementFixture::build('2026-09-28 to 2026-10-02', '11.00', '1.00', '10.00', [
+            ['transaction_id' => 'tx-keep', 'reference' => 'PG-X', 'amount' => '11.00', 'fee' => '1.00', 'net' => '10.00', 'settled_on' => '2026-10-02 12:32'],
+        ]);
+
+        $settlement = $this->ingest($path, 'settlements-20261002.xlsx')->settlement;
+
+        $this->assertStringStartsWith('accounting/chip-settlements/2026/10/', $settlement->file_path);
+        $this->assertSame(hash_file('sha256', $path), $settlement->file_sha256);
+        $this->assertSame('settlements-20261002.xlsx', $settlement->original_filename);
+        Storage::disk(config('filesystems.accounting_disk'))->assertExists($settlement->file_path);
+
+        unlink($path);
+    }
+
+    public function test_a_file_that_is_not_a_chip_export_is_refused_not_a_500(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'bad').'.xlsx';
+        file_put_contents($path, 'not a spreadsheet');
+
+        $this->refusal(fn () => $this->ingest($path));
+        $this->assertSame(0, PaymentSettlement::query()->count());
+        $this->assertSame([], Storage::disk(config('filesystems.accounting_disk'))->allFiles());
 
         unlink($path);
     }
@@ -202,8 +274,8 @@ class SettlementReconciliationServiceTest extends TestCase
             ['transaction_id' => 'tx-week2-day8', 'reference' => 'PG-B', 'amount' => '11.00', 'fee' => '1.00', 'net' => '10.00', 'settled_on' => '2026-09-08 09:00'],
         ]);
 
-        $this->service()->ingest($week1, 'week1.xlsx', null);
-        $overlap = $this->service()->ingest($week2, 'week2.xlsx', null);
+        $this->ingest($week1, 'week1.xlsx');
+        $overlap = $this->ingest($week2, 'week2.xlsx');
 
         $this->assertSame(1, $overlap->newlyMatchedCount); // only tx-week2-day8 is genuinely new
         $this->assertSame(1, $overlap->alreadyReconciledSkippedCount); // tx-week1-day7 already reconciled by week1's upload
@@ -228,7 +300,7 @@ class SettlementReconciliationServiceTest extends TestCase
         $path = SettlementFixture::build('2026-09-07 to 2026-09-07', '11.00', '1.00', '10.00', [
             ['transaction_id' => 'tx-in-file', 'reference' => 'PG-X', 'amount' => '11.00', 'fee' => '1.00', 'net' => '10.00', 'settled_on' => '2026-09-07 12:32'],
         ]);
-        $result = $this->service()->ingest($path, 'settlement.xlsx', null);
+        $result = $this->ingest($path, 'settlement.xlsx');
 
         $this->assertSame(1100, $result->settlement->matched_gross_sen);
         $this->assertSame(100, $result->settlement->matched_fee_sen);
@@ -251,7 +323,7 @@ class SettlementReconciliationServiceTest extends TestCase
         $path = SettlementFixture::build('2026-09-07 to 2026-09-07', '11.00', '1.00', '10.00', [
             ['transaction_id' => 'tx-sandbox', 'reference' => 'PG-X', 'amount' => '11.00', 'fee' => '1.00', 'net' => '10.00', 'settled_on' => '2026-09-07 12:32'],
         ]);
-        $result = $this->service()->ingest($path, 'settlement.xlsx', null);
+        $result = $this->ingest($path, 'settlement.xlsx');
 
         $this->assertSame(0, $result->newlyMatchedCount);
         $this->assertSame(1, $result->newlyUnmatchedCount);
@@ -276,7 +348,7 @@ class SettlementReconciliationServiceTest extends TestCase
             // CHIP's file says amount 1100 sen; our own record says 1000 sen gross — a genuine mismatch.
             ['transaction_id' => 'tx-wrong-gross', 'reference' => 'PG-X', 'amount' => '11.00', 'fee' => '1.00', 'net' => '10.00', 'settled_on' => '2026-09-07 12:32'],
         ]);
-        $result = $this->service()->ingest($path, 'settlement.xlsx', null);
+        $result = $this->ingest($path, 'settlement.xlsx');
 
         $this->assertSame('variance', $result->settlement->status);
 
@@ -296,24 +368,9 @@ class SettlementReconciliationServiceTest extends TestCase
         $path = SettlementFixture::build('2026-09-07 to 2026-09-07', '11.00', '1.50', '9.50', [
             ['transaction_id' => 'tx-fee-diff', 'reference' => 'PG-X', 'amount' => '11.00', 'fee' => '1.50', 'net' => '9.50', 'settled_on' => '2026-09-07 12:32'],
         ]);
-        $result = $this->service()->ingest($path, 'settlement.xlsx', null);
+        $result = $this->ingest($path, 'settlement.xlsx');
 
         $this->assertSame('matched', $result->settlement->status);
-
-        unlink($path);
-    }
-
-    public function test_status_is_pending_when_nothing_was_newly_recorded(): void
-    {
-        Order::factory()->create(['payment_gateway' => 'chip', 'payment_ref' => 'tx-dup-pending', 'payment_status' => PaymentStatus::Paid, 'paid_at' => '2026-09-07 12:00:00', 'final_amount' => 1100, 'transaction_fee' => 100]);
-        $path = SettlementFixture::build('2026-09-07 to 2026-09-07', '11.00', '1.00', '10.00', [
-            ['transaction_id' => 'tx-dup-pending', 'reference' => 'PG-X', 'amount' => '11.00', 'fee' => '1.00', 'net' => '10.00', 'settled_on' => '2026-09-07 12:32'],
-        ]);
-
-        $this->service()->ingest($path, 'first.xlsx', null);
-        $second = $this->service()->ingest($path, 'second.xlsx', null); // every transaction already reconciled
-
-        $this->assertSame('pending', $second->settlement->status);
 
         unlink($path);
     }
@@ -322,12 +379,19 @@ class SettlementReconciliationServiceTest extends TestCase
     {
         Order::factory()->create(['order_number' => 'PG-MISSING', 'payment_gateway' => 'chip', 'payment_ref' => 'tx-never-settled', 'payment_status' => PaymentStatus::Paid, 'paid_at' => '2026-09-07 12:00:00', 'final_amount' => 500]);
 
-        $path = SettlementFixture::build('2026-09-07 to 2026-09-07', '0.00', '0.00', '0.00', []);
-        $result = $this->service()->ingest($path, 'settlement.xlsx', null);
+        $rows = $this->service()->paidButNotSettled(Carbon::parse('2026-09-07'), Carbon::parse('2026-09-07'));
 
-        $this->assertCount(1, $result->paidButNotSettled);
-        $this->assertSame('PG-MISSING', $result->paidButNotSettled[0]['reference']);
-        $this->assertSame(500, $result->paidButNotSettled[0]['amount_sen']);
+        $this->assertCount(1, $rows);
+        $this->assertSame('PG-MISSING', $rows[0]['reference']);
+        $this->assertSame(500, $rows[0]['amount_sen']);
+    }
+
+    public function test_a_file_with_no_transactions_is_refused(): void
+    {
+        $path = SettlementFixture::build('2026-09-07 to 2026-09-07', '0.00', '0.00', '0.00', []);
+
+        $this->assertSame('This settlement file has no transactions.', $this->refusal(fn () => $this->ingest($path)));
+        $this->assertSame(0, PaymentSettlement::query()->count());
 
         unlink($path);
     }
