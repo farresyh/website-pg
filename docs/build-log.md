@@ -1180,3 +1180,15 @@ record anywhere shows RM60, and RM60 would have made the gap −RM31.37.
 
 Not checked live: the lockout alert email. It has test coverage, and the
 first real lockout will be its live check.
+
+## 2026-10-18 — Transaction Register: order profit corrections get their own row (§16 item 123)
+
+**Why.** A ChatGPT review of the admin screens flagged order `PG-KWKBUHNDMKQT` (id 15): Register Net −RM0.10, Orders +RM0.27. `TransactionRegisterService::orderRows()` read the platform `order_profit` rows with `pluck('amount', 'reference_id')`, which keeps only the last row per order. Order 15 has the automatic +37 credit and the manual −10 ADR-105 correction (ledger entry 45).
+
+**Checked before the fix (prod, read-only).** All 37 paid non-test orders: the Register matched the ledger for 36. Order 15 was the only order with two platform `order_profit` rows, and entry 45 the only manual ledger row on an order. The column `platform_profit` matched the ledger on every delivered order. No delivered order lacked a credit, and no undelivered order had one. Every other `pluck`/`keyBy` in `app/` either aggregates first or keys on a unique column. Vouchers 1, 2, 4 and 5 each have two `voucher_issued` rows netting 0: the item-79 reversals (2026-10-13), which nothing reads per voucher. September's close (`operating_profit_sen` 464) equals the live figure.
+
+**Shipped (founder chose option B, ADR-083 2026-10-18 addendum).** The order row's Net = the automatic credit (`reason IS NULL`, summed). A new `orderProfitCorrectionRows()` adds one `order_profit_correction` row per manual platform correction, dated at its own `created_at`, with reference = order number, and the ledger entry id and reason in the description. Test orders are excluded. Admin: a new type label (warn tag) and filter option. Tests: `TransactionRegisterOrderProfitCorrectionTest` (5) covers order 15's shape, the period split, the ledger invariant, test-order exclusion, and the CSV row and footer. Full suite 2905/2905. Admin tsc, lint and build are clean.
+
+**Live check.** The new queries were run read-only on prod: 37/37 reconcile, order 15 = +37 (17 Sep) and −10 (20 Sep), September platform net 705 sen. Browser: a built admin on `localhost:3000` against `serve --no-reload` on a scratch copy of the dev sqlite, with a −10 correction added to the copy only. The row showed with its label, the type filter returned it alone, a 11 Sep date filter showed only the order row (+RM10.52), and the CSV had `-0.10`. The copy and the throwaway admin were deleted afterwards.
+
+**Gotcha.** `LedgerEntry` refuses updates (append-only guard), so a test can't back-date a row with `forceFill()->save()`. The test uses `travelTo()` around the create instead.
