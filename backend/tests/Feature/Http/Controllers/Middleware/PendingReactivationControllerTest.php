@@ -21,13 +21,6 @@ class PendingReactivationControllerTest extends TestCase
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/middleware/price-sync/pending-reactivations')->assertForbidden();
-    }
-
     private function supplier(): Supplier
     {
         return Supplier::query()->create([
@@ -53,11 +46,6 @@ class PendingReactivationControllerTest extends TestCase
             'supplier_id' => $supplier->id,
             'supplier_package_ref' => $ref,
         ]);
-    }
-
-    public function test_index_requires_authentication(): void
-    {
-        $this->getJson('/api/middleware/price-sync/pending-reactivations')->assertUnauthorized();
     }
 
     public function test_index_only_lists_supplier_sync_deactivated_packages_whose_supplier_item_is_active_again(): void

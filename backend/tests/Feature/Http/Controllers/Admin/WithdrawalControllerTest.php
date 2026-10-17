@@ -317,11 +317,4 @@ class WithdrawalControllerTest extends TestCase
         $response->assertOk();
         $this->assertNull($response->json('withdrawals.0.bank_details_changed_since_last_approval'));
     }
-
-    public function test_unauthenticated_request_is_rejected(): void
-    {
-        $response = $this->getJson('/api/withdrawals');
-
-        $response->assertUnauthorized();
-    }
 }

@@ -21,22 +21,6 @@ class AdminUserControllerTest extends TestCase
         $response->assertJsonCount(3);
     }
 
-    public function test_regular_admin_cannot_list_admin_users(): void
-    {
-        $this->actingAsSteppedUp(AdminUser::factory()->create(['role' => 'admin']));
-
-        $response = $this->getJson('/api/admin-users');
-
-        $response->assertForbidden();
-    }
-
-    public function test_unauthenticated_request_is_rejected(): void
-    {
-        $response = $this->getJson('/api/admin-users');
-
-        $response->assertUnauthorized();
-    }
-
     public function test_super_admin_can_create_an_admin_user(): void
     {
         $this->actingAsSteppedUp(AdminUser::factory()->superAdmin()->create());

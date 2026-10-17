@@ -582,13 +582,6 @@ class VoucherControllerTest extends TestCase
         $response->assertUnprocessable();
     }
 
-    public function test_unauthenticated_request_is_rejected(): void
-    {
-        $response = $this->getJson('/api/vouchers');
-
-        $response->assertUnauthorized();
-    }
-
     public function test_rejects_a_standalone_voucher_without_an_idempotency_key(): void
     {
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));

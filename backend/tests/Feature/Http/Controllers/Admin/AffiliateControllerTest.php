@@ -63,18 +63,6 @@ class AffiliateControllerTest extends TestCase
         ], $overrides));
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/affiliates')->assertForbidden();
-    }
-
-    public function test_unauthenticated_is_rejected(): void
-    {
-        $this->getJson('/api/affiliates')->assertUnauthorized();
-    }
-
     public function test_index_lists_affiliates_with_balance_and_subscription(): void
     {
         $this->actAsSuperAdmin();

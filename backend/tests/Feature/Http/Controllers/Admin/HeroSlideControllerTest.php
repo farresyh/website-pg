@@ -44,11 +44,6 @@ class HeroSlideControllerTest extends TestCase
         ], $overrides);
     }
 
-    public function test_index_requires_authentication(): void
-    {
-        $this->getJson('/api/hero-slides')->assertUnauthorized();
-    }
-
     public function test_index_lists_slides_ordered_by_sort_order(): void
     {
         HeroSlide::query()->create($this->payload(['title' => 'Second', 'sort_order' => 2]));

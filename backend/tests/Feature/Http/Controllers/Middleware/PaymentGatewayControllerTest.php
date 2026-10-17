@@ -23,13 +23,6 @@ class PaymentGatewayControllerTest extends TestCase
         return $admin;
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        $this->actingAsSteppedUp(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/middleware/payment-gateways')->assertForbidden();
-    }
-
     public function test_index_never_leaks_secret_key_and_reports_status(): void
     {
         $this->actingAsAdmin();

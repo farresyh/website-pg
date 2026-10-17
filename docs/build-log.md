@@ -1145,3 +1145,64 @@ separate them. Full suite: 2900 passed.
   are unchanged.
 
 **Left:** item 122, a stored per-leg cost for the leg-level COGS fallback.
+
+## 2026-10-17 — Release #495 (`staging`→`main`), verified; September re-closed
+
+Merged as `70a5989` with #491–#494: the lockout alert, item 115 (funded-cost
+COGS), item 121 (combo cost) and docs. No migration, no config change. The
+`main` CI run passed every job, and `deploy` ran 15:54:09–15:54:11. The box
+built release `80471303` at 15:54:17, after the gate, and `current` points
+to `70a5989`. `/up` returns 200.
+
+Checked live (read-only tinker):
+
+| | September | October |
+|---|---|---|
+| COGS | RM151.86 | RM169.69 |
+| Per-order cost | RM150.61 | RM166.54 |
+| Deposit vs market | +RM1.25 | +RM3.15 |
+| Fallback orders | 0 | 0 |
+| Drawdowns not in COGS | 0 | 0 |
+| Operating profit | RM4.64 (unchanged) | RM3.64 (unchanged) |
+
+Orders #7 and #28 cost 186 and 1065.
+
+**Production change (founder, from the admin):** September 2026's month
+close was reopened and closed again. Close #1 was voided at 15:55:59 UTC
+with a reason, and posting #28 (−RM4.64) reverses its allocation #25.
+Close #2 was made at 16:22:52 with the same allocation (RM4.64 to Company
+Savings, posting #29), the same cash (RM80.43, "Held by Farres (mixed)";
+the founder re-checked it against the September statement before closing),
+the same gap (−RM10.94) and the same note. The snapshot holds COGS RM15186
+sen, and the old FX key is gone. September drift is 0 and October's prior
+adjustment is 0. The founder asked whether the cash should be RM60. No
+record anywhere shows RM60, and RM60 would have made the gap −RM31.37.
+
+Not checked live: the lockout alert email. It has test coverage, and the
+first real lockout will be its live check.
+
+## 2026-10-18 — Transaction Register: order profit corrections get their own row (§16 item 123)
+
+**Why.** A ChatGPT review of the admin screens flagged order `PG-KWKBUHNDMKQT` (id 15): Register Net −RM0.10, Orders +RM0.27. `TransactionRegisterService::orderRows()` read the platform `order_profit` rows with `pluck('amount', 'reference_id')`, which keeps only the last row per order. Order 15 has the automatic +37 credit and the manual −10 ADR-105 correction (ledger entry 45).
+
+**Checked before the fix (prod, read-only).** All 37 paid non-test orders: the Register matched the ledger for 36. Order 15 was the only order with two platform `order_profit` rows, and entry 45 the only manual ledger row on an order. The column `platform_profit` matched the ledger on every delivered order. No delivered order lacked a credit, and no undelivered order had one. Every other `pluck`/`keyBy` in `app/` either aggregates first or keys on a unique column. Vouchers 1, 2, 4 and 5 each have two `voucher_issued` rows netting 0: the item-79 reversals (2026-10-13), which nothing reads per voucher. September's close (`operating_profit_sen` 464) equals the live figure.
+
+**Shipped (founder chose option B, ADR-083 2026-10-18 addendum).** The order row's Net = the automatic credit (`reason IS NULL`, summed). A new `orderProfitCorrectionRows()` adds one `order_profit_correction` row per manual platform correction, dated at its own `created_at`, with reference = order number, and the ledger entry id and reason in the description. Test orders are excluded. Admin: a new type label (warn tag) and filter option. Tests: `TransactionRegisterOrderProfitCorrectionTest` (5) covers order 15's shape, the period split, the ledger invariant, test-order exclusion, and the CSV row and footer. Full suite 2905/2905. Admin tsc, lint and build are clean.
+
+**Live check.** The new queries were run read-only on prod: 37/37 reconcile, order 15 = +37 (17 Sep) and −10 (20 Sep), September platform net 705 sen. Browser: a built admin on `localhost:3000` against `serve --no-reload` on a scratch copy of the dev sqlite, with a −10 correction added to the copy only. The row showed with its label, the type filter returned it alone, a 11 Sep date filter showed only the order row (+RM10.52), and the CSV had `-0.10`. The copy and the throwaway admin were deleted afterwards.
+
+**Gotcha.** `LedgerEntry` refuses updates (append-only guard), so a test can't back-date a row with `forceFill()->save()`. The test uses `travelTo()` around the create instead.
+
+## 2026-10-18 — Test suite audit: route-table access test, guard-test cleanup, oversized files split
+
+**Why.** The founder asked whether the ~2900 backend tests, written feature by feature since the start, were solid or duplicated.
+
+**Audit (read-only).** 2905 tests in 308 files, 82 s for the whole suite. 0 test bodies identical. 96 tests have the same shape with different literals; all are legitimate (different routes, suppliers or edge cases). 0 tests without an assertion (9 looked like it but verify through `Log::shouldHaveReceived`). 136 tests only asserted a 401/403 from route middleware on one route. Six files were over 1000 lines.
+
+**Shipped: #498 (merged to `staging`).** `RouteAccessTest` pins who can reach every `/api` route: 42 public, 5 admin routes with no role check, 2 portal session routes, 72 routes open to a regular admin (the rest are `super_admin`), the portal and API-key guard per prefix, and `auth:sanctum` + `EnsureAdminSessionFresh` on every admin-role route. Unsigned `storage/{path}` requests are refused. Checked by breaking real routes on purpose (an unguarded route, a group widened to `admin`, a portal route outside its group): each failed it. 110 guard-only tests were removed. Kept: refusals that come from controller logic, the membership switch, a wrong-brand token, an invalid API key, and one `EnsureAccountType` refusal in each direction. Also removed 2 dead helpers and the scaffold `Unit/ExampleTest`, and renamed `Feature/ExampleTest` to `RootIdentityTest`. ADR-072 2026-10-18 addendum. Route audit: all 49 `/api` routes outside the guard groups are deliberate; no route is missing a guard.
+
+**Shipped: this PR.** The six >1000-line files are split by feature: Admin `OrderControllerTest` → 5 files, `OrderFulfillmentServiceComboTest` → 4, `CheckoutControllerTest` → 7, `OrderFulfillmentServiceTest` → 3, `OrderResendServiceTest` → 3, `ResellerBotServiceTest` → 4. Shared setup and helpers moved to one trait per original file in `tests/Support/` (the `PartialComboOrders` pattern), so no helper is copied. The move was done by a script that fails on any unmapped test. No test body changed: the set of test names is identical before and after, and the suite stays 2801/2801. The largest file is now 699 lines. The 600–940-line files left (one adapter, one webhook, one controller each) are single-subject and were left whole.
+
+**Checked and not changed: tests that look duplicated across layers.** 40 controller/service pairs with similar names were read side by side. None is a true duplicate. Controller tests check the HTTP wiring: parameters, the 422 status, and that no job is queued when a rule fails. Service tests check the logic. Some rules exist only in the controller (`retryDelivery`'s guards, refunded-to-wallet, voucher-restored), so those controller tests are the only coverage of that rule. Name matches across the portal, REST API and WhatsApp bot are different channels, each needing its own test. Nothing was removed.
+
+**Gotcha.** `git rm`/`git mv` staged before a path-limited `git add` + commit end up in that commit. The branch's commits had to be rebuilt (it was not yet pushed).
