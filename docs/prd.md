@@ -736,9 +736,8 @@ git in the 2026-10-17 docs audit. Re-verify before building.
 - **71** GSC recheck around 2026-10-22.
 - **96** Upgrade OpenWA to v0.24.0 (with the founder standing by).
 - **119** Forge deploy gate fixed 2026-10-17 (CI hook re-pointed, "Push to
-  deploy" off). Left: confirm on the next release, delete the old
-  `pekangame-prod` server from Forge, delete the unused
-  `DIGITALOCEAN_ACCESS_TOKEN` repo secret.
+  deploy" off, old server and unused secret removed). Left: confirm on the
+  next release.
 
 **D. Waiting on a trigger: don't build early**
 - **4** Bot-host resize, when capacity calls for it.
@@ -1119,13 +1118,15 @@ git in the 2026-10-17 docs audit. Re-verify before building.
     - **Fixed 2026-10-17 by the founder:** `FORGE_DEPLOY_HOOK` re-set to the
       lwf site's hook (site 3397779, checked without printing it), then
       "Push to deploy" turned off (checked in Forge).
-    - **Left:** (1) on the next release, the lwf site shows exactly one
-      "via Custom" deployment, created after the CI `deploy` job; (2) delete
-      the orphaned `pekangame-prod` server (Forge id 1247825) from Forge,
-      after confirming no DigitalOcean droplet holds 157.245.203.250 (SSH
-      there is unreachable); (3) delete the `DIGITALOCEAN_ACCESS_TOKEN` repo
-      secret: no workflow reads it and ADR-066 said it would be removed
-      after cutover.
+    - **Also done 2026-10-17 (founder):** the orphaned `pekangame-prod`
+      server (Forge id 1247825; its droplet was destroyed 2026-09-30, SSH to
+      157.245.203.250 unreachable) deleted from Forge, checked: Forge lists
+      only `pekangame-prod-lwf` and `nakhoda-prod`. The unused
+      `DIGITALOCEAN_ACCESS_TOKEN` repo secret deleted (no workflow read it;
+      ADR-066 planned its removal after cutover), checked: `gh secret list`
+      shows only `FORGE_DEPLOY_HOOK`.
+    - **Left:** on the next release, the lwf site shows exactly one "via
+      Custom" deployment, created after the CI `deploy` job. Then close.
 
 117. **Expansion outside Malaysia: languages and currencies (founder,
     2026-10-17).** The storefront is English-only and prices are MYR-only

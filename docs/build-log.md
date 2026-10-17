@@ -997,8 +997,13 @@ site 3397779 (lwf `api.pekangame.space`). Then turned the site's "Push to
 deploy" off (checked in Forge: switch off). Before: Push to deploy on,
 secret → old site. After: Push to deploy off, secret → lwf site.
 
+**Cleanup, same session (founder):** deleted the unused
+`DIGITALOCEAN_ACCESS_TOKEN` repo secret (`gh secret list` now shows only
+`FORGE_DEPLOY_HOOK`) and the orphaned `pekangame-prod` server from Forge
+(Forge now lists only `pekangame-prod-lwf` and `nakhoda-prod`). This also
+closes ADR-114's "remove the orphaned Forge server entry" hygiene note.
+
 **Left (PRD §16 item 119):** verify the next release is a single "via Custom"
-deployment after the CI `deploy` job; delete the orphaned old server from
-Forge; delete the unused `DIGITALOCEAN_ACCESS_TOKEN` repo secret. ADR-114 got
+deployment after the CI `deploy` job. ADR-114 got
 a 2026-10-17 addendum with the box-move checklist; the `ci.yml` header
 comment now names the setting "Push to deploy".
