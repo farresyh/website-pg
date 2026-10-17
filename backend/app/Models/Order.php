@@ -237,6 +237,13 @@ class Order extends Model
             return ['cost' => $realTotal, 'basis' => $realLegs === $legs->count() ? 'real' : 'mixed'];
         }
 
+        // §16 item 121: once realised, the profit was set from each leg's
+        // catalog cost at delivery or settlement (ADR-107), which no column
+        // keeps, so read it back from the profit rather than today's catalog.
+        if ($this->isRealised()) {
+            return ['cost' => $revenue - $this->platform_profit - $this->affiliate_profit, 'basis' => 'estimated'];
+        }
+
         return ['cost' => $catalogTotal, 'basis' => 'estimated'];
     }
 
