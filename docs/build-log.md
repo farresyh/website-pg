@@ -907,3 +907,16 @@ re-checked by hand. Fixed in one docs PR:
 Left as is: the "(built YYYY-MM-DD)" suffix on 20 old ADR titles (dated
 history) and ADR-025's Gamevion wording (history; the guard is
 supplier-agnostic in code).
+
+## 2026-10-17 — PRD §16 item 118: Report Assistant margin uses profit, not the estimate
+
+The plan prompt (`ReportAssistantService::schemaDescription()`) described
+`llm_report_orders.cost_price` as "what this order cost the platform" and,
+under the catalog view, told the model to use it "for a specific past
+order's actual margin". With ADR-111 on, `cost_price` is the checkout
+estimate; the view's `platform_profit` already comes from the ledger and
+carries the real cost. The prompt now calls `cost_price` the checkout
+estimate and sends a past order's margin to `platform_profit` (and
+`affiliate_profit`). Prompt only: no view change, so no migration (the
+`effective_cost_price` column stays ADR-125's, per its 2026-10-17
+addendum). One red→green prompt test; full suite 2875 passed.

@@ -611,7 +611,7 @@ with a CI guard (ADR-071 2026-10-17 addendum). Also #475: the weekly
 `Dependency audit` workflow (alert-only email, Monday 09:00 MYT), and #473
 (docs). The release's `playwright` job hit the Google Fonts build flake
 (§16 item 109) and passed on re-run.
-Waiting on `staging` (not live until the next release): #478 (ADR-124/125/126 design), #479 (§16 item 116), #480 (109), #481 (110), #482 (115, part) and this docs audit.
+Waiting on `staging` (not live until the next release): #478 (ADR-124/125/126 design), #479 (§16 item 116), #480 (109), #481 (110), #482 (115, part), #483 (docs audit) and item 118.
 
 **Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
 hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
@@ -711,9 +711,7 @@ listed under Recently closed). Every open item re-checked against code and
 git in the 2026-10-17 docs audit. Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- **118** The Report Assistant is told to use `llm_report_orders.cost_price`
-  (the checkout estimate) for a past order's actual margin, not ADR-111's
-  real cost (found 2026-10-17).
+- (none)
 
 **B. Needs a short grill / ADR addendum first**
 - **81** Month-end pack for the external accountant (ADR-083 addendum); get
@@ -1132,18 +1130,9 @@ git in the 2026-10-17 docs audit. Re-verify before building.
     display currency vs charge currency, FX source, which gateway per
     region, per-brand language, and how ledger and reports stay in MYR.
 
-118. **Report Assistant margin uses the estimate (found 2026-10-17, docs
-    audit).** `ReportAssistantService.php:93` tells the model to use
-    `llm_report_orders.cost_price` for a specific past order's actual
-    margin. With ADR-111 on, that is the checkout estimate; the real cost
-    is `Order::effectiveCostPriceSen()` (a residual check, and for a combo
-    the sum of its legs, so `COALESCE(real_cost_price_sen, cost_price)` is
-    not enough). Fix: expose the effective cost in the view, mirroring that
-    method, or point the prompt at `platform_profit`. Same view ADR-125
-    decision 24 extends.
-
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **118** 2026-10-17: the Report Assistant prompt calls an order's `cost_price` the checkout estimate and sends a past order's margin to `platform_profit` (already ledger-sourced, so it carries ADR-111's real cost), never to `cost_price`. Prompt only; the view is unchanged (ADR-125's addendum still governs the `effective_cost_price` column it will add). Staging only until the next release. Details: build-log 2026-10-17.
 - **115 (part)** 2026-10-17: Customer Detail profit analysis and the Transaction Register (screen and CSV) show each realised order's `effectiveCostPriceSen()`, the cost its profit used, for Delivered as well as settled partial orders. Before, Delivered rows showed the checkout estimate, so revenue − cost − commission − fees did not match profit in the same row. COGS stays open as item 115. Staging only until the next release. Details: build-log 2026-10-17.
 - **110** 2026-10-17: security check follow-ups. The API sends HSTS (HTTPS only, no `includeSubDomains`), `Referrer-Policy` and `Permissions-Policy` (`SecurityHeaders` middleware); admin, storefront and portal send `Referrer-Policy` and `Permissions-Policy`, the portal now sends `nosniff`, and none sends `x-powered-by`; a supplier-transfer correction receipt is capped at 5 MB like its siblings. The audit's "login throttle is per IP only" was wrong: `AccountLoginThrottle` (ADR-019 2026-09-29 addendum) already locks an email for 15 minutes after 10 failures from any IPs, on admin login, MFA code, step-up and affiliate login, so nothing was added. Staging only until the next release. Details: build-log 2026-10-17.
 - **109** 2026-10-17: admin, storefront and portal load fonts with `next/font/local` from committed latin woff2 files (the same variable files Google Fonts serves), so no build downloads fonts and the CI `playwright` font flake has no cause left. Verified on local production builds: every face `loaded`, 0 requests to Google, glyphs match prod. Staging only until the next release. Details: build-log 2026-10-17.
