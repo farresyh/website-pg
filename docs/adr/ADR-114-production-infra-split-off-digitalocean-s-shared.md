@@ -123,3 +123,30 @@ alerting after 2 failed checks, since a stream drop reconnects in seconds.
 The cutover to the new box left ADR-066 decision 5 (deploy only after CI is green) not in effect from 2026-09-25 to 2026-10-17. The `FORGE_DEPLOY_HOOK` GitHub secret still held the old site's hook, and the new `api.pekangame.space` site had Forge "Push to deploy" on (Forge's current name for "Quick Deploy"). So the new box deployed every push to `main` before CI finished, and CI's `deploy` job deployed to the destroyed box. Fixed 2026-10-17 by re-pointing the secret and turning "Push to deploy" off (details in PRD §16 item 119 and the build log). The orphaned old Forge server entry noted above was deleted the same day, along with the unused `DIGITALOCEAN_ACCESS_TOKEN` repo secret.
 
 **For any future box move:** re-set `FORGE_DEPLOY_HOOK` to the new site's hook, turn "Push to deploy" off on the new site, and confirm the first release on the new box is a single "via Custom" deployment created after the CI `deploy` job.
+
+### 2026-10-17 addendum — OpenWA no longer silences the paired phones
+
+**Context.** While either WhatsApp number was connected to OpenWA, its
+phone got no push notification for incoming messages. They came back as
+soon as the session was disconnected. The cause is Baileys'
+`markOnlineOnConnect`, which defaults to true: on every connect the linked
+device announces itself "online", and WhatsApp stops pushing to the phone
+while another device is active. A 24/7 gateway keeps the phone silent all
+the time (OpenWA issue #871; the comment above the setting in
+`~/OpenWA/.env` describes it). Our backend never sends read receipts, so
+those are not part of it.
+
+**Decision.** `BAILEYS_MARK_ONLINE_ON_CONNECT=false` in `~/OpenWA/.env`.
+The founder added it on 2026-10-17 at about 12:31 UTC (backup
+`.env.bak-20261017`). It only stops the presence sent on connect. Sending
+and webhooks are unchanged.
+
+**Verified.** The daemon restarted at 12:34:00 UTC. `reseller-bot` was
+ready at 12:34:09 and `customer-support` at 12:36:01. The founder tested
+with incoming messages: the phones get notifications again.
+
+**Consequence to track.** `SIMULATE_TYPING` still sends per-chat
+"typing" presence when the bot replies. This may silence the phone
+briefly after each reply. Untested, and it only matters if the founder
+notices it. The new `.env.bak-20261017` holds secrets like the other two;
+remove it with them under PRD §16 item 96.
