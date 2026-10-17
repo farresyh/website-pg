@@ -1119,3 +1119,29 @@ polluted profit was wrong.
 - Release. Then reopen and re-close September (§16 C, item 115).
 - Item 121: estimated combo snapshot.
 - Item 120: keep CHIP files.
+
+## 2026-10-17 — Item 121: estimated combo cost no longer follows the catalog (on `staging`)
+
+The addendum decided on a checkout snapshot, but the trace before coding
+showed it was wrong. A delivered combo's profit is set from each leg's
+catalog cost **at delivery** (`resolveComboOutcome()`, ADR-107), and a
+settled partial's at settlement, so the snapshot can differ from what the
+profit used. The founder agreed to read the cost back from the profit
+identity instead, `revenue − platform_profit − affiliate_profit`, for a
+realised combo with no real-cost basis. Unrealised combos keep the delivered
+legs' catalog cost.
+
+**What changes:** reader only, `Order::comboCostReconciliation()`. Pricing,
+delivery, profit and the ledger are untouched.
+
+**Tests:** 3 new in `OrderTest`, red → green. One first version passed by
+coincidence (its numbers equalled the catalog) and was rewritten to
+separate them. Full suite: 2900 passed.
+
+**Prod (read-only):**
+- #7: 186 (was 184 live) and #28: 1065 (was 1074). Both equal their
+  profit identity.
+- September's per-order cost line drops by RM0.07. COGS and operating profit
+  are unchanged.
+
+**Left:** item 122, a stored per-leg cost for the leg-level COGS fallback.

@@ -470,4 +470,44 @@ class OrderTest extends TestCase
         $this->assertSame('estimated', $order->fresh()->costBasis());
         $this->assertSame(1000, $order->fresh()->effectiveCostPriceSen());
     }
+
+    /** A delivered combo with two estimated legs, costed 500 + 500 at delivery (profit 1500 - 1000 - 0). */
+    private function deliveredEstimatedCombo(array $overrides = []): array
+    {
+        $a = $this->componentPackage(['cost_price' => 500, 'supplier_package_ref' => 'FINAL-A']);
+        $b = $this->componentPackage(['cost_price' => 500, 'supplier_package_ref' => 'FINAL-B']);
+        $order = $this->makeOrder(array_merge(['selling_price' => 1500, 'affiliate_profit' => 0, 'platform_profit' => 500, 'delivery_status' => DeliveryStatus::Delivered->value], $overrides));
+        $this->leg($order, $a, DeliveryStatus::Delivered, 1);
+        $this->leg($order, $b, DeliveryStatus::Delivered, 2);
+
+        return [$order, $a, $b];
+    }
+
+    /** §16 item 121: a later price sync must not move a delivered estimated combo's cost. */
+    public function test_a_delivered_estimated_combo_keeps_the_cost_its_profit_used_after_the_catalog_moves(): void
+    {
+        [$order, $a] = $this->deliveredEstimatedCombo();
+        $a->update(['cost_price' => 650]);
+
+        $this->assertSame('estimated', $order->fresh()->costBasis());
+        $this->assertSame(1000, $order->fresh()->effectiveCostPriceSen());
+    }
+
+    /** The profit was set from the catalog at delivery (ADR-107), not the checkout snapshot. */
+    public function test_a_delivered_estimated_combo_cost_is_what_its_profit_used_not_the_checkout_snapshot(): void
+    {
+        // Leg A cost 550 at delivery (500 now), so profit = 1500 - 1050 - 100.
+        [$order] = $this->deliveredEstimatedCombo(['cost_price' => 900, 'affiliate_profit' => 100, 'platform_profit' => 350]);
+
+        $this->assertSame(1050, $order->fresh()->effectiveCostPriceSen());
+    }
+
+    /** Not realised yet: its profit is still the checkout estimate, so the delivered legs' catalog cost stays. */
+    public function test_an_undelivered_combo_still_reads_its_legs_catalog_cost(): void
+    {
+        [$order, $a] = $this->deliveredEstimatedCombo(['delivery_status' => DeliveryStatus::Processing->value]);
+        $a->update(['cost_price' => 650]);
+
+        $this->assertSame(1150, $order->fresh()->effectiveCostPriceSen());
+    }
 }

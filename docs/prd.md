@@ -710,8 +710,7 @@ listed under Recently closed). Every open item re-checked against code and
 git in the 2026-10-17 docs audit. Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- **121** An estimated combo's per-order cost reads today's catalog leg
-  prices; use the checkout snapshot (ADR-083 2026-10-17 addendum).
+- (none)
 
 **B. Needs a short grill / ADR addendum first**
 - **120** Keep the original CHIP settlement `.xlsx` and file new accounting
@@ -729,6 +728,9 @@ git in the 2026-10-17 docs audit. Re-verify before building.
   the DB.
 
 **D. Waiting on a trigger: don't build early**
+- **122** Store each combo leg's cost at delivery (`order_delivery_legs.cost_sen`),
+  so a leg with no drawdown isn't costed at today's catalog in COGS; at the
+  first Monthly Summary fallback on a combo leg.
 - **81** Month-end pack and the open accounting policies (revenue by
   delivery date, vouchers by reason, transfer fees in inventory cost), when
   an accountant is engaged.
@@ -1105,16 +1107,6 @@ git in the 2026-10-17 docs audit. Re-verify before building.
     date, settlement period). Existing files stay where they are. Needs a
     short grill (storage disk, what a re-upload of the same file does).
 
-121. **Estimated combo cost moves with the catalog (found 2026-10-17).**
-    `Order::comboCostReconciliation()` sums each leg's *current*
-    `componentPackage->cost_price` when no leg has a real cost. Prod: order
-    #7 has a checkout snapshot of 186 sen and reads 184 now; #28 has 1065
-    and reads 1074. Customer Detail, the Transaction Register, the Orders
-    export and the Monthly Summary's per-order cost line all read it.
-    Decided (ADR-083 2026-10-17 addendum): a fully delivered estimated combo
-    uses `orders.cost_price`. A partial one keeps the catalog leg cost,
-    because there is no per-leg snapshot.
-
 117. **Expansion outside Malaysia: languages and currencies (founder,
     2026-10-17).** The storefront is English-only and prices are MYR-only
     (CHIP, a Malaysian gateway, is the one payment gateway;
@@ -1126,6 +1118,7 @@ git in the 2026-10-17 docs audit. Re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **121** 2026-10-17: a realised combo with no real-cost basis is costed at `revenue − platform_profit − affiliate_profit` (the cost its profit used, set from the catalog at delivery or settlement), no longer today's catalog. Customer Detail, Order Detail, the Transaction Register, the Orders export and the Monthly Summary bridge all read it. Prod: #7 184 → 186, #28 1074 → 1065. A reader change only. On `staging`, not live. ADR-083 2026-10-17 addendum (same-day correction).
 - **115** 2026-10-17: Monthly Summary COGS is at funded cost: each recognised order's deposit drawdown × the MYR paid per unit (IFRIC 22 / IAS 2; Digiflazz's deposit can't be withdrawn). It is computed by `FundedCostOfSales` over `RecognisedRevenue`'s orders, rounded once per supplier. An order with no drawdown or rate falls back to its own cost and is counted on the page. The FX true-up left operating profit and became the bridge lines "COGS at per-order cost" + "Deposit rate vs market rate"; "Supplier drawdowns not in this month's COGS" shows the rest. Operating profit unchanged (prod check: September RM4.64, October RM3.64). On `staging`, not live; September is re-closed after release (group C). ADR-083 2026-10-17 addendum; details: build-log 2026-10-17.
 - **Login lockout alert** 2026-10-17: when 10 wrong passwords lock an admin or portal account, every admin gets a `[PekanGame Security] Account locked` email with the email and last IP. Only real accounts trigger it, so made-up emails don't. Before this, only a lock from wrong MFA codes alerted. It came out of item 111's grill (Turnstile parked, ADR-019 2026-10-17 addendum). On `staging`, not live. Details: build-log 2026-10-17.
 - **119** 2026-10-17: the backend deploys only through CI's `deploy` job again (ADR-066 decision 5). Since the ADR-114 move, `FORGE_DEPLOY_HOOK` had pointed at the destroyed old site and the new site had Forge "Push to deploy" on, so it built each push before CI finished. The founder re-pointed the secret, turned Push to deploy off, and removed the old Forge server and the unused `DIGITALOCEAN_ACCESS_TOKEN` secret. Verified on release #490: one release directory, built after the CI `deploy` job. Details: build-log 2026-10-17.
