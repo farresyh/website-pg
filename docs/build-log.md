@@ -1007,3 +1007,21 @@ closes ADR-114's "remove the orphaned Forge server entry" hygiene note.
 deployment after the CI `deploy` job. ADR-114 got
 a 2026-10-17 addendum with the box-move checklist; the `ci.yml` header
 comment now names the setting "Push to deploy".
+
+## 2026-10-17 — OpenWA: phone notifications restored
+
+The founder noticed that both WhatsApp numbers got no phone notification
+for incoming messages while they were connected to OpenWA. Notifications
+came back once a session was disconnected. The cause is Baileys'
+`markOnlineOnConnect`, which defaults to true. The linked device announces
+itself "online", and WhatsApp then stops pushing to the phone (OpenWA
+#871). Our backend sends no read receipts.
+
+**Production change (founder, 2026-10-17 ~12:31 UTC):** added
+`BAILEYS_MARK_ONLINE_ON_CONNECT=false` to `~/OpenWA/.env` (backup
+`.env.bak-20261017`), then restarted the daemon from Forge. Before: the
+line was only a comment, so the default (true) applied. After: line 795
+has `=false`, the process started at 12:34:00 UTC, `reseller-bot` was
+ready at 12:34:09 and `customer-support` at 12:36:01. The founder
+confirmed the phones get notifications again. Recorded in the ADR-114
+2026-10-17 addendum, along with the open `SIMULATE_TYPING` note.
