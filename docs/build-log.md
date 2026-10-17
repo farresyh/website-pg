@@ -1066,3 +1066,56 @@ and last IP). Only real accounts alert, so an attacker cycling made-up
 emails can't flood the inbox. Test-first: 4 new tests in
 `AuthControllerTest` and `AffiliateAuthControllerTest` (red → green).
 Full suite 2888 passed. ADR-019 2026-10-17 addendum.
+
+## 2026-10-17 — Item 115: Monthly Summary COGS at funded cost (on `staging`)
+
+The planned fix was to switch COGS from the checkout estimate to ADR-111's
+real cost. The founder asked for an accounting check first, and the check
+changed the fix. ADR-111's real cost is the supplier's IDR price at the
+**market** rate on delivery day. The Digiflazz deposit can't be withdrawn
+(founder), so it is a non-monetary prepayment, and under IFRIC 22 and IAS 2
+an order costs its drawdown × the MYR actually paid per IDR.
+
+Operating profit was already that number, by accident: COGS cancelled
+against the FX true-up. That hid three gaps: a supplier with no rate, an
+order with no drawdown, and drawdowns timed by `created_at`.
+
+**Built:**
+- `FundedCostOfSales` costs `RecognisedRevenue`'s orders (new
+  `recognisedOrders()`, so cost follows revenue) unit by unit: plain orders
+  and delivered combo legs. Funded units are summed per supplier and rounded
+  once. IDR is valued at the month-end blended rate, MYR at face value.
+  Anything else falls back to its own cost and is counted on the page.
+- The true-up left operating profit. The bridge lines are "COGS at
+  per-order cost" + "Deposit rate vs market rate" = COGS (tested exactly),
+  plus "Supplier drawdowns not in this month's COGS".
+- `weightedAverageRate()` moved to the new class. `CashPositionService` now
+  depends on it.
+- Per-order cost labels say "delivery rate": the Register screen and CSV,
+  Customer Detail, and the Orders export.
+
+**Stress test before build.** It found four gaps in the first design, all
+fixed: per-order rounding, unsettled partials, the bridge vs the Register,
+and no check that every drawdown is counted. Several scenarios were checked
+safe: sandbox orders (`FakeSupplierAdapter` price null, so no drawdown),
+resend, failed legs, pricing bases. My earlier claim that sandbox drawdowns
+polluted profit was wrong.
+
+**Checks.**
+- Tests: 11 new (`FundedCostOfSalesTest`, red → green), 2 superseded
+  true-up tests removed, full suite 2897 passed. Admin: tsc, lint, build
+  and node tests all pass.
+- Browser: Monthly Summary on a local production build showed the new
+  lines. The fallback warning wasn't seen live: it needs an order with no
+  drawdown, and the dev DB has none.
+- Read-only prod run of the new class: September and October operating
+  profit unchanged (RM4.64, RM3.64). COGS RM151.86 and RM169.69.
+
+**Corrections to what I told the founder:**
+- I had said September's funded COGS would be about RM149.34. It is
+  RM151.86: the deposit rate cost more than the market rate, not less.
+
+**Left:**
+- Release. Then reopen and re-close September (§16 C, item 115).
+- Item 121: estimated combo snapshot.
+- Item 120: keep CHIP files.
