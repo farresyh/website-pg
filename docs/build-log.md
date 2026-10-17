@@ -786,6 +786,7 @@ never refunded). The card only reaches retail, non-test orders
 A grep of backend, storefront, admin and portal found no other copy making
 the promise. `CustomerWhatsAppOptInTest` now asserts the new wording and
 that "full amount" is gone (red first, then green); full suite 2869 passed.
+
 ## 2026-10-17 — PRD §16 item 109: fonts without Google Fonts
 
 `admin` (Figtree), `reseller` (Outfit) and `storefront` (Space Grotesk,
