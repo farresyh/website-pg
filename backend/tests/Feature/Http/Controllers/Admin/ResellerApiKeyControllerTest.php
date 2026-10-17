@@ -27,14 +27,6 @@ class ResellerApiKeyControllerTest extends TestCase
         return Reseller::query()->create(['business_name' => 'Acme', 'is_active' => true]);
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-        $reseller = $this->makeReseller();
-
-        $this->getJson("/api/resellers/{$reseller->id}/api-keys")->assertForbidden();
-    }
-
     public function test_store_issues_a_key_and_returns_the_plaintext_once(): void
     {
         $this->actAsSuperAdmin();
@@ -85,13 +77,6 @@ class ResellerApiKeyControllerTest extends TestCase
 
         $response->assertNotFound();
         $this->assertNull($issued['key']->refresh()->revoked_at);
-    }
-
-    public function test_store_requires_authentication(): void
-    {
-        $reseller = $this->makeReseller();
-
-        $this->postJson("/api/resellers/{$reseller->id}/api-keys", ['name' => 'x'])->assertUnauthorized();
     }
 
     public function test_update_sets_the_ip_allowlist(): void

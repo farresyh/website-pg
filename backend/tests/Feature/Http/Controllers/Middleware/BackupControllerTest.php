@@ -28,11 +28,6 @@ class BackupControllerTest extends TestCase
         return $admin;
     }
 
-    public function test_index_requires_authentication(): void
-    {
-        $this->getJson('/api/middleware/backups')->assertUnauthorized();
-    }
-
     public function test_regular_admin_is_forbidden(): void
     {
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));

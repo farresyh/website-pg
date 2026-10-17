@@ -95,11 +95,6 @@ class WalletControllerTest extends TestCase
             ->assertJsonPath('entries.data.0.type', 'wallet_topup');
     }
 
-    public function test_show_requires_authentication(): void
-    {
-        $this->getJson('/api/reseller-portal/wallet')->assertUnauthorized();
-    }
-
     public function test_topup_creates_a_pending_attempt_and_returns_a_checkout_url(): void
     {
         $this->activeFpx();

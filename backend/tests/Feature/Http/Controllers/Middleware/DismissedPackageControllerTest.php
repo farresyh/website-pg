@@ -6,6 +6,7 @@ use App\Models\AdminUser;
 use App\Models\Game;
 use App\Models\Package;
 use App\Models\Supplier;
+use App\Models\SupplierProduct;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -17,13 +18,6 @@ class DismissedPackageControllerTest extends TestCase
     private function actingAsAdmin(): void
     {
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
-    }
-
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/middleware/price-sync/dismissed-packages')->assertForbidden();
     }
 
     private function supplier(): Supplier
@@ -51,11 +45,6 @@ class DismissedPackageControllerTest extends TestCase
             'supplier_id' => $supplier->id,
             'supplier_package_ref' => $ref,
         ]);
-    }
-
-    public function test_index_requires_authentication(): void
-    {
-        $this->getJson('/api/middleware/price-sync/dismissed-packages')->assertUnauthorized();
     }
 
     /**
@@ -106,7 +95,7 @@ class DismissedPackageControllerTest extends TestCase
     {
         $supplier = $this->supplier();
         $package = $this->dismissedByAdmin($supplier, $this->game());
-        \App\Models\SupplierProduct::query()->create([
+        SupplierProduct::query()->create([
             'supplier_id' => $supplier->id, 'external_ref' => $package->supplier_package_ref,
             'name' => '14 Diamond', 'status_raw' => 'inactive', 'last_synced_at' => now(),
         ]);

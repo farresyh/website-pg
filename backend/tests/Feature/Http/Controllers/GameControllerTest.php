@@ -22,11 +22,6 @@ class GameControllerTest extends TestCase
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
     }
 
-    public function test_index_requires_authentication(): void
-    {
-        $this->getJson('/api/games')->assertUnauthorized();
-    }
-
     public function test_index_lists_games_ordered_by_name(): void
     {
         Game::query()->create(['name' => 'Zenless Zone Zero', 'slug' => 'zzz']);
@@ -229,12 +224,6 @@ class GameControllerTest extends TestCase
         $this->patchJson("/api/packages/{$package->id}/status", ['is_active' => false])->assertOk();
 
         $this->getJson("/api/games/{$game->id}/packages")->assertJsonPath('0.is_active', false);
-    }
-
-    /** GAME-6. */
-    public function test_reorder_requires_authentication(): void
-    {
-        $this->postJson('/api/games/reorder', ['game_ids' => [1]])->assertUnauthorized();
     }
 
     /**

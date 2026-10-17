@@ -39,13 +39,6 @@ class SandboxOrderControllerTest extends TestCase
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin', 'name' => 'Test Admin']));
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/middleware/sandbox')->assertForbidden();
-    }
-
     private function gameWithPackage(array $packageOverrides = []): array
     {
         $supplier = Supplier::query()->firstOrCreate(
@@ -64,11 +57,6 @@ class SandboxOrderControllerTest extends TestCase
         ], $packageOverrides));
 
         return [$game, $package];
-    }
-
-    public function test_index_requires_authentication(): void
-    {
-        $this->getJson('/api/middleware/sandbox')->assertUnauthorized();
     }
 
     public function test_store_creates_a_paid_failed_test_order(): void

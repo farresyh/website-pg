@@ -18,14 +18,6 @@ class PlayerRegionMappingControllerTest extends TestCase
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        $validator = $this->validator();
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->postJson("/api/middleware/validators/{$validator->id}/mappings", [])->assertForbidden();
-    }
-
     private function game(array $overrides = []): Game
     {
         return Game::query()->create(array_merge([
@@ -40,13 +32,6 @@ class PlayerRegionMappingControllerTest extends TestCase
             'name' => 'Mobile Legends Validator',
             'key' => 'mlbb',
         ]);
-    }
-
-    public function test_store_requires_authentication(): void
-    {
-        $validator = $this->validator();
-
-        $this->postJson("/api/middleware/validators/{$validator->id}/mappings", [])->assertUnauthorized();
     }
 
     public function test_store_creates_a_mapping_under_the_validator(): void

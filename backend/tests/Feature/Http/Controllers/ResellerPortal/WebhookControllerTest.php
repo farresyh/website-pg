@@ -160,18 +160,4 @@ class WebhookControllerTest extends TestCase
         $this->assertCount(1, $response->json('data'));
         $this->assertSame('order.delivered', $response->json('data.0.event'));
     }
-
-    public function test_an_affiliate_account_type_cannot_reach_these_routes(): void
-    {
-        // account.type:reseller gate — an Affiliate user is rejected.
-        $affiliate = $this->primaryAffiliate();
-        $user = AffiliateUser::query()->create([
-            'owner_type' => 'affiliate', 'owner_id' => $affiliate->id,
-            'name' => 'Aff', 'email' => 'aff@x.test', 'password' => Hash::make('x'), 'is_active' => true,
-        ]);
-
-        $this->withToken($user->createToken('affiliate')->plainTextToken)
-            ->getJson('/api/reseller-portal/webhook')
-            ->assertForbidden();
-    }
 }

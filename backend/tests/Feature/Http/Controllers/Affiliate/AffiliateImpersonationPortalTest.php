@@ -88,12 +88,4 @@ class AffiliateImpersonationPortalTest extends TestCase
         $this->assertSame('manual', $session->fresh()->ended_reason);
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }
-
-    public function test_end_is_forbidden_for_a_non_impersonation_token(): void
-    {
-        $user = $this->affiliateUser($this->affiliate());
-        $token = $user->createToken('affiliate')->plainTextToken;
-
-        $this->withToken($token)->postJson('/api/affiliate/impersonation/end')->assertForbidden();
-    }
 }

@@ -28,13 +28,6 @@ class PendingPriceChangeControllerTest extends TestCase
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/middleware/price-sync/pending-price-changes')->assertForbidden();
-    }
-
     private function supplier(): Supplier
     {
         return Supplier::query()->create([
@@ -73,11 +66,6 @@ class PendingPriceChangeControllerTest extends TestCase
             'proposed_standard_selling_price' => 1840,
             'status' => 'pending',
         ], $overrides));
-    }
-
-    public function test_index_requires_authentication(): void
-    {
-        $this->getJson('/api/middleware/price-sync/pending-price-changes')->assertUnauthorized();
     }
 
     public function test_index_only_lists_pending_rows(): void

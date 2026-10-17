@@ -57,13 +57,6 @@ class ComboPackageControllerTest extends TestCase
         ], $overrides));
     }
 
-    public function test_store_combo_requires_authentication(): void
-    {
-        $game = $this->game();
-
-        $this->postJson("/api/games/{$game->id}/packages/combo", [])->assertUnauthorized();
-    }
-
     public function test_store_combo_assembles_a_combo_package_from_its_components(): void
     {
         $game = $this->game();

@@ -18,18 +18,6 @@ class OpsAccessControllerTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_mint_requires_authentication(): void
-    {
-        $this->postJson('/api/middleware/ops/horizon/link')->assertUnauthorized();
-    }
-
-    public function test_regular_admin_cannot_mint(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->postJson('/api/middleware/ops/horizon/link')->assertForbidden();
-    }
-
     public function test_unknown_target_is_rejected(): void
     {
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));

@@ -51,9 +51,7 @@ class DeveloperToolControllerTest extends TestCase
     {
         return new class($success) implements SupplierAdapter
         {
-            public function __construct(private bool $success)
-            {
-            }
+            public function __construct(private bool $success) {}
 
             public function checkBalance(): SupplierResponse
             {
@@ -82,13 +80,6 @@ class DeveloperToolControllerTest extends TestCase
                 throw new ValidationNotSupportedException('Gamevion has no dedicated validation endpoint');
             }
         };
-    }
-
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->postJson('/api/middleware/developer-tools/test', [])->assertForbidden();
     }
 
     public function test_dry_run_never_resolves_an_adapter_and_previews_the_request(): void

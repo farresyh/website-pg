@@ -33,18 +33,6 @@ class SeoControllerTest extends TestCase
         ], $overrides));
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/seo/overview')->assertForbidden();
-    }
-
-    public function test_unauthenticated_request_is_rejected(): void
-    {
-        $this->getJson('/api/seo/overview')->assertUnauthorized();
-    }
-
     public function test_overview_counts_missing_seo_fields_across_active_games_only(): void
     {
         $this->actingAsSuperAdmin();

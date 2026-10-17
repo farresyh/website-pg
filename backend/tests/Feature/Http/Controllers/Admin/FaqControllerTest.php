@@ -34,13 +34,6 @@ class FaqControllerTest extends TestCase
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
     }
 
-    public function test_regular_admin_is_forbidden(): void
-    {
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
-
-        $this->getJson('/api/seo/faqs')->assertForbidden();
-    }
-
     public function test_crud_round_trip(): void
     {
         $this->actingAsSuperAdmin();

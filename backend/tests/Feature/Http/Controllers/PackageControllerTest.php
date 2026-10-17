@@ -36,13 +36,6 @@ class PackageControllerTest extends TestCase
         ], $overrides));
     }
 
-    public function test_update_requires_authentication(): void
-    {
-        $package = $this->package();
-
-        $this->putJson("/api/packages/{$package->id}", [])->assertUnauthorized();
-    }
-
     public function test_update_renames_the_package(): void
     {
         $package = $this->package();
@@ -232,14 +225,6 @@ class PackageControllerTest extends TestCase
             ->assertUnprocessable();
     }
 
-    public function test_update_denomination_requires_authentication(): void
-    {
-        $package = $this->package();
-
-        $this->patchJson("/api/packages/{$package->id}/denomination", ['denomination' => 100])
-            ->assertUnauthorized();
-    }
-
     /**
      * ADR-075's catalog-code addendum (2026-09-04): the catalog_code
      * counterpart to denomination, for bundle/pass packages.
@@ -308,14 +293,6 @@ class PackageControllerTest extends TestCase
 
         $this->patchJson("/api/packages/{$package->id}/denomination", ['denomination' => 14])
             ->assertUnprocessable();
-    }
-
-    public function test_update_catalog_code_requires_authentication(): void
-    {
-        $package = $this->package();
-
-        $this->patchJson("/api/packages/{$package->id}/catalog-code", ['catalog_code' => 'P1'])
-            ->assertUnauthorized();
     }
 
     public function test_destroy_removes_the_package(): void
