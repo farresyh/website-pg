@@ -8,7 +8,9 @@ import { apiFetch } from "@/lib/api-client";
  */
 export interface PriceSyncRun {
   id: number;
-  status: "queued" | "running" | "success" | "failed";
+  // ADR-015 2026-10-17 addendum: `partial` = at least one supplier
+  // failed while another synced (listed in stats.failed_suppliers).
+  status: "queued" | "running" | "success" | "partial" | "failed";
   triggered_by: string | null;
   started_at: string | null;
   finished_at: string | null;
@@ -28,6 +30,8 @@ export interface PriceSyncRun {
     // above — empty (not absent) on any run that touched only MYR
     // suppliers.
     fx_rates_used?: Array<{ from: string; to: string; rate: number; source: string }>;
+    // ADR-015 2026-10-17 addendum: absent on runs recorded before it.
+    failed_suppliers?: Array<{ slug: string; error: string }>;
   } | null;
   error_message: string | null;
 }

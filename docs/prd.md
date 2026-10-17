@@ -615,7 +615,7 @@ config change. Checked live: the new headers on `api.pekangame.space`,
 loads only its own woff2 files, `/api/health` 200. The box built the release
 10 seconds after the merge, before CI finished: Forge seems to deploy on
 every push (§16 item 119).
-Waiting on `staging`: nothing but this release record.
+Waiting on `staging`: item 106 (price-sync `partial` status + stale-supplier email, one migration).
 
 **Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
 hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
@@ -657,7 +657,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). All three methods (`fpx`, `fpx_b2b1`, `duitnow_qr`) inactive since 2026-10-07, the founder's choice (§14). Xendit deleted (archived). **ADR-110 PR-A built 2026-09-19** — `overdue`/`expired`/`blocked` now map to `Failed` (were silently stuck `Pending` forever); every purchase now sets `due`+`due_strict` so CHIP itself closes it after 30 min. **PR-C built 2026-09-19** — credentials moved to encrypted `payment_gateways` DB row + `/middleware/payment-gateways` admin screen, binding is DB-first; the founder completed the cutover 2026-09-24, and the `.env` fallback is kept deliberately (§16 Parked). **PR-B built 2026-09-19** — CHIP settlement `.xlsx` reconciliation + Monthly Accounting Summary, fills ADR-083 PR-2 (see §16 item 12). All three ADR-110 PRs now built | ADR-022, ADR-110 |
 | Games & Packages (GAME-1..11) | 🟢 Live — GAME-1..11 all shipped (list/detail, markup %, activate/deactivate, delete, bulk markup via `/admin/settings`, SEO fields via `/admin/seo/games`, drag-drop reorder via `/admin/games`'s "Reorder Games", folded with the storefront's Quick Top-Up widget). GAME-12 dropped, 2026-09-13 (dead requirement, see §16). **2026-10-02:** package delete now blocks a package with order history or live combo-component usage instead of silently orphaning order history or crashing with a raw DB error (ADR-119) | ADR-029, ADR-119 |
 | Combo Package | 🟢 Live — several catalog Packages sold as one opaque SKU (one FPX fee), sum-of-components pricing with optional `combo_override_price` (never below cost), up to 5 legs, per-leg references and attempt rows, `partially_delivered` + `OrderSettlementService` settlement (voucher or wallet refund), real-cost profit residual (ADR-107/111), component cascade on/off, bulk markup routed through `ComboPricingService` (ADR-028), component SKU in the Edit Combo modal. Per-leg attempt history shown under each leg on Order Detail (live via #406, 2026-10-12, item 66). **2026-10-13 (ADR-094 addendum, item 93):** the stored price stays current while a combo is off and is recomputed before the reactivation cascade; a component markup reprices its combos; a markup on a combo itself is rejected; live since 2026-10-14 (#430). Edit-composition parked 2026-10-14 (§16 Parked) | ADR-094, ADR-100, ADR-046, ADR-106, ADR-107, ADR-028 |
-| Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening | ADR-015/016, 025, 033, 034, 067 |
+| Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening. On `staging` (item 106): `partial` run status with failed suppliers listed, stale-supplier email (default 90 min) | ADR-015/016, 025, 033, 034, 067 |
 | Supplier Management (SUPP-1..5) | ✅ Live — SUPP-1/CRUD/SUPP-5; credentials in encrypted `Supplier.api_config`; balance refresh + low-balance chip; credential-rotation probe on save. **2026-09-24:** the bulk "Deactivate All"/"Deactivate by Game"/"Reactivate" toggle now cascades onto dependent combos (found while auditing the Pending Reactivation combo gap above — the bulk toggle had never called `ComboPricingService`'s cascade at all, deactivate or reactivate). Released `main` via PR #286, 2026-09-24 | ADR-046, 069 |
 | Orders Management (ORD-1..11) | ✅ Live — checkout + fulfillment, Resend (same-game swap, one resend seam, ADR-105), ORD-10 reconciliation, async `pending`, manual "Check from Supplier/Gateway" (ADR-096), one compensation guard `isAlreadyCompensated()` (ADR-102/103), restore-only voucher (ADR-024), six KPI cards (ADR-092), ADR-104 reskin, ADR-108 toolbar (Need Action excludes compensated, Source/Game/date filters, Columns, 2-sheet Excel export with earned profit) and a Failed pill (#385). Detail: build-log + ADRs | ADR-017, 024, 026, 032, 092, 096, 102, 103, 104, 105, 108 |
 | Reports (RPT-1..4) | 🟢 Live — redesigned per ADR-104 (2026-10-08 addendum R1–R21 + 2026-10-09 R8 addendum), live via #385 (2026-10-09). 7 tabs on Recharts. **Paid sales** (money collected, net of wallet refunds, `Order::netSalesSql()`) with a **Bridge to Accounting** to recognised revenue from one `RecognisedRevenue` seam shared with the Monthly Summary. Ledger-sourced profit, `paid_at` scoping, KL days. **Failed & compensated** per delivery status plus outstanding store credit. Compare period on every tab, sales by channel + API vs Bot (`orders.placed_via`), Delivery by game. CSV/PDF carry Paid / Wallet refund / Paid sales. Default range All time. LLM assistant at `/admin/reports/assistant` (ADR-087, `super_admin`) matches the page. History: ADR-086 grouped-SQL rewrite, ADR-088 unified date filter **Live via #462 (2026-10-15; #454/#455, ADR-104 2026-10-15):** Compare for a range ending today runs to the same time (`previous_range.until`, label "…, to 10:30 AM"), a Today preset, `/reports/busy-hours`, `/reports/highlights` and `/reports/top-games?compare=` (the new Dashboard reads them). | ADR-086, 087, 088, 104 |
@@ -723,8 +723,6 @@ git in the 2026-10-17 docs audit. Re-verify before building.
 - **115** Monthly Summary COGS still sums the checkout estimate for
   Delivered orders, not ADR-111's real cost. Decide with item 81's
   accountant answer (operating profit is the same either way).
-- **106** A supplier that fails inside a price-sync run is invisible: the run
-  still says `success` (found 2026-10-16, Gamevion). Short grill: where to record it.
 - **111** Bot check (Turnstile) on the admin and portal login forms; ties to
   item 108's hostname list.
 
@@ -1029,34 +1027,6 @@ git in the 2026-10-17 docs audit. Re-verify before building.
     of `cashCompensationSen()` / `compensationAmountSen()`), not a one-site
     patch. Trigger: Pulse shows the detail endpoint over 500 ms.
 
-106. **A supplier's price-sync failure is hidden when another supplier succeeds
-    (found 2026-10-16, item 98/99 check).** `SyncSupplierPricesJob` marks the
-    run `failed` only when *every* supplier fails. When one fails and another
-    succeeds, the run is `success`, `error_message` stays empty and `stats`
-    holds only the successful suppliers' sums. Sync History therefore shows
-    green, and the failure lives only in `laravel.log`
-    (`SyncSupplierPricesJob: supplier sync failed`). Gamevion did this on
-    2026-10-16 at 02:00 and 02:30 UTC (runs 2305, 2306).
-    - **Not a timeout problem, unlike item 99.** Gamevion `listProducts` on
-      prod (2026-10-16): 1,252 successful calls, p50 0.95 s, p90 1.7 s, p99
-      5.9 s. Failures arrive in clusters where every attempt (the call plus
-      the shared client's 3 retries) gets `cURL 28`, 0 bytes in 10 s:
-      2026-09-21, 09-29, 09-30, 10-15 17:00, 10-16 02:00–02:30. That is
-      Gamevion not answering, so a longer timeout wouldn't help. Leave the 10 s
-      unless the slow tail grows (the max on 2026-10-16 was 10.0 s on a
-      successful call, the first time a success came that close).
-    - **Cost of a miss today:** that supplier's prices and deactivations are
-      30 minutes late, and the next run fixes them. A long outage would
-      leave prices stale with Sync History green throughout.
-    - For the grill: store the failed supplier(s) and error on the run (e.g. a
-      `partial` status or `stats.failed_suppliers`) and show it in Sync History
-      (ADR-015/016); whether N consecutive misses for one supplier should alert
-      (`BackupFailureAlerter`/Plunk path) or reach the Dashboard. Check every
-      reader of `PriceSyncRun.status` first (2026-10-16: `PriceSyncController`,
-      `PriceSyncRunObserver` → `PriceSyncRunUpdated` broadcast, admin
-      `/middleware/price-sync` and `SyncDetailsModal`; the Dashboard and
-      `SchedulerLiveness` don't read it).
-
 108. **Turnstile widget hostnames follow affiliate domains — waiting on a
     trigger (founder, 2026-10-16).** The Game ID Checker's Cloudflare
     Turnstile widget ("PekanGame Game ID Checker", site key
@@ -1153,6 +1123,7 @@ git in the 2026-10-17 docs audit. Re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **106** 2026-10-17: a supplier that fails inside a price-sync run is no longer hidden (ADR-015 2026-10-17 addendum). The run is `partial` (warn tag) with `stats.failed_suppliers` listed in admin Price Sync; `suppliers.last_price_sync_at` records each supplier's last good sync, and `app:check-price-sync-staleness` (scheduler, every 15 min) emails admins once when a supplier passes `price_sync_stale_alert_minutes` (Middleware → Suppliers; blank = 90, 0 = off) and once when it recovers. On `staging`, not live. Details: build-log 2026-10-17.
 - **118** 2026-10-17: the Report Assistant prompt calls an order's `cost_price` the checkout estimate and sends a past order's margin to `platform_profit` (already ledger-sourced, so it carries ADR-111's real cost), never to `cost_price`. Prompt only; the view is unchanged (ADR-125's addendum still governs the `effective_cost_price` column it will add). Live via #485 (2026-10-17). Details: build-log 2026-10-17.
 - **115 (part)** 2026-10-17: Customer Detail profit analysis and the Transaction Register (screen and CSV) show each realised order's `effectiveCostPriceSen()`, the cost its profit used, for Delivered as well as settled partial orders. Before, Delivered rows showed the checkout estimate, so revenue − cost − commission − fees did not match profit in the same row. COGS stays open as item 115. Live via #485 (2026-10-17). Details: build-log 2026-10-17.
 - **110** 2026-10-17: security check follow-ups. The API sends HSTS (HTTPS only, no `includeSubDomains`), `Referrer-Policy` and `Permissions-Policy` (`SecurityHeaders` middleware); admin, storefront and portal send `Referrer-Policy` and `Permissions-Policy`, the portal now sends `nosniff`, and none sends `x-powered-by`; a supplier-transfer correction receipt is capped at 5 MB like its siblings. The audit's "login throttle is per IP only" was wrong: `AccountLoginThrottle` (ADR-019 2026-09-29 addendum) already locks an email for 15 minutes after 10 failures from any IPs, on admin login, MFA code, step-up and affiliate login, so nothing was added. Live via #485 (2026-10-17). Details: build-log 2026-10-17.

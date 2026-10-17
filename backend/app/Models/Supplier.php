@@ -17,6 +17,8 @@ class Supplier extends Model
         'currency',
         'last_tested_at',
         'last_test_result',
+        'last_price_sync_at',
+        'price_sync_alerted_at',
     ];
 
     /**
@@ -33,6 +35,8 @@ class Supplier extends Model
         'api_config' => 'encrypted:array', // SUPP-5: encrypted at rest
         'balance' => 'decimal:2',
         'last_tested_at' => 'datetime',
+        'last_price_sync_at' => 'datetime',
+        'price_sync_alerted_at' => 'datetime',
     ];
 
     public function packages(): HasMany

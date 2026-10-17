@@ -67,6 +67,9 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     // above and this supplier's own funding-ledger sum before the
     // Dashboard Health drift chip lights up. Blank = never checked.
     { key: "drift_threshold", label: "Drift Threshold", type: "text", placeholder: "e.g. 50 (blank = drift never checked)" },
+    // ADR-015 2026-10-17 addendum: email admins when this supplier's prices
+    // haven't synced for this many minutes. Blank = 90, 0 = off.
+    { key: "price_sync_stale_alert_minutes", label: "Price-sync Stale Alert (minutes)", type: "text", placeholder: "90 (blank = 90; 0 = no alert)" },
   ],
   digiflazz: [
     { key: "base_url", label: "Base URL", type: "text", placeholder: "https://api.digiflazz.com (no trailing slash)" },
@@ -87,6 +90,9 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     // ADR-083 decision 6: max acceptable gap (IDR) between the polled
     // balance above and this supplier's own funding-ledger sum.
     { key: "drift_threshold", label: "Drift Threshold", type: "text", placeholder: "e.g. 50000 (IDR; blank = drift never checked)" },
+    // ADR-015 2026-10-17 addendum: email admins when this supplier's prices
+    // haven't synced for this many minutes. Blank = 90, 0 = off.
+    { key: "price_sync_stale_alert_minutes", label: "Price-sync Stale Alert (minutes)", type: "text", placeholder: "90 (blank = 90; 0 = no alert)" },
   ],
 };
 
