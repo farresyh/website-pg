@@ -1145,3 +1145,38 @@ separate them. Full suite: 2900 passed.
   are unchanged.
 
 **Left:** item 122, a stored per-leg cost for the leg-level COGS fallback.
+
+## 2026-10-17 — Release #495 (`staging`→`main`), verified; September re-closed
+
+Merged as `70a5989` with #491–#494: the lockout alert, item 115 (funded-cost
+COGS), item 121 (combo cost) and docs. No migration, no config change. The
+`main` CI run passed every job, and `deploy` ran 15:54:09–15:54:11. The box
+built release `80471303` at 15:54:17, after the gate, and `current` points
+to `70a5989`. `/up` returns 200.
+
+Checked live (read-only tinker):
+
+| | September | October |
+|---|---|---|
+| COGS | RM151.86 | RM169.69 |
+| Per-order cost | RM150.61 | RM166.54 |
+| Deposit vs market | +RM1.25 | +RM3.15 |
+| Fallback orders | 0 | 0 |
+| Drawdowns not in COGS | 0 | 0 |
+| Operating profit | RM4.64 (unchanged) | RM3.64 (unchanged) |
+
+Orders #7 and #28 cost 186 and 1065.
+
+**Production change (founder, from the admin):** September 2026's month
+close was reopened and closed again. Close #1 was voided at 15:55:59 UTC
+with a reason, and posting #28 (−RM4.64) reverses its allocation #25.
+Close #2 was made at 16:22:52 with the same allocation (RM4.64 to Company
+Savings, posting #29), the same cash (RM80.43, "Held by Farres (mixed)";
+the founder re-checked it against the September statement before closing),
+the same gap (−RM10.94) and the same note. The snapshot holds COGS RM15186
+sen, and the old FX key is gone. September drift is 0 and October's prior
+adjustment is 0. The founder asked whether the cash should be RM60. No
+record anywhere shows RM60, and RM60 would have made the gap −RM31.37.
+
+Not checked live: the lockout alert email. It has test coverage, and the
+first real lockout will be its live check.
