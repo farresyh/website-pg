@@ -22,6 +22,7 @@ use App\Services\Sync\PendingReactivationAutoApprover;
 use App\Services\Sync\ProductSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 use Mockery;
 use Tests\Support\AdminOrderControllerFixtures;
@@ -61,6 +62,16 @@ class Adr125ManualSupplierReadersTest extends TestCase
         $this->assertInstanceOf(ManualSupplierAdapter::class, $adapter);
         $this->expectException(UnsupportedSupplierException::class);
         $adapter->listProducts();
+    }
+
+    /** The e2e regression (PR #507 CI): seeders run WithoutModelEvents, so the driver must come from the read, not a hook. */
+    public function test_a_supplier_stored_without_a_driver_reads_its_slug_as_driver(): void
+    {
+        $seeded = Supplier::withoutEvents(fn () => Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'currency' => 'MYR', 'api_config' => []]));
+
+        $this->assertSame('', DB::table('suppliers')->where('id', $seeded->id)->value('driver'));
+        $this->assertSame('gamevion', $seeded->fresh()->driver);
+        $this->assertSame(1, Supplier::query()->apiBacked()->count());
     }
 
     public function test_only_digiflazz_replays_a_resubmit_and_it_is_read_from_the_driver(): void

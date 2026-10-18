@@ -1305,5 +1305,6 @@ Tests: 2 new files (14 tests); 3 updated for the renamed endpoint, the `driver` 
 **Gotchas.**
 - A killed MySQL run leaves the `llm_report_*` views (backend AGENTS.md gotcha 8); drop them before the concurrency suite.
 - Next's router ignores a manual `history.pushState` to another route in Playwright. After login, `page.goto` keeps the session.
+- First CI run failed `playwright` (resend and checkout ended `needs_review`: "No SupplierAdapter implementation for driver:"). The model filled `driver` from `slug` in a `creating` hook, but every seeder runs `WithoutModelEvents`, so the e2e supplier was stored with `driver = ''`. Fixed at the read: `Supplier::driver()` returns the slug when the column is blank, which covers seeders and raw inserts too. A regression test proves it red without the accessor.
 
 **Next.** PR 1b (login game, manual packages, checkout, Manual Queue, masking, copy).

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -54,14 +55,15 @@ class Supplier extends Model
 
     /**
      * ADR-125 decision 1: an API supplier's driver is its slug
-     * (CreateSupplierRequest enforces it), so a row created without one
-     * gets its slug. Only a manual supplier sets a driver apart.
+     * (CreateSupplierRequest enforces it), so a row stored without one
+     * reads as its slug. Read-side rather than a `creating` hook: seeders
+     * run `WithoutModelEvents`, and a raw insert skips events too, so only
+     * the read covers every path. A manual supplier always stores
+     * `manual` explicitly, so this can never route one to an API adapter.
      */
-    protected static function booted(): void
+    protected function driver(): Attribute
     {
-        static::creating(function (Supplier $supplier) {
-            $supplier->driver ??= $supplier->slug;
-        });
+        return Attribute::get(fn (?string $value, array $attributes) => filled($value) ? $value : ($attributes['slug'] ?? null));
     }
 
     /**

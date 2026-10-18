@@ -21,8 +21,8 @@ return new class extends Migration
         // NOT NULL with an empty default, then backfilled, rather than
         // nullable + ->change(): on sqlite ->change() rebuilds the table,
         // which breaks the llm_report_catalog view that reads it. A row
-        // written around the model (which fills driver from slug) keeps ''
-        // and fails loudly in SupplierAdapterFactory, never silently.
+        // stored with '' (a seeder runs WithoutModelEvents, a raw insert)
+        // reads as its slug through Supplier::driver().
         Schema::table('suppliers', function (Blueprint $table) {
             $table->string('driver', 32)->default('')->after('slug');
             $table->string('funding_mode', 16)->default('prepaid')->after('currency');
