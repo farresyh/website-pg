@@ -611,8 +611,8 @@ month), the route-access test and guard-test cleanup (#498), the test-file
 split (#499) and docs #496. One additive migration
 (`payment_settlements.file_path`, `file_sha256`, ran). Checked live:
 PG-KWKBUHNDMKQT shows +RM0.37 on 17 Sep and −RM0.10 on 20 Sep; settlements
-#1–#4 have no file yet (founder attaches them); September's close 464 =
-live. Previous release #495 (2026-10-17) shipped items 115, 121 and the
+#1–#4 got their original files the same day (attached by the founder,
+verified); September's close 464 = live. Previous release #495 (2026-10-17) shipped items 115, 121 and the
 lockout alert; September was reopened and closed again after it.
 
 **Storefront domain:** `pekangame.com` (`pekangame.space` and both `www.`
@@ -716,9 +716,7 @@ git in the 2026-10-17 docs audit. Re-verify before building.
 - (none)
 
 **B. Needs a short grill / ADR addendum first**
-- **120** Keep the original CHIP settlement `.xlsx` and file new accounting
-  uploads under `<category>/YYYY/MM/` (split out of item 81: a file not kept
-  can't be recovered later).
+- (none)
 
 **C. Founder actions (no code)**
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
