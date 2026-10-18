@@ -15,6 +15,8 @@ interface OrderSummarySidebarProps {
    */
   preview: CheckoutTotalPreview | null;
   playerId: string;
+  /** ADR-125: "Player ID", or a login game's identifier label. */
+  playerLabel?: string;
   serverId: string;
   ready: boolean;
   onReview: () => void;
@@ -25,6 +27,7 @@ function OrderSummarySidebar({
   selectedPackage,
   preview,
   playerId,
+  playerLabel = "Player ID",
   serverId,
   ready,
   onReview,
@@ -40,7 +43,7 @@ function OrderSummarySidebar({
         <Row k="Product" v={game.name} />
         <Row k="Package" v={selectedPackage?.name ?? "-"} dim={!selectedPackage} />
         <Row
-          k="Player ID"
+          k={playerLabel}
           v={playerId ? (serverId ? `${playerId} (${serverId})` : playerId) : "-"}
           dim={!playerId}
           mono

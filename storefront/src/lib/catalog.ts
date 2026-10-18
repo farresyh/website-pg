@@ -45,6 +45,21 @@ const CatalogGameWireSchema = z.object({
   delivery_mode: z.enum(["instant", "manual"]).optional(),
   delivery_subtext: z.string().optional(),
   player_validator_enabled: z.boolean(),
+  /** ADR-125 decision 6 — detail-only; empty for a Player ID game. */
+  credential_fields: z
+    .array(
+      z.object({
+        key: z.string(),
+        label: z.string(),
+        type: z.enum(["text", "email", "password", "select"]),
+        options: z.array(z.string()).optional(),
+        required: z.boolean(),
+        secret: z.boolean(),
+        is_identifier: z.boolean(),
+      }),
+    )
+    .optional(),
+  credential_consent_text: z.string().nullable().optional(),
   price_from_sen: z.number().nullable().optional(),
   created_at: z.string().optional(),
   seo_title: z.string().nullable().optional(),
@@ -122,6 +137,25 @@ export interface GameDetail extends Game {
   deliveryMode: "instant" | "manual";
   /** Never empty — CatalogController's effectiveDeliverySubtext() already applies the "Average delivery: 1–3 minutes" fallback. */
   deliverySubtext: string;
+  /** ADR-125 decision 6: a login game's checkout form; empty for a Player ID game. */
+  credentialFields: CredentialField[];
+  /** ADR-124 decision 8: the consent box text, the same text the order snapshots. Null for a Player ID game. */
+  credentialConsentText: string | null;
+}
+
+export interface CredentialField {
+  key: string;
+  label: string;
+  type: "text" | "email" | "password" | "select";
+  options?: string[];
+  required: boolean;
+  secret: boolean;
+  isIdentifier: boolean;
+}
+
+/** ADR-125 decision 5: a login game is one with a credential form. */
+export function isLoginGame(game: Pick<GameDetail, "credentialFields">): boolean {
+  return game.credentialFields.length > 0;
 }
 
 export interface GamePackage {
@@ -167,6 +201,16 @@ function toGameDetail(wire: CatalogGameWire): GameDetail {
     importantNotes: wire.important_notes ?? [],
     deliveryMode: wire.delivery_mode ?? "instant",
     deliverySubtext: wire.delivery_subtext ?? "Average delivery: 1–3 minutes",
+    credentialFields: (wire.credential_fields ?? []).map((f) => ({
+      key: f.key,
+      label: f.label,
+      type: f.type,
+      options: f.options,
+      required: f.required,
+      secret: f.secret,
+      isIdentifier: f.is_identifier,
+    })),
+    credentialConsentText: wire.credential_consent_text ?? null,
   };
 }
 

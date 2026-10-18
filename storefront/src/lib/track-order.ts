@@ -17,8 +17,14 @@ export const TrackedOrderSchema = z.object({
   order_number: z.string(),
   game: z.object({ name: z.string(), slug: z.string() }).nullable(),
   package_name: z.string().nullable(),
+  // ADR-125 decisions 31/38: a login order's identifier arrives masked.
   player_id: z.string(),
   server_id: z.string().nullable(),
+  // ADR-125: "login" orders word their copy by kind; optional so a push
+  // from an older backend still parses.
+  fulfilment_kind: z.enum(["uid", "login"]).optional(),
+  player_label: z.string().nullable().optional(),
+  login_wipe_hours: z.number().nullable().optional(),
   // ADR-065 — masked server-side; the raw contact values never reach
   // this endpoint (see TrackOrderController's doc comment).
   customer_name_masked: z.string().nullable(),

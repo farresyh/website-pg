@@ -18,6 +18,9 @@ interface ReviewModalProps {
   /** Real breakdown from CheckoutTotalService (bug fix, 2026-08-30) — null while a fresh preview is in flight. */
   preview: CheckoutTotalPreview | null;
   playerId: string;
+  /** ADR-125: "Player ID", or a login game's identifier label. Secret fields are never passed here. */
+  playerLabel?: string;
+  loginGame?: boolean;
   serverId: string;
   channelLabel: string;
   customerEmail: string;
@@ -69,6 +72,8 @@ export default function ReviewModal({
   pkg,
   preview,
   playerId,
+  playerLabel = "Player ID",
+  loginGame = false,
   serverId,
   channelLabel,
   customerEmail,
@@ -290,7 +295,7 @@ export default function ReviewModal({
         <div className="mb-5 flex flex-col gap-2.5 text-sm">
           <Row k="Product" v={game.name} />
           <Row k="Package" v={pkg.name} />
-          <Row k="Player ID" v={serverId ? `${playerId} (${serverId})` : playerId} />
+          <Row k={playerLabel} v={serverId ? `${playerId} (${serverId})` : playerId} />
           <Row k="Payment Channel" v={channelLabel} />
         </div>
 
@@ -457,7 +462,9 @@ export default function ReviewModal({
             <Link href="/terms" target="_blank" className="text-primary-on-surface underline" onClick={(e) => e.stopPropagation()}>
               Terms &amp; Conditions
             </Link>{" "}
-            and confirm that the Player ID above is correct. Delivery to an incorrect ID cannot be reversed.
+            {loginGame
+              ? "and confirm that the login details I entered are correct. A wrong login means the supplier can't complete this order."
+              : "and confirm that the Player ID above is correct. Delivery to an incorrect ID cannot be reversed."}
           </span>
         </label>
         </div>
