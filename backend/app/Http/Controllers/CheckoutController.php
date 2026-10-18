@@ -159,7 +159,11 @@ class CheckoutController extends Controller
         // Membership needs BOTH the global kill-switch and this brand's
         // own toggle (ADR-061 decision 4).
         $affiliate = $this->storefrontBrand->get();
-        $membershipId = $this->membershipIdFor($request, $game, $affiliate, $platformSettings);
+        // ADR-125 decisions 35/37: identity stays bound even when this
+        // game gives no member price.
+        $membershipId = $affiliate->membershipEnabledEffective($platformSettings)
+            ? $this->resolveMembershipId($request, $affiliate->id)
+            : null;
 
         try {
             $order = $this->checkout->initiate(new CheckoutRequest(
@@ -188,6 +192,7 @@ class CheckoutController extends Controller
                 affiliateId: $affiliate->id,
                 membershipId: $membershipId,
                 credentials: $credentials,
+                memberPricingApplies: $game->memberPricingApplies(),
             ), $gateway);
         } catch (DuplicateCheckoutAttemptException) {
             // Lost a genuine race — a concurrent request with the same
@@ -401,9 +406,9 @@ class CheckoutController extends Controller
     }
 
     /**
-     * ADR-125 decision 37: the one member-pricing gate. A null membership
-     * id gives the standard price and no quota debit, in the preview and
-     * at checkout alike.
+     * ADR-125 decision 37: the preview's member-pricing gate; checkout
+     * passes the same switch as `memberPricingApplies`, so the review total
+     * and the charge always agree.
      */
     private function membershipIdFor(Request $request, Game $game, Affiliate $affiliate, PlatformSettings $settings): ?int
     {

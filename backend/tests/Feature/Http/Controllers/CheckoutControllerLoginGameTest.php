@@ -197,11 +197,13 @@ class CheckoutControllerLoginGameTest extends TestCase
             'game_id' => $game->id, 'package_id' => $package->id, 'channel_code' => 'FPX_ABMB',
         ], $headers)->assertOk()->assertJsonPath('selling_price_sen', 1200);
 
-        $this->postJson('/api/checkout', $this->loginPayload($game, $package, ['customer_email' => 'member@example.com']), $headers)->assertCreated();
+        $this->postJson('/api/checkout', $this->loginPayload($game, $package, ['customer_email' => 'typed@example.com']), $headers)->assertCreated();
 
         $order = Order::query()->sole();
         $this->assertSame(1200, $order->selling_price);
         $this->assertNull($order->membership_id);
+        // Decision 35: identity is still bound to the member (ADR-068 decision 16).
+        $this->assertSame('member@example.com', $order->customer_email);
         $this->assertSame(2000, $membership->fresh()->quota_remaining_sen);
 
         $catalog = $this->getJson("/api/catalog/games/{$game->slug}/packages", $headers)->assertOk()->json();

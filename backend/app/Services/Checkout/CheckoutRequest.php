@@ -45,5 +45,9 @@ final class CheckoutRequest
         public readonly ?string $idempotencyPayloadHash = null,
         // ADR-125 decision 41: a login game's form, stored with the order.
         public readonly ?LoginCredentials $credentials = null,
+        // ADR-125 decisions 35/37: false prices the order as a guest's (no
+        // member price, no quota) while `membershipId` still binds the
+        // order to the member's email (ADR-068 decision 16).
+        public readonly bool $memberPricingApplies = true,
     ) {}
 }
