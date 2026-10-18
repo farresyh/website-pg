@@ -150,7 +150,7 @@ export function StatusStrip({ health }: { health: DashboardHealth }) {
                   </>
                 }
                 value={supplierBalanceLabel(s.balance, s.currency, s.is_pay_after)}
-                sub={formatMyrEquivalent(s.balance_myr_equivalent) ?? undefined}
+                sub={formatMyrEquivalent(s.balance_myr_equivalent, s.currency) ?? undefined}
               />
             ))}
             <Row

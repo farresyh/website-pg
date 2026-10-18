@@ -65,8 +65,9 @@ export function supplierBalanceLabel(balance: number | null, currency: string, i
   return formatSupplierBalance(balance, currency);
 }
 
-export function formatMyrEquivalent(amount: number | null): string | null {
-  if (amount === null) return null;
+/** Null for an MYR supplier: its balance already reads in ringgit (and "Owed" for a pay-after one). */
+export function formatMyrEquivalent(amount: number | null, currency: string): string | null {
+  if (amount === null || currency === "MYR") return null;
 
   return `≈ RM ${amount.toFixed(2)}`;
 }

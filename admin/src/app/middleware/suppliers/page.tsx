@@ -241,8 +241,9 @@ export default function SuppliersPage() {
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1.5">
-                  <Tag severity={supplier.circuit_state === "closed" ? "success" : "danger"}>
-                    {supplier.circuit_state === "closed" ? "connected" : "circuit open"}
+                  {/* ADR-125: a manual supplier has no API connection to report. */}
+                  <Tag severity={!supplier.is_api_backed ? "secondary" : supplier.circuit_state === "closed" ? "success" : "danger"}>
+                    {!supplier.is_api_backed ? "manual" : supplier.circuit_state === "closed" ? "connected" : "circuit open"}
                   </Tag>
                   {supplier.is_sandbox !== null && (
                     <Tag severity={supplier.is_sandbox ? "warn" : "info"}>
