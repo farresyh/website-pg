@@ -1274,7 +1274,7 @@ Also checked and safe: no endpoint returns `PlatformSettings` publicly; `updateP
 - Admin: Order Detail "Customer Login" card (reveal 30 s + copy, replace), Settings → Customer Login Policy tab.
 - Stale "five dangerous actions" / `StepUpRoutesTest` comments fixed in `routes/api.php` and `TestCase`.
 
-Tests: 4 new files (29 tests), `AdminMfaStepUpTest` pin updated. Full suite 2836/2836; the new tests plus `OrderTest` also pass on MySQL (49/49). Admin tsc, lint, unit tests and build are clean.
+Tests: 4 new files (20 tests), `AdminMfaStepUpTest` pin updated. Full suite 2836/2836; the new tests plus `OrderTest` also pass on MySQL (49/49). Admin tsc, lint, unit tests and build are clean.
 
 **Live check.** A built admin on `localhost:3000` against `serve --no-reload` on the local dev DB, with a throwaway MFA super admin and two seeded logins. Login with TOTP → Order Detail card (password hidden) → Reveal asks for step-up → value shown with Copy → Replace saves and hides it again → Settings tab saves D = 10. DB afterwards: secret replaced and stored as ciphertext, two audit rows (reveal, replace) with IP. Contrast from `getComputedStyle`: light `rgb(27,26,23)` on white; dark muted `rgb(189,183,173)` on `rgb(26,25,23)` (~9:1). At 390 px the policy tab has no horizontal scroll once loaded at that width (157 px only when a desktop sidebar is left open by resizing, an artefact of the resize). Test data, the admin and the D change were removed afterwards.
 
