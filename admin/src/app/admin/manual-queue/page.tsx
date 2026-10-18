@@ -3,8 +3,9 @@
 /**
  * ADR-125 decisions 8/16: every paid order on a manual supplier still
  * waiting for a human (Pending, or NeedsReview after a worker died),
- * oldest first. Before PR 2's supplier WhatsApp group, the Stale tag (past
- * the supplier's reply SLA) is the alert. Any admin may confirm (Q10).
+ * oldest first. The supplier is told in its WhatsApp group and usually
+ * closes the order there (`.done` / `.gagal`, ADR-125 PR 2); this is the
+ * fallback. Stale means past the supplier's reply SLA. Any admin may confirm (Q10).
  */
 
 import React, { useEffect, useState } from "react";
@@ -46,7 +47,8 @@ export default function ManualQueuePage() {
         <div>
           <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Manual Queue</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Login top-ups waiting for the supplier. Confirm each one once the supplier tells you it is done.
+            Login top-ups waiting for the supplier. The supplier usually closes them in its WhatsApp group; confirm here
+            only if it tells you another way.
           </p>
         </div>
         <Button size="small" variant="outlined" onClick={refresh}>Refresh</Button>

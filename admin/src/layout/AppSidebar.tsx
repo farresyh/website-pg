@@ -80,6 +80,8 @@ const sections: PanelNavSection[] = [
     items: [
       { kind: "link", name: "Resellers", href: "/admin/resellers", icon: <DollarLineIcon /> },
       { kind: "link", name: "Affiliates", href: "/admin/affiliates", icon: <UserCircleIcon /> },
+      // ADR-125 decision 60: manual suppliers as partners (WhatsApp group, SLA, on/off).
+      { kind: "link", name: "Suppliers", href: "/admin/suppliers", icon: <BoxLineIcon /> },
     ],
   },
   {

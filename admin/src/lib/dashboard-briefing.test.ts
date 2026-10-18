@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { busyWindows, formatHourWindow, summarySentence } from "./dashboard-briefing.ts";
+import { busyWindows, describeAttention, formatHourWindow, summarySentence } from "./dashboard-briefing.ts";
 
 const base = { periodLabel: "Last 7 days", previousLabel: "the 7 days before", sales: 486240, orders: 312, topGame: null, lastPaidAt: null, paymentsOff: false };
 
@@ -33,4 +33,14 @@ test("the busiest 3-hour window wraps past midnight", () => {
   assert.equal(formatHourWindow(23, 3), "11 PM–2 AM");
   assert.equal(formatHourWindow(20, 3), "8–11 PM");
   assert.equal(busyWindows(Array(24).fill(0)), null);
+});
+
+test("supplier group items point at the screen that fixes them (ADR-125)", () => {
+  assert.deepEqual(describeAttention({ key: "supplier_posts_not_delivered", level: "red", count: 2, subject: null }), {
+    badge: "Supplier group",
+    tone: "danger",
+    text: "2 orders not posted to the supplier",
+    href: "/admin/manual-queue",
+  });
+  assert.equal(describeAttention({ key: "manual_supplier_without_group", level: "amber", count: 1, subject: null }).text, "1 active supplier with no WhatsApp group");
 });
