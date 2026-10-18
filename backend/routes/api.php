@@ -14,6 +14,7 @@ use App\Http\Controllers\Admin\FaqController;
 use App\Http\Controllers\Admin\GalleryImageController;
 use App\Http\Controllers\Admin\GameSeoController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
+use App\Http\Controllers\Admin\ManualQueueController;
 use App\Http\Controllers\Admin\MembershipController as AdminMembershipController;
 use App\Http\Controllers\Admin\MembershipPlanController;
 use App\Http\Controllers\Admin\MonthCloseController;
@@ -582,7 +583,14 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         // /vouchers/{order} (VoucherController::storeFromOrder), never
         // both offered for the same order.
         Route::post('/{order}/refund-to-wallet', [OrderController::class, 'refundToWallet']);
+        // ADR-125 decisions 8/42 — a manual supplier's order, confirmed by
+        // any admin through ManualDeliveryService.
+        Route::post('/{order}/manual/delivered', [ManualQueueController::class, 'delivered']);
+        Route::post('/{order}/manual/failed', [ManualQueueController::class, 'failed']);
+        Route::post('/{order}/manual/correct-to-delivered', [ManualQueueController::class, 'correctToDelivered']);
     });
+
+    Route::middleware('admin.role:super_admin,admin')->get('/manual-queue', [ManualQueueController::class, 'index']);
 
     // ADR-124 decisions 5 and 6: a customer's game login. Super Admin only,
     // behind step-up; the reveal limit runs after step-up so a step-up
@@ -1027,15 +1035,20 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
     // GAME-1..5/6/7 — Admin Games & Packages management.
     Route::middleware('admin.role:super_admin,admin')->group(function () {
         Route::get('/games', [GameController::class, 'index']);
+        Route::post('/games', [GameController::class, 'store']);
         Route::post('/games/reorder', [GameController::class, 'reorder']);
+        Route::put('/games/{game}/credential-schema', [GameController::class, 'updateCredentialSchema']);
         Route::get('/games/{game}', [GameController::class, 'show']);
         Route::put('/games/{game}', [GameController::class, 'update']);
         Route::delete('/games/{game}', [GameController::class, 'destroy']);
         Route::get('/games/{game}/packages', [GameController::class, 'packages']);
         Route::post('/games/{game}/packages/combo', [PackageController::class, 'storeCombo']);
+        Route::post('/games/{game}/packages/manual', [PackageController::class, 'storeManual']);
 
         Route::put('/packages/{package}', [PackageController::class, 'update']);
         Route::patch('/packages/{package}/markup', [PackageController::class, 'updateMarkup']);
+        Route::patch('/packages/{package}/cost', [PackageController::class, 'updateCost']);
+        Route::get('/packages/{package}/price-history', [PackageController::class, 'priceHistory']);
         Route::patch('/packages/{package}/status', [PackageController::class, 'updateStatus']);
         Route::patch('/packages/{package}/denomination', [PackageController::class, 'updateDenomination']);
         Route::patch('/packages/{package}/catalog-code', [PackageController::class, 'updateCatalogCode']);

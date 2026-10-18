@@ -3,6 +3,7 @@
 namespace App\Services\Fulfillment;
 
 use App\Models\Order;
+use App\Models\OrderCredential;
 use App\Models\OrderResendAttempt;
 use App\Models\Package;
 use App\Models\PlayerValidation;
@@ -107,7 +108,11 @@ final class OrderResendService
             // validated and sent. An empty server_id clears it; an empty
             // player_id means "no correction given".
             if ($playerId !== null && $playerId !== '') {
-                $locked->player_id = $playerId;
+                // ADR-125 decision 43: a login order's identifier is
+                // stored like checkout stores it (an email lowercased).
+                $locked->player_id = $locked->isLoginOrder() && ($locked->game?->identifierField()['type'] ?? null) === 'email'
+                    ? mb_strtolower($playerId)
+                    : $playerId;
             }
             if ($serverId !== null) {
                 $locked->server_id = $serverId !== '' ? $serverId : null;
@@ -120,6 +125,10 @@ final class OrderResendService
             if ($corrected && $locked->game !== null
                 && $error = $this->checkoutInputValidator->validate($locked->game, $locked->player_id, $locked->server_id)) {
                 throw ValidationException::withMessages([$error['field'] => [$error['message']]]);
+            }
+
+            if ($corrected && $locked->isLoginOrder()) {
+                $this->syncLoginIdentifier($locked);
             }
 
             $this->assertPlayerIdIsValidatedIfRequired($locked);
@@ -275,5 +284,25 @@ final class OrderResendService
                 'player_id' => ['Please re-validate this Player ID before resending.'],
             ]);
         }
+    }
+
+    /**
+     * ADR-125 decision 43: the corrected identifier is written to the
+     * stored login too, under the same order lock, so the supplier post
+     * (built from `fields`) never carries the old one. A login order whose
+     * game is gone can't be validated, so it can't be corrected.
+     */
+    private function syncLoginIdentifier(Order $locked): void
+    {
+        $key = $locked->game?->identifierField()['key'] ?? null;
+        if ($key === null) {
+            throw ValidationException::withMessages(['player_id' => ['This login game no longer has a login form, so its login can\'t be corrected.']]);
+        }
+
+        $credential = OrderCredential::query()->where('order_id', $locked->id)->lockForUpdate()->firstOrFail();
+        $fields = array_values(array_filter($credential->fields, fn (array $f) => $f['key'] !== $key));
+        $label = $locked->game->identifierField()['label'];
+
+        $credential->update(['fields' => [['key' => $key, 'label' => $label, 'value' => $locked->player_id], ...$fields]]);
     }
 }

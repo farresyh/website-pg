@@ -5,10 +5,10 @@ namespace App\Services\Sync;
 use App\Models\DeactivationLog;
 use App\Models\Package;
 use App\Models\PendingPriceChange;
-use App\Models\PriceChangeLog;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
 use App\Services\Pricing\ComboPricingService;
+use App\Services\Pricing\PackageCostService;
 use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -52,6 +52,7 @@ final class PackagePriceSyncService
     public function __construct(
         private readonly PackageMarkupService $markup,
         private readonly ComboPricingService $comboPricing,
+        private readonly PackageCostService $packageCost,
     ) {}
 
     public function apply(Supplier $supplier, Carbon $syncedAt, ?int $priceSyncRunId): PackagePriceSyncResult
@@ -182,7 +183,7 @@ final class PackagePriceSyncService
             }
         }
 
-        $this->propagatePrice($package, $newCostPrice, $priceSyncRunId);
+        $this->packageCost->apply($package, $newCostPrice, $priceSyncRunId);
 
         return 'applied';
     }
@@ -218,25 +219,6 @@ final class PackagePriceSyncService
                 'deactivated_at' => now(),
             ]);
         }
-    }
-
-    private function propagatePrice(Package $package, int $newCostPrice, ?int $priceSyncRunId): void
-    {
-        $newStandardSellingPrice = $this->markup->calculateStandardSellingPrice($newCostPrice, (float) $package->markup_percent);
-
-        PriceChangeLog::query()->create([
-            'price_sync_run_id' => $priceSyncRunId,
-            'package_id' => $package->id,
-            'old_cost_price' => $package->cost_price,
-            'new_cost_price' => $newCostPrice,
-            'old_standard_selling_price' => $package->standard_selling_price,
-            'new_standard_selling_price' => $newStandardSellingPrice,
-        ]);
-
-        $package->update([
-            'cost_price' => $newCostPrice,
-            'standard_selling_price' => $newStandardSellingPrice,
-        ]);
     }
 
     private function deactivate(Package $package, ?int $priceSyncRunId): bool

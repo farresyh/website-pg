@@ -2,6 +2,7 @@
 
 namespace App\Services\Order;
 
+use App\Services\Checkout\LoginCredentials;
 use App\Services\Pricing\PricingResolution;
 use DateTimeInterface;
 
@@ -56,6 +57,9 @@ final readonly class OrderDraft
         public ?string $channelCode = null,
         public DeliveryStatus $deliveryStatus = DeliveryStatus::NotStarted,
         public bool $isTest = false,
+        // ADR-125 decision 41: a login order's credential row, written in
+        // the same transaction as the order INSERT.
+        public ?LoginCredentials $credentials = null,
     ) {}
 
     /**

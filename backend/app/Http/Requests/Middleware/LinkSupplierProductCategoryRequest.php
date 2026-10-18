@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Middleware;
 
+use App\Models\Game;
 use App\Models\Supplier;
+use App\Services\Catalog\GameFulfilmentRule;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -88,6 +90,10 @@ class LinkSupplierProductCategoryRequest extends FormRequest
             'validation_rules.player_id_format' => ['nullable', Rule::in(['numeric', 'text'])],
             'validation_rules.zone_options' => ['nullable', 'array'],
             'validation_rules.zone_options.*' => ['string', 'max:255'],
+            // ADR-125 decision 33: a free array would let a schema in
+            // unchecked; schemas are written only by the credential-schema
+            // endpoint.
+            'validation_rules.credential_fields' => ['prohibited'],
         ];
     }
 
@@ -96,6 +102,11 @@ class LinkSupplierProductCategoryRequest extends FormRequest
         $validator->after(function (Validator $validator) {
             if ($this->filled('game_id') && $this->filled('new_game.name')) {
                 $validator->errors()->add('game_id', 'Provide either game_id or new_game, not both.');
+            }
+
+            $game = $this->filled('game_id') ? Game::query()->find($this->input('game_id')) : null;
+            if ($game !== null && ($error = GameFulfilmentRule::supplierPackage($game))) {
+                $validator->errors()->add('game_id', $error);
             }
 
             if ($this->filled('validation_rules.customer_no_separator')) {

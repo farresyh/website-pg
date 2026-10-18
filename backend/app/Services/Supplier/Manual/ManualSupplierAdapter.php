@@ -17,8 +17,10 @@ use App\Services\Supplier\ValidationNotSupportedException;
  * balance would trip the low-balance alert. Callers ask
  * `Supplier::isApiBacked()` first and never get here.
  *
- * `createOrder` is refused until PR 1b adds the Manual Queue (ADR-125
- * 2026-10-18 addendum, decision 25); no manual package can exist before it.
+ * `createOrder` is the one call that answers: it decides Pending (ADR-125
+ * decision 8), which puts the order in the admin's Manual Queue, where a
+ * human confirms it through ManualDeliveryService. Nothing is sent
+ * anywhere yet; PR 2 posts it to the supplier's WhatsApp group.
  */
 final class ManualSupplierAdapter implements SupplierAdapter
 {
@@ -34,7 +36,11 @@ final class ManualSupplierAdapter implements SupplierAdapter
 
     public function createOrder(SupplierOrderRequest $request): SupplierResponse
     {
-        throw $this->unsupported('createOrder');
+        return SupplierResponse::pending([
+            'manual' => true,
+            'reference' => $request->referenceNumber,
+            'queued_at' => now()->toISOString(),
+        ]);
     }
 
     public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse

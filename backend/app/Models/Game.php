@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 class Game extends Model
 {
@@ -25,6 +26,7 @@ class Game extends Model
         'validation_rules',
         'player_validator_profile_id',
         'player_validator_enabled',
+        'member_pricing_enabled',
         'seo_title',
         'seo_title_local',
         'seo_description',
@@ -43,8 +45,23 @@ class Game extends Model
         'supplier_mappings' => 'array',
         'validation_rules' => 'array',
         'player_validator_enabled' => 'boolean',
+        'member_pricing_enabled' => 'boolean',
         'no_index' => 'boolean',
     ];
+
+    public static function uniqueSlug(string $name): string
+    {
+        $base = Str::slug($name);
+        $slug = $base;
+        $suffix = 2;
+
+        while (self::query()->where('slug', $slug)->exists()) {
+            $slug = "{$base}-{$suffix}";
+            $suffix++;
+        }
+
+        return $slug;
+    }
 
     public function packages(): HasMany
     {
@@ -108,6 +125,54 @@ class Game extends Model
      * this column existed, so no admin action is required for any
      * existing game to keep behaving exactly as it does today.
      */
+    /**
+     * ADR-125 decision 6: a login game's per-game form,
+     * `[{key, label, type, options?, required, secret, is_identifier}]`,
+     * written only by GameCredentialSchemaController (GameFulfilmentRule).
+     * Empty for a UID game.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function credentialFields(): array
+    {
+        $fields = $this->validation_rules['credential_fields'] ?? null;
+
+        return is_array($fields) ? array_values($fields) : [];
+    }
+
+    /** ADR-125 decision 5: derived from the schema, never a second flag. */
+    public function isLoginGame(): bool
+    {
+        return $this->credentialFields() !== [];
+    }
+
+    /**
+     * The one non-secret field that fills `player_id` (decision 6).
+     *
+     * @return array<string, mixed>|null
+     */
+    public function identifierField(): ?array
+    {
+        foreach ($this->credentialFields() as $field) {
+            if (! empty($field['is_identifier'])) {
+                return $field;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * ADR-125 decisions 7/35/37: the one gate for a member price on this
+     * game. Read where the membership id is resolved (CheckoutController),
+     * the public package price and the savings-badge sample. A row
+     * inserted without the column (seeder) reads as on, the DB default.
+     */
+    public function memberPricingApplies(): bool
+    {
+        return $this->member_pricing_enabled ?? true;
+    }
+
     public function effectiveDeliverySubtext(): string
     {
         return $this->delivery_subtext ?? 'Average delivery: 1–3 minutes';

@@ -3,10 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Games\ReorderGamesRequest;
+use App\Http\Requests\Games\StoreLoginGameRequest;
+use App\Http\Requests\Games\UpdateGameCredentialSchemaRequest;
 use App\Http\Requests\Games\UpdateGameRequest;
 use App\Models\Game;
 use App\Models\Package;
 use App\Models\SupplierProduct;
+use App\Services\Catalog\GameFulfilmentRule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -98,10 +101,58 @@ class GameController extends Controller
         return response()->json($game->loadCount('packages'));
     }
 
+    /**
+     * ADR-125 decision 33: a login game, created with its credential
+     * schema. Inactive until the admin adds manual packages and turns it
+     * on; `validation_rules` holds the schema alone.
+     */
+    public function store(StoreLoginGameRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+
+        $game = Game::query()->create([
+            'name' => $data['name'],
+            'slug' => $data['slug'] ?? Game::uniqueSlug($data['name']),
+            'category' => $data['category'] ?? null,
+            'description' => $data['description'] ?? null,
+            'delivery_mode' => 'manual',
+            'delivery_subtext' => $data['delivery_subtext'],
+            'member_pricing_enabled' => $data['member_pricing_enabled'],
+            'is_active' => false,
+            'validation_rules' => ['credential_fields' => GameFulfilmentRule::normalizeSchema($data['credential_fields'])],
+        ]);
+        self::forgetIndexCache();
+
+        return response()->json($game->loadCount('packages'), 201);
+    }
+
+    /**
+     * ADR-125 decision 46: a login game's `validation_rules` is replaced
+     * whole, dropping UID-only keys (`extra_field`, `zone_options`,
+     * `player_id_format`, separator); an empty schema turns it back into a
+     * UID game with no rules.
+     */
+    public function updateCredentialSchema(UpdateGameCredentialSchemaRequest $request, Game $game): JsonResponse
+    {
+        $fields = (array) $request->validated('credential_fields');
+
+        $game->update(['validation_rules' => $fields === []
+            ? null
+            : ['credential_fields' => GameFulfilmentRule::normalizeSchema($fields)]]);
+        self::forgetIndexCache();
+        self::forgetPackagesCache($game->id);
+
+        return response()->json($game);
+    }
+
     public function update(UpdateGameRequest $request, Game $game): JsonResponse
     {
         $game->update($request->validated());
         self::forgetIndexCache();
+        // ADR-125 decision 37: the packages listing carries
+        // `member_price_sen`, so a member-pricing switch must not wait out
+        // the cache.
+        self::forgetPackagesCache($game->id);
 
         return response()->json($game);
     }

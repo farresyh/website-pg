@@ -52,7 +52,13 @@ final class MembershipPricingService
      */
     public function representativePackage(): ?Package
     {
-        $active = Package::query()->where('is_active', true)->orderBy('cost_price')->get();
+        // ADR-125 decision 35: a game with member pricing off never
+        // gives a member price, so it can't be the savings example.
+        $active = Package::query()
+            ->where('is_active', true)
+            ->whereHas('game', fn ($q) => $q->where('member_pricing_enabled', true))
+            ->orderBy('cost_price')
+            ->get();
 
         if ($active->isEmpty()) {
             return null;

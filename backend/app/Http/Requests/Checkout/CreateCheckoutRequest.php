@@ -77,7 +77,13 @@ class CreateCheckoutRequest extends FormRequest
             'customer_email' => ['required', 'email', 'max:255'],
             'customer_name' => ['required', 'string', 'max:50'], // CHIP client.full_name — keep names short
             'customer_phone' => ['required', 'string', 'max:32'],
-            'player_id' => ['required', 'string', 'max:255'],
+            // ADR-125 decision 32: nullable — a UID game's "required" is
+            // CheckoutInputValidator's; a login game takes `credentials`
+            // instead, and its player_id is set by the server.
+            'player_id' => ['nullable', 'string', 'max:255'],
+            'credentials' => ['nullable', 'array', 'max:8'],
+            'credentials.*' => ['nullable', 'string', 'max:255'],
+            'credential_consent' => ['nullable', 'boolean'],
             'server_id' => ['nullable', 'string', 'max:255'],
             'channel_code' => [
                 'required',

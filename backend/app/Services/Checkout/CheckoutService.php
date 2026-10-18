@@ -71,7 +71,7 @@ final class CheckoutService
             $request->packageMarkupPercent,
             $request->affiliateMarkupPct,
             $request->tierMarkupPct,
-            $request->membershipId,
+            $request->memberPricingApplies ? $request->membershipId : null,
         );
 
         // ADR-068 decision 16: a logged-in member's order is attributed
@@ -144,6 +144,7 @@ final class CheckoutService
                 affiliateMarkupPct: $request->affiliateMarkupPct,
                 paymentGateway: $request->paymentGateway,
                 channelCode: $request->channelCode,
+                credentials: $request->credentials,
             ));
         } catch (DuplicateOrderException $e) {
             throw new DuplicateCheckoutAttemptException(

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Games;
 
 use App\Models\Package;
+use App\Services\Catalog\GameFulfilmentRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -60,7 +61,7 @@ class StoreComboPackageRequest extends FormRequest
 
             $game = $this->route('game');
             $packageIds = collect($components)->pluck('package_id')->filter()->all();
-            $packages = Package::query()->whereIn('id', $packageIds)->get()->keyBy('id');
+            $packages = Package::query()->with('supplier')->whereIn('id', $packageIds)->get()->keyBy('id');
 
             $totalLegs = 0;
             $supplierIds = [];
@@ -93,6 +94,10 @@ class StoreComboPackageRequest extends FormRequest
                         "components.{$index}.package_id",
                         'Component must have a denomination set — a catalog_code-only package (bundle/pass) has no numeric amount to sum.',
                     );
+                }
+
+                if ($error = GameFulfilmentRule::comboComponentSupplier($package->supplier)) {
+                    $validator->errors()->add("components.{$index}.package_id", $error);
                 }
 
                 $totalLegs += (int) ($component['quantity'] ?? 0);
