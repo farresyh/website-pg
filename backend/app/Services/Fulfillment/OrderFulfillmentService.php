@@ -215,7 +215,7 @@ final class OrderFulfillmentService
             $delivered = DB::transaction(function () use ($order, $referenceNumber, $wasNotStarted, $resubmit, &$drawdownPrice, &$recoveryPollScheduled, $triggeredBy, $note, $recordAttempt) {
                 $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
-                $adapter = $this->supplierAdapters->make($locked->supplier->slug);
+                $adapter = $this->supplierAdapters->for($locked->supplier);
 
                 $result = $adapter->createOrder(new SupplierOrderRequest(
                     productRef: $locked->supplier_product_ref,
@@ -617,7 +617,7 @@ final class OrderFulfillmentService
                 $lockedLeg->update(['reference_number' => $legReferenceNumber]);
 
                 $component = $lockedLeg->componentPackage;
-                $adapter = $this->supplierAdapters->make($component->supplier->slug);
+                $adapter = $this->supplierAdapters->for($component->supplier);
 
                 $result = $adapter->createOrder(new SupplierOrderRequest(
                     productRef: $component->supplier_package_ref,
@@ -653,7 +653,7 @@ final class OrderFulfillmentService
                     // ADR-102 addendum (2026-09-29): same replay-safe rule as
                     // fulfill() — park at Pending, polled with this leg's
                     // own same reference, instead of NeedsReview.
-                    if ($requiresManualReview && SupplierAdapterFactory::resubmitReplaysOutcome($component->supplier->slug)) {
+                    if ($requiresManualReview && SupplierAdapterFactory::resubmitReplaysOutcome($component->supplier)) {
                         $lockedLeg->update(['status' => DeliveryStatus::Pending->value]);
                         $parked = true;
 
@@ -745,7 +745,7 @@ final class OrderFulfillmentService
 
                 // ADR-102 addendum (2026-09-29) — replay-safe supplier: Pending
                 // under the reference it was genuinely attempted with.
-                if (SupplierAdapterFactory::resubmitReplaysOutcome((string) $lockedLeg->componentPackage?->supplier?->slug)) {
+                if (SupplierAdapterFactory::resubmitReplaysOutcome($lockedLeg->componentPackage?->supplier)) {
                     $lockedLeg->update(array_filter([
                         'status' => DeliveryStatus::Pending->value,
                         'reference_number' => $legReferenceNumber,
@@ -1558,7 +1558,7 @@ final class OrderFulfillmentService
 
     private function resubmitReplaysOutcome(Order $order): bool
     {
-        return SupplierAdapterFactory::resubmitReplaysOutcome((string) $order->supplier?->slug);
+        return SupplierAdapterFactory::resubmitReplaysOutcome($order->supplier);
     }
 
     /** Processing → Pending, keeping the stored reference; caller holds the row lock. */

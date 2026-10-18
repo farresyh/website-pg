@@ -63,7 +63,7 @@ class SupplierController extends Controller
                 // should actually gate on — every key
                 // SupplierConfigSchema defines for this slug present,
                 // not merely "not empty".
-                'is_fully_configured' => SupplierConfigSchema::missingKeys($supplier->slug, $supplier->api_config ?? []) === [],
+                'is_fully_configured' => SupplierConfigSchema::missingKeys($supplier->driver, $supplier->api_config ?? []) === [],
                 // Per-secret-field presence (never the value itself,
                 // same SUPP-5 boundary visibleConfig() already
                 // enforces) — lets the Edit form's per-field badge
@@ -73,6 +73,10 @@ class SupplierController extends Controller
                 'configured_secret_keys' => $this->configuredSecretKeys($supplier),
                 'visible_config' => $this->visibleConfig($supplier),
                 'is_sandbox' => $this->isSandbox($supplier),
+                // ADR-125 decisions 2 and 18: a manual supplier has no API
+                // to poll, so its balance is its funding ledger.
+                'is_api_backed' => $supplier->isApiBacked(),
+                'display_balance' => $supplier->displayBalance(),
                 'reference_counts' => $this->referenceCounts($supplier),
             ]);
         })->values();
@@ -81,13 +85,13 @@ class SupplierController extends Controller
     }
 
     /**
-     * ADR-046 decision 4 — backs the Create modal's slug dropdown with
+     * ADR-046 decision 4 — backs the Create modal's driver dropdown with
      * the same source of truth CreateSupplierRequest validates
      * against, so the two can never drift apart.
      */
-    public function availableSlugs(SupplierAdapterFactory $adapters): JsonResponse
+    public function availableDrivers(SupplierAdapterFactory $adapters): JsonResponse
     {
-        return response()->json($adapters->registeredSlugs());
+        return response()->json($adapters->registeredDrivers());
     }
 
     public function store(CreateSupplierRequest $request): JsonResponse
@@ -95,7 +99,7 @@ class SupplierController extends Controller
         $data = $request->validated();
 
         if (array_key_exists('api_config', $data)) {
-            $data['api_config'] = SupplierConfigSchema::normalizeConfig($data['slug'], $data['api_config']);
+            $data['api_config'] = SupplierConfigSchema::normalizeConfig($data['driver'], $data['api_config']);
         }
 
         $supplier = Supplier::query()->create(array_merge(['api_config' => []], $data));
@@ -121,9 +125,18 @@ class SupplierController extends Controller
         $data = $request->validated();
         $configChanged = array_key_exists('api_config', $data);
 
+        // ADR-125 decision 18: an API supplier is always prepaid.
+        if (array_key_exists('funding_mode', $data) && $supplier->isApiBacked() && $data['funding_mode'] !== Supplier::FUNDING_PREPAID) {
+            throw ValidationException::withMessages(['funding_mode' => ['An API supplier is always prepaid.']]);
+        }
+        // ADR-125 decision 9: a manual supplier is paid in RM.
+        if (array_key_exists('currency', $data) && ! $supplier->isApiBacked() && $data['currency'] !== 'MYR') {
+            throw ValidationException::withMessages(['currency' => ['A manual supplier is paid in MYR.']]);
+        }
+
         if ($configChanged) {
             $data['api_config'] = SupplierConfigSchema::normalizeConfig(
-                $supplier->slug,
+                $supplier->driver,
                 array_merge($supplier->api_config ?? [], $data['api_config']),
             );
         }
@@ -138,7 +151,7 @@ class SupplierController extends Controller
         // such a path) must surface now, not only when the next order
         // fails. Probe the connection right after saving and hand the
         // result back for the form to show. Never blocks the save.
-        if ($configChanged) {
+        if ($configChanged && $supplier->isApiBacked()) {
             $payload['connection_probe'] = $this->probeConnection($supplier, $adapters);
         }
 
@@ -162,7 +175,7 @@ class SupplierController extends Controller
     private function probeConnection(Supplier $supplier, SupplierAdapterFactory $adapters): array
     {
         try {
-            $adapter = $adapters->make($supplier->slug);
+            $adapter = $adapters->for($supplier);
         } catch (UnsupportedSupplierException|SupplierNotConfiguredException $e) {
             return ['connection_ok' => false, 'balance' => null, 'error' => $e->getMessage()];
         }
@@ -242,8 +255,12 @@ class SupplierController extends Controller
      */
     public function refreshBalance(Supplier $supplier, SupplierAdapterFactory $adapters): JsonResponse
     {
+        if (! $supplier->isApiBacked()) {
+            throw ValidationException::withMessages(['supplier' => ['A manual supplier has no API balance; its balance is its funding ledger.']]);
+        }
+
         try {
-            $adapter = $adapters->make($supplier->slug);
+            $adapter = $adapters->for($supplier);
         } catch (UnsupportedSupplierException|SupplierNotConfiguredException $e) {
             throw ValidationException::withMessages(['supplier' => [$e->getMessage()]]);
         }
@@ -380,7 +397,7 @@ class SupplierController extends Controller
      */
     private function visibleConfig(Supplier $supplier): array
     {
-        $definition = SupplierConfigSchema::fieldsFor($supplier->slug);
+        $definition = SupplierConfigSchema::fieldsFor($supplier->driver);
         $apiConfig = $supplier->api_config ?? [];
 
         $visible = [];
@@ -403,7 +420,7 @@ class SupplierController extends Controller
      */
     private function configuredSecretKeys(Supplier $supplier): array
     {
-        $definition = SupplierConfigSchema::fieldsFor($supplier->slug);
+        $definition = SupplierConfigSchema::fieldsFor($supplier->driver);
         $apiConfig = $supplier->api_config ?? [];
 
         return collect($definition)
@@ -426,7 +443,7 @@ class SupplierController extends Controller
      */
     private function isSandbox(Supplier $supplier): ?bool
     {
-        return SupplierConfigSchema::isSandbox($supplier->slug, $supplier->api_config ?? []);
+        return SupplierConfigSchema::isSandbox($supplier->driver, $supplier->api_config ?? []);
     }
 
     /**

@@ -45,7 +45,12 @@ class DeveloperToolController extends Controller
         $dryRun = (bool) $request->validated('dry_run');
         $payload = $request->validated('payload') ?? [];
 
-        $missingKeys = SupplierConfigSchema::missingKeys($supplier->slug, $supplier->api_config ?? []);
+        // ADR-125 decision 2: a manual supplier has no API to test.
+        if (! $supplier->isApiBacked()) {
+            throw ValidationException::withMessages(['supplier' => ['A manual supplier has no API to test.']]);
+        }
+
+        $missingKeys = SupplierConfigSchema::missingKeys($supplier->driver, $supplier->api_config ?? []);
         if ($missingKeys !== []) {
             throw ValidationException::withMessages([
                 'supplier' => ['This supplier is not fully configured — missing: '.implode(', ', $missingKeys).'.'],
@@ -58,18 +63,18 @@ class DeveloperToolController extends Controller
             return response()->json([
                 'dry_run' => true,
                 'method' => $method,
-                'request' => $this->redact($supplier->slug, $this->requestPreview($builtRequest)),
+                'request' => $this->redact($supplier->driver, $this->requestPreview($builtRequest)),
             ]);
         }
 
-        if ($method === 'createOrder' && SupplierConfigSchema::isSandbox($supplier->slug, $supplier->api_config ?? []) !== true) {
+        if ($method === 'createOrder' && SupplierConfigSchema::isSandbox($supplier->driver, $supplier->api_config ?? []) !== true) {
             throw ValidationException::withMessages([
                 'method' => ['createOrder cannot be live-fired against this supplier while it is in production mode (or its sandbox/testing mode is unconfirmed). Switch the supplier to sandbox/testing mode first, or use dry-run.'],
             ]);
         }
 
         try {
-            $adapter = $adapters->make($supplier->slug);
+            $adapter = $adapters->for($supplier);
         } catch (UnsupportedSupplierException $e) {
             throw ValidationException::withMessages(['supplier' => [$e->getMessage()]]);
         }
@@ -87,7 +92,7 @@ class DeveloperToolController extends Controller
             'method' => $method,
             'success' => $response->success,
             'outcome' => $response->outcome->value,
-            'data' => $this->redact($supplier->slug, $this->responseData($method, $response)),
+            'data' => $this->redact($supplier->driver, $this->responseData($method, $response)),
             'error_code' => $response->errorCode,
             'error_message' => $response->errorMessage,
         ]);

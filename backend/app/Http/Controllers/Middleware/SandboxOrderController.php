@@ -161,7 +161,7 @@ class SandboxOrderController extends Controller
             $request->validated('error_message'),
         );
 
-        app()->bind("supplier-adapter.{$targetPackage->supplier->slug}", fn () => $adapter);
+        app()->bind("supplier-adapter.{$targetPackage->supplier->driver}", fn () => $adapter);
 
         $fulfillment = new OrderFulfillmentService(
             new OrderStatusService,

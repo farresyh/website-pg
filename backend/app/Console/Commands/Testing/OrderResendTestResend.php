@@ -71,7 +71,7 @@ class OrderResendTestResend extends Command
             }
         };
 
-        app()->bind("supplier-adapter.{$package->supplier->slug}", fn () => $adapter);
+        app()->bind("supplier-adapter.{$package->supplier->driver}", fn () => $adapter);
 
         $service = new OrderResendService(new OrderFulfillmentService(
             new OrderStatusService,

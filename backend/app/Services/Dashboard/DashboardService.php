@@ -11,6 +11,7 @@ use App\Models\ResellerWhatsAppPendingLink;
 use App\Models\Review;
 use App\Models\Supplier;
 use App\Models\Withdrawal;
+use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Currency\CurrencyRateService;
 use App\Services\Currency\CurrencyRateUnavailableException;
@@ -74,10 +75,11 @@ final class DashboardService
             // ADR-069 decision 13 — low_balance is true only when both a
             // balance and a threshold exist and the balance is under it.
             $threshold = $supplier->api_config['low_balance_threshold'] ?? null;
-            $lowBalance = $supplier->balance !== null
+            $balance = $supplier->displayBalance();
+            $lowBalance = $balance !== null
                 && $threshold !== null
                 && is_numeric($threshold)
-                && (float) $supplier->balance < (float) $threshold;
+                && $balance < (float) $threshold;
 
             // ADR-083 decision 6 — same computation
             // app:refresh-supplier-balances logs from, exposed here for
@@ -90,7 +92,12 @@ final class DashboardService
                 'id' => $supplier->id,
                 'name' => $supplier->name,
                 'slug' => $supplier->slug,
-                'balance' => (float) $supplier->balance,
+                // ADR-125 decisions 18 and 21: the polled balance for an API
+                // supplier, the funding ledger for a manual one (negative =
+                // owed, for a pay-after supplier).
+                'balance' => $balance,
+                'is_api_backed' => $supplier->isApiBacked(),
+                'is_pay_after' => $supplier->isPayAfter(),
                 // Found live, 2026-09-15: this endpoint never carried
                 // `currency` at all — both this screen and the
                 // /middleware dashboard (same endpoint) either
@@ -122,10 +129,11 @@ final class DashboardService
         $resellerWalletLiabilitySen = (int) LedgerEntry::query()
             ->where('owner_type', LedgerOwnerType::ResellerWallet->value)
             ->sum('amount');
-        $totalSupplierBalanceMyrEquivalent = collect($suppliers)->sum('balance_myr_equivalent');
+        // ADR-125 decision 21: only API suppliers' stock backs a reseller
+        // wallet (no reseller channel sells a manual supplier's games).
+        $totalSupplierBalanceMyrEquivalent = collect($suppliers)->where('is_api_backed', true)->sum('balance_myr_equivalent');
 
         $staleAfterMinutes = (int) config('services.delivery_reconciliation.stale_after_minutes');
-        $pendingStaleMinutes = (int) config('services.delivery_reconciliation.pending_stale_minutes');
         $nowUtc = CarbonImmutable::now('UTC');
 
         $needsReviewCount = Order::query()
@@ -139,10 +147,15 @@ final class DashboardService
             ->where('updated_at', '<=', $nowUtc->subMinutes($staleAfterMinutes))
             ->count();
 
+        // ADR-125 decision 3: each supplier's own stale window
+        // (Supplier::pendingPolicy()), the same rule the reconciler uses.
+        // Pending orders are few, so they are judged in PHP.
         $stalePendingCount = Order::query()
             ->where('is_test', false)
             ->where('delivery_status', DeliveryStatus::Pending->value)
-            ->where('updated_at', '<=', $nowUtc->subMinutes($pendingStaleMinutes))
+            ->with(['supplier', 'package.components.supplier'])
+            ->get()
+            ->filter(fn (Order $order) => $order->isStalePending())
             ->count();
 
         $pendingPaymentsCount = Order::query()
@@ -182,7 +195,7 @@ final class DashboardService
             'openwa_session_definition' => 'Last-known session.status event OpenWaWebhookController received, cache-backed (no live ping), 1h TTL. Null means no event in the last hour, not confirmed healthy.',
             'stuck_orders' => [
                 'value' => $needsReviewCount + $staleProcessingCount + $stalePendingCount,
-                'definition' => "COUNT of orders where delivery_status=needs_review, PLUS delivery_status=processing older than {$staleAfterMinutes} minutes, PLUS delivery_status=pending older than {$pendingStaleMinutes} minutes (both thresholds from the same delivery_reconciliation config ReconcilePendingDeliveriesCommand itself uses — DELIVERY_RECONCILIATION_STALE_AFTER_MINUTES/PENDING_STALE_MINUTES). Excludes is_test orders.",
+                'definition' => "COUNT of orders where delivery_status=needs_review, PLUS delivery_status=processing older than {$staleAfterMinutes} minutes, PLUS delivery_status=pending past its supplier's stale window (Supplier::pendingPolicy(): an API supplier's pending_stale_minutes, else DELIVERY_RECONCILIATION_PENDING_STALE_MINUTES; a manual supplier's reply SLA) — the same rule ReconcilePendingDeliveriesCommand uses. Excludes is_test orders.",
             ],
             'pending_payments' => [
                 'value' => $pendingPaymentsCount,
@@ -252,6 +265,10 @@ final class DashboardService
             'whatsapp_links_pending' => ResellerWhatsAppPendingLink::query()->count(),
             'backup_failed' => (int) ($lastBackup === 'failed'),
             'customer_whatsapp_disconnected' => (int) ($openWaCsSession !== null && $openWaCsSession['status'] !== 'connected'),
+            // ADR-125 decision 21: a manual supplier has no drift check, and
+            // recordOrderDrawdown() runs after commit and swallows errors,
+            // so a Delivered order with no drawdown is surfaced here.
+            'manual_delivery_without_drawdown' => $this->manualDeliveriesWithoutDrawdown(),
         ];
 
         $methods = PaymentMethod::query()->selectRaw('COUNT(*) as total, SUM(CASE WHEN is_active THEN 1 ELSE 0 END) as active')->first();
@@ -288,18 +305,34 @@ final class DashboardService
      * the FX API is down and nothing was ever cached for this pair —
      * null just means "comparison unavailable right now", not an error.
      */
+    private function manualDeliveriesWithoutDrawdown(): int
+    {
+        return Order::query()
+            ->where('is_test', false)
+            ->where('delivery_status', DeliveryStatus::Delivered->value)
+            ->whereHas('supplier', fn ($q) => $q->where('driver', Supplier::DRIVER_MANUAL))
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')
+                ->from('supplier_ledger_entries')
+                ->where('supplier_ledger_entries.type', SupplierLedgerEntryType::OrderDrawdown->value)
+                ->where('supplier_ledger_entries.reference_type', 'order')
+                ->whereColumn('supplier_ledger_entries.reference_id', 'orders.id'))
+            ->count();
+    }
+
     private function balanceInMyr(Supplier $supplier): ?float
     {
-        if ($supplier->balance === null) {
+        $balance = $supplier->displayBalance();
+
+        if ($balance === null) {
             return null;
         }
 
         if ($supplier->currency === 'MYR') {
-            return (float) $supplier->balance;
+            return $balance;
         }
 
         try {
-            return round((float) $supplier->balance * $this->currencyRates->rate($supplier->currency, 'MYR'), 2);
+            return round($balance * $this->currencyRates->rate($supplier->currency, 'MYR'), 2);
         } catch (CurrencyRateUnavailableException) {
             return null;
         }

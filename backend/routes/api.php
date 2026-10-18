@@ -619,7 +619,7 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
     // config, per PRD §3.
     Route::middleware('admin.role:super_admin')->prefix('middleware/suppliers')->group(function () {
         Route::get('/', [SupplierController::class, 'index']);
-        Route::get('/available-slugs', [SupplierController::class, 'availableSlugs']);
+        Route::get('/available-drivers', [SupplierController::class, 'availableDrivers']);
         Route::post('/', [SupplierController::class, 'store'])->middleware('mfa.stepup');
         Route::put('/{supplier}', [SupplierController::class, 'update'])->middleware('mfa.stepup:api_config');
         Route::patch('/{supplier}/status', [SupplierController::class, 'updateStatus']);
