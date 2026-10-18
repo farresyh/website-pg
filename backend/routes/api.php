@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\MembershipController as AdminMembershipController
 use App\Http\Controllers\Admin\MembershipPlanController;
 use App\Http\Controllers\Admin\MonthCloseController;
 use App\Http\Controllers\Admin\OrderController;
+use App\Http\Controllers\Admin\OrderCredentialController;
 use App\Http\Controllers\Admin\PaymentSettlementController;
 use App\Http\Controllers\Admin\RedirectController;
 use App\Http\Controllers\Admin\ReportAssistantController;
@@ -443,8 +444,8 @@ Route::prefix('reseller-portal')->middleware(['auth:affiliate', 'account.type:re
 
 // ADR-121: `admin.session` caps a cookie login at 7 days. Admin bearer
 // tokens are refused in AppServiceProvider, so this group is session-only
-// for admins. `mfa.stepup` marks the five dangerous actions
-// (StepUpRoutesTest pins the set).
+// for admins. `mfa.stepup` marks the dangerous actions
+// (AdminMfaStepUpTest::test_exactly_these_routes_require_step_up pins the set).
 Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
@@ -583,6 +584,14 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::post('/{order}/refund-to-wallet', [OrderController::class, 'refundToWallet']);
     });
 
+    // ADR-124 decisions 5 and 6: a customer's game login. Super Admin only,
+    // behind step-up; the reveal limit runs after step-up so a step-up
+    // prompt doesn't spend it.
+    Route::middleware(['admin.role:super_admin', 'mfa.stepup'])->prefix('orders/{order}/credentials')->group(function () {
+        Route::post('/reveal', [OrderCredentialController::class, 'reveal'])->middleware('throttle:credential-reveal');
+        Route::put('/', [OrderCredentialController::class, 'replace']);
+    });
+
     // ADR-018: a middleware-only sandbox for exercising the real Order
     // lifecycle (status transitions, resend, Delivery Logs) without
     // touching real data or real money — fully separate from
@@ -699,6 +708,8 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::delete('/branding/favicon', [SettingsController::class, 'destroyFavicon']);
         Route::put('/footer', [SettingsController::class, 'updateFooter']);
         Route::put('/platform', [SettingsController::class, 'updatePlatform']);
+        // ADR-124 decision 10 — Customer Login Policy, behind step-up.
+        Route::put('/customer-login-policy', [SettingsController::class, 'updateCustomerLoginPolicy'])->middleware('mfa.stepup');
         Route::post('/platform/bulk-markup', [SettingsController::class, 'bulkMarkup']);
     });
 
