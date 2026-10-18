@@ -1345,3 +1345,20 @@ Tests: 7 new files (41 tests) plus `ManualCorrectionConcurrencyTest` (correction
 - A background `php artisan` launched after the shell's cwd moved to the repo root fails with "Could not open input file: artisan" and still exits 0; run it from `backend/`.
 
 **Next.** 1b-ii: admin and storefront screens, then the live click-through, then PR 2.
+
+## 2026-10-18 — §16 item 113 PR 1b-ii: login top-up screens, admin and storefront (ADR-125)
+
+**Why.** 1b-i (#509) built the backend; nothing could be clicked. This adds the screens and proves the whole flow end to end.
+
+**Shipped.**
+- Admin, `/admin/games`: "New Login Game" (name, subtext, member pricing, login form); a login game's detail shows "Login Form…" and "Add Package…" instead of "Create Combo…"; "Edit cost" on each manual package opens the cost form with its price history (who, when, sync or hand); Edit Game has the member-pricing switch and hides reseller code and validator for a login game.
+- Admin, `/admin/manual-queue` (sidebar under Orders): paid Pending/NeedsReview manual orders, oldest first, with Stale and Login-wiped tags; Mark Delivered (real cost defaults to the agreed cost, a different one needs a reason) and Mark Failed. Order Detail shows the same actions plus "Correct to Delivered…" on a Failed, uncompensated manual order, labels the login, and hides Mark as Delivered, Confirm Failed and Check from Supplier for a manual supplier. Resend's correction becomes "Login Correction" with no Server ID.
+- Backend extras: `GET /manual-suppliers` (an admin may add a manual package but the supplier list is super_admin middleware config); the game detail carries `credential_consent_text`, so the consent box shows the text the order snapshots; the admin's credential replace skips `TrimStrings` (closes the open edge from 1b-i).
+- Storefront: Step 1 renders the game's login form (password with show/hide, choices, inline hints) and the consent box; the order sends `credentials` + `credential_consent`, never a `player_id`; the summary and review show only the identifier under its own label; the review's terms line, the fact line, the stepper ("Enter Login") and the status page (masked login, "usually within 30 minutes", delete-within-G-hours and change-your-password on delivery) read the fulfilment kind. A login game ignores a `player_id` in the URL.
+
+**Verification.** Backend 2892/2892. Admin and storefront tsc, lint and build clean; admin unit tests 14/14. New e2e golden path `admin-login-topup.spec.ts` (ADR-023 Trigger A: a new resolution mechanism) drives the real UI: create the game and package, activate, check out with a login, pay (webhook), confirm in the Manual Queue, then the status page shows `p••••@example.com` and the password line; it also asserts the password never appears in review and the order's real cost is 4000 sen with a `manual_confirm` attempt. Full e2e suite 7/7. Screenshots of the login form, Manual Queue and status page checked by eye.
+
+**Gotchas.**
+- The e2e backend ran `CACHE_STORE=database`, which has no `Cache::tags()`. Every admin game write flushes the tagged catalog index, so the first spec that edited a game got a 500 (the game was still created), and the storefront's game list had been falling back on every read. Switched to `array` (holds nothing across requests there; it only loosens rate limits in that throwaway suite).
+
+**Next.** Release when the founder asks; then PR 2 (supplier WhatsApp group bot).
