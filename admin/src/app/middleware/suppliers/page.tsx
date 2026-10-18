@@ -33,7 +33,7 @@ import { listGames, type Game } from "@/lib/games";
 import {
   type Supplier,
   listSuppliers,
-  listAvailableSupplierSlugs,
+  listAvailableSupplierDrivers,
   createSupplier,
   updateSupplier,
   updateSupplierStatus,
@@ -41,6 +41,8 @@ import {
   refreshSupplierBalance,
   updateSupplierPackagesStatus,
   isWebhookConfigured,
+  supplierDisplayBalance,
+  fundingModeLabel,
 } from "@/lib/suppliers";
 import CreateSupplierModal from "@/components/middleware/suppliers/CreateSupplierModal";
 import EditSupplierModal from "@/components/middleware/suppliers/EditSupplierModal";
@@ -55,7 +57,7 @@ export default function SuppliersPage() {
   const session = useClientSession();
 
   const [suppliers, setSuppliers] = useState<Supplier[] | null>(null);
-  const [availableSlugs, setAvailableSlugs] = useState<string[]>([]);
+  const [availableDrivers, setAvailableDrivers] = useState<string[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
@@ -80,7 +82,7 @@ export default function SuppliersPage() {
     listSuppliers()
       .then(setSuppliers)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load suppliers."));
-    listAvailableSupplierSlugs().then(setAvailableSlugs).catch(() => {});
+    listAvailableSupplierDrivers().then(setAvailableDrivers).catch(() => {});
     listGames().then(setGames).catch(() => {});
   }, []);
 
@@ -90,7 +92,8 @@ export default function SuppliersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
-  const creatableSlugs = availableSlugs.filter((slug) => !suppliers?.some((s) => s.slug === slug));
+  // ADR-125: an API driver backs one supplier row; any number of manual suppliers can exist.
+  const creatableDrivers = availableDrivers.filter((driver) => driver === "manual" || !suppliers?.some((s) => s.driver === driver));
 
   async function handleCreate(values: Parameters<typeof createSupplier>[0]) {
     if (!session) return;
@@ -238,8 +241,9 @@ export default function SuppliersPage() {
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1.5">
-                  <Tag severity={supplier.circuit_state === "closed" ? "success" : "danger"}>
-                    {supplier.circuit_state === "closed" ? "connected" : "circuit open"}
+                  {/* ADR-125: a manual supplier has no API connection to report. */}
+                  <Tag severity={!supplier.is_api_backed ? "secondary" : supplier.circuit_state === "closed" ? "success" : "danger"}>
+                    {!supplier.is_api_backed ? "manual" : supplier.circuit_state === "closed" ? "connected" : "circuit open"}
                   </Tag>
                   {supplier.is_sandbox !== null && (
                     <Tag severity={supplier.is_sandbox ? "warn" : "info"}>
@@ -258,14 +262,21 @@ export default function SuppliersPage() {
                     </Tag>
                   </dd>
                 </div>
-                <div className="flex justify-between">
-                  <dt className="text-gray-500 dark:text-gray-400">Credentials</dt>
-                  <dd>
-                    <Tag severity={supplier.is_fully_configured ? "success" : supplier.has_credentials ? "warn" : "secondary"}>
-                      {supplier.is_fully_configured ? "Configured" : supplier.has_credentials ? "Partial" : "Not configured"}
-                    </Tag>
-                  </dd>
-                </div>
+                {supplier.is_api_backed ? (
+                  <div className="flex justify-between">
+                    <dt className="text-gray-500 dark:text-gray-400">Credentials</dt>
+                    <dd>
+                      <Tag severity={supplier.is_fully_configured ? "success" : supplier.has_credentials ? "warn" : "secondary"}>
+                        {supplier.is_fully_configured ? "Configured" : supplier.has_credentials ? "Partial" : "Not configured"}
+                      </Tag>
+                    </dd>
+                  </div>
+                ) : (
+                  <div className="flex justify-between">
+                    <dt className="text-gray-500 dark:text-gray-400">Type</dt>
+                    <dd className="text-gray-800 dark:text-white/90">Manual · {fundingModeLabel(supplier)}</dd>
+                  </div>
+                )}
                 {supplier.slug === "digiflazz" && (
                   <div className="flex justify-between">
                     <dt className="text-gray-500 dark:text-gray-400">Webhook</dt>
@@ -279,7 +290,7 @@ export default function SuppliersPage() {
                 <div className="flex justify-between">
                   <dt className="text-gray-500 dark:text-gray-400">Balance</dt>
                   <dd className="text-gray-800 dark:text-white/90">
-                    {supplier.balance ?? "—"} {supplier.currency}
+                    {supplierDisplayBalance(supplier)}
                   </dd>
                 </div>
                 <div className="flex justify-between">
@@ -304,9 +315,11 @@ export default function SuppliersPage() {
                 <Button size="small" variant="outlined" disabled={busy} onClick={() => setEditTarget(supplier)}>
                   Edit
                 </Button>
-                <Button size="small" variant="outlined" disabled={busy} onClick={() => handleRefreshBalance(supplier)}>
-                  {busy ? "Working…" : "Refresh Balance"}
-                </Button>
+                {supplier.is_api_backed && (
+                  <Button size="small" variant="outlined" disabled={busy} onClick={() => handleRefreshBalance(supplier)}>
+                    {busy ? "Working…" : "Refresh Balance"}
+                  </Button>
+                )}
                 <Button
                   size="small"
                   variant="outlined"
@@ -345,7 +358,7 @@ export default function SuppliersPage() {
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
         onSubmit={handleCreate}
-        availableSlugs={creatableSlugs}
+        availableDrivers={creatableDrivers}
       />
 
       <EditSupplierModal isOpen={editTarget !== null} onClose={() => setEditTarget(null)} onSubmit={handleEdit} supplier={editTarget} />

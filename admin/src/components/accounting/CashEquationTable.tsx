@@ -51,6 +51,7 @@ export function CashEquationTable({ position, cashAccountsSen }: Props) {
           <Row label="Affiliate withdrawals approved, not paid" sen={claims.affiliate_withdrawals_unpaid_sen} />
           <Row label="Vouchers customers can still spend" sen={claims.vouchers_outstanding_sen} />
           <Row label="Orders paid, not delivered or compensated" sen={claims.orders_undelivered_sen} />
+          <Row label="Owed to pay-after suppliers" sen={claims.supplier_payable_sen ?? 0} />
         </div>
       </div>
       <div

@@ -208,7 +208,7 @@ class DashboardServiceTest extends TestCase
         // adds 'drift' (null here — none of these three set drift_threshold).
         // 2026-09-15 addendum adds 'currency'/'balance_myr_equivalent'.
         $this->assertSame(
-            ['id', 'name', 'slug', 'balance', 'currency', 'balance_myr_equivalent', 'low_balance', 'drift', 'circuit_state'],
+            ['id', 'name', 'slug', 'balance', 'is_api_backed', 'is_pay_after', 'currency', 'balance_myr_equivalent', 'low_balance', 'drift', 'circuit_state'],
             array_keys($rows['Low One']),
         );
         $this->assertNull($rows['Low One']['drift']);

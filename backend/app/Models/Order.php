@@ -117,6 +117,29 @@ class Order extends Model
     }
 
     /**
+     * The supplier that fulfils this order. A combo has no supplier of its
+     * own (ADR-094 decision 3); its components share one (decision 4).
+     */
+    public function fulfilmentSupplier(): ?Supplier
+    {
+        return $this->package?->is_combo
+            ? $this->package->components->first()?->supplier
+            : $this->supplier;
+    }
+
+    /** ADR-125 decision 3: Pending past its supplier's stale window (Supplier::pendingPolicy()). */
+    public function isStalePending(): bool
+    {
+        if ($this->delivery_status !== DeliveryStatus::Pending) {
+            return false;
+        }
+
+        $policy = $this->fulfilmentSupplier()?->pendingPolicy() ?? Supplier::defaultPendingPolicy();
+
+        return $this->updated_at->lte(now()->subMinutes($policy['stale_minutes']));
+    }
+
+    /**
      * ADR-094 decision 7: populated only for a combo order (`package`
      * resolves to a `Package` with `is_combo=true`) — one row per real
      * outbound supplier call, in leg order. Empty for every ordinary
@@ -367,7 +390,7 @@ class Order extends Model
     {
         return $this->delivery_status === DeliveryStatus::NeedsReview
             && $target->id !== $this->package_id
-            && SupplierAdapterFactory::resubmitReplaysOutcome((string) $this->supplier?->slug);
+            && SupplierAdapterFactory::resubmitReplaysOutcome($this->supplier);
     }
 
     /**

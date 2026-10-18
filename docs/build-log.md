@@ -1281,3 +1281,30 @@ Tests: 4 new files (20 tests), `AdminMfaStepUpTest` pin updated. Full suite 2836
 **Gotcha.** A second Playwright login inside the same 30-second TOTP window fails: the MFA replay guard (`mfa_last_timestep`) rejects the reused code. Wait for the next window.
 
 **Next.** Item 113 PR 1 adds the checkout fields that write a login.
+
+## 2026-10-18 — §16 item 113 PR 1a: supplier driver and every API-only reader (ADR-125)
+
+**Why.** Login Top-up needs suppliers with no API. Before a single manual supplier can exist, nothing built for API suppliers may touch it: it would crash the critical balance refresh (`/api/health` 503), email "price sync stale" every run, 500 the "Check supplier" button, and show a balance of 0.
+
+**Stress test first (founder asked).** Three read-only forks (checkout and pricing; fulfillment and ledger; downstream readers) re-traced ADR-125 against current `staging`; I re-checked the top findings and ran the prod queries myself. Twelve gaps, none in the ADR, recorded as the ADR-125 2026-10-18 stress-test addendum (decisions 25-35). The founder chose: split PR 1 into 1a/1b, ship both funding modes, mask the login identifier. Prod: 2 API suppliers, 37 of 38 games with `reseller_code`, 18 with the player validator on, 0 orders Pending/NeedsReview/Processing, 5 Digiflazz transfers, `manual_confirm` never used.
+
+**Shipped (1a).**
+- Migration `suppliers.driver` (NOT NULL default '', backfilled `= slug`; `->change()` would rebuild the sqlite table and break the `llm_report_catalog` view) and `funding_mode`. The model fills `driver` from `slug` on create.
+- `SupplierAdapterFactory::for(Supplier)` resolves `supplier-adapter.{driver}`. Its 9 callers, the replay rule (now takes the `Supplier`), `SupplierConfigSchema` (keyed by driver, with a `manual` schema: `reply_sla_minutes`), the sandbox binding and the test commands all read `driver`. `ManualSupplierAdapter` refuses every call.
+- `CreateSupplierRequest`: an API driver's slug is its driver (set on the server); only `manual` names its own slug, is MYR, and picks a funding mode.
+- `Supplier::isApiBacked()`, `isSyncable()`, `pendingPolicy()`, `displayBalance()`, `isPayAfter()`; `Order::fulfilmentSupplier()` (replacing three copies) and `isStalePending()`.
+- Readers: price sync, its schedule gate and item 106's staleness alert use `isSyncable()`; product sync and balance refresh use `apiBacked()`; `SupplierDeliveryCheckService::canAsk()` gates the admin button, the reconciler and `check()`; refresh-balance and the developer tester refuse a manual supplier; the reconciler and Dashboard share `pendingPolicy()` (fixes the old Dashboard/reconciler drift).
+- Dashboard: displayed balance, wallet coverage sums API suppliers only, a `manual_delivery_without_drawdown` item.
+- Accounting: `weightedAverageRate()` is 1.0 for every MYR supplier (COGS, supplier corrections and the month-end position share it); the cash position splits each supplier's balance into `supplier_prepaid_sen` and a new `supplier_payable_sen` (gap unchanged; old closes read it as 0); `recordOrderDrawdown()` skips sandbox orders.
+- Admin: add/edit a manual supplier (type, slug, MYR, funding mode), one balance label everywhere ("Owed: MYR 65.00" for pay-after), no Refresh for manual, "manual" instead of a connection state, payable row in the cash equation, the new briefing item, top-up vs payment wording.
+
+Tests: 2 new files (14 tests); 3 updated for the renamed endpoint, the `driver` field and the wider health payload. Full suite 2850/2850. Concurrency suite on MySQL: 31/35, all money tests green (including `FinalizePendingDeliveryConcurrencyTest`). The 4 `BackupRestoreMysqlTest` failures are `mysqldump: command not found` on this machine; CI runs them. Admin tsc, lint, unit tests and build are clean.
+
+**Live check.** A built admin on `localhost:3000` against `serve --no-reload` on the local dev DB, with a throwaway MFA super admin. Added "Roblox Ali" (manual, pay after) through the modal with step-up: slug suggested `roblox-ali`, currency locked to MYR. The card shows "manual", "Manual · Pay after delivery" and no Refresh button; Balance shows "Funding ledger". After a −65 ledger row: "Owed: MYR 65.00" on the card, Balance and Dashboard. `app:refresh-supplier-balances` and `app:check-price-sync-staleness` ran with it present (exit 0, skipped). Two issues found and fixed in the live check: the card showed "connected" (the API circuit state), and the Dashboard showed "≈ RM -65.00" beside "Owed". Test data and the admin were removed afterwards.
+
+**Gotchas.**
+- A killed MySQL run leaves the `llm_report_*` views (backend AGENTS.md gotcha 8); drop them before the concurrency suite.
+- Next's router ignores a manual `history.pushState` to another route in Playwright. After login, `page.goto` keeps the session.
+- First CI run failed `playwright` (resend and checkout ended `needs_review`: "No SupplierAdapter implementation for driver:"). The model filled `driver` from `slug` in a `creating` hook, but every seeder runs `WithoutModelEvents`, so the e2e supplier was stored with `driver = ''`. Fixed at the read: `Supplier::driver()` returns the slug when the column is blank, which covers seeders and raw inserts too. A regression test proves it red without the accessor.
+
+**Next.** PR 1b (login game, manual packages, checkout, Manual Queue, masking, copy).

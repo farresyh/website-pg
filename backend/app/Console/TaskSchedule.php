@@ -84,7 +84,7 @@ class TaskSchedule
             $hasSyncableSupplier = Supplier::query()
                 ->where('is_active', true)
                 ->get()
-                ->contains(fn (Supplier $supplier) => filled($supplier->api_config));
+                ->contains(fn (Supplier $supplier) => $supplier->isSyncable());
 
             if (! $hasSyncableSupplier) {
                 return;

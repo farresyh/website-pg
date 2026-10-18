@@ -2,37 +2,38 @@
 
 namespace App\Services\Supplier;
 
+use App\Models\Supplier;
 use Illuminate\Contracts\Container\Container;
 
 /**
- * Resolves a SupplierAdapter implementation by supplier slug — the
- * supplier-side mirror of PaymentGatewayFactory (ADR-031, following
- * the already-proven pattern on the payment side). `'gamevion'` is
- * bound today, as `supplier-adapter.gamevion` in AppServiceProvider;
- * any other slug throws rather than silently falling back to
- * Gamevion, since that would misroute a real order to the wrong
- * supplier. A second supplier is added here only once it's actually
- * researched and built against its real API (ADR-030) — this factory
- * does not speculate on that shape.
+ * Resolves a SupplierAdapter implementation by supplier **driver** — the
+ * supplier-side mirror of PaymentGatewayFactory (ADR-031). ADR-125
+ * decision 1: the binding key is `supplier-adapter.<driver>`; an API
+ * supplier's driver equals its slug, and every manual supplier shares
+ * `manual`. An unbound driver throws rather than silently falling back,
+ * since that would misroute a real order to the wrong supplier.
  *
- * Resolves through the container (by a `supplier-adapter.<slug>`
- * binding key) rather than constructing adapters directly, so tests
- * can rebind a single fake per supplier and have this factory pick it
- * up uniformly (see PaymentGatewayFactoryTest's own precedent).
+ * Resolves through the container rather than constructing adapters
+ * directly, so tests can rebind a single fake per driver and have this
+ * factory pick it up uniformly (see PaymentGatewayFactoryTest's own
+ * precedent).
  */
 final class SupplierAdapterFactory
 {
-    public function __construct(private readonly Container $container)
+    public function __construct(private readonly Container $container) {}
+
+    public function for(Supplier $supplier): SupplierAdapter
     {
+        return $this->make($supplier->driver);
     }
 
-    public function make(string $slug): SupplierAdapter
+    public function make(string $driver): SupplierAdapter
     {
-        $key = "supplier-adapter.{$slug}";
+        $key = "supplier-adapter.{$driver}";
 
         if (! $this->container->bound($key)) {
             throw new UnsupportedSupplierException(
-                "No SupplierAdapter implementation for supplier: {$slug}",
+                "No SupplierAdapter implementation for driver: {$driver}",
             );
         }
 
@@ -50,22 +51,22 @@ final class SupplierAdapterFactory
      */
     private const RESUBMIT_REPLAYS_OUTCOME = ['digiflazz'];
 
-    public static function resubmitReplaysOutcome(string $slug): bool
+    public static function resubmitReplaysOutcome(?Supplier $supplier): bool
     {
-        return in_array($slug, self::RESUBMIT_REPLAYS_OUTCOME, true);
+        return $supplier !== null && in_array($supplier->driver, self::RESUBMIT_REPLAYS_OUTCOME, true);
     }
 
     /**
-     * ADR-046 decision 4: the Supplier Management screen's `slug`
+     * ADR-046 decision 4: the Supplier Management screen's driver
      * dropdown reads this rather than a hardcoded list, so it stays
      * accurate the moment a new supplier gets its own container
      * binding — no separate list to keep in sync (and keeps this
      * factory, not the admin-CRUD layer, as the one place that knows
-     * which slugs actually have an implementation).
+     * which drivers actually have an implementation).
      *
      * @return list<string>
      */
-    public function registeredSlugs(): array
+    public function registeredDrivers(): array
     {
         return collect(array_keys($this->container->getBindings()))
             ->filter(fn (string $key) => str_starts_with($key, 'supplier-adapter.'))

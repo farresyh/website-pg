@@ -671,7 +671,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 (Telegram) dropped and its fields removed (live via #406, 2026-10-12). Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this. A re-upload shows at once (`?v=` on the URL, #409, live via #416; founder-checked 2026-10-13) | ADR-028, 089 |
 | Developer Tools (DEV-1..2) | ✅ Live — `/middleware/developer-tools`, all 5 adapter methods, typed-DTO editor, dry-run default. Same screen as MUI-11 | ADR-054 |
 | Blacklist / Fraud (FRAUD-1..4) | ✅ Live — `BlacklistService` + `CheckoutVelocityGuard` wired into checkout; `/admin/blacklist` screen. `foundation-security.md` §4 fully checked | ADR-007 |
-| Middleware Panel (MID-1..13, MUI-1..11) | ✅ Live — sync/matching/catalog (Product Manager), price sync + FX, player validation, test orders, request logging, supplier credentials, landing page. MUI-4 (export) dropped. **Player validation, live 2026-10-16 via #469** (ADR-005's three 2026-10-16 addenda): MLBB RedxGame → MooGold (it had been broken since 2026-10-10, when AcidGameShop and Nexone stopped answering); Free Fire (RedxGame, country mappings); Genshin / HSR / ZZZ (RedxGame, the UID's server must match the chosen zone, `wrong_zone`). Validators: MLBB, Free Fire, Genshin, HSR, ZZZ, all toggled on for their games | ADR-005, 051, 052 |
+| Middleware Panel (MID-1..13, MUI-1..11) | ✅ Live — sync/matching/catalog (Product Manager), price sync + FX, player validation, test orders, request logging, supplier credentials, landing page. MUI-4 (export) dropped. **Player validation, live 2026-10-16 via #469** (ADR-005's three 2026-10-16 addenda): MLBB RedxGame → MooGold (it had been broken since 2026-10-10, when AcidGameShop and Nexone stopped answering); Free Fire (RedxGame, country mappings); Genshin / HSR / ZZZ (RedxGame, the UID's server must match the chosen zone, `wrong_zone`). Validators: MLBB, Free Fire, Genshin, HSR, ZZZ, all toggled on for their games **2026-10-18 (ADR-125 PR 1a, §16 item 113), on `staging`, not yet released:** `suppliers.driver`/`funding_mode`; a manual supplier (any number, MYR, prepaid or pay-after) can be added in Suppliers and is skipped by price/product sync, balance refresh, the staleness alert, status checks and the API tester; its balance is its funding ledger ("Owed" when pay-after); one Pending rule per supplier for the reconciler and Dashboard | ADR-005, 051, 052 |
 | Storefront (checkout flow) | 🟢 Live in prod — all catalog/checkout/validate/track endpoints; server-side validation enforcement; PekanGame neo-brutalist redesign, mobile pass, read-path perf (Redis cache), dynamic payment SVGs + UX polish. Logo/favicon upload UI + aspect-preserving sizing + preset background/dark-mode groundwork shipped (ADR-089/090). Real logo/hero artwork uploaded 2026-09-14 (§16 item 2); the placeholder mark is only the fallback when no logo is set. Per-game "How to Buy" info popup (description/important notes) + admin-editable instant/manual delivery badge, `EditGameModal` gained Basic Info/Content tabs (ADR-109) — admin Content tab live-verified 2026-10-08 (§16 item 67). **2026-10-05 (ADR-097 addendum, #356 — released via #362, 2026-10-06):** the ID fields follow the game's contract — digits-only fields get the numeric keypad and block typed non-digits, a paste is kept with an inline error, a Text game (e.g. Riot ID) gets a normal keyboard; the backend refuses the same input on checkout and Check ID **2026-10-17 (ADR-071 addendum, #474, released via #476):** every route has a matched `loading.tsx` (home, price list, Check ID, membership, legal pages were missing one and froze on navigation), enforced by a CI guard. | ADR-062–065, 071, 077–079, 089, 090, 097, 109 |
 | Game ID Checker (ADR-123) | ✅ Live 2026-10-16 via #472 — `/check-id` + `/check-id/<slug>` for the five families (Mobile Legends, Free Fire, Genshin Impact, Honkai Star Rail, Zenless Zone Zero), Turnstile (widget "PekanGame Game ID Checker"), 5/min + 30/hour per IP, 200/hour provider budget, RedxGame only, `public_player_checks`; in the sitemap and `llms.txt` on the primary brand, `noindex` on affiliates. Mobile More drawer; header highlight follows the page. A new affiliate custom domain must be added to the widget by hand until §16 item 108 | ADR-123 |
 | Customer Login (ADR-124) | 🟡 Built 2026-10-18 (§16 item 112), on `staging`, not yet released — `order_credentials` (encrypted secrets, out of DB dumps), `app:wipe-order-credentials` every 15 min (critical heartbeat), super_admin reveal/replace behind MFA step-up with a per-admin hourly limit and a `credential_reveals` audit (pruned after a year), Settings → Customer Login Policy (G, H, D, reveal limit, consent text), Order Detail "Customer Login" card. No order stores a login until item 113 adds the checkout fields | ADR-124 |
@@ -763,7 +763,8 @@ git in the 2026-10-17 docs audit. Re-verify before building.
 - **94** Best-selling products per game in Reports.
 - **113** Login Top-up for Roblox and eFootball (ADR-125, accepted design):
   manual suppliers, Manual Queue, supplier WhatsApp group bot, and the
-  checkout path that stores the login on item 112's base. Two PRs.
+  checkout path that stores the login on item 112's base. PR 1a (supplier
+  driver + every reader) built 2026-10-18; next PR 1b, then PR 2.
 - **114** Joki MLBB on owned brands (ADR-126, accepted design): `/joki`
   rank calculator + route packages, penjoki as pay-after manual suppliers.
   After 113.
@@ -1066,13 +1067,17 @@ git in the 2026-10-17 docs audit. Re-verify before building.
       and whether checkout needs it too.
 
 113. **Login Top-up, Roblox and eFootball (ADR-125, accepted design
-    2026-10-17).** PekanGame and Affiliates, not Reseller. PR 1 (on item
-    112's base, which writes no login yet; this adds the checkout write):
-    `suppliers.driver` + capabilities on `Supplier` (sync selects by driver,
-    not `api_config`), one stale-Pending rule for reconciler and Dashboard,
-    admin-entered manual packages at an agreed cost, login-game rule, per-game
-    credential schema, `member_pricing_enabled` per game, Manual Queue whose
-    Delivered/Failed call `finalizePendingDelivery()`. PR 2: one
+    2026-10-17; split by the 2026-10-18 addendum).** PekanGame and
+    Affiliates, not Reseller. **PR 1a, built 2026-10-18 (on `staging`):**
+    `suppliers.driver` + capabilities on `Supplier`, every API-only reader,
+    one stale-Pending rule, MYR rate 1.0 and the prepaid/payable split,
+    manual-supplier admin UI. **PR 1b (next):** login game create + credential
+    schema (a fifth `GameFulfilmentRule` path in `linkCategory`), manual
+    packages at an agreed, audited cost, checkout writing `order_credentials`
+    in one transaction with the server-set identifier, `member_pricing_enabled`,
+    Manual Queue through `finalizePendingDelivery()` (NeedsReview Mark
+    Delivered too), the masked login on Track Order / Reverb / WhatsApp and
+    the per-kind status copy (ADR-125 decisions 28, 31-35). PR 2: one
     `whatsapp_groups` registry for resellers and suppliers, order post with a
     signed one-time login link through the persisted notification queue,
     `.done` / `.gagal` / `.pending`, 30-minute SLA reminder.

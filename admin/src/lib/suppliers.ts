@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api-client";
+import { supplierBalanceLabel } from "@/lib/dashboard";
 
 /**
  * ADR-046 — Supplier Management, trimmed to SUPP-1/CRUD/SUPP-5.
@@ -10,9 +11,18 @@ export interface Supplier {
   id: number;
   name: string;
   slug: string;
+  /** ADR-125 decision 1: the adapter. An API supplier's driver is its slug; every manual supplier is "manual". */
+  driver: string;
+  /** ADR-125 decision 18: "prepaid" for every API supplier. */
+  funding_mode: "prepaid" | "pay_after";
   logo_url: string | null;
   is_active: boolean;
+  /** The last API-polled balance. Read display_balance to show a balance. */
   balance: string | null;
+  /** False for a manual supplier: no sync, no balance poll, no status check. */
+  is_api_backed: boolean;
+  /** Polled balance for an API supplier, funding-ledger balance for a manual one (negative = owed). */
+  display_balance: number | null;
   currency: string;
   last_tested_at: string | null;
   last_test_result: string | null;
@@ -55,6 +65,10 @@ export interface SupplierField {
 }
 
 export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
+  // ADR-125 decisions 2-3: keyed by driver, so every manual supplier shares this.
+  manual: [
+    { key: "reply_sla_minutes", label: "Reply SLA (minutes)", type: "text", placeholder: "30 (blank = 30) — a Pending order counts as stuck after this" },
+  ],
   gamevion: [
     { key: "base_url", label: "Base URL", type: "text", placeholder: "https://api.gamevion.com (no trailing slash)" },
     { key: "bearer_token", label: "Bearer Token", type: "secret" },
@@ -105,10 +119,26 @@ export function isWebhookConfigured(supplier: Supplier): boolean {
   return supplier.slug !== "digiflazz" || supplier.configured_secret_keys.includes("webhook_secret");
 }
 
+/** ADR-125 decision 1: an API driver's slug is set by the backend; only a manual supplier sends its own. */
+/** ADR-125 decision 18 — the balance to show for a /middleware/suppliers row. */
+export function supplierDisplayBalance(supplier: Supplier): string {
+  return supplierBalanceLabel(supplier.display_balance, supplier.currency, !supplier.is_api_backed && supplier.funding_mode === "pay_after");
+}
+
+/** ADR-125 decision 1 (+ its 2026-10-17 addendum): a manual supplier's funding mode, in words. */
+export function fundingModeLabel(supplier: Pick<Supplier, "is_api_backed" | "funding_mode">): string {
+  if (supplier.is_api_backed) return "Prepaid (API)";
+
+  return supplier.funding_mode === "pay_after" ? "Pay after delivery" : "Prepaid";
+}
+
+/** ADR-125 decision 1: an API driver's slug is set by the backend; only a manual supplier sends its own. */
 export interface CreateSupplierValues {
   name: string;
-  slug: string;
+  driver: string;
+  slug?: string;
   currency: string;
+  funding_mode: "prepaid" | "pay_after";
   logo_url?: string;
 }
 
@@ -116,6 +146,7 @@ export interface UpdateSupplierValues {
   name?: string;
   logo_url?: string | null;
   currency?: string;
+  funding_mode?: "prepaid" | "pay_after";
   api_config?: Record<string, unknown>;
 }
 
@@ -123,8 +154,8 @@ export function listSuppliers() {
   return apiFetch<Supplier[]>("/api/middleware/suppliers");
 }
 
-export function listAvailableSupplierSlugs() {
-  return apiFetch<string[]>("/api/middleware/suppliers/available-slugs");
+export function listAvailableSupplierDrivers() {
+  return apiFetch<string[]>("/api/middleware/suppliers/available-drivers");
 }
 
 export function createSupplier(values: CreateSupplierValues) {

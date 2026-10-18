@@ -483,12 +483,15 @@ class OrderController extends Controller
         // ADR-102 2026-10-05 addendum, decision 6: NeedsReview too, when
         // the supplier can safely be asked (replays the stored result,
         // the order reached it, inside the age limit).
-        $askable = $order->delivery_status === DeliveryStatus::Pending
-            || ($order->delivery_status === DeliveryStatus::NeedsReview && SupplierDeliveryCheckService::canAskAboutNeedsReview($order));
+        // ADR-125 decision 2: never a manual supplier (no API to ask).
+        $askable = SupplierDeliveryCheckService::canAsk($order) && (
+            $order->delivery_status === DeliveryStatus::Pending
+            || ($order->delivery_status === DeliveryStatus::NeedsReview && SupplierDeliveryCheckService::canAskAboutNeedsReview($order))
+        );
 
         if (! $askable) {
             throw ValidationException::withMessages([
-                'delivery_status' => ['Only a Pending delivery, or a needs-review one this supplier can safely be asked about, can be checked from the supplier.'],
+                'delivery_status' => ['Only a Pending delivery, or a needs-review one this supplier can safely be asked about, can be checked from the supplier. A manual supplier\'s order is confirmed in the Manual Queue.'],
             ]);
         }
 

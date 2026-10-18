@@ -353,7 +353,9 @@ final class SupplierFundingService
     {
         $supplier = $leg?->supplier ?? $order->supplier;
 
-        if ($supplier === null) {
+        // ADR-125 2026-10-18 addendum, decision 29: a sandbox order (ADR-018)
+        // never moves a real supplier's ledger, whatever path confirms it.
+        if ($supplier === null || $order->is_test) {
             return;
         }
 

@@ -47,14 +47,15 @@ class SyncSupplierProductsCommand extends Command
             ['name' => 'Gamevion', 'api_config' => [], 'currency' => 'MYR'],
         );
 
-        $suppliers = Supplier::query()->where('is_active', true)->get();
+        // ADR-125 decision 2: a manual supplier has no catalogue to fetch.
+        $suppliers = Supplier::query()->where('is_active', true)->apiBacked()->get();
         $succeeded = 0;
 
         foreach ($suppliers as $supplier) {
             $this->info("Syncing products for supplier '{$supplier->slug}'...");
 
             try {
-                $adapter = $supplierAdapters->make($supplier->slug);
+                $adapter = $supplierAdapters->for($supplier);
                 $result = $service->sync($supplier, $adapter);
             } catch (UnsupportedSupplierException|SupplierNotConfiguredException|ProductSyncFailedException $e) {
                 $this->error("Supplier '{$supplier->slug}' sync failed: {$e->getMessage()}");

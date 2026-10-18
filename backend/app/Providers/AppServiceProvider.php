@@ -45,6 +45,7 @@ use App\Services\Supplier\CircuitBreakingSupplierAdapter;
 use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
 use App\Services\Supplier\FakeSupplierAdapter;
 use App\Services\Supplier\Gamevion\GamevionAdapter;
+use App\Services\Supplier\Manual\ManualSupplierAdapter;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierConfigSchema;
@@ -128,6 +129,10 @@ class AppServiceProvider extends ServiceProvider
         // registers the same Fake under `supplier-adapter.e2e-fake-supplier`,
         // the slug E2ESeeder actually gives its Supplier row, since
         // that's the key OrderFulfillmentService now resolves by.
+        // ADR-125 decision 1: one adapter for every manual supplier, in every
+        // environment — it has no credentials and makes no network call.
+        $this->app->bind('supplier-adapter.'.Supplier::DRIVER_MANUAL, fn () => new ManualSupplierAdapter);
+
         if ($this->app->environment('e2e')) {
             $this->app->bind(SupplierAdapter::class, fn () => new FakeSupplierAdapter(simulateSuccess: true));
             $this->app->bind('supplier-adapter.e2e-fake-supplier', fn () => new FakeSupplierAdapter(simulateSuccess: true));

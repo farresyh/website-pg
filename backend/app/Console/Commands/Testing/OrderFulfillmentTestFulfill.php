@@ -71,11 +71,11 @@ class OrderFulfillmentTestFulfill extends Command
         // ADR-094: a combo order has no supplier_id/supplier of its own
         // (decision 3) — bind under its components' shared supplier
         // instead (decision 4: same-supplier-only in v1).
-        $supplierSlug = $order->package?->is_combo
-            ? $order->package->components->first()->supplier->slug
-            : $order->supplier->slug;
+        $driver = $order->package?->is_combo
+            ? $order->package->components->first()->supplier->driver
+            : $order->supplier->driver;
 
-        app()->bind("supplier-adapter.{$supplierSlug}", fn () => $adapter);
+        app()->bind("supplier-adapter.{$driver}", fn () => $adapter);
 
         $service = new OrderFulfillmentService(
             new OrderStatusService,
