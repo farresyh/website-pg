@@ -76,7 +76,11 @@ Laravel-specific, loaded only when working inside `backend/`.
   via `App\Support\ContactMask` plus the customer-facing money they saw
   at checkout (`payment_method`/`selling_price`/`voucher_discount`/
   `transaction_fee`), per ADR-065. `standard_selling_price` / profit /
-  `payment_ref` are still never exposed there.
+  `payment_ref` are still never exposed there. A login order's
+  `player_id` is half the customer's game login (ADR-125): any surface a
+  non-admin sees (customer, affiliate, WhatsApp) shows
+  `Order::publicPlayerLabel()`, keyed on `Order::isLoginOrder()` (the
+  order's credential row), never the game's schema.
 - **`Cache::remember()` values should be plain arrays, not a raw Eloquent
   Model/Collection or an un-cast `Carbon` instance** — call `->toArray()` /
   `?->toISOString()` before caching. The cache driver is Redis since ADR-077
