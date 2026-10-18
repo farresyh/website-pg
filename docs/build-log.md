@@ -1247,3 +1247,5 @@ Checked live (read-only):
 - September's close: stored 464 = live 464.
 
 Founder follow-ups: check the R2 lifecycle rules on `pekangame-accounting`, and attach the originals of settlements #1–#4 from CHIP's dashboard.
+
+**2026-10-18, later:** the founder checked the R2 bucket `pekangame-accounting` in Cloudflare. Its only lifecycle rule is the default "abort incomplete multipart uploads", which never deletes stored objects, so the seven-year retention holds. Remaining follow-up: attach the originals of settlements #1–#4.
