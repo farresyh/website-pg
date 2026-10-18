@@ -1027,7 +1027,9 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
     // GAME-1..5/6/7 — Admin Games & Packages management.
     Route::middleware('admin.role:super_admin,admin')->group(function () {
         Route::get('/games', [GameController::class, 'index']);
+        Route::post('/games', [GameController::class, 'store']);
         Route::post('/games/reorder', [GameController::class, 'reorder']);
+        Route::put('/games/{game}/credential-schema', [GameController::class, 'updateCredentialSchema']);
         Route::get('/games/{game}', [GameController::class, 'show']);
         Route::put('/games/{game}', [GameController::class, 'update']);
         Route::delete('/games/{game}', [GameController::class, 'destroy']);

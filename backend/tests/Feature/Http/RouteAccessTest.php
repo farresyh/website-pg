@@ -197,6 +197,7 @@ class RouteAccessTest extends TestCase
             'PATCH api/withdrawals/{withdrawal}/complete',
             'PATCH api/withdrawals/{withdrawal}/reject',
             'POST api/gallery/images',
+            'POST api/games',
             'POST api/games/reorder',
             'POST api/games/{game}/packages/combo',
             'POST api/hero-slides',
@@ -212,6 +213,7 @@ class RouteAccessTest extends TestCase
             'POST api/vouchers',
             'POST api/vouchers/merge',
             'PUT api/games/{game}',
+            'PUT api/games/{game}/credential-schema',
             'PUT api/hero-slides/{hero_slide}',
             'PUT api/packages/{package}',
         ], $roles->filter(fn (string $r) => str_ends_with($r, ':super_admin,admin'))->keys()->sort()->values()->all());

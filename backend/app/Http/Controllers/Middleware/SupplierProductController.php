@@ -13,7 +13,6 @@ use App\Models\SupplierProduct;
 use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -116,7 +115,7 @@ class SupplierProductController extends Controller
             ? Game::query()->findOrFail($data['game_id'])
             : Game::query()->create([
                 'name' => $data['new_game']['name'],
-                'slug' => $this->uniqueSlug($data['new_game']['name']),
+                'slug' => Game::uniqueSlug($data['new_game']['name']),
                 'category' => $data['new_game']['category'] ?? null,
             ]);
 
@@ -253,19 +252,5 @@ class SupplierProductController extends Controller
         GameController::forgetPackagesCache($data['game_id']);
 
         return response()->json(['package' => $package], 201);
-    }
-
-    private function uniqueSlug(string $name): string
-    {
-        $base = Str::slug($name);
-        $slug = $base;
-        $suffix = 2;
-
-        while (Game::query()->where('slug', $slug)->exists()) {
-            $slug = "{$base}-{$suffix}";
-            $suffix++;
-        }
-
-        return $slug;
     }
 }

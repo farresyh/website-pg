@@ -2,7 +2,10 @@
 
 namespace App\Http\Requests\Middleware;
 
+use App\Models\Game;
+use App\Services\Catalog\GameFulfilmentRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * MID-5/SUPP-3: promotes one raw `supplier_products` row into a real,
@@ -37,5 +40,17 @@ class PromoteSupplierProductRequest extends FormRequest
             // equivalence key. Left null promotes exactly as before.
             'denomination' => ['nullable', 'integer', 'min:1'],
         ];
+    }
+
+    /** ADR-125 decision 5: a supplier product never lands on a login game. */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            $game = Game::query()->find($this->input('game_id'));
+
+            if ($game !== null && ($error = GameFulfilmentRule::supplierPackage($game))) {
+                $validator->errors()->add('game_id', $error);
+            }
+        });
     }
 }
