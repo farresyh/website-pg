@@ -1,6 +1,6 @@
 # ADR-125: Login Top-up (Roblox, eFootball) — manual suppliers as a `driver` behind `SupplierAdapter`, one finalize seam for every confirmation, a supplier WhatsApp group per supplier, admin-entered packages at an agreed cost
 
-> **Standing (2026-10-19):** In force; PR 1 split into 1a/1b and decisions corrected by the 2026-10-18 stress-test addendum and the 2026-10-18 PR 1b pre-build addendum (decisions 36–47); PR 1 built as 1a, 1b-i and 1b-ii (2026-10-18 build addendum); PR 2 split into 2a/2b and corrected by the 2026-10-19 pre-build addendum (decisions 48–61). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-19):** In force; PR 1 split into 1a/1b and decisions corrected by the 2026-10-18 stress-test addendum and the 2026-10-18 PR 1b pre-build addendum (decisions 36–47); PR 1 built as 1a, 1b-i and 1b-ii (2026-10-18 build addendum); PR 2 split into 2a/2b and corrected by the 2026-10-19 pre-build addendum (decisions 48–61); 2a built (2026-10-19 build addendum, decisions 62–63). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-17. Grilled with the founder (`/mattpocock-skills:grilling`, Q1–Q19), after a money-critical code-trace pass, then an adversarial stress test (three read-only forks, one per layer: checkout/catalog, fulfillment/ledger, bot/link). The stress test changed five decisions before they were written; its top findings were re-checked by hand. Build not started (PRD §16 item 113). Depends on [ADR-124](./ADR-124-customer-account-credentials.md). [ADR-126](./ADR-126-joki-mlbb.md) (Joki) builds on this ADR.
 
@@ -226,3 +226,17 @@ Before building PR 2, decisions 11–16 were traced against `staging` (PR 1 buil
 **60. Placement (founder).** A new Admin → Partners → Suppliers page, super_admin only: manual suppliers, their group (link from the shared pending list, unlink), reply SLA, active switch. Creating a manual supplier and its funding mode stay in Middleware → Suppliers, and API suppliers stay there entirely. The pending-link list moves to a shared `/whatsapp-groups/pending`. The Dashboard counts failed supplier posts and active manual suppliers with no group.
 
 **61. Build in two PRs (founder).** **2a, backend:** `whatsapp_groups` (data migration of the 2 reseller rows), the router and `SupplierBotService`, decisions 48–59, the group-link API. **2b, screens:** Partners → Suppliers, the pending-link picker for both owners, the Order Detail label, the Dashboard counts, e2e.
+
+### 2026-10-19 addendum — PR 2a as built (backend)
+
+Built as decisions 48–61 describe. What the build added or settled (no decision reversed):
+
+**62. Linking or reactivating a supplier's group re-posts its waiting orders.** A post skipped because the supplier had no group would otherwise wait for the SLA reminder, which carries no login link. `SupplierGroupNotifier::repostWaiting()` runs `orderPosted()` for each Pending order. The outbox revives only a skipped row, so a post already sent or queued is never repeated. RETRY is decided against an earlier attempt's post, not this attempt's own skipped row.
+
+**63. `SecurityHeaders` keeps a route's own `Referrer-Policy`.** It runs after every controller and set `strict-origin-when-cross-origin` unconditionally, which would have overwritten the link page's `no-referrer`. It now sets the default only when the response has none.
+
+- One outbox: `WhatsAppOutbox` holds the create/dedupe/revive and the per-session slot. `CustomerNotificationService` (customer rules) and `SupplierGroupNotifier` (supplier rules) both call it. The customer-support slot keeps its old cache key, so its pacing state carries over.
+- `SendCustomerWhatsAppJob` asks `SupplierGroupNotifier::prepare()` for a bot row. It returns null for an attempt that is no longer waiting (the row is marked skipped), and otherwise mints the link. A pacing release re-runs `prepare()`, so one attempt can mint more than one link; they all die together (decision 51).
+- The link page shows the non-secret login fields (username) with the order summary, before and after the reveal. The secrets come only from the POST. Pruned by `model:prune` daily (`supplier-login-link-pruning`, routine).
+- The Partners → Suppliers API is `/api/partner-suppliers` (list with pending count, link, group status, SLA 5–1440 minutes, active switch). The shared pending list is `/api/whatsapp-groups/pending`. Deleting a never-used supplier deletes its groups.
+- Prod data: the 2 reseller groups move with their ids. A test runs the migration down and up against seeded rows.

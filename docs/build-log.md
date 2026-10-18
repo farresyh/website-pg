@@ -1362,3 +1362,28 @@ Tests: 7 new files (41 tests) plus `ManualCorrectionConcurrencyTest` (correction
 - The e2e backend ran `CACHE_STORE=database`, which has no `Cache::tags()`. Every admin game write flushes the tagged catalog index, so the first spec that edited a game got a 500 (the game was still created), and the storefront's game list had been falling back on every read. Switched to `array` (holds nothing across requests there; it only loosens rate limits in that throwaway suite).
 
 **Next.** Release when the founder asks; then PR 2 (supplier WhatsApp group bot).
+
+## 2026-10-19 — §16 item 113 PR 2a: supplier WhatsApp group bot, backend (ADR-125)
+
+**Why.** Through PR 1 a manual supplier's order stopped at the Manual Queue, and an admin closed it by hand. 2a connects the order to the supplier's own WhatsApp group: the supplier gets a post with a short login link and replies `.done` / `.gagal`.
+
+**Design first.** A pre-build trace of decisions 11–16 against `staging`, plus read-only prod counts (2 reseller groups, 0 pending links, 14 customer notifications, 0 manual suppliers), found thirteen corrections. They are the ADR-125 2026-10-19 pre-build addendum (decisions 48–61) and the ADR-124 addendum. The founder chose a short link over a signed URL and an Admin → Partners → Suppliers page, super_admin only.
+
+**Shipped (backend).**
+- `whatsapp_groups` replaces `reseller_whatsapp_groups`, with the data copied as `owner_type = reseller`. `reseller_whatsapp_pending_links` is renamed to `whatsapp_pending_links`. `WhatsAppGroupService` holds the rules: a group never moves to another owner, a supplier has one active group, and an active manual supplier keeps its group.
+- The webhook routes a supplier's group to `SupplierBotService` (`.done`, `.gagal <reason>`, `.pending`). These go through `ManualDeliveryService` at the agreed cost, with `confirmed_by = wa:<sender>` and `channel = supplier_bot`. The webhook also drops the bot's own messages (`fromMe`).
+- The post is queued after Pending commits in `fulfill()`, one per (order, reference), on the bot session through the persisted queue. `WhatsAppOutbox` was extracted from `CustomerNotificationService` and gives each session its own send slot. The stored message holds a placeholder; the job mints the `/s/<token>` link at send time (hash-only `supplier_login_links`).
+- Link page: GET shows the summary and username, POST shows the password, each reveal audited with actor supplier. The page sends `no-store`, `no-referrer` and `noindex`, and is throttled per IP and per link. It works only while that attempt is Pending.
+- The reconciler sends one SLA reminder per attempt. Linking a group re-posts the supplier's waiting orders (decision 62). A manual supplier is created inactive and can be activated only with a group. `/api/partner-suppliers` and `/api/whatsapp-groups/pending` are built, for 2b's screens.
+
+**Verification.**
+- Backend fast suite 2919/2919. New files: `Adr125SupplierGroupPostTest`, `Adr125SupplierBotTest`, `Adr125SupplierGroupLinkTest`, and `Adr125WhatsAppGroupsMigrationTest` (migration down and up against seeded rows).
+- Concurrency suite on MySQL: 33/37. The 4 failures are the known local `BackupRestoreMysqlTest` (no `mysqldump` locally); CI runs them.
+- MySQL indexes checked on the new tables. Dev DB migrated with plain `migrate`.
+- Real check against a local `artisan serve`: GET 200 with the three headers and no secret, the CSRF POST shows the password, and a bad token returns 404. Screenshots at 390 px (no horizontal scroll) checked by eye. The seeded rows were removed afterwards.
+
+**Gotchas.**
+- `SecurityHeaders` runs last and overwrote every `Referrer-Policy`, so the page's `no-referrer` would have been lost silently. It now sets the default only when none is set (decision 63).
+- zsh does not word-split an unquoted `$files`, so a `for f in $files` rename loop ran once on the whole list. Use `xargs`.
+
+**Next.** 2b: the Partners → Suppliers screen, the pending-link picker for both owners, Order Detail's "Supplier group" label, the Dashboard counts (failed supplier posts, active manual supplier without a group), and e2e.
