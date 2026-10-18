@@ -1320,3 +1320,28 @@ Updated:
 - ADRs: ADR-121 addendum (ADR-124's three step-up routes; the set lives in `AdminMfaStepUpTest`), ADR-031 addendum (factory resolves by driver), ADR-046 and ADR-125 banners and index rows.
 - `foundation-security.md`: step-up wording, a customer-login line under Secrets & Data.
 - `backend/AGENTS.md`: the driver/capability convention, and "don't hang an invariant on a model event".
+
+## 2026-10-18 — §16 item 113 PR 1b-i: login games, manual packages, login checkout, Manual Queue (ADR-125), backend
+
+**Why.** PR 1a let manual suppliers exist. 1b makes Roblox and eFootball sellable: a login game, manual packages at an agreed cost, a checkout that stores the login, and a queue where an admin confirms each order. Split again into 1b-i (backend, this PR) and 1b-ii (admin + storefront screens) to keep the money review small.
+
+**Stress test first.** Three read-only forks (catalog and checkout; fulfillment and ledger; readers and copy) re-traced decisions 4-9, 17, 23, 28, 31-35 against `staging` with 1a built; I re-checked the top findings by hand. Fourteen corrections, recorded as the ADR-125 2026-10-18 PR 1b pre-build addendum (decisions 36-47). The ones that would have lost money or leaked a login: decision 34's real-cost bound let a loss through (profit is `selling − real − affiliate_profit`); the member gate couldn't live in `CheckoutService` (the preview takes no game); `ContactMask::email()` returned a username unmasked; masking keyed on the game would fail once a game is deleted (`orders.game_id` has no FK); the password would have gone into the unsalted idempotency hash; an admin's wrong Failed had no way back except a second paid top-up. Founder answers: any differing real cost needs a reason; a supervised Failed→Delivered correction for manual suppliers; affiliates see the login masked; resend may correct the identifier.
+
+**Shipped (1b-i).**
+- Migration: `games.member_pricing_enabled` (default on), `price_change_logs.admin_user_id`.
+- `Game::credentialFields()` / `isLoginGame()` / `identifierField()` / `memberPricingApplies()`; `GameFulfilmentRule` on login-game create, the schema endpoint, `UpdateGameRequest`, promote, category link (which now prohibits `credential_fields`) and combos. A login game needs manual delivery with its own subtext, no reseller code, no validator; switching kind is refused while any package exists.
+- `POST /games` (login game), `PUT /games/{game}/credential-schema`, `POST /games/{game}/packages/manual`, `PATCH /packages/{package}/cost`, `GET /packages/{package}/price-history`.
+- `PackageCostService` replaces `PackagePriceSyncService::propagatePrice` and the hand-written copy in pending-change approval; both record the admin.
+- Checkout: the identifier field sets `player_id` (email lowercased) before validation and the blacklist; a client `player_id`/`server_id` is refused; consent required; `order_credentials` written in the order INSERT's transaction (`OrderFactory`); the hash carries only non-secret fields; `credentials.*` skips `TrimStrings` so a password is stored as typed. Member gate: the preview gets no membership id, `initiate` prices as a guest but keeps the member's email bound (decision 35, caught in self-review); catalog and the savings-badge sample honour it.
+- `ManualSupplierAdapter::createOrder` returns Pending. `ManualDeliveryService` (Delivered / Failed / correct Failed→Delivered) calls `finalizePendingDelivery()`; real cost defaults to `cost_price`; each confirmation writes a `manual_confirm` attempt row with the admin. `GET /manual-queue`, `POST /orders/{order}/manual/{delivered,failed,correct-to-delivered}` (any admin). Mark Delivered refuses a manual order; Retry and Resend refuse a wiped login.
+- `Order::isLoginOrder()` (has a credential row) and `publicPlayerLabel()`; Track Order / Reverb carry the masked identifier, `fulfilment_kind`, `player_label`, `login_wipe_hours`; the WhatsApp card masks it and asks for a password change on delivery; the affiliate order detail masks it.
+- Resend's identifier correction updates `player_id` and `order_credentials.fields` under the lock; the admin request is pre-checked and audited (`credential_reveals.action = identifier`).
+
+Tests: 7 new files (41 tests) plus `ManualCorrectionConcurrencyTest` (correction vs Issue Voucher, correction vs correction, real MySQL processes). Full suite 2889/2889.
+
+**Gotchas.**
+- `...GameFulfilmentRule::schemaRules()` spread after `'credential_fields' => [...]` silently replaced the list's own rule (a later string key wins); the list rule now stays with the caller.
+- `OrderCredential::$fillable` has no `purged_at`, so a fixture that passes it creates an unwiped row; set it with a query.
+- A background `php artisan` launched after the shell's cwd moved to the repo root fails with "Could not open input file: artisan" and still exits 0; run it from `backend/`.
+
+**Next.** 1b-ii: admin and storefront screens, then the live click-through, then PR 2.
