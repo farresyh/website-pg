@@ -76,6 +76,15 @@ class E2ESeeder extends Seeder
             ['name' => 'E2E Fake Supplier', 'api_config' => [], 'currency' => 'MYR'],
         );
 
+        // ADR-125: a manual supplier for the login top-up golden path
+        // (e2e/tests/admin-login-topup.spec.ts). No fake needed: the real
+        // ManualSupplierAdapter makes no network call, it only answers
+        // Pending so the order lands in the Manual Queue.
+        Supplier::query()->firstOrCreate(
+            ['slug' => 'e2e-manual-supplier'],
+            ['name' => 'E2E Manual Supplier', 'driver' => Supplier::DRIVER_MANUAL, 'api_config' => [], 'currency' => 'MYR', 'is_active' => true],
+        );
+
         $game = Game::query()->firstOrCreate(
             ['slug' => 'e2e-test-game'],
             [
