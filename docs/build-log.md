@@ -1249,3 +1249,5 @@ Checked live (read-only):
 Founder follow-ups: check the R2 lifecycle rules on `pekangame-accounting`, and attach the originals of settlements #1–#4 from CHIP's dashboard.
 
 **2026-10-18, later:** the founder checked the R2 bucket `pekangame-accounting` in Cloudflare. Its only lifecycle rule is the default "abort incomplete multipart uploads", which never deletes stored objects, so the seven-year retention holds. Remaining follow-up: attach the originals of settlements #1–#4.
+
+**2026-10-18, later:** the founder attached the original CHIP files to settlements #1–#4 (04:43–04:45 UTC). Read-only check on prod: every `file_path` exists on `r2_accounting` (#1–#3 under `2026/09`, #4 under `2026/10`), the SHA-256 of each stored file equals `file_sha256`, no hash appears twice, and status `matched` and net figures are unchanged (RM33.14, RM457.00, RM36.50, RM4.25). Item 120 has no follow-up left.
