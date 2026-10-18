@@ -2,6 +2,7 @@ import { apiFetch, apiDownload } from "@/lib/api-client";
 import { todayInKL } from "@/lib/date-range";
 import type { Game } from "@/lib/games";
 import type { Voucher } from "@/lib/vouchers";
+import type { CustomerLogin } from "@/lib/order-credentials";
 
 
 /**
@@ -157,6 +158,8 @@ export interface OrderDetail extends OrderListItem {
   // amount/created_at, not just the boolean above. Null whenever
   // wallet_refunded is false.
   wallet_refund: { amount: number; created_at: string } | null;
+  // ADR-124: null when the order has no customer login. Absent on sandbox orders.
+  customer_login?: CustomerLogin | null;
   resend_attempts: OrderResendAttempt[];
   // VCH-7: null until VoucherController::storeFromOrder() has been
   // called for this order — the unique index on vouchers.order_id

@@ -1,6 +1,6 @@
 # ADR-124: Customer account credentials — own encrypted table, super-admin reveal with MFA step-up and an audit row, wiped by one sweep once the order closes
 
-> **Standing (2026-10-17):** Accepted (design). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-18):** In force; the 2026-10-18 addendum revises decision 7. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-17. Grilled with the founder in two rounds (`/mattpocock-skills:grilling`, Q1–Q13) after a by-hand check of the order lifecycle and every exposure path. Build not started (PRD §16 item 112). Shared foundation for [ADR-125](./ADR-125-login-top-up-manual-supplier.md) (Login Top-up) and [ADR-126](./ADR-126-joki-mlbb.md) (Joki).
 

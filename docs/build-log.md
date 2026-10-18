@@ -1251,3 +1251,33 @@ Founder follow-ups: check the R2 lifecycle rules on `pekangame-accounting`, and 
 **2026-10-18, later:** the founder checked the R2 bucket `pekangame-accounting` in Cloudflare. Its only lifecycle rule is the default "abort incomplete multipart uploads", which never deletes stored objects, so the seven-year retention holds. Remaining follow-up: attach the originals of settlements #1–#4.
 
 **2026-10-18, later:** the founder attached the original CHIP files to settlements #1–#4 (04:43–04:45 UTC). Read-only check on prod: every `file_path` exists on `r2_accounting` (#1–#3 under `2026/09`, #4 under `2026/10`), the SHA-256 of each stored file equals `file_sha256`, no hash appears twice, and status `matched` and net figures are unchanged (RM33.14, RM457.00, RM36.50, RM4.25). Item 120 has no follow-up left.
+
+## 2026-10-18 — §16 item 112: customer account credentials base (ADR-124)
+
+**Why.** Login Top-up (113) and Joki (114) need the customer's game login, the first password the platform would hold. ADR-124 (accepted 2026-10-17) designed the storage; this builds it alone first, so the money-path work in 113 stays a separate PR.
+
+**Pre-build trace + stress test (founder asked for both).** Every decision was checked against code and prod (read-only). Five corrections, recorded as the ADR-124 2026-10-18 addendum:
+- A failed payment is not final: `OrderPaymentOutcomeService` takes a Paid after a Failed into NeedsReview. Wiping at `payment_status = failed` would wipe a paying customer's login. Now: not paid (pending or failed) for H hours. CHIP purchases are `due` +30 min with `due_strict`, so H ≥ 1 h is safe. Prod: 5 failed payments, each marked 30–45 min after creation, no late Paid yet.
+- "Closed for G hours" had no closing-time column (compensation time is spread over three tables). The sweep stamps `closed_at`. Closed is final: Delivered has no exit, and compensated orders are refused in `fulfill()` itself.
+- The D ceiling counted from order creation would wipe a login 15 minutes after a super_admin replaced it on a still-open order. It now counts from `secrets_set_at`.
+- "Compensated" as a query existed only as an inline copy in `scopeNeedsAction`. Extracted `Order::scopeCompensated()` (+ `scopeClosed()`), NeedsAction uses it, and `OrderCompensationScopeTest` holds it equal to `isAlreadyCompensated()`.
+- `credential_reveals` takes `actor_type`/`actor_id` now, so ADR-125 PR 2's supplier link needs no audit migration.
+Also checked and safe: no endpoint returns `PlatformSettings` publicly; `updatePlatform` uses `validated()`, so the unguarded form can't change the policy; a never-run critical task is seeded on first health check (ADR-122 decision 8), so the deploy won't page UptimeRobot; the founder's prod super_admin has MFA active. Item 122 checked at the same time: 5 of 5 delivered combo legs have a drawdown, so its trigger hasn't fired.
+
+**Shipped.**
+- Migrations: `order_credentials` (FK cascade, since the sandbox deletes test orders), `credential_reveals` (FK null on delete), five policy columns on `platform_settings` (consent text written out in the migration).
+- `OrderCredential` (`encrypted:array` secrets, `$hidden`), `CredentialReveal`; no relation from `Order`.
+- `app:wipe-order-credentials` every 15 min, critical; plain `UPDATE`s, never decrypts. `app:prune-credential-reveals` daily, routine.
+- `POST /api/orders/{order}/credentials/reveal` and `PUT /api/orders/{order}/credentials`: super_admin, `mfa.stepup`, reveal throttled per admin (`credential-reveal`, limit from settings), `Cache-Control: no-store`, audit row on every success, sandbox orders 404, replace refused (409) on a closed order.
+- `PUT /api/settings/customer-login-policy` behind step-up. Order detail gets `customer_login` (never a secret).
+- DB dumps exclude `order_credentials` on both connections.
+- Admin: Order Detail "Customer Login" card (reveal 30 s + copy, replace), Settings → Customer Login Policy tab.
+- Stale "five dangerous actions" / `StepUpRoutesTest` comments fixed in `routes/api.php` and `TestCase`.
+
+Tests: 4 new files (29 tests), `AdminMfaStepUpTest` pin updated. Full suite 2836/2836; the new tests plus `OrderTest` also pass on MySQL (49/49). Admin tsc, lint, unit tests and build are clean.
+
+**Live check.** A built admin on `localhost:3000` against `serve --no-reload` on the local dev DB, with a throwaway MFA super admin and two seeded logins. Login with TOTP → Order Detail card (password hidden) → Reveal asks for step-up → value shown with Copy → Replace saves and hides it again → Settings tab saves D = 10. DB afterwards: secret replaced and stored as ciphertext, two audit rows (reveal, replace) with IP. Contrast from `getComputedStyle`: light `rgb(27,26,23)` on white; dark muted `rgb(189,183,173)` on `rgb(26,25,23)` (~9:1). At 390 px the policy tab has no horizontal scroll once loaded at that width (157 px only when a desktop sidebar is left open by resizing, an artefact of the resize). Test data, the admin and the D change were removed afterwards.
+
+**Gotcha.** A second Playwright login inside the same 30-second TOTP window fails: the MFA replay guard (`mfa_last_timestep`) rejects the reused code. Wait for the next window.
+
+**Next.** Item 113 PR 1 adds the checkout fields that write a login.

@@ -81,6 +81,7 @@ import ConfirmFailedModal from "@/components/orders/ConfirmFailedModal";
 import NeedsReviewBanner from "@/components/orders/NeedsReviewBanner";
 import RefundInformationCards from "@/components/orders/RefundInformationCards";
 import OrderDetailCards from "@/components/orders/OrderDetailCards";
+import CustomerLoginCard from "@/components/orders/CustomerLoginCard";
 import OrderSummaryCards from "@/components/orders/OrderSummaryCards";
 import DeliveryLogsTable from "@/components/orders/DeliveryLogsTable";
 import ComboLegBreakdown from "@/components/orders/ComboLegBreakdown";
@@ -824,6 +825,8 @@ function OrdersPageInner() {
         </div>
 
         <OrderDetailCards order={selected} />
+
+        <CustomerLoginCard key={selected.id} orderId={selected.id} login={selected.customer_login} canManage={session?.role === "super_admin"} />
 
         {/* ADR-094 decision 12: empty/no-op for every ordinary order — only a combo order has legs to show. */}
         <ComboLegBreakdown legs={selected.delivery_legs} attempts={selected.resend_attempts} />

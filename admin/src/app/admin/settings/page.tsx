@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * ADR-028 + its 2026-08-22 addendum. Split into three tab components
- * (StoreBrandingSection/FooterSettingsSection/PlatformSettingsSection)
+ * ADR-028 + its 2026-08-22 addendum. Split into one component per tab
+ * (StoreBrandingSection/FooterSettingsSection/PlatformSettingsSection,
+ * plus ADR-124's CustomerLoginPolicySection)
  * rather than inlined here, same reasoning PendingPriceChangeSection
  * was already extracted for — keeps this file well under the
  * project's ~500-line guideline.
@@ -17,13 +18,15 @@ import { getSettings, type SettingsIndexResponse } from "@/lib/settings";
 import StoreBrandingSection from "@/components/settings/StoreBrandingSection";
 import FooterSettingsSection from "@/components/settings/FooterSettingsSection";
 import PlatformSettingsSection from "@/components/settings/PlatformSettingsSection";
+import CustomerLoginPolicySection from "@/components/settings/CustomerLoginPolicySection";
 
-type Tab = "branding" | "footer" | "platform";
+type Tab = "branding" | "footer" | "platform" | "customer-login";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "branding", label: "Store Branding" },
   { key: "footer", label: "Footer Settings" },
   { key: "platform", label: "Platform Settings" },
+  { key: "customer-login", label: "Customer Login Policy" },
 ];
 
 export default function SettingsPage() {
@@ -97,6 +100,9 @@ export default function SettingsPage() {
       )}
       {tab === "platform" && (
         <PlatformSettingsSection platform={data.platform} onSaved={() => refresh()} />
+      )}
+      {tab === "customer-login" && (
+        <CustomerLoginPolicySection platform={data.platform} onSaved={() => refresh()} />
       )}
     </div>
   );
