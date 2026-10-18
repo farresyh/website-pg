@@ -25,7 +25,11 @@ Laravel-specific, loaded only when working inside `backend/`.
   addendum removed Xendit; still resolved per-channel via
   `PaymentGatewayFactory`, which stays for a future multi-region gateway).
   Add a new supplier/gateway by implementing the interface, not by branching
-  inside a controller or service.
+  inside a controller or service. The factory resolves by `Supplier.driver`
+  (an API supplier's driver is its slug); a supplier with no API is
+  `driver = manual` (ADR-125). Any API-only path (sync, balance, status
+  check) asks `Supplier::isApiBacked()` / `isSyncable()`, never whether
+  `api_config` is empty.
 - **Money-critical concurrency is lock-guarded, proven with real
   subprocess tests** — see `LedgerService::withdraw()`,
   `VoucherService::redeem()`, `OrderFulfillmentService::fulfill()`, all
@@ -88,6 +92,10 @@ Laravel-specific, loaded only when working inside `backend/`.
 - **The app timezone is UTC** (`config/app.php` hardcodes it; prod's
   `APP_TIMEZONE` env is unused), so `daily()` runs at 00:00 UTC = 08:00 MYT.
   Malaysia days go through `App\Support\MalaysiaTime`.
+- **Don't hang an invariant on a model event.** Every seeder runs
+  `WithoutModelEvents`, and a raw insert skips events too. Put it in the
+  read (an accessor) or the one write path (113 PR 1a's `driver` fallback
+  broke the e2e suite this way, build-log 2026-10-18).
 - **Every mutating route gets a `Http\Requests\*` FormRequest** — structural
   validation (types, `exists:`) lives in the FormRequest; cross-field/DB-
   dependent business rules live in the controller. Don't validate via

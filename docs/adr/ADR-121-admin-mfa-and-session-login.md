@@ -1,6 +1,6 @@
 # ADR-121: Admin MFA (TOTP) and a cookie-session admin login: opt-in per account, step-up on five dangerous actions
 
-> **Standing (2026-10-14):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-18):** In force; ADR-124 adds three step-up routes (2026-10-18 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-14. Grilled with the founder in five rounds via `/mattpocock-skills:grilling` (Q1–Q17), then stress-tested against code and production (read-only). PRD §16 item 10, AUTH-7.
 
@@ -109,3 +109,7 @@ Built on `feature/admin-mfa`. Unless a point below says otherwise, the decisions
 - **Local dev and e2e.** The admin app must call the API on the same site. `localhost:3000` → `https://kedairuncit-backend.test` is cross-site, so the session cookie is not sent. Use `NEXT_PUBLIC_API_URL=http://localhost:8000` (backend `AGENTS.md` gotchas 6–7). e2e now runs `SESSION_DRIVER=file`, because the array driver is emptied on every `php artisan serve` request.
 - **Known limit (accepted).** An account awaiting setup is enrolled by whoever next signs in with its password. Require MFA only on accounts whose password is known to be safe, for example straight after creating them.
 
+
+### 2026-10-18 addendum — ADR-124 adds three guarded actions
+
+[ADR-124](./ADR-124-customer-account-credentials.md) (customer game logins) puts three more routes behind `mfa.stepup`: revealing a customer's login, replacing it, and saving the Customer Login Policy. The guarded set is no longer "five actions": `AdminMfaStepUpTest::test_exactly_these_routes_require_step_up` is the one list of them.

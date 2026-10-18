@@ -1308,3 +1308,15 @@ Tests: 2 new files (14 tests); 3 updated for the renamed endpoint, the `driver` 
 - First CI run failed `playwright` (resend and checkout ended `needs_review`: "No SupplierAdapter implementation for driver:"). The model filled `driver` from `slug` in a `creating` hook, but every seeder runs `WithoutModelEvents`, so the e2e supplier was stored with `driver = ''`. Fixed at the read: `Supplier::driver()` returns the slug when the column is blank, which covers seeders and raw inserts too. A regression test proves it red without the accessor.
 
 **Next.** PR 1b (login game, manual packages, checkout, Manual Queue, masking, copy).
+
+## 2026-10-18 — Docs audit after items 112 and 113 PR 1a
+
+PR #507 merged to `staging` (second CI run green after the `driver` fix). The founder asked for every doc to be brought in line before 113 PR 1b starts in a new session. Checked against code and prod (read-only): `origin/main` = `e127dcb` (#500) on the box (release `80479848`); `staging` is six PRs ahead (#502–#507); all three payment methods are still off.
+
+Updated:
+- PRD §14: date, payments re-checked, a "on `staging`, not yet released" paragraph (#502–#507, four additive migrations, nothing customer-facing yet).
+- PRD §15: Accounting and Balance rows (MYR rate 1.0, prepaid/payable split, manual-supplier balance), Customer Login row points at PR 1b.
+- PRD §16: item 113 line, the audit note.
+- ADRs: ADR-121 addendum (ADR-124's three step-up routes; the set lives in `AdminMfaStepUpTest`), ADR-031 addendum (factory resolves by driver), ADR-046 and ADR-125 banners and index rows.
+- `foundation-security.md`: step-up wording, a customer-login line under Secrets & Data.
+- `backend/AGENTS.md`: the driver/capability convention, and "don't hang an invariant on a model event".
