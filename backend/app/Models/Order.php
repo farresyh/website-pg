@@ -429,17 +429,43 @@ class Order extends Model
             ->where('payment_status', PaymentStatus::Paid->value)
             // ADR-094 decision 30 — the compensable statuses.
             ->whereIn('delivery_status', [DeliveryStatus::Failed->value, DeliveryStatus::PartiallyDelivered->value])
-            ->whereDoesntHave('voucher')
-            ->whereDoesntHave('voucherRedemption', fn (Builder $q) => $q->where('status', 'restored'))
-            ->whereNotExists(function ($q) {
-                $q->selectRaw('1')
+            ->whereNot(fn (Builder $q) => $q->compensated());
+    }
+
+    /**
+     * The query-level mirror of isAlreadyCompensated() (ADR-124 2026-10-18
+     * addendum, decision 5): a compensation voucher, a restored voucher
+     * redemption, or a reseller-wallet refund. The one place this rule is
+     * written for queries; OrderCompensationScopeTest holds it equal to
+     * the method.
+     */
+    public function scopeCompensated(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q
+            ->whereHas('voucher')
+            ->orWhereHas('voucherRedemption', fn (Builder $r) => $r->where('status', 'restored'))
+            ->orWhereExists(function ($e) {
+                $e->selectRaw('1')
                     ->from('ledger_entries')
                     ->where('ledger_entries.owner_type', LedgerOwnerType::ResellerWallet->value)
                     ->where('ledger_entries.type', 'wallet_refund')
                     ->where('ledger_entries.reference_type', 'order')
                     ->whereColumn('ledger_entries.reference_id', 'orders.id')
                     ->whereColumn('ledger_entries.owner_id', 'orders.wallet_reseller_id');
-            });
+            }));
+    }
+
+    /**
+     * ADR-124 2026-10-18 addendum, decision 3: an order nothing will
+     * deliver again — Delivered (no exit in OrderStatusService), or
+     * compensated (refused by fulfill() and every resend/retry/settle
+     * guard, ADR-102 decision 1).
+     */
+    public function scopeClosed(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q
+            ->where('delivery_status', DeliveryStatus::Delivered->value)
+            ->orWhere(fn (Builder $c) => $c->compensated()));
     }
 
     /**

@@ -9,6 +9,7 @@ use App\Http\Requests\Affiliate\Storefront\UploadFaviconRequest;
 use App\Http\Requests\Affiliate\Storefront\UploadImageRequest;
 use App\Http\Requests\Settings\BulkMarkupRequest;
 use App\Http\Requests\Settings\UpdateBrandingRequest;
+use App\Http\Requests\Settings\UpdateCustomerLoginPolicyRequest;
 use App\Http\Requests\Settings\UpdateFooterSettingsRequest;
 use App\Http\Requests\Settings\UpdatePlatformSettingsRequest;
 use App\Models\Affiliate;
@@ -147,6 +148,15 @@ class SettingsController extends Controller
     }
 
     public function updatePlatform(UpdatePlatformSettingsRequest $request): JsonResponse
+    {
+        $settings = PlatformSettings::current();
+        $settings->update($request->validated());
+
+        return response()->json($settings);
+    }
+
+    /** ADR-124 decision 10 — G, H, D, the reveal limit and the consent text, behind step-up. */
+    public function updateCustomerLoginPolicy(UpdateCustomerLoginPolicyRequest $request): JsonResponse
     {
         $settings = PlatformSettings::current();
         $settings->update($request->validated());

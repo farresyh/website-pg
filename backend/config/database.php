@@ -51,8 +51,10 @@ return [
             // to preserve ADR-021's 7-day PII-retention guarantee — a raw
             // dump that retained these rows for the backup's own
             // retention window would silently undo that policy.
+            // ADR-124 decision 3: order_credentials (customer game logins)
+            // too; a restore loses in-flight logins, re-sent through CS.
             'dump' => [
-                'exclude_tables' => ['player_validations'],
+                'exclude_tables' => ['player_validations', 'order_credentials'],
             ],
         ],
 
@@ -90,7 +92,7 @@ return [
             // user. 'OFF' drops both lines from future dumps entirely —
             // the dump's actual table data is unaffected either way.
             'dump' => [
-                'exclude_tables' => ['player_validations'],
+                'exclude_tables' => ['player_validations', 'order_credentials'],
                 'mysql_gtid_purged' => 'OFF',
                 // `useSingleTransaction` — found 2026-09-16 via Pulse's
                 // own slow-query log (UPDATE `supplier_products` 6.4s,

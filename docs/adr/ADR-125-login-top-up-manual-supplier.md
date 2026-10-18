@@ -95,3 +95,7 @@ Must not change: `recordOrderDrawdown`'s contract and idempotency key, `operatin
 ### 2026-10-17 addendum — the report view's effective cost mirrors `effectiveCostPriceSen()`
 
 Found in the 2026-10-17 docs audit. Decision 24's `COALESCE(real_cost_price_sen, cost_price) AS effective_cost_price` is replaced. That expression is wrong in two cases: a combo keeps its real cost only on `order_delivery_legs.real_cost_price_sen` (the order's own column stays null, so the catalog cost would show), and a non-combo order's stored real cost counts only when it satisfies the profit residual (flag off or no FX rate means it was not used). `llm_report_orders.effective_cost_price` must give the same number as `Order::effectiveCostPriceSen()`: the residual check for a single order, and the sum of the legs for a combo. The same fix covers the live Report Assistant prompt (PRD §16 item 118), which today points at `cost_price`.
+
+### 2026-10-18 addendum — ADR-124 is built first, on its own
+
+"PR 1 … (plus ADR-124)" in the consequences is replaced: ADR-124 was built first as its own PR (PRD §16 item 112, ADR-124 2026-10-18 addendum, decision 1). PR 1 here now adds the checkout path that writes `order_credentials` from decision 6's per-game schema, snapshotting `PlatformSettings::credential_consent_text`. The sweep, reveal/replace, audit and policy settings already exist.

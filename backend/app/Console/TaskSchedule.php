@@ -41,6 +41,7 @@ class TaskSchedule
         'membership-renewal-reminders',
         'affiliate-tier-fee-charge',
         'supplier-balance-refresh',
+        'order-credential-wipe',
     ];
 
     /** Stale → admin Dashboard only. */
@@ -48,6 +49,7 @@ class TaskSchedule
         'player-validation-pruning',
         'supplier-request-log-pruning',
         'report-assistant-audit-log-pruning',
+        'credential-reveal-pruning',
         'reseller-whatsapp-pending-link-pruning',
         'reseller-bot-command-log-pruning',
         'stale-cache-pruning',
@@ -147,6 +149,20 @@ class TaskSchedule
         $schedule->command('app:prune-report-assistant-audit-logs')
             ->daily()
             ->name('report-assistant-audit-log-pruning')
+            ->withoutOverlapping($overlap);
+
+        // ADR-124 decision 7 (2026-10-18 addendum) — the one place a
+        // customer's game login is wiped; critical, because a stale sweep
+        // keeps passwords past the promise made at checkout.
+        $schedule->command('app:wipe-order-credentials')
+            ->cron('*/15 * * * *')
+            ->name('order-credential-wipe')
+            ->withoutOverlapping($overlap);
+
+        // ADR-124 decision 11 — credential_reveals kept one year.
+        $schedule->command('app:prune-credential-reveals')
+            ->daily()
+            ->name('credential-reveal-pruning')
             ->withoutOverlapping($overlap);
 
         // PR-F build addendum (ADR-075) — prunes reseller_whatsapp_pending_links

@@ -10,6 +10,7 @@ use App\Jobs\FulfillOrderJob;
 use App\Jobs\ResendOrderDeliveryJob;
 use App\Models\LedgerEntry;
 use App\Models\Order;
+use App\Models\OrderCredential;
 use App\Models\Package;
 use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderFulfillmentService;
@@ -815,6 +816,9 @@ class OrderController extends Controller
             // a fresh page load too, not just right after a successful
             // action in the same session.
             'wallet_refunded' => $order->isAlreadyRefundedToWallet(),
+            // ADR-124: the customer's game login, never a secret value
+            // (those come only from OrderCredentialController::reveal()).
+            'customer_login' => OrderCredential::query()->where('order_id', $order->id)->first()?->adminSummary(),
             // ADR-102 decision 11 (b) — the underlying LedgerEntry's own
             // amount/created_at, not just the boolean above: the "Wallet
             // Refund" card needs to show more than a yes/no.

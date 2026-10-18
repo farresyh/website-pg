@@ -14,6 +14,7 @@ use App\Models\AffiliateMembershipTier;
 use App\Models\AffiliateSubscription;
 use App\Models\BackupRun;
 use App\Models\Order;
+use App\Models\PlatformSettings;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
 use App\Observers\AffiliateMembershipTierObserver;
@@ -592,6 +593,11 @@ class AppServiceProvider extends ServiceProvider
         // per IP. Public numbers: docs-site/src/content/docs/rate-limits.md.
         RateLimiter::for('reseller-api-orders', fn (Request $request) => Limit::perMinute(60)->by(self::resellerApiBucket($request)));
         RateLimiter::for('reseller-api-reads', fn (Request $request) => Limit::perMinute(120)->by(self::resellerApiBucket($request)));
+
+        // ADR-124 decision 5: reveals of a customer's game login, per admin,
+        // limit set in Settings → Customer Login Policy.
+        RateLimiter::for('credential-reveal', fn (Request $request) => Limit::perHour(PlatformSettings::current()->credential_reveal_limit_per_hour)
+            ->by('admin:'.$request->user()->id));
     }
 
     private static function resellerApiBucket(Request $request): string
