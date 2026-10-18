@@ -3,22 +3,20 @@
 namespace App\Http\Controllers\Middleware;
 
 use App\Http\Controllers\Controller;
-use App\Http\Controllers\GameController;
 use App\Http\Requests\Middleware\BulkUpdateSupplierPackagesStatusRequest;
 use App\Http\Requests\Middleware\CreateSupplierRequest;
 use App\Http\Requests\Middleware\UpdateSupplierRequest;
 use App\Http\Requests\Middleware\UpdateSupplierStatusRequest;
-use App\Models\DeactivationLog;
 use App\Models\Package;
 use App\Models\Supplier;
 use App\Models\WhatsAppGroup;
 use App\Services\CircuitBreaker\CircuitBreaker;
-use App\Services\Pricing\ComboPricingService;
+use App\Services\Supplier\Manual\ManualSupplierStatusService;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierConfigSchema;
 use App\Services\Supplier\SupplierNotConfiguredException;
+use App\Services\Supplier\SupplierPackageStatusService;
 use App\Services\Supplier\UnsupportedSupplierException;
-use App\Services\WhatsApp\WhatsAppGroupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -224,10 +222,14 @@ class SupplierController extends Controller
      * 4) — the confirm warning itself is a frontend concern, this just
      * flips the flag.
      */
-    public function updateStatus(UpdateSupplierStatusRequest $request, Supplier $supplier, WhatsAppGroupService $groups): JsonResponse
+    public function updateStatus(UpdateSupplierStatusRequest $request, Supplier $supplier, ManualSupplierStatusService $manual): JsonResponse
     {
-        if ($request->validated('is_active')) {
-            $groups->assertSupplierMayBeActive($supplier);
+        // ADR-125 decision 64: a manual supplier's switch also takes its
+        // packages on and off sale; an API supplier's flag stays as it was.
+        if (! $supplier->isApiBacked()) {
+            $manual->setActive($supplier, $request->validated('is_active'), $request->user()->id);
+
+            return response()->json($supplier->fresh());
         }
 
         $supplier->update(['is_active' => $request->validated('is_active')]);
@@ -312,99 +314,13 @@ class SupplierController extends Controller
      * deactivated for an unrelated reason (supplier_sync/price_anomaly),
      * silently bypassing ADR-025's swing-review safety net.
      */
-    public function updatePackagesStatus(BulkUpdateSupplierPackagesStatusRequest $request, Supplier $supplier, ComboPricingService $comboPricing): JsonResponse
+    public function updatePackagesStatus(BulkUpdateSupplierPackagesStatusRequest $request, Supplier $supplier, SupplierPackageStatusService $packages): JsonResponse
     {
-        $isActive = $request->validated('is_active');
         $gameId = $request->validated('game_id');
 
-        $query = Package::query()->where('supplier_id', $supplier->id);
-
-        if ($gameId !== null) {
-            $query->where('game_id', $gameId);
-        }
-
-        if ($isActive) {
-            $query->where('is_active', false)->where('deactivated_reason', 'supplier_issue');
-
-            $clone = clone $query;
-            $packageIds = (clone $query)->pluck('id');
-            $gameIds = $clone->distinct()->pluck('game_id')->all();
-
-            $affectedComboCount = 0;
-
-            DB::transaction(function () use ($query, $packageIds, $request, $comboPricing, &$affectedComboCount) {
-                $query->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
-
-                // Addendum (2026-09-24) — a combo cascade-deactivated
-                // because one of these components went down can now
-                // complete, once every other component is active too.
-                // Its own game is always one of $gameIds above (a
-                // combo's components all share its game — enforced at
-                // creation), so no separate cache-forget is needed here.
-                $affectedComboCount = $comboPricing->cascadeReactivateForComponents(
-                    $packageIds,
-                    priceSyncRunId: null,
-                    adminUserId: $request->user()->id,
-                )->count();
-            });
-
-            foreach ($gameIds as $gId) {
-                GameController::forgetPackagesCache($gId, false);
-            }
-            if ($gameIds !== []) {
-                GameController::forgetIndexCache();
-            }
-
-            return response()->json(['updated' => $packageIds->count(), 'updated_combos' => $affectedComboCount]);
-        }
-
-        $query->where('is_active', true);
-
-        $clone = clone $query;
-        $packageIds = (clone $query)->pluck('id');
-        $gameIds = $clone->distinct()->pluck('game_id')->all();
-
-        $affectedComboCount = 0;
-
-        DB::transaction(function () use ($query, $packageIds, $request, $comboPricing, &$affectedComboCount) {
-            $query->update(['is_active' => false, 'deactivated_reason' => 'supplier_issue', 'deactivated_at' => now()]);
-
-            $now = now();
-            $rows = $packageIds->map(fn (int $packageId) => [
-                'package_id' => $packageId,
-                'admin_user_id' => $request->user()->id,
-                'reason' => $request->validated('reason'),
-                'created_at' => $now,
-                'updated_at' => $now,
-            ])->all();
-
-            if ($rows !== []) {
-                DeactivationLog::query()->insert($rows);
-            }
-
-            // Addendum (2026-09-24) — this bulk toggle used to bypass
-            // combo cascade entirely (a raw mass update, not a per-row
-            // loop through the single-component cascadeDeactivate()
-            // every other deactivation path already uses), leaving a
-            // combo listed active while one of its legs went dark. Its
-            // own game is always one of $gameIds above, same reasoning
-            // as the reactivate branch.
-            $affectedComboCount = $comboPricing->cascadeDeactivateForComponents(
-                $packageIds,
-                priceSyncRunId: null,
-                adminUserId: $request->user()->id,
-                reason: $request->validated('reason'),
-            )->count();
-        });
-
-        foreach ($gameIds as $gId) {
-            GameController::forgetPackagesCache($gId, false);
-        }
-        if ($gameIds !== []) {
-            GameController::forgetIndexCache();
-        }
-
-        return response()->json(['updated' => $packageIds->count(), 'updated_combos' => $affectedComboCount]);
+        return response()->json($request->validated('is_active')
+            ? $packages->reactivate($supplier, $request->user()->id, $gameId)
+            : $packages->deactivate($supplier, $request->user()->id, $request->validated('reason'), $gameId));
     }
 
     /**

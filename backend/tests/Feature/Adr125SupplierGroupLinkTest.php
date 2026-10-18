@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\AdminUser;
+use App\Models\Game;
+use App\Models\Package;
 use App\Models\Reseller;
 use App\Models\Supplier;
 use App\Models\WhatsAppGroup;
@@ -96,6 +98,29 @@ class Adr125SupplierGroupLinkTest extends TestCase
         $this->assertFalse(Supplier::query()->find($id)->is_active);
 
         $this->patchJson("/api/middleware/suppliers/{$id}/status", ['is_active' => true])->assertJsonValidationErrors('is_active');
+    }
+
+    /** Decision 64: a supplier's flag gates nothing at checkout, so its packages follow it. */
+    public function test_switching_a_manual_supplier_takes_its_packages_off_sale_and_back(): void
+    {
+        $game = Game::query()->create(['name' => 'Roblox', 'slug' => 'roblox']);
+        $package = fn (string $name, bool $active, ?string $reason = null) => Package::query()->create([
+            'game_id' => $game->id, 'supplier_id' => $this->manual->id, 'name' => $name, 'cost_price' => 900, 'standard_selling_price' => 1000,
+            'markup_percent' => 0, 'is_active' => $active, 'deactivated_reason' => $reason, 'supplier_package_ref' => 'ref-'.uniqid(),
+        ]);
+        $onSale = $package('800 Robux', true);
+        $offForPrice = $package('1700 Robux', false, 'price_anomaly');
+        $this->postJson("/api/partner-suppliers/{$this->manual->id}/whatsapp-group", ['whatsapp_group_id' => 'g1@g.us'])->assertCreated();
+        $this->patchJson("/api/partner-suppliers/{$this->manual->id}/status", ['is_active' => true])->assertOk();
+
+        $this->patchJson("/api/partner-suppliers/{$this->manual->id}/status", ['is_active' => false])->assertOk();
+        $this->assertFalse($onSale->fresh()->is_active);
+        $this->assertSame('supplier_issue', $onSale->fresh()->deactivated_reason);
+
+        $this->patchJson("/api/partner-suppliers/{$this->manual->id}/status", ['is_active' => true])->assertOk();
+        $this->assertTrue($onSale->fresh()->is_active);
+        $this->assertFalse($offForPrice->fresh()->is_active);
+        $this->assertSame('price_anomaly', $offForPrice->fresh()->deactivated_reason);
     }
 
     public function test_an_api_supplier_never_takes_a_group_and_is_not_listed(): void

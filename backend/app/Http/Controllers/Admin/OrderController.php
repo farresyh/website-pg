@@ -859,7 +859,7 @@ class OrderController extends Controller
             'deliveryLegs.supplier:id,name',
             // ADR-116 decision 9: every WhatsApp message sent (or not) to the
             // customer about this order, so the admin knows when to step in.
-            'customerNotifications' => fn ($query) => $query->select(['id', 'order_id', 'session', 'event', 'phone', 'status', 'attempts', 'error', 'sent_at', 'created_at'])->oldest(),
+            'customerNotifications' => fn ($query) => $query->select(['id', 'order_id', 'session', 'event', 'phone', 'chat_id', 'status', 'attempts', 'error', 'sent_at', 'created_at'])->oldest(),
         ]);
 
         // §16 item 84: the Refund cards show `display_status` (expiry is `expires_at` alone).
