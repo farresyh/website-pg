@@ -43,5 +43,7 @@ final class CheckoutRequest
         public readonly ?float $tierMarkupPct = null,
         // Item 63: what a replay of idempotencyKey must match.
         public readonly ?string $idempotencyPayloadHash = null,
+        // ADR-125 decision 41: a login game's form, stored with the order.
+        public readonly ?LoginCredentials $credentials = null,
     ) {}
 }

@@ -102,7 +102,9 @@ class CatalogController extends Controller
         // ADR-060 PR-4c: the brand is resolved per `Host` — its own
         // wholesale tier + markup drive `selling_price_sen` below.
         $affiliate = $this->storefrontBrand->get();
-        $membershipEnabled = $affiliate->membershipEnabledEffective();
+        // ADR-125 decision 37: a game with member pricing off shows no
+        // member price, matching what checkout charges.
+        $membershipEnabled = $affiliate->membershipEnabledEffective() && $game->memberPricingApplies();
 
         // Resolved once per request, outside the cache closure below —
         // a decrypt + one indexed Membership lookup, not worth caching
@@ -260,6 +262,9 @@ class CatalogController extends Controller
             // ADR-097 2026-10-05 addendum, decision 34.
             'player_id_format' => $game->playerIdFormat(),
             'player_validator_enabled' => $game->player_validator_enabled,
+            // ADR-125 decision 6: a login game's form (empty for a UID
+            // game). Labels, types and flags only, never a value.
+            'credential_fields' => $game->credentialFields(),
             // ADR-109 decisions 11/12 — flat siblings, same shape as
             // extra_field/zone_options above. important_notes/
             // description gate the storefront's auto-open modal;

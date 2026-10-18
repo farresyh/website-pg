@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Checkout\CreateCheckoutRequest;
 use App\Http\Requests\Checkout\PreviewCheckoutTotalRequest;
+use App\Models\Affiliate;
 use App\Models\AffiliateGame;
 use App\Models\Game;
 use App\Models\Membership;
@@ -18,6 +19,7 @@ use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\Checkout\CheckoutRequest;
 use App\Services\Checkout\CheckoutService;
 use App\Services\Checkout\DuplicateCheckoutAttemptException;
+use App\Services\Checkout\LoginCredentials;
 use App\Services\Fraud\BlacklistService;
 use App\Services\Fraud\CheckoutVelocityGuard;
 use App\Services\Membership\MembershipSessionTokenService;
@@ -99,6 +101,16 @@ class CheckoutController extends Controller
             ]);
         }
 
+        // ADR-125 decision 32: a login game's player_id is set here from
+        // its identifier field, before validation and the blacklist, so a
+        // client-sent player_id can never sit beside a different login.
+        $credentials = null;
+        if ($game->isLoginGame()) {
+            [$data, $credentials] = $this->resolveLoginCredentials($game, $data, $platformSettings);
+        } elseif (filled($data['credentials'] ?? null)) {
+            throw ValidationException::withMessages(['credentials' => ['This game does not take a login.']]);
+        }
+
         // ADR-097 decision 19 + 2026-10-05 addendum — the same per-game
         // player-input contract every channel enforces.
         if ($error = $this->checkoutInputValidator->validate($game, $data['player_id'], $data['server_id'] ?? null)) {
@@ -125,14 +137,14 @@ class CheckoutController extends Controller
         // worst. This is a retry (double-click, client timeout retry)
         // of an attempt already in flight or already finished, not a
         // new checkout to re-vet.
-        $payloadHash = self::payloadHash($data);
+        $payloadHash = self::payloadHash($data, $credentials);
 
         $existing = Order::query()->where('checkout_idempotency_key', $data['idempotency_key'])->first();
         if ($existing !== null) {
             return $this->respondForExistingOrder($existing, $payloadHash, $gateway, $data['channel_code'], $data['channel_properties'] ?? []);
         }
 
-        if ($game->player_validator_enabled && $game->player_validator_profile_id !== null) {
+        if (! $game->isLoginGame() && $game->player_validator_enabled && $game->player_validator_profile_id !== null) {
             $this->assertPlayerIdIsValidated($game, $data['player_id'], $data['server_id'] ?? null);
         }
 
@@ -147,9 +159,7 @@ class CheckoutController extends Controller
         // Membership needs BOTH the global kill-switch and this brand's
         // own toggle (ADR-061 decision 4).
         $affiliate = $this->storefrontBrand->get();
-        $membershipId = $affiliate->membershipEnabledEffective($platformSettings)
-            ? $this->resolveMembershipId($request, $affiliate->id)
-            : null;
+        $membershipId = $this->membershipIdFor($request, $game, $affiliate, $platformSettings);
 
         try {
             $order = $this->checkout->initiate(new CheckoutRequest(
@@ -177,6 +187,7 @@ class CheckoutController extends Controller
                 supplierId: $package->supplier_id,
                 affiliateId: $affiliate->id,
                 membershipId: $membershipId,
+                credentials: $credentials,
             ), $gateway);
         } catch (DuplicateCheckoutAttemptException) {
             // Lost a genuine race — a concurrent request with the same
@@ -247,9 +258,7 @@ class CheckoutController extends Controller
 
         $affiliate = $this->storefrontBrand->get();
         $platformSettings = PlatformSettings::current();
-        $membershipId = $affiliate->membershipEnabledEffective($platformSettings)
-            ? $this->resolveMembershipId($request, $affiliate->id)
-            : null;
+        $membershipId = $this->membershipIdFor($request, $game, $affiliate, $platformSettings);
 
         try {
             $preview = $this->checkout->previewTotal(
@@ -344,16 +353,63 @@ class CheckoutController extends Controller
      *
      * @param  array<string, mixed>  $data
      */
-    private static function payloadHash(array $data): string
+    private static function payloadHash(array $data, ?LoginCredentials $credentials = null): string
     {
-        return hash('sha256', json_encode([
+        $payload = [
             'game_id' => (int) $data['game_id'],
             'package_id' => (int) $data['package_id'],
             'channel_code' => $data['channel_code'],
             'voucher_code' => $data['voucher_code'] ?? null,
             'player_id' => $data['player_id'],
             'server_id' => $data['server_id'] ?? null,
-        ], JSON_THROW_ON_ERROR));
+        ];
+
+        // ADR-125 decision 40: the non-secret login fields only. The hash
+        // is stored unsalted, so a password must never be in it.
+        if ($credentials !== null) {
+            $payload['credential_fields'] = $credentials->fields;
+        }
+
+        return hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * ADR-125 decisions 32 + ADR-124 decision 8: checks the login form and
+     * the consent box, and sets `player_id` from the identifier field.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{0: array<string, mixed>, 1: LoginCredentials}
+     */
+    private function resolveLoginCredentials(Game $game, array $data, PlatformSettings $settings): array
+    {
+        if (filled($data['player_id'] ?? null) || filled($data['server_id'] ?? null)) {
+            throw ValidationException::withMessages(['player_id' => ['This game takes a login, not a Player ID.']]);
+        }
+
+        if (! ($data['credential_consent'] ?? false)) {
+            throw ValidationException::withMessages(['credential_consent' => ['Please agree to how your login is used.']]);
+        }
+
+        $input = (array) ($data['credentials'] ?? []);
+        if ($error = $this->checkoutInputValidator->validateCredentials($game, $input)) {
+            throw ValidationException::withMessages([$error['field'] => [$error['message']]]);
+        }
+
+        $credentials = LoginCredentials::fromValidatedInput($game, $input, $settings->credential_consent_text);
+
+        return [[...$data, 'player_id' => $credentials->identifier, 'server_id' => null], $credentials];
+    }
+
+    /**
+     * ADR-125 decision 37: the one member-pricing gate. A null membership
+     * id gives the standard price and no quota debit, in the preview and
+     * at checkout alike.
+     */
+    private function membershipIdFor(Request $request, Game $game, Affiliate $affiliate, PlatformSettings $settings): ?int
+    {
+        return $game->memberPricingApplies() && $affiliate->membershipEnabledEffective($settings)
+            ? $this->resolveMembershipId($request, $affiliate->id)
+            : null;
     }
 
     /**

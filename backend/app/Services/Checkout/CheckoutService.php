@@ -144,6 +144,7 @@ final class CheckoutService
                 affiliateMarkupPct: $request->affiliateMarkupPct,
                 paymentGateway: $request->paymentGateway,
                 channelCode: $request->channelCode,
+                credentials: $request->credentials,
             ));
         } catch (DuplicateOrderException $e) {
             throw new DuplicateCheckoutAttemptException(
