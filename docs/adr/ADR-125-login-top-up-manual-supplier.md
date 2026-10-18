@@ -99,3 +99,63 @@ Found in the 2026-10-17 docs audit. Decision 24's `COALESCE(real_cost_price_sen,
 ### 2026-10-18 addendum — ADR-124 is built first, on its own
 
 "PR 1 … (plus ADR-124)" in the consequences is replaced: ADR-124 was built first as its own PR (PRD §16 item 112, ADR-124 2026-10-18 addendum, decision 1). PR 1 here now adds the checkout path that writes `order_credentials` from decision 6's per-game schema, snapshotting `PlatformSettings::credential_consent_text`. The sweep, reveal/replace, audit and policy settings already exist.
+
+### 2026-10-18 addendum — pre-build stress test of PR 1: split into 1a/1b, twelve gaps closed
+
+Before building PR 1, three read-only forks (checkout and pricing; fulfillment, ledger and compensation; downstream readers) re-traced every decision against current `staging` (which now has items 115, 121, 123, 120 and 112). The top findings were re-checked by hand, and prod was queried read-only: 2 suppliers, both API (Digiflazz IDR, Gamevion MYR); 37 of 38 games have `reseller_code`; 18 have the player validator on; no order is Pending, NeedsReview or Processing; 5 Digiflazz transfers. Founder decisions on 2026-10-18 are marked (founder).
+
+**Still true:** decisions 5 (reseller exclusion by `reseller_code` alone), 8 (`finalizePendingDelivery` is the one confirmation seam), 9 (a manual Failed is confirmed non-delivery, so a new reference is safe), 23 (RM at rate 1.0 gives `real_cost = cost_price`, so profit is unchanged on every basis), the combo one-supplier rule, resend staying within one game, and ADR-124's sweep (a manual Failed keeps its login; voucher or Delivered closes it).
+
+**25. PR 1 is split (founder).**
+- **1a:** driver and capabilities on `Supplier`, and every reader. No customer-facing change.
+- **1b:** login games, manual packages, checkout, Manual Queue, customer copy.
+
+Both funding modes ship (founder): decision 18 stands, with the accounting fixes in decision 30.
+
+**26. Driver and capability readers (1a).** The slug-keyed logic is wider than decision 1 listed: about 20 sites, including `resubmitReplaysOutcome`, `SupplierConfigSchema`, the circuit-breaker name, `supplierApiConfig`, the webhook, and the sandbox binding `supplier-adapter.{slug}`.
+- One rule keeps them correct: `CreateSupplierRequest` requires `slug === driver` for an API driver. Only `driver = manual` takes a free slug.
+- Every capability, schema and binding lookup keys on driver. `SupplierAdapterFactory::for(Supplier)` passes the row, so one `manual` binding serves every manual supplier.
+- `Supplier::pollsStatus()` replaces the slug list in `resubmitReplaysOutcome`.
+
+**27. Every API-only path asks the supplier (1a).**
+- `scopeApiBacked()` is used by four `filled(api_config)` readers, not three: the price-sync job, the schedule gate, item 106's `CheckPriceSyncStalenessCommand` (otherwise a stale-sync email every run), and product sync (which today has no filter).
+- `RefreshSupplierBalancesCommand` selects `scopeApiBacked()`. Its `checkBalance()` call sits outside the try, and the task is critical, so one manual supplier would fail `/api/health`.
+- `SupplierDeliveryCheckService::check()` refuses a supplier without `pollsStatus()`. This one seam covers the admin "Check supplier" button and the reconciler's `CheckSupplierDeliveryJob`.
+- `SupplierController::refreshBalance` refuses a non-API supplier.
+- Balance shown anywhere (Middleware Suppliers, Balance page, Dashboard health) reads `displayBalance()`.
+- The admin create form chooses a driver, not a slug.
+
+**28. Mark Delivered on a manual NeedsReview order goes through `finalizePendingDelivery` (1b).** `markDeliveredManually` skips real cost, the reconcile and the drawdown. A manual order reaches NeedsReview when a worker dies at Processing or `createOrder` throws. Without this, "Owed" and COGS would be wrong. Prod has never used `manual_confirm`.
+
+**29. `recordOrderDrawdown` skips an `is_test` order (1a), one guard at the seam.** Sandbox orders are also kept out of the Manual Queue (1b).
+
+**30. Accounting for an MYR supplier (1a).**
+- `weightedAverageRate()` returns 1.0 for **every** MYR supplier, not only one with no transfers. `FundedCostOfSales::rates()` drops its own MYR special case and calls it.
+- Whether a transfer fee belongs in unit cost stays with the accountant (PRD §16 item 81). This keeps today's COGS behaviour: fee excluded for MYR.
+- Decision 20 splits each supplier's balance by sign before summing. Stored month-close `equation` JSON reads the new `claims.supplier_payable_sen` with a default of 0.
+- Decision 21's health item (Delivered manual orders with no `ORDER_DRAWDOWN`) ships in 1a, because a manual supplier has no drift check.
+
+**31. The login identifier is masked on every public surface (1b, founder).** Track Order, Reverb `OrderStatusUpdated` and the WhatsApp `OrderStatusCard` return the raw `player_id` to anyone with the order number. For a login game that is half the login, which breaks ADR-065.
+- One `Order::publicPlayerLabel()`: `ContactMask::email` for an email identifier, a partial mask otherwise. The label reads "Login".
+- `OrderStatusCard` words its copy by fulfilment kind (decision 24). For a login order it carries ADR-124 decision 9's "wiped within G hours, change your password".
+
+**32. Checkout for a login game (1b).**
+- The server sets `player_id` from the schema's identifier field before validation and the blacklist, and refuses a client `player_id`/`server_id`. Otherwise a clean `player_id` beside a banned username passes the blacklist.
+- `CheckoutInputValidator::validate()` branches on `isLoginGame()`, which covers checkout, the resend ID edit and the REST API once.
+- Player validation is skipped for a login game.
+- The order and its `order_credentials` row are created in one transaction.
+
+**33. Creating a login game and its schema (1b).** Games are created today only by `SupplierProductController::linkCategory`, which needs a supplier category. Its `validation_rules` is a free array that would let `credential_fields` through unchecked.
+- A game create plus schema write endpoint is added.
+- `linkCategory` becomes a fifth `GameFulfilmentRule` path: it strips `credential_fields` and refuses a login game.
+- The rule also refuses the player validator and `delivery_mode = instant` on a login game.
+
+**34. Manual cost edit is audited (1b).** `PackagePriceSyncService`'s private `propagatePrice` is extracted. The manual edit calls it (writing a `PriceChangeLog` with a null run), then `ComboPricingService::recomputeForComponentChange`. The admin-entered real cost at confirmation is bounded (`> 0`, ≤ `selling_price` unless a reason is given), and `confirmed_by` is stored in the supplier response.
+
+**35. Member pricing gate (1b):**
+- `CheckoutService` is the one gate for price and quota.
+- `CatalogController::publicPackage` reads it.
+- `MembershipPricingService::representativePackage` excludes games with it off.
+- `resolveMemberEmail` stays separate.
+
+**Can wait (no wrong money total):** decision 24's "Profit flagged" filter and `llm_report_orders.effective_cost_price`, and decision 22's month-close preview. PR 2 note: a resend from NeedsReview reuses the reference, so the post's (order, reference) key would not re-post.
