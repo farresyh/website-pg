@@ -1,6 +1,6 @@
 # ADR-031: Multi-supplier routing — `SupplierAdapterFactory` + one-Package-one-supplier (built 2026-08-25)
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-18):** In force; decision 1's binding key is the supplier's `driver`, not its slug, since [ADR-125](./ADR-125-login-top-up-manual-supplier.md) (2026-10-18 addendum below). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-08-24 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
 
@@ -19,3 +19,7 @@
 **Consequence to track:**
 - **Verify (don't change) the latent Gap-X behavior** during reconcile generalization: `ReconcilePendingDeliveriesCommand::retryStuckProcessing()` re-dispatches `FulfillOrderJob` for `Processing`+null-`supplier_ref` orders, but `FulfillOrderJob` catches `InvalidOrderTransitionException` (`FulfillOrderJob.php:67`) and `startDelivery()` rejects `Processing` — so that re-dispatch may be a no-op. It may also be unreachable in practice because `fulfill()` runs inside a single transaction (a hard crash rolls back to `NotStarted`). Verify with the existing tests; do not alter behavior in this ADR.
 - Circuit-breaker names must become per-supplier (currently hardcoded `'gamevion'` in `AppServiceProvider`).
+
+### 2026-10-18 addendum — the factory resolves by driver
+
+[ADR-125](./ADR-125-login-top-up-manual-supplier.md) decision 1 (built 2026-10-18): `SupplierAdapterFactory::for(Supplier)` resolves `supplier-adapter.<driver>`. An API supplier's driver equals its slug (enforced when it is created), so every existing binding and slug-keyed check is unchanged. Every manual supplier shares the `manual` driver and its `ManualSupplierAdapter`.

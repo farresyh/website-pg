@@ -53,7 +53,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-028](./adr/ADR-028-platform-reseller-settings.md) | Platform & Reseller Settings — reseller-scoped branding vs. platform-wide config split | In force | 2026-10-10 |
 | [ADR-029](./adr/ADR-029-seo-management.md) | SEO Management — reseller-scoped SEO settings, redirects, and per-game wiring | In force; decision 8 revised by ADR-120 | 2026-10-08 |
 | [ADR-030](./adr/ADR-030-digiflazz-supplier-integration.md) | Digiflazz supplier integration — buyer-role adapter, prepaid games only | In force; decision 2 modified by ADR-067, rc table reopened by ADR-098/102 | 2026-09-03 |
-| [ADR-031](./adr/ADR-031-multi-supplier-routing.md) | Multi-supplier routing — `SupplierAdapterFactory` + one-Package-one-supplier | In force |  |
+| [ADR-031](./adr/ADR-031-multi-supplier-routing.md) | Multi-supplier routing — `SupplierAdapterFactory` + one-Package-one-supplier | In force; the factory resolves by `driver` since ADR-125 | 2026-10-18 |
 | [ADR-032](./adr/ADR-032-async-supplier-delivery.md) | Async supplier delivery — `DeliveryStatus::Pending` + normalized `SupplierResponse` outcome + webhook & poll finalization | In force |  |
 | [ADR-033](./adr/ADR-033-foreign-currency-supplier-pricing.md) | Foreign-currency supplier pricing — FX-rate conversion at sync time | In force; one rate per run, see ADR-111 2026-10-14 addendum | 2026-10-17 |
 | [ADR-034](./adr/ADR-034-storefront-best-price-selection.md) | Storefront best-price selection — `packages.denomination` | In force |  |
@@ -68,7 +68,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-043](./adr/ADR-043-llms-txt.md) | `llms.txt` — auto-generated AI/LLM-context route | In force | 2026-08-22 |
 | [ADR-044](./adr/ADR-044-zod-runtime-schema-validation-at-the-admin.md) | Zod runtime schema validation at the admin/storefront API boundary | In force |  |
 | [ADR-045](./adr/ADR-045-admin-dashboard.md) | Admin Dashboard — DASH-1..6, `orders.delivered_at`, and a per-metric self-documenting `definition` convention | Partly superseded — DASH-1, 3, 4, 5 replaced by ADR-104 (2026-10-15) | 2026-10-15 |
-| [ADR-046](./adr/ADR-046-supplier-management-screen.md) | Supplier Management screen — trimmed to config/health (SUPP-1/CRUD/SUPP-5), `Supplier.api_config` becomes the live credential source, per-supplier/per-game bulk deactivation | In force; supplier `driver` column + capabilities added by ADR-125 (design) | 2026-09-24 |
+| [ADR-046](./adr/ADR-046-supplier-management-screen.md) | Supplier Management screen — trimmed to config/health (SUPP-1/CRUD/SUPP-5), `Supplier.api_config` becomes the live credential source, per-supplier/per-game bulk deactivation | In force; create picks a `driver`, manual suppliers name their own slug (ADR-125) | 2026-09-24 |
 | [ADR-047](./adr/ADR-047-realtime-broadcasting.md) | Realtime broadcasting — Laravel Reverb + Echo, replacing application-level polling | In force | 2026-09-28 |
 | [ADR-048](./adr/ADR-048-queue-driver-migration-to-redis-plus-horizon.md) | Queue driver migration to Redis, plus Horizon + Pulse — reverses ADR-014 decision #1 / ADR-020 decision #3's "queue stays on `database`" | In force | 2026-09-29 |
 | [ADR-049](./adr/ADR-049-customer-analytics-anl-1-4.md) | Customer Analytics (ANL-1..4) — identity as a derived grouping, segmentation rules, and date-range scope | In force | 2026-10-15 |
@@ -143,9 +143,9 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-118](./adr/ADR-118-marketing-campaigns.md) | Marketing Campaigns — multi-use KOL discount codes, separate from `Voucher` | Accepted (design) | 2026-10-02 |
 | [ADR-119](./adr/ADR-119-package-delete-guards.md) | Package delete guards — block a hard-delete that already has order history or is a live combo component | In force |  |
 | [ADR-120](./adr/ADR-120-seo-geo-overhaul.md) | SEO/GEO overhaul — brand-correct meta, per-brand canonical origin, machine-readable catalog | In force |  |
-| [ADR-121](./adr/ADR-121-admin-mfa-and-session-login.md) | Admin MFA (TOTP), opt-in per account, step-up on five dangerous actions; admin login moves to a cookie session | In force | 2026-10-14 |
+| [ADR-121](./adr/ADR-121-admin-mfa-and-session-login.md) | Admin MFA (TOTP), opt-in per account, step-up on dangerous actions; admin login moves to a cookie session | In force | 2026-10-18 |
 | [ADR-122](./adr/ADR-122-scheduler-liveness.md) | Scheduler liveness — per-task heartbeat; a stale critical task fails `/api/health` | In force |  |
 | [ADR-123](./adr/ADR-123-public-game-id-checker.md) | Public Game ID Checker — own endpoint, Turnstile, per-IP + global budget, Redx-only, own table | In force |  |
 | [ADR-124](./adr/ADR-124-customer-account-credentials.md) | Customer account credentials — own encrypted table, super-admin reveal with MFA step-up + audit row, wiped by one sweep once the order closes | In force | 2026-10-18 |
-| [ADR-125](./adr/ADR-125-login-top-up-manual-supplier.md) | Login Top-up (Roblox, eFootball) — manual suppliers as a `driver`, one finalize seam, a supplier WhatsApp group per supplier, agreed-cost manual packages | Accepted (design) | 2026-10-18 |
+| [ADR-125](./adr/ADR-125-login-top-up-manual-supplier.md) | Login Top-up (Roblox, eFootball) — manual suppliers as a `driver`, one finalize seam, a supplier WhatsApp group per supplier, agreed-cost manual packages | In force | 2026-10-18 |
 | [ADR-126](./adr/ADR-126-joki-mlbb.md) | Joki MLBB — owned-brand `/joki` page, `Fixed` pricing basis, each penjoki a pay-after manual supplier with its own group, payout booked as cost | Accepted (design) |  |
