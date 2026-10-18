@@ -78,8 +78,11 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
         <dl className="space-y-2 text-sm">
           <div className="flex justify-between"><dt className="text-ink-muted">Email</dt><dd className="text-ink">{order.customer_email}</dd></div>
           <div className="flex justify-between"><dt className="text-ink-muted">Phone</dt><dd className="text-ink">{order.customer_phone ?? "—"}</dd></div>
-          <div className="flex justify-between"><dt className="text-ink-muted">Player ID</dt><dd className="text-ink">{order.player_id}</dd></div>
-          <div className="flex justify-between"><dt className="text-ink-muted">Server/Zone ID</dt><dd className="text-ink">{order.server_id ?? "—"}</dd></div>
+          {/* ADR-125: a login order's player_id is its login identifier; admins see it raw. */}
+          <div className="flex justify-between"><dt className="text-ink-muted">{order.customer_login ? "Login" : "Player ID"}</dt><dd className="text-ink">{order.player_id}</dd></div>
+          {!order.customer_login && (
+            <div className="flex justify-between"><dt className="text-ink-muted">Server/Zone ID</dt><dd className="text-ink">{order.server_id ?? "—"}</dd></div>
+          )}
         </dl>
       </div>
 

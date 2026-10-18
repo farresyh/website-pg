@@ -41,6 +41,7 @@ const sections: PanelNavSection[] = [
     title: "Commerce",
     items: [
       { kind: "link", name: "Orders", href: "/admin/orders", icon: <ListIcon /> },
+      { kind: "link", name: "Manual Queue", href: "/admin/manual-queue", icon: <ListIcon /> },
       { kind: "link", name: "Withdrawals", href: "/admin/withdrawals", icon: <DollarLineIcon /> },
       { kind: "link", name: "Vouchers", href: "/admin/vouchers", icon: <BoxLineIcon /> },
       { kind: "link", name: "Balance", href: "/admin/balance", icon: <WalletIcon /> },
