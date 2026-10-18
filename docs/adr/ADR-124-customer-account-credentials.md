@@ -1,6 +1,6 @@
 # ADR-124: Customer account credentials — own encrypted table, super-admin reveal with MFA step-up and an audit row, wiped by one sweep once the order closes
 
-> **Standing (2026-10-18):** In force; the 2026-10-18 addendum revises decision 7. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-19):** In force; the 2026-10-18 addendum revises decision 7; the 2026-10-19 addendum replaces the supplier link's signed URL with a short hashed token (ADR-125 decisions 50–52). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-17. Grilled with the founder in two rounds (`/mattpocock-skills:grilling`, Q1–Q13) after a by-hand check of the order lifecycle and every exposure path. Build not started (PRD §16 item 112). Shared foundation for [ADR-125](./ADR-125-login-top-up-manual-supplier.md) (Login Top-up) and [ADR-126](./ADR-126-joki-mlbb.md) (Joki).
 
@@ -75,3 +75,13 @@ Before building, every decision was traced against the code and stress-tested (f
 6. **`credential_reveals` records `actor_type` + `actor_id`** (admin now, supplier from ADR-125 PR 2, per the 2026-10-17 addendum), so the supplier link needs no migration on the audit table. The step-up route pin lives in `AdminMfaStepUpTest::test_exactly_these_routes_require_step_up`; there is no `StepUpRoutesTest`.
 
 Also recorded: hiding the value after 30 seconds is a UI courtesy only, since the value has reached the browser. The controls are super_admin, step-up, the rate limit and the audit row, and the reveal response is `Cache-Control: no-store`.
+
+### 2026-10-19 addendum — the supplier link becomes a short hashed token
+
+Decided in [ADR-125](./ADR-125-login-top-up-manual-supplier.md)'s PR 2 pre-build addendum (decisions 50–52, founder). Overrides points 1 and 3 of the 2026-10-17 addendum.
+
+1. **The link is a short token, not a signed URL.** `https://<api host>/s/<12 random base62 chars>`; `supplier_login_links` stores only the token's SHA-256 with the order, supplier, reference and expiry (the D ceiling). A signed URL reads as noise to an outside supplier, and the stored hash keeps a working link out of every DB dump. This is a token table, which the 2026-10-17 addendum had avoided.
+2. **"Still open" means Pending on that supplier with that reference**, plus `purged_at` null. A Failed order keeps its login for a retry, but its old link is dead.
+3. The link is minted when the post is sent and never stored in the message text.
+
+Points 2 and 4 (GET shows no secret; each POST is audited with actor = supplier) are unchanged.

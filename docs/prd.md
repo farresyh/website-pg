@@ -1105,10 +1105,15 @@ and PR 1b on 2026-10-18. Re-verify before building.
     Check from Supplier hidden for a manual supplier; storefront login form
     from the schema with the consent box, credentials sent instead of a
     Player ID, labels and status copy by fulfilment kind; e2e golden path
-    `admin-login-topup.spec.ts`. PR 2: one
-    `whatsapp_groups` registry for resellers and suppliers, order post with a
-    signed one-time login link through the persisted notification queue,
-    `.done` / `.gagal` / `.pending`, 30-minute SLA reminder.
+    `admin-login-topup.spec.ts`. **PR 2 split
+    (2026-10-19 pre-build addendum, decisions 48-61).** **2a, backend:** one
+    `whatsapp_groups` registry for resellers and suppliers (one owner per
+    group, one active group per supplier), order post from `fulfill()` through
+    the persisted notification queue (per-session `session`/`chat_id`), a
+    short hashed supplier login link (`/s/<token>`, Pending-only), `.done` /
+    `.gagal` / `.pending`, `fromMe` dropped, SLA reminder. **2b, screens:**
+    Admin → Partners → Suppliers (super_admin), shared pending-link picker,
+    Order Detail "Supplier group" label, Dashboard counts, e2e.
 
 114. **Joki MLBB (ADR-126, accepted design 2026-10-17).** Owned brands only,
     gated in `hiddenGameIdsFor()` (two drifted copies route through it).

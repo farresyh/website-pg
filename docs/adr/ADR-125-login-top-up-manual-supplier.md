@@ -1,6 +1,6 @@
 # ADR-125: Login Top-up (Roblox, eFootball) — manual suppliers as a `driver` behind `SupplierAdapter`, one finalize seam for every confirmation, a supplier WhatsApp group per supplier, admin-entered packages at an agreed cost
 
-> **Standing (2026-10-18):** In force; PR 1 split into 1a/1b and decisions corrected by the 2026-10-18 stress-test addendum and the 2026-10-18 PR 1b pre-build addendum (decisions 36–47); PR 1 built as 1a, 1b-i and 1b-ii (2026-10-18 build addendum); PR 2 not started. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-19):** In force; PR 1 split into 1a/1b and decisions corrected by the 2026-10-18 stress-test addendum and the 2026-10-18 PR 1b pre-build addendum (decisions 36–47); PR 1 built as 1a, 1b-i and 1b-ii (2026-10-18 build addendum); PR 2 split into 2a/2b and corrected by the 2026-10-19 pre-build addendum (decisions 48–61). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-17. Grilled with the founder (`/mattpocock-skills:grilling`, Q1–Q19), after a money-critical code-trace pass, then an adversarial stress test (three read-only forks, one per layer: checkout/catalog, fulfillment/ledger, bot/link). The stress test changed five decisions before they were written; its top findings were re-checked by hand. Build not started (PRD §16 item 113). Depends on [ADR-124](./ADR-124-customer-account-credentials.md). [ADR-126](./ADR-126-joki-mlbb.md) (Joki) builds on this ADR.
 
@@ -192,3 +192,37 @@ PR 1b shipped in two PRs, backend first, so the money review stayed small. What 
 - An admin (not only super_admin) adds manual packages, so `GET /manual-suppliers` lists active manual suppliers' names; the full supplier list stays super_admin middleware config.
 - ADR-124 decision 8: the login game's public detail carries `credential_consent_text`, so the consent box shows the text the order snapshots.
 - Placement: login game create and its form live in `/admin/games`; the queue is `/admin/manual-queue`, any admin (Q10).
+
+### 2026-10-19 addendum — PR 2 pre-build trace: split 2a/2b, short supplier link, thirteen corrections
+
+Before building PR 2, decisions 11–16 were traced against `staging` (PR 1 built) and prod was queried read-only: 2 reseller groups (both active), 0 pending links, 14 customer notifications, 0 manual suppliers (PR 1 is not released). Founder answers on 2026-10-19 are marked (founder).
+
+**Still true:** decisions 11 (one registry, routed by owner, bot session only), 12 (cost never comes from the group), 14 (commands act only on the supplier's own Pending orders), 15 (SLA reminder from the reconciler scan) and 16. `.done` and `.gagal` call `ManualDeliveryService::confirmDelivered()` / `confirmFailed()`, so the cost is the agreed `cost_price` (decision 36's default) and a WhatsApp reply can never set another. The SLA already exists as `reply_sla_minutes` and `Order::isStalePending()` (PR 1a).
+
+**48. The (order, reference) post key is correct; the PR 1 note's worry does not hold.** A manual order reaches NeedsReview only when the worker dies before Pending commits (`retryStuckProcessing`) or a late Paid is flagged. `checkStalePending` and the max-age scan skip manual suppliers, and `flagStaleDuplicateReferences` reads a Gamevion-only code. So a manual NeedsReview order was never posted, and a resend from it (same reference, any package or manual supplier) posts for the first time. A retry or resend from Failed mints a new reference and posts again, labelled RETRY when an earlier post exists for the order. A test holds this.
+
+**49. The post is queued from `OrderFulfillmentService::fulfill()` after the transaction that commits Pending on a manual supplier**, not from an `OrderStatusUpdated` listener (that stream fires on every status write). Skipped for an `is_test` order.
+
+**50. A short supplier link with a token table (founder; revises ADR-124's 2026-10-17 addendum, point 1).** A signed URL is long and reads as noise to an outside supplier. The link is `https://<api host>/s/<12 random base62 chars>` (~71 bits). `supplier_login_links` stores only the SHA-256 of the token, with `order_id`, `supplier_id`, `reference_number` and `expires_at` (the D ceiling). A DB dump or backup therefore holds no working link. Expired rows are pruned daily. GET and POST keep ADR-124's shape (summary + "Show login"; secrets only from the POST, `noindex`, `no-store`, `no-referrer`, rate-limited per link and per IP).
+
+**51. The link works only while the order is Pending on that supplier, with that reference, and the login is not wiped (tightens ADR-124's "still open").** After `.done` or `.gagal`, or a retry to another attempt, the old link is dead without a revoke step. Each POST writes one `credential_reveals` row per secret field, `actor_type = supplier`.
+
+**52. The link is minted at send time, never stored in a message.** The stored message carries a placeholder; `SendCustomerWhatsAppJob` mints the token and fills it in just before sending. A send whose ack was lost and is retried mints a second link for the same attempt; both die together under decision 51.
+
+**53. `customer_notifications` gains `session` (`customer_support` | `bot`, default `customer_support`) and `chat_id`.** A supplier row has `chat_id` (the group) and no `phone`. Skip reasons are per session: a customer row keeps today's (the WhatsApp-notifications switch, the customer-support session, a usable phone); a bot row is skipped only when the bot session isn't configured or the supplier has no active group. The customer switch never stops a supplier post. The send slot is keyed per session, so customer pacing is unchanged. Order Detail's notification list labels a bot row "Supplier group".
+
+**54. Supplier posts and reminders use the persisted queue, not `SendResellerBotReplyJob`.** That job counts an OpenWA pacing refusal as a failure (3 tries, 5 s / 20 s) and drops the message. Command replies stay on it, like the reseller bot's.
+
+**55. A group has one owner, and a supplier has one active group.** `link()` today is `updateOrCreate` on the group id, so linking a group already owned by someone else would move it silently (a reseller group could start receiving customer logins). Linking refuses a group owned by a different owner, and refuses a second active group for a supplier.
+
+**56. An active manual supplier keeps its group (decision 12, one seam).** Activation without an active group is refused, and so is unlinking the last group of an active manual supplier. Both the Middleware supplier screen and the new Partners screen go through the same check. A manual supplier activated before PR 2 has no group: its post is skipped with a reason and counted on the Dashboard.
+
+**57. The router drops the bot's own messages and reads the sender.** `OpenWaWebhookController` ignores `fromMe` (the bot's own post must never be parsed, and this also covers the reseller bot). The sender is OpenWA's `senderPhone`, else the digits of `author` when it is `@c.us`, else the raw `author`, recorded as `confirmed_by = wa:<sender>` with `channel = supplier_bot` (checked against OpenWA's `message-responses.dto.ts` on the box, 2026-10-19).
+
+**58. Command rules.** `.done PG-…` / `.gagal PG-… <reason>` act only on a Pending order of the group's supplier (NeedsReview was never posted, decision 48). `.gagal` without a reason is refused. A `.done` on a Failed order replies "contact admin" (the correction is admin-only, decision 42). `.pending` lists order number, game, package and age, never a login field. One rate limit per supplier, as the reseller bot has.
+
+**59. The SLA reminder** is one bot notification per (order, reference), dedupe-keyed, from the 15-minute reconciler run, using `isStalePending()`. A retry gets its own reminder.
+
+**60. Placement (founder).** A new Admin → Partners → Suppliers page, super_admin only: manual suppliers, their group (link from the shared pending list, unlink), reply SLA, active switch. Creating a manual supplier and its funding mode stay in Middleware → Suppliers, and API suppliers stay there entirely. The pending-link list moves to a shared `/whatsapp-groups/pending`. The Dashboard counts failed supplier posts and active manual suppliers with no group.
+
+**61. Build in two PRs (founder).** **2a, backend:** `whatsapp_groups` (data migration of the 2 reseller rows), the router and `SupplierBotService`, decisions 48–59, the group-link API. **2b, screens:** Partners → Suppliers, the pending-link picker for both owners, the Order Detail label, the Dashboard counts, e2e.
