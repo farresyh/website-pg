@@ -8,10 +8,12 @@ use App\Http\Requests\MarkOrderDeliveredRequest;
 use App\Http\Requests\ResendOrderDeliveryRequest;
 use App\Jobs\FulfillOrderJob;
 use App\Jobs\ResendOrderDeliveryJob;
+use App\Models\CredentialReveal;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\OrderCredential;
 use App\Models\Package;
+use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Fulfillment\OrderResendService;
@@ -406,6 +408,33 @@ class OrderController extends Controller
         }
     }
 
+    /**
+     * ADR-125 decision 43: correcting a login's identifier is checked here
+     * against the game's form (the job re-checks under the lock) and
+     * audited beside reveals and replaces.
+     */
+    private function auditLoginIdentifierCorrection(ResendOrderDeliveryRequest $request, Order $order): void
+    {
+        $playerId = $request->validated('player_id');
+        if (blank($playerId) || ! $order->isLoginOrder()) {
+            return;
+        }
+
+        if ($order->game === null || ($error = app(CheckoutInputValidator::class)->validate($order->game, $playerId, $request->validated('server_id')))) {
+            throw ValidationException::withMessages(['player_id' => [$error['message'] ?? 'This login game no longer has a login form.']]);
+        }
+
+        CredentialReveal::query()->create([
+            'order_id' => $order->id,
+            'actor_type' => CredentialReveal::ACTOR_ADMIN,
+            'actor_id' => $request->user()->id,
+            'action' => CredentialReveal::ACTION_IDENTIFIER,
+            'field_key' => $order->game->identifierField()['key'],
+            'ip' => $request->ip(),
+            'created_at' => now(),
+        ]);
+    }
+
     private function guardResendUnsafeOverride(Request $request, Order $order): void
     {
         if (! $order->resendUnsafeToOverride()) {
@@ -465,6 +494,7 @@ class OrderController extends Controller
         $resend->preflight($order, $targetPackage)->assertAllowed($request->input('override_reason'));
         $this->guardResendUnsafeOverride($request, $order);
         $this->guardLoginNotWiped($order);
+        $this->auditLoginIdentifierCorrection($request, $order);
 
         ResendOrderDeliveryJob::dispatch(
             $order,

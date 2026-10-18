@@ -17,6 +17,9 @@ class CredentialReveal extends Model
 
     public const ACTION_REPLACE = 'replace';
 
+    /** ADR-125 decision 43: an admin corrected the identifier on resend. */
+    public const ACTION_IDENTIFIER = 'identifier';
+
     public $timestamps = false;
 
     protected $fillable = [
