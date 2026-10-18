@@ -158,6 +158,7 @@ class RouteAccessTest extends TestCase
             'GET api/games/{game}/packages',
             'GET api/hero-slides',
             'GET api/manual-queue',
+            'GET api/manual-suppliers',
             'GET api/orders',
             'GET api/orders/export',
             'GET api/orders/summary',

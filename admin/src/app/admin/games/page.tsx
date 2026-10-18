@@ -42,6 +42,14 @@ import {
   type UpdatePackageValues,
   type CreateComboPackageValues,
   type UpdateComboOverrideValues,
+  type CreateLoginGameValues,
+  type CreateManualPackageValues,
+  type CredentialField,
+  isLoginGame,
+  createLoginGame,
+  updateCredentialSchema,
+  createManualPackage,
+  updatePackageCost,
   listGames,
   listGamePackages,
   updateGame,
@@ -61,6 +69,8 @@ import EditPackageModal from "@/components/games/EditPackageModal";
 import ReorderGamesView from "@/components/games/ReorderGamesView";
 import CreateComboModal from "@/components/games/CreateComboModal";
 import ComboOverrideModal from "@/components/games/ComboOverrideModal";
+import LoginGameModal from "@/components/games/LoginGameModal";
+import { CreateManualPackageModal, ManualCostModal } from "@/components/games/ManualPackageModals";
 import { type PlayerValidatorProfile, listPlayerValidatorProfiles } from "@/lib/player-validators";
 import {
   Dialog,
@@ -292,6 +302,11 @@ export default function GamesPage() {
   const [editingCombo, setEditingCombo] = useState<GamePackage | null>(null);
   const [deactivateCascadeTarget, setDeactivateCascadeTarget] = useState<GamePackage | null>(null);
 
+  // ADR-125 — login games and their manual packages.
+  const [loginGameMode, setLoginGameMode] = useState<{ kind: "create" } | { kind: "schema"; game: Game } | null>(null);
+  const [addingManualPackage, setAddingManualPackage] = useState(false);
+  const [editingCost, setEditingCost] = useState<GamePackage | null>(null);
+
   // GAME-6 — null = not reordering; an array = reorder mode, loaded
   // unfiltered regardless of the list view's own search/status filter.
   const [reorderGamesList, setReorderGamesList] = useState<Game[] | null>(null);
@@ -504,6 +519,35 @@ export default function GamesPage() {
     }
   }
 
+  async function handleCreateLoginGame(values: CreateLoginGameValues) {
+    const game = await createLoginGame(values);
+    setLoginGameMode(null);
+    await refreshGames();
+    await openGame(game);
+  }
+
+  async function handleSaveSchema(fields: CredentialField[]) {
+    if (!selected) return;
+    const updated = await updateCredentialSchema(selected.id, fields);
+    setLoginGameMode(null);
+    setSelected(updated);
+  }
+
+  async function handleCreateManualPackage(values: CreateManualPackageValues) {
+    if (!selected) return;
+    await createManualPackage(selected.id, values);
+    setAddingManualPackage(false);
+    await openGame(selected);
+    await refreshGames();
+  }
+
+  async function handleUpdateCost(costSen: number) {
+    if (!selected || !editingCost) return;
+    await updatePackageCost(editingCost.id, costSen);
+    setEditingCost(null);
+    setPackages(await listGamePackages(selected.id));
+  }
+
   if (reorderGamesList) {
     return (
       <ReorderGamesView
@@ -529,11 +573,20 @@ export default function GamesPage() {
             <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">{selected.name}</h1>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               {selected.category ?? "Uncategorized"} — {selected.is_active ? "Active" : "Inactive"}
+              {isLoginGame(selected) && " — Login game (manual supplier)"}
             </p>
           </div>
           <div className="flex gap-2">
-            {/* ADR-094: assembles several of this game's own already-promoted packages into one combo SKU. */}
-            <Button size="small" variant="outlined" onClick={() => setCreatingCombo(true)}>Create Combo…</Button>
+            {isLoginGame(selected) ? (
+              <>
+                {/* ADR-125: a login game's packages are manual, at a cost agreed with the supplier. */}
+                <Button size="small" variant="outlined" onClick={() => setLoginGameMode({ kind: "schema", game: selected })}>Login Form…</Button>
+                <Button size="small" variant="outlined" onClick={() => setAddingManualPackage(true)}>Add Package…</Button>
+              </>
+            ) : (
+              /* ADR-094: assembles several of this game's own already-promoted packages into one combo SKU. */
+              <Button size="small" variant="outlined" onClick={() => setCreatingCombo(true)}>Create Combo…</Button>
+            )}
             <Button size="small" onClick={() => setEditingGame(selected)}>Edit Game</Button>
           </div>
         </div>
@@ -604,7 +657,17 @@ export default function GamesPage() {
                               onUpdate={(catalogCode) => handleUpdateCatalogCode(pkg, catalogCode)}
                             />
                           </DataTableCell>
-                          <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(pkg.cost_price)}</DataTableCell>
+                          <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                            {formatRm(pkg.cost_price)}
+                            {isLoginGame(selected) && !pkg.is_combo && (
+                              <>
+                                <br />
+                                <button type="button" className="text-theme-xs text-brand-500 hover:underline" onClick={() => setEditingCost(pkg)}>
+                                  Edit cost
+                                </button>
+                              </>
+                            )}
+                          </DataTableCell>
                           <DataTableCell className="px-5 py-4 text-theme-sm">
                             {/* A combo is priced from its components or its override (Edit Combo), never a typed markup. */}
                             {pkg.is_combo ? (
@@ -638,7 +701,9 @@ export default function GamesPage() {
             </DataTable>
             {packages?.length === 0 && (
               <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
-                No packages yet — add some via Product Manager (/middleware/product-manager).
+                {isLoginGame(selected)
+                  ? "No packages yet — use Add Package."
+                  : "No packages yet — add some via Product Manager (/middleware/product-manager)."}
               </p>
             )}
             {packages === null && <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>}
@@ -678,6 +743,9 @@ export default function GamesPage() {
           onClose={() => setDeactivateCascadeTarget(null)}
           onConfirm={handleConfirmDeactivateCascade}
         />
+        <LoginGameModal mode={loginGameMode} onClose={() => setLoginGameMode(null)} onCreate={handleCreateLoginGame} onSaveSchema={handleSaveSchema} />
+        <CreateManualPackageModal open={addingManualPackage} onClose={() => setAddingManualPackage(false)} onSubmit={handleCreateManualPackage} />
+        <ManualCostModal pkg={editingCost} onClose={() => setEditingCost(null)} onSubmit={handleUpdateCost} />
       </div>
     );
   }
@@ -691,9 +759,14 @@ export default function GamesPage() {
             Review, edit, and manage what&apos;s promoted from Product Manager.
           </p>
         </div>
-        <Button size="small" variant="outlined" onClick={startReordering}>
-          Reorder Games
-        </Button>
+        <div className="flex gap-2">
+          <Button size="small" variant="outlined" onClick={() => setLoginGameMode({ kind: "create" })}>
+            New Login Game
+          </Button>
+          <Button size="small" variant="outlined" onClick={startReordering}>
+            Reorder Games
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -723,6 +796,8 @@ export default function GamesPage() {
         </div>
       </div>
 
+      <LoginGameModal mode={loginGameMode} onClose={() => setLoginGameMode(null)} onCreate={handleCreateLoginGame} onSaveSchema={handleSaveSchema} />
+
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
           <DataTable data={games ?? []} dataKey="id">
@@ -743,7 +818,9 @@ export default function GamesPage() {
 
                     return (
                       <DataTableRow key={game.id}>
-                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{game.name}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
+                          {game.name} {isLoginGame(game) && <Tag severity="info">Login</Tag>}
+                        </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{game.category ?? "—"}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{game.packages_count ?? 0}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">

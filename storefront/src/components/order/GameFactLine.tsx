@@ -1,4 +1,4 @@
-import type { GameDetail, GamePackage } from "@/lib/catalog";
+import { isLoginGame, type GameDetail, type GamePackage } from "@/lib/catalog";
 import type { PaymentChannel } from "@/lib/payment-methods";
 
 interface GameFactLineProps {
@@ -30,7 +30,14 @@ export default function GameFactLine({ game, packages, paymentChannels }: GameFa
     );
   }
   facts.push(`${game.deliveryMode === "instant" ? "Instant delivery" : "Manual processing"} (${game.deliverySubtext})`);
-  facts.push(game.extraField ? `Needs your Player ID and ${EXTRA_FIELD_LABEL[game.extraField]}` : "Needs your Player ID");
+  // ADR-125: a login game's supplier tops up through the customer's own login.
+  facts.push(
+    isLoginGame(game)
+      ? "Needs your game login (deleted after the order)"
+      : game.extraField
+        ? `Needs your Player ID and ${EXTRA_FIELD_LABEL[game.extraField]}`
+        : "Needs your Player ID",
+  );
   if (paymentChannels.length > 0) {
     facts.push(`Pay with ${paymentChannels.map((channel) => channel.label).join(", ")}`);
   }

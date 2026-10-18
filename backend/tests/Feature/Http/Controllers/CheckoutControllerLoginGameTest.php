@@ -216,4 +216,17 @@ class CheckoutControllerLoginGameTest extends TestCase
 
         $this->assertNull(app(MembershipPricingService::class)->representativePackage());
     }
+
+    public function test_the_public_game_detail_carries_the_form_and_consent_text_only_for_a_login_game(): void
+    {
+        ['game' => $game] = $this->loginGameAndPackage();
+        ['game' => $uid] = $this->gameAndPackage();
+
+        $this->getJson("/api/catalog/games/{$game->slug}")->assertOk()
+            ->assertJsonPath('credential_fields.0.key', 'email')
+            ->assertJsonPath('credential_consent_text', PlatformSettings::current()->credential_consent_text);
+        $this->getJson("/api/catalog/games/{$uid->slug}")->assertOk()
+            ->assertJsonPath('credential_fields', [])
+            ->assertJsonPath('credential_consent_text', null);
+    }
 }

@@ -58,8 +58,12 @@ const CheckoutPayloadSchema = z.object({
   game_id: z.number(),
   package_id: z.number(),
   ...CheckoutContactSchema.shape,
-  player_id: z.string(),
+  // ADR-125 decision 32: a login game sends `credentials` instead; the
+  // server sets player_id from the identifier field.
+  player_id: z.string().optional(),
   server_id: z.string().optional(),
+  credentials: z.record(z.string(), z.string()).optional(),
+  credential_consent: z.boolean().optional(),
   channel_code: z.string(),
   channel_properties: z.record(z.string(), z.unknown()).optional(),
   /**

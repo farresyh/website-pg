@@ -226,6 +226,9 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
   // notified, done means buy again, a failure or no payment means talk to support.
   const primaryAction: "support" | "updates" | "buy-again" =
     !canGetUpdates ? "support" : isDelivered ? "buy-again" : "updates";
+  // ADR-125: a login order is topped up by hand through the customer's
+  // own login, so it promises no minutes and asks for a password change.
+  const isLoginOrder = order.fulfilment_kind === "login";
   const helpCopy = isPartial
     ? {
         heading: "Part of Your Order Couldn't Be Completed",
@@ -239,7 +242,9 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
         ? { heading: "Need Anything Else?", body: "Get this order's receipt on WhatsApp, or contact our Customer Support team if something isn't right." }
         : {
             heading: "Having an Issue with Your Order?",
-            body: "Get notified on WhatsApp when it's delivered, or contact our Customer Support team if your order status is delayed beyond 10 minutes.",
+            body: isLoginOrder
+              ? "This top-up is done by hand, usually within 30 minutes. Get notified on WhatsApp when it's delivered, or contact our Customer Support team if it takes longer than an hour."
+              : "Get notified on WhatsApp when it's delivered, or contact our Customer Support team if your order status is delayed beyond 10 minutes.",
           };
   const showRateModal = order.delivery_status === "delivered" && !order.has_review && !rateModalDismissed;
 
@@ -281,7 +286,11 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
                 * deriveStages() uses "Complete"); a second copy breaks
                 * the E2E golden path's strict getByText. */}
               <p className="font-display text-base font-bold uppercase tracking-tight">You&apos;re all set</p>
-              <p className="text-[13px] leading-snug">Your top-up is in your game account. Enjoy!</p>
+              <p className="text-[13px] leading-snug">
+                {isLoginOrder
+                  ? `Your top-up is done. We delete your login within about ${order.login_wipe_hours ?? 24} hours. Please change your game password now.`
+                  : "Your top-up is in your game account. Enjoy!"}
+              </p>
             </div>
           </div>
         )}
@@ -345,7 +354,7 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
           <DetailCard icon={<GameController size={18} weight="fill" />} title="Game & Package">
             <DetailRow k="Game" v={order.game?.name ?? "-"} />
             <DetailRow k="Package" v={order.package_name ?? "-"} />
-            <DetailRow k="Player ID" v={order.player_id} mono />
+            <DetailRow k={isLoginOrder ? (order.player_label ?? "Login") : "Player ID"} v={order.player_id} mono />
             {order.server_id && <DetailRow k="Server ID" v={order.server_id} mono last />}
           </DetailCard>
 

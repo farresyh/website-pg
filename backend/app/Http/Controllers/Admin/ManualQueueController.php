@@ -59,6 +59,20 @@ class ManualQueueController extends Controller
         ])->values());
     }
 
+    /**
+     * The manual-package form's supplier picker. The full supplier list is
+     * super_admin-only middleware config; an admin may add a manual
+     * package, so it gets just the active manual suppliers' names.
+     */
+    public function suppliers(): JsonResponse
+    {
+        return response()->json(Supplier::query()
+            ->where('driver', Supplier::DRIVER_MANUAL)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'funding_mode']));
+    }
+
     public function delivered(ConfirmManualDeliveredRequest $request, Order $order): JsonResponse
     {
         return $this->answer(fn () => $this->manual->confirmDelivered(

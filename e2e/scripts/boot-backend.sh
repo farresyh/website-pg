@@ -45,7 +45,13 @@ export DB_JOURNAL_MODE=wal
 # connection committed fails at once in WAL. IMMEDIATE takes the write lock
 # at BEGIN, so the busy timeout applies.
 export DB_TRANSACTION_MODE=IMMEDIATE
-export CACHE_STORE=database
+# ADR-125 1b-ii: 'array', not 'database' — every admin game write flushes
+# the tagged catalog index (`Cache::tags`), which the database driver
+# doesn't implement, so the first spec that edits a game 500'd (and the
+# storefront's game list already fell back on every read). Like the
+# packages store below, it holds nothing across requests here, which only
+# loosens rate limits in this throwaway suite; sessions are on `file`.
+export CACHE_STORE=array
 # ADR-027's 2026-08-29 addendum, decision 18: CatalogController's
 # packages cache is scoped to its own store (config('cache.
 # catalog_packages_store')), defaulting to 'redis' — no Redis service

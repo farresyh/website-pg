@@ -8,6 +8,7 @@ use App\Models\Game;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Package;
+use App\Models\PlatformSettings;
 use App\Services\Cache\NextRevalidation;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\MembershipStatus;
@@ -265,6 +266,9 @@ class CatalogController extends Controller
             // ADR-125 decision 6: a login game's form (empty for a UID
             // game). Labels, types and flags only, never a value.
             'credential_fields' => $game->credentialFields(),
+            // ADR-124 decision 8: the consent box shows the same text the
+            // order snapshots at checkout.
+            'credential_consent_text' => $game->isLoginGame() ? PlatformSettings::current()->credential_consent_text : null,
             // ADR-109 decisions 11/12 — flat siblings, same shape as
             // extra_field/zone_options above. important_notes/
             // description gate the storefront's auto-open modal;

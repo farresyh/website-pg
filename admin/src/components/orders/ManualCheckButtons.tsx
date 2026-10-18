@@ -70,7 +70,8 @@ export default function ManualCheckButtons({ order, onChecked }: ManualCheckButt
   }
 
   // ADR-102 2026-10-05 addendum: also a needs_review order the supplier can safely be asked about.
-  const supplierCheckable = order.delivery_status === "pending" || order.supplier_askable;
+  // ADR-125 decision 47: a manual supplier has no API to ask.
+  const supplierCheckable = !order.is_manual_supplier && (order.delivery_status === "pending" || order.supplier_askable);
 
   if (!supplierCheckable && order.payment_status !== "pending") {
     return null;

@@ -32,6 +32,31 @@ export interface GameValidationRules {
    * contain on every channel. null/unset = numeric.
    */
   player_id_format?: "numeric" | "text" | null;
+  /** ADR-125 decision 6: present only on a login game, written only by updateCredentialSchema(). */
+  credential_fields?: CredentialField[] | null;
+}
+
+/** ADR-125 decision 6: one field of a login game's checkout form. */
+export interface CredentialField {
+  key: string;
+  label: string;
+  type: "text" | "email" | "password" | "select";
+  options?: string[];
+  required: boolean;
+  secret: boolean;
+  is_identifier: boolean;
+}
+
+export const CREDENTIAL_FIELD_TYPES: { value: CredentialField["type"]; label: string }[] = [
+  { value: "email", label: "Email" },
+  { value: "text", label: "Text" },
+  { value: "password", label: "Password" },
+  { value: "select", label: "Choice" },
+];
+
+/** ADR-125 decision 5: derived from the schema, never a second flag. */
+export function isLoginGame(game: Pick<Game, "validation_rules">): boolean {
+  return (game.validation_rules?.credential_fields?.length ?? 0) > 0;
 }
 
 /** Shared between LinkCategoryModal (set at link time) and the inline editor next to the Product Manager Catalog tab (correct it later). */
@@ -89,6 +114,8 @@ export interface Game {
   important_notes?: string[] | null;
   delivery_mode?: "instant" | "manual";
   delivery_subtext?: string | null;
+  /** ADR-125 decision 7: off = no member price and no quota debit for this game. */
+  member_pricing_enabled?: boolean;
 }
 
 /** ADR-094 decision 1: one of a combo Package's own components — this game's own package list, projected down for the composition/edit UI. */
@@ -149,6 +176,7 @@ export interface UpdateGameValues {
   important_notes?: string[] | null;
   delivery_mode: "instant" | "manual";
   delivery_subtext?: string | null;
+  member_pricing_enabled?: boolean;
 }
 
 export interface UpdatePackageValues {
@@ -249,4 +277,66 @@ export interface UpdateComboOverrideValues {
 
 export function updateComboOverride(packageId: number, values: UpdateComboOverrideValues) {
   return apiFetch<GamePackage>(`/api/packages/${packageId}/combo-override`, { method: "PATCH", body: values });
+}
+
+/** ADR-125 decision 33: a login game, created inactive and delivered manually. */
+export interface CreateLoginGameValues {
+  name: string;
+  category?: string | null;
+  description?: string | null;
+  delivery_subtext: string;
+  member_pricing_enabled: boolean;
+  credential_fields: CredentialField[];
+}
+
+export function createLoginGame(values: CreateLoginGameValues) {
+  return apiFetch<Game>(`/api/games`, { method: "POST", body: values });
+}
+
+/** ADR-125 decision 46: replaces the whole form; an empty list turns the game back into a Player ID game. */
+export function updateCredentialSchema(gameId: number, fields: CredentialField[]) {
+  return apiFetch<Game>(`/api/games/${gameId}/credential-schema`, { method: "PUT", body: { credential_fields: fields } });
+}
+
+export interface ManualSupplierOption {
+  id: number;
+  name: string;
+  funding_mode: "prepaid" | "pay_after";
+}
+
+export function listManualSuppliers() {
+  return apiFetch<ManualSupplierOption[]>(`/api/manual-suppliers`);
+}
+
+/** ADR-125 decision 4: `cost_price` is the agreed supplier cost in sen. */
+export interface CreateManualPackageValues {
+  supplier_id: number;
+  name: string;
+  cost_price: number;
+  markup_percent: number;
+}
+
+export function createManualPackage(gameId: number, values: CreateManualPackageValues) {
+  return apiFetch<GamePackage>(`/api/games/${gameId}/packages/manual`, { method: "POST", body: values });
+}
+
+/** ADR-125 decision 34: audited, with the admin recorded. */
+export function updatePackageCost(packageId: number, costPriceSen: number) {
+  return apiFetch<GamePackage>(`/api/packages/${packageId}/cost`, { method: "PATCH", body: { cost_price: costPriceSen } });
+}
+
+export interface PriceChange {
+  id: number;
+  price_sync_run_id: number | null;
+  admin_user: { id: number; name: string } | null;
+  old_cost_price: number;
+  new_cost_price: number;
+  old_standard_selling_price: number;
+  new_standard_selling_price: number;
+  created_at: string;
+}
+
+/** ADR-125 decision 45: sync and hand edits alike, newest first. */
+export function getPackagePriceHistory(packageId: number) {
+  return apiFetch<PriceChange[]>(`/api/packages/${packageId}/price-history`);
 }

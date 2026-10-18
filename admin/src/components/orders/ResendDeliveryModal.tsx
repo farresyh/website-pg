@@ -296,7 +296,7 @@ function ResendDeliveryFields({ onClose, onResent, order, sandbox }: Omit<Resend
 
         {/* ADR-102 decision 10 — closes the "a wrong-ID failure can only be resolved by Issue Voucher + a brand new customer-placed order" gap. Available regardless of whether this game requires validation — a typo'd ID can cause a plain supplier rejection too. */}
         <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
-          <Label>Player ID / Server ID Correction (Optional)</Label>
+          <Label>{order.customer_login ? "Login Correction (Optional)" : "Player ID / Server ID Correction (Optional)"}</Label>
           <p className="mb-2 text-sm text-ink-muted">
             Currently on this order: <span className="font-medium">{order.player_id}</span>
             {order.server_id ? ` / ${order.server_id}` : ""}. Leave blank to resend unchanged.
@@ -304,22 +304,25 @@ function ResendDeliveryFields({ onClose, onResent, order, sandbox }: Omit<Resend
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Input
               aria-label="Corrected Player ID"
-              placeholder="Corrected Player ID"
+              placeholder={order.customer_login ? "Corrected login (e.g. email)" : "Corrected Player ID"}
               value={playerIdCorrection}
               onChange={(e) => {
                 setPlayerIdCorrection(e.target.value);
                 setVerifyResult(null);
               }}
             />
-            <Input
-              aria-label="Corrected Server ID"
-              placeholder="Corrected Server ID"
-              value={serverIdCorrection}
-              onChange={(e) => {
-                setServerIdCorrection(e.target.value);
-                setVerifyResult(null);
-              }}
-            />
+            {/* ADR-125 decision 43: a login order corrects its identifier only; it never takes a Server ID. */}
+            {!order.customer_login && (
+              <Input
+                aria-label="Corrected Server ID"
+                placeholder="Corrected Server ID"
+                value={serverIdCorrection}
+                onChange={(e) => {
+                  setServerIdCorrection(e.target.value);
+                  setVerifyResult(null);
+                }}
+              />
+            )}
           </div>
         </div>
 

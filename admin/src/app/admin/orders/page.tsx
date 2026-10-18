@@ -86,6 +86,7 @@ import OrderSummaryCards from "@/components/orders/OrderSummaryCards";
 import DeliveryLogsTable from "@/components/orders/DeliveryLogsTable";
 import ComboLegBreakdown from "@/components/orders/ComboLegBreakdown";
 import ManualCheckButtons from "@/components/orders/ManualCheckButtons";
+import ManualOrderActions from "@/components/orders/ManualOrderActions";
 
 // ADR-092: cards poll on this interval while the page is open — the one
 // piece of "proactive" behaviour kept from the dropped WhatsApp-alert
@@ -730,13 +731,13 @@ function OrdersPageInner() {
                     </Button>
                   )}
                   {/* ADR-026 decision 4a — the one needs_review exit that isn't a retry. ADR-102 decision 1: hidden once already compensated, same reasoning as the Retry/Resend button above. ADR-094's 2026-09-21 addendum decision 24: hidden for any combo order (`delivery_legs.length > 0`) — this action force-sets the WHOLE order Delivered with no per-leg awareness, never safe for a multi-leg entity; a combo resolves outstanding legs via Retry Delivery instead, or the partial-delivery Issue Voucher path once genuinely mixed Delivered+Failed/NeedsReview. */}
-                  {selected.delivery_status === "needs_review" && selected.delivery_legs.length === 0 && !selected.voucher && !selected.wallet_refunded && (
+                  {selected.delivery_status === "needs_review" && selected.delivery_legs.length === 0 && !selected.voucher && !selected.wallet_refunded && !selected.is_manual_supplier && (
                     <Button size="small" variant="outlined" onClick={() => setMarkDeliveredModalOpen(true)}>
                       Mark as Delivered…
                     </Button>
                   )}
                   {/* ADR-026 addendum (2026-09-16) — the other needs_review exit. On a combo it flips the unresolved legs to failed and lands on partially_delivered when a leg did deliver (ADR-094 decision 31). Hidden once already compensated. */}
-                  {selected.delivery_status === "needs_review" && !selected.voucher && !selected.wallet_refunded && (
+                  {selected.delivery_status === "needs_review" && !selected.voucher && !selected.wallet_refunded && !selected.is_manual_supplier && (
                     <Button size="small" variant="outlined" severity="danger" onClick={() => setConfirmFailedModalOpen(true)}>
                       Confirm Failed…
                     </Button>
@@ -747,6 +748,12 @@ function OrdersPageInner() {
                   a Pending delivery_status/payment_status is an async supplier/
                   gateway awaiting confirmation, not a failure needing retry. */}
               {session && <ManualCheckButtons order={selected} onChecked={refreshSelected} />}
+              {/* ADR-125 decisions 8/42: a manual supplier's order is confirmed here or in the Manual Queue. */}
+              {session && selected.is_manual_supplier && !selected.is_test && (
+                <div className="mt-3">
+                  <ManualOrderActions order={selected} onDone={refreshSelected} />
+                </div>
+              )}
             </div>
           </div>
 
