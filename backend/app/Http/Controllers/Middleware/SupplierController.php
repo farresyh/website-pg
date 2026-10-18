@@ -11,12 +11,14 @@ use App\Http\Requests\Middleware\UpdateSupplierStatusRequest;
 use App\Models\DeactivationLog;
 use App\Models\Package;
 use App\Models\Supplier;
+use App\Models\WhatsAppGroup;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Pricing\ComboPricingService;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierConfigSchema;
 use App\Services\Supplier\SupplierNotConfiguredException;
 use App\Services\Supplier\UnsupportedSupplierException;
+use App\Services\WhatsApp\WhatsAppGroupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -100,6 +102,12 @@ class SupplierController extends Controller
 
         if (array_key_exists('api_config', $data)) {
             $data['api_config'] = SupplierConfigSchema::normalizeConfig($data['driver'], $data['api_config']);
+        }
+
+        // ADR-125 decision 56: a manual supplier starts inactive. It is
+        // switched on once its WhatsApp group is linked (Partners → Suppliers).
+        if ($data['driver'] === Supplier::DRIVER_MANUAL) {
+            $data['is_active'] = false;
         }
 
         $supplier = Supplier::query()->create(array_merge(['api_config' => []], $data));
@@ -216,8 +224,12 @@ class SupplierController extends Controller
      * 4) — the confirm warning itself is a frontend concern, this just
      * flips the flag.
      */
-    public function updateStatus(UpdateSupplierStatusRequest $request, Supplier $supplier): JsonResponse
+    public function updateStatus(UpdateSupplierStatusRequest $request, Supplier $supplier, WhatsAppGroupService $groups): JsonResponse
     {
+        if ($request->validated('is_active')) {
+            $groups->assertSupplierMayBeActive($supplier);
+        }
+
         $supplier->update(['is_active' => $request->validated('is_active')]);
 
         return response()->json($supplier->fresh());
@@ -241,7 +253,10 @@ class SupplierController extends Controller
             ]);
         }
 
-        $supplier->delete();
+        DB::transaction(function () use ($supplier) {
+            WhatsAppGroup::query()->where('owner_type', WhatsAppGroup::OWNER_SUPPLIER)->where('owner_id', $supplier->id)->delete();
+            $supplier->delete();
+        });
 
         return response()->json(null, 204);
     }

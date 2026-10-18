@@ -7,9 +7,9 @@ use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\PaymentMethod;
 use App\Models\PendingPriceChange;
-use App\Models\ResellerWhatsAppPendingLink;
 use App\Models\Review;
 use App\Models\Supplier;
+use App\Models\WhatsAppPendingLink;
 use App\Models\Withdrawal;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\CircuitBreaker\CircuitBreaker;
@@ -262,7 +262,7 @@ final class DashboardService
         $amber = [
             'withdrawals_to_process' => Withdrawal::query()->whereIn('status', [WithdrawalStatus::Pending, WithdrawalStatus::Approved])->count(),
             'price_changes_pending' => PendingPriceChange::query()->where('status', 'pending')->count(),
-            'whatsapp_links_pending' => ResellerWhatsAppPendingLink::query()->count(),
+            'whatsapp_links_pending' => WhatsAppPendingLink::query()->count(),
             'backup_failed' => (int) ($lastBackup === 'failed'),
             'customer_whatsapp_disconnected' => (int) ($openWaCsSession !== null && $openWaCsSession['status'] !== 'connected'),
             // ADR-125 decision 21: a manual supplier has no drift check, and

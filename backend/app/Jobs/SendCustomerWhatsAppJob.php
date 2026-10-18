@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\CustomerNotification;
 use App\Services\OpenWa\OpenWaClient;
 use App\Services\OpenWa\OpenWaPacingLimitedException;
+use App\Services\Supplier\Manual\SupplierGroupNotifier;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -13,8 +14,9 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * ADR-116 decision 7: sends one CustomerNotification from the
- * `customer-support` session, on the dedicated one-worker `whatsapp` lane.
+ * ADR-116 decision 7: sends one CustomerNotification on the dedicated
+ * one-worker `whatsapp` lane, from the `customer-support` session or, for a
+ * supplier group post (ADR-125 decision 54), the bot session.
  *
  * - OpenWA pacing refusal (429 SEND_PACING_LIMITED): released for
  *   `retryAfterSeconds`. It doesn't count as an exception, and the row's
@@ -57,10 +59,23 @@ final class SendCustomerWhatsAppJob implements ShouldQueue
             return;
         }
 
+        // ADR-125 decision 52: a supplier post is finished here, so its login
+        // link is minted at send time and never stored. A post or reminder for
+        // an attempt that is no longer waiting is skipped, not sent.
+        $isBot = $notification->session === CustomerNotification::SESSION_BOT;
+        $text = $isBot ? app(SupplierGroupNotifier::class)->prepare($notification) : $notification->message;
+
+        if ($text === null) {
+            $notification->update(['status' => CustomerNotification::STATUS_SKIPPED, 'error' => 'The order is no longer waiting for this supplier']);
+
+            return;
+        }
+
         $notification->increment('attempts');
 
         try {
-            OpenWaClient::customerSupport()->sendNow($notification->phone.'@c.us', $notification->message);
+            ($isBot ? app(OpenWaClient::class) : OpenWaClient::customerSupport())
+                ->sendNow($notification->chat_id ?? $notification->phone.'@c.us', $text);
         } catch (OpenWaPacingLimitedException $e) {
             Log::info('Customer WhatsApp paced by OpenWA, will retry', [
                 'customer_notification_id' => $notification->id,
@@ -86,7 +101,7 @@ final class SendCustomerWhatsAppJob implements ShouldQueue
             ->where('status', CustomerNotification::STATUS_QUEUED)
             ->update(['status' => CustomerNotification::STATUS_FAILED, 'error' => mb_substr($e->getMessage(), 0, 1000)]);
 
-        Log::error('Customer WhatsApp notification failed', [
+        Log::error('WhatsApp notification failed', [
             'customer_notification_id' => $this->notificationId,
             'exception' => $e->getMessage(),
         ]);

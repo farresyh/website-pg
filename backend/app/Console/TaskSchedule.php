@@ -5,6 +5,7 @@ namespace App\Console;
 use App\Jobs\SyncSupplierPricesJob;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
+use App\Models\SupplierLoginLink;
 use App\Support\MalaysiaTime;
 use Illuminate\Console\Scheduling\Schedule;
 
@@ -50,6 +51,7 @@ class TaskSchedule
         'supplier-request-log-pruning',
         'report-assistant-audit-log-pruning',
         'credential-reveal-pruning',
+        'supplier-login-link-pruning',
         'reseller-whatsapp-pending-link-pruning',
         'reseller-bot-command-log-pruning',
         'stale-cache-pruning',
@@ -165,7 +167,13 @@ class TaskSchedule
             ->name('credential-reveal-pruning')
             ->withoutOverlapping($overlap);
 
-        // PR-F build addendum (ADR-075) — prunes reseller_whatsapp_pending_links
+        // ADR-125 decision 50 — a supplier login link past its expiry.
+        $schedule->command('model:prune', ['--model' => [SupplierLoginLink::class]])
+            ->daily()
+            ->name('supplier-login-link-pruning')
+            ->withoutOverlapping($overlap);
+
+        // PR-F build addendum (ADR-075) — prunes whatsapp_pending_links
         // past its 24h TTL and reseller_bot_command_logs past its 7-day
         // retention — see each command's own docblock.
         $schedule->command('app:prune-reseller-whatsapp-pending-links')

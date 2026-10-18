@@ -4,8 +4,8 @@ namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
 use App\Models\Reseller;
-use App\Models\ResellerWhatsAppGroup;
-use App\Models\ResellerWhatsAppPendingLink;
+use App\Models\WhatsAppGroup;
+use App\Models\WhatsAppPendingLink;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -31,9 +31,9 @@ class ResellerWhatsAppGroupControllerTest extends TestCase
     public function test_pending_lists_unmatched_groups_platform_wide(): void
     {
         $this->actAsSuperAdmin();
-        ResellerWhatsAppPendingLink::query()->create(['whatsapp_group_id' => 'g1@g.us', 'last_message_preview' => 'hi', 'last_message_at' => now()]);
+        WhatsAppPendingLink::query()->create(['whatsapp_group_id' => 'g1@g.us', 'last_message_preview' => 'hi', 'last_message_at' => now()]);
 
-        $response = $this->getJson('/api/reseller-whatsapp-groups/pending');
+        $response = $this->getJson('/api/whatsapp-groups/pending');
 
         $response->assertOk();
         $response->assertJsonPath('0.whatsapp_group_id', 'g1@g.us');
@@ -43,20 +43,20 @@ class ResellerWhatsAppGroupControllerTest extends TestCase
     {
         $this->actAsSuperAdmin();
         $reseller = $this->makeReseller();
-        ResellerWhatsAppPendingLink::query()->create(['whatsapp_group_id' => 'g1@g.us', 'last_message_at' => now()]);
+        WhatsAppPendingLink::query()->create(['whatsapp_group_id' => 'g1@g.us', 'last_message_at' => now()]);
 
         $response = $this->postJson("/api/resellers/{$reseller->id}/whatsapp-groups", ['whatsapp_group_id' => 'g1@g.us']);
 
         $response->assertCreated();
-        $this->assertDatabaseHas('reseller_whatsapp_groups', ['reseller_id' => $reseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => 1]);
-        $this->assertDatabaseMissing('reseller_whatsapp_pending_links', ['whatsapp_group_id' => 'g1@g.us']);
+        $this->assertDatabaseHas('whatsapp_groups', ['owner_type' => 'reseller', 'owner_id' => $reseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => 1]);
+        $this->assertDatabaseMissing('whatsapp_pending_links', ['whatsapp_group_id' => 'g1@g.us']);
     }
 
     public function test_update_status_unlinks_a_group(): void
     {
         $this->actAsSuperAdmin();
         $reseller = $this->makeReseller();
-        $group = ResellerWhatsAppGroup::query()->create(['reseller_id' => $reseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => true]);
+        $group = WhatsAppGroup::query()->create(['owner_type' => 'reseller', 'owner_id' => $reseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => true]);
 
         $response = $this->patchJson("/api/resellers/{$reseller->id}/whatsapp-groups/{$group->id}/status", ['is_active' => false]);
 
@@ -69,7 +69,7 @@ class ResellerWhatsAppGroupControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $reseller = $this->makeReseller();
         $otherReseller = Reseller::query()->create(['business_name' => 'Other', 'is_active' => true]);
-        $group = ResellerWhatsAppGroup::query()->create(['reseller_id' => $otherReseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => true]);
+        $group = WhatsAppGroup::query()->create(['owner_type' => 'reseller', 'owner_id' => $otherReseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => true]);
 
         $response = $this->patchJson("/api/resellers/{$reseller->id}/whatsapp-groups/{$group->id}/status", ['is_active' => false]);
 
@@ -80,7 +80,7 @@ class ResellerWhatsAppGroupControllerTest extends TestCase
     {
         $this->actAsSuperAdmin();
         $reseller = $this->makeReseller();
-        ResellerWhatsAppGroup::query()->create(['reseller_id' => $reseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => true]);
+        WhatsAppGroup::query()->create(['owner_type' => 'reseller', 'owner_id' => $reseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => true]);
 
         $response = $this->getJson("/api/resellers/{$reseller->id}/whatsapp-groups");
 

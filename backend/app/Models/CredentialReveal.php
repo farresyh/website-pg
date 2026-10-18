@@ -13,6 +13,9 @@ class CredentialReveal extends Model
 {
     public const ACTOR_ADMIN = 'admin';
 
+    /** ADR-125 decision 51: a supplier opened its short login link. */
+    public const ACTOR_SUPPLIER = 'supplier';
+
     public const ACTION_REVEAL = 'reveal';
 
     public const ACTION_REPLACE = 'replace';

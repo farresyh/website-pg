@@ -54,7 +54,7 @@ class Reseller extends Model
     /** ADR-075 decision 2: this account's linked Reseller Bot WhatsApp groups. */
     public function whatsAppGroups(): HasMany
     {
-        return $this->hasMany(ResellerWhatsAppGroup::class);
+        return $this->hasMany(WhatsAppGroup::class, 'owner_id')->where('owner_type', WhatsAppGroup::OWNER_RESELLER);
     }
 
     /** ADR-084 PR-3 decision 4: this account's single delivery-webhook endpoint. */

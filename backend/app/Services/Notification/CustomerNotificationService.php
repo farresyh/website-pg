@@ -2,7 +2,6 @@
 
 namespace App\Services\Notification;
 
-use App\Jobs\SendCustomerWhatsAppJob;
 use App\Models\CustomerNotification;
 use App\Models\Order;
 use App\Models\PlatformSettings;
@@ -13,9 +12,6 @@ use App\Services\Order\DeliveryStatus;
 use App\Support\BrandIdentity;
 use App\Support\MalaysiaTime;
 use App\Support\PhoneNumber;
-use Carbon\CarbonImmutable;
-use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * ADR-116: the one place a customer WhatsApp notification is decided,
@@ -26,9 +22,8 @@ use Illuminate\Support\Facades\Cache;
  * - the master switch and CS-session config (a `skipped` row, so the admin
  *   sees why nothing went out);
  * - phone normalisation;
- * - de-duplication (`dedupe_key`, unique);
- * - per-brand wording;
- * - pacing: each send gets a slot 10–30s after the previous one.
+ * - per-brand wording.
+ * De-duplication and pacing are WhatsAppOutbox's.
  *
  * Call it after the DB transaction that created the voucher or delivered
  * the order has committed.
@@ -49,7 +44,7 @@ final class CustomerNotificationService
 
     public const EVENT_ORDER_NOT_FOUND = 'order_not_found';
 
-    private const SLOT_KEY = 'whatsapp:next-send-slot';
+    public function __construct(private readonly WhatsAppOutbox $outbox) {}
 
     /**
      * ADR-116 decision 4: the order just became Delivered. A receipt goes out
@@ -241,72 +236,22 @@ final class CustomerNotificationService
     private function queue(string $event, string $dedupeKey, ?string $rawPhone, string $message, ?int $orderId, ?int $voucherId): void
     {
         $phone = PhoneNumber::normalize($rawPhone);
-        $skipReason = match (true) {
-            ! PlatformSettings::current()->whatsapp_notifications_enabled => 'WhatsApp notifications are switched off',
-            config('services.openwa.cs_session_id') === null => 'Customer-support WhatsApp session is not configured',
-            $phone === null => 'No usable phone number',
-            default => null,
-        };
 
-        try {
-            $notification = CustomerNotification::query()->create([
-                'event' => $event,
-                'dedupe_key' => $dedupeKey,
-                'order_id' => $orderId,
-                'voucher_id' => $voucherId,
-                'phone' => $phone,
-                'message' => $message,
-                'status' => $skipReason === null ? CustomerNotification::STATUS_QUEUED : CustomerNotification::STATUS_SKIPPED,
-                'error' => $skipReason,
-            ]);
-        } catch (UniqueConstraintViolationException) {
-            // Already recorded for this event. Sent, queued or failed: never
-            // again. Only a row skipped for a reason that no longer applies (the
-            // switch was off, the phone was unusable) gets its one real chance,
-            // via a conditional update so two callers can't both revive it.
-            if ($skipReason !== null) {
-                return;
-            }
-
-            $revived = CustomerNotification::query()
-                ->where('dedupe_key', $dedupeKey)
-                ->where('status', CustomerNotification::STATUS_SKIPPED)
-                ->update(['status' => CustomerNotification::STATUS_QUEUED, 'phone' => $phone, 'message' => $message, 'error' => null]);
-
-            if ($revived === 0) {
-                return;
-            }
-
-            $notification = CustomerNotification::query()->where('dedupe_key', $dedupeKey)->firstOrFail();
-        }
-
-        if ($skipReason === null) {
-            SendCustomerWhatsAppJob::dispatch($notification->id)->delay($this->nextSendSlot());
-        }
-    }
-
-    /**
-     * ADR-116 decision 7: hands out send times 10–30s apart (config knobs),
-     * so a burst of events never becomes a burst of messages. Reserved under
-     * a lock, so two concurrent callers can't take the same slot.
-     */
-    private function nextSendSlot(): CarbonImmutable
-    {
-        return Cache::lock(self::SLOT_KEY.':lock', 5)->block(5, function () {
-            $now = CarbonImmutable::now();
-            $reserved = Cache::get(self::SLOT_KEY);
-            $slot = $reserved !== null && $reserved > $now->getTimestamp()
-                ? CarbonImmutable::createFromTimestamp($reserved)
-                : $now;
-
-            $gap = random_int(
-                (int) config('services.openwa.notification_gap_min_seconds'),
-                (int) config('services.openwa.notification_gap_max_seconds'),
-            );
-            Cache::put(self::SLOT_KEY, $slot->getTimestamp() + $gap, 86400);
-
-            return $slot;
-        });
+        $this->outbox->enqueue(
+            session: CustomerNotification::SESSION_CUSTOMER_SUPPORT,
+            event: $event,
+            dedupeKey: $dedupeKey,
+            message: $message,
+            phone: $phone,
+            orderId: $orderId,
+            voucherId: $voucherId,
+            skipReason: match (true) {
+                ! PlatformSettings::current()->whatsapp_notifications_enabled => 'WhatsApp notifications are switched off',
+                config('services.openwa.cs_session_id') === null => 'Customer-support WhatsApp session is not configured',
+                $phone === null => 'No usable phone number',
+                default => null,
+            },
+        );
     }
 
     private function inScope(Order $order): bool

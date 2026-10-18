@@ -9,8 +9,8 @@ use App\Models\Package;
 use App\Models\PaymentMethod;
 use App\Models\Reseller;
 use App\Models\ResellerTier;
-use App\Models\ResellerWhatsAppGroup;
 use App\Models\Supplier;
+use App\Models\WhatsAppGroup;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
@@ -291,7 +291,7 @@ class Adr094ComboConsumingChannelsTest extends TestCase
         Queue::fake();
         $combo = $this->comboPackage();
         $reseller = $this->fundedReseller(markupPercent: 10);
-        ResellerWhatsAppGroup::query()->create(['reseller_id' => $reseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => true]);
+        WhatsAppGroup::query()->create(['owner_type' => 'reseller', 'owner_id' => $reseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => true]);
 
         app(ResellerBotService::class)->handle('g1@g.us', '.order MLMY-10478 123456789', 'msg-1');
 

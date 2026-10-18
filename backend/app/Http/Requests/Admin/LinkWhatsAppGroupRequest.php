@@ -4,8 +4,8 @@ namespace App\Http\Requests\Admin;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-/** PR-F build addendum decision 3: admin links a captured pending WhatsApp group id to a Reseller. */
-class LinkResellerWhatsAppGroupRequest extends FormRequest
+/** PR-F build addendum decision 3: admin links a captured pending WhatsApp group id to a Reseller or, since ADR-125, a manual supplier. */
+class LinkWhatsAppGroupRequest extends FormRequest
 {
     public function authorize(): bool
     {

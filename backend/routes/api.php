@@ -20,6 +20,7 @@ use App\Http\Controllers\Admin\MembershipPlanController;
 use App\Http\Controllers\Admin\MonthCloseController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\OrderCredentialController;
+use App\Http\Controllers\Admin\PartnerSupplierController;
 use App\Http\Controllers\Admin\PaymentSettlementController;
 use App\Http\Controllers\Admin\RedirectController;
 use App\Http\Controllers\Admin\ReportAssistantController;
@@ -36,6 +37,7 @@ use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\SupplierTransferController;
 use App\Http\Controllers\Admin\TransactionRegisterController;
 use App\Http\Controllers\Admin\VoucherController;
+use App\Http\Controllers\Admin\WhatsAppPendingLinkController;
 use App\Http\Controllers\Admin\WithdrawalController;
 use App\Http\Controllers\Affiliate\AffiliateAuthController;
 use App\Http\Controllers\Affiliate\DashboardController as AffiliateDashboardController;
@@ -905,14 +907,25 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
             Route::get('/{reseller}/webhook/deliveries', [ResellerWebhookController::class, 'deliveries']);
 
             // ADR-075 / PR-F build addendum decision 3 — link/unlink a
-            // WhatsApp group to this Reseller account. 'pending' (below,
-            // outside this {reseller} prefix) is platform-wide.
+            // WhatsApp group to this Reseller account. The pending list
+            // (below) is platform-wide and shared with suppliers.
             Route::get('/{reseller}/whatsapp-groups', [ResellerWhatsAppGroupController::class, 'index']);
             Route::post('/{reseller}/whatsapp-groups', [ResellerWhatsAppGroupController::class, 'store']);
             Route::patch('/{reseller}/whatsapp-groups/{group}/status', [ResellerWhatsAppGroupController::class, 'updateStatus']);
         });
 
-        Route::get('/reseller-whatsapp-groups/pending', [ResellerWhatsAppGroupController::class, 'pending']);
+        Route::get('/whatsapp-groups/pending', WhatsAppPendingLinkController::class);
+
+        // ADR-125 decision 60 — Admin → Partners → Suppliers: a manual
+        // supplier's WhatsApp group, reply SLA and active switch. Creating
+        // one and its funding mode stay in middleware/suppliers.
+        Route::prefix('partner-suppliers')->group(function () {
+            Route::get('/', [PartnerSupplierController::class, 'index']);
+            Route::post('/{supplier}/whatsapp-group', [PartnerSupplierController::class, 'linkGroup']);
+            Route::patch('/{supplier}/whatsapp-group/{group}/status', [PartnerSupplierController::class, 'updateGroupStatus']);
+            Route::patch('/{supplier}/sla', [PartnerSupplierController::class, 'updateSla']);
+            Route::patch('/{supplier}/status', [PartnerSupplierController::class, 'updateStatus']);
+        });
 
         // ADR-073 decision 1 — the reseller_tiers CRUD ladder.
         Route::prefix('reseller-tiers')->group(function () {
