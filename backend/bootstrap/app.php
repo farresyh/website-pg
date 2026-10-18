@@ -16,6 +16,7 @@ use App\Http\Middleware\SetAffiliateContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Foundation\Http\Middleware\TrimStrings;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\ThrottleRequests;
@@ -58,6 +59,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // as typed; CheckoutInputValidator trims the non-secret fields
         // itself.
         $middleware->trimStrings(except: ['credentials.*']);
+        // The admin's replacement of a secret field (ADR-124) is a
+        // password too; this route takes nothing else to trim.
+        TrimStrings::skipWhen(fn (Request $request) => $request->is('api/orders/*/credentials'));
 
         // ADR-121: Sanctum SPA mode. Only requests from a stateful origin
         // (the admin app, config/sanctum.php) get cookies, a session and

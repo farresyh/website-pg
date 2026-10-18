@@ -591,6 +591,7 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
     });
 
     Route::middleware('admin.role:super_admin,admin')->get('/manual-queue', [ManualQueueController::class, 'index']);
+    Route::middleware('admin.role:super_admin,admin')->get('/manual-suppliers', [ManualQueueController::class, 'suppliers']);
 
     // ADR-124 decisions 5 and 6: a customer's game login. Super Admin only,
     // behind step-up; the reveal limit runs after step-up so a step-up

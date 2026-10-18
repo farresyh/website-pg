@@ -184,4 +184,25 @@ class Adr125ManualQueueTest extends TestCase
         OrderCredential::query()->where('order_id', $order->id)->update(['purged_at' => null]);
         $this->postJson("/api/orders/{$order->id}/retry-delivery")->assertOk();
     }
+
+    public function test_an_admin_lists_only_active_manual_suppliers(): void
+    {
+        Supplier::query()->create(['name' => 'Off', 'slug' => 'off', 'driver' => Supplier::DRIVER_MANUAL, 'api_config' => [], 'currency' => 'MYR', 'is_active' => false]);
+        Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+
+        $this->getJson('/api/manual-suppliers')->assertOk()
+            ->assertJsonCount(1)
+            ->assertJsonPath('0.name', 'Roblox A');
+    }
+
+    public function test_a_replaced_password_is_stored_exactly_as_typed(): void
+    {
+        $order = $this->pendingManualOrder();
+        $this->credentialFor($order);
+        $this->actingAsSteppedUp(AdminUser::factory()->superAdmin()->create());
+
+        $this->putJson("/api/orders/{$order->id}/credentials", ['field' => 'password', 'value' => '  spaced pass  '])->assertOk();
+
+        $this->assertSame('  spaced pass  ', OrderCredential::query()->where('order_id', $order->id)->sole()->secrets['password']);
+    }
 }
