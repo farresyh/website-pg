@@ -1,6 +1,6 @@
 # ADR-023: Playwright E2E policy — golden-path scope, growth triggers, and suite-hygiene rules
 
-> **Standing (2026-10-18):** In force; the 2026-10-18 addendum adds the Login Top-up golden path. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-19):** In force; the 2026-10-18 addendum adds the Login Top-up golden path and the 2026-10-19 addendum the supplier WhatsApp bot golden path. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — 2026-08-04 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any `e2e/` file was written)
 
@@ -55,3 +55,7 @@
 ADR-125's Manual Queue is a new order-resolution mechanism, so it gets a golden path under decision #2's Trigger A: `e2e/tests/admin-login-topup.spec.ts` (admin creates a login game and a manual package through the UI → guest checks out with a game login → payment webhook → Manual Queue → Mark Delivered → the status page shows the login masked). `E2ESeeder` adds "E2E Manual Supplier" (`driver = manual`); the real `ManualSupplierAdapter` needs no fake (no network call). The suite now has 7 specs.
 
 The e2e backend's `CACHE_STORE` moves from `database` to `array`. The database driver has no `Cache::tags()`, so every admin game write (which flushes the tagged catalog index) returned a 500 there, and the storefront's game list had been falling back on every read; no earlier spec wrote a game. `array` holds nothing across requests under `php artisan serve`, which only loosens rate limits in this throwaway suite (sessions stay on `file`, ADR-121).
+
+### 2026-10-19 addendum — supplier WhatsApp bot golden path (Trigger A)
+
+ADR-125 PR 2's supplier `.done` in a WhatsApp group is a new order-resolution mechanism, so it gets its own golden path: `e2e/tests/supplier-group-bot.spec.ts`. A signed webhook puts the group in the pending list, the admin links it in Partners → Suppliers, a guest checks out a login order, the post is queued on the bot session, and a signed `.done` delivers it at the agreed cost with the sender recorded. `E2ESeeder` adds "E2E Bot Supplier" and its own login game, so the Manual Queue spec never shares a queue with it. `boot-backend.sh` sets a bot session and `OPENWA_WEBHOOK_SECRET`. Nothing is sent: the e2e worker never runs the `whatsapp` or `default` lanes, and `OPENWA_BASE_URL` points at a closed port. The suite now has 8 specs.
