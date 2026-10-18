@@ -432,5 +432,5 @@ A second row only happens through a manual correction. The `dedupe_key` backstop
 
 **Consequences to track.**
 - ~~Founder: confirm the R2 bucket `pekangame-accounting` has no lifecycle rule that deletes objects.~~ **Confirmed 2026-10-18 by the founder in the Cloudflare dashboard:** the only rule is R2's default "abort incomplete multipart uploads", which never deletes a stored object. The app's scoped token can't read lifecycle rules (`AccessDenied`), so re-check in the dashboard if this ever matters.
-- **Founder, after release:** attach the originals of settlements #1–#4 from CHIP's dashboard export.
+- ~~Founder, after release: attach the originals of settlements #1–#4.~~ **Done 2026-10-18:** all four are attached (each file exists on `r2_accounting`, its SHA-256 matches the row, no hash appears twice, and status and figures are unchanged).
 - Never add a lifecycle rule that deletes files younger than seven years.
