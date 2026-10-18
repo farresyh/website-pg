@@ -27,7 +27,7 @@ import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
-import { listSuppliers, type Supplier } from "@/lib/suppliers";
+import { listSuppliers, supplierDisplayBalance, type Supplier } from "@/lib/suppliers";
 import SupplierTransferModal from "@/components/accounting/SupplierTransferModal";
 
 const TH = "px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400";
@@ -101,7 +101,7 @@ export default function AccountingSuppliersPage() {
                           {s.name}
                         </DataTableCell>
                         <DataTableCell className={TD}>{s.currency}</DataTableCell>
-                        <DataTableCell className={TD}>{s.balance ?? "—"}</DataTableCell>
+                        <DataTableCell className={TD}>{supplierDisplayBalance(s)}</DataTableCell>
                         <DataTableCell className="px-5 py-4">
                           <Tag severity={s.is_active ? "success" : "secondary"}>{s.is_active ? "active" : "inactive"}</Tag>
                         </DataTableCell>

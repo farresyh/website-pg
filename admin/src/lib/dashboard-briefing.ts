@@ -40,6 +40,9 @@ export function describeAttention(item: AttentionItem): { badge: string | null; 
       return { badge: "Price sync", tone: "warning", text: `${n} ${n === 1 ? "change" : "changes"} to review`, href: "/middleware/price-sync" };
     case "whatsapp_links_pending":
       return { badge: "WhatsApp", tone: "warning", text: `${n} ${n === 1 ? "group" : "groups"} to link`, href: "/admin/resellers" };
+    // ADR-125 decision 21: a manual supplier has no drift check, so a missing drawdown shows here.
+    case "manual_delivery_without_drawdown":
+      return { badge: "Supplier ledger", tone: "warning", text: `${n} manual ${n === 1 ? "delivery" : "deliveries"} with no supplier drawdown`, href: "/admin/accounting/suppliers" };
     case "backup_failed":
       return { badge: "Backup", tone: "warning", text: "Last backup failed", href: "/middleware/backups" };
     case "customer_whatsapp_disconnected":

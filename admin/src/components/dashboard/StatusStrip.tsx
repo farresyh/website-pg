@@ -14,7 +14,7 @@ import { ChevronDown } from "@primeicons/react/chevron-down";
 import { ChevronUp } from "@primeicons/react/chevron-up";
 import { InfoTooltip } from "@/components/dashboard/InfoTooltip";
 import { formatRm } from "@/components/reports/format";
-import { formatMyrEquivalent, formatSupplierBalance, type DashboardHealth } from "@/lib/dashboard";
+import { formatMyrEquivalent, supplierBalanceLabel, type DashboardHealth } from "@/lib/dashboard";
 import { describeAttention } from "@/lib/dashboard-briefing";
 
 type Tone = "success" | "warning" | "danger" | "review" | "neutral";
@@ -149,7 +149,7 @@ export function StatusStrip({ health }: { health: DashboardHealth }) {
                     )}
                   </>
                 }
-                value={formatSupplierBalance(s.balance, s.currency)}
+                value={supplierBalanceLabel(s.balance, s.currency, s.is_pay_after)}
                 sub={formatMyrEquivalent(s.balance_myr_equivalent) ?? undefined}
               />
             ))}

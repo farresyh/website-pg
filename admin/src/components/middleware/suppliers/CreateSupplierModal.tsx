@@ -27,39 +27,80 @@ import {
 import type { CreateSupplierValues } from "@/lib/suppliers";
 
 /**
- * ADR-046 decision 4 — `availableSlugs` comes from the backend's own
- * SupplierAdapterFactory::registeredSlugs(), already filtered to
- * exclude slugs an existing Supplier row already uses (see
- * SuppliersPage), so this dropdown can never submit a slug with no
- * adapter implementation behind it.
+ * ADR-046 decision 4 + ADR-125 decision 1 — `availableDrivers` comes from
+ * the backend's SupplierAdapterFactory::registeredDrivers(), with API
+ * drivers that already have a row filtered out (see SuppliersPage). An
+ * API supplier's slug is its driver (set by the backend); a manual
+ * supplier — any number of them — names its own, is paid in MYR, and
+ * picks how it is funded.
  */
 interface CreateSupplierModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (values: CreateSupplierValues) => Promise<void>;
-  availableSlugs: string[];
+  availableDrivers: string[];
 }
 
-function CreateSupplierFields({
-  onClose,
-  onSubmit,
-  availableSlugs,
-}: Omit<CreateSupplierModalProps, "isOpen">) {
+const INPUT =
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-theme-sm text-gray-800 shadow-theme-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 disabled:opacity-60 dark:border-gray-800 dark:bg-white/[0.03] dark:text-white/90";
+const LABEL = "mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300";
+
+function driverLabel(driver: string): string {
+  return driver === "manual" ? "Manual (no API — a person fulfils each order)" : driver;
+}
+
+function slugify(value: string): string {
+  return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function OptionSelect({ id, value, options, onChange }: { id: string; value: string; options: { label: string; value: string }[]; onChange: (v: string) => void }) {
+  return (
+    <Select value={value} options={options} optionLabel="label" optionValue="value" onValueChange={(e) => onChange(e.value as string)}>
+      <SelectTrigger id={id}>
+        <SelectValue />
+        <SelectIndicator />
+      </SelectTrigger>
+      <SelectPortal>
+        <SelectPositioner>
+          <SelectPopup>
+            <SelectList>
+              {options.map((option, index) => (
+                <SelectOption key={option.value} index={index}>
+                  {option.label}
+                </SelectOption>
+              ))}
+            </SelectList>
+          </SelectPopup>
+        </SelectPositioner>
+      </SelectPortal>
+    </Select>
+  );
+}
+
+function CreateSupplierFields({ onClose, onSubmit, availableDrivers }: Omit<CreateSupplierModalProps, "isOpen">) {
+  const [driver, setDriver] = useState(availableDrivers[0] ?? "");
   const [name, setName] = useState("");
-  const [slug, setSlug] = useState(availableSlugs[0] ?? "");
+  const [slug, setSlug] = useState("");
+  const [slugEdited, setSlugEdited] = useState(false);
   const [currency, setCurrency] = useState("MYR");
+  const [fundingMode, setFundingMode] = useState<"prepaid" | "pay_after">("prepaid");
   const [logoUrl, setLogoUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const slugOptions = availableSlugs.map((s) => ({ label: s, value: s }));
+  const isManual = driver === "manual";
+  const driverOptions = availableDrivers.map((d) => ({ label: driverLabel(d), value: d }));
+  const fundingOptions = [
+    { label: "Prepaid — we top up its balance first", value: "prepaid" },
+    { label: "Pay after delivery — we owe it per order", value: "pay_after" },
+  ];
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    if (!name.trim() || !slug || !currency.trim()) {
-      setError("Name, slug, and currency are required.");
+    if (!name.trim() || !driver || (!isManual && !currency.trim()) || (isManual && !slug)) {
+      setError(isManual ? "Name and slug are required." : "Name and currency are required.");
       return;
     }
 
@@ -67,8 +108,10 @@ function CreateSupplierFields({
     try {
       await onSubmit({
         name: name.trim(),
-        slug,
-        currency: currency.trim().toUpperCase(),
+        driver,
+        slug: isManual ? slug : undefined,
+        currency: isManual ? "MYR" : currency.trim().toUpperCase(),
+        funding_mode: isManual ? fundingMode : "prepaid",
         logo_url: logoUrl.trim() || undefined,
       });
     } catch (err) {
@@ -90,97 +133,95 @@ function CreateSupplierFields({
           </p>
         )}
 
-        {availableSlugs.length === 0 ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Every registered supplier adapter already has a Supplier row. A new one only appears here once a new
-            adapter implementation is built and bound in the container.
-          </p>
-        ) : (
-          <form id="create-supplier-form" onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
-                Slug
-              </label>
-              <Select value={slug} options={slugOptions} optionLabel="label" optionValue="value" onValueChange={(e) => setSlug(e.value as string)}>
-                <SelectTrigger>
-                  <SelectValue />
-                  <SelectIndicator />
-                </SelectTrigger>
-                <SelectPortal>
-                  <SelectPositioner>
-                    <SelectPopup>
-                      <SelectList>
-                        {slugOptions.map((option, index) => (
-                          <SelectOption key={option.value} index={index}>
-                            {option.label}
-                          </SelectOption>
-                        ))}
-                      </SelectList>
-                    </SelectPopup>
-                  </SelectPositioner>
-                </SelectPortal>
-              </Select>
-              <p className="mt-1 text-theme-xs text-ink-subtle">
-                Only adapters already implemented in code can be added here — a typo&apos;d slug would otherwise sit
-                silently broken until the first real order.
-              </p>
-            </div>
+        <form id="create-supplier-form" onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="supplier_driver" className={LABEL}>Type</label>
+            <OptionSelect id="supplier_driver" value={driver} options={driverOptions} onChange={setDriver} />
+            <p className="mt-1 text-theme-xs text-ink-subtle">
+              {isManual
+                ? "No sync, no balance check, no status polling. Its balance is its funding ledger."
+                : "Only adapters already built in code are listed. Its slug is the adapter name."}
+            </p>
+          </div>
 
+          <div>
+            <label htmlFor="supplier_name" className={LABEL}>Name</label>
+            <input
+              id="supplier_name"
+              className={INPUT}
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (!slugEdited) setSlug(slugify(e.target.value));
+              }}
+              required
+            />
+          </div>
+
+          {isManual && (
             <div>
-              <label className="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">Name</label>
+              <label htmlFor="supplier_slug" className={LABEL}>Slug</label>
               <input
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-theme-sm text-gray-800 shadow-theme-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:border-gray-800 dark:bg-white/[0.03] dark:text-white/90"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                id="supplier_slug"
+                className={INPUT}
+                value={slug}
+                onChange={(e) => {
+                  setSlug(slugify(e.target.value));
+                  setSlugEdited(true);
+                }}
                 required
               />
+              <p className="mt-1 text-theme-xs text-ink-subtle">A short unique name, e.g. roblox-ali. It can&apos;t be changed later.</p>
             </div>
+          )}
 
+          <div>
+            <label htmlFor="supplier_currency" className={LABEL}>Currency</label>
+            <input
+              id="supplier_currency"
+              className={INPUT}
+              value={isManual ? "MYR" : currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              maxLength={3}
+              disabled={isManual}
+              required
+            />
+            {isManual && <p className="mt-1 text-theme-xs text-ink-subtle">A manual supplier is paid in ringgit.</p>}
+          </div>
+
+          {isManual && (
             <div>
-              <label className="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
-                Currency
-              </label>
-              <input
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-theme-sm text-gray-800 shadow-theme-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:border-gray-800 dark:bg-white/[0.03] dark:text-white/90"
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
-                maxLength={3}
-                required
-              />
+              <label htmlFor="supplier_funding_mode" className={LABEL}>How it is paid</label>
+              <OptionSelect id="supplier_funding_mode" value={fundingMode} options={fundingOptions} onChange={(v) => setFundingMode(v as "prepaid" | "pay_after")} />
+              <p className="mt-1 text-theme-xs text-ink-subtle">Can be changed later in Edit. Payments are recorded in Accounting → Supplier Funding.</p>
             </div>
+          )}
 
-            <div>
-              <label className="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
-                Logo URL (optional)
-              </label>
-              <input
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-theme-sm text-gray-800 shadow-theme-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:border-gray-800 dark:bg-white/[0.03] dark:text-white/90"
-                value={logoUrl}
-                onChange={(e) => setLogoUrl(e.target.value)}
-              />
-            </div>
+          <div>
+            <label htmlFor="supplier_logo" className={LABEL}>Logo URL (optional)</label>
+            <input id="supplier_logo" className={INPUT} value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
+          </div>
 
+          {!isManual && (
             <p className="text-theme-xs text-ink-subtle">
               Credentials aren&apos;t set here — add this supplier first, then open Edit to configure its api_config.
             </p>
-          </form>
-        )}
+          )}
+        </form>
       </DialogContent>
       <DialogFooter>
         <Button variant="outlined" onClick={onClose} disabled={submitting}>
           Cancel
         </Button>
-        {availableSlugs.length > 0 && (
-          <Button type="submit" form="create-supplier-form" disabled={submitting}>
-            {submitting ? "Adding…" : "Add Supplier"}
-          </Button>
-        )}
+        <Button type="submit" form="create-supplier-form" disabled={submitting || availableDrivers.length === 0}>
+          {submitting ? "Adding…" : "Add Supplier"}
+        </Button>
       </DialogFooter>
     </>
   );
 }
 
-export default function CreateSupplierModal({ isOpen, onClose, onSubmit, availableSlugs }: CreateSupplierModalProps) {
+export default function CreateSupplierModal({ isOpen, onClose, onSubmit, availableDrivers }: CreateSupplierModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => !e.value && onClose()}>
       <DialogPortal>
@@ -188,7 +229,7 @@ export default function CreateSupplierModal({ isOpen, onClose, onSubmit, availab
         <DialogPositioner>
           <DialogPopup>
             {isOpen && (
-              <CreateSupplierFields onClose={onClose} onSubmit={onSubmit} availableSlugs={availableSlugs} />
+              <CreateSupplierFields onClose={onClose} onSubmit={onSubmit} availableDrivers={availableDrivers} />
             )}
           </DialogPopup>
         </DialogPositioner>

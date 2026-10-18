@@ -49,9 +49,11 @@ final class CashPositionService
         $lastDay = $toExclusive->copy()->setTimezone(MalaysiaTime::TIMEZONE)->subDay()->toDateString();
         $unsettled = $this->settlements->paidButNotSettledBefore($toExclusive);
 
+        $suppliers = $this->supplierBalances($toExclusive, $lastDay);
+
         return [
             'assets' => [
-                'supplier_prepaid_sen' => $this->supplierPrepaid($toExclusive, $lastDay),
+                'supplier_prepaid_sen' => $suppliers['prepaid'],
                 'chip_unsettled_net_sen' => (int) array_sum(array_column($unsettled, 'amount_sen')) - count($unsettled) * self::ESTIMATED_CHIP_FEE_SEN,
             ],
             'claims' => [
@@ -61,6 +63,9 @@ final class CashPositionService
                 'affiliate_withdrawals_unpaid_sen' => $this->withdrawalsApprovedNotPaid($toExclusive),
                 'vouchers_outstanding_sen' => $this->vouchersOutstanding($toExclusive),
                 'orders_undelivered_sen' => $this->ordersUndelivered($toExclusive),
+                // ADR-125 decision 20: what a pay-after supplier is owed. A
+                // month closed before this key existed reads it as 0.
+                'supplier_payable_sen' => $suppliers['payable'],
             ],
             'envelope_identity_sen' => $this->envelopeIdentity($lastDay) + $pendingAllocationSen,
             'chip_unsettled_count' => count($unsettled),
@@ -101,12 +106,17 @@ final class CashPositionService
     }
 
     /**
-     * The supplier's balance in its own currency as of the month end, in MYR
+     * Each supplier's balance in its own currency as of the month end, in MYR
      * at the month-end blended rate. A top-up counts from the day the money
      * left the bank (`transferred_on`, decision 15), every other movement
-     * from when it was recorded.
+     * from when it was recorded. ADR-125 decision 20: split by sign per
+     * supplier before summing, so a pay-after supplier's debt is a payable
+     * and never nets against another supplier's prepaid asset; the gap is
+     * the same either way.
+     *
+     * @return array{prepaid: int, payable: int}
      */
-    private function supplierPrepaid(Carbon $toExclusive, string $lastDay): int
+    private function supplierBalances(Carbon $toExclusive, string $lastDay): array
     {
         $balances = SupplierLedgerEntry::query()
             ->where(fn ($q) => $q
@@ -117,8 +127,13 @@ final class CashPositionService
             ->groupBy('supplier_id')
             ->get();
 
-        // ponytail: a supplier with no transfer by the month end has no rate; its balance is then only drawdowns, valued at 0.
-        return (int) $balances->sum(fn ($row) => (int) round(((float) $row->balance) * ($this->costOfSales->weightedAverageRate((int) $row->supplier_id, $lastDay) ?? 0.0) * 100));
+        // ponytail: a foreign-currency supplier with no transfer by the month end has no rate; its balance is then only drawdowns, valued at 0.
+        $sen = $balances->map(fn ($row) => (int) round(((float) $row->balance) * ($this->costOfSales->weightedAverageRate((int) $row->supplier_id, $lastDay) ?? 0.0) * 100));
+
+        return [
+            'prepaid' => (int) $sen->filter(fn (int $v) => $v > 0)->sum(),
+            'payable' => (int) -$sen->filter(fn (int $v) => $v < 0)->sum(),
+        ];
     }
 
     private function ledgerBalance(LedgerOwnerType $owner, Carbon $toExclusive): int

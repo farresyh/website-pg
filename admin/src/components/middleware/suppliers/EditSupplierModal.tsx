@@ -40,12 +40,15 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
   const [name, setName] = useState(supplier.name);
   const [currency, setCurrency] = useState(supplier.currency);
   const [logoUrl, setLogoUrl] = useState(supplier.logo_url ?? "");
+  // ADR-125 decision 18: a manual supplier's funding mode; an API supplier is always prepaid.
+  const [fundingMode, setFundingMode] = useState(supplier.funding_mode);
+  const isManual = !supplier.is_api_backed;
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
   const [visibleValues, setVisibleValues] = useState<Record<string, string | boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const fields = SUPPLIER_FIELD_DEFINITIONS[supplier.slug] ?? [];
+  const fields = SUPPLIER_FIELD_DEFINITIONS[supplier.driver] ?? [];
 
   function visibleValue(key: string, fallback: string | boolean): string | boolean {
     if (key in visibleValues) return visibleValues[key];
@@ -92,6 +95,7 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
         name: name.trim(),
         currency: currency.trim().toUpperCase(),
         logo_url: logoUrl.trim() || null,
+        ...(isManual ? { funding_mode: fundingMode } : {}),
         ...(fields.length > 0 ? { api_config: apiConfig } : {}),
       });
     } catch (err) {
@@ -123,8 +127,27 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
             <label className="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
               Currency
             </label>
-            <input className={inputClass} value={currency} onChange={(e) => setCurrency(e.target.value)} maxLength={3} required />
+            <input className={inputClass} value={currency} onChange={(e) => setCurrency(e.target.value)} maxLength={3} disabled={isManual} required />
+            {isManual && <p className="mt-1 text-theme-xs text-ink-subtle">A manual supplier is paid in ringgit.</p>}
           </div>
+
+          {isManual && (
+            <div>
+              <label htmlFor="edit_funding_mode" className="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+                How it is paid
+              </label>
+              <select
+                id="edit_funding_mode"
+                className={inputClass}
+                value={fundingMode}
+                onChange={(e) => setFundingMode(e.target.value as "prepaid" | "pay_after")}
+              >
+                <option value="prepaid">Prepaid — we top up its balance first</option>
+                <option value="pay_after">Pay after delivery — we owe it per order</option>
+              </select>
+              <p className="mt-1 text-theme-xs text-ink-subtle">Changes only how the balance is labelled; the ledger stays the same.</p>
+            </div>
+          )}
 
           <div>
             <label className="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
@@ -136,7 +159,7 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
           {fields.length > 0 && (
             <div className="space-y-4 border-t border-gray-200 pt-4 dark:border-gray-800">
               <p className="text-theme-xs font-medium text-gray-500 dark:text-gray-400">
-                Credentials &amp; connection settings
+                {isManual ? "Settings" : "Credentials & connection settings"}
               </p>
 
               {fields.map((field) => {

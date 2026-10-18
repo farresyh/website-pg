@@ -18,7 +18,7 @@ import { Tag } from "@/components/ui/tag";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
-import { getDashboardHealth, formatSupplierBalance, formatMyrEquivalent, type DashboardHealthSupplier } from "@/lib/dashboard";
+import { getDashboardHealth, supplierBalanceLabel, formatMyrEquivalent, type DashboardHealthSupplier } from "@/lib/dashboard";
 import { listRequestLogs, type SupplierRequestLog } from "@/lib/request-logs";
 
 export default function MiddlewareDashboardPage() {
@@ -110,7 +110,7 @@ export default function MiddlewareDashboardPage() {
                 </Tag>
               </div>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Balance: {formatSupplierBalance(s.balance, s.currency)}
+                Balance: {supplierBalanceLabel(s.balance, s.currency, s.is_pay_after)}
                 {formatMyrEquivalent(s.balance_myr_equivalent) && (
                   <span className="ml-1 text-theme-xs text-ink-subtle">{formatMyrEquivalent(s.balance_myr_equivalent)}</span>
                 )}

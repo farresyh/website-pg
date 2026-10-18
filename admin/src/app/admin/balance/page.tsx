@@ -31,7 +31,7 @@ import { Tag } from "@/components/ui/tag";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
-import { listSuppliers, refreshSupplierBalance, type Supplier } from "@/lib/suppliers";
+import { listSuppliers, refreshSupplierBalance, supplierDisplayBalance, type Supplier } from "@/lib/suppliers";
 import { listResellers, type ResellerRow } from "@/lib/resellers";
 
 const TH = "px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400";
@@ -138,7 +138,7 @@ export default function BalanceOverviewPage() {
                             {s.name}
                           </DataTableCell>
                           <DataTableCell className={TD}>{s.currency}</DataTableCell>
-                          <DataTableCell className={TD}>{s.balance ?? "—"}</DataTableCell>
+                          <DataTableCell className={TD}>{supplierDisplayBalance(s)}</DataTableCell>
                           <DataTableCell className={TD}>
                             {formatDate(s.last_tested_at)}
                             {s.last_test_result?.startsWith("failed") && (
@@ -151,14 +151,19 @@ export default function BalanceOverviewPage() {
                             <Tag severity={s.is_active ? "success" : "secondary"}>{s.is_active ? "active" : "inactive"}</Tag>
                           </DataTableCell>
                           <DataTableCell className="px-5 py-4">
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              disabled={refreshingId === s.id}
-                              onClick={() => handleRefreshSupplier(s.id)}
-                            >
-                              {refreshingId === s.id ? "Checking…" : "Refresh"}
-                            </Button>
+                            {/* ADR-125: a manual supplier has no API balance to refresh. */}
+                            {s.is_api_backed ? (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                disabled={refreshingId === s.id}
+                                onClick={() => handleRefreshSupplier(s.id)}
+                              >
+                                {refreshingId === s.id ? "Checking…" : "Refresh"}
+                              </Button>
+                            ) : (
+                              <span className="text-theme-xs text-ink-subtle">Funding ledger</span>
+                            )}
                           </DataTableCell>
                         </DataTableRow>
                       );
