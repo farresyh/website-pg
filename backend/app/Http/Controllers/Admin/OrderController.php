@@ -365,6 +365,7 @@ class OrderController extends Controller
         }
 
         $this->guardResendUnsafeOverride($request, $order);
+        $this->guardLoginNotWiped($order);
 
         // ADR-106 addendum (2026-09-21) — retry-delivery has no separate
         // `note` field of its own (unlike resend()); override_reason is
@@ -392,6 +393,19 @@ class OrderController extends Controller
      * here too now belongs to `OrderResendService::preflight()`, which
      * resend() calls — it covered the Standard basis only.
      */
+    /**
+     * ADR-125 decision 44: a login order whose secrets were wiped can't be
+     * sent to the supplier again until the login is replaced.
+     */
+    private function guardLoginNotWiped(Order $order): void
+    {
+        if (OrderCredential::isWipedFor($order->id)) {
+            throw ValidationException::withMessages(['delivery_status' => [
+                'This order\'s login was wiped. Replace it (Customer Login card) before sending it again.',
+            ]]);
+        }
+    }
+
     private function guardResendUnsafeOverride(Request $request, Order $order): void
     {
         if (! $order->resendUnsafeToOverride()) {
@@ -450,6 +464,7 @@ class OrderController extends Controller
         // an admin gets a 422 now rather than a silently refused job.
         $resend->preflight($order, $targetPackage)->assertAllowed($request->input('override_reason'));
         $this->guardResendUnsafeOverride($request, $order);
+        $this->guardLoginNotWiped($order);
 
         ResendOrderDeliveryJob::dispatch(
             $order,
@@ -598,6 +613,15 @@ class OrderController extends Controller
         if ($order->delivery_status !== DeliveryStatus::NeedsReview) {
             throw ValidationException::withMessages([
                 'delivery_status' => ['Only an order in needs-review can be manually marked delivered.'],
+            ]);
+        }
+
+        // ADR-125 decision 28: this path skips the real cost, the profit
+        // reconcile and the drawdown, which a manual supplier's "Owed" and
+        // COGS depend on. Its orders go through the Manual Queue.
+        if ($order->supplier !== null && ! $order->supplier->isApiBacked()) {
+            throw ValidationException::withMessages([
+                'delivery_status' => ['This is a manual supplier\'s order — confirm it in the Manual Queue.'],
             ]);
         }
 
@@ -822,6 +846,9 @@ class OrderController extends Controller
             // ADR-124: the customer's game login, never a secret value
             // (those come only from OrderCredentialController::reveal()).
             'customer_login' => OrderCredential::query()->where('order_id', $order->id)->first()?->adminSummary(),
+            // ADR-125 decisions 8/42 + 47: drives the Manual Queue actions
+            // and hides "Check from Supplier" for a supplier with no API.
+            'is_manual_supplier' => $order->supplier !== null && ! $order->supplier->isApiBacked(),
             // ADR-102 decision 11 (b) — the underlying LedgerEntry's own
             // amount/created_at, not just the boolean above: the "Wallet
             // Refund" card needs to show more than a yes/no.

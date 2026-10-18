@@ -46,6 +46,16 @@ class OrderCredential extends Model
         return $this->belongsTo(Order::class);
     }
 
+    /**
+     * ADR-125 decision 44: the login's secrets were wiped (closed past the
+     * grace window, or the `credential_max_days` ceiling while still open),
+     * so a re-post would reach the supplier without them.
+     */
+    public static function isWipedFor(int $orderId): bool
+    {
+        return self::query()->where('order_id', $orderId)->whereNotNull('purged_at')->exists();
+    }
+
     public function hasSecretField(string $key): bool
     {
         return collect($this->secret_fields)->contains('key', $key);
