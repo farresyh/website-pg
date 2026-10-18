@@ -1035,9 +1035,12 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::delete('/games/{game}', [GameController::class, 'destroy']);
         Route::get('/games/{game}/packages', [GameController::class, 'packages']);
         Route::post('/games/{game}/packages/combo', [PackageController::class, 'storeCombo']);
+        Route::post('/games/{game}/packages/manual', [PackageController::class, 'storeManual']);
 
         Route::put('/packages/{package}', [PackageController::class, 'update']);
         Route::patch('/packages/{package}/markup', [PackageController::class, 'updateMarkup']);
+        Route::patch('/packages/{package}/cost', [PackageController::class, 'updateCost']);
+        Route::get('/packages/{package}/price-history', [PackageController::class, 'priceHistory']);
         Route::patch('/packages/{package}/status', [PackageController::class, 'updateStatus']);
         Route::patch('/packages/{package}/denomination', [PackageController::class, 'updateDenomination']);
         Route::patch('/packages/{package}/catalog-code', [PackageController::class, 'updateCatalogCode']);

@@ -5,9 +5,8 @@ namespace App\Http\Controllers\Middleware;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\GameController;
 use App\Models\PendingPriceChange;
-use App\Models\PriceChangeLog;
 use App\Services\Pricing\ComboPricingService;
-use App\Services\Pricing\PackageMarkupService;
+use App\Services\Pricing\PackageCostService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -20,7 +19,7 @@ use Illuminate\Http\Request;
 class PendingPriceChangeController extends Controller
 {
     public function __construct(
-        private readonly PackageMarkupService $markup,
+        private readonly PackageCostService $packageCost,
         private readonly ComboPricingService $comboPricing,
     ) {}
 
@@ -46,29 +45,17 @@ class PendingPriceChangeController extends Controller
         $this->assertPending($pendingPriceChange);
 
         $package = $pendingPriceChange->package;
-        $newStandardSellingPrice = $this->markup->calculateStandardSellingPrice(
-            $pendingPriceChange->proposed_cost_price,
-            (float) $package->markup_percent,
-        );
-
-        PriceChangeLog::query()->create([
-            'price_sync_run_id' => $pendingPriceChange->price_sync_run_id,
-            'package_id' => $package->id,
-            'old_cost_price' => $package->cost_price,
-            'new_cost_price' => $pendingPriceChange->proposed_cost_price,
-            'old_standard_selling_price' => $package->standard_selling_price,
-            'new_standard_selling_price' => $newStandardSellingPrice,
-        ]);
-
         $wasInactive = ! $package->is_active;
 
-        $package->update([
-            'cost_price' => $pendingPriceChange->proposed_cost_price,
-            'standard_selling_price' => $newStandardSellingPrice,
-            'is_active' => true,
-            'deactivated_reason' => null,
-            'deactivated_at' => null,
-        ]);
+        // ADR-125 decision 45: the same seam as Price Sync, with the
+        // approving admin recorded.
+        $this->packageCost->apply(
+            $package,
+            $pendingPriceChange->proposed_cost_price,
+            $pendingPriceChange->price_sync_run_id,
+            $request->user()?->id,
+            ['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null],
+        );
 
         $pendingPriceChange->update(['status' => 'approved']);
 

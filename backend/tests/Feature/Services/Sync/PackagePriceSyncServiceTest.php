@@ -11,6 +11,7 @@ use App\Models\PriceSyncRun;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
 use App\Services\Pricing\ComboPricingService;
+use App\Services\Pricing\PackageCostService;
 use App\Services\Pricing\PackageMarkupService;
 use App\Services\Sync\PackagePriceSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -63,7 +64,7 @@ class PackagePriceSyncServiceTest extends TestCase
     {
         $markup = new PackageMarkupService;
 
-        return new PackagePriceSyncService($markup, new ComboPricingService($markup));
+        return new PackagePriceSyncService($markup, new ComboPricingService($markup), new PackageCostService($markup));
     }
 
     public function test_propagates_a_price_increase_and_recomputes_standard_selling_price(): void

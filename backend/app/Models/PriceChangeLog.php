@@ -35,6 +35,11 @@ class PriceChangeLog extends Model
         return $this->belongsTo(Package::class);
     }
 
+    public function adminUser(): BelongsTo
+    {
+        return $this->belongsTo(AdminUser::class);
+    }
+
     public function priceSyncRun(): BelongsTo
     {
         return $this->belongsTo(PriceSyncRun::class);
