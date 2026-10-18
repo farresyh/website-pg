@@ -10,6 +10,7 @@ use App\Services\Order\PlacedVia;
 use App\Services\Pricing\PricingBasis;
 use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
+use App\Support\ContactMask;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -26,6 +27,9 @@ class Order extends Model
 
     /** @use HasFactory<OrderFactory> */
     use HasFactory;
+
+    /** A declared property, so Eloquent's __set never turns it into a column. */
+    private ?bool $isLoginOrderCache = null;
 
     protected $fillable = [
         'order_number',
@@ -125,6 +129,30 @@ class Order extends Model
         return $this->package?->is_combo
             ? $this->package->components->first()?->supplier
             : $this->supplier;
+    }
+
+    /**
+     * ADR-125 decision 38: a login order is one with a credential row,
+     * never read from the game (`orders.game_id` has no foreign key and a
+     * schema can be removed later). Memoized per instance.
+     */
+    public function isLoginOrder(): bool
+    {
+        return $this->isLoginOrderCache ??= OrderCredential::query()->where('order_id', $this->id)->exists();
+    }
+
+    /**
+     * ADR-125 decisions 31/38: what a customer-facing surface shows for the
+     * account the order went to — the masked login for a login order, the
+     * Player ID (and Server ID) otherwise. Admin surfaces keep the raw value.
+     */
+    public function publicPlayerLabel(): string
+    {
+        if ($this->isLoginOrder()) {
+            return (string) ContactMask::identifier($this->player_id);
+        }
+
+        return $this->player_id.($this->server_id ? " ({$this->server_id})" : '');
     }
 
     /** ADR-125 decision 3: Pending past its supplier's stale window (Supplier::pendingPolicy()). */

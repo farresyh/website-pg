@@ -37,6 +37,31 @@ final class ContactMask
         return $parts[0].' '.mb_strtoupper(mb_substr($last, 0, 1)).'.';
     }
 
+    /**
+     * ADR-125 decision 38: a login identifier, masked by its value (the
+     * schema may change after the order). An email masks like email(); a
+     * username keeps its first and last two characters, and anything of 4
+     * characters or fewer is masked whole.
+     */
+    public static function identifier(?string $value): ?string
+    {
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        if (str_contains($value, '@')) {
+            return self::email($value);
+        }
+
+        $length = mb_strlen($value);
+
+        return $length <= 4
+            ? str_repeat('•', $length)
+            : mb_substr($value, 0, 2).'••••'.mb_substr($value, -2);
+    }
+
     /** `john@gmail.com` -> `j••••@gmail.com`. */
     public static function email(?string $email): ?string
     {
