@@ -9,8 +9,8 @@ use App\Models\PaymentMethod;
 use App\Models\PlayerValidatorProfile;
 use App\Models\Reseller;
 use App\Models\ResellerTier;
-use App\Models\ResellerWhatsAppGroup;
 use App\Models\Supplier;
+use App\Models\WhatsAppGroup;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Payment\PaymentGateway;
@@ -52,7 +52,7 @@ trait ResellerBotFixtures
         $ledger = app(LedgerService::class);
         $ledger->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
         $ledger->credit(LedgerOwnerType::ResellerWallet, $reseller->id, $walletBalance, 'wallet_topup');
-        ResellerWhatsAppGroup::query()->create(['reseller_id' => $reseller->id, 'whatsapp_group_id' => self::GROUP_ID, 'is_active' => true]);
+        WhatsAppGroup::query()->create(['owner_type' => 'reseller', 'owner_id' => $reseller->id, 'whatsapp_group_id' => self::GROUP_ID, 'is_active' => true]);
 
         return $reseller;
     }

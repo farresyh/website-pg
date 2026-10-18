@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Webhooks;
 
 use App\Http\Controllers\Controller;
+use App\Models\WhatsAppGroup;
 use App\Services\Notification\CustomerWhatsAppInboundService;
 use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Reseller\Bot\ResellerBotService;
+use App\Services\Supplier\Bot\SupplierBotService;
+use App\Services\WhatsApp\WhatsAppGroupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -35,6 +38,8 @@ class OpenWaWebhookController extends Controller
 {
     public function __construct(
         private readonly ResellerBotService $bot,
+        private readonly SupplierBotService $supplierBot,
+        private readonly WhatsAppGroupService $groups,
         private readonly OpenWaSessionStatus $sessionStatus,
         private readonly CustomerWhatsAppInboundService $customerInbound,
     ) {}
@@ -122,7 +127,9 @@ class OpenWaWebhookController extends Controller
     {
         $data = (array) $request->input('data', []);
 
-        if (! $this->isGroupMessage($data)) {
+        // ADR-125 decision 57: the bot's own posts come back as events too,
+        // and must never be parsed as a command.
+        if (! $this->isGroupMessage($data) || ($data['fromMe'] ?? false) === true) {
             return;
         }
 
@@ -136,7 +143,39 @@ class OpenWaWebhookController extends Controller
             return;
         }
 
+        // ADR-125 decision 11: a supplier's group goes to its own bot;
+        // everything else (a reseller's group, an unlinked one) is the
+        // reseller bot's, unchanged.
+        $group = $this->groups->activeGroup($groupId);
+        if ($group?->owner_type === WhatsAppGroup::OWNER_SUPPLIER && $group->supplier !== null) {
+            $this->supplierBot->handle($group->supplier, $groupId, $text, $this->sender($data));
+
+            return;
+        }
+
         $this->bot->handle($groupId, $text, $messageId);
+    }
+
+    /**
+     * Decision 57: who in the group sent it. OpenWA gives `author` (the
+     * participant's id, `<digits>@c.us`, or a privacy `@lid`) and, for a
+     * privacy id it could resolve, `senderPhone`.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function sender(array $data): ?string
+    {
+        $phone = $data['senderPhone'] ?? null;
+        if (is_string($phone) && $phone !== '') {
+            return $phone;
+        }
+
+        $author = $data['author'] ?? null;
+        if (! is_string($author) || $author === '') {
+            return null;
+        }
+
+        return str_ends_with($author, '@c.us') ? substr($author, 0, -5) : $author;
     }
 
     /** @param  array<string, mixed>  $data */

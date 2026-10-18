@@ -278,7 +278,7 @@ export interface ResellerWhatsAppGroup {
 }
 
 export function listPendingWhatsAppGroups() {
-  return apiFetch<ResellerWhatsAppPendingLink[]>("/api/reseller-whatsapp-groups/pending");
+  return apiFetch<ResellerWhatsAppPendingLink[]>("/api/whatsapp-groups/pending");
 }
 
 export function listResellerWhatsAppGroups(resellerId: number) {

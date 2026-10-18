@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands\Reseller;
 
-use App\Services\Reseller\Bot\ResellerWhatsAppGroupService;
+use App\Services\WhatsApp\WhatsAppGroupService;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -16,16 +16,16 @@ use Illuminate\Support\Facades\Log;
  * as PrunePlayerValidationsCommand/PruneSupplierRequestLogsCommand.
  */
 #[Signature('app:prune-reseller-whatsapp-pending-links')]
-#[Description('Delete reseller_whatsapp_pending_links rows past their TTL, still unlinked.')]
+#[Description('Delete whatsapp_pending_links rows past their TTL, still unlinked.')]
 class PruneResellerWhatsAppPendingLinksCommand extends Command
 {
-    public function handle(ResellerWhatsAppGroupService $groups): int
+    public function handle(WhatsAppGroupService $groups): int
     {
         $ttlHours = (int) config('services.openwa.pending_link_ttl_hours');
         $deleted = $groups->pruneExpiredPendingLinks($ttlHours);
 
-        $this->info("Pruned {$deleted} reseller_whatsapp_pending_links row(s) older than {$ttlHours} hour(s).");
-        Log::info('Pruned reseller_whatsapp_pending_links rows', ['deleted' => $deleted, 'ttl_hours' => $ttlHours]);
+        $this->info("Pruned {$deleted} whatsapp_pending_links row(s) older than {$ttlHours} hour(s).");
+        Log::info('Pruned whatsapp_pending_links rows', ['deleted' => $deleted, 'ttl_hours' => $ttlHours]);
 
         return self::SUCCESS;
     }

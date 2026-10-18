@@ -64,7 +64,10 @@ Laravel-specific, loaded only when working inside `backend/`.
   `customer_phone` is raw customer input and is never rewritten. The one
   email exception is membership (OTP, receipt, renewal reminder): a member
   is identified by email, so those go through `PlunkMailer`. Both channels
-  take the brand from `App\Support\BrandIdentity`.
+  take the brand from `App\Support\BrandIdentity`. A manual supplier's
+  WhatsApp group is told only through `SupplierGroupNotifier` (bot session,
+  ADR-125). Both go through the one persisted queue, `WhatsAppOutbox`; never
+  call `OpenWaClient::sendNow()` for either.
 - **Public API responses never leak internal financial fields** —
   `cost_price`, `standard_selling_price`, `platform_profit`, `affiliate_profit`,
   `supplier_response`, `payment_ref` stay out of any customer-facing

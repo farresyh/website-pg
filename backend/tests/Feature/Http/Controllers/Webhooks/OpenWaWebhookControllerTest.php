@@ -102,7 +102,7 @@ class OpenWaWebhookControllerTest extends TestCase
             'data' => ['isGroup' => true, 'chatId' => 'cs-group@g.us', 'body' => '.baki', 'id' => 'msg1'],
         ])->assertOk();
 
-        $this->assertDatabaseMissing('reseller_whatsapp_pending_links', ['whatsapp_group_id' => 'cs-group@g.us']);
+        $this->assertDatabaseMissing('whatsapp_pending_links', ['whatsapp_group_id' => 'cs-group@g.us']);
     }
 
     public function test_each_session_status_is_tracked_separately(): void
@@ -127,7 +127,7 @@ class OpenWaWebhookControllerTest extends TestCase
             'data' => ['isGroup' => true, 'chatId' => 'x@g.us', 'body' => 'hi', 'id' => 'msg1'],
         ])->assertOk();
 
-        $this->assertDatabaseMissing('reseller_whatsapp_pending_links', ['whatsapp_group_id' => 'x@g.us']);
+        $this->assertDatabaseMissing('whatsapp_pending_links', ['whatsapp_group_id' => 'x@g.us']);
     }
 
     public function test_a_non_group_message_received_event_is_ignored(): void
@@ -143,7 +143,7 @@ class OpenWaWebhookControllerTest extends TestCase
         // without a container swap) — this test's real assertion is that
         // a DM never reaches ResellerBotService::handle() at all, proven
         // indirectly by no pending-link row being created for it.
-        $this->assertDatabaseMissing('reseller_whatsapp_pending_links', ['whatsapp_group_id' => '60123@c.us']);
+        $this->assertDatabaseMissing('whatsapp_pending_links', ['whatsapp_group_id' => '60123@c.us']);
     }
 
     public function test_a_group_message_received_event_captures_a_pending_link(): void
@@ -154,7 +154,7 @@ class OpenWaWebhookControllerTest extends TestCase
         ]);
 
         $response->assertOk();
-        $this->assertDatabaseHas('reseller_whatsapp_pending_links', ['whatsapp_group_id' => 'g1@g.us']);
+        $this->assertDatabaseHas('whatsapp_pending_links', ['whatsapp_group_id' => 'g1@g.us']);
     }
 
     /**
@@ -170,7 +170,7 @@ class OpenWaWebhookControllerTest extends TestCase
         ]);
 
         $response->assertOk();
-        $this->assertDatabaseHas('reseller_whatsapp_pending_links', ['whatsapp_group_id' => 'g1@g.us']);
+        $this->assertDatabaseHas('whatsapp_pending_links', ['whatsapp_group_id' => 'g1@g.us']);
     }
 
     /** `kind: channel` must not be misrouted into the group-trust flow just because `isGroup` is (wrongly) true. */
@@ -182,6 +182,6 @@ class OpenWaWebhookControllerTest extends TestCase
         ]);
 
         $response->assertOk();
-        $this->assertDatabaseMissing('reseller_whatsapp_pending_links', ['whatsapp_group_id' => 'c1@newsletter']);
+        $this->assertDatabaseMissing('whatsapp_pending_links', ['whatsapp_group_id' => 'c1@newsletter']);
     }
 }

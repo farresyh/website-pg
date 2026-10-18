@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ApiRootController;
 use App\Http\Controllers\Middleware\OpsAccessController;
+use App\Http\Controllers\Supplier\SupplierLoginLinkController;
 use Illuminate\Support\Facades\Route;
 
 // ADR-078 decision 4: an API-only backend — a flat JSON identity, no
@@ -17,3 +18,11 @@ Route::get('/', ApiRootController::class);
 Route::get('/ops/enter', [OpsAccessController::class, 'enter'])
     ->middleware(['web', 'signed'])
     ->name('ops.enter');
+
+// ADR-125 decisions 50-51: a manual supplier's short login link. `web` for
+// the POST's CSRF token; the token in the path is the only credential, and
+// both routes are throttled per IP on top of the per-link reveal limit.
+Route::middleware(['web', 'throttle:30,1'])->group(function () {
+    Route::get('/s/{token}', [SupplierLoginLinkController::class, 'show'])->name('supplier-login.show');
+    Route::post('/s/{token}', [SupplierLoginLinkController::class, 'reveal'])->name('supplier-login.reveal');
+});

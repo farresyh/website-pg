@@ -12,6 +12,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
+use App\Services\Supplier\Manual\SupplierGroupNotifier;
 use App\Services\Supplier\SupplierAdapterFactory;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -64,7 +65,7 @@ use Illuminate\Support\Facades\Log;
 #[Description('Retry ambiguously-stuck deliveries once, and flag genuinely unresolvable ones for manual review.')]
 class ReconcilePendingDeliveriesCommand extends Command
 {
-    public function handle(OrderStatusService $orderStatus, OrderFulfillmentService $fulfillment): int
+    public function handle(OrderStatusService $orderStatus, OrderFulfillmentService $fulfillment, SupplierGroupNotifier $notifier): int
     {
         $staleAfterMinutes = (int) config('services.delivery_reconciliation.stale_after_minutes');
 
@@ -73,8 +74,26 @@ class ReconcilePendingDeliveriesCommand extends Command
         $this->flagStaleDuplicateReferences($staleAfterMinutes, $orderStatus);
         $this->reclassifyConfirmedFailedNeedsReview($orderStatus);
         $this->checkStalePending($orderStatus);
+        $this->remindStaleManualPending($notifier);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * ADR-125 decisions 15/59: a manual supplier's Pending order past its
+     * reply SLA gets one reminder in the supplier's group per attempt (the
+     * notifier's dedupe key). Real latency is the SLA plus up to one run.
+     */
+    private function remindStaleManualPending(SupplierGroupNotifier $notifier): void
+    {
+        Order::query()
+            ->where('delivery_status', DeliveryStatus::Pending->value)
+            ->where('is_test', false)
+            ->whereHas('supplier', fn ($q) => $q->where('driver', Supplier::DRIVER_MANUAL))
+            ->with('supplier')
+            ->get()
+            ->filter(fn (Order $order) => $order->isStalePending())
+            ->each(fn (Order $order) => $notifier->slaReminder($order));
     }
 
     /**

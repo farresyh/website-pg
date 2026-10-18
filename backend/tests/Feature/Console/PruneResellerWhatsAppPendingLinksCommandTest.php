@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Console;
 
-use App\Models\ResellerWhatsAppPendingLink;
+use App\Models\WhatsAppPendingLink;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -11,9 +11,9 @@ class PruneResellerWhatsAppPendingLinksCommandTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function pending(string $groupId, \DateTimeInterface|string $lastMessageAt): ResellerWhatsAppPendingLink
+    private function pending(string $groupId, \DateTimeInterface|string $lastMessageAt): WhatsAppPendingLink
     {
-        return ResellerWhatsAppPendingLink::query()->create([
+        return WhatsAppPendingLink::query()->create([
             'whatsapp_group_id' => $groupId,
             'last_message_preview' => 'hi',
             'last_message_at' => $lastMessageAt,
@@ -27,7 +27,7 @@ class PruneResellerWhatsAppPendingLinksCommandTest extends TestCase
 
         $this->artisan('app:prune-reseller-whatsapp-pending-links')->assertExitCode(0);
 
-        $this->assertSame(0, ResellerWhatsAppPendingLink::query()->count());
+        $this->assertSame(0, WhatsAppPendingLink::query()->count());
     }
 
     public function test_keeps_a_pending_link_within_the_ttl(): void
@@ -37,6 +37,6 @@ class PruneResellerWhatsAppPendingLinksCommandTest extends TestCase
 
         $this->artisan('app:prune-reseller-whatsapp-pending-links')->assertExitCode(0);
 
-        $this->assertSame(1, ResellerWhatsAppPendingLink::query()->count());
+        $this->assertSame(1, WhatsAppPendingLink::query()->count());
     }
 }
