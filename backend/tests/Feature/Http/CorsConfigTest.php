@@ -139,6 +139,21 @@ class CorsConfigTest extends TestCase
         $this->assertNull($storefront->headers->get('Access-Control-Allow-Credentials'));
     }
 
+    /**
+     * ADR-121 2026-10-19 addendum: a preflight the browser still has to send
+     * (a mutation, the portal's Bearer header, the storefront's
+     * X-Storefront-Host) is reused for that URL for two hours, Chrome's cap.
+     */
+    public function test_a_preflight_answer_is_cacheable_for_two_hours(): void
+    {
+        $response = $this->call('OPTIONS', '/api/orders', server: [
+            'HTTP_ORIGIN' => 'http://localhost:3000',
+            'HTTP_ACCESS_CONTROL_REQUEST_METHOD' => 'POST',
+        ]);
+
+        $response->assertHeader('Access-Control-Max-Age', '7200');
+    }
+
     private function makeDomain(string $hostname, AffiliateDomainStatus $status): AffiliateDomain
     {
         $affiliate = Affiliate::query()->create([
