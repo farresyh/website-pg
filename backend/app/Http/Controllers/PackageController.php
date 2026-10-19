@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Games\StoreComboPackageRequest;
+use App\Http\Requests\Games\StoreManualPackageRequest;
 use App\Http\Requests\Games\UpdateComboPackageOverrideRequest;
+use App\Http\Requests\Games\UpdateManualPackageCostRequest;
 use App\Http\Requests\Games\UpdatePackageCatalogCodeRequest;
 use App\Http\Requests\Games\UpdatePackageDenominationRequest;
 use App\Http\Requests\Games\UpdatePackageMarkupRequest;
@@ -12,7 +14,9 @@ use App\Http\Requests\Games\UpdatePackageStatusRequest;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
+use App\Models\PriceChangeLog;
 use App\Services\Pricing\ComboPricingService;
+use App\Services\Pricing\PackageCostService;
 use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +29,8 @@ use Illuminate\Validation\ValidationException;
  * (`supplier_package_ref`). `storeCombo()` (ADR-094) is the one
  * deliberate exception: a combo Package is assembled from several
  * already-promoted Packages instead, so it needs a genuine "create
- * from scratch" entry point.
+ * from scratch" entry point. `storeManual()` (ADR-125) is the other: a
+ * login game's package has no supplier item, only an agreed cost.
  */
 class PackageController extends Controller
 {
@@ -70,6 +75,74 @@ class PackageController extends Controller
         GameController::forgetPackagesCache($game->id);
 
         return response()->json($combo->load('components'), 201);
+    }
+
+    /**
+     * ADR-125 decision 4: `supplier_package_ref = MANUAL-{id}`, so the
+     * (supplier, ref) unique index holds and the ref names the package.
+     */
+    public function storeManual(StoreManualPackageRequest $request, Game $game, PackageMarkupService $markup): JsonResponse
+    {
+        $data = $request->validated();
+
+        $package = DB::transaction(function () use ($game, $data, $markup) {
+            $package = Package::query()->create([
+                'game_id' => $game->id,
+                'name' => $data['name'],
+                'cost_price' => $data['cost_price'],
+                'markup_percent' => $data['markup_percent'],
+                'standard_selling_price' => $markup->calculateStandardSellingPrice($data['cost_price'], (float) $data['markup_percent']),
+                'is_active' => true,
+                'supplier_id' => $data['supplier_id'],
+                'supplier_package_ref' => 'MANUAL-new-'.bin2hex(random_bytes(8)),
+            ]);
+            $package->update(['supplier_package_ref' => "MANUAL-{$package->id}"]);
+
+            return $package;
+        });
+
+        GameController::forgetPackagesCache($game->id);
+
+        return response()->json($package, 201);
+    }
+
+    /**
+     * ADR-125 decisions 34/45: audited through the shared cost seam with
+     * the admin recorded, then any combo using it is repriced (none today:
+     * a combo refuses a manual package, but the seam stays whole). No
+     * ADR-025 swing gate: the admin is the price source.
+     */
+    public function updateCost(UpdateManualPackageCostRequest $request, Package $package, PackageCostService $packageCost, ComboPricingService $comboPricing): JsonResponse
+    {
+        $newCost = (int) $request->validated('cost_price');
+
+        $gameIds = DB::transaction(function () use ($package, $newCost, $packageCost, $comboPricing, $request) {
+            if ($newCost !== $package->cost_price) {
+                $packageCost->apply($package, $newCost, priceSyncRunId: null, adminUserId: $request->user()?->id);
+            }
+
+            return $comboPricing->recomputeForComponentChange($package, priceSyncRunId: null);
+        });
+
+        foreach ($gameIds->push($package->game_id)->unique() as $gameId) {
+            GameController::forgetPackagesCache($gameId);
+        }
+
+        return response()->json($package);
+    }
+
+    /**
+     * ADR-125 decision 45: every cost/price change for one package, sync
+     * and hand edits alike, newest first, with who made a hand edit.
+     */
+    public function priceHistory(Package $package): JsonResponse
+    {
+        return response()->json(PriceChangeLog::query()
+            ->where('package_id', $package->id)
+            ->with('adminUser:id,name')
+            ->latest('id')
+            ->limit(50)
+            ->get());
     }
 
     /**

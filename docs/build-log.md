@@ -1236,3 +1236,176 @@ Tests: 4 + 8 new, 4 updated. Full suite 2816/2816. Admin tsc, lint and build are
 - `UploadedFile::hashName()` is cached per instance. A test reusing one instance for two uploads gets the same storage path, so the failed second write's cleanup deleted the first file. Real requests always carry a new instance; the test now uses two.
 
 **Founder follow-ups.** Check R2 lifecycle rules. After release, attach the originals of settlements #1–#4.
+
+## 2026-10-18 — Release #500 live (items 123, 120, test audit)
+
+`staging`→`main` at the founder's request. #500 was opened, then held while item 120 was grilled and built (#501), then merged as `e127dcb` once CI was green on the head that included #501. The CI `deploy` job passed, and the prod `current` is release `80479848` at `e127dcb`. Migration `2026_10_18_120000_add_original_file_to_payment_settlements` ran (batch 45). `/up` 200.
+
+Checked live (read-only):
+- Transaction Register: PG-KWKBUHNDMKQT shows `order` +37 on 17 Sep and `order_profit_correction` −10 on 20 Sep.
+- `payment_settlements` has `file_path`/`file_sha256`, and #1–#4 have no file.
+- September's close: stored 464 = live 464.
+
+Founder follow-ups: check the R2 lifecycle rules on `pekangame-accounting`, and attach the originals of settlements #1–#4 from CHIP's dashboard.
+
+**2026-10-18, later:** the founder checked the R2 bucket `pekangame-accounting` in Cloudflare. Its only lifecycle rule is the default "abort incomplete multipart uploads", which never deletes stored objects, so the seven-year retention holds. Remaining follow-up: attach the originals of settlements #1–#4.
+
+**2026-10-18, later:** the founder attached the original CHIP files to settlements #1–#4 (04:43–04:45 UTC). Read-only check on prod: every `file_path` exists on `r2_accounting` (#1–#3 under `2026/09`, #4 under `2026/10`), the SHA-256 of each stored file equals `file_sha256`, no hash appears twice, and status `matched` and net figures are unchanged (RM33.14, RM457.00, RM36.50, RM4.25). Item 120 has no follow-up left.
+
+## 2026-10-18 — §16 item 112: customer account credentials base (ADR-124)
+
+**Why.** Login Top-up (113) and Joki (114) need the customer's game login, the first password the platform would hold. ADR-124 (accepted 2026-10-17) designed the storage; this builds it alone first, so the money-path work in 113 stays a separate PR.
+
+**Pre-build trace + stress test (founder asked for both).** Every decision was checked against code and prod (read-only). Five corrections, recorded as the ADR-124 2026-10-18 addendum:
+- A failed payment is not final: `OrderPaymentOutcomeService` takes a Paid after a Failed into NeedsReview. Wiping at `payment_status = failed` would wipe a paying customer's login. Now: not paid (pending or failed) for H hours. CHIP purchases are `due` +30 min with `due_strict`, so H ≥ 1 h is safe. Prod: 5 failed payments, each marked 30–45 min after creation, no late Paid yet.
+- "Closed for G hours" had no closing-time column (compensation time is spread over three tables). The sweep stamps `closed_at`. Closed is final: Delivered has no exit, and compensated orders are refused in `fulfill()` itself.
+- The D ceiling counted from order creation would wipe a login 15 minutes after a super_admin replaced it on a still-open order. It now counts from `secrets_set_at`.
+- "Compensated" as a query existed only as an inline copy in `scopeNeedsAction`. Extracted `Order::scopeCompensated()` (+ `scopeClosed()`), NeedsAction uses it, and `OrderCompensationScopeTest` holds it equal to `isAlreadyCompensated()`.
+- `credential_reveals` takes `actor_type`/`actor_id` now, so ADR-125 PR 2's supplier link needs no audit migration.
+Also checked and safe: no endpoint returns `PlatformSettings` publicly; `updatePlatform` uses `validated()`, so the unguarded form can't change the policy; a never-run critical task is seeded on first health check (ADR-122 decision 8), so the deploy won't page UptimeRobot; the founder's prod super_admin has MFA active. Item 122 checked at the same time: 5 of 5 delivered combo legs have a drawdown, so its trigger hasn't fired.
+
+**Shipped.**
+- Migrations: `order_credentials` (FK cascade, since the sandbox deletes test orders), `credential_reveals` (FK null on delete), five policy columns on `platform_settings` (consent text written out in the migration).
+- `OrderCredential` (`encrypted:array` secrets, `$hidden`), `CredentialReveal`; no relation from `Order`.
+- `app:wipe-order-credentials` every 15 min, critical; plain `UPDATE`s, never decrypts. `app:prune-credential-reveals` daily, routine.
+- `POST /api/orders/{order}/credentials/reveal` and `PUT /api/orders/{order}/credentials`: super_admin, `mfa.stepup`, reveal throttled per admin (`credential-reveal`, limit from settings), `Cache-Control: no-store`, audit row on every success, sandbox orders 404, replace refused (409) on a closed order.
+- `PUT /api/settings/customer-login-policy` behind step-up. Order detail gets `customer_login` (never a secret).
+- DB dumps exclude `order_credentials` on both connections.
+- Admin: Order Detail "Customer Login" card (reveal 30 s + copy, replace), Settings → Customer Login Policy tab.
+- Stale "five dangerous actions" / `StepUpRoutesTest` comments fixed in `routes/api.php` and `TestCase`.
+
+Tests: 4 new files (20 tests), `AdminMfaStepUpTest` pin updated. Full suite 2836/2836; the new tests plus `OrderTest` also pass on MySQL (49/49). Admin tsc, lint, unit tests and build are clean.
+
+**Live check.** A built admin on `localhost:3000` against `serve --no-reload` on the local dev DB, with a throwaway MFA super admin and two seeded logins. Login with TOTP → Order Detail card (password hidden) → Reveal asks for step-up → value shown with Copy → Replace saves and hides it again → Settings tab saves D = 10. DB afterwards: secret replaced and stored as ciphertext, two audit rows (reveal, replace) with IP. Contrast from `getComputedStyle`: light `rgb(27,26,23)` on white; dark muted `rgb(189,183,173)` on `rgb(26,25,23)` (~9:1). At 390 px the policy tab has no horizontal scroll once loaded at that width (157 px only when a desktop sidebar is left open by resizing, an artefact of the resize). Test data, the admin and the D change were removed afterwards.
+
+**Gotcha.** A second Playwright login inside the same 30-second TOTP window fails: the MFA replay guard (`mfa_last_timestep`) rejects the reused code. Wait for the next window.
+
+**Next.** Item 113 PR 1 adds the checkout fields that write a login.
+
+## 2026-10-18 — §16 item 113 PR 1a: supplier driver and every API-only reader (ADR-125)
+
+**Why.** Login Top-up needs suppliers with no API. Before a single manual supplier can exist, nothing built for API suppliers may touch it: it would crash the critical balance refresh (`/api/health` 503), email "price sync stale" every run, 500 the "Check supplier" button, and show a balance of 0.
+
+**Stress test first (founder asked).** Three read-only forks (checkout and pricing; fulfillment and ledger; downstream readers) re-traced ADR-125 against current `staging`; I re-checked the top findings and ran the prod queries myself. Twelve gaps, none in the ADR, recorded as the ADR-125 2026-10-18 stress-test addendum (decisions 25-35). The founder chose: split PR 1 into 1a/1b, ship both funding modes, mask the login identifier. Prod: 2 API suppliers, 37 of 38 games with `reseller_code`, 18 with the player validator on, 0 orders Pending/NeedsReview/Processing, 5 Digiflazz transfers, `manual_confirm` never used.
+
+**Shipped (1a).**
+- Migration `suppliers.driver` (NOT NULL default '', backfilled `= slug`; `->change()` would rebuild the sqlite table and break the `llm_report_catalog` view) and `funding_mode`. The model fills `driver` from `slug` on create.
+- `SupplierAdapterFactory::for(Supplier)` resolves `supplier-adapter.{driver}`. Its 9 callers, the replay rule (now takes the `Supplier`), `SupplierConfigSchema` (keyed by driver, with a `manual` schema: `reply_sla_minutes`), the sandbox binding and the test commands all read `driver`. `ManualSupplierAdapter` refuses every call.
+- `CreateSupplierRequest`: an API driver's slug is its driver (set on the server); only `manual` names its own slug, is MYR, and picks a funding mode.
+- `Supplier::isApiBacked()`, `isSyncable()`, `pendingPolicy()`, `displayBalance()`, `isPayAfter()`; `Order::fulfilmentSupplier()` (replacing three copies) and `isStalePending()`.
+- Readers: price sync, its schedule gate and item 106's staleness alert use `isSyncable()`; product sync and balance refresh use `apiBacked()`; `SupplierDeliveryCheckService::canAsk()` gates the admin button, the reconciler and `check()`; refresh-balance and the developer tester refuse a manual supplier; the reconciler and Dashboard share `pendingPolicy()` (fixes the old Dashboard/reconciler drift).
+- Dashboard: displayed balance, wallet coverage sums API suppliers only, a `manual_delivery_without_drawdown` item.
+- Accounting: `weightedAverageRate()` is 1.0 for every MYR supplier (COGS, supplier corrections and the month-end position share it); the cash position splits each supplier's balance into `supplier_prepaid_sen` and a new `supplier_payable_sen` (gap unchanged; old closes read it as 0); `recordOrderDrawdown()` skips sandbox orders.
+- Admin: add/edit a manual supplier (type, slug, MYR, funding mode), one balance label everywhere ("Owed: MYR 65.00" for pay-after), no Refresh for manual, "manual" instead of a connection state, payable row in the cash equation, the new briefing item, top-up vs payment wording.
+
+Tests: 2 new files (14 tests); 3 updated for the renamed endpoint, the `driver` field and the wider health payload. Full suite 2850/2850. Concurrency suite on MySQL: 31/35, all money tests green (including `FinalizePendingDeliveryConcurrencyTest`). The 4 `BackupRestoreMysqlTest` failures are `mysqldump: command not found` on this machine; CI runs them. Admin tsc, lint, unit tests and build are clean.
+
+**Live check.** A built admin on `localhost:3000` against `serve --no-reload` on the local dev DB, with a throwaway MFA super admin. Added "Roblox Ali" (manual, pay after) through the modal with step-up: slug suggested `roblox-ali`, currency locked to MYR. The card shows "manual", "Manual · Pay after delivery" and no Refresh button; Balance shows "Funding ledger". After a −65 ledger row: "Owed: MYR 65.00" on the card, Balance and Dashboard. `app:refresh-supplier-balances` and `app:check-price-sync-staleness` ran with it present (exit 0, skipped). Two issues found and fixed in the live check: the card showed "connected" (the API circuit state), and the Dashboard showed "≈ RM -65.00" beside "Owed". Test data and the admin were removed afterwards.
+
+**Gotchas.**
+- A killed MySQL run leaves the `llm_report_*` views (backend AGENTS.md gotcha 8); drop them before the concurrency suite.
+- Next's router ignores a manual `history.pushState` to another route in Playwright. After login, `page.goto` keeps the session.
+- First CI run failed `playwright` (resend and checkout ended `needs_review`: "No SupplierAdapter implementation for driver:"). The model filled `driver` from `slug` in a `creating` hook, but every seeder runs `WithoutModelEvents`, so the e2e supplier was stored with `driver = ''`. Fixed at the read: `Supplier::driver()` returns the slug when the column is blank, which covers seeders and raw inserts too. A regression test proves it red without the accessor.
+
+**Next.** PR 1b (login game, manual packages, checkout, Manual Queue, masking, copy).
+
+## 2026-10-18 — Docs audit after items 112 and 113 PR 1a
+
+PR #507 merged to `staging` (second CI run green after the `driver` fix). The founder asked for every doc to be brought in line before 113 PR 1b starts in a new session. Checked against code and prod (read-only): `origin/main` = `e127dcb` (#500) on the box (release `80479848`); `staging` is six PRs ahead (#502–#507); all three payment methods are still off.
+
+Updated:
+- PRD §14: date, payments re-checked, a "on `staging`, not yet released" paragraph (#502–#507, four additive migrations, nothing customer-facing yet).
+- PRD §15: Accounting and Balance rows (MYR rate 1.0, prepaid/payable split, manual-supplier balance), Customer Login row points at PR 1b.
+- PRD §16: item 113 line, the audit note.
+- ADRs: ADR-121 addendum (ADR-124's three step-up routes; the set lives in `AdminMfaStepUpTest`), ADR-031 addendum (factory resolves by driver), ADR-046 and ADR-125 banners and index rows.
+- `foundation-security.md`: step-up wording, a customer-login line under Secrets & Data.
+- `backend/AGENTS.md`: the driver/capability convention, and "don't hang an invariant on a model event".
+
+## 2026-10-18 — §16 item 113 PR 1b-i: login games, manual packages, login checkout, Manual Queue (ADR-125), backend
+
+**Why.** PR 1a let manual suppliers exist. 1b makes Roblox and eFootball sellable: a login game, manual packages at an agreed cost, a checkout that stores the login, and a queue where an admin confirms each order. Split again into 1b-i (backend, this PR) and 1b-ii (admin + storefront screens) to keep the money review small.
+
+**Stress test first.** Three read-only forks (catalog and checkout; fulfillment and ledger; readers and copy) re-traced decisions 4-9, 17, 23, 28, 31-35 against `staging` with 1a built; I re-checked the top findings by hand. Fourteen corrections, recorded as the ADR-125 2026-10-18 PR 1b pre-build addendum (decisions 36-47). The ones that would have lost money or leaked a login: decision 34's real-cost bound let a loss through (profit is `selling − real − affiliate_profit`); the member gate couldn't live in `CheckoutService` (the preview takes no game); `ContactMask::email()` returned a username unmasked; masking keyed on the game would fail once a game is deleted (`orders.game_id` has no FK); the password would have gone into the unsalted idempotency hash; an admin's wrong Failed had no way back except a second paid top-up. Founder answers: any differing real cost needs a reason; a supervised Failed→Delivered correction for manual suppliers; affiliates see the login masked; resend may correct the identifier.
+
+**Shipped (1b-i).**
+- Migration: `games.member_pricing_enabled` (default on), `price_change_logs.admin_user_id`.
+- `Game::credentialFields()` / `isLoginGame()` / `identifierField()` / `memberPricingApplies()`; `GameFulfilmentRule` on login-game create, the schema endpoint, `UpdateGameRequest`, promote, category link (which now prohibits `credential_fields`) and combos. A login game needs manual delivery with its own subtext, no reseller code, no validator; switching kind is refused while any package exists.
+- `POST /games` (login game), `PUT /games/{game}/credential-schema`, `POST /games/{game}/packages/manual`, `PATCH /packages/{package}/cost`, `GET /packages/{package}/price-history`.
+- `PackageCostService` replaces `PackagePriceSyncService::propagatePrice` and the hand-written copy in pending-change approval; both record the admin.
+- Checkout: the identifier field sets `player_id` (email lowercased) before validation and the blacklist; a client `player_id`/`server_id` is refused; consent required; `order_credentials` written in the order INSERT's transaction (`OrderFactory`); the hash carries only non-secret fields; `credentials.*` skips `TrimStrings` so a password is stored as typed. Member gate: the preview gets no membership id, `initiate` prices as a guest but keeps the member's email bound (decision 35, caught in self-review); catalog and the savings-badge sample honour it.
+- `ManualSupplierAdapter::createOrder` returns Pending. `ManualDeliveryService` (Delivered / Failed / correct Failed→Delivered) calls `finalizePendingDelivery()`; real cost defaults to `cost_price`; each confirmation writes a `manual_confirm` attempt row with the admin. `GET /manual-queue`, `POST /orders/{order}/manual/{delivered,failed,correct-to-delivered}` (any admin). Mark Delivered refuses a manual order; Retry and Resend refuse a wiped login.
+- `Order::isLoginOrder()` (has a credential row) and `publicPlayerLabel()`; Track Order / Reverb carry the masked identifier, `fulfilment_kind`, `player_label`, `login_wipe_hours`; the WhatsApp card masks it and asks for a password change on delivery; the affiliate order detail masks it.
+- Resend's identifier correction updates `player_id` and `order_credentials.fields` under the lock; the admin request is pre-checked and audited (`credential_reveals.action = identifier`).
+
+Tests: 7 new files (41 tests) plus `ManualCorrectionConcurrencyTest` (correction vs Issue Voucher, correction vs correction, real MySQL processes). Full suite 2889/2889.
+
+**Gotchas.**
+- `...GameFulfilmentRule::schemaRules()` spread after `'credential_fields' => [...]` silently replaced the list's own rule (a later string key wins); the list rule now stays with the caller.
+- `OrderCredential::$fillable` has no `purged_at`, so a fixture that passes it creates an unwiped row; set it with a query.
+- A background `php artisan` launched after the shell's cwd moved to the repo root fails with "Could not open input file: artisan" and still exits 0; run it from `backend/`.
+
+**Next.** 1b-ii: admin and storefront screens, then the live click-through, then PR 2.
+
+## 2026-10-18 — §16 item 113 PR 1b-ii: login top-up screens, admin and storefront (ADR-125)
+
+**Why.** 1b-i (#509) built the backend; nothing could be clicked. This adds the screens and proves the whole flow end to end.
+
+**Shipped.**
+- Admin, `/admin/games`: "New Login Game" (name, subtext, member pricing, login form); a login game's detail shows "Login Form…" and "Add Package…" instead of "Create Combo…"; "Edit cost" on each manual package opens the cost form with its price history (who, when, sync or hand); Edit Game has the member-pricing switch and hides reseller code and validator for a login game.
+- Admin, `/admin/manual-queue` (sidebar under Orders): paid Pending/NeedsReview manual orders, oldest first, with Stale and Login-wiped tags; Mark Delivered (real cost defaults to the agreed cost, a different one needs a reason) and Mark Failed. Order Detail shows the same actions plus "Correct to Delivered…" on a Failed, uncompensated manual order, labels the login, and hides Mark as Delivered, Confirm Failed and Check from Supplier for a manual supplier. Resend's correction becomes "Login Correction" with no Server ID.
+- Backend extras: `GET /manual-suppliers` (an admin may add a manual package but the supplier list is super_admin middleware config); the game detail carries `credential_consent_text`, so the consent box shows the text the order snapshots; the admin's credential replace skips `TrimStrings` (closes the open edge from 1b-i).
+- Storefront: Step 1 renders the game's login form (password with show/hide, choices, inline hints) and the consent box; the order sends `credentials` + `credential_consent`, never a `player_id`; the summary and review show only the identifier under its own label; the review's terms line, the fact line, the stepper ("Enter Login") and the status page (masked login, "usually within 30 minutes", delete-within-G-hours and change-your-password on delivery) read the fulfilment kind. A login game ignores a `player_id` in the URL.
+
+**Verification.** Backend 2892/2892. Admin and storefront tsc, lint and build clean; admin unit tests 14/14. New e2e golden path `admin-login-topup.spec.ts` (ADR-023 Trigger A: a new resolution mechanism) drives the real UI: create the game and package, activate, check out with a login, pay (webhook), confirm in the Manual Queue, then the status page shows `p••••@example.com` and the password line; it also asserts the password never appears in review and the order's real cost is 4000 sen with a `manual_confirm` attempt. Full e2e suite 7/7. Screenshots of the login form, Manual Queue and status page checked by eye.
+
+**Gotchas.**
+- The e2e backend ran `CACHE_STORE=database`, which has no `Cache::tags()`. Every admin game write flushes the tagged catalog index, so the first spec that edited a game got a 500 (the game was still created), and the storefront's game list had been falling back on every read. Switched to `array` (holds nothing across requests there; it only loosens rate limits in that throwaway suite).
+
+**Next.** Release when the founder asks; then PR 2 (supplier WhatsApp group bot).
+
+## 2026-10-19 — §16 item 113 PR 2a: supplier WhatsApp group bot, backend (ADR-125)
+
+**Why.** Through PR 1 a manual supplier's order stopped at the Manual Queue, and an admin closed it by hand. 2a connects the order to the supplier's own WhatsApp group: the supplier gets a post with a short login link and replies `.done` / `.gagal`.
+
+**Design first.** A pre-build trace of decisions 11–16 against `staging`, plus read-only prod counts (2 reseller groups, 0 pending links, 14 customer notifications, 0 manual suppliers), found thirteen corrections. They are the ADR-125 2026-10-19 pre-build addendum (decisions 48–61) and the ADR-124 addendum. The founder chose a short link over a signed URL and an Admin → Partners → Suppliers page, super_admin only.
+
+**Shipped (backend).**
+- `whatsapp_groups` replaces `reseller_whatsapp_groups`, with the data copied as `owner_type = reseller`. `reseller_whatsapp_pending_links` is renamed to `whatsapp_pending_links`. `WhatsAppGroupService` holds the rules: a group never moves to another owner, a supplier has one active group, and an active manual supplier keeps its group.
+- The webhook routes a supplier's group to `SupplierBotService` (`.done`, `.gagal <reason>`, `.pending`). These go through `ManualDeliveryService` at the agreed cost, with `confirmed_by = wa:<sender>` and `channel = supplier_bot`. The webhook also drops the bot's own messages (`fromMe`).
+- The post is queued after Pending commits in `fulfill()`, one per (order, reference), on the bot session through the persisted queue. `WhatsAppOutbox` was extracted from `CustomerNotificationService` and gives each session its own send slot. The stored message holds a placeholder; the job mints the `/s/<token>` link at send time (hash-only `supplier_login_links`).
+- Link page: GET shows the summary and username, POST shows the password, each reveal audited with actor supplier. The page sends `no-store`, `no-referrer` and `noindex`, and is throttled per IP and per link. It works only while that attempt is Pending.
+- The reconciler sends one SLA reminder per attempt. Linking a group re-posts the supplier's waiting orders (decision 62). A manual supplier is created inactive and can be activated only with a group. `/api/partner-suppliers` and `/api/whatsapp-groups/pending` are built, for 2b's screens.
+
+**Verification.**
+- Backend fast suite 2919/2919. New files: `Adr125SupplierGroupPostTest`, `Adr125SupplierBotTest`, `Adr125SupplierGroupLinkTest`, and `Adr125WhatsAppGroupsMigrationTest` (migration down and up against seeded rows).
+- Concurrency suite on MySQL: 33/37. The 4 failures are the known local `BackupRestoreMysqlTest` (no `mysqldump` locally); CI runs them.
+- MySQL indexes checked on the new tables. Dev DB migrated with plain `migrate`.
+- Real check against a local `artisan serve`: GET 200 with the three headers and no secret, the CSRF POST shows the password, and a bad token returns 404. Screenshots at 390 px (no horizontal scroll) checked by eye. The seeded rows were removed afterwards.
+
+**Gotchas.**
+- `SecurityHeaders` runs last and overwrote every `Referrer-Policy`, so the page's `no-referrer` would have been lost silently. It now sets the default only when none is set (decision 63).
+- zsh does not word-split an unquoted `$files`, so a `for f in $files` rename loop ran once on the whole list. Use `xargs`.
+
+**Next.** 2b: the Partners → Suppliers screen, the pending-link picker for both owners, Order Detail's "Supplier group" label, the Dashboard counts (failed supplier posts, active manual supplier without a group), and e2e.
+
+## 2026-10-19 — §16 item 113 PR 2b: Partners → Suppliers screen, Dashboard counts, bot golden path (ADR-125)
+
+**Why.** 2a (#512, merged by the founder) built the supplier bot with no screen to link a supplier's group. 2b adds the screens and proves the bot end to end.
+
+**Found while building.** A supplier's `is_active` is read by no catalog or checkout path, only by the sync and balance jobs. So 2a's "activate needs a group" rule guarded a flag no customer reads: an inactive manual supplier's packages were still for sale. Decision 64 fixes it through ADR-046's existing `supplier_issue` bulk switch, moved out of `SupplierController` into `SupplierPackageStatusService`. `ManualSupplierStatusService` is the one switch for both screens; it changes the flag and the packages in one transaction. Behaviour for API suppliers is unchanged, and the 23 supplier-controller tests pass as before.
+
+**Shipped.**
+- `/admin/suppliers` under Partners (super_admin): group, SLA, waiting count, status; link and unlink through `WhatsAppGroupLinker`, now shared with the reseller modal; Edit SLA; Activate (disabled with no group); Deactivate with a packages-off-sale warning.
+- Group types and the pending list moved to `lib/whatsapp-groups.ts`.
+- Order Detail labels a bot row "Supplier group" with its group id.
+- Dashboard: red `supplier_posts_not_delivered` (current attempt's post failed or skipped) and amber `manual_supplier_without_group`.
+- Manual Queue copy now says it is the fallback.
+- e2e `supplier-group-bot.spec.ts`, with a new `E2ESeeder` supplier and game, plus a bot session and webhook secret in `boot-backend.sh` (nothing is sent).
+
+**Verification.**
+- Backend 2921/2921.
+- Admin tsc, lint and unit tests 15/15.
+- The local e2e run was not possible: the founder's `dev.sh` holds :3000/:3001 and the harness doesn't reuse servers, so the new spec runs on CI. The seeder was checked by running it against a throwaway sqlite file.
+- Real browser check against the running dev stack with seeded local rows (removed afterwards). Activate was disabled before linking; the link from the pending list worked; activate and SLA 45 saved; unlinking an active supplier's group was refused with the backend's message; the Dashboard showed "1 order not posted to the supplier"; Order Detail showed the Supplier group cards. Linking also re-posted the waiting order (decision 62), skipped locally with "Bot WhatsApp session is not configured". At 390 px the page doesn't scroll sideways (the table scrolls inside its card).
+
+**Next.** Item 113 is fully built on `staging`. Release (`staging`→`main`) is the founder's call. Before a manual supplier goes live in prod: create it, link its group, activate it, then add its packages.

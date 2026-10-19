@@ -29,6 +29,11 @@ use App\Models\Game;
  * `ResellerApiException::validationFailed()` wrap, or a WhatsApp reply
  * (the Bot words it in BM from `reason`). This class only decides
  * WHETHER the input is acceptable, never how a channel reports it.
+ *
+ * A login game (ADR-125 decisions 6/32) has no Player ID format: its
+ * `player_id` is the schema's identifier field, checked by that field's
+ * own type, and it never takes a `server_id`. `validateCredentials()`
+ * checks the whole login form at checkout.
  */
 final class CheckoutInputValidator
 {
@@ -39,6 +44,11 @@ final class CheckoutInputValidator
      */
     public function validate(Game $game, ?string $playerId, ?string $serverId): ?array
     {
+        if ($game->isLoginGame()) {
+            return $this->checkIdentifier($game->identifierField(), $playerId)
+                ?? $this->checkExtraField(null, $serverId, null);
+        }
+
         $rules = $game->validation_rules ?? [];
 
         return $this->checkPlayerId($playerId, $game->playerIdFormat() === 'text')
@@ -59,6 +69,80 @@ final class CheckoutInputValidator
 
         return $this->checkPlayerId($playerId, $game->playerIdFormat() === 'text')
             ?? $this->checkExtraField(null, $serverId, null);
+    }
+
+    /**
+     * ADR-125 decision 32: the login form at checkout, `{key: value}`.
+     * Unknown keys are refused; non-secret values are expected trimmed by
+     * the caller (LoginCredentials), secret values are taken as typed.
+     *
+     * @param  array<string, mixed>  $input
+     * @return array{field: string, reason: string, message: string}|null
+     */
+    public function validateCredentials(Game $game, array $input): ?array
+    {
+        $schema = collect($game->credentialFields())->keyBy('key');
+
+        if ($unknown = array_diff(array_keys($input), $schema->keys()->all())) {
+            return $this->error('credentials', 'unknown_field', 'Unknown login field: '.implode(', ', $unknown).'.');
+        }
+
+        foreach ($schema as $key => $field) {
+            $value = $input[$key] ?? null;
+            $value = is_string($value) && empty($field['secret']) ? trim($value) : $value;
+            $label = $field['label'];
+
+            if ($value === null || $value === '') {
+                if (! empty($field['required'])) {
+                    return $this->error("credentials.{$key}", 'required', "{$label} is required.");
+                }
+
+                continue;
+            }
+
+            if (! is_string($value) || mb_strlen($value) > 255) {
+                return $this->error("credentials.{$key}", 'too_long', "{$label} must be text of at most 255 characters.");
+            }
+
+            $error = match ($field['type']) {
+                'email' => filter_var($value, FILTER_VALIDATE_EMAIL) === false
+                    ? $this->error("credentials.{$key}", 'email', "{$label} must be a valid email address.") : null,
+                'select' => in_array($value, $field['options'] ?? [], true)
+                    ? null : $this->error("credentials.{$key}", 'invalid_option', "Choose a valid {$label}."),
+                default => null,
+            };
+
+            if ($error === null && ! empty($field['is_identifier'])) {
+                $error = $this->checkIdentifier($field, $value);
+                $error = $error === null ? null : ['field' => "credentials.{$key}"] + $error;
+            }
+
+            if ($error !== null) {
+                return $error;
+            }
+        }
+
+        return null;
+    }
+
+    /** @param  array<string, mixed>|null  $field */
+    private function checkIdentifier(?array $field, ?string $value): ?array
+    {
+        $label = $field['label'] ?? 'Login';
+
+        if ($value === null || $value === '') {
+            return $this->error('player_id', 'required', "{$label} is required.");
+        }
+
+        if ($common = $this->checkCommon('player_id', $label, $value)) {
+            return $common;
+        }
+
+        if (($field['type'] ?? null) === 'email' && filter_var($value, FILTER_VALIDATE_EMAIL) === false) {
+            return $this->error('player_id', 'email', "{$label} must be a valid email address.");
+        }
+
+        return null;
     }
 
     private function checkPlayerId(?string $value, bool $text): ?array
@@ -123,7 +207,7 @@ final class CheckoutInputValidator
         return null;
     }
 
-    /** @return array{field: 'player_id'|'server_id', reason: string, message: string} */
+    /** @return array{field: string, reason: string, message: string} */
     private function error(string $field, string $reason, string $message): array
     {
         return ['field' => $field, 'reason' => $reason, 'message' => $message];

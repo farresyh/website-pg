@@ -28,6 +28,9 @@ export function describeAttention(item: AttentionItem): { badge: string | null; 
       return { badge: "Need action", tone: "danger", text: orders, href: "/admin/orders?status=need_action" };
     case "needs_review":
       return { badge: "Needs review", tone: "review", text: orders, href: "/admin/orders?status=needs_review" };
+    // ADR-125 decision 15: a waiting login order the supplier's group was never told about.
+    case "supplier_posts_not_delivered":
+      return { badge: "Supplier group", tone: "danger", text: `${orders} not posted to the supplier`, href: "/admin/manual-queue" };
     case "reseller_bot_disconnected":
       return { badge: "Disconnected", tone: "danger", text: "Reseller Bot", href: "/admin/resellers" };
     case "supplier_low_balance":
@@ -40,6 +43,11 @@ export function describeAttention(item: AttentionItem): { badge: string | null; 
       return { badge: "Price sync", tone: "warning", text: `${n} ${n === 1 ? "change" : "changes"} to review`, href: "/middleware/price-sync" };
     case "whatsapp_links_pending":
       return { badge: "WhatsApp", tone: "warning", text: `${n} ${n === 1 ? "group" : "groups"} to link`, href: "/admin/resellers" };
+    // ADR-125 decision 21: a manual supplier has no drift check, so a missing drawdown shows here.
+    case "manual_delivery_without_drawdown":
+      return { badge: "Supplier ledger", tone: "warning", text: `${n} manual ${n === 1 ? "delivery" : "deliveries"} with no supplier drawdown`, href: "/admin/accounting/suppliers" };
+    case "manual_supplier_without_group":
+      return { badge: "Supplier group", tone: "warning", text: `${n} active ${n === 1 ? "supplier" : "suppliers"} with no WhatsApp group`, href: "/admin/suppliers" };
     case "backup_failed":
       return { badge: "Backup", tone: "warning", text: "Last backup failed", href: "/middleware/backups" };
     case "customer_whatsapp_disconnected":

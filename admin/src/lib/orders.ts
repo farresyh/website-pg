@@ -2,6 +2,7 @@ import { apiFetch, apiDownload } from "@/lib/api-client";
 import { todayInKL } from "@/lib/date-range";
 import type { Game } from "@/lib/games";
 import type { Voucher } from "@/lib/vouchers";
+import type { CustomerLogin } from "@/lib/order-credentials";
 
 
 /**
@@ -112,8 +113,11 @@ export interface OrderDeliveryLeg {
 
 export interface CustomerNotification {
   id: number;
-  event: "voucher_issued" | "voucher_restored" | "delivered_receipt" | "status_card" | "optin_reply" | string;
+  event: "voucher_issued" | "voucher_restored" | "delivered_receipt" | "status_card" | "optin_reply" | "supplier_order_post" | "supplier_sla_reminder" | string;
+  // ADR-125 decision 53: "bot" is a post to the supplier's WhatsApp group (`chat_id`), never a phone.
+  session: "customer_support" | "bot";
   phone: string | null;
+  chat_id: string | null;
   status: "queued" | "sent" | "failed" | "skipped";
   attempts: number;
   error: string | null;
@@ -157,6 +161,8 @@ export interface OrderDetail extends OrderListItem {
   // amount/created_at, not just the boolean above. Null whenever
   // wallet_refunded is false.
   wallet_refund: { amount: number; created_at: string } | null;
+  // ADR-124: null when the order has no customer login. Absent on sandbox orders.
+  customer_login?: CustomerLogin | null;
   resend_attempts: OrderResendAttempt[];
   // VCH-7: null until VoucherController::storeFromOrder() has been
   // called for this order — the unique index on vouchers.order_id
@@ -204,6 +210,9 @@ export interface OrderDetail extends OrderListItem {
   // safely be asked about: Check from Supplier shows, and Confirm Failed
   // asks the supplier first (no override).
   supplier_askable: boolean;
+  // ADR-125 decisions 8/42: a manual supplier's order — confirmed through
+  // the Manual Queue actions, never Mark Delivered or Check from Supplier.
+  is_manual_supplier?: boolean;
   // ADR-107 decision 3, generalized by ADR-111 decision 7 — true once ANY
   // order (not just combo) delivered with a reconciled negative
   // platform_profit, or a material drift from the pre-reconciliation
@@ -518,4 +527,38 @@ export function checkOrderSupplier(id: number) {
 /** ADR-096 — the payment-side counterpart to checkOrderSupplier() above. */
 export function checkOrderGateway(id: number) {
   return apiFetch<ManualCheckGatewayResponse>(`/api/orders/${id}/check-gateway`, { method: "POST" });
+}
+
+/** ADR-125 decision 8: one row of the Manual Queue (Pending or NeedsReview on a manual supplier). */
+export interface ManualQueueItem {
+  id: number;
+  order_number: string;
+  game: string | null;
+  package: string | null;
+  supplier: string | null;
+  player_id: string;
+  delivery_status: "pending" | "needs_review";
+  paid_at: string | null;
+  is_stale: boolean;
+  login_wiped: boolean;
+  cost_price: number;
+  selling_price: number;
+}
+
+export function listManualQueue() {
+  return apiFetch<ManualQueueItem[]>(`/api/manual-queue`);
+}
+
+/** ADR-125 decision 36: realCostSen null = the agreed cost; any other value needs a reason. */
+export function confirmManualDelivered(id: number, values: { real_cost_sen?: number | null; reason?: string | null }) {
+  return apiFetch<{ order_number: string; delivery_status: string }>(`/api/orders/${id}/manual/delivered`, { method: "POST", body: values });
+}
+
+export function confirmManualFailed(id: number, reason: string) {
+  return apiFetch<{ order_number: string; delivery_status: string }>(`/api/orders/${id}/manual/failed`, { method: "POST", body: { reason } });
+}
+
+/** ADR-125 decision 42: before any compensation only; the reason is required. */
+export function correctManualToDelivered(id: number, values: { real_cost_sen?: number | null; reason: string }) {
+  return apiFetch<{ order_number: string; delivery_status: string }>(`/api/orders/${id}/manual/correct-to-delivered`, { method: "POST", body: values });
 }

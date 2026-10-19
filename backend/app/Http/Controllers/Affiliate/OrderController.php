@@ -104,8 +104,9 @@ class OrderController extends Controller
             'customer_email' => $order->customer_email,
             'customer_name' => $order->customer_name,
             'customer_phone' => $order->customer_phone,
-            'player_id' => $order->player_id,
-            'server_id' => $order->server_id,
+            // ADR-125 decision 39: an affiliate sees a login masked.
+            'player_id' => $order->isLoginOrder() ? $order->publicPlayerLabel() : $order->player_id,
+            'server_id' => $order->isLoginOrder() ? null : $order->server_id,
             'affiliate_markup_pct' => (float) $order->affiliate_markup_pct,
             'voucher_discount' => $order->voucher_discount,
             'transaction_fee' => $order->transaction_fee,

@@ -71,7 +71,9 @@ final class SyncSupplierPricesJob implements ShouldQueue
     {
         $this->run->update(['status' => 'running', 'started_at' => now()]);
 
-        // Only suppliers that actually have credentials are syncable — a
+        // Only API suppliers that actually have credentials are syncable
+        // (Supplier::isSyncable(); a manual supplier has no catalogue to
+        // sync, ADR-125 decision 2) — a
         // row whose api_config is still empty (created via /admin but not
         // yet filled, or a leftover from the pre-ADR-046 stopgap this job
         // used to create itself) can't be called and must not fail the
@@ -79,10 +81,10 @@ final class SyncSupplierPricesJob implements ShouldQueue
         // environment with no configured supplier yet is a clean no-op
         // 'success', not a 'failed' run every scheduled tick.
         $allActive = Supplier::query()->where('is_active', true)->get();
-        $suppliers = $allActive->filter(fn (Supplier $supplier) => filled($supplier->api_config))->values();
+        $suppliers = $allActive->filter(fn (Supplier $supplier) => $supplier->isSyncable())->values();
 
         if ($allActive->count() !== $suppliers->count()) {
-            Log::info('SyncSupplierPricesJob: skipping supplier(s) with no api_config', [
+            Log::info('SyncSupplierPricesJob: skipping supplier(s) that are manual or have no api_config', [
                 'run_id' => $this->run->id,
                 'skipped' => $allActive->count() - $suppliers->count(),
             ]);
@@ -103,7 +105,7 @@ final class SyncSupplierPricesJob implements ShouldQueue
 
         foreach ($suppliers as $supplier) {
             try {
-                $adapter = $supplierAdapters->make($supplier->slug);
+                $adapter = $supplierAdapters->for($supplier);
                 $stage1 = $productSync->sync($supplier, $adapter);
                 $stage2 = $packageSync->apply($supplier, $stage1->syncedAt, $this->run->id);
             } catch (Throwable $e) {

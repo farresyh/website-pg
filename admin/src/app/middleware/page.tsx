@@ -18,7 +18,7 @@ import { Tag } from "@/components/ui/tag";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
-import { getDashboardHealth, formatSupplierBalance, formatMyrEquivalent, type DashboardHealthSupplier } from "@/lib/dashboard";
+import { getDashboardHealth, supplierBalanceLabel, formatMyrEquivalent, type DashboardHealthSupplier } from "@/lib/dashboard";
 import { listRequestLogs, type SupplierRequestLog } from "@/lib/request-logs";
 
 export default function MiddlewareDashboardPage() {
@@ -105,14 +105,14 @@ export default function MiddlewareDashboardPage() {
             <div key={s.id} className="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-gray-800 dark:text-white/90">{s.name}</span>
-                <Tag severity={s.circuit_state === "closed" ? "success" : "danger"}>
-                  {s.circuit_state === "closed" ? "Healthy" : "Circuit Open"}
+                <Tag severity={!s.is_api_backed ? "secondary" : s.circuit_state === "closed" ? "success" : "danger"}>
+                  {!s.is_api_backed ? "Manual" : s.circuit_state === "closed" ? "Healthy" : "Circuit Open"}
                 </Tag>
               </div>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Balance: {formatSupplierBalance(s.balance, s.currency)}
-                {formatMyrEquivalent(s.balance_myr_equivalent) && (
-                  <span className="ml-1 text-theme-xs text-ink-subtle">{formatMyrEquivalent(s.balance_myr_equivalent)}</span>
+                Balance: {supplierBalanceLabel(s.balance, s.currency, s.is_pay_after)}
+                {formatMyrEquivalent(s.balance_myr_equivalent, s.currency) && (
+                  <span className="ml-1 text-theme-xs text-ink-subtle">{formatMyrEquivalent(s.balance_myr_equivalent, s.currency)}</span>
                 )}
               </p>
             </div>

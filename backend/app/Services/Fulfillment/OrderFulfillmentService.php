@@ -15,6 +15,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\InvalidOrderTransitionException;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\ReferenceNumberService;
+use App\Services\Supplier\Manual\SupplierGroupNotifier;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierOutcome;
@@ -215,7 +216,7 @@ final class OrderFulfillmentService
             $delivered = DB::transaction(function () use ($order, $referenceNumber, $wasNotStarted, $resubmit, &$drawdownPrice, &$recoveryPollScheduled, $triggeredBy, $note, $recordAttempt) {
                 $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
-                $adapter = $this->supplierAdapters->make($locked->supplier->slug);
+                $adapter = $this->supplierAdapters->for($locked->supplier);
 
                 $result = $adapter->createOrder(new SupplierOrderRequest(
                     productRef: $locked->supplier_product_ref,
@@ -248,6 +249,8 @@ final class OrderFulfillmentService
                     Log::info('Delivery pending — awaiting async supplier confirmation', [
                         'supplier_response' => $result->data,
                     ]);
+
+                    $this->postToManualSupplierAfterCommit($locked);
 
                     return $locked->fresh();
                 }
@@ -617,7 +620,7 @@ final class OrderFulfillmentService
                 $lockedLeg->update(['reference_number' => $legReferenceNumber]);
 
                 $component = $lockedLeg->componentPackage;
-                $adapter = $this->supplierAdapters->make($component->supplier->slug);
+                $adapter = $this->supplierAdapters->for($component->supplier);
 
                 $result = $adapter->createOrder(new SupplierOrderRequest(
                     productRef: $component->supplier_package_ref,
@@ -653,7 +656,7 @@ final class OrderFulfillmentService
                     // ADR-102 addendum (2026-09-29): same replay-safe rule as
                     // fulfill() — park at Pending, polled with this leg's
                     // own same reference, instead of NeedsReview.
-                    if ($requiresManualReview && SupplierAdapterFactory::resubmitReplaysOutcome($component->supplier->slug)) {
+                    if ($requiresManualReview && SupplierAdapterFactory::resubmitReplaysOutcome($component->supplier)) {
                         $lockedLeg->update(['status' => DeliveryStatus::Pending->value]);
                         $parked = true;
 
@@ -745,7 +748,7 @@ final class OrderFulfillmentService
 
                 // ADR-102 addendum (2026-09-29) — replay-safe supplier: Pending
                 // under the reference it was genuinely attempted with.
-                if (SupplierAdapterFactory::resubmitReplaysOutcome((string) $lockedLeg->componentPackage?->supplier?->slug)) {
+                if (SupplierAdapterFactory::resubmitReplaysOutcome($lockedLeg->componentPackage?->supplier)) {
                     $lockedLeg->update(array_filter([
                         'status' => DeliveryStatus::Pending->value,
                         'reference_number' => $legReferenceNumber,
@@ -1558,7 +1561,7 @@ final class OrderFulfillmentService
 
     private function resubmitReplaysOutcome(Order $order): bool
     {
-        return SupplierAdapterFactory::resubmitReplaysOutcome((string) $order->supplier?->slug);
+        return SupplierAdapterFactory::resubmitReplaysOutcome($order->supplier);
     }
 
     /** Processing → Pending, keeping the stored reference; caller holds the row lock. */
@@ -1664,6 +1667,28 @@ final class OrderFulfillmentService
      * this method stays 100% shared and unduplicated between real and
      * test orders.
      */
+    /**
+     * ADR-125 decision 49: a manual supplier's Pending is the moment its
+     * WhatsApp group is told. After commit (never post a rolled-back
+     * attempt), and never allowed to fail the delivery; the notifier skips
+     * a sandbox order and an API supplier.
+     */
+    private function postToManualSupplierAfterCommit(Order $order): void
+    {
+        if ($order->is_test || $order->supplier === null || $order->supplier->isApiBacked()) {
+            return;
+        }
+
+        $orderId = $order->id;
+        DB::afterCommit(function () use ($orderId) {
+            try {
+                app(SupplierGroupNotifier::class)->orderPosted($orderId);
+            } catch (Throwable $e) {
+                Log::warning('Supplier group post not queued', ['order_id' => $orderId, 'exception' => $e->getMessage()]);
+            }
+        });
+    }
+
     private function creditProfit(Order $order): void
     {
         if ($order->is_test) {

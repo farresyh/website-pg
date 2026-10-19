@@ -25,7 +25,11 @@ Laravel-specific, loaded only when working inside `backend/`.
   addendum removed Xendit; still resolved per-channel via
   `PaymentGatewayFactory`, which stays for a future multi-region gateway).
   Add a new supplier/gateway by implementing the interface, not by branching
-  inside a controller or service.
+  inside a controller or service. The factory resolves by `Supplier.driver`
+  (an API supplier's driver is its slug); a supplier with no API is
+  `driver = manual` (ADR-125). Any API-only path (sync, balance, status
+  check) asks `Supplier::isApiBacked()` / `isSyncable()`, never whether
+  `api_config` is empty.
 - **Money-critical concurrency is lock-guarded, proven with real
   subprocess tests** — see `LedgerService::withdraw()`,
   `VoucherService::redeem()`, `OrderFulfillmentService::fulfill()`, all
@@ -60,7 +64,10 @@ Laravel-specific, loaded only when working inside `backend/`.
   `customer_phone` is raw customer input and is never rewritten. The one
   email exception is membership (OTP, receipt, renewal reminder): a member
   is identified by email, so those go through `PlunkMailer`. Both channels
-  take the brand from `App\Support\BrandIdentity`.
+  take the brand from `App\Support\BrandIdentity`. A manual supplier's
+  WhatsApp group is told only through `SupplierGroupNotifier` (bot session,
+  ADR-125). Both go through the one persisted queue, `WhatsAppOutbox`; never
+  call `OpenWaClient::sendNow()` for either.
 - **Public API responses never leak internal financial fields** —
   `cost_price`, `standard_selling_price`, `platform_profit`, `affiliate_profit`,
   `supplier_response`, `payment_ref` stay out of any customer-facing
@@ -72,7 +79,11 @@ Laravel-specific, loaded only when working inside `backend/`.
   via `App\Support\ContactMask` plus the customer-facing money they saw
   at checkout (`payment_method`/`selling_price`/`voucher_discount`/
   `transaction_fee`), per ADR-065. `standard_selling_price` / profit /
-  `payment_ref` are still never exposed there.
+  `payment_ref` are still never exposed there. A login order's
+  `player_id` is half the customer's game login (ADR-125): any surface a
+  non-admin sees (customer, affiliate, WhatsApp) shows
+  `Order::publicPlayerLabel()`, keyed on `Order::isLoginOrder()` (the
+  order's credential row), never the game's schema.
 - **`Cache::remember()` values should be plain arrays, not a raw Eloquent
   Model/Collection or an un-cast `Carbon` instance** — call `->toArray()` /
   `?->toISOString()` before caching. The cache driver is Redis since ADR-077
@@ -88,6 +99,10 @@ Laravel-specific, loaded only when working inside `backend/`.
 - **The app timezone is UTC** (`config/app.php` hardcodes it; prod's
   `APP_TIMEZONE` env is unused), so `daily()` runs at 00:00 UTC = 08:00 MYT.
   Malaysia days go through `App\Support\MalaysiaTime`.
+- **Don't hang an invariant on a model event.** Every seeder runs
+  `WithoutModelEvents`, and a raw insert skips events too. Put it in the
+  read (an accessor) or the one write path (113 PR 1a's `driver` fallback
+  broke the e2e suite this way, build-log 2026-10-18).
 - **Every mutating route gets a `Http\Requests\*` FormRequest** — structural
   validation (types, `exists:`) lives in the FormRequest; cross-field/DB-
   dependent business rules live in the controller. Don't validate via

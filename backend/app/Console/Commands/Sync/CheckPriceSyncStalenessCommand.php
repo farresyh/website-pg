@@ -35,7 +35,7 @@ class CheckPriceSyncStalenessCommand extends Command
     public function handle(BackupFailureAlerter $alerter): int
     {
         $suppliers = Supplier::query()->where('is_active', true)->get()
-            ->filter(fn (Supplier $supplier) => filled($supplier->api_config));
+            ->filter(fn (Supplier $supplier) => $supplier->isSyncable());
 
         foreach ($suppliers as $supplier) {
             $lastSync = $supplier->last_price_sync_at ?? $supplier->created_at;

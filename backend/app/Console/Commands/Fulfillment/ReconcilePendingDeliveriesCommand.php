@@ -6,11 +6,13 @@ use App\Jobs\CheckSupplierDeliveryJob;
 use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
+use App\Models\Supplier;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
+use App\Services\Supplier\Manual\SupplierGroupNotifier;
 use App\Services\Supplier\SupplierAdapterFactory;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -63,7 +65,7 @@ use Illuminate\Support\Facades\Log;
 #[Description('Retry ambiguously-stuck deliveries once, and flag genuinely unresolvable ones for manual review.')]
 class ReconcilePendingDeliveriesCommand extends Command
 {
-    public function handle(OrderStatusService $orderStatus, OrderFulfillmentService $fulfillment): int
+    public function handle(OrderStatusService $orderStatus, OrderFulfillmentService $fulfillment, SupplierGroupNotifier $notifier): int
     {
         $staleAfterMinutes = (int) config('services.delivery_reconciliation.stale_after_minutes');
 
@@ -72,8 +74,26 @@ class ReconcilePendingDeliveriesCommand extends Command
         $this->flagStaleDuplicateReferences($staleAfterMinutes, $orderStatus);
         $this->reclassifyConfirmedFailedNeedsReview($orderStatus);
         $this->checkStalePending($orderStatus);
+        $this->remindStaleManualPending($notifier);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * ADR-125 decisions 15/59: a manual supplier's Pending order past its
+     * reply SLA gets one reminder in the supplier's group per attempt (the
+     * notifier's dedupe key). Real latency is the SLA plus up to one run.
+     */
+    private function remindStaleManualPending(SupplierGroupNotifier $notifier): void
+    {
+        Order::query()
+            ->where('delivery_status', DeliveryStatus::Pending->value)
+            ->where('is_test', false)
+            ->whereHas('supplier', fn ($q) => $q->where('driver', Supplier::DRIVER_MANUAL))
+            ->with('supplier')
+            ->get()
+            ->filter(fn (Order $order) => $order->isStalePending())
+            ->each(fn (Order $order) => $notifier->slaReminder($order));
     }
 
     /**
@@ -106,7 +126,7 @@ class ReconcilePendingDeliveriesCommand extends Command
                 }
 
                 $replaySafe = ! $order->package?->is_combo
-                    && SupplierAdapterFactory::resubmitReplaysOutcome((string) $order->supplier?->slug);
+                    && SupplierAdapterFactory::resubmitReplaysOutcome($order->supplier);
 
                 $locked->update($replaySafe
                     ? [
@@ -282,23 +302,24 @@ class ReconcilePendingDeliveriesCommand extends Command
      */
     private function checkStalePending(OrderStatusService $orderStatus): void
     {
-        $defaultStaleMinutes = (int) config('services.delivery_reconciliation.pending_stale_minutes');
-        $defaultMaxAgeDays = (int) config('services.delivery_reconciliation.max_reconcile_age_days');
-        $defaultMaxHours = (int) config('services.delivery_reconciliation.pending_max_hours');
-
+        // ADR-125 decision 3: a manual supplier's Pending order is never
+        // polled or aged out (a person confirms it), so it is left out of
+        // this scan. A combo has no supplier_id and is never manual.
         $orders = Order::query()
             ->where('delivery_status', DeliveryStatus::Pending->value)
+            ->where(fn ($q) => $q->whereNull('supplier_id')->orWhereHas('supplier', fn ($s) => $s->apiBacked()))
             ->with(['supplier', 'package.components.supplier'])
             ->get();
 
         foreach ($orders as $order) {
-            $supplier = $order->package?->is_combo
-                ? $order->package->components->first()?->supplier
-                : $order->supplier;
-            $apiConfig = $supplier?->api_config ?? [];
-            $staleMinutes = $apiConfig['pending_stale_minutes'] ?? $defaultStaleMinutes;
-            $maxAgeDays = $apiConfig['max_reconcile_age_days'] ?? $defaultMaxAgeDays;
-            $maxHours = $apiConfig['pending_max_hours'] ?? $defaultMaxHours;
+            $policy = $order->fulfilmentSupplier()?->pendingPolicy() ?? Supplier::defaultPendingPolicy();
+
+            if (! $policy['polls']) {
+                continue;
+            }
+
+            $maxAgeDays = $policy['max_age_days'];
+            $maxHours = $policy['max_hours'];
 
             // ADR-102 addendum (2026-09-29): also age out a Pending order
             // that hasn't moved in `pending_max_hours` — updated_at marks
@@ -328,7 +349,7 @@ class ReconcilePendingDeliveriesCommand extends Command
                 continue;
             }
 
-            if ($order->updated_at->lte(now()->subMinutes($staleMinutes))) {
+            if ($order->isStalePending()) {
                 Log::withContext(['order_number' => $order->order_number]);
                 Log::info('Delivery reconciliation: dispatching stale-pending status check');
 

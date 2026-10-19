@@ -42,9 +42,9 @@ final class SupplierDeliveryCheckService
      */
     public static function canAskAboutNeedsReview(Order $order): bool
     {
-        $supplier = self::supplierOf($order);
+        $supplier = $order->fulfilmentSupplier();
 
-        if ($supplier === null || ! SupplierAdapterFactory::resubmitReplaysOutcome($supplier->slug)) {
+        if ($supplier === null || ! SupplierAdapterFactory::resubmitReplaysOutcome($supplier)) {
             return false;
         }
 
@@ -69,9 +69,9 @@ final class SupplierDeliveryCheckService
      */
     public function confirmFailed(Order $order, string $note, string $confirmedBy): Order
     {
-        $supplier = self::supplierOf($order);
+        $supplier = $order->fulfilmentSupplier();
 
-        if ($order->is_test || $supplier === null || ! SupplierAdapterFactory::resubmitReplaysOutcome($supplier->slug)) {
+        if ($order->is_test || $supplier === null || ! SupplierAdapterFactory::resubmitReplaysOutcome($supplier)) {
             return $this->fulfillment->confirmDeliveryFailed($order, $note, $confirmedBy);
         }
 
@@ -113,12 +113,15 @@ final class SupplierDeliveryCheckService
         return $this->fulfillment->confirmDeliveryFailed($fresh, $note, $confirmedBy);
     }
 
-    /** A combo has no supplier of its own (ADR-094 decision 3); its components share one (decision 4). */
-    private static function supplierOf(Order $order): ?Supplier
+    /**
+     * ADR-125 decision 2: only an API supplier can be asked. A manual
+     * supplier's order is confirmed by a person (the Manual Queue), never
+     * by checkStatus(). Every caller — the admin button, the reconciler's
+     * job, check() itself — goes through this.
+     */
+    public static function canAsk(Order $order): bool
     {
-        return $order->package?->is_combo
-            ? $order->package->components->first()?->supplier
-            : $order->supplier;
+        return $order->fulfilmentSupplier()?->isApiBacked() ?? false;
     }
 
     /**
@@ -126,6 +129,10 @@ final class SupplierDeliveryCheckService
      */
     public function check(Order $order): array
     {
+        if (! self::canAsk($order)) {
+            throw new OrderFulfillmentException("Order #{$order->id}: a manual supplier can't be asked; confirm it in the Manual Queue");
+        }
+
         if ($order->package?->is_combo) {
             return ['type' => 'combo', 'legs' => $this->checkComboLegs($order)];
         }
@@ -144,7 +151,7 @@ final class SupplierDeliveryCheckService
         // status re-submit keyed on our own reference_number
         // (Digiflazz's `ref_id`) — not supplier_ref, which a genuinely
         // Pending order may not have received yet.
-        $result = $this->supplierAdapters->make($order->supplier->slug)->checkStatus(new SupplierStatusCheckRequest(
+        $result = $this->supplierAdapters->for($order->supplier)->checkStatus(new SupplierStatusCheckRequest(
             supplierRef: $order->reference_number,
             productRef: $order->supplier_product_ref,
             playerId: $order->player_id,
@@ -263,7 +270,7 @@ final class SupplierDeliveryCheckService
 
         foreach ($pendingLegs as $leg) {
             $component = $leg->componentPackage;
-            $result = $this->supplierAdapters->make($component->supplier->slug)->checkStatus(new SupplierStatusCheckRequest(
+            $result = $this->supplierAdapters->for($component->supplier)->checkStatus(new SupplierStatusCheckRequest(
                 supplierRef: $leg->reference_number,
                 productRef: $component->supplier_package_ref,
                 playerId: $order->player_id,

@@ -45,7 +45,13 @@ export DB_JOURNAL_MODE=wal
 # connection committed fails at once in WAL. IMMEDIATE takes the write lock
 # at BEGIN, so the busy timeout applies.
 export DB_TRANSACTION_MODE=IMMEDIATE
-export CACHE_STORE=database
+# ADR-125 1b-ii: 'array', not 'database' — every admin game write flushes
+# the tagged catalog index (`Cache::tags`), which the database driver
+# doesn't implement, so the first spec that edits a game 500'd (and the
+# storefront's game list already fell back on every read). Like the
+# packages store below, it holds nothing across requests here, which only
+# loosens rate limits in this throwaway suite; sessions are on `file`.
+export CACHE_STORE=array
 # ADR-027's 2026-08-29 addendum, decision 18: CatalogController's
 # packages cache is scoped to its own store (config('cache.
 # catalog_packages_store')), defaulting to 'redis' — no Redis service
@@ -68,6 +74,15 @@ export SESSION_DRIVER=file
 # primary host as the primary brand with no `affiliate_domains` row. The
 # Playwright storefront is `localhost` (see e2e/tests/constants.ts).
 export STOREFRONT_PRIMARY_HOSTS=localhost
+# ADR-125 PR 2 (supplier-group-bot.spec.ts): a configured bot session so a
+# supplier post is queued, not skipped, and a webhook secret so the spec can
+# send signed group messages. Nothing reaches the network: the worker below
+# never runs the `whatsapp` or `default` lanes those sends sit on, and the
+# base URL points at a closed port.
+export OPENWA_BASE_URL=http://127.0.0.1:9
+export OPENWA_SESSION_ID=e2e-bot
+export OPENWA_API_KEY=e2e-bot-key
+export OPENWA_WEBHOOK_SECRET=e2e-openwa-secret
 
 rm -f "$DB_DATABASE"
 touch "$DB_DATABASE"

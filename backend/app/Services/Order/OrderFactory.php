@@ -3,7 +3,9 @@
 namespace App\Services\Order;
 
 use App\Models\Order;
+use App\Models\OrderCredential;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 
 /**
  * ADR-060 PR-4a: the one place an `orders` row is written on a money
@@ -37,6 +39,33 @@ final class OrderFactory
      *                                 loudly, rather than being mistaken for a duplicate.
      */
     public function create(OrderDraft $draft): Order
+    {
+        if ($draft->credentials === null) {
+            return $this->insert($draft);
+        }
+
+        // ADR-125 decision 41: a login order never exists without its
+        // login, even for a full-voucher order that turns Paid and
+        // dispatches fulfilment straight after this returns.
+        return DB::transaction(function () use ($draft) {
+            $order = $this->insert($draft);
+            $credentials = $draft->credentials;
+
+            OrderCredential::query()->create([
+                'order_id' => $order->id,
+                'fields' => $credentials->fields,
+                'secret_fields' => $credentials->secretFields,
+                'secrets' => $credentials->secrets,
+                'secrets_set_at' => now(),
+                'consented_at' => now(),
+                'consent_text' => $credentials->consentText,
+            ]);
+
+            return $order;
+        });
+    }
+
+    private function insert(OrderDraft $draft): Order
     {
         try {
             return Order::query()->create([

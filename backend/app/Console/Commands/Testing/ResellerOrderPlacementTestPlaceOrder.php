@@ -71,8 +71,8 @@ class ResellerOrderPlacementTestPlaceOrder extends Command
         };
 
         $supplierId = (int) $this->argument('supplierId');
-        $supplierSlug = Supplier::query()->findOrFail($supplierId)->slug;
-        app()->bind("supplier-adapter.{$supplierSlug}", fn () => $adapter);
+        $driver = Supplier::query()->findOrFail($supplierId)->driver;
+        app()->bind("supplier-adapter.{$driver}", fn () => $adapter);
 
         try {
             $result = $service->placeOrder($reseller, new ResellerOrderPlacementRequest(

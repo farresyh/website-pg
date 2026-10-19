@@ -1,6 +1,6 @@
 # ADR-124: Customer account credentials — own encrypted table, super-admin reveal with MFA step-up and an audit row, wiped by one sweep once the order closes
 
-> **Standing (2026-10-17):** Accepted (design). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-19):** In force; the 2026-10-18 addendum revises decision 7; the 2026-10-19 addendum replaces the supplier link's signed URL with a short hashed token (ADR-125 decisions 50–52). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-17. Grilled with the founder in two rounds (`/mattpocock-skills:grilling`, Q1–Q13) after a by-hand check of the order lifecycle and every exposure path. Build not started (PRD §16 item 112). Shared foundation for [ADR-125](./ADR-125-login-top-up-manual-supplier.md) (Login Top-up) and [ADR-126](./ADR-126-joki-mlbb.md) (Joki).
 
@@ -62,3 +62,26 @@ Decided in [ADR-125](./ADR-125-login-top-up-manual-supplier.md)'s grill (Q13) an
 2. **GET shows only the order summary and a "Show login" button**, with `noindex`, `Cache-Control: no-store` and `Referrer-Policy: no-referrer`, so a WhatsApp link-preview fetch never sees a secret.
 3. **The secret fields are returned only by a POST**, rate-limited per order, which re-checks that the order is still open, belongs to that supplier, and has `purged_at` null. The link therefore dies the moment the sweep wipes (decision 7), with no revoke list. Its expiry is the D ceiling.
 4. Each POST writes a `credential_reveals` row with actor = supplier (the group's supplier). The link may be opened more than once while the order is open; every opening is logged.
+
+### 2026-10-18 addendum — build split, and five corrections found by a code trace and stress test before the build
+
+Before building, every decision was traced against the code and stress-tested (founder, 2026-10-18). Overrides the matching parts of decisions 7 and the "Consequence to track" list.
+
+1. **Build split.** ADR-125 bundled this ADR into its PR 1. It is built first, as its own PR (PRD §16 item 112): tables, encryption, dump exclusion, sweep, reveal/replace, the Customer Login Policy settings, the audit prune, and the admin UI. Nothing writes an `order_credentials` row in production until item 113 adds the checkout path, because which fields are secret comes from ADR-125 decision 6's per-game schema.
+2. **A failed payment is not final.** `OrderPaymentOutcomeService` accepts a Paid that arrives after a Failed (the order goes to NeedsReview and an admin delivers it), so wiping at `payment_status = failed` could wipe the login of a customer who paid. Decision 7's second and third rules become one: **not paid (pending or failed) and more than H hours since the order was created.** CHIP purchases are `due` +30 minutes with `due_strict` (`ChipGateway`), so a late Paid can only land within minutes; H is at least 1 hour.
+3. **"Closed for G hours" needs a closing time no column has.** Delivered has `delivered_at`, but a compensation's time is spread over three tables. The sweep stamps `order_credentials.closed_at` the first time it sees the order closed and wipes once `closed_at` is G hours old. Closed is final: Delivered has no exit in `OrderStatusService`, and a compensated order is refused by `fulfill()` itself and by every resend, retry and settle guard (ADR-102 decision 1). The stamp can be up to 15 minutes late, which only keeps a login longer.
+4. **The D ceiling counts from `secrets_set_at`** (when the secret fields were last stored or replaced), for any order, not only an open one. Counting from the order's creation would wipe a login again 15 minutes after a super_admin replaced it on an order still open after D days. A replace on an already-wiped row is allowed only while the order is open.
+5. **One query-level "compensated" rule.** `Order::scopeCompensated()` is the query mirror of `isAlreadyCompensated()`. `scopeNeedsAction()` uses it instead of its own inline copy, and the sweep uses it too. A test holds the scope and the method in agreement.
+6. **`credential_reveals` records `actor_type` + `actor_id`** (admin now, supplier from ADR-125 PR 2, per the 2026-10-17 addendum), so the supplier link needs no migration on the audit table. The step-up route pin lives in `AdminMfaStepUpTest::test_exactly_these_routes_require_step_up`; there is no `StepUpRoutesTest`.
+
+Also recorded: hiding the value after 30 seconds is a UI courtesy only, since the value has reached the browser. The controls are super_admin, step-up, the rate limit and the audit row, and the reveal response is `Cache-Control: no-store`.
+
+### 2026-10-19 addendum — the supplier link becomes a short hashed token
+
+Decided in [ADR-125](./ADR-125-login-top-up-manual-supplier.md)'s PR 2 pre-build addendum (decisions 50–52, founder). Overrides points 1 and 3 of the 2026-10-17 addendum.
+
+1. **The link is a short token, not a signed URL.** `https://<api host>/s/<12 random base62 chars>`; `supplier_login_links` stores only the token's SHA-256 with the order, supplier, reference and expiry (the D ceiling). A signed URL reads as noise to an outside supplier, and the stored hash keeps a working link out of every DB dump. This is a token table, which the 2026-10-17 addendum had avoided.
+2. **"Still open" means Pending on that supplier with that reference**, plus `purged_at` null. A Failed order keeps its login for a retry, but its old link is dead.
+3. The link is minted when the post is sent and never stored in the message text.
+
+Points 2 and 4 (GET shows no secret; each POST is audited with actor = supplier) are unchanged.

@@ -5,6 +5,7 @@ namespace App\Console;
 use App\Jobs\SyncSupplierPricesJob;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
+use App\Models\SupplierLoginLink;
 use App\Support\MalaysiaTime;
 use Illuminate\Console\Scheduling\Schedule;
 
@@ -41,6 +42,7 @@ class TaskSchedule
         'membership-renewal-reminders',
         'affiliate-tier-fee-charge',
         'supplier-balance-refresh',
+        'order-credential-wipe',
     ];
 
     /** Stale → admin Dashboard only. */
@@ -48,6 +50,8 @@ class TaskSchedule
         'player-validation-pruning',
         'supplier-request-log-pruning',
         'report-assistant-audit-log-pruning',
+        'credential-reveal-pruning',
+        'supplier-login-link-pruning',
         'reseller-whatsapp-pending-link-pruning',
         'reseller-bot-command-log-pruning',
         'stale-cache-pruning',
@@ -82,7 +86,7 @@ class TaskSchedule
             $hasSyncableSupplier = Supplier::query()
                 ->where('is_active', true)
                 ->get()
-                ->contains(fn (Supplier $supplier) => filled($supplier->api_config));
+                ->contains(fn (Supplier $supplier) => $supplier->isSyncable());
 
             if (! $hasSyncableSupplier) {
                 return;
@@ -149,7 +153,27 @@ class TaskSchedule
             ->name('report-assistant-audit-log-pruning')
             ->withoutOverlapping($overlap);
 
-        // PR-F build addendum (ADR-075) — prunes reseller_whatsapp_pending_links
+        // ADR-124 decision 7 (2026-10-18 addendum) — the one place a
+        // customer's game login is wiped; critical, because a stale sweep
+        // keeps passwords past the promise made at checkout.
+        $schedule->command('app:wipe-order-credentials')
+            ->cron('*/15 * * * *')
+            ->name('order-credential-wipe')
+            ->withoutOverlapping($overlap);
+
+        // ADR-124 decision 11 — credential_reveals kept one year.
+        $schedule->command('app:prune-credential-reveals')
+            ->daily()
+            ->name('credential-reveal-pruning')
+            ->withoutOverlapping($overlap);
+
+        // ADR-125 decision 50 — a supplier login link past its expiry.
+        $schedule->command('model:prune', ['--model' => [SupplierLoginLink::class]])
+            ->daily()
+            ->name('supplier-login-link-pruning')
+            ->withoutOverlapping($overlap);
+
+        // PR-F build addendum (ADR-075) — prunes whatsapp_pending_links
         // past its 24h TTL and reseller_bot_command_logs past its 7-day
         // retention — see each command's own docblock.
         $schedule->command('app:prune-reseller-whatsapp-pending-links')

@@ -55,6 +55,8 @@ const NOTIFICATION_EVENT_LABEL: Record<string, string> = {
   delivered_receipt: "Receipt",
   status_card: "Status card",
   optin_reply: "Opt-in reply",
+  supplier_order_post: "Order post",
+  supplier_sla_reminder: "SLA reminder",
 };
 
 const NOTIFICATION_STATUS_SEVERITY = {
@@ -209,12 +211,12 @@ export default function RefundInformationCards({ order }: { order: OrderDetail }
           ]}
         />
       )}
-      {/* ADR-116 decision 9 — failed/skipped means the customer never got it: contact them by hand. */}
+      {/* ADR-116 decision 9 — failed/skipped means the customer (or, for a supplier group post, the supplier) never got it: contact them by hand. */}
       {order.customer_notifications.map((n) => (
         <CompensationCard
           key={n.id}
           icon={Whatsapp}
-          title="Customer WhatsApp"
+          title={n.session === "bot" ? "Supplier group" : "Customer WhatsApp"}
           badge={NOTIFICATION_EVENT_LABEL[n.event] ?? n.event}
           tone="refund"
           fields={[
@@ -222,7 +224,8 @@ export default function RefundInformationCards({ order }: { order: OrderDetail }
               label: "Status",
               value: <Tag severity={NOTIFICATION_STATUS_SEVERITY[n.status]}>{n.status}</Tag>,
             },
-            { label: "Phone", value: n.phone ?? "—" },
+            // ADR-125 decision 53: a supplier post goes to the group, not a phone.
+            n.session === "bot" ? { label: "Group", value: n.chat_id ?? "—" } : { label: "Phone", value: n.phone ?? "—" },
             {
               label: n.status === "sent" ? "Sent" : "Note",
               value: n.status === "sent" && n.sent_at ? new Date(n.sent_at).toLocaleString() : (n.error ?? "Waiting to send"),

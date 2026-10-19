@@ -7,7 +7,7 @@ namespace App\Services\Supplier;
  * only in intent, not in code, across SupplierController and
  * AppServiceProvider — see the fix/supplier-config-guard branch that
  * introduced this class). Single source of truth for which
- * `api_config` keys a supplier slug needs and how each is classified
+ * `api_config` keys a supplier driver needs and how each is classified
  * (`text`/`secret`/`boolean`/`list`). Mirrored (not shared — different
  * language) by the frontend's SUPPLIER_FIELD_DEFINITIONS
  * (admin/src/lib/suppliers.ts); keep both in sync by hand when a
@@ -70,6 +70,9 @@ final class SupplierConfigSchema
             'price_sync_stale_alert_minutes' => 'text',
         ],
         'gamevion' => ['low_balance_threshold' => 'text', 'drift_threshold' => 'text', 'price_sync_stale_alert_minutes' => 'text'],
+        // ADR-125 decisions 2-3: a manual supplier's own settings. Absent
+        // `reply_sla_minutes` means the default (Supplier::DEFAULT_MANUAL_SLA_MINUTES).
+        'manual' => ['reply_sla_minutes' => 'text'],
     ];
 
     /**
@@ -78,9 +81,9 @@ final class SupplierConfigSchema
      *
      * @return array<string, string> key => 'text'|'secret'|'boolean'|'list'
      */
-    public static function fieldsFor(string $slug): array
+    public static function fieldsFor(string $driver): array
     {
-        return array_merge(self::REQUIRED[$slug] ?? [], self::OPTIONAL[$slug] ?? []);
+        return array_merge(self::REQUIRED[$driver] ?? [], self::OPTIONAL[$driver] ?? []);
     }
 
     /**
@@ -90,11 +93,11 @@ final class SupplierConfigSchema
      * is exactly what must be caught before construction, not after.
      * Optional fields (ADR-067) are deliberately excluded.
      *
-     * @return list<string> required keys defined for this slug but missing from $config
+     * @return list<string> required keys defined for this driver but missing from $config
      */
-    public static function missingKeys(string $slug, array $config): array
+    public static function missingKeys(string $driver, array $config): array
     {
-        return array_values(array_diff(array_keys(self::REQUIRED[$slug] ?? []), array_keys($config)));
+        return array_values(array_diff(array_keys(self::REQUIRED[$driver] ?? []), array_keys($config)));
     }
 
     /**
@@ -109,9 +112,9 @@ final class SupplierConfigSchema
      * @param  array<string, mixed>  $config
      * @return array<string, mixed>
      */
-    public static function normalizeConfig(string $slug, array $config): array
+    public static function normalizeConfig(string $driver, array $config): array
     {
-        foreach (self::fieldsFor($slug) as $key => $type) {
+        foreach (self::fieldsFor($driver) as $key => $type) {
             if (! array_key_exists($key, $config)) {
                 continue;
             }
@@ -145,7 +148,7 @@ final class SupplierConfigSchema
 
     /**
      * ADR-046 addendum — whichever key is marked 'boolean' for this
-     * slug *is* its sandbox/testing-mode flag, by this codebase's own
+     * driver *is* its sandbox/testing-mode flag, by this codebase's own
      * convention (mirrored by the frontend's SUPPLIER_FIELD_DEFINITIONS).
      * Extracted here (previously private to SupplierController) so
      * ADR-054's Developer API Tester can gate `createOrder` on the same
@@ -154,9 +157,9 @@ final class SupplierConfigSchema
      * production" are different things, and callers gating a real
      * side-effect on this should treat null as "not confirmed sandbox."
      */
-    public static function isSandbox(string $slug, array $apiConfig): ?bool
+    public static function isSandbox(string $driver, array $apiConfig): ?bool
     {
-        $booleanKey = array_search('boolean', self::fieldsFor($slug), true);
+        $booleanKey = array_search('boolean', self::fieldsFor($driver), true);
 
         if ($booleanKey === false) {
             return null;

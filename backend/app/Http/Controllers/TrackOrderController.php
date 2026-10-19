@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Order;
+use App\Models\PlatformSettings;
 use App\Support\ContactMask;
 use App\Support\StorefrontBrand;
 use Illuminate\Http\JsonResponse;
@@ -36,7 +37,7 @@ class TrackOrderController extends Controller
     {
         $order = Order::query()
             ->forStorefrontBrand($brand->get())
-            ->with(['game:id,name,slug', 'package:id,name', 'review:id,order_id'])
+            ->with(['game:id,name,slug,validation_rules', 'package:id,name', 'review:id,order_id'])
             ->where('order_number', $orderNumber)
             ->first();
 
@@ -63,8 +64,16 @@ class TrackOrderController extends Controller
             'order_number' => $order->order_number,
             'game' => $order->game !== null ? ['name' => $order->game->name, 'slug' => $order->game->slug] : null,
             'package_name' => $order->package?->name,
-            'player_id' => $order->player_id,
-            'server_id' => $order->server_id,
+            // ADR-125 decisions 31/38: a login order's identifier is half
+            // its login, so it is masked; a UID order is unchanged.
+            'player_id' => $order->isLoginOrder() ? $order->publicPlayerLabel() : $order->player_id,
+            'server_id' => $order->isLoginOrder() ? null : $order->server_id,
+            'fulfilment_kind' => $order->isLoginOrder() ? 'login' : 'uid',
+            // The label the customer typed it under, e.g. "Roblox email".
+            'player_label' => $order->isLoginOrder() ? ($order->game?->identifierField()['label'] ?? 'Login') : null,
+            // ADR-124 decision 9: the login is wiped about this many hours
+            // after the order closes.
+            'login_wipe_hours' => $order->isLoginOrder() ? PlatformSettings::current()->credential_close_grace_hours : null,
             // ADR-065: masked contact — recognition aid for the buyer,
             // nothing usable for a stranger with the order number.
             'customer_name_masked' => ContactMask::name($order->customer_name),

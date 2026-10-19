@@ -44,6 +44,8 @@ export interface CashPosition {
     affiliate_withdrawals_unpaid_sen: number;
     vouchers_outstanding_sen: number;
     orders_undelivered_sen: number;
+    /** ADR-125 decision 20: owed to pay-after suppliers. Absent on a month closed before it existed. */
+    supplier_payable_sen?: number;
   };
   /** What the envelopes should hold, from posting headers; differs from claims.envelopes_sen only if a posting is booked wrongly. */
   envelope_identity_sen: number;

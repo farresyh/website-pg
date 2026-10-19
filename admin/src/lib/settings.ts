@@ -35,6 +35,12 @@ export interface PlatformSettings {
   maintenance_message: string | null;
   membership_enabled: boolean;
   whatsapp_notifications_enabled: boolean;
+  // ADR-124 decision 10 — Customer Login Policy.
+  credential_close_grace_hours: number;
+  credential_unpaid_hours: number;
+  credential_max_days: number;
+  credential_reveal_limit_per_hour: number;
+  credential_consent_text: string | null;
 }
 
 export interface SettingsIndexResponse {
@@ -60,6 +66,14 @@ export type UpdatePlatformValues = Pick<
   | "vip_spend_threshold_sen"
   | "whatsapp_notifications_enabled"
 >;
+
+export type UpdateCustomerLoginPolicyValues = Pick<
+  PlatformSettings,
+  | "credential_close_grace_hours"
+  | "credential_unpaid_hours"
+  | "credential_max_days"
+  | "credential_reveal_limit_per_hour"
+> & { credential_consent_text: string };
 
 export function getSettings() {
   return apiFetch<SettingsIndexResponse>("/api/settings");
@@ -95,6 +109,11 @@ export function updateFooterSettings(values: UpdateFooterValues) {
 
 export function updatePlatformSettings(values: UpdatePlatformValues) {
   return apiFetch<PlatformSettings>("/api/settings/platform", { method: "PUT", body: values });
+}
+
+/** ADR-124 decision 10 — behind MFA step-up; api-client shows the prompt. */
+export function updateCustomerLoginPolicy(values: UpdateCustomerLoginPolicyValues) {
+  return apiFetch<PlatformSettings>("/api/settings/customer-login-policy", { method: "PUT", body: values });
 }
 
 export function applyBulkMarkup(markupPercent: number) {

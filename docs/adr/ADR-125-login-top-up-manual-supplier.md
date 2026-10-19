@@ -1,6 +1,6 @@
 # ADR-125: Login Top-up (Roblox, eFootball) — manual suppliers as a `driver` behind `SupplierAdapter`, one finalize seam for every confirmation, a supplier WhatsApp group per supplier, admin-entered packages at an agreed cost
 
-> **Standing (2026-10-17):** Accepted (design). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-19):** In force; PR 1 split into 1a/1b and decisions corrected by the 2026-10-18 stress-test addendum and the 2026-10-18 PR 1b pre-build addendum (decisions 36–47); PR 1 built as 1a, 1b-i and 1b-ii (2026-10-18 build addendum); PR 2 split into 2a/2b and corrected by the 2026-10-19 pre-build addendum (decisions 48–61); 2a built (2026-10-19 build addendum, decisions 62–63); 2b built with decision 64 (a manual supplier's switch takes its packages off sale). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-17. Grilled with the founder (`/mattpocock-skills:grilling`, Q1–Q19), after a money-critical code-trace pass, then an adversarial stress test (three read-only forks, one per layer: checkout/catalog, fulfillment/ledger, bot/link). The stress test changed five decisions before they were written; its top findings were re-checked by hand. Build not started (PRD §16 item 113). Depends on [ADR-124](./ADR-124-customer-account-credentials.md). [ADR-126](./ADR-126-joki-mlbb.md) (Joki) builds on this ADR.
 
@@ -95,3 +95,158 @@ Must not change: `recordOrderDrawdown`'s contract and idempotency key, `operatin
 ### 2026-10-17 addendum — the report view's effective cost mirrors `effectiveCostPriceSen()`
 
 Found in the 2026-10-17 docs audit. Decision 24's `COALESCE(real_cost_price_sen, cost_price) AS effective_cost_price` is replaced. That expression is wrong in two cases: a combo keeps its real cost only on `order_delivery_legs.real_cost_price_sen` (the order's own column stays null, so the catalog cost would show), and a non-combo order's stored real cost counts only when it satisfies the profit residual (flag off or no FX rate means it was not used). `llm_report_orders.effective_cost_price` must give the same number as `Order::effectiveCostPriceSen()`: the residual check for a single order, and the sum of the legs for a combo. The same fix covers the live Report Assistant prompt (PRD §16 item 118), which today points at `cost_price`.
+
+### 2026-10-18 addendum — ADR-124 is built first, on its own
+
+"PR 1 … (plus ADR-124)" in the consequences is replaced: ADR-124 was built first as its own PR (PRD §16 item 112, ADR-124 2026-10-18 addendum, decision 1). PR 1 here now adds the checkout path that writes `order_credentials` from decision 6's per-game schema, snapshotting `PlatformSettings::credential_consent_text`. The sweep, reveal/replace, audit and policy settings already exist.
+
+### 2026-10-18 addendum — pre-build stress test of PR 1: split into 1a/1b, twelve gaps closed
+
+Before building PR 1, three read-only forks (checkout and pricing; fulfillment, ledger and compensation; downstream readers) re-traced every decision against current `staging` (which now has items 115, 121, 123, 120 and 112). The top findings were re-checked by hand, and prod was queried read-only: 2 suppliers, both API (Digiflazz IDR, Gamevion MYR); 37 of 38 games have `reseller_code`; 18 have the player validator on; no order is Pending, NeedsReview or Processing; 5 Digiflazz transfers. Founder decisions on 2026-10-18 are marked (founder).
+
+**Still true:** decisions 5 (reseller exclusion by `reseller_code` alone), 8 (`finalizePendingDelivery` is the one confirmation seam), 9 (a manual Failed is confirmed non-delivery, so a new reference is safe), 23 (RM at rate 1.0 gives `real_cost = cost_price`, so profit is unchanged on every basis), the combo one-supplier rule, resend staying within one game, and ADR-124's sweep (a manual Failed keeps its login; voucher or Delivered closes it).
+
+**25. PR 1 is split (founder).**
+- **1a:** driver and capabilities on `Supplier`, and every reader. No customer-facing change.
+- **1b:** login games, manual packages, checkout, Manual Queue, customer copy.
+
+Both funding modes ship (founder): decision 18 stands, with the accounting fixes in decision 30.
+
+**26. Driver and capability readers (1a).** The slug-keyed logic is wider than decision 1 listed: about 20 sites, including `resubmitReplaysOutcome`, `SupplierConfigSchema`, the circuit-breaker name, `supplierApiConfig`, the webhook, and the sandbox binding `supplier-adapter.{slug}`.
+- One rule keeps them correct: `CreateSupplierRequest` requires `slug === driver` for an API driver. Only `driver = manual` takes a free slug.
+- Every capability, schema and binding lookup keys on driver. `SupplierAdapterFactory::for(Supplier)` passes the row, so one `manual` binding serves every manual supplier.
+- `Supplier::pollsStatus()` replaces the slug list in `resubmitReplaysOutcome`.
+
+**27. Every API-only path asks the supplier (1a).**
+- `scopeApiBacked()` is used by four `filled(api_config)` readers, not three: the price-sync job, the schedule gate, item 106's `CheckPriceSyncStalenessCommand` (otherwise a stale-sync email every run), and product sync (which today has no filter).
+- `RefreshSupplierBalancesCommand` selects `scopeApiBacked()`. Its `checkBalance()` call sits outside the try, and the task is critical, so one manual supplier would fail `/api/health`.
+- `SupplierDeliveryCheckService::check()` refuses a supplier without `pollsStatus()`. This one seam covers the admin "Check supplier" button and the reconciler's `CheckSupplierDeliveryJob`.
+- `SupplierController::refreshBalance` refuses a non-API supplier.
+- Balance shown anywhere (Middleware Suppliers, Balance page, Dashboard health) reads `displayBalance()`.
+- The admin create form chooses a driver, not a slug.
+
+**28. Mark Delivered on a manual NeedsReview order goes through `finalizePendingDelivery` (1b).** `markDeliveredManually` skips real cost, the reconcile and the drawdown. A manual order reaches NeedsReview when a worker dies at Processing or `createOrder` throws. Without this, "Owed" and COGS would be wrong. Prod has never used `manual_confirm`.
+
+**29. `recordOrderDrawdown` skips an `is_test` order (1a), one guard at the seam.** Sandbox orders are also kept out of the Manual Queue (1b).
+
+**30. Accounting for an MYR supplier (1a).**
+- `weightedAverageRate()` returns 1.0 for **every** MYR supplier, not only one with no transfers. `FundedCostOfSales::rates()` drops its own MYR special case and calls it.
+- Whether a transfer fee belongs in unit cost stays with the accountant (PRD §16 item 81). This keeps today's COGS behaviour: fee excluded for MYR.
+- Decision 20 splits each supplier's balance by sign before summing. Stored month-close `equation` JSON reads the new `claims.supplier_payable_sen` with a default of 0.
+- Decision 21's health item (Delivered manual orders with no `ORDER_DRAWDOWN`) ships in 1a, because a manual supplier has no drift check.
+
+**31. The login identifier is masked on every public surface (1b, founder).** Track Order, Reverb `OrderStatusUpdated` and the WhatsApp `OrderStatusCard` return the raw `player_id` to anyone with the order number. For a login game that is half the login, which breaks ADR-065.
+- One `Order::publicPlayerLabel()`: `ContactMask::email` for an email identifier, a partial mask otherwise. The label reads "Login".
+- `OrderStatusCard` words its copy by fulfilment kind (decision 24). For a login order it carries ADR-124 decision 9's "wiped within G hours, change your password".
+
+**32. Checkout for a login game (1b).**
+- The server sets `player_id` from the schema's identifier field before validation and the blacklist, and refuses a client `player_id`/`server_id`. Otherwise a clean `player_id` beside a banned username passes the blacklist.
+- `CheckoutInputValidator::validate()` branches on `isLoginGame()`, which covers checkout, the resend ID edit and the REST API once.
+- Player validation is skipped for a login game.
+- The order and its `order_credentials` row are created in one transaction.
+
+**33. Creating a login game and its schema (1b).** Games are created today only by `SupplierProductController::linkCategory`, which needs a supplier category. Its `validation_rules` is a free array that would let `credential_fields` through unchecked.
+- A game create plus schema write endpoint is added.
+- `linkCategory` becomes a fifth `GameFulfilmentRule` path: it strips `credential_fields` and refuses a login game.
+- The rule also refuses the player validator and `delivery_mode = instant` on a login game.
+
+**34. Manual cost edit is audited (1b).** `PackagePriceSyncService`'s private `propagatePrice` is extracted. The manual edit calls it (writing a `PriceChangeLog` with a null run), then `ComboPricingService::recomputeForComponentChange`. The admin-entered real cost at confirmation is bounded (`> 0`, ≤ `selling_price` unless a reason is given), and `confirmed_by` is stored in the supplier response.
+
+**35. Member pricing gate (1b):**
+- `CheckoutService` is the one gate for price and quota.
+- `CatalogController::publicPackage` reads it.
+- `MembershipPricingService::representativePackage` excludes games with it off.
+- `resolveMemberEmail` stays separate.
+
+**Can wait (no wrong money total):** decision 24's "Profit flagged" filter and `llm_report_orders.effective_cost_price`, and decision 22's month-close preview. PR 2 note: a resend from NeedsReview reuses the reference, so the post's (order, reference) key would not re-post.
+
+### 2026-10-18 addendum — PR 1b pre-build trace: fourteen corrections, founder answers
+
+Before building 1b, three read-only forks (catalog and checkout; fulfillment and ledger; readers and copy) re-traced decisions 4–9, 17, 23, 28, 31–35 against `staging` with 1a built. The top findings were re-checked by hand. Founder answers on 2026-10-18 are marked (founder).
+
+**Corrections to earlier decisions:**
+
+36. **Real cost at confirmation (replaces decision 34's bound, founder).** It defaults to the order's `cost_price`. Any value different from `cost_price` needs a reason. "≤ `selling_price`" was the wrong bound: `reconcileRealCostProfit` gives `selling − real − affiliate_profit`, so a loss started below it. The reason and `confirmed_by` are stored in the supplier response.
+37. **Member gate seam (corrects decision 35).** `CheckoutService::previewTotal()` takes no game, so the service can't be the gate. `CheckoutController` passes no membership id to the preview when `Game::memberPricingApplies()` is false, and passes `memberPricingApplies` to `initiate`, which prices with no membership (no member price, no quota) but still binds the order to the member's email from the membership id (decision 35's `resolveMemberEmail` stays separate; found in the build's self-review). `GameController::update` also flushes the package cache, because `catalog.packages.game.{id}` holds `member_price_sen`.
+38. **A login order is known by its credential row, not its game (corrects decision 31).** `orders.game_id` has no foreign key, and a schema can be removed. `Order::publicPlayerLabel()` masks whenever the order has an `order_credentials` row. `ContactMask::email()` returns a non-email unchanged, so the label masks a non-email itself, every character when it is 4 or fewer.
+39. **The affiliate sees the masked identifier (founder).** `Affiliate/OrderController` returns `publicPlayerLabel()` for a login order.
+40. **No secret in `payloadHash`.** It is stored unsalted. It hashes the non-secret credential fields only. The storefront makes a new idempotency key each time Review opens, so a password-only change can't replay an old order.
+41. **Order and credentials in one transaction, inside `initiate`.** A full-voucher order turns Paid in `settleWithVoucher` and dispatches fulfilment at once, so the credential row is written with the order INSERT (through `OrderDraft`), before any gateway call, and the gateway call stays outside the transaction.
+42. **Supervised Failed → Delivered for a manual order (founder).** An admin's wrong Failed is otherwise final: `contradictsFinalStatus` keeps a later Delivered as evidence only, and Retry means a second top-up paid twice. The correction is allowed only on a manual supplier, with the order locked, still Failed, and not `compensated` (no voucher issued). It needs a reason and runs decision 36's real-cost path, `creditProfit`, voucher commit and the drawdown. Failed writes no ledger, voucher or drawdown entry (a reserved redemption is restored only by Issue Voucher), so nothing has to be reversed. Every confirmation writes an attempt row with `triggered_by`, which decision 28's NeedsReview path otherwise lost.
+43. **Resend may correct the identifier (founder).** `OrderResendService` updates `player_id` and `order_credentials.fields` together, with an audit row. Before, `fields` kept the old identifier.
+44. **A wiped login blocks the queue's re-post.** `credential_max_days` wipes regardless of status. The Manual Queue and Retry show "login wiped, ask the customer to replace" and Retry refuses until it is replaced.
+45. **One price-propagation seam with an author.** `price_change_logs` gains a nullable `admin_user_id`. `PendingPriceChangeController::approve`'s hand-written copy routes through the extracted `propagatePrice`. A change with no sync run is shown on the package's price history.
+46. **The schema endpoint holds the kind switch (corrects decision 5).** `UpdateGameRequest` never takes `validation_rules`. The new schema endpoint refuses a switch while packages of the other kind exist (inactive ones included). For a login game it replaces `validation_rules` whole, dropping `extra_field`, `zone_options` and `player_id_format`, and it lowercases an email identifier before it becomes `player_id`. `GameFulfilmentRule` also requires a `delivery_subtext` on a login game, because `effectiveDeliverySubtext()` otherwise falls back to "1–3 minutes".
+47. **Copy (extends decisions 17 and 31).** The "Manual Processing" badge already exists (`delivery_mode`). For a login order, the storefront tracker, `GameFactLine`, `Step1AccountInfo`, the summary sidebar, `ReviewModal` and admin labels read the schema's identifier label, not "Player ID". They don't promise minutes, and the tracker's Delivered banner carries the change-your-password line (founder, default), not WhatsApp only. The Check-from-Supplier button is hidden for a supplier without `pollsStatus()`.
+
+**Placement:** game create and the credential schema live under `/admin/games` (catalog; the schema is the customer's form, not supplier config).
+
+### 2026-10-18 addendum — PR 1b as built (1b-i backend #509, 1b-ii screens #510)
+
+PR 1b shipped in two PRs, backend first, so the money review stayed small. What the build added to or settled within the decisions above (no decision reversed):
+
+- Decision 37 as built: the preview gets no membership id when the game's member pricing is off; `initiate` takes `memberPricingApplies` and prices as a guest while still binding the member's email (decision 35). The first build nulled the id for both and lost the binding; caught in self-review before the PR.
+- Decision 32: `credentials.*` skips `TrimStrings`, so a password is stored as typed; non-secret fields are trimmed by `CheckoutInputValidator`. The admin's credential replace (ADR-124) skips it too.
+- Decision 42's correction re-opens the order to NeedsReview under the order lock, then calls `finalizePendingDelivery()`; it races Issue Voucher and itself on that lock (`ManualCorrectionConcurrencyTest`). Every manual confirmation writes a `manual_confirm` attempt row (existing type, so the admin delivery log shows it unchanged).
+- Decision 43's audit is a `credential_reveals` row with `action = identifier`, written by the admin request after a pre-check; the job re-checks under the lock.
+- An admin (not only super_admin) adds manual packages, so `GET /manual-suppliers` lists active manual suppliers' names; the full supplier list stays super_admin middleware config.
+- ADR-124 decision 8: the login game's public detail carries `credential_consent_text`, so the consent box shows the text the order snapshots.
+- Placement: login game create and its form live in `/admin/games`; the queue is `/admin/manual-queue`, any admin (Q10).
+
+### 2026-10-19 addendum — PR 2 pre-build trace: split 2a/2b, short supplier link, thirteen corrections
+
+Before building PR 2, decisions 11–16 were traced against `staging` (PR 1 built) and prod was queried read-only: 2 reseller groups (both active), 0 pending links, 14 customer notifications, 0 manual suppliers (PR 1 is not released). Founder answers on 2026-10-19 are marked (founder).
+
+**Still true:** decisions 11 (one registry, routed by owner, bot session only), 12 (cost never comes from the group), 14 (commands act only on the supplier's own Pending orders), 15 (SLA reminder from the reconciler scan) and 16. `.done` and `.gagal` call `ManualDeliveryService::confirmDelivered()` / `confirmFailed()`, so the cost is the agreed `cost_price` (decision 36's default) and a WhatsApp reply can never set another. The SLA already exists as `reply_sla_minutes` and `Order::isStalePending()` (PR 1a).
+
+**48. The (order, reference) post key is correct; the PR 1 note's worry does not hold.** A manual order reaches NeedsReview only when the worker dies before Pending commits (`retryStuckProcessing`) or a late Paid is flagged. `checkStalePending` and the max-age scan skip manual suppliers, and `flagStaleDuplicateReferences` reads a Gamevion-only code. So a manual NeedsReview order was never posted, and a resend from it (same reference, any package or manual supplier) posts for the first time. A retry or resend from Failed mints a new reference and posts again, labelled RETRY when an earlier post exists for the order. A test holds this.
+
+**49. The post is queued from `OrderFulfillmentService::fulfill()` after the transaction that commits Pending on a manual supplier**, not from an `OrderStatusUpdated` listener (that stream fires on every status write). Skipped for an `is_test` order.
+
+**50. A short supplier link with a token table (founder; revises ADR-124's 2026-10-17 addendum, point 1).** A signed URL is long and reads as noise to an outside supplier. The link is `https://<api host>/s/<12 random base62 chars>` (~71 bits). `supplier_login_links` stores only the SHA-256 of the token, with `order_id`, `supplier_id`, `reference_number` and `expires_at` (the D ceiling). A DB dump or backup therefore holds no working link. Expired rows are pruned daily. GET and POST keep ADR-124's shape (summary + "Show login"; secrets only from the POST, `noindex`, `no-store`, `no-referrer`, rate-limited per link and per IP).
+
+**51. The link works only while the order is Pending on that supplier, with that reference, and the login is not wiped (tightens ADR-124's "still open").** After `.done` or `.gagal`, or a retry to another attempt, the old link is dead without a revoke step. Each POST writes one `credential_reveals` row per secret field, `actor_type = supplier`.
+
+**52. The link is minted at send time, never stored in a message.** The stored message carries a placeholder; `SendCustomerWhatsAppJob` mints the token and fills it in just before sending. A send whose ack was lost and is retried mints a second link for the same attempt; both die together under decision 51.
+
+**53. `customer_notifications` gains `session` (`customer_support` | `bot`, default `customer_support`) and `chat_id`.** A supplier row has `chat_id` (the group) and no `phone`. Skip reasons are per session: a customer row keeps today's (the WhatsApp-notifications switch, the customer-support session, a usable phone); a bot row is skipped only when the bot session isn't configured or the supplier has no active group. The customer switch never stops a supplier post. The send slot is keyed per session, so customer pacing is unchanged. Order Detail's notification list labels a bot row "Supplier group".
+
+**54. Supplier posts and reminders use the persisted queue, not `SendResellerBotReplyJob`.** That job counts an OpenWA pacing refusal as a failure (3 tries, 5 s / 20 s) and drops the message. Command replies stay on it, like the reseller bot's.
+
+**55. A group has one owner, and a supplier has one active group.** `link()` today is `updateOrCreate` on the group id, so linking a group already owned by someone else would move it silently (a reseller group could start receiving customer logins). Linking refuses a group owned by a different owner, and refuses a second active group for a supplier.
+
+**56. An active manual supplier keeps its group (decision 12, one seam).** Activation without an active group is refused, and so is unlinking the last group of an active manual supplier. Both the Middleware supplier screen and the new Partners screen go through the same check. A manual supplier activated before PR 2 has no group: its post is skipped with a reason and counted on the Dashboard.
+
+**57. The router drops the bot's own messages and reads the sender.** `OpenWaWebhookController` ignores `fromMe` (the bot's own post must never be parsed, and this also covers the reseller bot). The sender is OpenWA's `senderPhone`, else the digits of `author` when it is `@c.us`, else the raw `author`, recorded as `confirmed_by = wa:<sender>` with `channel = supplier_bot` (checked against OpenWA's `message-responses.dto.ts` on the box, 2026-10-19).
+
+**58. Command rules.** `.done PG-…` / `.gagal PG-… <reason>` act only on a Pending order of the group's supplier (NeedsReview was never posted, decision 48). `.gagal` without a reason is refused. A `.done` on a Failed order replies "contact admin" (the correction is admin-only, decision 42). `.pending` lists order number, game, package and age, never a login field. One rate limit per supplier, as the reseller bot has.
+
+**59. The SLA reminder** is one bot notification per (order, reference), dedupe-keyed, from the 15-minute reconciler run, using `isStalePending()`. A retry gets its own reminder.
+
+**60. Placement (founder).** A new Admin → Partners → Suppliers page, super_admin only: manual suppliers, their group (link from the shared pending list, unlink), reply SLA, active switch. Creating a manual supplier and its funding mode stay in Middleware → Suppliers, and API suppliers stay there entirely. The pending-link list moves to a shared `/whatsapp-groups/pending`. The Dashboard counts failed supplier posts and active manual suppliers with no group.
+
+**61. Build in two PRs (founder).** **2a, backend:** `whatsapp_groups` (data migration of the 2 reseller rows), the router and `SupplierBotService`, decisions 48–59, the group-link API. **2b, screens:** Partners → Suppliers, the pending-link picker for both owners, the Order Detail label, the Dashboard counts, e2e.
+
+### 2026-10-19 addendum — PR 2a as built (backend)
+
+Built as decisions 48–61 describe. What the build added or settled (no decision reversed):
+
+**62. Linking or reactivating a supplier's group re-posts its waiting orders.** A post skipped because the supplier had no group would otherwise wait for the SLA reminder, which carries no login link. `SupplierGroupNotifier::repostWaiting()` runs `orderPosted()` for each Pending order. The outbox revives only a skipped row, so a post already sent or queued is never repeated. RETRY is decided against an earlier attempt's post, not this attempt's own skipped row.
+
+**63. `SecurityHeaders` keeps a route's own `Referrer-Policy`.** It runs after every controller and set `strict-origin-when-cross-origin` unconditionally, which would have overwritten the link page's `no-referrer`. It now sets the default only when the response has none.
+
+- One outbox: `WhatsAppOutbox` holds the create/dedupe/revive and the per-session slot. `CustomerNotificationService` (customer rules) and `SupplierGroupNotifier` (supplier rules) both call it. The customer-support slot keeps its old cache key, so its pacing state carries over.
+- `SendCustomerWhatsAppJob` asks `SupplierGroupNotifier::prepare()` for a bot row. It returns null for an attempt that is no longer waiting (the row is marked skipped), and otherwise mints the link. A pacing release re-runs `prepare()`, so one attempt can mint more than one link; they all die together (decision 51).
+- The link page shows the non-secret login fields (username) with the order summary, before and after the reveal. The secrets come only from the POST. Pruned by `model:prune` daily (`supplier-login-link-pruning`, routine).
+- The Partners → Suppliers API is `/api/partner-suppliers` (list with pending count, link, group status, SLA 5–1440 minutes, active switch). The shared pending list is `/api/whatsapp-groups/pending`. Deleting a never-used supplier deletes its groups.
+- Prod data: the 2 reseller groups move with their ids. A test runs the migration down and up against seeded rows.
+
+### 2026-10-19 addendum — PR 2b: a manual supplier's switch takes its packages off sale (decision 64), screens as built
+
+**64. Switching a manual supplier off takes its packages off sale, and switching it on restores exactly those (found while building 2b).** A supplier's `is_active` gates nothing at checkout: only sync, balance and staleness jobs read it, and catalog and checkout check `game.is_active` and `package.is_active` only. So decision 56's "an active manual supplier keeps its group" guarded a flag that no customer path reads. An inactive manual supplier's packages could still be bought, and each order would sit Pending with a skipped post. The fix goes through ADR-046's existing seam rather than adding a supplier check to every package reader. The per-supplier bulk package switch (`deactivated_reason = supplier_issue`, reactivate restores only those) moves out of `SupplierController` into `SupplierPackageStatusService`. `ManualSupplierStatusService::setActive()` is the one path for both Middleware → Suppliers and Partners → Suppliers. It checks the group when switching on, then sets the flag and switches the packages in one transaction. A package Price Sync turned off for another reason stays off. An API supplier's flag keeps its old meaning (ADR-031 decision 4). A new manual supplier starts inactive and the manual-package form lists only active ones, so the order is: create, link group, activate, add packages.
+
+As built (2b):
+- Admin → Partners → Suppliers (`/admin/suppliers`, super_admin): manual suppliers with group, reply SLA, waiting count and status. "WhatsApp Group" opens the shared `WhatsAppGroupLinker`, the same component the reseller modal now uses. "Edit SLA" takes 5–1440 minutes. "Activate" is disabled until a group is linked. "Deactivate" warns that the packages go off sale.
+- Order Detail labels a bot row "Supplier group" with its group id ("Order post" / "SLA reminder").
+- Dashboard: red "N orders not posted to the supplier" counts waiting orders whose current attempt never reached the group (a sent post of an earlier attempt doesn't count); amber "N active suppliers with no WhatsApp group".
+- e2e `supplier-group-bot.spec.ts` (ADR-023 2026-10-19 addendum).

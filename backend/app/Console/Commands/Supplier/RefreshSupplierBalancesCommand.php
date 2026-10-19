@@ -37,7 +37,9 @@ class RefreshSupplierBalancesCommand extends Command
 {
     public function handle(SupplierAdapterFactory $adapters): int
     {
-        $active = Supplier::query()->where('is_active', true)->get();
+        // ADR-125 decision 2: a manual supplier has no balance to poll; its
+        // balance is its funding ledger (Supplier::displayBalance()).
+        $active = Supplier::query()->where('is_active', true)->apiBacked()->get();
 
         // ADR-069 stress-test Q5 — log every skipped supplier + its
         // missing keys. `customer_no_separator` is REQUIRED for
@@ -45,7 +47,7 @@ class RefreshSupplierBalancesCommand extends Command
         // form; a supplier left partially configured would otherwise
         // drop out of the daily refresh silently.
         $suppliers = $active->filter(function (Supplier $s) {
-            $missing = SupplierConfigSchema::missingKeys($s->slug, $s->api_config ?? []);
+            $missing = SupplierConfigSchema::missingKeys($s->driver, $s->api_config ?? []);
 
             if ($missing !== []) {
                 Log::info('refresh-supplier-balances: skipping supplier — not fully configured', [
@@ -68,7 +70,7 @@ class RefreshSupplierBalancesCommand extends Command
 
         foreach ($suppliers as $supplier) {
             try {
-                $adapter = $adapters->make($supplier->slug);
+                $adapter = $adapters->for($supplier);
             } catch (UnsupportedSupplierException|SupplierNotConfiguredException $e) {
                 $this->warn("Skipping '{$supplier->slug}': {$e->getMessage()}");
 

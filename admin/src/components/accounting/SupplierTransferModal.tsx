@@ -127,9 +127,12 @@ function Content({ supplier }: Omit<Props, "isOpen" | "onClose">) {
           <div>
             <p className="text-theme-xs text-gray-500 dark:text-gray-400">Funding ledger balance ({ledger.currency})</p>
             <p className="text-2xl font-semibold text-gray-800 dark:text-white/90">{formatForeign(ledger.ledger_balance, ledger.currency)}</p>
-            <p className="mt-1 text-theme-xs text-ink-subtle">
-              API-polled balance: {supplier.balance ?? "—"} {supplier.currency} — for reference only, not auto-reconciled here.
-            </p>
+            {/* ADR-125: a manual supplier has no API; its ledger is the balance. */}
+            {supplier.is_api_backed && (
+              <p className="mt-1 text-theme-xs text-ink-subtle">
+                API-polled balance: {supplier.balance ?? "—"} {supplier.currency} — for reference only, not auto-reconciled here.
+              </p>
+            )}
           </div>
           <Link
             href={`/admin/accounting/suppliers/${supplier.id}/transfers`}
@@ -146,7 +149,10 @@ function Content({ supplier }: Omit<Props, "isOpen" | "onClose">) {
 
       <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-gray-800">
         <p className="text-theme-xs font-medium text-gray-600 dark:text-gray-400">
-          Record a capital transfer into this supplier&apos;s account — the actual amounts off the transfer receipt, not an estimate.
+          {/* ADR-125 decision 18: wording only — either way it is a capital movement, not P&L. */}
+          {!supplier.is_api_backed && supplier.funding_mode === "pay_after"
+            ? "Record a payment to this supplier for orders it has delivered — the actual amounts off the transfer receipt, not an estimate."
+            : "Record a top-up into this supplier's account — the actual amounts off the transfer receipt, not an estimate."}
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>

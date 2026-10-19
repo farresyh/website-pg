@@ -15,6 +15,7 @@ class PriceChangeLog extends Model
 {
     protected $fillable = [
         'price_sync_run_id',
+        'admin_user_id',
         'package_id',
         'old_cost_price',
         'new_cost_price',
@@ -32,6 +33,11 @@ class PriceChangeLog extends Model
     public function package(): BelongsTo
     {
         return $this->belongsTo(Package::class);
+    }
+
+    public function adminUser(): BelongsTo
+    {
+        return $this->belongsTo(AdminUser::class);
     }
 
     public function priceSyncRun(): BelongsTo

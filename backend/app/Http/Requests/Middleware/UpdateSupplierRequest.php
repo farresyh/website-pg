@@ -30,6 +30,8 @@ class UpdateSupplierRequest extends FormRequest
             'logo_url' => ['nullable', 'string', 'max:2048'],
             'currency' => ['sometimes', 'string', 'size:3'],
             'api_config' => ['sometimes', 'array'],
+            // ADR-125 decision 18 — a manual supplier only (SupplierController::update).
+            'funding_mode' => ['sometimes', 'in:prepaid,pay_after'],
         ];
     }
 }

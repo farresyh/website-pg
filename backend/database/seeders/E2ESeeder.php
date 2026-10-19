@@ -76,6 +76,43 @@ class E2ESeeder extends Seeder
             ['name' => 'E2E Fake Supplier', 'api_config' => [], 'currency' => 'MYR'],
         );
 
+        // ADR-125: a manual supplier for the login top-up golden path
+        // (e2e/tests/admin-login-topup.spec.ts). No fake needed: the real
+        // ManualSupplierAdapter makes no network call, it only answers
+        // Pending so the order lands in the Manual Queue.
+        Supplier::query()->firstOrCreate(
+            ['slug' => 'e2e-manual-supplier'],
+            ['name' => 'E2E Manual Supplier', 'driver' => Supplier::DRIVER_MANUAL, 'api_config' => [], 'currency' => 'MYR', 'is_active' => true],
+        );
+
+        // ADR-125 PR 2: the supplier WhatsApp bot golden path
+        // (e2e/tests/supplier-group-bot.spec.ts). A manual supplier with no
+        // group yet (the spec links one in Partners → Suppliers) and its own
+        // login game, so it never shares a queue with the spec above.
+        $botSupplier = Supplier::query()->firstOrCreate(
+            ['slug' => 'e2e-bot-supplier'],
+            ['name' => 'E2E Bot Supplier', 'driver' => Supplier::DRIVER_MANUAL, 'api_config' => [], 'currency' => 'MYR', 'is_active' => true],
+        );
+        $botGame = Game::query()->firstOrCreate(
+            ['slug' => 'e2e-bot-login'],
+            [
+                'name' => 'E2E Bot Login',
+                'category' => 'Mobile Game',
+                'is_active' => true,
+                'player_validator_enabled' => false,
+                'delivery_mode' => 'manual',
+                'delivery_subtext' => 'Within 30 minutes',
+                'validation_rules' => ['credential_fields' => [
+                    ['key' => 'email', 'label' => 'Login email', 'type' => 'email', 'required' => true, 'secret' => false, 'is_identifier' => true],
+                    ['key' => 'password', 'label' => 'Password', 'type' => 'password', 'required' => true, 'secret' => true, 'is_identifier' => false],
+                ]],
+            ],
+        );
+        Package::query()->firstOrCreate(
+            ['game_id' => $botGame->id, 'name' => '400 Robux'],
+            ['cost_price' => 2000, 'standard_selling_price' => 2000, 'markup_percent' => 15, 'is_active' => true, 'supplier_id' => $botSupplier->id, 'supplier_package_ref' => 'MANUAL-BOT'],
+        );
+
         $game = Game::query()->firstOrCreate(
             ['slug' => 'e2e-test-game'],
             [

@@ -92,9 +92,19 @@ final class FundedCostOfSales
      * figure (2026-10-10 addendum, decision 13). Cumulative over all
      * transfers, not IAS 2's opening-plus-purchases average: the
      * 2026-10-17 addendum's known limit H1.
+     *
+     * An MYR supplier is always 1.0 (ADR-125 2026-10-18 addendum, decision
+     * 30): its unit is a ringgit, with or without transfers, and whether a
+     * transfer fee belongs in unit cost waits for the accountant (PRD §16
+     * item 81). Every caller — COGS, supplier corrections, the month-end
+     * prepaid/payable — gets the same answer from here.
      */
     public function weightedAverageRate(int $supplierId, string $asOfDate): ?float
     {
+        if (Supplier::query()->whereKey($supplierId)->value('currency') === 'MYR') {
+            return 1.0;
+        }
+
         $transfers = SupplierTransfer::query()
             ->where('supplier_id', $supplierId)
             ->whereNull('voided_at')
@@ -157,19 +167,17 @@ final class FundedCostOfSales
     }
 
     /**
-     * MYR per supplier currency unit: 1 for an MYR supplier, the deposit's
-     * blended rate otherwise, null when there is no transfer to value it by.
+     * MYR per supplier currency unit (weightedAverageRate()): 1 for an MYR
+     * supplier, the deposit's blended rate otherwise, null when there is no
+     * transfer to value it by.
      *
      * @param  list<int|string>  $supplierIds
      * @return array<int, float|null>
      */
     private function rates(array $supplierIds, string $lastDay): array
     {
-        $supplierIds = array_values(array_unique(array_map('intval', $supplierIds)));
-        $currencies = Supplier::query()->whereIn('id', $supplierIds)->pluck('currency', 'id');
-
-        return collect($supplierIds)
-            ->mapWithKeys(fn (int $id) => [$id => $currencies[$id] === 'MYR' ? 1.0 : $this->weightedAverageRate($id, $lastDay)])
+        return collect(array_values(array_unique(array_map('intval', $supplierIds))))
+            ->mapWithKeys(fn (int $id) => [$id => $this->weightedAverageRate($id, $lastDay)])
             ->all();
     }
 

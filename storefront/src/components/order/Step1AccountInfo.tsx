@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { CheckCircle, WarningCircle, XCircle, ArrowSquareOut } from "@phosphor-icons/react/dist/ssr";
-import type { GameDetail } from "@/lib/catalog";
+import { isLoginGame, type GameDetail } from "@/lib/catalog";
+import LoginAccountFields, { loginFormReady } from "@/components/order/LoginAccountFields";
 import type { ValidatePlayerResult } from "@/lib/checkout";
 import Button from "@/components/ui/Button";
 import GameInfoModal, { GameInfoTriggerButton } from "@/components/order/GameInfoModal";
@@ -19,6 +20,11 @@ interface Step1AccountInfoProps {
   verifying: boolean;
   verifyError: string | null;
   result: ValidatePlayerResult | null;
+  /** ADR-125: a login game's form values and consent, owned by OrderForm. */
+  credentials: Record<string, string>;
+  setCredential: (key: string, value: string) => void;
+  credentialConsent: boolean;
+  setCredentialConsent: (value: boolean) => void;
 }
 
 const EXTRA_FIELD_LABEL: Record<"server_id" | "zone_id", string> = {
@@ -46,16 +52,22 @@ export default function Step1AccountInfo({
   verifying,
   verifyError,
   result,
+  credentials,
+  setCredential,
+  credentialConsent,
+  setCredentialConsent,
 }: Step1AccountInfoProps) {
+  const loginGame = isLoginGame(game);
   const playerIdError = inputError(playerId, "User ID", game.playerIdFormat === "text" ? "text" : "digits");
   const serverIdError = game.extraField
     ? inputError(serverId, EXTRA_FIELD_LABEL[game.extraField], game.extraField === "server_id" ? "digits" : "any")
     : null;
-  const idReady =
-    playerId.trim().length > 0 &&
-    (!game.extraField || serverId.trim().length > 0) &&
-    playerIdError === null &&
-    serverIdError === null;
+  const idReady = loginGame
+    ? loginFormReady(game.credentialFields, credentials, credentialConsent)
+    : playerId.trim().length > 0 &&
+      (!game.extraField || serverId.trim().length > 0) &&
+      playerIdError === null &&
+      serverIdError === null;
 
   // ADR-109 decisions 8/9/10 — auto-opens once per page load, only when
   // there's real content to show; the manual re-open button is gated
@@ -74,6 +86,16 @@ export default function Step1AccountInfo({
           onClose={() => setInfoOpen(false)}
         />
       )}
+      {loginGame ? (
+        <LoginAccountFields
+          fields={game.credentialFields}
+          values={credentials}
+          setValue={setCredential}
+          consentText={game.credentialConsentText}
+          consent={credentialConsent}
+          setConsent={setCredentialConsent}
+        />
+      ) : (
       <div className={`grid gap-3 ${game.extraField ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
         <div>
           <label htmlFor="playerId" className={labelClass}>
@@ -141,10 +163,11 @@ export default function Step1AccountInfo({
           </div>
         )}
       </div>
+      )}
 
       <div className={`mt-3.5 flex items-center ${hasInfoContent ? "justify-between" : "justify-end"}`}>
         {hasInfoContent && <GameInfoTriggerButton onClick={() => setInfoOpen(true)} />}
-        {game.playerValidatorEnabled ? (
+        {game.playerValidatorEnabled && !loginGame ? (
           <Button type="button" variant="outline" size="sm" onClick={() => onVerify()} disabled={verifying || !idReady}>
             {verifying ? "Verifying…" : "Verify Account"}
           </Button>

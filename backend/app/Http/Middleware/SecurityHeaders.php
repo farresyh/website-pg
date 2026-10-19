@@ -24,7 +24,11 @@ class SecurityHeaders
         if ($request->secure()) {
             $response->headers->set('Strict-Transport-Security', 'max-age=31536000');
         }
-        $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
+        // A route that sets its own (the supplier login link's `no-referrer`,
+        // ADR-124) keeps it; this is only the default.
+        if (! $response->headers->has('Referrer-Policy')) {
+            $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
+        }
         $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 
         return $response;

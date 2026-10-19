@@ -21,8 +21,14 @@ export interface DashboardHealthSupplier {
   id: number;
   name: string;
   slug: string;
-  /** In this supplier's own currency — never assume MYR (Digiflazz is IDR). */
-  balance: number;
+  /**
+   * In this supplier's own currency — never assume MYR (Digiflazz is IDR).
+   * Polled for an API supplier (null until first polled), the funding
+   * ledger for a manual one (ADR-125).
+   */
+  balance: number | null;
+  is_api_backed: boolean;
+  is_pay_after: boolean;
   currency: string;
   /** Display-only conversion (CurrencyRateService, cached ~24h). Null when unavailable — never a hardcoded MYR label. */
   balance_myr_equivalent: number | null;
@@ -47,8 +53,21 @@ export function formatSupplierBalance(amount: number, currency: string): string 
   return `${currency} ${amount.toLocaleString("en-MY", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
 }
 
-export function formatMyrEquivalent(amount: number | null): string | null {
-  if (amount === null) return null;
+/**
+ * ADR-125 decision 18: every supplier balance on screen goes through
+ * this. A pay-after supplier below zero is owed money, so it reads
+ * "Owed: …" rather than a negative balance.
+ */
+export function supplierBalanceLabel(balance: number | null, currency: string, isPayAfter: boolean): string {
+  if (balance === null) return "—";
+  if (isPayAfter && balance < 0) return `Owed: ${formatSupplierBalance(-balance, currency)}`;
+
+  return formatSupplierBalance(balance, currency);
+}
+
+/** Null for an MYR supplier: its balance already reads in ringgit (and "Owed" for a pay-after one). */
+export function formatMyrEquivalent(amount: number | null, currency: string): string | null {
+  if (amount === null || currency === "MYR") return null;
 
   return `≈ RM ${amount.toFixed(2)}`;
 }

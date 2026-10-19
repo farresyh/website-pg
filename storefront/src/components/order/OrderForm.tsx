@@ -13,7 +13,8 @@ import {
   type ValidatePlayerResult,
   type CheckoutTotalPreview,
 } from "@/lib/checkout";
-import { getGamePackages, type GameDetail, type GamePackage } from "@/lib/catalog";
+import { getGamePackages, isLoginGame, type GameDetail, type GamePackage } from "@/lib/catalog";
+import { loginIdentifier } from "@/components/order/LoginAccountFields";
 import { getMembershipToken } from "@/lib/membership-session";
 import { useMembershipToken } from "@/hooks/useMembershipToken";
 import { getMe, type MembershipPlan } from "@/lib/membership";
@@ -182,9 +183,14 @@ export default function OrderForm({
   // ID (and server or zone). Only prefilled: the customer still presses
   // Verify, so opening a link never costs a provider call.
   const searchParams = useSearchParams();
-  const [playerId, setPlayerIdRaw] = useState(() => (searchParams.get("player_id") ?? "").slice(0, 64));
+  // ADR-125: a login game never reads a Player ID from the URL.
+  const loginGame = isLoginGame(game);
+  const [playerId, setPlayerIdRaw] = useState(() => (loginGame ? "" : (searchParams.get("player_id") ?? "").slice(0, 64)));
   const [serverId, setServerIdRaw] = useState(() => (game.extraField ? (searchParams.get("server_id") ?? "").slice(0, 64) : ""));
   const [step1Continued, setStep1Continued] = useState(false);
+  // ADR-125 decision 32 + ADR-124 decision 8: React state only, never storage.
+  const [credentials, setCredentials] = useState<Record<string, string>>({});
+  const [credentialConsent, setCredentialConsentRaw] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [validationResult, setValidationResult] = useState<ValidatePlayerResult | null>(null);
@@ -352,6 +358,19 @@ export default function OrderForm({
       setValidationResult(null);
     }
   }
+  function updateCredential(key: string, value: string) {
+    setCredentials((prev) => ({ ...prev, [key]: value }));
+    if (step1Continued) setStep1Continued(false);
+  }
+  function setCredentialConsent(value: boolean) {
+    setCredentialConsentRaw(value);
+    if (!value && step1Continued) setStep1Continued(false);
+  }
+  // What the summary and review show for the account: the identifier
+  // only, never a secret field.
+  const accountLabel = loginGame ? (game.credentialFields.find((f) => f.isIdentifier)?.label ?? "Login") : "Player ID";
+  const accountValue = loginGame ? loginIdentifier(game.credentialFields, credentials) : playerId;
+
   function updateServerId(value: string) {
     setServerIdRaw(value);
     if (step1Continued) {
@@ -387,7 +406,7 @@ export default function OrderForm({
   const readyForReview = step1Continued && step2Complete && step3Complete;
 
   const steps: StepInfo[] = [
-    { label: "Enter ID", state: step1Continued ? "done" : "active" },
+    { label: loginGame ? "Enter Login" : "Enter ID", state: step1Continued ? "done" : "active" },
     { label: "Choose Package", state: step2Complete ? "done" : step1Continued ? "active" : "pending" },
     { label: "Payment Method", state: step3Complete ? "done" : step2Complete ? "active" : "pending" },
   ];
@@ -418,8 +437,9 @@ export default function OrderForm({
         customer_email: contact.data.customer_email,
         customer_name: contact.data.customer_name,
         customer_phone: contact.data.customer_phone,
-        player_id: playerId,
-        server_id: game.extraField ? serverId : undefined,
+        ...(loginGame
+          ? { credentials, credential_consent: credentialConsent }
+          : { player_id: playerId, server_id: game.extraField ? serverId : undefined }),
         channel_code: channelCode,
         idempotency_key: idempotencyKeyRef.current ?? crypto.randomUUID(),
         voucher_code: voucherCode ?? undefined,
@@ -480,6 +500,10 @@ export default function OrderForm({
             verifying={verifying}
             verifyError={verifyError}
             result={validationResult}
+            credentials={credentials}
+            setCredential={updateCredential}
+            credentialConsent={credentialConsent}
+            setCredentialConsent={setCredentialConsent}
           />
         </StepCard>
 
@@ -562,7 +586,8 @@ export default function OrderForm({
             game={game}
             selectedPackage={selectedPackage}
             preview={preview}
-            playerId={playerId}
+            playerId={accountValue}
+            playerLabel={accountLabel}
             serverId={game.extraField ? serverId : ""}
             ready={readyForReview}
             onReview={openReview}
@@ -604,7 +629,9 @@ export default function OrderForm({
           game={game}
           pkg={selectedPackage}
           preview={preview}
-          playerId={playerId}
+          playerId={accountValue}
+          playerLabel={accountLabel}
+          loginGame={loginGame}
           serverId={game.extraField ? serverId : ""}
           channelLabel={selectedChannel.label}
           customerEmail={contactEmail}

@@ -4,7 +4,6 @@ use App\Exceptions\ResellerApi\ResellerApiException;
 use App\Exceptions\ResellerApi\ResellerApiRejectionLog;
 use App\Http\Middleware\AllowActiveCustomDomainCors;
 use App\Http\Middleware\AllowAdminCorsCredentials;
-use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\EnsureAccountType;
 use App\Http\Middleware\EnsureAdminRole;
 use App\Http\Middleware\EnsureAdminSessionFresh;
@@ -12,10 +11,12 @@ use App\Http\Middleware\EnsureBrandMembershipEnabled;
 use App\Http\Middleware\EnsureResellerApiKey;
 use App\Http\Middleware\RequireMfaStepUp;
 use App\Http\Middleware\ResolveStorefrontBrand;
+use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetAffiliateContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Foundation\Http\Middleware\TrimStrings;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\ThrottleRequests;
@@ -53,6 +54,14 @@ return Application::configure(basePath: dirname(__DIR__))
         // correct everywhere in this app — nothing here has a login page
         // to redirect to.
         $middleware->redirectGuestsTo(fn () => null);
+
+        // ADR-125 decision 32: a customer's game password is sent exactly
+        // as typed; CheckoutInputValidator trims the non-secret fields
+        // itself.
+        $middleware->trimStrings(except: ['credentials.*']);
+        // The admin's replacement of a secret field (ADR-124) is a
+        // password too; this route takes nothing else to trim.
+        TrimStrings::skipWhen(fn (Request $request) => $request->is('api/orders/*/credentials'));
 
         // ADR-121: Sanctum SPA mode. Only requests from a stateful origin
         // (the admin app, config/sanctum.php) get cookies, a session and

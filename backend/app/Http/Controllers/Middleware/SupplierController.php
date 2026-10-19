@@ -3,19 +3,19 @@
 namespace App\Http\Controllers\Middleware;
 
 use App\Http\Controllers\Controller;
-use App\Http\Controllers\GameController;
 use App\Http\Requests\Middleware\BulkUpdateSupplierPackagesStatusRequest;
 use App\Http\Requests\Middleware\CreateSupplierRequest;
 use App\Http\Requests\Middleware\UpdateSupplierRequest;
 use App\Http\Requests\Middleware\UpdateSupplierStatusRequest;
-use App\Models\DeactivationLog;
 use App\Models\Package;
 use App\Models\Supplier;
+use App\Models\WhatsAppGroup;
 use App\Services\CircuitBreaker\CircuitBreaker;
-use App\Services\Pricing\ComboPricingService;
+use App\Services\Supplier\Manual\ManualSupplierStatusService;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierConfigSchema;
 use App\Services\Supplier\SupplierNotConfiguredException;
+use App\Services\Supplier\SupplierPackageStatusService;
 use App\Services\Supplier\UnsupportedSupplierException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -63,7 +63,7 @@ class SupplierController extends Controller
                 // should actually gate on — every key
                 // SupplierConfigSchema defines for this slug present,
                 // not merely "not empty".
-                'is_fully_configured' => SupplierConfigSchema::missingKeys($supplier->slug, $supplier->api_config ?? []) === [],
+                'is_fully_configured' => SupplierConfigSchema::missingKeys($supplier->driver, $supplier->api_config ?? []) === [],
                 // Per-secret-field presence (never the value itself,
                 // same SUPP-5 boundary visibleConfig() already
                 // enforces) — lets the Edit form's per-field badge
@@ -73,6 +73,10 @@ class SupplierController extends Controller
                 'configured_secret_keys' => $this->configuredSecretKeys($supplier),
                 'visible_config' => $this->visibleConfig($supplier),
                 'is_sandbox' => $this->isSandbox($supplier),
+                // ADR-125 decisions 2 and 18: a manual supplier has no API
+                // to poll, so its balance is its funding ledger.
+                'is_api_backed' => $supplier->isApiBacked(),
+                'display_balance' => $supplier->displayBalance(),
                 'reference_counts' => $this->referenceCounts($supplier),
             ]);
         })->values();
@@ -81,13 +85,13 @@ class SupplierController extends Controller
     }
 
     /**
-     * ADR-046 decision 4 — backs the Create modal's slug dropdown with
+     * ADR-046 decision 4 — backs the Create modal's driver dropdown with
      * the same source of truth CreateSupplierRequest validates
      * against, so the two can never drift apart.
      */
-    public function availableSlugs(SupplierAdapterFactory $adapters): JsonResponse
+    public function availableDrivers(SupplierAdapterFactory $adapters): JsonResponse
     {
-        return response()->json($adapters->registeredSlugs());
+        return response()->json($adapters->registeredDrivers());
     }
 
     public function store(CreateSupplierRequest $request): JsonResponse
@@ -95,7 +99,13 @@ class SupplierController extends Controller
         $data = $request->validated();
 
         if (array_key_exists('api_config', $data)) {
-            $data['api_config'] = SupplierConfigSchema::normalizeConfig($data['slug'], $data['api_config']);
+            $data['api_config'] = SupplierConfigSchema::normalizeConfig($data['driver'], $data['api_config']);
+        }
+
+        // ADR-125 decision 56: a manual supplier starts inactive. It is
+        // switched on once its WhatsApp group is linked (Partners → Suppliers).
+        if ($data['driver'] === Supplier::DRIVER_MANUAL) {
+            $data['is_active'] = false;
         }
 
         $supplier = Supplier::query()->create(array_merge(['api_config' => []], $data));
@@ -121,9 +131,18 @@ class SupplierController extends Controller
         $data = $request->validated();
         $configChanged = array_key_exists('api_config', $data);
 
+        // ADR-125 decision 18: an API supplier is always prepaid.
+        if (array_key_exists('funding_mode', $data) && $supplier->isApiBacked() && $data['funding_mode'] !== Supplier::FUNDING_PREPAID) {
+            throw ValidationException::withMessages(['funding_mode' => ['An API supplier is always prepaid.']]);
+        }
+        // ADR-125 decision 9: a manual supplier is paid in RM.
+        if (array_key_exists('currency', $data) && ! $supplier->isApiBacked() && $data['currency'] !== 'MYR') {
+            throw ValidationException::withMessages(['currency' => ['A manual supplier is paid in MYR.']]);
+        }
+
         if ($configChanged) {
             $data['api_config'] = SupplierConfigSchema::normalizeConfig(
-                $supplier->slug,
+                $supplier->driver,
                 array_merge($supplier->api_config ?? [], $data['api_config']),
             );
         }
@@ -138,7 +157,7 @@ class SupplierController extends Controller
         // such a path) must surface now, not only when the next order
         // fails. Probe the connection right after saving and hand the
         // result back for the form to show. Never blocks the save.
-        if ($configChanged) {
+        if ($configChanged && $supplier->isApiBacked()) {
             $payload['connection_probe'] = $this->probeConnection($supplier, $adapters);
         }
 
@@ -162,7 +181,7 @@ class SupplierController extends Controller
     private function probeConnection(Supplier $supplier, SupplierAdapterFactory $adapters): array
     {
         try {
-            $adapter = $adapters->make($supplier->slug);
+            $adapter = $adapters->for($supplier);
         } catch (UnsupportedSupplierException|SupplierNotConfiguredException $e) {
             return ['connection_ok' => false, 'balance' => null, 'error' => $e->getMessage()];
         }
@@ -203,8 +222,16 @@ class SupplierController extends Controller
      * 4) — the confirm warning itself is a frontend concern, this just
      * flips the flag.
      */
-    public function updateStatus(UpdateSupplierStatusRequest $request, Supplier $supplier): JsonResponse
+    public function updateStatus(UpdateSupplierStatusRequest $request, Supplier $supplier, ManualSupplierStatusService $manual): JsonResponse
     {
+        // ADR-125 decision 64: a manual supplier's switch also takes its
+        // packages on and off sale; an API supplier's flag stays as it was.
+        if (! $supplier->isApiBacked()) {
+            $manual->setActive($supplier, $request->validated('is_active'), $request->user()->id);
+
+            return response()->json($supplier->fresh());
+        }
+
         $supplier->update(['is_active' => $request->validated('is_active')]);
 
         return response()->json($supplier->fresh());
@@ -228,7 +255,10 @@ class SupplierController extends Controller
             ]);
         }
 
-        $supplier->delete();
+        DB::transaction(function () use ($supplier) {
+            WhatsAppGroup::query()->where('owner_type', WhatsAppGroup::OWNER_SUPPLIER)->where('owner_id', $supplier->id)->delete();
+            $supplier->delete();
+        });
 
         return response()->json(null, 204);
     }
@@ -242,8 +272,12 @@ class SupplierController extends Controller
      */
     public function refreshBalance(Supplier $supplier, SupplierAdapterFactory $adapters): JsonResponse
     {
+        if (! $supplier->isApiBacked()) {
+            throw ValidationException::withMessages(['supplier' => ['A manual supplier has no API balance; its balance is its funding ledger.']]);
+        }
+
         try {
-            $adapter = $adapters->make($supplier->slug);
+            $adapter = $adapters->for($supplier);
         } catch (UnsupportedSupplierException|SupplierNotConfiguredException $e) {
             throw ValidationException::withMessages(['supplier' => [$e->getMessage()]]);
         }
@@ -280,99 +314,13 @@ class SupplierController extends Controller
      * deactivated for an unrelated reason (supplier_sync/price_anomaly),
      * silently bypassing ADR-025's swing-review safety net.
      */
-    public function updatePackagesStatus(BulkUpdateSupplierPackagesStatusRequest $request, Supplier $supplier, ComboPricingService $comboPricing): JsonResponse
+    public function updatePackagesStatus(BulkUpdateSupplierPackagesStatusRequest $request, Supplier $supplier, SupplierPackageStatusService $packages): JsonResponse
     {
-        $isActive = $request->validated('is_active');
         $gameId = $request->validated('game_id');
 
-        $query = Package::query()->where('supplier_id', $supplier->id);
-
-        if ($gameId !== null) {
-            $query->where('game_id', $gameId);
-        }
-
-        if ($isActive) {
-            $query->where('is_active', false)->where('deactivated_reason', 'supplier_issue');
-
-            $clone = clone $query;
-            $packageIds = (clone $query)->pluck('id');
-            $gameIds = $clone->distinct()->pluck('game_id')->all();
-
-            $affectedComboCount = 0;
-
-            DB::transaction(function () use ($query, $packageIds, $request, $comboPricing, &$affectedComboCount) {
-                $query->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
-
-                // Addendum (2026-09-24) — a combo cascade-deactivated
-                // because one of these components went down can now
-                // complete, once every other component is active too.
-                // Its own game is always one of $gameIds above (a
-                // combo's components all share its game — enforced at
-                // creation), so no separate cache-forget is needed here.
-                $affectedComboCount = $comboPricing->cascadeReactivateForComponents(
-                    $packageIds,
-                    priceSyncRunId: null,
-                    adminUserId: $request->user()->id,
-                )->count();
-            });
-
-            foreach ($gameIds as $gId) {
-                GameController::forgetPackagesCache($gId, false);
-            }
-            if ($gameIds !== []) {
-                GameController::forgetIndexCache();
-            }
-
-            return response()->json(['updated' => $packageIds->count(), 'updated_combos' => $affectedComboCount]);
-        }
-
-        $query->where('is_active', true);
-
-        $clone = clone $query;
-        $packageIds = (clone $query)->pluck('id');
-        $gameIds = $clone->distinct()->pluck('game_id')->all();
-
-        $affectedComboCount = 0;
-
-        DB::transaction(function () use ($query, $packageIds, $request, $comboPricing, &$affectedComboCount) {
-            $query->update(['is_active' => false, 'deactivated_reason' => 'supplier_issue', 'deactivated_at' => now()]);
-
-            $now = now();
-            $rows = $packageIds->map(fn (int $packageId) => [
-                'package_id' => $packageId,
-                'admin_user_id' => $request->user()->id,
-                'reason' => $request->validated('reason'),
-                'created_at' => $now,
-                'updated_at' => $now,
-            ])->all();
-
-            if ($rows !== []) {
-                DeactivationLog::query()->insert($rows);
-            }
-
-            // Addendum (2026-09-24) — this bulk toggle used to bypass
-            // combo cascade entirely (a raw mass update, not a per-row
-            // loop through the single-component cascadeDeactivate()
-            // every other deactivation path already uses), leaving a
-            // combo listed active while one of its legs went dark. Its
-            // own game is always one of $gameIds above, same reasoning
-            // as the reactivate branch.
-            $affectedComboCount = $comboPricing->cascadeDeactivateForComponents(
-                $packageIds,
-                priceSyncRunId: null,
-                adminUserId: $request->user()->id,
-                reason: $request->validated('reason'),
-            )->count();
-        });
-
-        foreach ($gameIds as $gId) {
-            GameController::forgetPackagesCache($gId, false);
-        }
-        if ($gameIds !== []) {
-            GameController::forgetIndexCache();
-        }
-
-        return response()->json(['updated' => $packageIds->count(), 'updated_combos' => $affectedComboCount]);
+        return response()->json($request->validated('is_active')
+            ? $packages->reactivate($supplier, $request->user()->id, $gameId)
+            : $packages->deactivate($supplier, $request->user()->id, $request->validated('reason'), $gameId));
     }
 
     /**
@@ -380,7 +328,7 @@ class SupplierController extends Controller
      */
     private function visibleConfig(Supplier $supplier): array
     {
-        $definition = SupplierConfigSchema::fieldsFor($supplier->slug);
+        $definition = SupplierConfigSchema::fieldsFor($supplier->driver);
         $apiConfig = $supplier->api_config ?? [];
 
         $visible = [];
@@ -403,7 +351,7 @@ class SupplierController extends Controller
      */
     private function configuredSecretKeys(Supplier $supplier): array
     {
-        $definition = SupplierConfigSchema::fieldsFor($supplier->slug);
+        $definition = SupplierConfigSchema::fieldsFor($supplier->driver);
         $apiConfig = $supplier->api_config ?? [];
 
         return collect($definition)
@@ -426,7 +374,7 @@ class SupplierController extends Controller
      */
     private function isSandbox(Supplier $supplier): ?bool
     {
-        return SupplierConfigSchema::isSandbox($supplier->slug, $supplier->api_config ?? []);
+        return SupplierConfigSchema::isSandbox($supplier->driver, $supplier->api_config ?? []);
     }
 
     /**

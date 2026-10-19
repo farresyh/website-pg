@@ -14,6 +14,7 @@ use App\Models\AffiliateMembershipTier;
 use App\Models\AffiliateSubscription;
 use App\Models\BackupRun;
 use App\Models\Order;
+use App\Models\PlatformSettings;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
 use App\Observers\AffiliateMembershipTierObserver;
@@ -44,6 +45,7 @@ use App\Services\Supplier\CircuitBreakingSupplierAdapter;
 use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
 use App\Services\Supplier\FakeSupplierAdapter;
 use App\Services\Supplier\Gamevion\GamevionAdapter;
+use App\Services\Supplier\Manual\ManualSupplierAdapter;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierConfigSchema;
@@ -127,6 +129,10 @@ class AppServiceProvider extends ServiceProvider
         // registers the same Fake under `supplier-adapter.e2e-fake-supplier`,
         // the slug E2ESeeder actually gives its Supplier row, since
         // that's the key OrderFulfillmentService now resolves by.
+        // ADR-125 decision 1: one adapter for every manual supplier, in every
+        // environment — it has no credentials and makes no network call.
+        $this->app->bind('supplier-adapter.'.Supplier::DRIVER_MANUAL, fn () => new ManualSupplierAdapter);
+
         if ($this->app->environment('e2e')) {
             $this->app->bind(SupplierAdapter::class, fn () => new FakeSupplierAdapter(simulateSuccess: true));
             $this->app->bind('supplier-adapter.e2e-fake-supplier', fn () => new FakeSupplierAdapter(simulateSuccess: true));
@@ -592,6 +598,11 @@ class AppServiceProvider extends ServiceProvider
         // per IP. Public numbers: docs-site/src/content/docs/rate-limits.md.
         RateLimiter::for('reseller-api-orders', fn (Request $request) => Limit::perMinute(60)->by(self::resellerApiBucket($request)));
         RateLimiter::for('reseller-api-reads', fn (Request $request) => Limit::perMinute(120)->by(self::resellerApiBucket($request)));
+
+        // ADR-124 decision 5: reveals of a customer's game login, per admin,
+        // limit set in Settings → Customer Login Policy.
+        RateLimiter::for('credential-reveal', fn (Request $request) => Limit::perHour(PlatformSettings::current()->credential_reveal_limit_per_hour)
+            ->by('admin:'.$request->user()->id));
     }
 
     private static function resellerApiBucket(Request $request): string

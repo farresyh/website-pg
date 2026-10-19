@@ -2,8 +2,11 @@
 
 namespace App\Http\Requests\Games;
 
+use App\Models\Game;
+use App\Services\Catalog\GameFulfilmentRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 /**
  * GAME-3/GAME-4: admin edits a Game's own display fields and
@@ -34,6 +37,9 @@ use Illuminate\Validation\Rule;
  * ADR-109's customer-facing info-modal + delivery-badge fields —
  * catalog-display, same side of the split as everything else in this
  * FormRequest.
+ *
+ * `member_pricing_enabled`: ADR-125 decision 7. A login game is held to
+ * GameFulfilmentRule::loginGameSettings() (decisions 5/33/46).
  */
 class UpdateGameRequest extends FormRequest
 {
@@ -72,6 +78,23 @@ class UpdateGameRequest extends FormRequest
             'is_active' => ['required', 'boolean'],
             'player_validator_profile_id' => ['nullable', 'integer', Rule::exists('player_validator_profiles', 'id')],
             'player_validator_enabled' => ['sometimes', 'boolean'],
+            'member_pricing_enabled' => ['sometimes', 'boolean'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            /** @var Game $game */
+            $game = $this->route('game');
+
+            if ($validator->errors()->isNotEmpty() || ! $game->isLoginGame()) {
+                return;
+            }
+
+            foreach (GameFulfilmentRule::loginGameSettings($this->all(), $game) as $field => $message) {
+                $validator->errors()->add($field, $message);
+            }
+        });
     }
 }

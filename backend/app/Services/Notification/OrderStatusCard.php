@@ -3,6 +3,7 @@
 namespace App\Services\Notification;
 
 use App\Models\Order;
+use App\Models\PlatformSettings;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 
@@ -14,14 +15,16 @@ use App\Services\Order\PaymentStatus;
  * deliberately not a competitor's "label: value" list.
  *
  * It shows only what the public track-order page already shows to anyone
- * holding the order number, never the full email or phone.
+ * holding the order number, never the full email or phone. A login order
+ * (ADR-125 decisions 24/31) shows its masked login instead of a Player ID,
+ * and its Delivered line asks the buyer to change their password.
  */
 final class OrderStatusCard
 {
     /** @param  array{name: string, host: string}  $brand */
     public static function render(Order $order, array $brand): string
     {
-        $player = $order->player_id.($order->server_id ? " ({$order->server_id})" : '');
+        $player = ($order->isLoginOrder() ? 'login ' : 'Player ID ').$order->publicPlayerLabel();
         $item = ($order->package?->name ?? 'Top up').($order->game?->name ? ' · '.$order->game->name : '');
 
         return implode("\n", [
@@ -51,11 +54,11 @@ final class OrderStatusCard
         }
 
         return match ($order->delivery_status) {
-            DeliveryStatus::Delivered => ["✅ Paid · {$paid}", '✅ Processed', "✅ Delivered to Player ID {$player}"],
-            DeliveryStatus::Failed => ["✅ Paid · {$paid}", "❌ Delivery failed · Player ID {$player}"],
-            DeliveryStatus::NeedsReview => ["✅ Paid · {$paid}", '🔎 Under review', "○ Delivery to Player ID {$player}"],
-            DeliveryStatus::PartiallyDelivered => ["✅ Paid · {$paid}", "⚠️ Partly delivered · Player ID {$player}"],
-            default => ["✅ Paid · {$paid}", '⏳ Processing', "○ Delivery to Player ID {$player}"],
+            DeliveryStatus::Delivered => ["✅ Paid · {$paid}", '✅ Processed', "✅ Delivered to {$player}"],
+            DeliveryStatus::Failed => ["✅ Paid · {$paid}", "❌ Delivery failed · {$player}"],
+            DeliveryStatus::NeedsReview => ["✅ Paid · {$paid}", '🔎 Under review', "○ Delivery to {$player}"],
+            DeliveryStatus::PartiallyDelivered => ["✅ Paid · {$paid}", "⚠️ Partly delivered · {$player}"],
+            default => ["✅ Paid · {$paid}", '⏳ Processing', "○ Delivery to {$player}"],
         };
     }
 
@@ -71,7 +74,10 @@ final class OrderStatusCard
         }
 
         return match ($order->delivery_status) {
-            DeliveryStatus::Delivered => "Your top-up is in your game account. Enjoyed it? Leave a quick review:\nhttps://{$brand['host']}/order/status/{$order->order_number}",
+            DeliveryStatus::Delivered => ($order->isLoginOrder()
+                ? 'Your top-up is done. We delete your login within about '.PlatformSettings::current()->credential_close_grace_hours.' hours. Please change your game password now.'
+                : 'Your top-up is in your game account.')
+                ." Enjoyed it? Leave a quick review:\nhttps://{$brand['host']}/order/status/{$order->order_number}",
             // Item 116: OrderSettlementService refunds final_amount − transaction_fee.
             DeliveryStatus::Failed => "We couldn't complete this order. Our team is on it, and if it can't be delivered you'll receive a voucher here for what you paid, excluding the payment fee.",
             DeliveryStatus::NeedsReview => "Our team is checking this order manually. We'll message you here as soon as it's resolved.",

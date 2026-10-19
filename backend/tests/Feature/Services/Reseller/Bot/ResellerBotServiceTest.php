@@ -9,9 +9,9 @@ use App\Models\Package;
 use App\Models\Reseller;
 use App\Models\ResellerBotCommandLog;
 use App\Models\ResellerTier;
-use App\Models\ResellerWhatsAppGroup;
-use App\Models\ResellerWhatsAppPendingLink;
 use App\Models\Supplier;
+use App\Models\WhatsAppGroup;
+use App\Models\WhatsAppPendingLink;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Reseller\Bot\ResellerBotService;
@@ -39,7 +39,7 @@ class ResellerBotServiceTest extends TestCase
     {
         app(ResellerBotService::class)->handle('unlinked@g.us', 'hi there', 'msg-1');
 
-        $this->assertDatabaseHas('reseller_whatsapp_pending_links', ['whatsapp_group_id' => 'unlinked@g.us']);
+        $this->assertDatabaseHas('whatsapp_pending_links', ['whatsapp_group_id' => 'unlinked@g.us']);
     }
 
     public function test_balance_command_reports_the_wallet_balance(): void
@@ -92,7 +92,7 @@ class ResellerBotServiceTest extends TestCase
         app(ResellerBotService::class)->handle('unlinked@g.us', '.baki', 'msg-1');
 
         Queue::assertNotPushed(SendResellerBotReplyJob::class);
-        $this->assertDatabaseHas('reseller_whatsapp_pending_links', ['whatsapp_group_id' => 'unlinked@g.us']);
+        $this->assertDatabaseHas('whatsapp_pending_links', ['whatsapp_group_id' => 'unlinked@g.us']);
     }
 
     // --- Item 37 (2026-09-26 audit): `.list` must not leak cost price
@@ -103,7 +103,7 @@ class ResellerBotServiceTest extends TestCase
         $this->makePackage();
         $this->primaryAffiliate();
         $reseller = Reseller::query()->create(['business_name' => 'No Tier Co', 'reseller_tier_id' => null, 'is_active' => true]);
-        ResellerWhatsAppGroup::query()->create(['reseller_id' => $reseller->id, 'whatsapp_group_id' => self::GROUP_ID, 'is_active' => true]);
+        WhatsAppGroup::query()->create(['owner_type' => 'reseller', 'owner_id' => $reseller->id, 'whatsapp_group_id' => self::GROUP_ID, 'is_active' => true]);
 
         app(ResellerBotService::class)->handle(self::GROUP_ID, '.list MLMY', 'msg-1');
 
@@ -183,7 +183,7 @@ class ResellerBotServiceTest extends TestCase
 
         app(ResellerBotService::class)->handle(self::GROUP_ID, '.baki', 'msg-1');
 
-        $this->assertSame(0, ResellerWhatsAppPendingLink::query()->count());
+        $this->assertSame(0, WhatsAppPendingLink::query()->count());
     }
 
     public function test_info_command_runs_without_error(): void
@@ -233,7 +233,7 @@ class ResellerBotServiceTest extends TestCase
         $tier = ResellerTier::query()->create(['name' => 'Silver', 'markup_percent' => 5, 'is_active' => true, 'sort_order' => 2]);
         $otherReseller = Reseller::query()->create(['business_name' => 'Other', 'reseller_tier_id' => $tier->id, 'is_active' => true]);
         app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $otherReseller->id);
-        ResellerWhatsAppGroup::query()->create(['reseller_id' => $otherReseller->id, 'whatsapp_group_id' => 'g2@g.us', 'is_active' => true]);
+        WhatsAppGroup::query()->create(['owner_type' => 'reseller', 'owner_id' => $otherReseller->id, 'whatsapp_group_id' => 'g2@g.us', 'is_active' => true]);
 
         app(ResellerBotService::class)->handle('g2@g.us', ".trackorder {$order->order_number}", 'msg-2');
 

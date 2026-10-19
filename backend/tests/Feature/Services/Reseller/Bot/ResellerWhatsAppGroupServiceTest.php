@@ -4,9 +4,9 @@ namespace Tests\Feature\Services\Reseller\Bot;
 
 use App\Models\Reseller;
 use App\Models\ResellerTier;
-use App\Models\ResellerWhatsAppGroup;
-use App\Models\ResellerWhatsAppPendingLink;
-use App\Services\Reseller\Bot\ResellerWhatsAppGroupService;
+use App\Models\WhatsAppGroup;
+use App\Models\WhatsAppPendingLink;
+use App\Services\WhatsApp\WhatsAppGroupService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -15,12 +15,12 @@ class ResellerWhatsAppGroupServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    private ResellerWhatsAppGroupService $service;
+    private WhatsAppGroupService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new ResellerWhatsAppGroupService;
+        $this->service = new WhatsAppGroupService;
     }
 
     private function reseller(): Reseller
@@ -33,7 +33,7 @@ class ResellerWhatsAppGroupServiceTest extends TestCase
     public function test_resolves_reseller_for_an_active_linked_group(): void
     {
         $reseller = $this->reseller();
-        ResellerWhatsAppGroup::query()->create(['reseller_id' => $reseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => true]);
+        WhatsAppGroup::query()->create(['owner_type' => 'reseller', 'owner_id' => $reseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => true]);
 
         $resolved = $this->service->resolveReseller('g1@g.us');
 
@@ -44,7 +44,7 @@ class ResellerWhatsAppGroupServiceTest extends TestCase
     public function test_returns_null_for_an_inactive_linked_group(): void
     {
         $reseller = $this->reseller();
-        ResellerWhatsAppGroup::query()->create(['reseller_id' => $reseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => false]);
+        WhatsAppGroup::query()->create(['owner_type' => 'reseller', 'owner_id' => $reseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => false]);
 
         $this->assertNull($this->service->resolveReseller('g1@g.us'));
     }
@@ -57,13 +57,13 @@ class ResellerWhatsAppGroupServiceTest extends TestCase
     public function test_capture_pending_creates_a_row_and_bumps_it_on_repeat(): void
     {
         $this->service->capturePending('g1@g.us', 'hello');
-        $first = ResellerWhatsAppPendingLink::query()->where('whatsapp_group_id', 'g1@g.us')->first();
+        $first = WhatsAppPendingLink::query()->where('whatsapp_group_id', 'g1@g.us')->first();
 
         $this->travel(5)->minutes();
         $this->service->capturePending('g1@g.us', 'second message');
 
-        $this->assertSame(1, ResellerWhatsAppPendingLink::query()->count());
-        $updated = ResellerWhatsAppPendingLink::query()->where('whatsapp_group_id', 'g1@g.us')->first();
+        $this->assertSame(1, WhatsAppPendingLink::query()->count());
+        $updated = WhatsAppPendingLink::query()->where('whatsapp_group_id', 'g1@g.us')->first();
         $this->assertSame('second message', $updated->last_message_preview);
         $this->assertTrue($updated->last_message_at->gt($first->last_message_at));
     }
@@ -73,28 +73,28 @@ class ResellerWhatsAppGroupServiceTest extends TestCase
         $reseller = $this->reseller();
         $this->service->capturePending('g1@g.us', 'hi');
 
-        $group = $this->service->link($reseller, 'g1@g.us');
+        $group = $this->service->linkReseller($reseller, 'g1@g.us');
 
-        $this->assertSame($reseller->id, $group->reseller_id);
+        $this->assertSame($reseller->id, $group->owner_id);
         $this->assertTrue($group->is_active);
-        $this->assertSame(0, ResellerWhatsAppPendingLink::query()->count());
+        $this->assertSame(0, WhatsAppPendingLink::query()->count());
     }
 
     public function test_unlink_deactivates_without_deleting(): void
     {
         $reseller = $this->reseller();
-        $group = ResellerWhatsAppGroup::query()->create(['reseller_id' => $reseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => true]);
+        $group = WhatsAppGroup::query()->create(['owner_type' => 'reseller', 'owner_id' => $reseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => true]);
 
         $this->service->unlink($group);
 
         $this->assertFalse($group->fresh()->is_active);
-        $this->assertSame(1, ResellerWhatsAppGroup::query()->count());
+        $this->assertSame(1, WhatsAppGroup::query()->count());
     }
 
     public function test_reactivate_flips_it_back_on(): void
     {
         $reseller = $this->reseller();
-        $group = ResellerWhatsAppGroup::query()->create(['reseller_id' => $reseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => false]);
+        $group = WhatsAppGroup::query()->create(['owner_type' => 'reseller', 'owner_id' => $reseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => false]);
 
         $this->service->reactivate($group);
 
@@ -103,13 +103,13 @@ class ResellerWhatsAppGroupServiceTest extends TestCase
 
     public function test_prune_expired_pending_links_deletes_only_stale_rows(): void
     {
-        ResellerWhatsAppPendingLink::query()->create(['whatsapp_group_id' => 'stale@g.us', 'last_message_at' => now()->subHours(25)]);
-        ResellerWhatsAppPendingLink::query()->create(['whatsapp_group_id' => 'fresh@g.us', 'last_message_at' => now()->subHours(1)]);
+        WhatsAppPendingLink::query()->create(['whatsapp_group_id' => 'stale@g.us', 'last_message_at' => now()->subHours(25)]);
+        WhatsAppPendingLink::query()->create(['whatsapp_group_id' => 'fresh@g.us', 'last_message_at' => now()->subHours(1)]);
 
         $deleted = $this->service->pruneExpiredPendingLinks(24);
 
         $this->assertSame(1, $deleted);
-        $this->assertDatabaseHas('reseller_whatsapp_pending_links', ['whatsapp_group_id' => 'fresh@g.us']);
-        $this->assertDatabaseMissing('reseller_whatsapp_pending_links', ['whatsapp_group_id' => 'stale@g.us']);
+        $this->assertDatabaseHas('whatsapp_pending_links', ['whatsapp_group_id' => 'fresh@g.us']);
+        $this->assertDatabaseMissing('whatsapp_pending_links', ['whatsapp_group_id' => 'stale@g.us']);
     }
 }

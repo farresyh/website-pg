@@ -10,6 +10,7 @@ use App\Services\Order\PlacedVia;
 use App\Services\Pricing\PricingBasis;
 use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
+use App\Support\ContactMask;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -26,6 +27,9 @@ class Order extends Model
 
     /** @use HasFactory<OrderFactory> */
     use HasFactory;
+
+    /** A declared property, so Eloquent's __set never turns it into a column. */
+    private ?bool $isLoginOrderCache = null;
 
     protected $fillable = [
         'order_number',
@@ -114,6 +118,53 @@ class Order extends Model
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);
+    }
+
+    /**
+     * The supplier that fulfils this order. A combo has no supplier of its
+     * own (ADR-094 decision 3); its components share one (decision 4).
+     */
+    public function fulfilmentSupplier(): ?Supplier
+    {
+        return $this->package?->is_combo
+            ? $this->package->components->first()?->supplier
+            : $this->supplier;
+    }
+
+    /**
+     * ADR-125 decision 38: a login order is one with a credential row,
+     * never read from the game (`orders.game_id` has no foreign key and a
+     * schema can be removed later). Memoized per instance.
+     */
+    public function isLoginOrder(): bool
+    {
+        return $this->isLoginOrderCache ??= OrderCredential::query()->where('order_id', $this->id)->exists();
+    }
+
+    /**
+     * ADR-125 decisions 31/38: what a customer-facing surface shows for the
+     * account the order went to — the masked login for a login order, the
+     * Player ID (and Server ID) otherwise. Admin surfaces keep the raw value.
+     */
+    public function publicPlayerLabel(): string
+    {
+        if ($this->isLoginOrder()) {
+            return (string) ContactMask::identifier($this->player_id);
+        }
+
+        return $this->player_id.($this->server_id ? " ({$this->server_id})" : '');
+    }
+
+    /** ADR-125 decision 3: Pending past its supplier's stale window (Supplier::pendingPolicy()). */
+    public function isStalePending(): bool
+    {
+        if ($this->delivery_status !== DeliveryStatus::Pending) {
+            return false;
+        }
+
+        $policy = $this->fulfilmentSupplier()?->pendingPolicy() ?? Supplier::defaultPendingPolicy();
+
+        return $this->updated_at->lte(now()->subMinutes($policy['stale_minutes']));
     }
 
     /**
@@ -367,7 +418,7 @@ class Order extends Model
     {
         return $this->delivery_status === DeliveryStatus::NeedsReview
             && $target->id !== $this->package_id
-            && SupplierAdapterFactory::resubmitReplaysOutcome((string) $this->supplier?->slug);
+            && SupplierAdapterFactory::resubmitReplaysOutcome($this->supplier);
     }
 
     /**
@@ -429,17 +480,43 @@ class Order extends Model
             ->where('payment_status', PaymentStatus::Paid->value)
             // ADR-094 decision 30 — the compensable statuses.
             ->whereIn('delivery_status', [DeliveryStatus::Failed->value, DeliveryStatus::PartiallyDelivered->value])
-            ->whereDoesntHave('voucher')
-            ->whereDoesntHave('voucherRedemption', fn (Builder $q) => $q->where('status', 'restored'))
-            ->whereNotExists(function ($q) {
-                $q->selectRaw('1')
+            ->whereNot(fn (Builder $q) => $q->compensated());
+    }
+
+    /**
+     * The query-level mirror of isAlreadyCompensated() (ADR-124 2026-10-18
+     * addendum, decision 5): a compensation voucher, a restored voucher
+     * redemption, or a reseller-wallet refund. The one place this rule is
+     * written for queries; OrderCompensationScopeTest holds it equal to
+     * the method.
+     */
+    public function scopeCompensated(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q
+            ->whereHas('voucher')
+            ->orWhereHas('voucherRedemption', fn (Builder $r) => $r->where('status', 'restored'))
+            ->orWhereExists(function ($e) {
+                $e->selectRaw('1')
                     ->from('ledger_entries')
                     ->where('ledger_entries.owner_type', LedgerOwnerType::ResellerWallet->value)
                     ->where('ledger_entries.type', 'wallet_refund')
                     ->where('ledger_entries.reference_type', 'order')
                     ->whereColumn('ledger_entries.reference_id', 'orders.id')
                     ->whereColumn('ledger_entries.owner_id', 'orders.wallet_reseller_id');
-            });
+            }));
+    }
+
+    /**
+     * ADR-124 2026-10-18 addendum, decision 3: an order nothing will
+     * deliver again — Delivered (no exit in OrderStatusService), or
+     * compensated (refused by fulfill() and every resend/retry/settle
+     * guard, ADR-102 decision 1).
+     */
+    public function scopeClosed(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q
+            ->where('delivery_status', DeliveryStatus::Delivered->value)
+            ->orWhere(fn (Builder $c) => $c->compensated()));
     }
 
     /**

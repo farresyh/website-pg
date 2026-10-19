@@ -4,8 +4,8 @@ namespace App\Http\Requests\Admin;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-/** PR-F build addendum decision 3: admin links a captured pending WhatsApp group id to a Reseller. */
-class LinkResellerWhatsAppGroupRequest extends FormRequest
+/** ADR-124 decision 6: replace one secret field (customer typo, changed password). */
+class ReplaceOrderCredentialRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -18,7 +18,8 @@ class LinkResellerWhatsAppGroupRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'whatsapp_group_id' => ['required', 'string', 'max:255'],
+            'field' => ['required', 'string', 'max:64'],
+            'value' => ['required', 'string', 'max:255'],
         ];
     }
 }

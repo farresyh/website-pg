@@ -14,6 +14,9 @@ use Illuminate\Database\Eloquent\Model;
  */
 class PlatformSettings extends Model
 {
+    /** ADR-124 decision 8: the consent a credential order snapshots, until an admin edits it. */
+    public const DEFAULT_CREDENTIAL_CONSENT_TEXT = 'I allow this store to use my game login only to complete this order. It is deleted once the order is finished, and I will change my password afterwards.';
+
     protected $table = 'platform_settings';
 
     protected $fillable = [
@@ -23,6 +26,11 @@ class PlatformSettings extends Model
         'maintenance_message',
         'membership_enabled',
         'whatsapp_notifications_enabled',
+        'credential_close_grace_hours',
+        'credential_unpaid_hours',
+        'credential_max_days',
+        'credential_reveal_limit_per_hour',
+        'credential_consent_text',
     ];
 
     protected $casts = [
@@ -30,11 +38,15 @@ class PlatformSettings extends Model
         'maintenance_mode' => 'boolean',
         'membership_enabled' => 'boolean',
         'whatsapp_notifications_enabled' => 'boolean',
+        'credential_close_grace_hours' => 'integer',
+        'credential_unpaid_hours' => 'integer',
+        'credential_max_days' => 'integer',
+        'credential_reveal_limit_per_hour' => 'integer',
     ];
 
     public static function current(): self
     {
-        // All three defaults are given explicitly, not left to the column's
+        // Every default is given explicitly, not left to the column's
         // DB DEFAULT — Eloquent never re-fetches a server-applied default
         // after INSERT, so a freshly-created row would read back null in
         // memory (ADR-049's VIP threshold needs an int, not null; ADR-027's
@@ -45,6 +57,11 @@ class PlatformSettings extends Model
             'vip_spend_threshold_sen' => 500000,
             'membership_enabled' => false,
             'whatsapp_notifications_enabled' => false,
+            'credential_close_grace_hours' => 24,
+            'credential_unpaid_hours' => 24,
+            'credential_max_days' => 14,
+            'credential_reveal_limit_per_hour' => 20,
+            'credential_consent_text' => self::DEFAULT_CREDENTIAL_CONSENT_TEXT,
         ]);
     }
 }

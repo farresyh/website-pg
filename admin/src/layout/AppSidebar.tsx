@@ -41,6 +41,7 @@ const sections: PanelNavSection[] = [
     title: "Commerce",
     items: [
       { kind: "link", name: "Orders", href: "/admin/orders", icon: <ListIcon /> },
+      { kind: "link", name: "Manual Queue", href: "/admin/manual-queue", icon: <ListIcon /> },
       { kind: "link", name: "Withdrawals", href: "/admin/withdrawals", icon: <DollarLineIcon /> },
       { kind: "link", name: "Vouchers", href: "/admin/vouchers", icon: <BoxLineIcon /> },
       { kind: "link", name: "Balance", href: "/admin/balance", icon: <WalletIcon /> },
@@ -79,6 +80,8 @@ const sections: PanelNavSection[] = [
     items: [
       { kind: "link", name: "Resellers", href: "/admin/resellers", icon: <DollarLineIcon /> },
       { kind: "link", name: "Affiliates", href: "/admin/affiliates", icon: <UserCircleIcon /> },
+      // ADR-125 decision 60: manual suppliers as partners (WhatsApp group, SLA, on/off).
+      { kind: "link", name: "Suppliers", href: "/admin/suppliers", icon: <BoxLineIcon /> },
     ],
   },
   {

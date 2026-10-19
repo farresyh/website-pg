@@ -14,10 +14,13 @@ use App\Http\Controllers\Admin\FaqController;
 use App\Http\Controllers\Admin\GalleryImageController;
 use App\Http\Controllers\Admin\GameSeoController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
+use App\Http\Controllers\Admin\ManualQueueController;
 use App\Http\Controllers\Admin\MembershipController as AdminMembershipController;
 use App\Http\Controllers\Admin\MembershipPlanController;
 use App\Http\Controllers\Admin\MonthCloseController;
 use App\Http\Controllers\Admin\OrderController;
+use App\Http\Controllers\Admin\OrderCredentialController;
+use App\Http\Controllers\Admin\PartnerSupplierController;
 use App\Http\Controllers\Admin\PaymentSettlementController;
 use App\Http\Controllers\Admin\RedirectController;
 use App\Http\Controllers\Admin\ReportAssistantController;
@@ -34,6 +37,7 @@ use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\SupplierTransferController;
 use App\Http\Controllers\Admin\TransactionRegisterController;
 use App\Http\Controllers\Admin\VoucherController;
+use App\Http\Controllers\Admin\WhatsAppPendingLinkController;
 use App\Http\Controllers\Admin\WithdrawalController;
 use App\Http\Controllers\Affiliate\AffiliateAuthController;
 use App\Http\Controllers\Affiliate\DashboardController as AffiliateDashboardController;
@@ -443,8 +447,8 @@ Route::prefix('reseller-portal')->middleware(['auth:affiliate', 'account.type:re
 
 // ADR-121: `admin.session` caps a cookie login at 7 days. Admin bearer
 // tokens are refused in AppServiceProvider, so this group is session-only
-// for admins. `mfa.stepup` marks the five dangerous actions
-// (StepUpRoutesTest pins the set).
+// for admins. `mfa.stepup` marks the dangerous actions
+// (AdminMfaStepUpTest::test_exactly_these_routes_require_step_up pins the set).
 Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
@@ -581,6 +585,22 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         // /vouchers/{order} (VoucherController::storeFromOrder), never
         // both offered for the same order.
         Route::post('/{order}/refund-to-wallet', [OrderController::class, 'refundToWallet']);
+        // ADR-125 decisions 8/42 — a manual supplier's order, confirmed by
+        // any admin through ManualDeliveryService.
+        Route::post('/{order}/manual/delivered', [ManualQueueController::class, 'delivered']);
+        Route::post('/{order}/manual/failed', [ManualQueueController::class, 'failed']);
+        Route::post('/{order}/manual/correct-to-delivered', [ManualQueueController::class, 'correctToDelivered']);
+    });
+
+    Route::middleware('admin.role:super_admin,admin')->get('/manual-queue', [ManualQueueController::class, 'index']);
+    Route::middleware('admin.role:super_admin,admin')->get('/manual-suppliers', [ManualQueueController::class, 'suppliers']);
+
+    // ADR-124 decisions 5 and 6: a customer's game login. Super Admin only,
+    // behind step-up; the reveal limit runs after step-up so a step-up
+    // prompt doesn't spend it.
+    Route::middleware(['admin.role:super_admin', 'mfa.stepup'])->prefix('orders/{order}/credentials')->group(function () {
+        Route::post('/reveal', [OrderCredentialController::class, 'reveal'])->middleware('throttle:credential-reveal');
+        Route::put('/', [OrderCredentialController::class, 'replace']);
     });
 
     // ADR-018: a middleware-only sandbox for exercising the real Order
@@ -610,7 +630,7 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
     // config, per PRD §3.
     Route::middleware('admin.role:super_admin')->prefix('middleware/suppliers')->group(function () {
         Route::get('/', [SupplierController::class, 'index']);
-        Route::get('/available-slugs', [SupplierController::class, 'availableSlugs']);
+        Route::get('/available-drivers', [SupplierController::class, 'availableDrivers']);
         Route::post('/', [SupplierController::class, 'store'])->middleware('mfa.stepup');
         Route::put('/{supplier}', [SupplierController::class, 'update'])->middleware('mfa.stepup:api_config');
         Route::patch('/{supplier}/status', [SupplierController::class, 'updateStatus']);
@@ -699,6 +719,8 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::delete('/branding/favicon', [SettingsController::class, 'destroyFavicon']);
         Route::put('/footer', [SettingsController::class, 'updateFooter']);
         Route::put('/platform', [SettingsController::class, 'updatePlatform']);
+        // ADR-124 decision 10 — Customer Login Policy, behind step-up.
+        Route::put('/customer-login-policy', [SettingsController::class, 'updateCustomerLoginPolicy'])->middleware('mfa.stepup');
         Route::post('/platform/bulk-markup', [SettingsController::class, 'bulkMarkup']);
     });
 
@@ -885,14 +907,25 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
             Route::get('/{reseller}/webhook/deliveries', [ResellerWebhookController::class, 'deliveries']);
 
             // ADR-075 / PR-F build addendum decision 3 — link/unlink a
-            // WhatsApp group to this Reseller account. 'pending' (below,
-            // outside this {reseller} prefix) is platform-wide.
+            // WhatsApp group to this Reseller account. The pending list
+            // (below) is platform-wide and shared with suppliers.
             Route::get('/{reseller}/whatsapp-groups', [ResellerWhatsAppGroupController::class, 'index']);
             Route::post('/{reseller}/whatsapp-groups', [ResellerWhatsAppGroupController::class, 'store']);
             Route::patch('/{reseller}/whatsapp-groups/{group}/status', [ResellerWhatsAppGroupController::class, 'updateStatus']);
         });
 
-        Route::get('/reseller-whatsapp-groups/pending', [ResellerWhatsAppGroupController::class, 'pending']);
+        Route::get('/whatsapp-groups/pending', WhatsAppPendingLinkController::class);
+
+        // ADR-125 decision 60 — Admin → Partners → Suppliers: a manual
+        // supplier's WhatsApp group, reply SLA and active switch. Creating
+        // one and its funding mode stay in middleware/suppliers.
+        Route::prefix('partner-suppliers')->group(function () {
+            Route::get('/', [PartnerSupplierController::class, 'index']);
+            Route::post('/{supplier}/whatsapp-group', [PartnerSupplierController::class, 'linkGroup']);
+            Route::patch('/{supplier}/whatsapp-group/{group}/status', [PartnerSupplierController::class, 'updateGroupStatus']);
+            Route::patch('/{supplier}/sla', [PartnerSupplierController::class, 'updateSla']);
+            Route::patch('/{supplier}/status', [PartnerSupplierController::class, 'updateStatus']);
+        });
 
         // ADR-073 decision 1 — the reseller_tiers CRUD ladder.
         Route::prefix('reseller-tiers')->group(function () {
@@ -1016,15 +1049,20 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
     // GAME-1..5/6/7 — Admin Games & Packages management.
     Route::middleware('admin.role:super_admin,admin')->group(function () {
         Route::get('/games', [GameController::class, 'index']);
+        Route::post('/games', [GameController::class, 'store']);
         Route::post('/games/reorder', [GameController::class, 'reorder']);
+        Route::put('/games/{game}/credential-schema', [GameController::class, 'updateCredentialSchema']);
         Route::get('/games/{game}', [GameController::class, 'show']);
         Route::put('/games/{game}', [GameController::class, 'update']);
         Route::delete('/games/{game}', [GameController::class, 'destroy']);
         Route::get('/games/{game}/packages', [GameController::class, 'packages']);
         Route::post('/games/{game}/packages/combo', [PackageController::class, 'storeCombo']);
+        Route::post('/games/{game}/packages/manual', [PackageController::class, 'storeManual']);
 
         Route::put('/packages/{package}', [PackageController::class, 'update']);
         Route::patch('/packages/{package}/markup', [PackageController::class, 'updateMarkup']);
+        Route::patch('/packages/{package}/cost', [PackageController::class, 'updateCost']);
+        Route::get('/packages/{package}/price-history', [PackageController::class, 'priceHistory']);
         Route::patch('/packages/{package}/status', [PackageController::class, 'updateStatus']);
         Route::patch('/packages/{package}/denomination', [PackageController::class, 'updateDenomination']);
         Route::patch('/packages/{package}/catalog-code', [PackageController::class, 'updateCatalogCode']);

@@ -12,7 +12,7 @@ use Mockery;
 use PragmaRX\Google2FA\Google2FA;
 use Tests\TestCase;
 
-/** ADR-121 decision 5: step-up on the five dangerous actions. */
+/** ADR-121 decision 5: step-up on the dangerous actions (ADR-124 adds the customer-login ones). */
 class AdminMfaStepUpTest extends TestCase
 {
     use RefreshDatabase;
@@ -41,10 +41,13 @@ class AdminMfaStepUpTest extends TestCase
             'POST api/admin-users mfa.stepup',
             'POST api/mfa/recovery-codes mfa.stepup',
             'POST api/middleware/suppliers mfa.stepup',
+            'POST api/orders/{order}/credentials/reveal mfa.stepup',
             'POST api/resellers/{reseller}/wallet/credit mfa.stepup',
             'PUT api/admin-users/{admin_user} mfa.stepup',
             'PUT api/middleware/payment-gateways/{gatewayKey} mfa.stepup',
             'PUT api/middleware/suppliers/{supplier} mfa.stepup:api_config',
+            'PUT api/orders/{order}/credentials mfa.stepup',
+            'PUT api/settings/customer-login-policy mfa.stepup',
         ], $guarded);
     }
 

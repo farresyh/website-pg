@@ -32,6 +32,7 @@ use App\Services\Reseller\ResellerWalletService;
 use App\Services\Reseller\ResellerWalletTopupService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use App\Services\Reseller\WalletTopupCheckoutFailedException;
+use App\Services\WhatsApp\WhatsAppGroupService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
@@ -56,7 +57,7 @@ use Illuminate\Support\Str;
 final class ResellerBotService
 {
     public function __construct(
-        private readonly ResellerWhatsAppGroupService $groups,
+        private readonly WhatsAppGroupService $groups,
         private readonly ResellerBotCommandParser $parser,
         private readonly ResellerCatalogService $catalog,
         private readonly OrderPricingResolver $pricingResolver,

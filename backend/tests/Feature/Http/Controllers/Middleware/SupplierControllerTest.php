@@ -123,38 +123,39 @@ class SupplierControllerTest extends TestCase
         $this->assertSame(['bearer_token'], $body['configured_secret_keys']);
     }
 
-    public function test_available_slugs_lists_registered_adapters(): void
+    public function test_available_drivers_lists_registered_adapters(): void
     {
         $this->actingAsAdmin();
 
-        $response = $this->getJson('/api/middleware/suppliers/available-slugs')->assertOk();
+        $response = $this->getJson('/api/middleware/suppliers/available-drivers')->assertOk();
 
         $this->assertContains('gamevion', $response->json());
         $this->assertContains('digiflazz', $response->json());
+        $this->assertContains('manual', $response->json());
     }
 
-    public function test_store_rejects_a_slug_with_no_registered_adapter(): void
+    public function test_store_rejects_a_driver_with_no_registered_adapter(): void
     {
         $this->actingAsAdmin();
 
         $this->postJson('/api/middleware/suppliers', [
             'name' => 'Made Up Supplier',
-            'slug' => 'made-up-supplier',
+            'driver' => 'made-up-supplier',
             'currency' => 'MYR',
-        ])->assertStatus(422)->assertJsonValidationErrors('slug');
+        ])->assertStatus(422)->assertJsonValidationErrors('driver');
     }
 
-    public function test_store_accepts_a_registered_adapter_slug(): void
+    public function test_store_accepts_a_registered_adapter_driver(): void
     {
         $this->actingAsAdmin();
 
         $this->postJson('/api/middleware/suppliers', [
             'name' => 'Digiflazz',
-            'slug' => 'digiflazz',
+            'driver' => 'digiflazz',
             'currency' => 'IDR',
         ])->assertCreated();
 
-        $this->assertDatabaseHas('suppliers', ['slug' => 'digiflazz']);
+        $this->assertDatabaseHas('suppliers', ['slug' => 'digiflazz', 'driver' => 'digiflazz', 'funding_mode' => 'prepaid']);
     }
 
     public function test_update_status_toggles_is_active(): void

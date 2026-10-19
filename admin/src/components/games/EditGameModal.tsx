@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { ImageUrlInput } from "@/components/gallery/ImageUrlInput";
 import { Tabs, TabsIndicator, TabsList, TabsPanel, TabsPanels, TabsTab } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import type { Game, UpdateGameValues } from "@/lib/games";
+import { isLoginGame, type Game, type UpdateGameValues } from "@/lib/games";
 import type { PlayerValidatorProfile } from "@/lib/player-validators";
 
 interface EditGameModalProps {
@@ -82,6 +82,9 @@ function EditGameFields({
   const [importantNotesText, setImportantNotesText] = useState(notesToText(game.important_notes));
   const [deliveryMode, setDeliveryMode] = useState<"instant" | "manual">(game.delivery_mode ?? "instant");
   const [deliverySubtext, setDeliverySubtext] = useState(game.delivery_subtext ?? "");
+  const [memberPricing, setMemberPricing] = useState(game.member_pricing_enabled ?? true);
+  // ADR-125 decision 5: a login game has no reseller code, no validator and is always manual.
+  const loginGame = isLoginGame(game);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -102,8 +105,9 @@ function EditGameFields({
         player_validator_enabled: validatorProfileId ? validatorEnabled : false,
         description: description.trim() || null,
         important_notes: textToNotes(importantNotesText),
-        delivery_mode: deliveryMode,
+        delivery_mode: loginGame ? "manual" : deliveryMode,
         delivery_subtext: deliverySubtext.trim() || null,
+        member_pricing_enabled: memberPricing,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -177,6 +181,7 @@ function EditGameFields({
                   <Label htmlFor="game_category">Category (optional)</Label>
                   <Input id="game_category" value={category} onChange={(e) => setCategory(e.target.value)} />
                 </div>
+                {!loginGame && (
                 <div>
                   <Label htmlFor="game_reseller_code">Reseller Code (optional)</Label>
                   <Input
@@ -191,6 +196,7 @@ function EditGameFields({
                     blank to keep this game out of the Reseller catalog.
                   </p>
                 </div>
+                )}
                 <div>
                   <Label htmlFor="game_image_url">Image URL (optional)</Label>
                   <ImageUrlInput id="game_image_url" value={imageUrl} onChange={setImageUrl} />
@@ -202,7 +208,12 @@ function EditGameFields({
                   <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
                   Active (visible to customers once packages exist)
                 </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input type="checkbox" checked={memberPricing} onChange={(e) => setMemberPricing(e.target.checked)} />
+                  Member pricing (members get their discount and use quota on this game)
+                </label>
 
+                {!loginGame && (
                 <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
                   <Label htmlFor="game_validator_profile">Player ID Validator (optional)</Label>
                   <SimpleSelect
@@ -231,6 +242,7 @@ function EditGameFields({
                     Requires Player Validation (shows the storefront &quot;Validate Player ID&quot; button)
                   </label>
                 </div>
+                )}
               </div>
             </TabsPanel>
 
@@ -270,7 +282,8 @@ function EditGameFields({
                   <Label htmlFor="game_delivery_mode">Delivery Badge</Label>
                   <SimpleSelect
                     id="game_delivery_mode"
-                    value={deliveryMode}
+                    disabled={loginGame}
+                    value={loginGame ? "manual" : deliveryMode}
                     onChange={(value) => setDeliveryMode(value as "instant" | "manual")}
                     options={[
                       { value: "instant", label: "⚡ Instant Delivery" },

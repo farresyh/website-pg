@@ -56,7 +56,7 @@ abstract class TestCase extends BaseTestCase
 
     /**
      * ADR-121: act as an admin with active MFA who stepped up just now, so a
-     * test of one of the five dangerous actions (`mfa.stepup`) reaches the
+     * test of one of the dangerous actions (`mfa.stepup`) reaches the
      * controller. The step-up gate itself is tested in AdminMfaStepUpTest.
      */
     protected function actingAsSteppedUp(AdminUser $admin): AdminUser
