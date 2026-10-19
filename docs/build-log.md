@@ -1408,7 +1408,7 @@ Tests: 7 new files (41 tests) plus `ManualCorrectionConcurrencyTest` (correction
 - The local e2e run was not possible: the founder's `dev.sh` holds :3000/:3001 and the harness doesn't reuse servers, so the new spec runs on CI. The seeder was checked by running it against a throwaway sqlite file.
 - Real browser check against the running dev stack with seeded local rows (removed afterwards). Activate was disabled before linking; the link from the pending list worked; activate and SLA 45 saved; unlinking an active supplier's group was refused with the backend's message; the Dashboard showed "1 order not posted to the supplier"; Order Detail showed the Supplier group cards. Linking also re-posted the waiting order (decision 62), skipped locally with "Bot WhatsApp session is not configured". At 390 px the page doesn't scroll sideways (the table scrolls inside its card).
 
-**Next.** Released via #514; prod verification pending founder confirmation. Before a manual supplier goes live in prod: create it, link its group, activate it, then add its packages.
+**Next.** Item 113 is fully built on `staging`. Release (`staging`→`main`) is the founder's call. Before a manual supplier goes live in prod: create it, link its group, activate it, then add its packages.
 
 ## 2026-10-19 — Release #514: item 112 (customer login base) + item 113 (Login Top-up, supplier WhatsApp bot)
 
