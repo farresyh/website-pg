@@ -1409,3 +1409,12 @@ Tests: 7 new files (41 tests) plus `ManualCorrectionConcurrencyTest` (correction
 - Real browser check against the running dev stack with seeded local rows (removed afterwards). Activate was disabled before linking; the link from the pending list worked; activate and SLA 45 saved; unlinking an active supplier's group was refused with the backend's message; the Dashboard showed "1 order not posted to the supplier"; Order Detail showed the Supplier group cards. Linking also re-posted the waiting order (decision 62), skipped locally with "Bot WhatsApp session is not configured". At 390 px the page doesn't scroll sideways (the table scrolls inside its card).
 
 **Next.** Item 113 is fully built on `staging`. Release (`staging`→`main`) is the founder's call. Before a manual supplier goes live in prod: create it, link its group, activate it, then add its packages.
+
+## 2026-10-19 — Release #514: item 112 (customer login base) + item 113 (Login Top-up, supplier WhatsApp bot)
+
+`staging` → `main` merged as `8982994c`, CI deploy job green; prod not yet verified.
+
+- **Ships:** Item 112 (#506, customer account credentials base, ADR-124), Item 113 PR 1a (#507, supplier driver + manual suppliers), PR 1b (#509 backend, #510 screens: login games, manual packages, login checkout, Manual Queue, masked login), PR 2a (#512, supplier WhatsApp group bot backend, short login link), PR 2b (#513, Partners → Suppliers screen, package-off-sale switch on deactivation), and docs #502–#505, #508, #511.
+- **Migrations (8):** `order_credentials`, `credential_reveals`, Customer Login Policy columns on `platform_settings`, `suppliers.driver` + `funding_mode`, `games.member_pricing_enabled` + `price_change_logs.admin_user_id`, `whatsapp_groups`, `customer_notifications.session` + `chat_id`, and `supplier_login_links`.
+- **Prod state before merge (2026-10-19, read-only check in PR #514):** 0 orders processing/pending/needs_review; 2 reseller groups (both active); 0 pending links; suppliers gamevion + digiflazz; all 3 payment methods off.
+- **Verification on the box:** pending founder confirmation.
