@@ -11,6 +11,7 @@ use App\Models\OrderCredential;
 use App\Models\Supplier;
 use App\Models\SupplierLoginLink;
 use App\Models\WhatsAppGroup;
+use App\Services\Dashboard\DashboardService;
 use App\Services\Fulfillment\ManualDeliveryService;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Order\DeliveryStatus;
@@ -252,6 +253,27 @@ class Adr125SupplierGroupPostTest extends TestCase
         $this->get("/s/{$oldToken}")->assertNotFound();
         $newToken = $this->tokenFrom($this->send($posts[1]));
         $this->get("/s/{$newToken}")->assertOk();
+    }
+
+    public function test_the_dashboard_counts_unposted_waiting_orders_and_suppliers_with_no_group(): void
+    {
+        Queue::fake();
+        $attention = fn () => collect(app(DashboardService::class)->health()['attention']['items'])->pluck('count', 'key');
+
+        $posted = $this->pendingLoginOrder();
+        $this->assertNull($attention()->get('supplier_posts_not_delivered'));
+
+        WhatsAppGroup::query()->update(['is_active' => false]);
+        $this->pendingLoginOrder(['order_number' => 'KRS-TEST-2']);
+        $this->assertSame(1, $attention()->get('supplier_posts_not_delivered'));
+        $this->assertSame(1, $attention()->get('manual_supplier_without_group'));
+
+        // A retry whose own post was skipped counts, though its first attempt was sent.
+        $posts = $this->posts($posted);
+        $posts->first()->update(['status' => CustomerNotification::STATUS_SENT]);
+        app(ManualDeliveryService::class)->confirmFailed($posted->fresh(), 'Password salah', 'wa:60123456789', 'supplier_bot');
+        app(OrderFulfillmentService::class)->fulfill($posted->fresh());
+        $this->assertSame(2, $attention()->get('supplier_posts_not_delivered'));
     }
 
     public function test_one_sla_reminder_per_attempt(): void

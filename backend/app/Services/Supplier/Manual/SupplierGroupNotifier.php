@@ -66,6 +66,29 @@ final class SupplierGroupNotifier
             ->each(fn (int $orderId) => $this->orderPosted($orderId));
     }
 
+    /**
+     * Decision 15: waiting orders whose current attempt never reached the
+     * group (its post failed or was skipped), for the Dashboard. A sent
+     * post of an earlier attempt doesn't count for a retry.
+     */
+    public function unpostedWaitingCount(): int
+    {
+        $orders = Order::query()
+            ->where('delivery_status', DeliveryStatus::Pending->value)
+            ->where('is_test', false)
+            ->whereHas('supplier', fn ($q) => $q->where('driver', Supplier::DRIVER_MANUAL))
+            ->get(['id', 'reference_number']);
+
+        $reached = CustomerNotification::query()
+            ->whereIn('order_id', $orders->pluck('id'))
+            ->where('event', self::EVENT_ORDER_POST)
+            ->whereIn('status', [CustomerNotification::STATUS_QUEUED, CustomerNotification::STATUS_SENT])
+            ->pluck('dedupe_key')
+            ->flip();
+
+        return $orders->reject(fn (Order $order) => $reached->has(self::dedupeKey(self::EVENT_ORDER_POST, $order)))->count();
+    }
+
     /** Decision 59: from the reconciler, once the order is past its SLA. */
     public function slaReminder(Order $order): void
     {

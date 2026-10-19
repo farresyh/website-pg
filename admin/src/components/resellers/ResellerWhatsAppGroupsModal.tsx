@@ -2,14 +2,11 @@
 
 /**
  * ADR-075 / PR-F build addendum decision 3: link/unlink a WhatsApp
- * group to this Reseller (Bot channel account identity). Onboarding
- * flow: admin adds the bot + this reseller into a shared WA group, the
- * reseller (or admin) sends any message, and it shows up here as a
- * "pending" group within a few seconds — admin picks it from the list
- * rather than copy-pasting a raw group id.
+ * group to this Reseller (Bot channel account identity). The linking UI
+ * is WhatsAppGroupLinker, shared with manual suppliers (ADR-125).
  */
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import {
   Dialog,
   DialogPortal,
@@ -23,162 +20,18 @@ import {
   DialogContent,
 } from "@/components/ui/dialog";
 import { Times as CloseIcon } from "@primeicons/react/times";
-import { Button } from "@/components/ui/button";
-import { Tag } from "@/components/ui/tag";
-import { ApiError } from "@/lib/api-client";
+import WhatsAppGroupLinker from "@/components/whatsapp/WhatsAppGroupLinker";
 import {
   listResellerWhatsAppGroups,
-  listPendingWhatsAppGroups,
   linkResellerWhatsAppGroup,
   updateResellerWhatsAppGroupStatus,
   type ResellerRow,
-  type ResellerWhatsAppGroup,
-  type ResellerWhatsAppPendingLink,
 } from "@/lib/resellers";
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   reseller: ResellerRow;
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString("en-MY", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
-  const [groups, setGroups] = useState<ResellerWhatsAppGroup[] | null>(null);
-  const [pending, setPending] = useState<ResellerWhatsAppPendingLink[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [linking, setLinking] = useState<string | null>(null);
-  const [togglingId, setTogglingId] = useState<number | null>(null);
-
-  function refresh() {
-    return Promise.all([listResellerWhatsAppGroups(reseller.id), listPendingWhatsAppGroups()])
-      .then(([g, p]) => {
-        setGroups(g);
-        setPending(p);
-      })
-      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load WhatsApp groups."));
-  }
-
-  useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reseller.id]);
-
-  async function handleLink(whatsappGroupId: string) {
-    setError(null);
-    setLinking(whatsappGroupId);
-    try {
-      await linkResellerWhatsAppGroup(reseller.id, whatsappGroupId);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not link this group.");
-    } finally {
-      setLinking(null);
-    }
-  }
-
-  async function handleToggle(group: ResellerWhatsAppGroup) {
-    setError(null);
-    setTogglingId(group.id);
-    try {
-      await updateResellerWhatsAppGroupStatus(reseller.id, group.id, !group.is_active);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not update this group.");
-    } finally {
-      setTogglingId(null);
-    }
-  }
-
-  const linkedGroupIds = new Set((groups ?? []).map((g) => g.whatsapp_group_id));
-  const linkablePending = (pending ?? []).filter((p) => !linkedGroupIds.has(p.whatsapp_group_id));
-
-  return (
-    <div className="space-y-6">
-      {error && (
-        <p className="rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>
-      )}
-
-      <div>
-        <p className="mb-2 text-theme-xs font-medium text-gray-600 dark:text-gray-400">
-          This reseller&apos;s linked groups
-        </p>
-        <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
-          <table className="w-full text-left text-theme-sm">
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {(groups ?? []).map((g) => (
-                <tr key={g.id}>
-                  <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{g.whatsapp_group_id}</td>
-                  <td className="px-4 py-2">
-                    <Tag severity={g.is_active ? "success" : "secondary"}>{g.is_active ? "active" : "unlinked"}</Tag>
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <Button
-                      type="button"
-                      size="small"
-                      variant="outlined"
-                      severity={g.is_active ? "danger" : undefined}
-                      disabled={togglingId === g.id}
-                      onClick={() => handleToggle(g)}
-                    >
-                      {togglingId === g.id ? "…" : g.is_active ? "Unlink" : "Relink"}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-              {groups !== null && groups.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="px-4 py-6 text-center text-ink-subtle">No groups linked yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div>
-        <p className="mb-2 text-theme-xs font-medium text-gray-600 dark:text-gray-400">
-          Pending — add the bot + this reseller into a shared WhatsApp group, then send any message. It shows up
-          here within a few seconds.
-        </p>
-        <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
-          <table className="w-full text-left text-theme-sm">
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {linkablePending.map((p) => (
-                <tr key={p.whatsapp_group_id}>
-                  <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{p.whatsapp_group_id}</td>
-                  <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
-                    {p.last_message_at ? formatDate(p.last_message_at) : "—"}
-                    {p.last_message_preview && (
-                      <span className="ml-2 italic text-ink-subtle">&ldquo;{p.last_message_preview}&rdquo;</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <Button
-                      type="button"
-                      size="small"
-                      disabled={linking === p.whatsapp_group_id}
-                      onClick={() => handleLink(p.whatsapp_group_id)}
-                    >
-                      {linking === p.whatsapp_group_id ? "…" : "Link to this reseller"}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-              {pending !== null && linkablePending.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="px-4 py-6 text-center text-ink-subtle">No pending groups right now.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export default function ResellerWhatsAppGroupsModal({ isOpen, onClose, reseller }: Props) {
@@ -197,7 +50,15 @@ export default function ResellerWhatsAppGroupsModal({ isOpen, onClose, reseller 
               </DialogHeaderActions>
             </DialogHeader>
             <DialogContent>
-              {isOpen && <Content key={reseller.id} reseller={reseller} />}
+              {isOpen && (
+                <WhatsAppGroupLinker
+                  key={reseller.id}
+                  ownerNoun="reseller"
+                  loadGroups={() => listResellerWhatsAppGroups(reseller.id)}
+                  link={(groupId) => linkResellerWhatsAppGroup(reseller.id, groupId)}
+                  setActive={(groupId, isActive) => updateResellerWhatsAppGroupStatus(reseller.id, groupId, isActive)}
+                />
+              )}
             </DialogContent>
           </DialogPopup>
         </DialogPositioner>

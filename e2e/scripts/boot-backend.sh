@@ -74,6 +74,15 @@ export SESSION_DRIVER=file
 # primary host as the primary brand with no `affiliate_domains` row. The
 # Playwright storefront is `localhost` (see e2e/tests/constants.ts).
 export STOREFRONT_PRIMARY_HOSTS=localhost
+# ADR-125 PR 2 (supplier-group-bot.spec.ts): a configured bot session so a
+# supplier post is queued, not skipped, and a webhook secret so the spec can
+# send signed group messages. Nothing reaches the network: the worker below
+# never runs the `whatsapp` or `default` lanes those sends sit on, and the
+# base URL points at a closed port.
+export OPENWA_BASE_URL=http://127.0.0.1:9
+export OPENWA_SESSION_ID=e2e-bot
+export OPENWA_API_KEY=e2e-bot-key
+export OPENWA_WEBHOOK_SECRET=e2e-openwa-secret
 
 rm -f "$DB_DATABASE"
 touch "$DB_DATABASE"

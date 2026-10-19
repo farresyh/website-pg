@@ -113,8 +113,11 @@ export interface OrderDeliveryLeg {
 
 export interface CustomerNotification {
   id: number;
-  event: "voucher_issued" | "voucher_restored" | "delivered_receipt" | "status_card" | "optin_reply" | string;
+  event: "voucher_issued" | "voucher_restored" | "delivered_receipt" | "status_card" | "optin_reply" | "supplier_order_post" | "supplier_sla_reminder" | string;
+  // ADR-125 decision 53: "bot" is a post to the supplier's WhatsApp group (`chat_id`), never a phone.
+  session: "customer_support" | "bot";
   phone: string | null;
+  chat_id: string | null;
   status: "queued" | "sent" | "failed" | "skipped";
   attempts: number;
   error: string | null;

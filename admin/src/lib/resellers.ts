@@ -1,4 +1,5 @@
 import { apiFetch, apiUpload, apiDownload } from "@/lib/api-client";
+import type { WhatsAppGroup } from "@/lib/whatsapp-groups";
 
 /**
  * ADR-072/073 PR-B — admin Reseller (prepaid-wallet) account management:
@@ -258,42 +259,19 @@ export function listResellerWebhookDeliveries(resellerId: number) {
   return apiFetch<ResellerWebhookDeliveryPage>(`/api/resellers/${resellerId}/webhook/deliveries`);
 }
 
-/**
- * ADR-075 / PR-F build addendum decision 3: the Reseller Bot channel's
- * group-linking UX. A pending row is platform-wide (a captured group
- * isn't yet attributed to any Reseller) — the admin picks one and links
- * it to a specific Reseller from that Reseller's own modal.
- */
-export interface ResellerWhatsAppPendingLink {
-  whatsapp_group_id: string;
-  last_message_preview: string | null;
-  last_message_at: string | null;
-}
-
-export interface ResellerWhatsAppGroup {
-  id: number;
-  whatsapp_group_id: string;
-  is_active: boolean;
-  created_at: string;
-}
-
-export function listPendingWhatsAppGroups() {
-  return apiFetch<ResellerWhatsAppPendingLink[]>("/api/whatsapp-groups/pending");
-}
-
 export function listResellerWhatsAppGroups(resellerId: number) {
-  return apiFetch<ResellerWhatsAppGroup[]>(`/api/resellers/${resellerId}/whatsapp-groups`);
+  return apiFetch<WhatsAppGroup[]>(`/api/resellers/${resellerId}/whatsapp-groups`);
 }
 
 export function linkResellerWhatsAppGroup(resellerId: number, whatsappGroupId: string) {
-  return apiFetch<ResellerWhatsAppGroup>(`/api/resellers/${resellerId}/whatsapp-groups`, {
+  return apiFetch<WhatsAppGroup>(`/api/resellers/${resellerId}/whatsapp-groups`, {
     method: "POST",
     body: { whatsapp_group_id: whatsappGroupId },
   });
 }
 
 export function updateResellerWhatsAppGroupStatus(resellerId: number, groupId: number, isActive: boolean) {
-  return apiFetch<ResellerWhatsAppGroup>(`/api/resellers/${resellerId}/whatsapp-groups/${groupId}/status`, {
+  return apiFetch<WhatsAppGroup>(`/api/resellers/${resellerId}/whatsapp-groups/${groupId}/status`, {
     method: "PATCH",
     body: { is_active: isActive },
   });

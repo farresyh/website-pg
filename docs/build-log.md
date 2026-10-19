@@ -1387,3 +1387,25 @@ Tests: 7 new files (41 tests) plus `ManualCorrectionConcurrencyTest` (correction
 - zsh does not word-split an unquoted `$files`, so a `for f in $files` rename loop ran once on the whole list. Use `xargs`.
 
 **Next.** 2b: the Partners → Suppliers screen, the pending-link picker for both owners, Order Detail's "Supplier group" label, the Dashboard counts (failed supplier posts, active manual supplier without a group), and e2e.
+
+## 2026-10-19 — §16 item 113 PR 2b: Partners → Suppliers screen, Dashboard counts, bot golden path (ADR-125)
+
+**Why.** 2a (#512, merged by the founder) built the supplier bot with no screen to link a supplier's group. 2b adds the screens and proves the bot end to end.
+
+**Found while building.** A supplier's `is_active` is read by no catalog or checkout path, only by the sync and balance jobs. So 2a's "activate needs a group" rule guarded a flag no customer reads: an inactive manual supplier's packages were still for sale. Decision 64 fixes it through ADR-046's existing `supplier_issue` bulk switch, moved out of `SupplierController` into `SupplierPackageStatusService`. `ManualSupplierStatusService` is the one switch for both screens; it changes the flag and the packages in one transaction. Behaviour for API suppliers is unchanged, and the 23 supplier-controller tests pass as before.
+
+**Shipped.**
+- `/admin/suppliers` under Partners (super_admin): group, SLA, waiting count, status; link and unlink through `WhatsAppGroupLinker`, now shared with the reseller modal; Edit SLA; Activate (disabled with no group); Deactivate with a packages-off-sale warning.
+- Group types and the pending list moved to `lib/whatsapp-groups.ts`.
+- Order Detail labels a bot row "Supplier group" with its group id.
+- Dashboard: red `supplier_posts_not_delivered` (current attempt's post failed or skipped) and amber `manual_supplier_without_group`.
+- Manual Queue copy now says it is the fallback.
+- e2e `supplier-group-bot.spec.ts`, with a new `E2ESeeder` supplier and game, plus a bot session and webhook secret in `boot-backend.sh` (nothing is sent).
+
+**Verification.**
+- Backend 2921/2921.
+- Admin tsc, lint and unit tests 15/15.
+- The local e2e run was not possible: the founder's `dev.sh` holds :3000/:3001 and the harness doesn't reuse servers, so the new spec runs on CI. The seeder was checked by running it against a throwaway sqlite file.
+- Real browser check against the running dev stack with seeded local rows (removed afterwards). Activate was disabled before linking; the link from the pending list worked; activate and SLA 45 saved; unlinking an active supplier's group was refused with the backend's message; the Dashboard showed "1 order not posted to the supplier"; Order Detail showed the Supplier group cards. Linking also re-posted the waiting order (decision 62), skipped locally with "Bot WhatsApp session is not configured". At 390 px the page doesn't scroll sideways (the table scrolls inside its card).
+
+**Next.** Item 113 is fully built on `staging`. Release (`staging`→`main`) is the founder's call. Before a manual supplier goes live in prod: create it, link its group, activate it, then add its packages.

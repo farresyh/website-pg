@@ -9,6 +9,7 @@ use App\Models\PaymentMethod;
 use App\Models\PendingPriceChange;
 use App\Models\Review;
 use App\Models\Supplier;
+use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppPendingLink;
 use App\Models\Withdrawal;
 use App\Services\Accounting\SupplierLedgerEntryType;
@@ -20,6 +21,7 @@ use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Scheduling\SchedulerLiveness;
+use App\Services\Supplier\Manual\SupplierGroupNotifier;
 use App\Services\Withdrawal\WithdrawalStatus;
 use App\Support\MalaysiaTime;
 use Carbon\CarbonImmutable;
@@ -247,6 +249,8 @@ final class DashboardService
             'needs_action_orders' => $needsActionOrders,
             'needs_review' => $needsReview,
             'reseller_bot_disconnected' => (int) ($openWaSession !== null && $openWaSession['status'] !== 'connected'),
+            // ADR-125 decision 15: the supplier was never told about these.
+            'supplier_posts_not_delivered' => app(SupplierGroupNotifier::class)->unpostedWaitingCount(),
         ];
 
         foreach ($suppliers as $supplier) {
@@ -269,6 +273,16 @@ final class DashboardService
             // recordOrderDrawdown() runs after commit and swallows errors,
             // so a Delivered order with no drawdown is surfaced here.
             'manual_delivery_without_drawdown' => $this->manualDeliveriesWithoutDrawdown(),
+            // ADR-125 decision 56: activated before PR 2, so its posts are skipped.
+            'manual_supplier_without_group' => Supplier::query()
+                ->where('driver', Supplier::DRIVER_MANUAL)
+                ->where('is_active', true)
+                ->whereNotExists(fn ($q) => $q->selectRaw('1')
+                    ->from('whatsapp_groups')
+                    ->where('whatsapp_groups.owner_type', WhatsAppGroup::OWNER_SUPPLIER)
+                    ->whereColumn('whatsapp_groups.owner_id', 'suppliers.id')
+                    ->where('whatsapp_groups.is_active', true))
+                ->count(),
         ];
 
         $methods = PaymentMethod::query()->selectRaw('COUNT(*) as total, SUM(CASE WHEN is_active THEN 1 ELSE 0 END) as active')->first();

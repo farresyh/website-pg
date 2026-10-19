@@ -22,6 +22,11 @@ test("login top-up: create game -> checkout with login -> Manual Queue -> delive
   await expect(page.getByRole("heading", { name: "E2E Roblox" })).toBeVisible();
 
   await page.getByRole("button", { name: "Add Package…" }).click();
+  // Two active manual suppliers are seeded (the bot spec has its own), so the
+  // form doesn't auto-pick one: choose it like an admin would.
+  await page.locator("#manual_supplier").click();
+  await page.getByRole("option", { name: "E2E Manual Supplier" }).click();
+  await expect(page.locator("#manual_supplier")).toHaveText(/E2E Manual Supplier/);
   await page.locator("#manual_name").fill("800 Robux");
   await page.locator("#manual_cost").fill("40.00");
   await expect(page.getByText("Selling price: RM 46.00")).toBeVisible();

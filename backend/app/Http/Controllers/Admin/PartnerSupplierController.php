@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\Supplier;
 use App\Models\WhatsAppGroup;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Supplier\Manual\ManualSupplierStatusService;
 use App\Services\Supplier\Manual\SupplierGroupNotifier;
 use App\Services\WhatsApp\WhatsAppGroupService;
 use Illuminate\Http\JsonResponse;
@@ -84,15 +85,11 @@ class PartnerSupplierController extends Controller
         return response()->json($this->publicSupplier($supplier->fresh()));
     }
 
-    public function updateStatus(UpdateResellerStatusRequest $request, Supplier $supplier): JsonResponse
+    public function updateStatus(UpdateResellerStatusRequest $request, Supplier $supplier, ManualSupplierStatusService $manual): JsonResponse
     {
         abort_if($supplier->isApiBacked(), 404);
 
-        if ($request->validated('is_active')) {
-            $this->groups->assertSupplierMayBeActive($supplier);
-        }
-
-        $supplier->update(['is_active' => $request->validated('is_active')]);
+        $manual->setActive($supplier, $request->validated('is_active'), $request->user()->id);
 
         return response()->json($this->publicSupplier($supplier->fresh()));
     }
