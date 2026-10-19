@@ -1436,3 +1436,21 @@ Tests: 7 new files (41 tests) plus `ManualCorrectionConcurrencyTest` (correction
 - Not measured yet: the gain on real requests. After release, open `/admin/orders` with DevTools → Network: the GETs to `/api/orders`, `/api/orders/summary` and `/api/games` should have no OPTIONS before them.
 
 **Not changed, on purpose.** The storefront and portal clients (their preflight comes from a header they need), the hard-refresh path (JS download, hydration), and any server contention around the :00/:15/:30/:45 scheduler ticks (unmeasured; Pulse first). A shared admin loading skeleton (the admin counterpart of the storefront's ADR-071 primitive) is a separate decision for the founder.
+
+## 2026-10-19 — Release #517 (`staging`→`main`): #516 admin preflight fix + #515 docs sync; session wrap-up
+
+**Release.** PR #517 merged as `6a5052e`. CI run #635 green on `main`, including `backend-tests`, `backend-concurrency` and `playwright`; the `deploy` job called the Forge hook at 16:59 UTC. No migration, no env change. **Prod not yet verified**, for this release or for #514: the founder will run the read-only checks next session (PRD §16 item 124).
+
+**What this session did, in order.**
+1. **Status audit.** Release #514 had gone live with every status doc still saying "on `staging`". A Claude audit and an independent Gemini audit were cross-checked: each found real items the other missed (Gemini: `foundation-security.md`, README, AUTH-7, two §16 lines; Claude: the Glossary's Manual Queue cost rule against ADR-125 decision 36, the §10 OpenWA row, the §8 Package row). Gemini wrote the fix as #515 and Claude reviewed its diff. The review caught two errors before merge: a decision cited by the wrong number, and an edit to an old build-log entry (this file is append-only). Claude made one error, too: it truncated a command's output at 400 characters and reported ADR-125's banner as missing its 2b note, which Gemini correctly rejected.
+2. **Admin "Loading…" investigation**, then #516 (entry above, ADR-121 2026-10-19 addendum).
+3. **Release #517.**
+
+**Gotchas.**
+- **GitHub's per-job status lags.** On #516, `list_workflow_jobs` and the PR check list showed jobs "queued" or "in progress" for 20+ minutes after their steps had finished. Read the workflow run's own `status`/`conclusion`, or a job's step list, before calling CI stuck.
+- **This cloud container cannot run the backend suite.** It has PHP 8.3; Symfony 8 needs 8.4 (a parse error in `vendor/symfony/http-foundation/Request.php`). The Debian mirror is blocked by the session's network policy, so a Docker PHP 8.4 image with `zip`/`intl` could not be built either. CI on PHP 8.4 is the gate; `backend/AGENTS.md` gotcha 9 records it.
+- **Docs drift has a structural cause.** Status lived in 6+ places, so each release left some of them stale. That is now PRD §16 item 127.
+
+**Open items added to PRD §16:** 124 (verify #514 and #517 on prod, measure #516), 125 (branch protection: `AGENTS.md` vs `ci.yml`), 126 (PRD spec for Login Top-up), 127 (status in one place), 128 (shared admin loading skeleton, after measurement). Item 114 (Joki) now notes that ADR-126 must be re-traced against ADR-125 decisions 48–64 before it is built.
+
+**Next session starts with item 124.**
