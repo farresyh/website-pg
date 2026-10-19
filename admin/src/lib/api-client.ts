@@ -9,9 +9,15 @@
  * sent with `credentials: "include"`. JS never sees a token. Mutating
  * requests carry `X-CSRF-TOKEN`, fetched from `/api/csrf-token` (the session
  * cookie is host-only, so there is no readable XSRF cookie).
+ *
+ * ADR-121 2026-10-19 addendum: a GET carries no non-safelisted header, so
+ * the browser sends it straight away instead of an OPTIONS preflight first
+ * (the API is another origin). `Accept` is safelisted and the CSRF header is
+ * mutating-only; a header added to every request would undo this.
  */
 
-import { clearClientSession } from "@/lib/session";
+// Relative `.ts` path so `node --test` can load this module (api-client.test.ts).
+import { clearClientSession } from "./session.ts";
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://backend.test";
 
@@ -28,19 +34,23 @@ function handleUnauthenticated(status: number): void {
   }
 }
 
+// Plain fields, not constructor parameter properties: `node --test` strips
+// types only and rejects that syntax (api-client.test.ts).
 export class ApiError extends Error {
-  constructor(
-    public status: number,
-    public code: string | undefined,
-    message: string,
-    // ADR-096 — the manual-poll cooldown 422 carries a retry_after_seconds
-    // field alongside message; kept generic (raw response body) rather
-    // than a one-off constructor param, for any future caller that needs
-    // more than message/code.
-    public payload?: Record<string, unknown> | null,
-  ) {
+  status: number;
+  code: string | undefined;
+  // ADR-096 — the manual-poll cooldown 422 carries a retry_after_seconds
+  // field alongside message; kept generic (raw response body) rather
+  // than a one-off constructor param, for any future caller that needs
+  // more than message/code.
+  payload?: Record<string, unknown> | null;
+
+  constructor(status: number, code: string | undefined, message: string, payload?: Record<string, unknown> | null) {
     super(message);
     this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+    this.payload = payload;
   }
 }
 
@@ -131,7 +141,8 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
 export async function apiFetch<T>(path: string, { body, headers, ...init }: RequestOptions = {}): Promise<T> {
   const response = await apiRequest(path, {
     ...init,
-    headers: { "Content-Type": "application/json", ...headers },
+    // Only with a body: on a GET it would force a CORS preflight (see top of file).
+    headers: { ...(body !== undefined ? { "Content-Type": "application/json" } : {}), ...headers },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 

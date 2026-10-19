@@ -143,7 +143,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-118](./adr/ADR-118-marketing-campaigns.md) | Marketing Campaigns — multi-use KOL discount codes, separate from `Voucher` | Accepted (design) | 2026-10-02 |
 | [ADR-119](./adr/ADR-119-package-delete-guards.md) | Package delete guards — block a hard-delete that already has order history or is a live combo component | In force |  |
 | [ADR-120](./adr/ADR-120-seo-geo-overhaul.md) | SEO/GEO overhaul — brand-correct meta, per-brand canonical origin, machine-readable catalog | In force |  |
-| [ADR-121](./adr/ADR-121-admin-mfa-and-session-login.md) | Admin MFA (TOTP), opt-in per account, step-up on dangerous actions; admin login moves to a cookie session | In force | 2026-10-18 |
+| [ADR-121](./adr/ADR-121-admin-mfa-and-session-login.md) | Admin MFA (TOTP), opt-in per account, step-up on dangerous actions; admin login moves to a cookie session | In force | 2026-10-19 |
 | [ADR-122](./adr/ADR-122-scheduler-liveness.md) | Scheduler liveness — per-task heartbeat; a stale critical task fails `/api/health` | In force |  |
 | [ADR-123](./adr/ADR-123-public-game-id-checker.md) | Public Game ID Checker — own endpoint, Turnstile, per-IP + global budget, Redx-only, own table | In force |  |
 | [ADR-124](./adr/ADR-124-customer-account-credentials.md) | Customer account credentials — own encrypted table, super-admin reveal with MFA step-up + audit row, wiped by one sweep once the order closes | In force; supplier link is a short hashed token (ADR-125, 2026-10-19) | 2026-10-19 |

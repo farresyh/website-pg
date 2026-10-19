@@ -2,11 +2,10 @@
 
 /*
  * Cross-origin config for the browser-facing Next.js apps calling this API
- * directly — the Admin Panel (admin/, ADR-009 — Bearer token, not
- * cookie-based Sanctum SPA auth), the guest-checkout Storefront
- * (storefront/, ADR-011), and the Reseller Portal (reseller/, ADR-059 —
- * also a Bearer-token app), so `supports_credentials` stays false: none
- * needs a cookie to cross the origin boundary for auth. Originally scoped
+ * directly — the Admin Panel (admin/, a Sanctum cookie session since
+ * ADR-121, so it alone gets credentials; see `supports_credentials` below),
+ * the guest-checkout Storefront (storefront/, ADR-011), and the Reseller
+ * Portal (reseller/, ADR-059 — a Bearer-token app). Originally scoped
  * to ADMIN_URL only, from before storefront/ existed and called the API
  * directly from the browser — missing STOREFRONT_URL here silently broke
  * every browser-originated storefront call (checkout, player validation)
@@ -47,7 +46,12 @@ return [
     // browser JavaScript; without this, cross-origin fetch hides the header.
     'exposed_headers' => ['Retry-After'],
 
-    'max_age' => 0,
+    // ADR-121 2026-10-19 addendum: a browser reuses a preflight answer for
+    // that URL for two hours (Chrome's cap), instead of asking before every
+    // mutation, portal (Bearer) or storefront (X-Storefront-Host) call. Safe:
+    // the real response still needs Access-Control-Allow-Origin, so a
+    // deactivated custom domain (ADR-078) is blocked on its next request.
+    'max_age' => 7200,
 
     // Never true globally: a custom affiliate domain (ADR-078) must not get
     // credentials. ADR-121: AllowAdminCorsCredentials turns it on per

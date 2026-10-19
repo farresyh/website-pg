@@ -1,6 +1,6 @@
 # ADR-121: Admin MFA (TOTP) and a cookie-session admin login: opt-in per account, step-up on five dangerous actions
 
-> **Standing (2026-10-18):** In force; ADR-124 adds three step-up routes (2026-10-18 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-19):** In force; ADR-124 adds three step-up routes (2026-10-18 addendum); admin GETs are simple requests and CORS preflight is cached (2026-10-19 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-14. Grilled with the founder in five rounds via `/mattpocock-skills:grilling` (Q1–Q17), then stress-tested against code and production (read-only). PRD §16 item 10, AUTH-7.
 
@@ -113,3 +113,15 @@ Built on `feature/admin-mfa`. Unless a point below says otherwise, the decisions
 ### 2026-10-18 addendum — ADR-124 adds three guarded actions
 
 [ADR-124](./ADR-124-customer-account-credentials.md) (customer game logins) puts three more routes behind `mfa.stepup`: revealing a customer's login, replacing it, and saving the Customer Login Policy. The guarded set is no longer "five actions": `AdminMfaStepUpTest::test_exactly_these_routes_require_step_up` is the one list of them.
+
+### 2026-10-19 addendum — admin GETs are simple requests; CORS preflight is cached
+
+**Context.** Every admin GET sent `Content-Type: application/json` with no body. That header is not CORS-safelisted, and `config/cors.php` had `max_age => 0` (Laravel's default, never a decision). So each admin read was an OPTIONS + GET pair, each a full Laravel boot through Cloudflare: opening Orders cost six round trips instead of three, and the 60-second summary poll two. Before this ADR the `Authorization: Bearer` header forced a preflight anyway; once the cookie session removed it, the leftover `Content-Type` alone kept every read preflighted.
+
+**Decision.**
+1. The admin `apiFetch` sends `Content-Type` only when there is a body. Rule for this seam: an admin GET carries no non-safelisted header (`Accept` is safelisted; the CSRF header is mutating-only). A header added to every request reintroduces a preflight on every read.
+2. `cors.php` `max_age` = 7200 (Chrome's cap) for every origin, so a preflight a browser must still send (mutations, the portal's Bearer header, the storefront's `X-Storefront-Host`) is reused for that URL.
+
+**Rationale.** A cached preflight only lets the browser skip OPTIONS. The actual response still needs `Access-Control-Allow-Origin`, so a custom domain deactivated under [ADR-078](./ADR-078-custom-domain-storefront-gaps.md) is still blocked on its next real request. Credentials stay admin-origin-only (decision 1). The storefront and portal clients are unchanged: their preflight comes from a header they need.
+
+**Consequence to track.** Not measured yet. The gain is one round trip per admin read, most visible on a slow network; it does not touch the hard-refresh path (JS download, hydration) or possible server contention. Measure the OPTIONS count and timing in DevTools before and after release. `CorsConfigTest` pins `Access-Control-Max-Age`; an admin unit test pins that a GET sends no `Content-Type`.

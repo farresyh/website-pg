@@ -1418,3 +1418,21 @@ Tests: 7 new files (41 tests) plus `ManualCorrectionConcurrencyTest` (correction
 - **Migrations (8):** `order_credentials`, `credential_reveals`, Customer Login Policy columns on `platform_settings`, `suppliers.driver` + `funding_mode`, `games.member_pricing_enabled` + `price_change_logs.admin_user_id`, `whatsapp_groups`, `customer_notifications.session` + `chat_id`, and `supplier_login_links`.
 - **Prod state before merge (2026-10-19, read-only check in PR #514):** 0 orders processing/pending/needs_review; 2 reseller groups (both active); 0 pending links; suppliers gamevion + digiflazz; all 3 payment methods off.
 - **Verification on the box:** pending founder confirmation.
+
+## 2026-10-19 — Admin reads skip the CORS preflight; preflight answers cached (ADR-121 addendum, on `staging`)
+
+**Why.** The founder saw `/admin/orders` sometimes show "Loading…" and sometimes load at once. A read-only trace found no N+1 and an efficient Orders query (eager loads, `withExists`, one batched wallet-refund lookup). The cost was in the transport: every admin GET sent `Content-Type: application/json` with no body, which is not CORS-safelisted, and `config/cors.php` had Laravel's default `max_age => 0`. So each read was OPTIONS + GET, each a full Laravel boot through Cloudflare: opening Orders was six round trips, not three, and the 60-second summary poll two. Before ADR-121 the Bearer header forced the preflight anyway; the leftover `Content-Type` kept it after the cookie session removed that header. Gemini's independent review of the same findings agreed, and added that the storefront's `X-Storefront-Host` keeps its preflight by design.
+
+**Shipped.**
+- `admin/src/lib/api-client.ts`: `apiFetch` sends `Content-Type` only with a body. To let `node --test` load the module, the session import is a relative `.ts` path and `ApiError` uses plain fields instead of constructor parameter properties (same behaviour).
+- `admin/src/lib/api-client.test.ts`: a GET carries only CORS-safelisted headers; a POST still sends its JSON `Content-Type` and the CSRF header.
+- `backend/config/cors.php`: `max_age` 7200 (Chrome's cap), for every origin; its header comment no longer calls the admin a Bearer-token app.
+- `CorsConfigTest`: pins `Access-Control-Max-Age: 7200`.
+- ADR-121 2026-10-19 addendum (decision, safety note for ADR-078 custom domains, what is unmeasured).
+
+**Verification.**
+- Admin: unit tests 17/17; the new GET test failed on the old line and passes on the new; `tsc`, `eslint` and `next build` clean.
+- Backend: not run in this session. The container has PHP 8.3 and Symfony 8 needs 8.4 (property hooks), and the Debian package mirror is blocked for a Docker image. The new test's red is shown from code instead: `HandleCors` calls `CorsService::setOptions(config('cors'))` per request and `CorsService` writes `(string) $maxAge` to the header, so `0` gives `"0"`, not `"7200"`. CI runs the full suite on PHP 8.4.
+- Not measured yet: the gain on real requests. After release, open `/admin/orders` with DevTools → Network: the GETs to `/api/orders`, `/api/orders/summary` and `/api/games` should have no OPTIONS before them.
+
+**Not changed, on purpose.** The storefront and portal clients (their preflight comes from a header they need), the hard-refresh path (JS download, hydration), and any server contention around the :00/:15/:30/:45 scheduler ticks (unmeasured; Pulse first). A shared admin loading skeleton (the admin counterpart of the storefront's ADR-071 primitive) is a separate decision for the founder.
