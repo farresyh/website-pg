@@ -99,7 +99,9 @@ final class OpenWaClient
      * The actual HTTP call — `SendResellerBotReplyJob` and
      * `SendCustomerWhatsAppJob` call this. Throws on failure (unlike
      * `sendText()`) so the job's queue retry kicks in. A pacing refusal
-     * throws `OpenWaPacingLimitedException` (ADR-116), which is not a failure.
+     * throws `OpenWaPacingLimitedException` (ADR-116), which is not a failure,
+     * and a number not on WhatsApp throws `OpenWaRecipientNotOnWhatsAppException`,
+     * which the jobs fail on at once (PRD §16 item 96).
      */
     public function sendNow(string $chatId, string $text): void
     {
@@ -119,6 +121,16 @@ final class OpenWaClient
 
         if ($response->status() === 429 && $response->json('code') === 'SEND_PACING_LIMITED') {
             throw new OpenWaPacingLimitedException(max(1, (int) $response->json('retryAfterSeconds', 900)));
+        }
+
+        // OpenWA answers 400 both for an unregistered number and for a session
+        // that is still starting, so only the message tells them apart. Baileys
+        // says "is not registered"; whatsapp-web.js says "could not resolve the
+        // recipient". ponytail: matches OpenWA's wording, so a rewording falls
+        // back to retrying (the safe side); recheck these on each OpenWA upgrade.
+        $message = (string) $response->json('message', '');
+        if ($response->status() === 400 && preg_match('/is not registered|could not resolve the recipient/i', $message) === 1) {
+            throw new OpenWaRecipientNotOnWhatsAppException("The number is not on WhatsApp (OpenWA 400: {$message})");
         }
 
         if ($response->failed()) {
