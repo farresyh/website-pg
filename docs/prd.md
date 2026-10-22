@@ -78,7 +78,7 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 - **Payment gateway: CHIP only** (`PaymentGatewayFactory` kept for a future multi-region second gateway — [ADR-022's 2026-09-01 addendum](./adr/ADR-022-multi-gateway-payment-strategy.md) removed Xendit; FPX proven live with real money; all three methods switched off since 2026-10-07 by the founder's choice, see §14). Single company CHIP account; the platform collects 100% of every payment (including reseller storefronts) and the ledger does the split. **xenPlatform dropped entirely** — not deferred ([ADR-059](./adr/ADR-059-reseller-portal.md) decision 6, superseding ADR-001's addendum).
 - **Currency** assumed MYR as base, with dynamic exchange rate support for foreign-currency suppliers.
 - **Auth** Role middleware on the backend — frontend routing is convenience, not security. Admins use a Sanctum cookie session with opt-in MFA (AUTH-7, ADR-121); affiliate/reseller-portal users use bearer tokens.
-- **Refund policy**: no cash refunds under any circumstance (ADR-004). Resolution paths for a failed order are limited to retry-delivery or voucher issuance.
+- **Refund policy**: no cash refunds (ADR-004), **being revised**: since 2026-10-22 the published Refund Policy (`/refund-policy`, founder's decision for CHIP's merchant review) offers an undelivered order a full refund to the original payment method within 7 working days, as an alternative to a voucher. The system path is not built yet (§16 item 129); until then a failed order resolves by retry-delivery or voucher.
 - **Balance/financials**: ledger-based (ADR-002). No entity may expose or rely on a directly-mutated `balance` column as the source of truth.
 
 ---
@@ -178,7 +178,7 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 | **ORD-4** | System provides pagination with configurable per-page (10/25/50/100) | **MVP** |
 | **ORD-5** | Admin can export orders to CSV and Excel | **MVP** |
 | **ORD-6** | Admin can view order details: customer info, game/package, payment info, delivery attempts, supplier responses, status history timeline | **MVP** |
-| **ORD-7** | Admin can resolve an order via retry-delivery or voucher issuance only — **no cash refund action exists in the system** (ADR-004) | **MVP** |
+| **ORD-7** | Admin can resolve an order via retry-delivery or voucher issuance only — **no cash refund action exists in the system** (ADR-004; being revised: refund to the original payment method, §16 item 129) | **MVP** |
 | **ORD-8** | Every order generates a unique `reference_number` **before** the first supplier API call, and this same reference is reused on any retry of that same order — never regenerated | **MVP** |
 | **ORD-9** | Every monetary field (`cost_price`, `standard_selling_price`, `selling_price`, `transaction_fee`, `final_amount`, `platform_profit`, `affiliate_profit`) is always computed server-side at order-creation time from stored Package/Affiliate/Settings config, then snapshotted onto the Order — the system never accepts a client-submitted value for any of these fields. `transaction_fee` is computed on `selling_price − voucher_discount` (fee is charged on the post-voucher amount, not the original selling price). Renamed from `reseller_cost_price` 2026-08-29 ([ADR-027](./adr/ADR-027-vip-membership.md)) — the field is the platform owner's own guest/standard price, never reseller-specific; a real affiliate's own wholesale price comes from `affiliate_membership_tiers` instead (`PricingService::calculateForAffiliate()`, [ADR-056](./adr/ADR-056-reseller-wholesale-pricing-subscription-tiers.md); live in checkout via [ADR-060](./adr/ADR-060-multi-tenant-branded-storefront-custom-domain.md)) | **MVP** |
 | **ORD-10** | A scheduled reconciliation job polls supplier `check-status`-equivalent endpoints for any order left in an ambiguous/pending state beyond a threshold — the system never relies solely on a supplier webhook/callback for final order state | **MVP** |
@@ -407,7 +407,7 @@ For games where the supplier tops up through the customer's own login, not a UID
 3. System marks `delivery_status = failed`. `payment_status` remains `paid` (needs resolution) — the customer's money was genuinely received; only delivery didn't complete.
 4. Admin sees it in the Orders Need Action KPI and pill.
 5. Admin reviews order details: supplier response, player ID validity, balance status.
-6. Admin resolves it by **(a) retry or resend delivery** (same or different supplier), or **(b) compensation**: a store-credit voucher, restoring the checkout voucher, or a refund to a reseller's own wallet. No cash-refund action exists in the system.
+6. Admin resolves it by **(a) retry or resend delivery** (same or different supplier), or **(b) compensation**: a store-credit voucher, restoring the checkout voucher, or a refund to a reseller's own wallet. No cash-refund action exists in the system yet: the published Refund Policy promises a refund to the original payment method on request, and that path is §16 item 129.
 7. Customer notified of the outcome.
 
 ## 7.3 Supplier Price Sync
@@ -641,7 +641,15 @@ founder switched FPX on for one test order on 2026-10-16 (16:07 → 19:16 UTC,
 one storefront order paid) and off again, so all three are off (checked
 2026-10-18).
 
-**Latest release 2026-10-22 (`staging`→`main`, PR #526).** Merged as
+**Latest release 2026-10-22 (`staging`→`main`, PR #528).** Merged as
+`d26c795`; CI and `deploy` green, box verified the same day (migration
+`refund_policy_content` ran, Horizon running, `/refund-policy` serves 200).
+Ships #527: an admin-edited Refund Policy page and the removal of the
+storefront's "Bank Negara Malaysia" lines, both for CHIP's merchant review of
+LWF Group Sdn. Bhd. The founder filled the Refund Policy, About Us (with the
+business address) and Terms the same day.
+
+**Previous release, same day (PR #526).** Merged as
 `d2f841b`; CI green, `deploy` job green, box verified the same day (sha,
 migration `add_source_to_backup_runs` ran, Horizon running, backup password
 and `OPENWA_INSTALL_DIR` read). Ships #523 (OpenWA `400` "not on WhatsApp"
@@ -725,7 +733,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private): full DB dump except `player_validations`, 7d/4w/6m retention, nightly at 02:07. **Encrypted only from 2026-10-22:** `BACKUP_ARCHIVE_PASSWORD` was unset from go-live until the founder set it on 2026-10-22, so every archive before then is a plain zip in the private bucket (deleted in §16 item 96 step 3). Fail-closed encryption and the OpenWA source (ADR-039 2026-10-22 addendum) are live since release #526 (2026-10-22); the first OpenWA run and a restore drill are §16 item 96. **Restore test verified again 2026-10-15** (run #47, `restore_test_passed = 1`, 72s, after release #449); nightly runs 2026-10-01..15 had failed (§16 item 97, closed). Fixed in code on 2026-10-14. The fix adds one restore path shared by the nightly test and a new `app:restore-backup` command; restores go only into an empty database; DEFINER clauses are dropped on restore; verification is real (no missing table, no pending migration); 300s timeout on `redis-long`; and killed runs close themselves. Released 2026-10-15 (#441, then the fixed-name follow-up #442 via #449) with the ADR-117 exact-name grant. Earlier history: the 2026-09-14 GTID fix, build-log-archive | ADR-039, ADR-095, ADR-117 |
 | Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-form picker (`ImageUrlInput`, live via #406, 2026-10-12) on Edit Game, Hero Slide and the two SEO OG-image fields; the URL stays a plain text field | ADR-095 |
 | SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage. **ADR-120 (live 2026-10-08):** tokens in every SEO field, per-brand canonical origin (canonical/sitemap/robots/llms/JSON-LD), all packages in HTML, Product `offers` + `aggregateRating`, fact line, admin FAQ + `FAQPage` | ADR-029, ADR-042, ADR-120 |
-| Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 (Telegram) dropped and its fields removed (live via #406, 2026-10-12). Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this. A re-upload shows at once (`?v=` on the URL, #409, live via #416; founder-checked 2026-10-13). **2026-10-22:** a fourth legal page, Refund Policy (`/refund-policy`, edited beside Terms/Privacy/About Us), for CHIP's merchant review, on `staging` | ADR-028, 089 |
+| Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 (Telegram) dropped and its fields removed (live via #406, 2026-10-12). Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this. A re-upload shows at once (`?v=` on the URL, #409, live via #416; founder-checked 2026-10-13). **2026-10-22:** a fourth legal page, Refund Policy (`/refund-policy`, edited beside Terms/Privacy/About Us), for CHIP's merchant review, live via #528 | ADR-028, 089 |
 | Developer Tools (DEV-1..2) | ✅ Live — `/middleware/developer-tools`, all 5 adapter methods, typed-DTO editor, dry-run default. Same screen as MUI-11 | ADR-054 |
 | Blacklist / Fraud (FRAUD-1..4) | ✅ Live — `BlacklistService` + `CheckoutVelocityGuard` wired into checkout; `/admin/blacklist` screen. `foundation-security.md` §4 fully checked | ADR-007 |
 | Middleware Panel (MID-1..13, MUI-1..11) | ✅ Live — sync/matching/catalog (Product Manager), price sync + FX, player validation, test orders, request logging, supplier credentials, landing page. MUI-4 (export) dropped. **Player validation, live 2026-10-16 via #469** (ADR-005's three 2026-10-16 addenda): MLBB RedxGame → MooGold (it had been broken since 2026-10-10, when AcidGameShop and Nexone stopped answering); Free Fire (RedxGame, country mappings); Genshin / HSR / ZZZ (RedxGame, the UID's server must match the chosen zone, `wrong_zone`). Validators: MLBB, Free Fire, Genshin, HSR, ZZZ, all toggled on for their games **2026-10-18 (ADR-125 PR 1a, §16 item 113), released via #514:** `suppliers.driver`/`funding_mode`; a manual supplier (any number, MYR, prepaid or pay-after) can be added in Suppliers and is skipped by price/product sync, balance refresh, the staleness alert, status checks and the API tester; its balance is its funding ledger ("Owed" when pay-after); one Pending rule per supplier for the reconciler and Dashboard | ADR-005, 051, 052 |
@@ -776,6 +784,7 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
 - (none)
 
 **B. Needs a short grill / ADR addendum first**
+- **130** `/api/health` goes red when an unfunded supplier is down.
 - **129** Refund to the original payment method (ADR-004 addendum). Must be
   built before payment methods are switched on for LWF Group's CHIP account.
 
@@ -1203,7 +1212,19 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     settlement reconciliation (ADR-110), the cash equation (ADR-083), Reports
     and the order page. A money-critical ADR: grill plus the code-trace pass
     (root AGENTS.md). **Due before** payment methods are switched on for the
-    new account; until then no refund can be owed.
+    new account; until then no refund can be owed. At that switch, also:
+    move the CHIP credentials in `/middleware` to LWF Group's account, and
+    deactivate the test affiliate on `fixfastapp.com` (the CHIP reply says it
+    will be off before payments go live).
+
+130. **An unfunded supplier being down turns `/api/health` red (found
+    2026-10-22).** `supplier-balance-refresh` is a CRITICAL task, and
+    `app:refresh-supplier-balances` exits 1 when any one supplier fails. On
+    2026-10-22, `api.gamevion.com` refused connections from 00:00 UTC.
+    Gamevion is unfunded and takes no orders, yet the health check stayed
+    503 until the next daily run, and UptimeRobot alerted. Decide (ADR-122
+    addendum): judge only active, funded suppliers for health, or record
+    per-supplier failure on the Dashboard without failing the task.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
