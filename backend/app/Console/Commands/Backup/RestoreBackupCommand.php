@@ -82,6 +82,10 @@ class RestoreBackupCommand extends Command
                 $this->warn("Backup run #{$runId} did not pass its nightly restore test — check the result below carefully.");
             }
 
+            if ($run->source !== BackupRun::SOURCE_DATABASE) {
+                throw new RuntimeException("backup run #{$runId} is an {$run->source} backup — use app:restore-openwa-backup");
+            }
+
             [$disk, $path] = [$run->disk, $run->path];
         } else {
             [$disk, $path] = [config('filesystems.backup_disk'), (string) $this->option('path')];

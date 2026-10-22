@@ -3,11 +3,12 @@
 namespace App\Http\Controllers\Middleware;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\RunDatabaseBackupJob;
+use App\Http\Requests\Middleware\StartBackupRunRequest;
 use App\Models\BackupRun;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -27,9 +28,11 @@ class BackupController extends Controller
     public function index(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 20);
+        $source = $request->validate(['source' => ['sometimes', 'string', Rule::in(BackupRun::SOURCES)]])['source'] ?? null;
 
         return response()->json(
             BackupRun::query()
+                ->when($source, fn ($query) => $query->where('source', $source))
                 ->orderBy('created_at', 'desc')
                 ->orderBy('id', 'desc')
                 ->paginate($perPage)
@@ -38,36 +41,37 @@ class BackupController extends Controller
     }
 
     /**
-     * BAK-1: total count, latest timestamp, total size.
+     * BAK-1: total count, total size, and the latest run of each source
+     * (2026-10-22 addendum), so a failing OpenWA backup never hides
+     * behind a newer successful database one.
      */
     public function stats(): JsonResponse
     {
-        $lastRun = BackupRun::query()->latest()->first();
+        $lastRuns = [];
+        foreach (BackupRun::SOURCES as $source) {
+            $run = BackupRun::query()->where('source', $source)->latest('id')->first();
+            $lastRuns[$source] = $run === null ? null : ['status' => $run->status, 'at' => $run->finished_at ?? $run->created_at];
+        }
 
         return response()->json([
             'total_count' => BackupRun::query()->count(),
             'total_size_bytes' => (int) BackupRun::query()->whereNotNull('size_bytes')->sum('size_bytes'),
-            'last_run_status' => $lastRun?->status,
-            'last_run_at' => $lastRun?->finished_at ?? $lastRun?->created_at,
+            'last_runs' => $lastRuns,
         ]);
     }
 
     /**
-     * ADR-039 decision 2: manual "Backup Now" — queues the same
-     * RunDatabaseBackupJob the daily schedule uses, `triggered_by` set
-     * to the acting admin's name so history distinguishes manual runs
-     * from scheduled ones.
+     * ADR-039 decision 2: manual "Backup Now" — queues the same job the
+     * daily schedule uses for that source (`BackupRun::queue()`),
+     * `triggered_by` set to the acting admin's name so history
+     * distinguishes manual runs from scheduled ones. Before an OpenWA
+     * upgrade, run it for `openwa` (2026-10-22 addendum).
      */
-    public function store(Request $request): JsonResponse
+    public function store(StartBackupRunRequest $request): JsonResponse
     {
-        $run = BackupRun::query()->create([
-            'status' => 'queued',
-            'triggered_by' => $request->user()->name,
-        ]);
+        $run = BackupRun::queue($request->validated('source', BackupRun::SOURCE_DATABASE), $request->user()->name);
 
-        RunDatabaseBackupJob::dispatch($run);
-
-        return response()->json($run, 201);
+        return response()->json($run->refresh(), 201);
     }
 
     public function show(BackupRun $backupRun): JsonResponse

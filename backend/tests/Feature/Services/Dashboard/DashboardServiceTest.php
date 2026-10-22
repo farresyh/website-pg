@@ -405,6 +405,15 @@ class DashboardServiceTest extends TestCase
         $this->assertSame('amber', $this->attentionItems()['backup_failed']['level']);
     }
 
+    /** ADR-039 2026-10-22 addendum: judged per source. */
+    public function test_a_failed_openwa_backup_stays_amber_after_a_later_database_success(): void
+    {
+        BackupRun::query()->create(['source' => 'openwa', 'status' => 'failed', 'triggered_by' => 'system']);
+        BackupRun::query()->create(['source' => 'database', 'status' => 'success', 'triggered_by' => 'system']);
+
+        $this->assertSame('amber', $this->attentionItems()['backup_failed']['level']);
+    }
+
     public function test_attention_carries_the_last_paid_order_time(): void
     {
         $this->assertNull($this->dashboard->health()['attention']['last_paid_at']);

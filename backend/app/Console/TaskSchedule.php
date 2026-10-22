@@ -37,6 +37,7 @@ class TaskSchedule
         'wallet-topup-reconciliation',
         'database-backup',
         'database-backup-cleanup',
+        'openwa-backup',
         'membership-cycle-reset',
         'membership-payment-reconciliation',
         'membership-renewal-reminders',
@@ -201,7 +202,7 @@ class TaskSchedule
         // test -> one BackupRun row). 02:07, not 02:00 (item 97): off the minute
         // price sync and the */15 jobs start on, since the restore test also
         // writes to the same database server.
-        $schedule->command('app:run-backup', ['--triggered-by' => 'system'])
+        $schedule->command('app:run-backup', ['--source' => 'database', '--triggered-by' => 'system'])
             ->dailyAt('02:07')
             ->name('database-backup')
             ->withoutOverlapping($overlap);
@@ -214,6 +215,16 @@ class TaskSchedule
         $schedule->command('backup:clean')
             ->dailyAt('03:00')
             ->name('database-backup-cleanup')
+            ->withoutOverlapping($overlap);
+
+        // ADR-039 2026-10-22 addendum — the OpenWA gateway's data (SQLite +
+        // WhatsApp session keys), off the box to R2. 19:37 UTC = 03:37 MYT,
+        // the quietest hour: OpenWA's snapshot holds its writes for under a
+        // second. Its 14-day pruning runs inside the job, after a passing
+        // restore test. Critical: losing it means re-pairing both numbers.
+        $schedule->command('app:run-backup', ['--source' => 'openwa', '--triggered-by' => 'system'])
+            ->dailyAt('19:37')
+            ->name('openwa-backup')
             ->withoutOverlapping($overlap);
 
         // ADR-027 Phase 6 — refills quota_remaining_sen for any membership whose

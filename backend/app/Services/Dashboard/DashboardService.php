@@ -262,12 +262,15 @@ final class DashboardService
             }
         }
 
-        $lastBackup = BackupRun::query()->whereIn('status', ['success', 'failed'])->latest('id')->value('status');
+        // ADR-039 2026-10-22 addendum: per source, so a failed OpenWA backup
+        // isn't hidden by a later successful database one (or the reverse).
+        $backupFailed = collect(BackupRun::SOURCES)->contains(fn (string $source) => BackupRun::query()
+            ->where('source', $source)->whereIn('status', ['success', 'failed'])->latest('id')->value('status') === 'failed');
         $amber = [
             'withdrawals_to_process' => Withdrawal::query()->whereIn('status', [WithdrawalStatus::Pending, WithdrawalStatus::Approved])->count(),
             'price_changes_pending' => PendingPriceChange::query()->where('status', 'pending')->count(),
             'whatsapp_links_pending' => WhatsAppPendingLink::query()->count(),
-            'backup_failed' => (int) ($lastBackup === 'failed'),
+            'backup_failed' => (int) $backupFailed,
             'customer_whatsapp_disconnected' => (int) ($openWaCsSession !== null && $openWaCsSession['status'] !== 'connected'),
             // ADR-125 decision 21: a manual supplier has no drift check, and
             // recordOrderDrawdown() runs after commit and swallows errors,
