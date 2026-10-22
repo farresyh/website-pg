@@ -27,7 +27,7 @@ The founder chose WhatsApp over email, because customers rarely read email. Ever
 
    **Opt-out:** replying `STOP` stops receipts. Voucher messages still go out, since that is the customer's money. The first receipt carries a "Reply STOP to stop receipts" line. The reason is anti-ban: a customer who feels spammed taps Report/Block, and reports are what get numbers banned.
 6. **Both order-page WhatsApp buttons (support and opt-in) point to the platform CS number** (`OPENWA_CS_PHONE`). A brand's panel-configured `support_phone` is used only in the footer and on the price-list page. Consequence: order issues from affiliate-brand customers reach platform CS staff, who reply as that brand.
-7. **Anti-ban is mostly OpenWA's, not ours.** The prod box runs OpenWA v0.23.7, which already ships:
+7. **Anti-ban is mostly OpenWA's, not ours.** The prod box ran OpenWA v0.23.7 when this was decided (the version today: PRD §10, OpenWA row), which already ships:
    - `SIMULATE_TYPING` (on by default: a length-scaled, jittered typing pause, max 5s);
    - `SEND_PACING` (off by default; the founder turns it on with the default warm-up `20,40,80,160,320,640,1000`/day, `SEND_PACING_COLD_DAILY_CAP` `5,10,20,40,60,80,100`, and a failure breaker of 5 failures → 15 min pause).
 
