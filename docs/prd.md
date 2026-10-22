@@ -775,8 +775,8 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
   added and alert-tested by the founder 2026-10-14).
 - **71** GSC recheck around 2026-10-22.
 - **96** OpenWA after the v0.25.0 upgrade (done 2026-10-22): backup and
-  enforced encryption are built, on `staging` — founder sets
-  `BACKUP_ARCHIVE_PASSWORD` + `OPENWA_INSTALL_DIR` first, then release;
+  enforced encryption are built, on `staging`; the password and
+  `OPENWA_INSTALL_DIR` are set on prod (2026-10-22) — next, release;
   then retention and cleanup (`400` non-retryable is also on `staging`).
 
 **D. Waiting on a trigger: don't build early**
@@ -1067,10 +1067,11 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     restore-tested through OpenWA's `restore.sh`, kept 14 days. The same
     addendum enforces decision 4: prod never had the password, so every
     database archive on R2 is a plain zip. Rollout, in this order:
-    1. founder: keep a new long password in the password manager, then set
-       `BACKUP_ARCHIVE_PASSWORD` and `OPENWA_INSTALL_DIR=/home/forge/OpenWA`
-       on Forge (the next 02:07 database run is then encrypted and
-       restore-tested, before any code ships);
+    1. ✅ done 2026-10-22: founder kept a new long password in the password
+       manager and set `BACKUP_ARCHIVE_PASSWORD` and
+       `OPENWA_INSTALL_DIR=/home/forge/OpenWA` on Forge; Horizon restarted
+       (the next 02:07 database run is the first encrypted one — check its
+       `backup_runs` row);
     2. release `staging`→`main`; "Backup Now → OpenWA", check its restore
        test; one restore drill with the password from the password manager;
     3. with the founder's go-ahead: delete the plaintext database archives on
