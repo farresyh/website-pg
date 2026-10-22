@@ -522,7 +522,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 | **Gamevion** | Supplier — game credit catalog, price feed, order creation/fulfillment | **Integrated but deliberately unfunded (2026-09-24, Digiflazz-only).** First real `SupplierAdapter`. Static Bearer + API-key, `referenceNumber` + `409 Duplicate` idempotency, per-purchase `callback_url`. Sandbox via `GAMEVION_SANDBOX=true`. ADR-006/040. |
 | **Digiflazz** | Second supplier — Indonesian H2H aggregator (486 game SKUs + data SKUs) | **The only live supplier.** Prod key wired 2026-09-02, **funded 2026-09-15**, delivering real orders. IDR→MYR FX conversion at the sync boundary (ADR-033). Inbound `POST /api/webhooks/digiflazz` (HMAC-SHA1 `X-Hub-Signature` + IP allowlist). Topup has no rate limit; the full price list is limited to 1 call per 5 min (`rc 83`), per Digiflazz CS on 2026-09-29. Same-`ref_id` re-submit replays the stored outcome, which ADR-102's 2026-09-29 addendum relies on. ADR-030/067/069. |
 | **Supplier API(s) — general** | The Adapter contract all suppliers implement | Confirmed to vary significantly per supplier (auth, response envelopes, validation availability per-game, idempotency). All access goes through the Adapter layer (§6.21), resolved per-order by `supplier_id` (`SupplierAdapterFactory`, ADR-031). Onboarding a new supplier = a new adapter, enforced from MVP (ADR-006). |
-| **OpenWA** | WhatsApp gateway, two sessions. `reseller-bot` runs the Reseller Bot channel (`.order` / `.baki` / `.listharga` / `.topupbaki`) and, since ADR-125, supplier-group posts and commands (`.done` / `.gagal` / `.pending`). `customer-support` (+60 11-4301 3150) sends customer voucher codes and opted-in Delivered receipts, and receives opt-in/`STOP` (ADR-116) | Self-hosted on the prod box, v0.23.7 (v0.24.0 upgrade: §16 item 96), Baileys engine, `AUTO_START_SESSIONS=true` since 2026-10-14 (sessions come back by themselves after a restart), `BAILEYS_MARK_ONLINE_ON_CONNECT=false` since 2026-10-17 (the paired phones keep their notifications). `SEND_PACING` is on (warm-up and cold caps) and `SIMULATE_TYPING` is on. Inbound `OpenWaWebhookController` (HMAC `X-OpenWA-Signature`) routes by `sessionId`. ADR-075/076/116. |
+| **OpenWA** | WhatsApp gateway, two sessions. `reseller-bot` runs the Reseller Bot channel (`.order` / `.baki` / `.listharga` / `.topupbaki`) and, since ADR-125, supplier-group posts and commands (`.done` / `.gagal` / `.pending`). `customer-support` (+60 11-4301 3150) sends customer voucher codes and opted-in Delivered receipts, and receives opt-in/`STOP` (ADR-116) | Self-hosted on the prod box, v0.25.0 since 2026-10-22 (daemon runs `node dist/main`, no rebuild on restart; data backup: §16 item 96), Baileys engine, `AUTO_START_SESSIONS=true` since 2026-10-14 (sessions come back by themselves after a restart), `BAILEYS_MARK_ONLINE_ON_CONNECT=false` since 2026-10-17 (the paired phones keep their notifications). `SEND_PACING` is on (warm-up and cold caps) and `SIMULATE_TYPING` is on. Inbound `OpenWaWebhookController` (HMAC `X-OpenWA-Signature`) routes by `sessionId`. ADR-075/076/116. |
 | **Plunk** | Transactional email — membership OTP, receipts and renewal reminders, partner-portal invites, domain-status mails, and ops alerts (backup failure, Horizon long-wait, stale FX rate). Customer order notifications go by WhatsApp instead (ADR-116) | API-based (`PLUNK_API_KEY`). Replaced the generic "SMTP or API" placeholder. ADR-027/068. |
 | **Laravel Reverb** | Realtime broadcasting — order-status push, replaces application-level polling on the customer buy-flow | Self-hosted WebSocket server + Echo client. ADR-047, ADR-071 PR4. |
 | **Vercel** | Custom-domain provisioning for Affiliate whitelabel storefronts | `AffiliateDomainProvider` seam (Vercel / no-op). `affiliate_domains` table, self-serve onboarding, provider opacity in the portal. ADR-060 (reverses decision 3's Cloudflare-for-SaaS), ADR-078. |
@@ -773,8 +773,9 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
   `/api/health`, the OpenWA gateway and `/api/health/whatsapp` (third monitor
   added and alert-tested by the founder 2026-10-14).
 - **71** GSC recheck around 2026-10-22.
-- **96** Upgrade OpenWA to v0.25.0 and add a daily backup of its SQLite
-  data (with the founder standing by).
+- **96** OpenWA's remaining steps after the v0.25.0 upgrade (done
+  2026-10-22): daily backup of its SQLite data, `400` non-retryable,
+  retention, cleanup.
 
 **D. Waiting on a trigger: don't build early**
 - **128** Shared admin loading skeleton (through the admin `DataTable`), only
@@ -1034,40 +1035,34 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     optional drill-down per SKU/combo version, and whether to snapshot the
     product key on the order at checkout so a resend swap can't move it.
 
-96. **Upgrade OpenWA v0.23.7 → v0.25.0, and back up its data** (v0.24.0
-    found 2026-10-14; retargeted to v0.25.0, released 2026-10-15, and the
-    backup folded in on 2026-10-22). Prod runs OpenWA from a git checkout,
-    so the dashboard's "new version" notice never updates it by itself.
-    Both releases bring security and Baileys fixes.
-
-    **Breaking changes.** Laravel only calls `send-text` and receives
-    inbound webhooks. The changelogs of 0.24.0 and 0.25.0 were checked
-    against that on 2026-10-22, and one change touches us. On Baileys, a
-    send to a number that is not on WhatsApp now answers `400` (it
-    answered `201` and the message vanished), and a recipient lookup with
-    no answer answers `503`. `OpenWaClient::sendNow()` throws on any
-    failure, so the job retries a `400` three times before it fails. Make
-    `400` non-retryable in the same PR; `503` should keep retrying. It does not fix
-    the quiet-chat list (ex-item 58, dropped 2026-10-14: a quiet 1:1 chat
-    still appears only on its next message). Steps, with the founder standing by:
-    - back up `~/OpenWA/data/` first: boot migrates `main.sqlite`, and a
-      rollback needs the old file back with the old version;
-    - check out the tag, build, restart the daemon, confirm both sessions
-      come back `ready` by themselves (`AUTO_START_SESSIONS=true` since
-      2026-10-14) and send one test message;
-    - change the daemon command from `npm run build:all && node dist/main`
-      to `node dist/main`, so a restart no longer rebuilds for ~2 minutes;
+96. **OpenWA after the v0.25.0 upgrade: back up its data, make `400`
+    non-retryable, clean up** (v0.24.0 found 2026-10-14, retargeted to
+    v0.25.0, the backup folded in 2026-10-22). **The upgrade itself is done
+    (2026-10-22, build-log):** v0.25.0 runs from `~/OpenWA`, the daemon
+    command is `node dist/main` (no rebuild on restart), both sessions came
+    back `ready`, and `.baki` plus a customer receipt went through. The old
+    checkout is kept at `~/OpenWA-v0.23.7` for rollback. Remaining:
+    - **`400` non-retryable (code, a PR into `staging`).** On Baileys,
+      v0.25.0 answers `400` to a send to a number that is not on WhatsApp
+      (it answered `201` and the message vanished), and `503` to a
+      recipient lookup with no answer. `OpenWaClient::sendNow()` throws on
+      any failure, so today the job retries a `400` three times before it
+      fails. That is noisy, not harmful. Make `400` fail at once; `503`
+      keeps retrying. This does not fix the quiet-chat list (ex-item 58,
+      dropped 2026-10-14);
     - decide `MESSAGE_RETENTION_DAYS`. `openwa.sqlite` keeps everything: it
       was 22 MB on 2026-10-14 and 39 MB on 2026-10-22;
-    - delete `~/OpenWA/.env.bak-2026-09-30` and `.env.bak-2026-10-14` once
-      the new `.env` is confirmed (they hold the gateway's secrets, as
+    - once v0.25.0 has run cleanly for a few days, delete `~/OpenWA-v0.23.7`
+      and its three `.env.bak-*` files (they hold the gateway's secrets, as
       item 87's backups did).
 
     **Backup gap (found 2026-10-22).** OpenWA stores everything in SQLite
     on the box: `~/OpenWA/data/main.sqlite` (auth and audit) and
     `openwa.sqlite` (sessions, messages, webhooks, chats). Nothing backs
-    them up. The daily `database-backup` task covers Laravel's MySQL only,
-    and the box has no cron and no backup folder. ADR-075 said the gap was
+    them up off the box. The daily `database-backup` task covers Laravel's
+    MySQL only, and the box has no cron. The one-off tarball taken before
+    the upgrade (`~/openwa-backups/`) sits on the same disk, so it is a
+    rollback point, not a backup. ADR-075 said the gap was
     tracked as item 56, but item 56 built only the R2 cutover for the app.
     If the droplet is lost, so are the webhook secret, the issued API key
     and both WhatsApp sessions. Both numbers would need a QR re-pair, and
