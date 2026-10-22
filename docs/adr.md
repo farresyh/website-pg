@@ -26,7 +26,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-001](./adr/ADR-001-payment-gateway.md) | Payment gateway — Xendit | Superseded — CHIP-only (ADR-022 2026-09-01 addendum); xenPlatform dropped (ADR-059) | 2026-08-30 |
 | [ADR-002](./adr/ADR-002-ledger-based-balance-not-a-mutable-column.md) | Ledger-based balance, not a mutable column | In force | 2026-09-29 |
 | [ADR-003](./adr/ADR-003-tenant-aware-schema-platform-owner-only-mvp.md) | Tenant-aware schema, platform-owner-only MVP features | Partly superseded by ADR-057 (tenant scoping) |  |
-| [ADR-004](./adr/ADR-004-no-cash-refunds-ever.md) | No cash refunds, ever | In force |  |
+| [ADR-004](./adr/ADR-004-no-cash-refunds-ever.md) | No cash refunds, ever | In force; being revised (refund to the original payment method, founder 2026-10-22, PRD §16 item 129) | 2026-10-22 |
 | [ADR-005](./adr/ADR-005-player-id-pre-payment-validation-is-not.md) | Player-ID pre-payment validation is not universal | In force | 2026-10-16 |
 | [ADR-006](./adr/ADR-006-supplier-adapter-normalizer-layer-is-mvp-not.md) | Supplier Adapter/Normalizer layer is MVP, not Phase 2 | In force | 2026-07-25 |
 | [ADR-007](./adr/ADR-007-internal-fraud-blacklist-is-first-class-mvp.md) | Internal fraud blacklist is first-class MVP | In force | 2026-07-29 |

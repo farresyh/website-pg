@@ -62,7 +62,7 @@ export function CheckIdGameSkeleton() {
   );
 }
 
-/** `/about-us`, `/terms`, `/privacy` — one prose card (LegalPageContent). */
+/** `/about-us`, `/terms`, `/privacy`, `/refund-policy` — one prose card (LegalPageContent). */
 export function LegalPageSkeleton() {
   return (
     <SkeletonShell>
