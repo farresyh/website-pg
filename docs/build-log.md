@@ -1528,3 +1528,26 @@ Tests: 7 new files (41 tests) plus `ManualCorrectionConcurrencyTest` (correction
 Verified in code on the way: the policy defaults (G 24 h, H 24 h, D 14 days, 20 reveals an hour), the SLA bounds of 5–1440 minutes, the `/s/{token}` GET/POST routes, the combo rule through `GameFulfilmentRule::comboComponentSupplier`, and affiliate masking through `publicPlayerLabel()`. Correction: `reply_sla_minutes` is a key in `api_config.manual`, not a Supplier column, as item 126's text had said.
 
 **Not done (left on purpose).** §10's integration status cells (Gamevion "unfunded", CHIP live keys) still carry status. They describe the integrations themselves, so they stay until a release changes them.
+
+## 2026-10-22 — OpenWA upgraded v0.23.7 → v0.25.0 (item 96, upgrade part)
+
+**Why.** v0.24.0 and v0.25.0 bring security and Baileys fixes. Prod runs OpenWA from a git checkout, so nothing updates it by itself.
+
+**What ran (founder's go-ahead per phase; `forge` over SSH, daemon stop/start/edit by the founder in Forge).**
+- **Phase A, no downtime.** `git clone ~/OpenWA ~/OpenWA-v0.25.0`, fetched tags from `rmyndharis/OpenWA`, checked out `v0.25.0`, then `npm ci`, `npm --prefix dashboard ci` and `npm run build:all` under `nice`. The build passed and `package.json` reads `0.25.0`. The old OpenWA kept answering `/api/health` 200 throughout.
+- **Phase B.** The founder stopped the daemon (05:23 UTC). Backup: `~/openwa-backups/openwa-v0.23.7-20261022-0524.tar.gz` (27 MB, `data/` + `.env`). `data/` (49 MB) and `.env` were copied into the new folder, then `~/OpenWA` → `~/OpenWA-v0.23.7` and `~/OpenWA-v0.25.0` → `~/OpenWA`. The founder changed the Supervisor `command=npm run prod` to `command=/usr/bin/node dist/main` (directory unchanged) and started it at 05:25:57.
+
+**After (verified).**
+- `/usr/bin/node dist/main` is running and `/api/health` returns `ok`. Nest started in about 1 s, where a restart used to rebuild for about 90 s.
+- Both sessions auto-started: `reseller-bot` was ready at 05:26:00 and `customer-support` at 05:26:03. Laravel's `/api/health/whatsapp` reports both `ready`.
+- No `error` or `fatal` log lines. There are two harmless warnings: Docker is not available, and `WEBHOOK_SHUTDOWN_DRAIN_MS` (5 s) is shorter than `WEBHOOK_TIMEOUT` (10 s).
+- `.baki` in the test group arrived at 05:27:35, and the reply "Baki wallet anda: RM3.44" went out at 05:27:38. A real customer's receipt request on the CS number (05:28:14) was answered at 05:28:20 with status `delivered`. Every `webhook_outbox_events` row is `dispatched`, including the `session.status` events queued while the daemon was stopped.
+- Downtime was about 3 minutes (05:23–05:26).
+
+**Gotchas.**
+- `messages` shows each group message twice, once per session, because the CS number is also a member of the test group. It looked the same on 2026-10-16, before the upgrade, and Laravel answers once.
+- The `400`-on-unknown-number change is now live while `OpenWaClient` still retries it three times. That is noisy, not harmful, and the fix is on item 96.
+
+**Rollback (if needed).** Stop the daemon, swap the folder names back, and start it. The old `data/` in `~/OpenWA-v0.23.7` is untouched; only messages received since 05:26 would be lost from OpenWA's own history.
+
+**Left on item 96.** The off-box backup of `data/`, the `400` fix, `MESSAGE_RETENTION_DAYS`, and deleting `~/OpenWA-v0.23.7` plus the `.env.bak-*` files after a few clean days.
