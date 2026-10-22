@@ -62,7 +62,7 @@ class SeoControllerTest extends TestCase
         $this->assertSame([], $response->json('recommendations'));
     }
 
-    public function test_overview_sitemap_url_count_is_five_static_pages_plus_active_games(): void
+    public function test_overview_sitemap_url_count_is_six_static_pages_plus_active_games(): void
     {
         $this->actingAsSuperAdmin();
         $this->primaryAffiliate();
@@ -72,7 +72,7 @@ class SeoControllerTest extends TestCase
         $response = $this->getJson('/api/seo/overview');
 
         $response->assertOk();
-        $this->assertSame(7, $response->json('sitemap_url_count'));
+        $this->assertSame(8, $response->json('sitemap_url_count'));
     }
 
     public function test_settings_creates_a_default_row_on_first_access(): void

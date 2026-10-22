@@ -6,7 +6,7 @@ use App\Models\Concerns\BelongsToAffiliate;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * ADR-028 addendum decision 10: footer text + the three legal-page
+ * ADR-028 addendum decision 10: footer text + the legal-page
  * contents (sanitized HTML on save, decision 12) + Footer Games
  * (decision 14 — `footer_game_ids` is an ordered JSON array of
  * `Game.id`, order is display order).
@@ -24,6 +24,7 @@ class AffiliateFooterSettings extends Model
         'terms_content',
         'privacy_content',
         'about_us_content',
+        'refund_policy_content',
         'footer_game_ids',
     ];
 

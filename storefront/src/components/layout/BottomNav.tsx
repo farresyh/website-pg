@@ -41,6 +41,7 @@ const TRACK_ORDER_ITEM: NavItem = { href: "/track-order", label: "Track Order", 
 const INFO_LINKS: DrawerLink[] = [
   { href: "/about-us", label: "About Us" },
   { href: "/terms", label: "Terms & Conditions" },
+  { href: "/refund-policy", label: "Refund Policy" },
   { href: "/privacy", label: "Privacy Policy" },
 ];
 

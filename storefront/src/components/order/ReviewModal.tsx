@@ -498,7 +498,6 @@ export default function ReviewModal({
               height={16}
               className="h-3.5 w-auto object-contain"
             />
-            <span>• Bank Negara Malaysia compliant</span>
           </div>
         </div>
       </div>

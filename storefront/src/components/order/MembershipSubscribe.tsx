@@ -275,7 +275,6 @@ export default function MembershipSubscribe({ token }: { token: string }) {
                 className="h-3.5 w-auto object-contain"
               />
             </div>
-            <span className="text-[11px] text-on-surface-variant">Bank Negara Malaysia Compliant</span>
           </div>
 
           <p className="text-xs text-outline">

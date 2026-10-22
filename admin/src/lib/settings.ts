@@ -24,6 +24,7 @@ export interface FooterSettings {
   terms_content: string | null;
   privacy_content: string | null;
   about_us_content: string | null;
+  refund_policy_content: string | null;
   footer_game_ids: number[] | null;
 }
 
@@ -56,7 +57,7 @@ export type UpdateBrandingValues = Pick<
 
 export type UpdateFooterValues = Pick<
   FooterSettings,
-  "footer_text" | "terms_content" | "privacy_content" | "about_us_content" | "footer_game_ids"
+  "footer_text" | "terms_content" | "privacy_content" | "about_us_content" | "refund_policy_content" | "footer_game_ids"
 >;
 
 export type UpdatePlatformValues = Pick<

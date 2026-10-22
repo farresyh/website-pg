@@ -159,6 +159,7 @@ class SettingsControllerTest extends TestCase
         $response = $this->putJson('/api/settings/footer', [
             'footer_text' => '© 2026 {store_name}',
             'terms_content' => '<p>Welcome to <b>{store_name}</b></p><script>alert(1)</script>',
+            'refund_policy_content' => '<p>Refunds</p><script>alert(1)</script>',
         ]);
 
         $response->assertOk();
@@ -166,6 +167,7 @@ class SettingsControllerTest extends TestCase
         $this->assertStringContainsString('{store_name}', $stored->terms_content);
         $this->assertStringNotContainsString('<script>', $stored->terms_content);
         $this->assertStringContainsString('<b>', $stored->terms_content);
+        $this->assertSame('<p>Refunds</p>', $stored->refund_policy_content);
     }
 
     public function test_update_footer_rejects_more_than_four_games(): void

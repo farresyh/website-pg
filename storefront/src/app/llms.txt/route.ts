@@ -65,6 +65,7 @@ export async function GET() {
   lines.push(`- [Track Order](${origin}/track-order): check the delivery status of a past order`);
   lines.push(`- [About Us](${origin}/about-us)`);
   lines.push(`- [Terms & Conditions](${origin}/terms)`);
+  lines.push(`- [Refund Policy](${origin}/refund-policy)`);
   lines.push(`- [Privacy Policy](${origin}/privacy)`);
 
   return new Response(lines.join("\n") + "\n", {

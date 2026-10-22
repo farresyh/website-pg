@@ -113,10 +113,6 @@ export default function PaymentMethodsSection({ channels = [] }: { channels?: Pa
             className="h-5 w-auto object-contain"
           />
         </div>
-        <span className="hidden text-on-surface-variant/40 sm:inline">•</span>
-        <span className="text-[11.5px] text-on-surface-variant">
-          Licensed &amp; compliant with Bank Negara Malaysia standards
-        </span>
       </div>
     </section>
   );

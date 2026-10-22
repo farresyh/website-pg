@@ -1,6 +1,6 @@
 /**
  * ADR-028 addendum decision 11/12 — shared by /terms, /privacy,
- * /about-us. `content` is already sanitized (the `rich_text` Purifier
+ * /about-us, /refund-policy. `content` is already sanitized (the `rich_text` Purifier
  * profile) and `{store_name}`-substituted server-side
  * (BrandingController::legal()) before this renders it — safe here
  * because the content passed the allowlist sanitizer twice (on save
