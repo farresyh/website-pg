@@ -1,13 +1,16 @@
 import { apiFetch, apiDownload } from "@/lib/api-client";
 
+/** ADR-039 2026-10-22 addendum: the two things backed up. */
+export type BackupSource = "database" | "openwa";
+
 /**
- * ADR-039: mirrors backend/app/Models/BackupRun.php — one row per
- * `RunDatabaseBackupJob` run (scheduled or manual "Backup Now"),
- * polled by `/middleware/backups` while `queued`/`running`, same shape
- * as `PriceSyncRun`.
+ * ADR-039: mirrors backend/app/Models/BackupRun.php — one row per backup
+ * run (scheduled or manual "Backup Now"), pushed to `/middleware/backups`
+ * over the `backups` channel, same shape as `PriceSyncRun`.
  */
 export interface BackupRun {
   id: number;
+  source: BackupSource;
   status: "queued" | "running" | "success" | "failed";
   triggered_by: string;
   disk: string | null;
@@ -34,12 +37,15 @@ export interface BackupRunPage {
 export interface BackupStats {
   total_count: number;
   total_size_bytes: number;
-  last_run_status: BackupRun["status"] | null;
-  last_run_at: string | null;
+  /** Latest run per source, so a failing source never hides behind the other's success. */
+  last_runs: Record<BackupSource, { status: BackupRun["status"]; at: string } | null>;
 }
 
-export function listBackupRuns(page = 1) {
-  const query = page > 1 ? `?page=${page}` : "";
+export function listBackupRuns(page = 1, source: BackupSource | null = null) {
+  const params = new URLSearchParams();
+  if (page > 1) params.set("page", String(page));
+  if (source) params.set("source", source);
+  const query = params.size > 0 ? `?${params}` : "";
 
   return apiFetch<BackupRunPage>(`/api/middleware/backups${query}`);
 }
@@ -48,8 +54,8 @@ export function getBackupStats() {
   return apiFetch<BackupStats>("/api/middleware/backups/stats");
 }
 
-export function triggerBackup() {
-  return apiFetch<BackupRun>("/api/middleware/backups", { method: "POST" });
+export function triggerBackup(source: BackupSource) {
+  return apiFetch<BackupRun>("/api/middleware/backups", { method: "POST", body: { source } });
 }
 
 export function deleteBackupRun(runId: number) {
