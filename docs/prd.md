@@ -604,13 +604,13 @@ one storefront order paid) and off again, so all three are off (checked
 
 **Latest release 2026-10-19 (`staging`→`main`, PR #517).** Merged as
 `6a5052e`; CI green and its `deploy` job called the Forge hook (16:59 UTC);
-prod not yet verified (§16 item 124). Ships #516: admin reads skip the CORS
+box verified 2026-10-22; the effect on admin loading is not measured yet (§16 item 124). Ships #516: admin reads skip the CORS
 preflight (`apiFetch` sends `Content-Type` only with a body) and `cors.php`
 `max_age` is 7200 (ADR-121 2026-10-19 addendum); plus #515, the docs sync after
 #514. No migration, no env change.
 
 **Previous release, same day (PR #514).** Merged as `8982994c`, CI deploy job
-green; prod not yet verified (§16 item 124). Ships item 112
+green; box verified 2026-10-22. Ships item 112
 (customer account credentials base, ADR-124) and item 113 (Login Top-up, Roblox
 and eFootball: supplier `driver` + manual suppliers, admin manual packages with
 audited agreed cost, login checkout with consent, Manual Queue fallback,
@@ -739,10 +739,8 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
   added and alert-tested by the founder 2026-10-14).
 - **71** GSC recheck around 2026-10-22.
 - **96** Upgrade OpenWA to v0.24.0 (with the founder standing by).
-- **124** Verify releases #514 and #517 on prod, and measure #516's effect
-  (admin DevTools, Pulse). Then record the results.
-- **125** Branch protection: `AGENTS.md` and the `ci.yml` header disagree on
-  whether `staging`/`main` are protected. Check GitHub, fix the wrong one.
+- **124** Measure #516's effect (admin DevTools, Pulse). The box checks
+  were done 2026-10-22.
 
 **D. Waiting on a trigger: don't build early**
 - **128** Shared admin loading skeleton (through the admin `DataTable`), only
@@ -1113,23 +1111,19 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     combo leg in the Monthly Summary (ADR-083 2026-10-17 addendum).
 
 124. **Verify releases #514 and #517 on prod; measure #516 (2026-10-19).**
-    Both releases have a green CI `deploy` job but no read-only check on
-    the box yet. On the Forge box: `current` is `6a5052e`; `migrate:status`
-    shows #514's eight migrations Ran; `/api/health` 200; Horizon running;
-    `whatsapp_groups` has the two reseller rows; the OpenWA bot session is
-    configured (without it supplier-group posts are skipped). For #516: an
-    OPTIONS to `/api/orders` from the admin origin returns
-    `Access-Control-Max-Age: 7200`, and DevTools → Network on
-    `/admin/orders` shows no OPTIONS before `/api/orders`,
-    `/api/orders/summary` or `/api/games`. Pulse: slow requests and server
-    CPU around the :00/:15/:30/:45 scheduler ticks (possible contention,
-    unmeasured). Record results in `build-log.md` and §14.
+    **Box checks done 2026-10-22 (read-only, build-log):**
+    - `current` is `6a5052e`.
+    - #514's eight migrations show Ran.
+    - Horizon is running.
+    - `whatsapp_groups` has 2 reseller rows and 1 supplier row, all active.
+    - The OpenWA bot session is configured.
+    - An admin-origin OPTIONS to `/api/orders` returns `Access-Control-Max-Age: 7200`.
 
-125. **Branch protection: two docs disagree (found 2026-10-19).** Root
-    `AGENTS.md` (Branch Workflow) says `staging` and `main` are protected,
-    PR-only, with required CI; the `.github/workflows/ci.yml` header says
-    no branch protection or rulesets exist. Check GitHub → Settings →
-    Branches / Rules and correct whichever is wrong.
+    **Still open (needs the founder's admin login):**
+    - DevTools → Network on `/admin/orders` should show no OPTIONS before
+      `/api/orders`, `/api/orders/summary` or `/api/games`.
+    - Pulse: slow requests and server CPU around the :00/:15/:30/:45
+      scheduler ticks (possible contention, unmeasured).
 
 126. **PRD spec catch-up for Login Top-up (found in the 2026-10-19 docs
     audit).** Item 113 is live but the spec never got it: §6 has no
@@ -1160,6 +1154,7 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **125** 2026-10-22: Branch protection. The `ci.yml` header was right: none existed. One ruleset now protects `staging` and `main` (PR-only, merge commits, the deploy job's eight checks required), and `ci.yml` dropped its docs-only `paths-ignore`. The repo stays public on purpose (ADR-037 2026-10-22 addendum).
 - **113** 2026-10-19: Login Top-up, Roblox and eFootball (ADR-125). Manual suppliers (`driver`/`funding_mode`), admin manual packages with audited agreed cost, login checkout with consent, Manual Queue fallback, supplier WhatsApp group bot (`.done`/`.gagal`/`.pending`) with short login links (`/s/<token>`), Partners → Suppliers screen. Released via #514 (2026-10-19). Details: build-log 2026-10-18 and 2026-10-19.
 - **112** 2026-10-18: customer account credentials base (ADR-124). Encrypted `order_credentials` table, 15-minute sweep, super_admin reveal/replace with MFA step-up and audit row, Customer Login Policy settings. Released via #514 (2026-10-19); written at checkout since item 113. Details: build-log 2026-10-18.
 - **120** 2026-10-18: accounting source files are kept. The CHIP settlement `.xlsx` is stored with its SHA-256 under `accounting/chip-settlements/YYYY/MM/` (by `date_to`) and downloadable. A file with nothing new (same file or a re-export) is refused, and old settlements #1–#4 can take their original if dates and totals match exactly. Every receipt goes through one `AccountingFileStore`: filed by accounting month, deleted only if its save fails (two paths used to leave orphans), and a transfer correction no longer deletes the receipt it replaces. Live via #500 (2026-10-18). R2 lifecycle confirmed safe (only the default multipart-abort rule). The founder attached the originals of #1–#4 the same day (verified: file exists, SHA-256 matches, figures unchanged). ADR-083 2026-10-18 addendum (keep accounting source files).

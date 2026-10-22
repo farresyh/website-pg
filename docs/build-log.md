@@ -1454,3 +1454,21 @@ Tests: 7 new files (41 tests) plus `ManualCorrectionConcurrencyTest` (correction
 **Open items added to PRD §16:** 124 (verify #514 and #517 on prod, measure #516), 125 (branch protection: `AGENTS.md` vs `ci.yml`), 126 (PRD spec for Login Top-up), 127 (status in one place), 128 (shared admin loading skeleton, after measurement). Item 114 (Joki) now notes that ADR-126 must be re-traced against ADR-125 decisions 48–64 before it is built.
 
 **Next session starts with item 124.**
+
+## 2026-10-22 — Review of #516 and #517, orphaned docs brought in, branch ruleset (ADR-037 addendum)
+
+**#516 review.** The founder asked for a check of the work done without Claude, and of whether the fix was the right one. The fix treats the root cause. Every admin read goes through `apiRequest`. No tracing library adds headers. `Accept: application/json` stays, so a 401 is still JSON. Verified on prod: an admin-origin OPTIONS returns `access-control-max-age: 7200`, and a GET without `Content-Type` still gets `allow-origin` and `allow-credentials`. A same-origin `/api` proxy would remove CORS entirely, but it adds a hop and runs against ADR-121's session design, so it is not worth it. One wording note: `cors.php` says a deactivated custom domain is "blocked on its next request". In fact, for up to 2 h a cached preflight still lets it *send* a non-simple request; only reading the response is blocked. That is harmless, because CORS is not auth: Host resolution and CSRF still apply.
+
+**Orphaned docs.** Three commits had been pushed to `claude/gallant-bardeen-7hedes` after #516 merged, so they never reached `staging`: the PRD #517 status and items 124–128, the #517 build-log entry above, and `backend/AGENTS.md` gotcha 9. They are cherry-picked into this PR. **Lesson:** a commit pushed to a branch after its PR merges goes nowhere. Open a new PR for it.
+
+**Item 124, box half (read-only).**
+- `current` is `6a5052e`.
+- #514's eight migrations show Ran.
+- Horizon is running.
+- `whatsapp_groups` has 2 reseller rows and 1 supplier row, all active.
+- The bot session (`OPENWA_SESSION_ID` + `OPENWA_API_KEY`) is set.
+- The DevTools and Pulse measurement remains, and needs the founder's login.
+
+**`/api/health` 503 (`scheduler: false`), not ours.** `api.gamevion.com` refused connections from the box and from the founder's Mac from 2026-10-21 16:30 UTC onward. `supplier-balance-refresh` failed at 00:00 UTC and the Gamevion price sync failed every 30 minutes. No orders were placed in that window (all payment methods are off). Health recovers on its own once the task succeeds again.
+
+**Item 125.** Neither `staging` nor `main` was protected (`protected: false`, no rulesets). The repo is public on purpose, for unlimited Actions minutes. `ci.yml` drops the docs-only `paths-ignore`, which with required checks would have wedged every docs PR. The ruleset itself is created once this PR merges (ADR-037 2026-10-22 addendum).
