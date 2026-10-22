@@ -285,7 +285,7 @@ Requests come from Affiliates, through their portal (ADR-059). The platform owne
 | **SET-7** | Admin can toggle payment gateway with custom disabled message | **MVP** |
 | **SET-8** | ~~Admin can configure notification settings (email toggles)~~ | **❌ Dropped, 2026-10-12** (YAGNI, ADR-116 decision 10). The customer already gets CHIP's own payment email on purchase, so no email toggle is needed. The one switch that exists is `whatsapp_notifications_enabled` (ADR-116) |
 | **SET-9** | ~~Admin can configure Telegram bot integration~~ | **Dropped 2026-10-10** (ADR-028 addendum) — no sender was ever built; ops alerts go by Plunk email |
-| **SET-10** | Admin can configure footer content and social media links | **MVP** |
+| **SET-10** | Admin can configure footer content and social media links, and the four legal pages (Terms, Privacy, About Us, Refund Policy) | **MVP** |
 | **SET-11** | Admin can configure transaction fee rate (percentage + flat component) per payment method, matching the gateway's current published rates (e.g. FPX/DuitNow ≈ flat-only; Cards/e-wallets ≈ percentage + flat) — never hardcoded in application code. Written against Xendit's rate card; the gateway is CHIP since ADR-022's 2026-09-01 cutover, `payment_methods` table unchanged | **MVP** |
 
 ## 6.18 Admin — Developer Tools
@@ -617,7 +617,7 @@ Unscheduled ideas, not on the backlog:
 
 # 14. Build Status
 
-**Where things stand (2026-10-19).** The platform is feature-complete and live
+**Where things stand (2026-10-22).** The platform is feature-complete and live
 in production: storefront (plus every Affiliate whitelabel brand), admin panel,
 Affiliate/Reseller portal, and the developer-docs site. CHIP FPX payments and
 the CHIP + Digiflazz webhooks are proven end-to-end with real money.
@@ -641,14 +641,23 @@ founder switched FPX on for one test order on 2026-10-16 (16:07 → 19:16 UTC,
 one storefront order paid) and off again, so all three are off (checked
 2026-10-18).
 
-**Latest release 2026-10-19 (`staging`→`main`, PR #517).** Merged as
+**Latest release 2026-10-22 (`staging`→`main`, PR #526).** Merged as
+`d2f841b`; CI green, `deploy` job green, box verified the same day (sha,
+migration `add_source_to_backup_runs` ran, Horizon running, backup password
+and `OPENWA_INSTALL_DIR` read). Ships #523 (OpenWA `400` "not on WhatsApp"
+fails the send job at once) and #524 (OpenWA as a second backup source,
+backup encryption enforced, ADR-039 2026-10-22 addendum), plus docs
+#519–#522 and #525. One additive migration; the two env vars were set before
+the release (§16 item 96).
+
+**Previous release 2026-10-19 (PR #517).** Merged as
 `6a5052e`; CI green and its `deploy` job called the Forge hook (16:59 UTC);
 box verified 2026-10-22; #516 measured, admin GETs send no OPTIONS (§16 item 124, closed). Ships #516: admin reads skip the CORS
 preflight (`apiFetch` sends `Content-Type` only with a body) and `cors.php`
 `max_age` is 7200 (ADR-121 2026-10-19 addendum); plus #515, the docs sync after
 #514. No migration, no env change.
 
-**Previous release, same day (PR #514).** Merged as `8982994c`, CI deploy job
+**Release before that, same day (PR #514).** Merged as `8982994c`, CI deploy job
 green; box verified 2026-10-22. Ships item 112
 (customer account credentials base, ADR-124) and item 113 (Login Top-up, Roblox
 and eFootball: supplier `driver` + manual suppliers, admin manual packages with
@@ -713,10 +722,10 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. Renewal-reminder emails at H-3 and H+1 (Malaysia days), listed on the admin member page (item 64, live via #416 2026-10-13). WhatsApp reminders designed, waiting on a trigger (§16 item 85) | ADR-027, 055, 068, 080 |
 | Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. The voucher path was live-tested 2026-10-06 (a failed order's Issue Voucher code arrived on WhatsApp), along with the status card and not-found reply. Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14). **2026-10-12 (§16 item 69):** every order-number message gets a card or a not-found reply; the silent repeat throttles are removed (live via #416; the founder confirmed on a real phone 2026-10-13) **2026-10-19 (ADR-125 PR 2a, released via #514):** the same persisted queue also carries supplier-group posts on the bot session (`session`/`chat_id`), with a send slot per session, so customer pacing and the customer switch are unchanged | ADR-116 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
-| Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private): full DB dump except `player_validations`, 7d/4w/6m retention, nightly at 02:07. **Encrypted only from 2026-10-22:** `BACKUP_ARCHIVE_PASSWORD` was unset from go-live until the founder set it on 2026-10-22, so every archive before then is a plain zip in the private bucket (deleted in §16 item 96 step 3). Fail-closed encryption and the OpenWA source (ADR-039 2026-10-22 addendum) are built, on `staging`, not yet released (§16 item 96). **Restore test verified again 2026-10-15** (run #47, `restore_test_passed = 1`, 72s, after release #449); nightly runs 2026-10-01..15 had failed (§16 item 97, closed). Fixed in code on 2026-10-14. The fix adds one restore path shared by the nightly test and a new `app:restore-backup` command; restores go only into an empty database; DEFINER clauses are dropped on restore; verification is real (no missing table, no pending migration); 300s timeout on `redis-long`; and killed runs close themselves. Released 2026-10-15 (#441, then the fixed-name follow-up #442 via #449) with the ADR-117 exact-name grant. Earlier history: the 2026-09-14 GTID fix, build-log-archive | ADR-039, ADR-095, ADR-117 |
+| Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private): full DB dump except `player_validations`, 7d/4w/6m retention, nightly at 02:07. **Encrypted only from 2026-10-22:** `BACKUP_ARCHIVE_PASSWORD` was unset from go-live until the founder set it on 2026-10-22, so every archive before then is a plain zip in the private bucket (deleted in §16 item 96 step 3). Fail-closed encryption and the OpenWA source (ADR-039 2026-10-22 addendum) are live since release #526 (2026-10-22); the first OpenWA run and a restore drill are §16 item 96. **Restore test verified again 2026-10-15** (run #47, `restore_test_passed = 1`, 72s, after release #449); nightly runs 2026-10-01..15 had failed (§16 item 97, closed). Fixed in code on 2026-10-14. The fix adds one restore path shared by the nightly test and a new `app:restore-backup` command; restores go only into an empty database; DEFINER clauses are dropped on restore; verification is real (no missing table, no pending migration); 300s timeout on `redis-long`; and killed runs close themselves. Released 2026-10-15 (#441, then the fixed-name follow-up #442 via #449) with the ADR-117 exact-name grant. Earlier history: the 2026-09-14 GTID fix, build-log-archive | ADR-039, ADR-095, ADR-117 |
 | Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-form picker (`ImageUrlInput`, live via #406, 2026-10-12) on Edit Game, Hero Slide and the two SEO OG-image fields; the URL stays a plain text field | ADR-095 |
 | SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage. **ADR-120 (live 2026-10-08):** tokens in every SEO field, per-brand canonical origin (canonical/sitemap/robots/llms/JSON-LD), all packages in HTML, Product `offers` + `aggregateRating`, fact line, admin FAQ + `FAQPage` | ADR-029, ADR-042, ADR-120 |
-| Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 (Telegram) dropped and its fields removed (live via #406, 2026-10-12). Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this. A re-upload shows at once (`?v=` on the URL, #409, live via #416; founder-checked 2026-10-13) | ADR-028, 089 |
+| Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 (Telegram) dropped and its fields removed (live via #406, 2026-10-12). Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this. A re-upload shows at once (`?v=` on the URL, #409, live via #416; founder-checked 2026-10-13). **2026-10-22:** a fourth legal page, Refund Policy (`/refund-policy`, edited beside Terms/Privacy/About Us), for CHIP's merchant review, on `staging` | ADR-028, 089 |
 | Developer Tools (DEV-1..2) | ✅ Live — `/middleware/developer-tools`, all 5 adapter methods, typed-DTO editor, dry-run default. Same screen as MUI-11 | ADR-054 |
 | Blacklist / Fraud (FRAUD-1..4) | ✅ Live — `BlacklistService` + `CheckoutVelocityGuard` wired into checkout; `/admin/blacklist` screen. `foundation-security.md` §4 fully checked | ADR-007 |
 | Middleware Panel (MID-1..13, MUI-1..11) | ✅ Live — sync/matching/catalog (Product Manager), price sync + FX, player validation, test orders, request logging, supplier credentials, landing page. MUI-4 (export) dropped. **Player validation, live 2026-10-16 via #469** (ADR-005's three 2026-10-16 addenda): MLBB RedxGame → MooGold (it had been broken since 2026-10-10, when AcidGameShop and Nexone stopped answering); Free Fire (RedxGame, country mappings); Genshin / HSR / ZZZ (RedxGame, the UID's server must match the chosen zone, `wrong_zone`). Validators: MLBB, Free Fire, Genshin, HSR, ZZZ, all toggled on for their games **2026-10-18 (ADR-125 PR 1a, §16 item 113), released via #514:** `suppliers.driver`/`funding_mode`; a manual supplier (any number, MYR, prepaid or pay-after) can be added in Suppliers and is skipped by price/product sync, balance refresh, the staleness alert, status checks and the API tester; its balance is its funding ledger ("Owed" when pay-after); one Pending rule per supplier for the reconciler and Dashboard | ADR-005, 051, 052 |
@@ -767,7 +776,8 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
 - (none)
 
 **B. Needs a short grill / ADR addendum first**
-- (none)
+- **129** Refund to the original payment method (ADR-004 addendum). Must be
+  built before payment methods are switched on for LWF Group's CHIP account.
 
 **C. Founder actions (no code)**
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
@@ -775,9 +785,9 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
   added and alert-tested by the founder 2026-10-14).
 - **71** GSC recheck around 2026-10-22.
 - **96** OpenWA after the v0.25.0 upgrade (done 2026-10-22): backup and
-  enforced encryption are built, on `staging`; the password and
-  `OPENWA_INSTALL_DIR` are set on prod (2026-10-22) — next, release;
-  then retention and cleanup (`400` non-retryable is also on `staging`).
+  enforced encryption and the `400` fix are live (release #526,
+  2026-10-22) — next, "Backup Now → OpenWA" and a restore drill; then
+  retention and cleanup.
 
 **D. Waiting on a trigger: don't build early**
 - **128** Shared admin loading skeleton (through the admin `DataTable`), only
@@ -1044,8 +1054,7 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     command is `node dist/main` (no rebuild on restart), both sessions came
     back `ready`, and `.baki` plus a customer receipt went through. The old
     checkout is kept at `~/OpenWA-v0.23.7` for rollback. Remaining:
-    - **`400` non-retryable — built 2026-10-22, on `staging`, not yet
-      released.** v0.25.0 answers `400` both to a number that is not on
+    - **`400` non-retryable — live since release #526 (2026-10-22).** v0.25.0 answers `400` both to a number that is not on
       WhatsApp *and* while a session is still starting, so only the message
       tells them apart. `OpenWaClient::sendNow()` throws
       `OpenWaRecipientNotOnWhatsAppException` for "is not registered" /
@@ -1058,8 +1067,8 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
       and its three `.env.bak-*` files (they hold the gateway's secrets, as
       item 87's backups did).
 
-    **Backup (ADR-039 2026-10-22 addendum) — built 2026-10-22, on
-    `staging`, not yet released.** OpenWA's data had no off-box backup (the
+    **Backup (ADR-039 2026-10-22 addendum) — live since release #526
+    (2026-10-22).** OpenWA's data had no off-box backup (the
     tarball taken before the upgrade, `~/openwa-backups/`, sits on the same
     disk). Now a second source of the one backup system: OpenWA's own
     `scripts/backup.sh` plus its `.env`, AES-256 with
@@ -1072,8 +1081,8 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
        `OPENWA_INSTALL_DIR=/home/forge/OpenWA` on Forge; Horizon restarted
        (the next 02:07 database run is the first encrypted one — check its
        `backup_runs` row);
-    2. release `staging`→`main`; "Backup Now → OpenWA", check its restore
-       test; one restore drill with the password from the password manager;
+    2. ✅ released 2026-10-22 (#526). Next: "Backup Now → OpenWA", check
+       its restore test; one restore drill with the password from the password manager;
     3. with the founder's go-ahead: delete the plaintext database archives on
        R2, then `~/openwa-backups/`, `~/OpenWA-v0.23.7` and the
        `.env.bak-*` files.
@@ -1179,6 +1188,22 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     it needs the founder's sign-off (ADR-104 decision 7). A browser data
     cache stays out unless measurement demands it: stale data on money
     screens is a real risk.
+
+129. **Refund to the original payment method (founder, 2026-10-22) —
+    revises ADR-004, needs its grill and a code-trace pass.** CHIP's
+    merchant review for LWF Group Sdn. Bhd. asked for a refund policy that
+    allows a refund to the original payment method when a paid order is not
+    delivered. The founder decided: after retries fail, the customer chooses
+    a store voucher for the full amount (immediate) or a full refund to the
+    original payment method within 7 working days. A delivered order is not
+    refundable. The policy text is admin content (`/refund-policy`, item
+    above in §15 Settings). Not designed yet: how a refund is done (CHIP's
+    refund API or its dashboard) and recorded so that nothing silently
+    disagrees: order and delivery state, the Transaction Register, CHIP
+    settlement reconciliation (ADR-110), the cash equation (ADR-083), Reports
+    and the order page. A money-critical ADR: grill plus the code-trace pass
+    (root AGENTS.md). **Due before** payment methods are switched on for the
+    new account; until then no refund can be owed.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
