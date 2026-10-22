@@ -74,6 +74,53 @@ final class BackupRestorer
         return $dumps[0];
     }
 
+    /**
+     * ADR-039 2026-10-22 addendum: decrypts an OpenWA archive (see
+     * OpenWaBackup) into the work dir. The nightly restore test and the
+     * operator's `app:restore-openwa-backup` both come through here.
+     *
+     * @return array{tar: string, env: ?string}
+     */
+    public function extractOpenWa(string $zipPath, string $workDir): array
+    {
+        $zip = new ZipArchive;
+
+        if ($zip->open($zipPath) !== true) {
+            throw new RuntimeException('could not open OpenWA backup archive');
+        }
+
+        if ($password = config('backup.backup.password')) {
+            $zip->setPassword($password);
+        }
+
+        $extracted = $zip->extractTo($workDir);
+        $zip->close();
+
+        $tars = glob($workDir.'/openwa-backup-*.tar.gz') ?: [];
+
+        if (! $extracted || count($tars) !== 1) {
+            throw new RuntimeException('no OpenWA archive found inside the backup zip (wrong BACKUP_ARCHIVE_PASSWORD?)');
+        }
+
+        return ['tar' => $tars[0], 'env' => is_file($workDir.'/openwa.env') ? $workDir.'/openwa.env' : null];
+    }
+
+    /**
+     * A killed run's `finally` never runs, so its decrypted plaintext (a
+     * customer-PII dump, or OpenWA's session keys) stays on disk. Each backup
+     * run clears what earlier runs left. ponytail: safe only because
+     * supervisor-backups runs one job at a time (maxProcesses 1); the
+     * operator commands use their own `restore-cli-` prefix, never swept.
+     */
+    public function sweepJobLeftovers(): void
+    {
+        foreach (['restore-extract-', 'openwa-backup-'] as $prefix) {
+            foreach (glob(storage_path('app/backup-temp/'.$prefix.'*'), GLOB_ONLYDIR) ?: [] as $dir) {
+                $this->deleteDirectory($dir);
+            }
+        }
+    }
+
     public function restore(string $dumpPath, string $database): void
     {
         $tables = $this->tables($database);

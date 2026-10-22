@@ -89,4 +89,13 @@ class RestoreBackupCommandTest extends TestCase
         $this->artisan('app:restore-backup', ['--file' => 'a.zip', '--path' => 'b.zip', '--database' => 'x'])->assertFailed();
         $this->artisan('app:restore-backup', ['--file' => 'a.zip'])->assertFailed();
     }
+
+    public function test_refuses_an_openwa_run(): void
+    {
+        $run = BackupRun::query()->create(['source' => 'openwa', 'status' => 'success', 'triggered_by' => 'system', 'disk' => 'local', 'path' => 'openwa/x.zip']);
+
+        $this->artisan('app:restore-backup', ['--run' => $run->id, '--database' => $this->emptyTarget()])
+            ->expectsOutputToContain('app:restore-openwa-backup')
+            ->assertFailed();
+    }
 }

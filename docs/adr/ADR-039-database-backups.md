@@ -89,3 +89,50 @@ The MySQL restore test now always uses `<db>_restore_test` (prod: `defaultdb_res
 - Each run drops that database before creating it, so a run killed mid-restore can't block the next one.
 - Only one backup job runs at a time (`supervisor-backups`, maxProcesses 1).
 - The operator's `app:restore-backup` targets a database the operator names, never this one.
+
+### 2026-10-22 addendum — a second source (OpenWA), and encryption enforced (PRD §16 item 96)
+
+**Context.**
+- **OpenWA's data had no backup.** The OpenWA gateway keeps everything in SQLite on the droplet: `~/OpenWA/data/main.sqlite` (API keys, audit) and `openwa.sqlite` (sessions, messages, webhooks). Beside them sits `baileys/`: 12 MB and about 1,400 JSON files per session, which are the WhatsApp session keys. None of it was backed up. If the droplet were lost, both numbers would need a QR re-pair, and the webhook secret and API key would be gone. ADR-075 had pointed this gap at item 56, which never built it.
+- **Decision 4 was never true in production.** It says every archive is encrypted. `BACKUP_ARCHIVE_PASSWORD` was never set on prod (checked 2026-10-22: absent from `.env`, and `config('backup.backup.password')` empty). spatie writes a plain zip in that case without a word, so every R2 archive since go-live is plaintext customer PII. The bucket is private, which is why nothing leaked, but the decision was not what ran.
+
+Grilled with the founder on 2026-10-22 (questions Q1–Q9, every recommendation accepted).
+
+**Decision.**
+
+1. **One backup system, two sources.**
+   - `backup_runs.source` is `database` or `openwa`; existing rows backfill to `database`.
+   - Both sources start through `BackupRun::queue()`, from the schedule (`app:run-backup --source=`) or the admin's "Backup Now", which now takes a source.
+   - `RunOpenWaBackupJob` mirrors `RunDatabaseBackupJob`: the same `backups` lane (one job at a time), the same `BackupFailureAlerter` email, the same `r2_backups` disk and the same admin page, with a source column, filter, a button per source, and a last-run card per source.
+   - A failure in one source never touches the other's run. Dashboard and stats judge each source's latest run, so a failing source can't hide behind the other's newer success.
+2. **OpenWA's own `scripts/backup.sh` makes the archive.** It takes a consistent SQLite snapshot (`sqlite3 .backup` inside a read transaction; the gateway's writes wait under a second) and knows every state path (plugins, `.env.generated`, `.api-key`). That stays correct across OpenWA upgrades, where our own copy of the layout would drift. Laravel adds OpenWA's `./.env`.
+   - The contract is "exit 0 and exactly one new `openwa-backup-*.tar.gz` in `BACKUP_DIR`". Anything else fails the run loudly.
+   - Both OpenWA scripts run under `env -i` with only `PATH`, `HOME` and their own variable. They read settings from the environment before `./.env`, and Laravel's dotenv puts every Laravel variable into the process environment, so a shared name would steer which files they read or write. A test proves the leak without `-i`.
+3. **Encryption, both sources, fail-closed.**
+   - The OpenWA tarball and `.env` go into one zip, each entry AES-256 with the same `BACKUP_ARCHIVE_PASSWORD`. Restore decrypts through `BackupRestorer`, as the database does.
+   - In production, a run with no password fails (`BackupArchivePassword::require()`) instead of writing a plain archive. Local and CI may run unencrypted.
+   - The founder keeps the password in a password manager **outside the droplet**. A droplet lost with its `.env` must not make every backup unreadable.
+   - When the password is rotated, the old one is kept until every archive made with it has aged out.
+   - Once the first encrypted database run passes its restore test, the plaintext archives already on R2 are deleted.
+4. **The nightly restore test uses the disaster path.** The archive is downloaded from R2, decrypted, and restored by OpenWA's own `scripts/restore.sh` into a throwaway `OPENWA_DATA_DIR`. Every OpenWA state path resolves under that directory, and `restore.sh` refuses a live target anyway. Then it checks:
+   - `PRAGMA integrity_check` is `ok` on both databases;
+   - `api_keys` is not empty;
+   - both configured sessions (`OPENWA_SESSION_ID`, `OPENWA_CS_SESSION_ID`) exist in `sessions` and have a `creds.json`;
+   - every Baileys JSON file parses;
+   - `.env` is in the archive.
+
+   The results go to `restore_test_details`. On the day of a disaster, the operator runs `app:restore-openwa-backup --run=|--path=|--file= --to=<dir>`, which decrypts through the same `BackupRestorer::extractOpenWa()`, then runs OpenWA's `restore.sh`.
+5. **Torn Baileys state is accepted and detected.** `backup.sh` copies `baileys/` while the gateway runs, so a file can be torn mid-write; the JSON check catches that, fails the run and emails the admins. A set of files that each parse but are inconsistent with one another can't be detected. The 14 daily copies cover it, and in the worst case both numbers are re-paired; the data and configuration still restore. Stopping the sessions for a consistent copy would take the bots down every night.
+6. **Retention is a flat 14 days, pruned by our code.** Only the newest good copy of a WhatsApp session is worth restoring (session keys move on), and older copies would keep customer message text longer (PDPA). `OpenWaBackup::prune()` deletes `openwa/*.zip` older than 14 days, **only after a run passed its restore test**, so a string of failing nights never thins out the last good copies. spatie's `backup:clean` keeps handling the database folder only. An R2 lifecycle rule was rejected so that the rule lives in the repo and is tested.
+7. **Schedule and tier.** The task is `openwa-backup`, daily at 19:37 UTC (03:37 MYT, the quietest hour), tier `CRITICAL`: a missed night turns `/api/health` red and UptimeRobot alerts. "Backup Now → OpenWA" comes before every OpenWA upgrade, replacing the hand-made tarball of 2026-10-22.
+8. **`OPENWA_INSTALL_DIR` is required** (prod: `/home/forge/OpenWA`). If it is unset, or has no `scripts/backup.sh`, the run fails; it never skips quietly. If OpenWA ever moves to its own box (ADR-114), this fails loudly and the backup is redesigned there.
+
+**Rejected.**
+- A separate command with only a scheduler heartbeat. No history, no email, no admin view: a parallel half-system.
+- Putting OpenWA's files into spatie's database zip. One failure would sink both, and retention and restore would be coupled.
+- Our own PHP snapshot (`VACUUM INTO` and tar). It duplicates `backup.sh` and drifts when OpenWA adds state, which is how upstream's own old runbook came to back up the wrong file.
+
+**Consequence to track.**
+- `backup.sh`/`restore.sh` are an upstream contract. Each OpenWA upgrade: take "Backup Now → OpenWA" first, then confirm the next nightly run still passes.
+- The OpenWA run shares the `backups` lane's 300 s timeout. Each script is capped at 120 s (`backup.openwa.script_timeout_seconds`). Today's 49 MB takes seconds.
+- Rollout order: the founder sets `BACKUP_ARCHIVE_PASSWORD` (kept in the password manager first) and `OPENWA_INSTALL_DIR` on Forge **before** this code reaches `main`. Otherwise the fail-closed guard fails that night's database backup.
