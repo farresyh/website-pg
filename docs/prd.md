@@ -738,7 +738,8 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
   `/api/health`, the OpenWA gateway and `/api/health/whatsapp` (third monitor
   added and alert-tested by the founder 2026-10-14).
 - **71** GSC recheck around 2026-10-22.
-- **96** Upgrade OpenWA to v0.24.0 (with the founder standing by).
+- **96** Upgrade OpenWA to v0.25.0 and add a daily backup of its SQLite
+  data (with the founder standing by).
 
 **D. Waiting on a trigger: don't build early**
 - **128** Shared admin loading skeleton (through the admin `DataTable`), only
@@ -998,11 +999,20 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     optional drill-down per SKU/combo version, and whether to snapshot the
     product key on the order at checkout so a resend swap can't move it.
 
-96. **Upgrade OpenWA v0.23.7 → v0.24.0** (released 2026-10-03; found
-    2026-10-14). Prod runs OpenWA from a git checkout, so the dashboard's
-    "new version" notice never updates it by itself. v0.24.0 has security
-    and Baileys fixes; its breaking API changes touch nothing we call
-    (Laravel uses only `send-text` plus inbound webhooks). It does not fix
+96. **Upgrade OpenWA v0.23.7 → v0.25.0, and back up its data** (v0.24.0
+    found 2026-10-14; retargeted to v0.25.0, released 2026-10-15, and the
+    backup folded in on 2026-10-22). Prod runs OpenWA from a git checkout,
+    so the dashboard's "new version" notice never updates it by itself.
+    Both releases bring security and Baileys fixes.
+
+    **Breaking changes.** Laravel only calls `send-text` and receives
+    inbound webhooks. The changelogs of 0.24.0 and 0.25.0 were checked
+    against that on 2026-10-22, and one change touches us. On Baileys, a
+    send to a number that is not on WhatsApp now answers `400` (it
+    answered `201` and the message vanished), and a recipient lookup with
+    no answer answers `503`. `OpenWaClient::sendNow()` throws on any
+    failure, so the job retries a `400` three times before it fails. Make
+    `400` non-retryable in the same PR; `503` should keep retrying. It does not fix
     the quiet-chat list (ex-item 58, dropped 2026-10-14: a quiet 1:1 chat
     still appears only on its next message). Steps, with the founder standing by:
     - back up `~/OpenWA/data/` first: boot migrates `main.sqlite`, and a
@@ -1012,11 +1022,25 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
       2026-10-14) and send one test message;
     - change the daemon command from `npm run build:all && node dist/main`
       to `node dist/main`, so a restart no longer rebuilds for ~2 minutes;
-    - decide `MESSAGE_RETENTION_DAYS` (`openwa.sqlite` is 22 MB and keeps
-      everything);
+    - decide `MESSAGE_RETENTION_DAYS`. `openwa.sqlite` keeps everything: it
+      was 22 MB on 2026-10-14 and 39 MB on 2026-10-22;
     - delete `~/OpenWA/.env.bak-2026-09-30` and `.env.bak-2026-10-14` once
       the new `.env` is confirmed (they hold the gateway's secrets, as
       item 87's backups did).
+
+    **Backup gap (found 2026-10-22).** OpenWA stores everything in SQLite
+    on the box: `~/OpenWA/data/main.sqlite` (auth and audit) and
+    `openwa.sqlite` (sessions, messages, webhooks, chats). Nothing backs
+    them up. The daily `database-backup` task covers Laravel's MySQL only,
+    and the box has no cron and no backup folder. ADR-075 said the gap was
+    tracked as item 56, but item 56 built only the R2 cutover for the app.
+    If the droplet is lost, so are the webhook secret, the issued API key
+    and both WhatsApp sessions. Both numbers would need a QR re-pair, and
+    the bots stay down until the ADR-114 re-provisioning is redone. Build
+    a scheduled daily backup of `data/` (OpenWA ships `scripts/backup.sh`)
+    to the same R2 bucket, with retention and a tested restore. Where it
+    runs, and which credential uploads it, needs a short grill (ADR-095
+    addendum) at build time.
 
 104. **Reseller wallet top-up KPIs (founder, 2026-10-15) — design not started.**
     Nothing shows how often or how much Resellers top up their wallets. Today
