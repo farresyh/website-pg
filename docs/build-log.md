@@ -1436,3 +1436,27 @@ Tests: 7 new files (41 tests) plus `ManualCorrectionConcurrencyTest` (correction
 - Not measured yet: the gain on real requests. After release, open `/admin/orders` with DevTools → Network: the GETs to `/api/orders`, `/api/orders/summary` and `/api/games` should have no OPTIONS before them.
 
 **Not changed, on purpose.** The storefront and portal clients (their preflight comes from a header they need), the hard-refresh path (JS download, hydration), and any server contention around the :00/:15/:30/:45 scheduler ticks (unmeasured; Pulse first). A shared admin loading skeleton (the admin counterpart of the storefront's ADR-071 primitive) is a separate decision for the founder.
+
+## 2026-10-22 — Prod box patched for PHP RCE CVE-2026-109618/109619 + Node security release
+
+**Why.** DigitalOcean and Forge emailed about two PHP RCE CVEs disclosed 2026-10-21. They affect every PHP version, and public PoC code exists. The patched release for our line is 8.4.27. Forge also flagged a separate Node security release the same day.
+
+**Before (read-only check, `pekangame-prod-lwf`).** PHP CLI + FPM 8.4.25. Ubuntu 24.04.5, so Forge "Update PHP" was supported. Node 22.23.3 (nodesource), which runs OpenWA. The apt lists dated 2026-10-12, before the disclosure, so they still showed 8.4.26 as the newest version.
+
+**What ran (by the founder; `sudo` needs a password on this box).**
+- Forge → "Update PHP". dpkg shows `php8.4-*` 8.4.25 → 8.4.27 at 01:34 UTC. php-fpm, Horizon, Reverb, Pulse and OpenWA all restarted at 01:35.
+- DO droplet console as root: `apt-get install --only-upgrade nodejs`. dpkg shows 22.23.3 → 22.23.4 at 01:48 UTC. OpenWA was restarted from Forge → Background processes.
+
+**After (verified over SSH).**
+- `php -v` and `php-fpm8.4 -v`: 8.4.27, built 2026-10-21.
+- Every long-running PHP process (Horizon master, 9 supervisors, 10 workers, Reverb, Pulse) started after the upgrade. None maps a deleted binary. The only `(deleted)` map is `/dev/zero`, which is anonymous shared memory.
+- `node -v`: 22.23.4. `node dist/main` started at 01:51 on `/usr/bin/node`. Both OpenWA sessions (`reseller-bot`, `customer-support`) were `ready` by 01:50:56.
+- `api.pekangame.space/up` returned 200 and `bot.pekangame.space` returned 200. `bot.` returned 502 for about 90 s while OpenWA rebuilt on start, which is expected.
+
+**Not affected / nothing to do.**
+- DO Managed MySQL (8.4.8): it runs no PHP, and DO patches it.
+- CI: `setup-php` uses `"8.4"`, so it picks up the latest patch.
+- Frontends: they run on Vercel.
+- The founder's local Herd is still on 8.4.23. It is not internet-facing; update it when convenient.
+
+**Gotcha.** Long-running PHP daemons keep the old binary in memory until they restart. "Update PHP" restarting FPM alone is not enough, so check the daemon start times against the dpkg timestamp.
