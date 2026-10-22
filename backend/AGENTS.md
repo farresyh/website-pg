@@ -186,6 +186,12 @@ a session before.
    A killed MySQL run leaves the `llm_report_*` views in docker `kerox`, and
    `migrate:fresh` doesn't drop views. Drop them:
    `docker compose exec -T mysql mysql -ukerox -pkerox kerox -e "DROP VIEW IF EXISTS llm_report_catalog, llm_report_membership_fees, llm_report_orders;"`
+9. **`PHP Parse error … unexpected token "{"` in `vendor/symfony/…`.** Not a
+   code bug: PHP is older than 8.4. Symfony 8 (Laravel 13) uses property
+   hooks. `composer install --ignore-platform-req=php` installs on 8.3, but
+   nothing boots. Some cloud sessions ship PHP 8.3 and block the Debian
+   mirror, so a PHP 8.4 Docker image can't be built there either; let CI
+   (PHP 8.4) run the backend suite (`docs/build-log.md`, 2026-10-19).
 
 ## Migrations
 

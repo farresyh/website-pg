@@ -185,7 +185,10 @@ banner). This file covers the whole repo.
 - **Never branch from `main`.** Every feature/fix/docs branch is cut from
   `staging` and PRs back into `staging`, where it is verified (CI green, plus
   the PR's Vercel Preview for a frontend change; there is no separate staging
-  server). Both `staging` and `main` are protected, PR-only, with required CI.
+  server). Both `staging` and `main` are protected by one GitHub ruleset:
+  PR-only, merge commits only, the deploy job's eight checks required, no
+  force-push (ADR-037 2026-10-22 addendum). The repo is public on purpose
+  (unlimited CI minutes), so never commit anything you wouldn't publish.
 - **One exception: `hotfix/*` may cut from `main`**, strictly for P0 incidents
   (payment/ledger/checkout down). Right after it merges, merge `main` back
   into `staging` (a plain merge, not a cherry-pick).
