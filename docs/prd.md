@@ -1125,7 +1125,7 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     the headline); Glossary entries and ADR Standing banners point there
     instead of saying "built" or "on `staging`".
 
-128. **Shared admin loading skeleton (2026-10-19, waiting on item 124).**
+128. **Shared admin loading skeleton (2026-10-19; item 124 closed 2026-10-22, now the founder's call).**
     The admin has no skeletons: 53 plain "Loading…" texts across 44 files,
     and the `DataTableLoading` primitive in `components/ui/datatable.tsx` is
     unused by the list pages. If still wanted after #516 is measured, build
