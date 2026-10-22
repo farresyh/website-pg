@@ -110,7 +110,9 @@ on: they carry the security patches.
 **Consequence to track.** A restart still costs ~2 minutes because the
 daemon command rebuilds (`npm run build:all && node dist/main`); dropping
 the build step, the v0.24.0 upgrade and the two `.env.bak-*` files with
-secrets are PRD §16 item 96. A session disconnected while the process runs
+secrets are PRD §16 item 96 (2026-10-22: upgraded to v0.25.0 and the
+daemon now runs `node dist/main` without a rebuild; the `.env.bak-*`
+cleanup is still open there). A session disconnected while the process runs
 is still only visible on the Dashboard until item 95 ships.
 
 **Built the same day (PRD §16 item 95):** `GET /api/health/whatsapp` asks

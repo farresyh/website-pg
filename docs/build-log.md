@@ -1590,3 +1590,11 @@ Verified in code on the way: the policy defaults (G 24 h, H 24 h, D 14 days, 20 
 **Verified.** 22 new tests, including a real-process end-to-end test of encryption, the restore test, a torn Baileys file, a missing session, a wrong password, a failing script, the env leak and pruning. Full backend suite: 2953 passed. Admin `tsc`, `eslint` and `next build` are clean. `BackupRestoreMysqlTest` can't run on this Mac (no `mysqldump`), so CI's `backend-concurrency` covers it.
 
 **Not done yet (needs the founder, in order).** Set `BACKUP_ARCHIVE_PASSWORD` (kept in the password manager first) and `OPENWA_INSTALL_DIR` on Forge, then release, then "Backup Now → OpenWA" and a restore drill with the password from the password manager. After that, delete the plaintext R2 archives and the on-box leftovers. These are PRD §16 item 96's steps.
+
+## 2026-10-22 — Item 96 rollout step 1: backup password set on prod
+
+The founder generated a new password, kept it in the password manager, and set `BACKUP_ARCHIVE_PASSWORD` and `OPENWA_INSTALL_DIR=/home/forge/OpenWA` in Forge → Environment. Checked read-only, values never printed: both keys appear once in the site-root `.env`, the password is filled (64 chars), and `/home/forge/OpenWA/scripts/backup.sh` exists.
+
+**Gotcha: Forge re-caches config on an env save.** `.env` was written at 09:07:01 and `bootstrap/cache/config.php` rebuilt at 09:07:05 with no deploy (current release still #517), and `config('backup.backup.password')` read filled. So no `config:cache` was needed. Horizon was still holding the old config in memory (up since 07:01), so with the founder's go-ahead `php artisan horizon:terminate` ran; Supervisor brought Horizon back at 09:09:39 and `horizon:status` reads running.
+
+Released code (#517) does not read `OPENWA_INSTALL_DIR` yet; that waits for the `staging`→`main` release. The 02:07 UTC database run tonight is the first encrypted archive; its `backup_runs` row is the evidence to check.
