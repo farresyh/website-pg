@@ -1455,6 +1455,30 @@ Tests: 7 new files (41 tests) plus `ManualCorrectionConcurrencyTest` (correction
 
 **Next session starts with item 124.**
 
+## 2026-10-22 — Prod box patched for PHP RCE CVE-2026-109618/109619 + Node security release
+
+**Why.** DigitalOcean and Forge emailed about two PHP RCE CVEs disclosed 2026-10-21. They affect every PHP version, and public PoC code exists. The patched release for our line is 8.4.27. Forge also flagged a separate Node security release the same day.
+
+**Before (read-only check, `pekangame-prod-lwf`).** PHP CLI + FPM 8.4.25. Ubuntu 24.04.5, so Forge "Update PHP" was supported. Node 22.23.3 (nodesource), which runs OpenWA. The apt lists dated 2026-10-12, before the disclosure, so they still showed 8.4.26 as the newest version.
+
+**What ran (by the founder; `sudo` needs a password on this box).**
+- Forge → "Update PHP". dpkg shows `php8.4-*` 8.4.25 → 8.4.27 at 01:34 UTC. php-fpm, Horizon, Reverb, Pulse and OpenWA all restarted at 01:35.
+- DO droplet console as root: `apt-get install --only-upgrade nodejs`. dpkg shows 22.23.3 → 22.23.4 at 01:48 UTC. OpenWA was restarted from Forge → Background processes.
+
+**After (verified over SSH).**
+- `php -v` and `php-fpm8.4 -v`: 8.4.27, built 2026-10-21.
+- Every long-running PHP process (Horizon master, 9 supervisors, 10 workers, Reverb, Pulse) started after the upgrade. None maps a deleted binary. The only `(deleted)` map is `/dev/zero`, which is anonymous shared memory.
+- `node -v`: 22.23.4. `node dist/main` started at 01:51 on `/usr/bin/node`. Both OpenWA sessions (`reseller-bot`, `customer-support`) were `ready` by 01:50:56.
+- `api.pekangame.space/up` returned 200 and `bot.pekangame.space` returned 200. `bot.` returned 502 for about 90 s while OpenWA rebuilt on start, which is expected.
+
+**Not affected / nothing to do.**
+- DO Managed MySQL (8.4.8): it runs no PHP, and DO patches it.
+- CI: `setup-php` uses `"8.4"`, so it picks up the latest patch.
+- Frontends: they run on Vercel.
+- The founder's local Herd is still on 8.4.23. It is not internet-facing; update it when convenient.
+
+**Gotcha.** Long-running PHP daemons keep the old binary in memory until they restart. "Update PHP" restarting FPM alone is not enough, so check the daemon start times against the dpkg timestamp.
+
 ## 2026-10-22 — Review of #516 and #517, orphaned docs brought in, branch ruleset (ADR-037 addendum)
 
 **#516 review.** The founder asked for a check of the work done without Claude, and of whether the fix was the right one. The fix treats the root cause. Every admin read goes through `apiRequest`. No tracing library adds headers. `Accept: application/json` stays, so a 401 is still JSON. Verified on prod: an admin-origin OPTIONS returns `access-control-max-age: 7200`, and a GET without `Content-Type` still gets `allow-origin` and `allow-credentials`. A same-origin `/api` proxy would remove CORS entirely, but it adds a hop and runs against ADR-121's session design, so it is not worth it. One wording note: `cors.php` says a deactivated custom domain is "blocked on its next request". In fact, for up to 2 h a cached preflight still lets it *send* a non-simple request; only reading the response is blocked. That is harmless, because CORS is not auth: Host resolution and CSRF still apply.
@@ -1471,4 +1495,11 @@ Tests: 7 new files (41 tests) plus `ManualCorrectionConcurrencyTest` (correction
 
 **`/api/health` 503 (`scheduler: false`), not ours.** `api.gamevion.com` refused connections from the box and from the founder's Mac from 2026-10-21 16:30 UTC onward. `supplier-balance-refresh` failed at 00:00 UTC and the Gamevion price sync failed every 30 minutes. No orders were placed in that window (all payment methods are off). Health recovers on its own once the task succeeds again.
 
-**Item 125.** Neither `staging` nor `main` was protected (`protected: false`, no rulesets). The repo is public on purpose, for unlimited Actions minutes. `ci.yml` drops the docs-only `paths-ignore`, which with required checks would have wedged every docs PR. The ruleset itself is created once this PR merges (ADR-037 2026-10-22 addendum).
+**Item 125.** Neither `staging` nor `main` was protected (`protected: false`, no rulesets). The repo is public on purpose, for unlimited Actions minutes. `ci.yml` drops the docs-only `paths-ignore`, which with required checks would have wedged every docs PR. The ruleset (id 25608722) was created the same day, while #520 was open; #520 changed `ci.yml`, so its own required checks ran (ADR-037 2026-10-22 addendum). #518, which carried the three orphaned commits, was closed as superseded by #520.
+
+## 2026-10-22 — Item 124 closed: #516 measured on prod
+
+- **DevTools (the founder, logged in):** `/admin/orders` reloaded with the filter set to All and `method:OPTIONS`, and **0 OPTIONS requests**. Every admin GET (`orders`, `games`, `summary`, `manual-queue`, …) goes straight to the API. Note for next time: Chrome lists a preflight as Type `preflight`, which the Fetch/XHR filter hides, so check under All.
+- **Pulse (read-only, last 3 days):** 15 slow requests, spread across every minute of the quarter-hour. Only 2 landed on :00/:15/:30/:45, so there is no sign of scheduler contention. No admin endpoint is in the slowest list. The top entries are public: `catalog/reseller-price-list` (max 5.1 s), `catalog/branding`, `validate-player`. Load average was 0.1.
+- **Pulse has no CPU or memory data:** the `pulse:check` daemon (Servers card) isn't running on the box. Add it only if server-level metrics are wanted.
+- Item 128 (admin skeleton) stays in group D, at the founder's call.
