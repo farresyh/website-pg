@@ -3,6 +3,7 @@
 namespace Tests\Feature\Http\Controllers\Middleware;
 
 use App\Jobs\RunDatabaseBackupJob;
+use App\Jobs\RunOpenWaBackupJob;
 use App\Models\AdminUser;
 use App\Models\BackupRun;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -93,6 +94,53 @@ class BackupControllerTest extends TestCase
         $response->assertOk();
         $response->assertJsonPath('total_count', 2);
         $response->assertJsonPath('total_size_bytes', 1000);
+    }
+
+    /** ADR-039 2026-10-22 addendum: a failing OpenWA source never hides behind a newer database success. */
+    public function test_stats_report_the_latest_run_of_each_source(): void
+    {
+        $this->actingAsAdmin();
+        BackupRun::query()->create(['source' => 'openwa', 'status' => 'failed', 'triggered_by' => 'system']);
+        BackupRun::query()->create(['source' => 'database', 'status' => 'success', 'triggered_by' => 'system']);
+
+        $response = $this->getJson('/api/middleware/backups/stats');
+
+        $response->assertJsonPath('last_runs.openwa.status', 'failed');
+        $response->assertJsonPath('last_runs.database.status', 'success');
+    }
+
+    public function test_store_with_the_openwa_source_queues_the_openwa_job(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+
+        $this->postJson('/api/middleware/backups', ['source' => 'openwa'])
+            ->assertCreated()
+            ->assertJsonPath('source', 'openwa');
+
+        Queue::assertPushed(RunOpenWaBackupJob::class);
+        Queue::assertNotPushed(RunDatabaseBackupJob::class);
+    }
+
+    public function test_store_rejects_an_unknown_source(): void
+    {
+        Queue::fake();
+        $this->actingAsAdmin();
+
+        $this->postJson('/api/middleware/backups', ['source' => 'everything'])->assertUnprocessable();
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_index_filters_by_source(): void
+    {
+        $this->actingAsAdmin();
+        BackupRun::query()->create(['source' => 'openwa', 'status' => 'success', 'triggered_by' => 'system']);
+        BackupRun::query()->create(['status' => 'success', 'triggered_by' => 'system']);
+
+        $this->getJson('/api/middleware/backups?source=openwa')
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.source', 'openwa');
     }
 
     public function test_download_returns_404_when_run_has_no_archive(): void

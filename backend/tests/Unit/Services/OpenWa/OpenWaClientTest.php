@@ -4,6 +4,7 @@ namespace Tests\Unit\Services\OpenWa;
 
 use App\Jobs\Reseller\SendResellerBotReplyJob;
 use App\Services\OpenWa\OpenWaClient;
+use App\Services\OpenWa\OpenWaRecipientNotOnWhatsAppException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use RuntimeException;
@@ -64,5 +65,32 @@ class OpenWaClientTest extends TestCase
         $this->expectException(RuntimeException::class);
 
         $this->client()->sendNow('chat-1', 'hello');
+    }
+
+    /** PRD §16 item 96: OpenWA v0.25.0's Baileys answer for a number that is not on WhatsApp. */
+    public function test_a_number_not_on_whatsapp_throws_the_non_retryable_exception(): void
+    {
+        Http::fake(['*' => Http::response([
+            'message' => 'WhatsApp reports recipient 60123456789@s.whatsapp.net is not registered',
+            'error' => 'Bad Request',
+            'statusCode' => 400,
+        ], 400)]);
+
+        $this->expectException(OpenWaRecipientNotOnWhatsAppException::class);
+
+        $this->client()->sendNow('60123456789@c.us', 'hello');
+    }
+
+    /** OpenWA also answers 400 while a session is still starting (just after a restart); that must retry. */
+    public function test_a_400_for_an_unstarted_session_stays_retryable(): void
+    {
+        Http::fake(['*' => Http::response(['message' => 'Session is not started', 'error' => 'Bad Request', 'statusCode' => 400], 400)]);
+
+        try {
+            $this->client()->sendNow('chat-1', 'hello');
+            $this->fail('Expected the send to throw.');
+        } catch (RuntimeException $e) {
+            $this->assertNotInstanceOf(OpenWaRecipientNotOnWhatsAppException::class, $e);
+        }
     }
 }

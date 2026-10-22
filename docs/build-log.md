@@ -1436,3 +1436,165 @@ Tests: 7 new files (41 tests) plus `ManualCorrectionConcurrencyTest` (correction
 - Not measured yet: the gain on real requests. After release, open `/admin/orders` with DevTools → Network: the GETs to `/api/orders`, `/api/orders/summary` and `/api/games` should have no OPTIONS before them.
 
 **Not changed, on purpose.** The storefront and portal clients (their preflight comes from a header they need), the hard-refresh path (JS download, hydration), and any server contention around the :00/:15/:30/:45 scheduler ticks (unmeasured; Pulse first). A shared admin loading skeleton (the admin counterpart of the storefront's ADR-071 primitive) is a separate decision for the founder.
+
+## 2026-10-19 — Release #517 (`staging`→`main`): #516 admin preflight fix + #515 docs sync; session wrap-up
+
+**Release.** PR #517 merged as `6a5052e`. CI run #635 green on `main`, including `backend-tests`, `backend-concurrency` and `playwright`; the `deploy` job called the Forge hook at 16:59 UTC. No migration, no env change. **Prod not yet verified**, for this release or for #514: the founder will run the read-only checks next session (PRD §16 item 124).
+
+**What this session did, in order.**
+1. **Status audit.** Release #514 had gone live with every status doc still saying "on `staging`". A Claude audit and an independent Gemini audit were cross-checked: each found real items the other missed (Gemini: `foundation-security.md`, README, AUTH-7, two §16 lines; Claude: the Glossary's Manual Queue cost rule against ADR-125 decision 36, the §10 OpenWA row, the §8 Package row). Gemini wrote the fix as #515 and Claude reviewed its diff. The review caught two errors before merge: a decision cited by the wrong number, and an edit to an old build-log entry (this file is append-only). Claude made one error, too: it truncated a command's output at 400 characters and reported ADR-125's banner as missing its 2b note, which Gemini correctly rejected.
+2. **Admin "Loading…" investigation**, then #516 (entry above, ADR-121 2026-10-19 addendum).
+3. **Release #517.**
+
+**Gotchas.**
+- **GitHub's per-job status lags.** On #516, `list_workflow_jobs` and the PR check list showed jobs "queued" or "in progress" for 20+ minutes after their steps had finished. Read the workflow run's own `status`/`conclusion`, or a job's step list, before calling CI stuck.
+- **This cloud container cannot run the backend suite.** It has PHP 8.3; Symfony 8 needs 8.4 (a parse error in `vendor/symfony/http-foundation/Request.php`). The Debian mirror is blocked by the session's network policy, so a Docker PHP 8.4 image with `zip`/`intl` could not be built either. CI on PHP 8.4 is the gate; `backend/AGENTS.md` gotcha 9 records it.
+- **Docs drift has a structural cause.** Status lived in 6+ places, so each release left some of them stale. That is now PRD §16 item 127.
+
+**Open items added to PRD §16:** 124 (verify #514 and #517 on prod, measure #516), 125 (branch protection: `AGENTS.md` vs `ci.yml`), 126 (PRD spec for Login Top-up), 127 (status in one place), 128 (shared admin loading skeleton, after measurement). Item 114 (Joki) now notes that ADR-126 must be re-traced against ADR-125 decisions 48–64 before it is built.
+
+**Next session starts with item 124.**
+
+## 2026-10-22 — Prod box patched for PHP RCE CVE-2026-109618/109619 + Node security release
+
+**Why.** DigitalOcean and Forge emailed about two PHP RCE CVEs disclosed 2026-10-21. They affect every PHP version, and public PoC code exists. The patched release for our line is 8.4.27. Forge also flagged a separate Node security release the same day.
+
+**Before (read-only check, `pekangame-prod-lwf`).** PHP CLI + FPM 8.4.25. Ubuntu 24.04.5, so Forge "Update PHP" was supported. Node 22.23.3 (nodesource), which runs OpenWA. The apt lists dated 2026-10-12, before the disclosure, so they still showed 8.4.26 as the newest version.
+
+**What ran (by the founder; `sudo` needs a password on this box).**
+- Forge → "Update PHP". dpkg shows `php8.4-*` 8.4.25 → 8.4.27 at 01:34 UTC. php-fpm, Horizon, Reverb, Pulse and OpenWA all restarted at 01:35.
+- DO droplet console as root: `apt-get install --only-upgrade nodejs`. dpkg shows 22.23.3 → 22.23.4 at 01:48 UTC. OpenWA was restarted from Forge → Background processes.
+
+**After (verified over SSH).**
+- `php -v` and `php-fpm8.4 -v`: 8.4.27, built 2026-10-21.
+- Every long-running PHP process (Horizon master, 9 supervisors, 10 workers, Reverb, Pulse) started after the upgrade. None maps a deleted binary. The only `(deleted)` map is `/dev/zero`, which is anonymous shared memory.
+- `node -v`: 22.23.4. `node dist/main` started at 01:51 on `/usr/bin/node`. Both OpenWA sessions (`reseller-bot`, `customer-support`) were `ready` by 01:50:56.
+- `api.pekangame.space/up` returned 200 and `bot.pekangame.space` returned 200. `bot.` returned 502 for about 90 s while OpenWA rebuilt on start, which is expected.
+
+**Not affected / nothing to do.**
+- DO Managed MySQL (8.4.8): it runs no PHP, and DO patches it.
+- CI: `setup-php` uses `"8.4"`, so it picks up the latest patch.
+- Frontends: they run on Vercel.
+- The founder's local Herd is still on 8.4.23. It is not internet-facing; update it when convenient.
+
+**Gotcha.** Long-running PHP daemons keep the old binary in memory until they restart. "Update PHP" restarting FPM alone is not enough, so check the daemon start times against the dpkg timestamp.
+
+## 2026-10-22 — Review of #516 and #517, orphaned docs brought in, branch ruleset (ADR-037 addendum)
+
+**#516 review.** The founder asked for a check of the work done without Claude, and of whether the fix was the right one. The fix treats the root cause. Every admin read goes through `apiRequest`. No tracing library adds headers. `Accept: application/json` stays, so a 401 is still JSON. Verified on prod: an admin-origin OPTIONS returns `access-control-max-age: 7200`, and a GET without `Content-Type` still gets `allow-origin` and `allow-credentials`. A same-origin `/api` proxy would remove CORS entirely, but it adds a hop and runs against ADR-121's session design, so it is not worth it. One wording note: `cors.php` says a deactivated custom domain is "blocked on its next request". In fact, for up to 2 h a cached preflight still lets it *send* a non-simple request; only reading the response is blocked. That is harmless, because CORS is not auth: Host resolution and CSRF still apply.
+
+**Orphaned docs.** Three commits had been pushed to `claude/gallant-bardeen-7hedes` after #516 merged, so they never reached `staging`: the PRD #517 status and items 124–128, the #517 build-log entry above, and `backend/AGENTS.md` gotcha 9. They are cherry-picked into this PR. **Lesson:** a commit pushed to a branch after its PR merges goes nowhere. Open a new PR for it.
+
+**Item 124, box half (read-only).**
+- `current` is `6a5052e`.
+- #514's eight migrations show Ran.
+- Horizon is running.
+- `whatsapp_groups` has 2 reseller rows and 1 supplier row, all active.
+- The bot session (`OPENWA_SESSION_ID` + `OPENWA_API_KEY`) is set.
+- The DevTools and Pulse measurement remains, and needs the founder's login.
+
+**`/api/health` 503 (`scheduler: false`), not ours.** `api.gamevion.com` refused connections from the box and from the founder's Mac from 2026-10-21 16:30 UTC onward. `supplier-balance-refresh` failed at 00:00 UTC and the Gamevion price sync failed every 30 minutes. No orders were placed in that window (all payment methods are off). Health recovers on its own once the task succeeds again.
+
+**Item 125.** Neither `staging` nor `main` was protected (`protected: false`, no rulesets). The repo is public on purpose, for unlimited Actions minutes. `ci.yml` drops the docs-only `paths-ignore`, which with required checks would have wedged every docs PR. The ruleset (id 25608722) was created the same day, while #520 was open; #520 changed `ci.yml`, so its own required checks ran (ADR-037 2026-10-22 addendum). #518, which carried the three orphaned commits, was closed as superseded by #520.
+
+## 2026-10-22 — Item 124 closed: #516 measured on prod
+
+- **DevTools (the founder, logged in):** `/admin/orders` reloaded with the filter set to All and `method:OPTIONS`, and **0 OPTIONS requests**. Every admin GET (`orders`, `games`, `summary`, `manual-queue`, …) goes straight to the API. Note for next time: Chrome lists a preflight as Type `preflight`, which the Fetch/XHR filter hides, so check under All.
+- **Pulse (read-only, last 3 days):** 15 slow requests, spread across every minute of the quarter-hour. Only 2 landed on :00/:15/:30/:45, so there is no sign of scheduler contention. No admin endpoint is in the slowest list. The top entries are public: `catalog/reseller-price-list` (max 5.1 s), `catalog/branding`, `validate-player`. Load average was 0.1.
+- **Pulse has no CPU or memory data:** the `pulse:check` daemon (Servers card) isn't running on the box. Add it only if server-level metrics are wanted.
+- Item 128 (admin skeleton) stays in group D, at the founder's call.
+
+## 2026-10-22 — Docs: items 126 and 127 closed, item 96 retargeted with the OpenWA backup gap
+
+**Item 96.**
+- Retargeted from OpenWA v0.24.0 to **v0.25.0** (released 2026-10-15).
+- Both changelogs were checked against our two calls (`send-text` and inbound webhooks). One change touches us: on Baileys, a send to a number not on WhatsApp now answers `400` (it used to answer `201` and drop the message). `OpenWaClient::sendNow()` would retry that three times, so the upgrade PR makes `400` non-retryable.
+- **New gap folded in.** OpenWA's `data/main.sqlite` and `openwa.sqlite` (39 MB, up from 22 MB on 10-14) live only on the box and have **no backup**. The daily `database-backup` covers Laravel's MySQL only, and the box has no cron and no backup folder. ADR-075 had pointed this gap at item 56, which never built it; its text now points at item 96.
+
+**Item 127.** Build/live status now lives in §15 only (headline in §14). It was removed from:
+- the Glossary;
+- §6: AUTH-7's priority cell, the §6.7 status column (now "Decided in", naming the ADR), RPT-4, THM-1 and MUI;
+- §7.3's prod flag and §8's BlacklistEntry row;
+- the ADR-046 and ADR-125 Standing banners.
+
+`adr.md`'s rule now says that the index, every Standing banner and the Glossary never say "built", "live" or "on `staging`".
+
+**Item 126.** The Login Top-up spec is written, from ADR-124/125 and checked against the code:
+- §6.24: LOGIN-1..7 and MSUP-1..7.
+- §7.6: the order flow.
+- §8: Game and Supplier columns, plus OrderCredential, CredentialReveal, WhatsAppGroup, SupplierLoginLink and CustomerNotification.
+- §11: now points at §16 group E, and its shipped strikethrough lines are gone.
+
+Verified in code on the way: the policy defaults (G 24 h, H 24 h, D 14 days, 20 reveals an hour), the SLA bounds of 5–1440 minutes, the `/s/{token}` GET/POST routes, the combo rule through `GameFulfilmentRule::comboComponentSupplier`, and affiliate masking through `publicPlayerLabel()`. Correction: `reply_sla_minutes` is a key in `api_config.manual`, not a Supplier column, as item 126's text had said.
+
+**Not done (left on purpose).** §10's integration status cells (Gamevion "unfunded", CHIP live keys) still carry status. They describe the integrations themselves, so they stay until a release changes them.
+
+## 2026-10-22 — OpenWA upgraded v0.23.7 → v0.25.0 (item 96, upgrade part)
+
+**Why.** v0.24.0 and v0.25.0 bring security and Baileys fixes. Prod runs OpenWA from a git checkout, so nothing updates it by itself.
+
+**What ran (founder's go-ahead per phase; `forge` over SSH, daemon stop/start/edit by the founder in Forge).**
+- **Phase A, no downtime.** `git clone ~/OpenWA ~/OpenWA-v0.25.0`, fetched tags from `rmyndharis/OpenWA`, checked out `v0.25.0`, then `npm ci`, `npm --prefix dashboard ci` and `npm run build:all` under `nice`. The build passed and `package.json` reads `0.25.0`. The old OpenWA kept answering `/api/health` 200 throughout.
+- **Phase B.** The founder stopped the daemon (05:23 UTC). Backup: `~/openwa-backups/openwa-v0.23.7-20261022-0524.tar.gz` (27 MB, `data/` + `.env`). `data/` (49 MB) and `.env` were copied into the new folder, then `~/OpenWA` → `~/OpenWA-v0.23.7` and `~/OpenWA-v0.25.0` → `~/OpenWA`. The founder changed the Supervisor `command=npm run prod` to `command=/usr/bin/node dist/main` (directory unchanged) and started it at 05:25:57.
+
+**After (verified).**
+- `/usr/bin/node dist/main` is running and `/api/health` returns `ok`. Nest started in about 1 s, where a restart used to rebuild for about 90 s.
+- Both sessions auto-started: `reseller-bot` was ready at 05:26:00 and `customer-support` at 05:26:03. Laravel's `/api/health/whatsapp` reports both `ready`.
+- No `error` or `fatal` log lines. There are two harmless warnings: Docker is not available, and `WEBHOOK_SHUTDOWN_DRAIN_MS` (5 s) is shorter than `WEBHOOK_TIMEOUT` (10 s).
+- `.baki` in the test group arrived at 05:27:35, and the reply "Baki wallet anda: RM3.44" went out at 05:27:38. A real customer's receipt request on the CS number (05:28:14) was answered at 05:28:20 with status `delivered`. Every `webhook_outbox_events` row is `dispatched`, including the `session.status` events queued while the daemon was stopped.
+- Downtime was about 3 minutes (05:23–05:26).
+
+**Gotchas.**
+- `messages` shows each group message twice, once per session, because the CS number is also a member of the test group. It looked the same on 2026-10-16, before the upgrade, and Laravel answers once.
+- The `400`-on-unknown-number change is now live while `OpenWaClient` still retries it three times. That is noisy, not harmful, and the fix is on item 96.
+
+**Rollback (if needed).** Stop the daemon, swap the folder names back, and start it. The old `data/` in `~/OpenWA-v0.23.7` is untouched; only messages received since 05:26 would be lost from OpenWA's own history.
+
+**Left on item 96.** The off-box backup of `data/`, the `400` fix, `MESSAGE_RETENTION_DAYS`, and deleting `~/OpenWA-v0.23.7` plus the `.env.bak-*` files after a few clean days.
+
+## 2026-10-22 — Item 96: a number not on WhatsApp fails at once (on `staging`)
+
+**Why.** OpenWA v0.25.0 (live since this morning) answers `400` to a send to a number that is not on WhatsApp, where v0.23.7 answered `201` and dropped the message. `OpenWaClient::sendNow()` threw on any failure, so each such send was retried three times (customer notifications: backoff 60 s / 300 s).
+
+**Gotcha found before building.** The plan said "make `400` non-retryable". OpenWA's own source (`engine-status-responses.ts`, `engine-registry.service.ts`) shows `400` is also the answer while a session is **not started yet**, which happens for a few seconds after every OpenWA restart. A blanket rule would have dropped every message sent in that window. A session that is reconnecting answers `409`; that keeps retrying, as before.
+
+**What shipped.**
+- `OpenWaClient::sendNow()` throws the new `OpenWaRecipientNotOnWhatsAppException` only on a `400` whose message says "is not registered" (Baileys) or "could not resolve the recipient" (whatsapp-web.js). Its message reads "The number is not on WhatsApp (OpenWA 400: …)", which the admin sees on the failed `customer_notifications` row.
+- `SendCustomerWhatsAppJob` and `SendResellerBotReplyJob` fail at once on it, through Laravel's `FailOnException` job middleware. Pacing (`429`), `400` "Session is not started", `409`, `5xx` and connection errors all still retry.
+- If OpenWA rewords the message, the match fails and the send falls back to retrying, which is the safe side. Recheck the two phrases on each OpenWA upgrade.
+
+**Verified.** 5 new tests (red → green): the client for both kinds of `400`, and both jobs through their middleware. Full suite: 2927 passed.
+
+## 2026-10-22 — Item 96: OpenWA backup to R2, and backup encryption enforced (ADR-039 addendum, on `staging`)
+
+**Why.** OpenWA's SQLite data and WhatsApp session keys lived only on the droplet. A grill with the founder (Q1–Q9, all recommendations accepted) settled the design: a second source of the one ADR-039 backup system, not a side script.
+
+**Found while grilling.** ADR-039 decision 4 (archives encrypted) was never true in prod. `BACKUP_ARCHIVE_PASSWORD` is absent from prod's `.env`, and `config('backup.backup.password')` is empty (checked read-only, as a boolean). spatie writes a plain zip in that case, so every database archive on R2 since go-live is plaintext. PRD §15 had said "encrypted"; it is corrected. The fix is fail-closed: in production, a run without the password fails and alerts instead.
+
+**What shipped (one PR).**
+- `backup_runs.source` (`database` / `openwa`). `BackupRun::queue()` is the one start path for the schedule and "Backup Now". `app:run-backup --source=`.
+- `RunOpenWaBackupJob` and `OpenWaBackup`:
+  - OpenWA's `scripts/backup.sh` makes the archive, plus OpenWA's `.env`, in one AES-256 zip, uploaded to `r2_backups/openwa/`;
+  - restore test through OpenWA's `scripts/restore.sh` into a throwaway dir, then integrity, API keys, configured sessions, Baileys JSON and `creds.json` checks;
+  - prune past 14 days, only after a passing run.
+- `BackupArchivePassword::require()` guards both sources. `BackupRestorer::extractOpenWa()` is shared by the nightly test and the new `app:restore-openwa-backup`. `app:restore-backup` refuses an OpenWA run.
+- Schedule `openwa-backup`, 19:37 UTC, `CRITICAL`. Stats and the Dashboard judge each source's latest run.
+- Admin `/middleware/backups`: Backup Database / Backup OpenWA buttons, a last-run card per source, a source filter and column. Checked in a real browser at 1440 px and 390 px (no page overflow; the header stacks on mobile).
+
+**Gotchas.**
+- The plan's "make it simple" version would have run OpenWA's scripts with Laravel's environment. They read `DATABASE_NAME` and friends from the environment before `./.env`, and Laravel's dotenv exports every variable. So they run under `env -i`.
+- The first leak test passed even without `-i`. Symfony Process inherits from `$_SERVER`/`$_ENV`, not `putenv`, and the test now sets all three, as dotenv does. It fails without `-i` (mutation-checked).
+- The script contract was proven against the real OpenWA v0.25.0 scripts, run locally on fake data: `backup.sh` leaves one flat `openwa-backup-*.tar.gz`, and `restore.sh` with `OPENWA_DATA_DIR=<tmp>` writes only there. Nothing ran against prod for this.
+- `OpenWaBackup` isn't `final` so the job test can mock it, the same as `BackupRestoreTester`.
+
+**Verified.** 22 new tests, including a real-process end-to-end test of encryption, the restore test, a torn Baileys file, a missing session, a wrong password, a failing script, the env leak and pruning. Full backend suite: 2953 passed. Admin `tsc`, `eslint` and `next build` are clean. `BackupRestoreMysqlTest` can't run on this Mac (no `mysqldump`), so CI's `backend-concurrency` covers it.
+
+**Not done yet (needs the founder, in order).** Set `BACKUP_ARCHIVE_PASSWORD` (kept in the password manager first) and `OPENWA_INSTALL_DIR` on Forge, then release, then "Backup Now → OpenWA" and a restore drill with the password from the password manager. After that, delete the plaintext R2 archives and the on-box leftovers. These are PRD §16 item 96's steps.
+
+## 2026-10-22 — Item 96 rollout step 1: backup password set on prod
+
+The founder generated a new password, kept it in the password manager, and set `BACKUP_ARCHIVE_PASSWORD` and `OPENWA_INSTALL_DIR=/home/forge/OpenWA` in Forge → Environment. Checked read-only, values never printed: both keys appear once in the site-root `.env`, the password is filled (64 chars), and `/home/forge/OpenWA/scripts/backup.sh` exists.
+
+**Gotcha: Forge re-caches config on an env save.** `.env` was written at 09:07:01 and `bootstrap/cache/config.php` rebuilt at 09:07:05 with no deploy (current release still #517), and `config('backup.backup.password')` read filled. So no `config:cache` was needed. Horizon was still holding the old config in memory (up since 07:01), so with the founder's go-ahead `php artisan horizon:terminate` ran; Supervisor brought Horizon back at 09:09:39 and `horizon:status` reads running.
+
+Released code (#517) does not read `OPENWA_INSTALL_DIR` yet; that waits for the `staging`→`main` release. The 02:07 UTC database run tonight is the first encrypted archive; its `backup_runs` row is the evidence to check.

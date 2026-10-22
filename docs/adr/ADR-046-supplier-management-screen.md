@@ -1,6 +1,6 @@
 # ADR-046: Supplier Management screen — trimmed to config/health (SUPP-1/CRUD/SUPP-5), `Supplier.api_config` becomes the live credential source, per-supplier/per-game bulk deactivation
 
-> **Standing (2026-10-17):** In force; the create form picks a `driver` (not a slug) and a manual supplier names its own slug, since [ADR-125](./ADR-125-login-top-up-manual-supplier.md) (built 2026-10-18). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-17):** In force; the create form picks a `driver` (not a slug) and a manual supplier names its own slug, since [ADR-125](./ADR-125-login-top-up-manual-supplier.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-08-27 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
 

@@ -2,7 +2,8 @@
 
 /**
  * ADR-039 (BAK-1..5): unified backup run history, stat cards, manual
- * "Backup Now" trigger, download/delete. ADR-038 decision 3/6: this is
+ * "Backup Now" trigger, download/delete. Two sources since the 2026-10-22
+ * addendum: the database and the OpenWA gateway's data. ADR-038 decision 3/6: this is
  * the first PrimeReact-Tailwind testbed screen — Button/Tag/DataTable/
  * Dialog exclusively, no old TailAdmin primitives on this screen.
  * Restore is deliberately CLI/artisan-only (ADR-039 decision 5) — no
@@ -43,6 +44,7 @@ import { ApiError } from "@/lib/api-client";
 import {
   type BackupRun,
   type BackupRunPage,
+  type BackupSource,
   type BackupStats,
   listBackupRuns,
   getBackupStats,
@@ -75,6 +77,8 @@ function formatBytes(bytes: number | null): string {
   return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
 
+const sourceLabel: Record<BackupSource, string> = { database: "Database", openwa: "OpenWA" };
+
 function filenameOf(run: BackupRun): string {
   return run.path?.split("/").pop() ?? "—";
 }
@@ -87,7 +91,8 @@ export default function BackupsPage() {
   const [historyPage, setHistoryPage] = useState<BackupRunPage | null>(null);
   const [historyPageNumber, setHistoryPageNumber] = useState(1);
   const [error, setError] = useState<string | null>(null);
-  const [triggering, setTriggering] = useState(false);
+  const [triggering, setTriggering] = useState<BackupSource | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<BackupSource | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [confirmDeleteRun, setConfirmDeleteRun] = useState<BackupRun | null>(null);
 
@@ -109,12 +114,12 @@ export default function BackupsPage() {
   }, []);
 
   const refreshHistory = useCallback((page: number) => {
-    listBackupRuns(page)
+    listBackupRuns(page, sourceFilter)
       .then(setHistoryPage)
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load backup history.");
       });
-  }, []);
+  }, [sourceFilter]);
 
   const refreshAll = useCallback(
     () => {
@@ -134,7 +139,7 @@ export default function BackupsPage() {
     if (!session) return;
     refreshHistory(historyPageNumber);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, historyPageNumber]);
+  }, [session, historyPageNumber, sourceFilter]);
 
   // ADR-047 decisions 1/3/4 — replaces the 3s "any run in flight" poll
   // with a push subscription on the shared admin-wide `backups` channel.
@@ -168,18 +173,23 @@ export default function BackupsPage() {
     }, [session, refreshAll]),
   );
 
-  async function handleTrigger() {
+  async function handleTrigger(source: BackupSource) {
     if (!session) return;
     setError(null);
-    setTriggering(true);
+    setTriggering(source);
     try {
-      await triggerBackup();
+      await triggerBackup(source);
       refreshAll();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not start a backup.");
     } finally {
-      setTriggering(false);
+      setTriggering(null);
     }
+  }
+
+  function filterBy(source: BackupSource | null) {
+    setSourceFilter(source);
+    setHistoryPageNumber(1);
   }
 
   async function handleDownload(run: BackupRun) {
@@ -212,18 +222,24 @@ export default function BackupsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-start justify-between">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Database Backups</h1>
+          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Backups</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Full database dump (excluding <code>player_validations</code>, per ADR-021&apos;s PII-retention
-            guarantee), encrypted at rest, restore-tested automatically on every run (ADR-039). Restore is
+            Database: full dump (excluding <code>player_validations</code>, per ADR-021&apos;s PII-retention
+            guarantee). OpenWA: the WhatsApp gateway&apos;s data and sessions, kept 14 days — back it up before
+            every OpenWA upgrade. Both are encrypted and restore-tested on every run (ADR-039). Restore is
             deliberately CLI/artisan-only — no restore action exists here.
           </p>
         </div>
-        <Button disabled={triggering} onClick={handleTrigger}>
-          {triggering ? "Starting…" : "Backup Now"}
-        </Button>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button disabled={triggering !== null} onClick={() => handleTrigger("database")}>
+            {triggering === "database" ? "Starting…" : "Backup Database"}
+          </Button>
+          <Button variant="outlined" disabled={triggering !== null} onClick={() => handleTrigger("openwa")}>
+            {triggering === "openwa" ? "Starting…" : "Backup OpenWA"}
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -244,16 +260,33 @@ export default function BackupsPage() {
             {stats ? formatBytes(stats.total_size_bytes) : "—"}
           </p>
         </div>
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-          <p className="text-theme-xs text-gray-500 dark:text-gray-400">Last Run Status</p>
-          <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">
-            {stats?.last_run_status ? <Tag severity={statusSeverity[stats.last_run_status]}>{stats.last_run_status}</Tag> : "—"}
-          </p>
-        </div>
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-          <p className="text-theme-xs text-gray-500 dark:text-gray-400">Last Run</p>
-          <p className="mt-1 text-sm font-medium text-gray-800 dark:text-white/90">{formatDateTime(stats?.last_run_at ?? null)}</p>
-        </div>
+        {(["database", "openwa"] as const).map((source) => {
+          const last = stats?.last_runs[source] ?? null;
+
+          return (
+            <div key={source} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+              <p className="text-theme-xs text-gray-500 dark:text-gray-400">{sourceLabel[source]} — Last Run</p>
+              <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">
+                {last ? <Tag severity={statusSeverity[last.status]}>{last.status}</Tag> : "—"}
+              </p>
+              <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">{formatDateTime(last?.at ?? null)}</p>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 2026-10-22 addendum: filter the history by source */}
+      <div className="mb-3 flex gap-2">
+        {([null, "database", "openwa"] as const).map((source) => (
+          <Button
+            key={source ?? "all"}
+            size="small"
+            variant={sourceFilter === source ? undefined : "outlined"}
+            onClick={() => filterBy(source)}
+          >
+            {source ? sourceLabel[source] : "All"}
+          </Button>
+        ))}
       </div>
 
       {/* BAK-2: unified run history */}
@@ -264,6 +297,7 @@ export default function BackupsPage() {
               <DataTableTable>
                 <DataTableTHead>
                   <DataTableTHeadRow>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Source</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Filename</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Type</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
@@ -280,6 +314,9 @@ export default function BackupsPage() {
 
                     return (
                       <DataTableRow key={run.id}>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                          {sourceLabel[run.source]}
+                        </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
                           {filenameOf(run)}
                         </DataTableCell>

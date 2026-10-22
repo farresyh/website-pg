@@ -80,7 +80,7 @@ Both ADR-074 decision 3 and ADR-075 decision 5 deliberately deferred "exact payl
 
 **Consequence to track:**
 - The `ENGINE_TYPE=baileys`-for-both-sessions discrepancy against this ADR's original decision 6 was a separate finding, out of scope for this addendum; resolved by the 2026-10-10 addendum below (Baileys stays until the droplet is upgraded).
-- The separate `openwa.sqlite` → Cloudflare R2 backup gap (PRD §16 item 56, extending ADR-095) is being tracked and built independently of this addendum — the two are related (both stem from OpenWA's own storage being outside this project's normal durability guarantees) but are not the same fix.
+- The separate `openwa.sqlite` → Cloudflare R2 backup gap (PRD §16 item 56, extending ADR-095; **2026-10-22 correction:** item 56 never built it, so it now lives in PRD §16 item 96, designed in ADR-039's 2026-10-22 addendum) is being tracked and built independently of this addendum — the two are related (both stem from OpenWA's own storage being outside this project's normal durability guarantees) but are not the same fix.
 - Once built, `foundation-security.md`'s existing OpenWA fraud-surface note should gain a line noting the fork now carries platform-authored patches, so a future "redeploy clean from upstream" instinct doesn't silently drop this fix.
 
 ---

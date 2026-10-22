@@ -403,4 +403,19 @@ return [
         'retry_delay' => 0,
     ],
 
+    /*
+     * ADR-039 2026-10-22 addendum: the second backup source, the OpenWA
+     * gateway's own data (SQLite + Baileys auth), produced by OpenWA's
+     * shipped scripts/backup.sh. `install_dir` is required where the
+     * schedule runs (prod: /home/forge/OpenWA); unset, the run fails loudly.
+     * Not spatie's: retention here is a flat window, since only the newest
+     * good copy of a WhatsApp session is worth restoring.
+     */
+    'openwa' => [
+        'install_dir' => env('OPENWA_INSTALL_DIR'),
+        'folder' => 'openwa',
+        'keep_days' => 14,
+        'script_timeout_seconds' => 120,
+    ],
+
 ];

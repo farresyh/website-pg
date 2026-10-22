@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\BackupRun;
+use App\Services\Backup\BackupArchivePassword;
 use App\Services\Backup\BackupFailureAlerter;
 use App\Services\Backup\BackupRestorer;
 use App\Services\Backup\BackupRestoreTester;
@@ -41,18 +42,27 @@ final class RunDatabaseBackupJob implements ShouldQueue
 
     public function handle(BackupRestoreTester $tester, BackupRestorer $restorer, BackupFailureAlerter $alerter): void
     {
-        self::sweepLeftoverExtracts();
+        $restorer->sweepJobLeftovers();
 
         $disk = config('filesystems.backup_disk');
 
         $this->run->update(['status' => 'running', 'disk' => $disk, 'started_at' => now()]);
+
+        try {
+            BackupArchivePassword::require();
+        } catch (RuntimeException $e) {
+            $this->run->markFailed($e->getMessage());
+            $alerter->alert('Backup run failed', $e->getMessage());
+
+            return;
+        }
 
         $exitCode = Artisan::call('backup:run', ['--only-db' => true]);
         $output = Artisan::output();
 
         if ($exitCode !== 0) {
             $message = trim($output) !== '' ? trim($output) : "backup:run exited with code {$exitCode}";
-            $this->failRun($message);
+            $this->run->markFailed($message);
             // spatie's own BackupHasFailed event (if the underlying job
             // threw) already triggers LogAndAlertBackupFailure — this
             // covers the case where backup:run exits non-zero without
@@ -66,7 +76,7 @@ final class RunDatabaseBackupJob implements ShouldQueue
 
         if ($backupPath === null) {
             $message = 'backup:run reported success but no new archive was found on disk.';
-            $this->failRun($message);
+            $this->run->markFailed($message);
             $alerter->alert('Backup run failed', $message);
 
             return;
@@ -94,15 +104,6 @@ final class RunDatabaseBackupJob implements ShouldQueue
         }
     }
 
-    private function failRun(string $message): void
-    {
-        $this->run->update([
-            'status' => 'failed',
-            'error_message' => $message,
-            'finished_at' => now(),
-        ]);
-    }
-
     /**
      * spatie's backup:run doesn't return the archive path it just wrote
      * — locate it by taking the newest file on the disk created at or
@@ -128,24 +129,8 @@ final class RunDatabaseBackupJob implements ShouldQueue
     public function failed(?Throwable $exception): void
     {
         $message = 'backup job died: '.($exception?->getMessage() ?? 'unknown error');
-        $this->failRun($message);
+        $this->run->markFailed($message);
         app(BackupFailureAlerter::class)->alert('Backup run failed', $message);
-    }
-
-    /**
-     * A killed run's `finally` never runs, so its decrypted plaintext dump
-     * (customer PII) stayed on disk. Each run clears what earlier runs left.
-     * ponytail: safe only because supervisor-backups runs one job at a time
-     * (maxProcesses 1); the operator's `app:restore-backup` uses its own
-     * `restore-cli-` prefix, never swept here.
-     */
-    public static function sweepLeftoverExtracts(): void
-    {
-        $restorer = app(BackupRestorer::class);
-
-        foreach (glob(storage_path('app/backup-temp/restore-extract-*'), GLOB_ONLYDIR) ?: [] as $dir) {
-            $restorer->deleteDirectory($dir);
-        }
     }
 
     /**

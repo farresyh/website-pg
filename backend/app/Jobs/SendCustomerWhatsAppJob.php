@@ -5,11 +5,13 @@ namespace App\Jobs;
 use App\Models\CustomerNotification;
 use App\Services\OpenWa\OpenWaClient;
 use App\Services\OpenWa\OpenWaPacingLimitedException;
+use App\Services\OpenWa\OpenWaRecipientNotOnWhatsAppException;
 use App\Services\Supplier\Manual\SupplierGroupNotifier;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\FailOnException;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -49,6 +51,12 @@ final class SendCustomerWhatsAppJob implements ShouldQueue
     public function __construct(public readonly int $notificationId)
     {
         $this->onQueue('whatsapp');
+    }
+
+    /** PRD §16 item 96: a number not on WhatsApp fails at once; retrying can't help. */
+    public function middleware(): array
+    {
+        return [new FailOnException([OpenWaRecipientNotOnWhatsAppException::class])];
     }
 
     public function handle(): void

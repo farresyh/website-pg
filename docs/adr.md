@@ -5,7 +5,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 ## How to use and maintain this log
 
 - **Is it still in force?** Read **Standing** in the index below, then the ADR file. The same Standing line sits at the top of each file.
-- **Is it built or live?** Read [`prd.md`](./prd.md) §15. That is the only place build and live status is tracked. This index never says "built" or "live", so it can't contradict §15.
+- **Is it built or live?** Read [`prd.md`](./prd.md) §15. That is the only place build and live status is tracked. This index, the Standing banner in each ADR file, and the PRD §13 Glossary never say "built", "live" or "on `staging`", so they can't contradict §15.
 - **Never rewrite a past decision.** Each file is a dated record.
   - **Revising a recorded decision:** append a `### YYYY-MM-DD addendum — <what changed>` section at the end of that ADR's file. A later addendum overrides earlier text in the same file, including its original **Status** line.
   - **Filling an undocumented gap:** add a new ADR.
@@ -59,9 +59,9 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-034](./adr/ADR-034-storefront-best-price-selection.md) | Storefront best-price selection — `packages.denomination` | In force |  |
 | [ADR-035](./adr/ADR-035-voucher-path-a-double-submission-guard.md) | Voucher Path A double-submission guard — idempotency key, mirroring checkout | In force |  |
 | [ADR-036](./adr/ADR-036-voucher-merge.md) | Voucher Merge — admin-triggered consolidation into a new code, no ledger write | In force | 2026-10-12 |
-| [ADR-037](./adr/ADR-037-staging-production-git-branch-model-staging.md) | Staging/production git branch model + staging environment infra | In force | 2026-09-01 |
+| [ADR-037](./adr/ADR-037-staging-production-git-branch-model-staging.md) | Staging/production git branch model + staging environment infra | In force | 2026-10-22 |
 | [ADR-038](./adr/ADR-038-admin-ui-component-library.md) | Admin UI component library — adopt PrimeReact (Tailwind mode), opportunistic migration off hand-rolled TailAdmin primitives | In force | 2026-08-26 |
-| [ADR-039](./adr/ADR-039-database-backups.md) | Database backups — app-level, host-agnostic backup/restore mechanism (BAK-1..5) | In force | 2026-10-15 |
+| [ADR-039](./adr/ADR-039-database-backups.md) | Backups — app-level, host-agnostic backup/restore mechanism (BAK-1..5); database + OpenWA sources, encryption enforced | In force | 2026-10-22 |
 | [ADR-040](./adr/ADR-040-gamevion-sandbox-integration.md) | Gamevion sandbox integration — investigation saga, `telp` normalization, `callback_url` fix (2026-07-25 – 2026-08-14) | In force | 2026-08-13 |
 | [ADR-041](./adr/ADR-041-checkout-level-idempotency-key.md) | Checkout-level idempotency key — client-generated key, unique DB constraint, replay/resume branching | In force | 2026-07-29 |
 | [ADR-042](./adr/ADR-042-seo-module-scope-widened.md) | SEO module scope widened — structured data, scripts manager, crawler/robots management, sitemap & overview panels, per-game SEO UX | In force | 2026-10-08 |

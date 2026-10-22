@@ -14,16 +14,14 @@
 # is green. Moving boxes means re-pointing this secret (ADR-114 2026-10-17
 # addendum).
 #
-# CI-minute controls (ADR-066 addendum, 2026-09-07 — private repo, billed
-# minutes; ~135 runs/7d was burning ~1900 min/mo):
-#   - `concurrency` cancels a superseded PR run when a newer commit is
-#     pushed to the same PR (was paying 2x for every quick re-push). NOT
-#     applied to `push:main` — a deploy run must always finish.
-#   - `pull_request.paths-ignore` skips the whole matrix for a docs-only
-#     PR (no code depends on `docs/**` or any `*.md`). A `push:main` stays
-#     unfiltered so a docs merge still triggers `deploy` (harmless no-op).
-#   No branch protection / rulesets exist on `staging`/`main` today, so a
-#   skipped run does not wedge a "required check never reported" merge.
+# CI-minute controls (ADR-066 addendum, 2026-09-07) were for a private
+# repo with billed minutes. The repo is public by the founder's choice
+# (unlimited Actions minutes), so ADR-037's 2026-10-22 addendum dropped the
+# docs-only `paths-ignore`: every PR now reports the checks the `staging`/
+# `main` ruleset requires (a skipped run would wedge a docs PR forever).
+#   - `concurrency` still cancels a superseded PR run when a newer commit
+#     is pushed to the same PR. NOT applied to `push:main` — a deploy run
+#     must always finish.
 
 name: CI
 
@@ -31,9 +29,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
 
 # One in-flight run per PR (or per branch/ref for a push); a newer commit
 # cancels the older PR run. `push:main` is never cancelled — `deploy`
