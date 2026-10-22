@@ -122,7 +122,7 @@ class SettingsController extends Controller
     }
 
     /**
-     * Decision 12: `terms_content`/`privacy_content`/`about_us_content`/
+     * Decision 12: The legal-page contents and
      * `footer_text` are sanitized here (the `rich_text` Purifier
      * profile) before being stored — the FormRequest validates shape
      * only, it doesn't transform. Stored value keeps any `{store_name}`
@@ -135,7 +135,7 @@ class SettingsController extends Controller
         $footer = $this->footerFor($affiliate);
 
         $data = $request->validated();
-        foreach (['footer_text', 'terms_content', 'privacy_content', 'about_us_content'] as $field) {
+        foreach (['footer_text', 'terms_content', 'privacy_content', 'about_us_content', 'refund_policy_content'] as $field) {
             if (array_key_exists($field, $data) && $data[$field] !== null) {
                 $data[$field] = Purifier::clean($data[$field], 'rich_text');
             }

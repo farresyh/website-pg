@@ -28,6 +28,7 @@ class BrandingController extends Controller
         'terms' => 'terms_content',
         'privacy' => 'privacy_content',
         'about-us' => 'about_us_content',
+        'refund-policy' => 'refund_policy_content',
     ];
 
     public function __construct(private readonly StorefrontBrand $brand) {}
@@ -99,7 +100,8 @@ class BrandingController extends Controller
     }
 
     /**
-     * Decision 11's three routes (/terms, /privacy, /about-us) all
+     * Decision 11's routes (/terms, /privacy, /about-us, and
+     * /refund-policy since 2026-10-22) all
      * resolve through here. Decision 12: sanitized again defensively
      * at this render point, on top of the sanitize-on-save
      * SettingsController already did — belt and braces, not trusting

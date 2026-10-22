@@ -15,7 +15,8 @@ Laravel-specific, loaded only when working inside `backend/`.
   order profit) goes through it. A compensation voucher (issued for an
   order) writes no ledger row (ADR-024 2026-10-12 addendum).
 - **No cash refunds, ever** (ADR-004) — a failed/refundable order becomes a
-  store-credit `Voucher`, not a reversed payment.
+  store-credit `Voucher`, not a reversed payment. Being revised: a refund to
+  the original payment method is decided but not designed (PRD §16 item 129).
 - **Supplier and payment integrations are behind adapters** —
   `SupplierAdapter` (`GamevionAdapter` and `DigiflazzAdapter` are the two
   real, production-wired implementations — ADR-030/067; only Digiflazz is

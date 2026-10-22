@@ -118,7 +118,7 @@ export async function getBranding(): Promise<Branding> {
   );
 }
 
-export type LegalPage = "terms" | "privacy" | "about-us";
+export type LegalPage = "terms" | "privacy" | "about-us" | "refund-policy";
 
 const LegalContentWireSchema = z.object({ content: z.string().nullable() });
 

@@ -141,9 +141,20 @@ class BrandingControllerTest extends TestCase
         $this->assertStringNotContainsString('<script>', $response->json('content'));
     }
 
+    public function test_legal_serves_the_refund_policy_page(): void
+    {
+        $this->seedBrandingAndFooter([], ['refund_policy_content' => '<p>{store_name} refunds within 7 working days</p><script>alert(1)</script>']);
+
+        $response = $this->getJson('/api/catalog/legal/refund-policy');
+
+        $response->assertOk();
+        $this->assertStringContainsString('PekanGame refunds within 7 working days', $response->json('content'));
+        $this->assertStringNotContainsString('<script>', $response->json('content'));
+    }
+
     public function test_legal_returns_404_for_an_unknown_page(): void
     {
-        $this->getJson('/api/catalog/legal/refund-policy')->assertNotFound();
+        $this->getJson('/api/catalog/legal/shipping-policy')->assertNotFound();
     }
 
     public function test_legal_returns_null_content_when_nothing_saved_yet(): void

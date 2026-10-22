@@ -1598,3 +1598,17 @@ The founder generated a new password, kept it in the password manager, and set `
 **Gotcha: Forge re-caches config on an env save.** `.env` was written at 09:07:01 and `bootstrap/cache/config.php` rebuilt at 09:07:05 with no deploy (current release still #517), and `config('backup.backup.password')` read filled. So no `config:cache` was needed. Horizon was still holding the old config in memory (up since 07:01), so with the founder's go-ahead `php artisan horizon:terminate` ran; Supervisor brought Horizon back at 09:09:39 and `horizon:status` reads running.
 
 Released code (#517) does not read `OPENWA_INSTALL_DIR` yet; that waits for the `staging`→`main` release. The 02:07 UTC database run tonight is the first encrypted archive; its `backup_runs` row is the evidence to check.
+
+## 2026-10-22 — Release #526 (`staging`→`main`): OpenWA backup, backup encryption enforced, OpenWA `400`
+
+Requested by the founder after the docs pass (#525). Merged as `d2f841b`; every CI job and `deploy` green. Box checked read-only: `current` is `d2f841b`, migration `2026_10_22_100000_add_source_to_backup_runs` ran (batch 47), Horizon running, `config('backup.openwa.install_dir')` = `/home/forge/OpenWA`, the backup password reads filled, and the schedule has `app:run-backup --source=database` at 02:07 and `--source=openwa` at 19:37 UTC.
+
+**`/api/health` was already 503, unrelated to the release.** `supplier-balance-refresh` (CRITICAL) failed at 00:00 UTC because `api.gamevion.com` refused connections (`cURL error 7`); Gamevion's hourly price sync failed until at least 08:00 UTC. Gamevion is unfunded, so no order was affected, and it answered again by 09:40 UTC. The daily task stays stale until its next run succeeds. Worth a look later: one unfunded supplier being down turns the whole health check red. Digiflazz's balance is also under its alert threshold (IDR 1.56M vs 10M, 2026-10-21).
+
+## 2026-10-22 — Refund Policy page and the Bank Negara Malaysia lines removed (CHIP merchant review, on `staging`)
+
+CHIP is reviewing LWF Group Sdn. Bhd.'s merchant account. Its list included a refund policy page that allows a refund to the original payment method, and contact details on About Us. It also asked about a BNM licence, which the storefront appeared to claim: "Licensed & compliant with Bank Negara Malaysia standards" sat under the CHIP badge in the footer and the home payment section, and "Bank Negara Malaysia compliant" in the membership and checkout review modals. All four lines are removed; the CHIP badge stays.
+
+The new page is a fourth admin-edited legal page (`affiliate_footer_settings.refund_policy_content`, sanitized like the other three, served by `/api/catalog/legal/refund-policy`, rendered at `/refund-policy`). It is linked from the footer, the mobile drawer, the sitemap (6 static routes now) and `llms.txt`. Checked in a browser on the e2e harness: the admin saves the field, the storefront page shows it with `{store_name}` resolved, the footer link is there, and no "Bank Negara" text remains on the home or refund page.
+
+The founder decided the policy itself: after retries, a voucher for the full amount or a full refund to the original payment method within 7 working days, at the customer's choice. That revises ADR-004. How a refund is made and recorded is not designed yet (PRD §16 item 129), and it must be built before payment methods are switched on for the new account. The page text is admin content, so it can be published before then.

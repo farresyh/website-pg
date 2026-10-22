@@ -85,11 +85,11 @@ class SeoController extends Controller
             ],
             'redirects' => ['total' => $redirectCount],
             'sitemap_url' => '/sitemap.xml',
-            // addendum 2 decision 16: a status line, not a setting — 5
+            // addendum 2 decision 16: a status line, not a setting — 6
             // static storefront routes (home/terms/privacy/about-us/
-            // track-order) + one per active game, mirroring
+            // refund-policy/track-order) + one per active game, mirroring
             // storefront's own app/sitemap.ts exactly.
-            'sitemap_url_count' => 5 + $totalGames,
+            'sitemap_url_count' => 6 + $totalGames,
             'recommendations' => $recommendations,
         ]);
     }

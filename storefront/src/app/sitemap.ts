@@ -33,6 +33,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${origin}/terms`, lastModified: new Date() },
     { url: `${origin}/privacy`, lastModified: new Date() },
     { url: `${origin}/about-us`, lastModified: new Date() },
+    { url: `${origin}/refund-policy`, lastModified: new Date() },
     { url: `${origin}/track-order`, lastModified: new Date() },
   ];
 

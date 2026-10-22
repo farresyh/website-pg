@@ -63,6 +63,7 @@ export default function FooterSettingsSection({
   const [terms, setTerms] = useState(footer.terms_content ?? "");
   const [privacy, setPrivacy] = useState(footer.privacy_content ?? "");
   const [aboutUs, setAboutUs] = useState(footer.about_us_content ?? "");
+  const [refundPolicy, setRefundPolicy] = useState(footer.refund_policy_content ?? "");
   const [gameIds, setGameIds] = useState<number[]>(footer.footer_game_ids ?? []);
   const [activeGames, setActiveGames] = useState<Game[]>([]);
   const [saving, setSaving] = useState(false);
@@ -91,6 +92,7 @@ export default function FooterSettingsSection({
         terms_content: terms || null,
         privacy_content: privacy || null,
         about_us_content: aboutUs || null,
+        refund_policy_content: refundPolicy || null,
         footer_game_ids: gameIds,
       });
       onSaved();
@@ -124,6 +126,7 @@ export default function FooterSettingsSection({
         <LegalField label="Terms & Conditions content" route="/terms" value={terms} onChange={setTerms} storeName={storeName} />
         <LegalField label="Privacy Policy content" route="/privacy" value={privacy} onChange={setPrivacy} storeName={storeName} />
         <LegalField label="About Us content" route="/about-us" value={aboutUs} onChange={setAboutUs} storeName={storeName} />
+        <LegalField label="Refund Policy content" route="/refund-policy" value={refundPolicy} onChange={setRefundPolicy} storeName={storeName} />
       </div>
 
       <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-subtle">Footer games</h2>

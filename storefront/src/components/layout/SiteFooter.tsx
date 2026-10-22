@@ -85,6 +85,9 @@ export default async function SiteFooter() {
                 <Link href="/terms" className="hover:text-primary-on-surface">Terms &amp; Conditions</Link>
               </li>
               <li>
+                <Link href="/refund-policy" className="hover:text-primary-on-surface">Refund Policy</Link>
+              </li>
+              <li>
                 <Link href="/privacy" className="hover:text-primary-on-surface">Privacy Policy</Link>
               </li>
               {/* Founder feedback 2026-09-13: hidden from footer nav for
@@ -170,9 +173,6 @@ export default async function SiteFooter() {
                   className="h-4.5 w-auto object-contain"
                 />
               </div>
-              <p className="text-[11px] text-on-surface-variant">
-                Licensed &amp; compliant with Bank Negara Malaysia standards
-              </p>
             </div>
           </div>
         </div>
