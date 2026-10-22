@@ -1496,3 +1496,10 @@ Tests: 7 new files (41 tests) plus `ManualCorrectionConcurrencyTest` (correction
 **`/api/health` 503 (`scheduler: false`), not ours.** `api.gamevion.com` refused connections from the box and from the founder's Mac from 2026-10-21 16:30 UTC onward. `supplier-balance-refresh` failed at 00:00 UTC and the Gamevion price sync failed every 30 minutes. No orders were placed in that window (all payment methods are off). Health recovers on its own once the task succeeds again.
 
 **Item 125.** Neither `staging` nor `main` was protected (`protected: false`, no rulesets). The repo is public on purpose, for unlimited Actions minutes. `ci.yml` drops the docs-only `paths-ignore`, which with required checks would have wedged every docs PR. The ruleset (id 25608722) was created the same day, while #520 was open; #520 changed `ci.yml`, so its own required checks ran (ADR-037 2026-10-22 addendum). #518, which carried the three orphaned commits, was closed as superseded by #520.
+
+## 2026-10-22 — Item 124 closed: #516 measured on prod
+
+- **DevTools (the founder, logged in):** `/admin/orders` reloaded with the filter set to All and `method:OPTIONS`, and **0 OPTIONS requests**. Every admin GET (`orders`, `games`, `summary`, `manual-queue`, …) goes straight to the API. Note for next time: Chrome lists a preflight as Type `preflight`, which the Fetch/XHR filter hides, so check under All.
+- **Pulse (read-only, last 3 days):** 15 slow requests, spread across every minute of the quarter-hour. Only 2 landed on :00/:15/:30/:45, so there is no sign of scheduler contention. No admin endpoint is in the slowest list. The top entries are public: `catalog/reseller-price-list` (max 5.1 s), `catalog/branding`, `validate-player`. Load average was 0.1.
+- **Pulse has no CPU or memory data:** the `pulse:check` daemon (Servers card) isn't running on the box. Add it only if server-level metrics are wanted.
+- Item 128 (admin skeleton) stays in group D, at the founder's call.

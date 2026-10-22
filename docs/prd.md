@@ -604,7 +604,7 @@ one storefront order paid) and off again, so all three are off (checked
 
 **Latest release 2026-10-19 (`staging`→`main`, PR #517).** Merged as
 `6a5052e`; CI green and its `deploy` job called the Forge hook (16:59 UTC);
-box verified 2026-10-22; the effect on admin loading is not measured yet (§16 item 124). Ships #516: admin reads skip the CORS
+box verified 2026-10-22; #516 measured, admin GETs send no OPTIONS (§16 item 124, closed). Ships #516: admin reads skip the CORS
 preflight (`apiFetch` sends `Content-Type` only with a body) and `cors.php`
 `max_age` is 7200 (ADR-121 2026-10-19 addendum); plus #515, the docs sync after
 #514. No migration, no env change.
@@ -655,7 +655,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 
 | Area | Status | Key ADRs |
 | --- | --- | --- |
-| Auth & Admin Users (AUTH-1..7) | ✅ Live. Login rate-limited + logged. Admin MFA (AUTH-7) and the cookie-session admin login live since 2026-10-14 (#437). **2026-10-19 (ADR-121 addendum, released via #517):** admin GETs carry no `Content-Type`, so they skip the CORS preflight; preflight answers are cached (`max_age` 7200). Effect on prod not measured yet (§16 item 124) | ADR-019, ADR-121 |
+| Auth & Admin Users (AUTH-1..7) | ✅ Live. Login rate-limited + logged. Admin MFA (AUTH-7) and the cookie-session admin login live since 2026-10-14 (#437). **2026-10-19 (ADR-121 addendum, released via #517):** admin GETs carry no `Content-Type`, so they skip the CORS preflight; preflight answers are cached (`max_age` 7200). Verified on prod 2026-10-22: 0 OPTIONS on `/admin/orders` | ADR-019, ADR-121 |
 | Admin Dashboard (DASH-1..6) | ✅ Live — **redesign (§16 item 102, ADR-104 2026-10-15), live 2026-10-15 via #462:** daily briefing with a period filter, status strip, trend, channels, top games, busy hours, highlights; the funnel and single-day hourly chart are removed. **Scheduler liveness (ADR-122, §16 item 98):** live 2026-10-15 via #449. Per-task heartbeat (`scheduled_task_heartbeats`); a stale critical task fails `/api/health` (`checks.scheduler`); a "Scheduled tasks" row on System Health | ADR-045, ADR-122 |
 | Money core (Pricing, Ledger, Voucher, Order status, idempotency) | ✅ Live — full service layer, concurrency-proven. The most mature part of the codebase | ADR-002 |
 | Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end. PR #273's invite/session and compensation visibility fixes, plus ADR-112's role-aware shell, dashboard recent orders, and responsive Orders presentation, shipped in PRs #273, #275 and #276, released to `main` via #278 (2026-09-24) | ADR-056–061, 078, 112 |
@@ -739,12 +739,11 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
   added and alert-tested by the founder 2026-10-14).
 - **71** GSC recheck around 2026-10-22.
 - **96** Upgrade OpenWA to v0.24.0 (with the founder standing by).
-- **124** Measure #516's effect (admin DevTools, Pulse). The box checks
-  were done 2026-10-22.
 
 **D. Waiting on a trigger: don't build early**
 - **128** Shared admin loading skeleton (through the admin `DataTable`), only
-  if item 124's measurement shows "Loading…" still bothers.
+  if "Loading…" still bothers the founder now that #516 is measured (item 124
+  closed 2026-10-22).
 - **122** Store each combo leg's cost at delivery (`order_delivery_legs.cost_sen`),
   so a leg with no drawdown isn't costed at today's catalog in COGS; at the
   first Monthly Summary fallback on a combo leg.
@@ -1110,21 +1109,6 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     at delivery or settlement when `FundedCostOfSales` first falls back on a
     combo leg in the Monthly Summary (ADR-083 2026-10-17 addendum).
 
-124. **Verify releases #514 and #517 on prod; measure #516 (2026-10-19).**
-    **Box checks done 2026-10-22 (read-only, build-log):**
-    - `current` is `6a5052e`.
-    - #514's eight migrations show Ran.
-    - Horizon is running.
-    - `whatsapp_groups` has 2 reseller rows and 1 supplier row, all active.
-    - The OpenWA bot session is configured.
-    - An admin-origin OPTIONS to `/api/orders` returns `Access-Control-Max-Age: 7200`.
-
-    **Still open (needs the founder's admin login):**
-    - DevTools → Network on `/admin/orders` should show no OPTIONS before
-      `/api/orders`, `/api/orders/summary` or `/api/games`.
-    - Pulse: slow requests and server CPU around the :00/:15/:30/:45
-      scheduler ticks (possible contention, unmeasured).
-
 126. **PRD spec catch-up for Login Top-up (found in the 2026-10-19 docs
     audit).** Item 113 is live but the spec never got it: §6 has no
     requirements for Login Top-up, Manual Supplier, Manual Queue, the
@@ -1154,6 +1138,7 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **124** 2026-10-22: Releases #514 and #517 verified on the box; #516 measured. DevTools on `/admin/orders` shows 0 OPTIONS requests. Pulse, 3 days: 15 slow requests spread evenly, not clustered at the scheduler ticks, none on admin endpoints. Details: build-log 2026-10-22.
 - **125** 2026-10-22: Branch protection. The `ci.yml` header was right: none existed. One ruleset now protects `staging` and `main` (PR-only, merge commits, the deploy job's eight checks required), and `ci.yml` dropped its docs-only `paths-ignore`. The repo stays public on purpose (ADR-037 2026-10-22 addendum).
 - **113** 2026-10-19: Login Top-up, Roblox and eFootball (ADR-125). Manual suppliers (`driver`/`funding_mode`), admin manual packages with audited agreed cost, login checkout with consent, Manual Queue fallback, supplier WhatsApp group bot (`.done`/`.gagal`/`.pending`) with short login links (`/s/<token>`), Partners → Suppliers screen. Released via #514 (2026-10-19). Details: build-log 2026-10-18 and 2026-10-19.
 - **112** 2026-10-18: customer account credentials base (ADR-124). Encrypted `order_credentials` table, 15-minute sweep, super_admin reveal/replace with MFA step-up and audit row, Customer Login Policy settings. Released via #514 (2026-10-19); written at checkout since item 113. Details: build-log 2026-10-18.
