@@ -1503,3 +1503,28 @@ Tests: 7 new files (41 tests) plus `ManualCorrectionConcurrencyTest` (correction
 - **Pulse (read-only, last 3 days):** 15 slow requests, spread across every minute of the quarter-hour. Only 2 landed on :00/:15/:30/:45, so there is no sign of scheduler contention. No admin endpoint is in the slowest list. The top entries are public: `catalog/reseller-price-list` (max 5.1 s), `catalog/branding`, `validate-player`. Load average was 0.1.
 - **Pulse has no CPU or memory data:** the `pulse:check` daemon (Servers card) isn't running on the box. Add it only if server-level metrics are wanted.
 - Item 128 (admin skeleton) stays in group D, at the founder's call.
+
+## 2026-10-22 — Docs: items 126 and 127 closed, item 96 retargeted with the OpenWA backup gap
+
+**Item 96.**
+- Retargeted from OpenWA v0.24.0 to **v0.25.0** (released 2026-10-15).
+- Both changelogs were checked against our two calls (`send-text` and inbound webhooks). One change touches us: on Baileys, a send to a number not on WhatsApp now answers `400` (it used to answer `201` and drop the message). `OpenWaClient::sendNow()` would retry that three times, so the upgrade PR makes `400` non-retryable.
+- **New gap folded in.** OpenWA's `data/main.sqlite` and `openwa.sqlite` (39 MB, up from 22 MB on 10-14) live only on the box and have **no backup**. The daily `database-backup` covers Laravel's MySQL only, and the box has no cron and no backup folder. ADR-075 had pointed this gap at item 56, which never built it; its text now points at item 96.
+
+**Item 127.** Build/live status now lives in §15 only (headline in §14). It was removed from:
+- the Glossary;
+- §6: AUTH-7's priority cell, the §6.7 status column (now "Decided in", naming the ADR), RPT-4, THM-1 and MUI;
+- §7.3's prod flag and §8's BlacklistEntry row;
+- the ADR-046 and ADR-125 Standing banners.
+
+`adr.md`'s rule now says that the index, every Standing banner and the Glossary never say "built", "live" or "on `staging`".
+
+**Item 126.** The Login Top-up spec is written, from ADR-124/125 and checked against the code:
+- §6.24: LOGIN-1..7 and MSUP-1..7.
+- §7.6: the order flow.
+- §8: Game and Supplier columns, plus OrderCredential, CredentialReveal, WhatsAppGroup, SupplierLoginLink and CustomerNotification.
+- §11: now points at §16 group E, and its shipped strikethrough lines are gone.
+
+Verified in code on the way: the policy defaults (G 24 h, H 24 h, D 14 days, 20 reveals an hour), the SLA bounds of 5–1440 minutes, the `/s/{token}` GET/POST routes, the combo rule through `GameFulfilmentRule::comboComponentSupplier`, and affiliate masking through `publicPlayerLabel()`. Correction: `reply_sla_minutes` is a key in `api_config.manual`, not a Supplier column, as item 126's text had said.
+
+**Not done (left on purpose).** §10's integration status cells (Gamevion "unfunded", CHIP live keys) still carry status. They describe the integrations themselves, so they stay until a release changes them.

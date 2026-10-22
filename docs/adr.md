@@ -5,7 +5,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 ## How to use and maintain this log
 
 - **Is it still in force?** Read **Standing** in the index below, then the ADR file. The same Standing line sits at the top of each file.
-- **Is it built or live?** Read [`prd.md`](./prd.md) §15. That is the only place build and live status is tracked. This index never says "built" or "live", so it can't contradict §15.
+- **Is it built or live?** Read [`prd.md`](./prd.md) §15. That is the only place build and live status is tracked. This index, the Standing banner in each ADR file, and the PRD §13 Glossary never say "built", "live" or "on `staging`", so they can't contradict §15.
 - **Never rewrite a past decision.** Each file is a dated record.
   - **Revising a recorded decision:** append a `### YYYY-MM-DD addendum — <what changed>` section at the end of that ADR's file. A later addendum overrides earlier text in the same file, including its original **Status** line.
   - **Filling an undocumented gap:** add a new ADR.
