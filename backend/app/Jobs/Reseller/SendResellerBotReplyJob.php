@@ -3,10 +3,12 @@
 namespace App\Jobs\Reseller;
 
 use App\Services\OpenWa\OpenWaClient;
+use App\Services\OpenWa\OpenWaRecipientNotOnWhatsAppException;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\FailOnException;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -41,6 +43,12 @@ final class SendResellerBotReplyJob implements ShouldQueue
         $this->onQueue('default');
     }
 
+    /** PRD §16 item 96: a number not on WhatsApp fails at once; retrying can't help. */
+    public function middleware(): array
+    {
+        return [new FailOnException([OpenWaRecipientNotOnWhatsAppException::class])];
+    }
+
     public function handle(OpenWaClient $openWa): void
     {
         $openWa->sendNow($this->chatId, $this->text);
@@ -48,7 +56,7 @@ final class SendResellerBotReplyJob implements ShouldQueue
 
     public function failed(Throwable $e): void
     {
-        Log::error('SendResellerBotReplyJob exhausted all retries — reply lost', [
+        Log::error('SendResellerBotReplyJob failed — reply lost', [
             'chat_id' => $this->chatId,
             'exception' => $e->getMessage(),
         ]);

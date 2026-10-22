@@ -18,9 +18,11 @@ use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Services\Affiliate\AffiliateDomainStatus;
 use App\Services\Notification\OrderStatusCard;
+use App\Services\OpenWa\OpenWaRecipientNotOnWhatsAppException;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Pipeline\Pipeline;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
@@ -294,6 +296,26 @@ class CustomerWhatsAppNotificationTest extends TestCase
         $notification->refresh();
         $this->assertSame('failed', $notification->status);
         $this->assertStringContainsString('500', $notification->error);
+    }
+
+    /** PRD §16 item 96: a number that is not on WhatsApp fails at once, and the admin sees why. */
+    public function test_a_number_not_on_whatsapp_fails_the_job_at_once(): void
+    {
+        Http::fake(['openwa.test/*' => Http::response(['message' => 'WhatsApp reports recipient 60123456789@s.whatsapp.net is not registered'], 400)]);
+        $notification = $this->queuedNotification();
+        $job = (new SendCustomerWhatsAppJob($notification->id))->withFakeQueueInteractions();
+
+        try {
+            (new Pipeline($this->app))->send($job)->through($job->middleware())->then(fn ($job) => $job->handle());
+            $this->fail('Expected the send to throw.');
+        } catch (OpenWaRecipientNotOnWhatsAppException $e) {
+            $job->failed($e);
+        }
+
+        $job->assertFailed();
+        $notification->refresh();
+        $this->assertSame('failed', $notification->status);
+        $this->assertStringContainsString('not on WhatsApp', $notification->error);
     }
 
     public function test_an_already_sent_row_is_never_sent_again(): void

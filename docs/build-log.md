@@ -1551,3 +1551,16 @@ Verified in code on the way: the policy defaults (G 24 h, H 24 h, D 14 days, 20 
 **Rollback (if needed).** Stop the daemon, swap the folder names back, and start it. The old `data/` in `~/OpenWA-v0.23.7` is untouched; only messages received since 05:26 would be lost from OpenWA's own history.
 
 **Left on item 96.** The off-box backup of `data/`, the `400` fix, `MESSAGE_RETENTION_DAYS`, and deleting `~/OpenWA-v0.23.7` plus the `.env.bak-*` files after a few clean days.
+
+## 2026-10-22 — Item 96: a number not on WhatsApp fails at once (on `staging`)
+
+**Why.** OpenWA v0.25.0 (live since this morning) answers `400` to a send to a number that is not on WhatsApp, where v0.23.7 answered `201` and dropped the message. `OpenWaClient::sendNow()` threw on any failure, so each such send was retried three times (customer notifications: backoff 60 s / 300 s).
+
+**Gotcha found before building.** The plan said "make `400` non-retryable". OpenWA's own source (`engine-status-responses.ts`, `engine-registry.service.ts`) shows `400` is also the answer while a session is **not started yet**, which happens for a few seconds after every OpenWA restart. A blanket rule would have dropped every message sent in that window. A session that is reconnecting answers `409`; that keeps retrying, as before.
+
+**What shipped.**
+- `OpenWaClient::sendNow()` throws the new `OpenWaRecipientNotOnWhatsAppException` only on a `400` whose message says "is not registered" (Baileys) or "could not resolve the recipient" (whatsapp-web.js). Its message reads "The number is not on WhatsApp (OpenWA 400: …)", which the admin sees on the failed `customer_notifications` row.
+- `SendCustomerWhatsAppJob` and `SendResellerBotReplyJob` fail at once on it, through Laravel's `FailOnException` job middleware. Pacing (`429`), `400` "Session is not started", `409`, `5xx` and connection errors all still retry.
+- If OpenWA rewords the message, the match fails and the send falls back to retrying, which is the safe side. Recheck the two phrases on each OpenWA upgrade.
+
+**Verified.** 5 new tests (red → green): the client for both kinds of `400`, and both jobs through their middleware. Full suite: 2927 passed.

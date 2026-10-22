@@ -774,8 +774,8 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
   added and alert-tested by the founder 2026-10-14).
 - **71** GSC recheck around 2026-10-22.
 - **96** OpenWA's remaining steps after the v0.25.0 upgrade (done
-  2026-10-22): daily backup of its SQLite data, `400` non-retryable,
-  retention, cleanup.
+  2026-10-22): daily backup of its SQLite data, retention, cleanup
+  (`400` non-retryable is built, on `staging`).
 
 **D. Waiting on a trigger: don't build early**
 - **128** Shared admin loading skeleton (through the admin `DataTable`), only
@@ -1042,14 +1042,14 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     command is `node dist/main` (no rebuild on restart), both sessions came
     back `ready`, and `.baki` plus a customer receipt went through. The old
     checkout is kept at `~/OpenWA-v0.23.7` for rollback. Remaining:
-    - **`400` non-retryable (code, a PR into `staging`).** On Baileys,
-      v0.25.0 answers `400` to a send to a number that is not on WhatsApp
-      (it answered `201` and the message vanished), and `503` to a
-      recipient lookup with no answer. `OpenWaClient::sendNow()` throws on
-      any failure, so today the job retries a `400` three times before it
-      fails. That is noisy, not harmful. Make `400` fail at once; `503`
-      keeps retrying. This does not fix the quiet-chat list (ex-item 58,
-      dropped 2026-10-14);
+    - **`400` non-retryable — built 2026-10-22, on `staging`, not yet
+      released.** v0.25.0 answers `400` both to a number that is not on
+      WhatsApp *and* while a session is still starting, so only the message
+      tells them apart. `OpenWaClient::sendNow()` throws
+      `OpenWaRecipientNotOnWhatsAppException` for "is not registered" /
+      "could not resolve the recipient", and both send jobs fail at once on
+      it (`FailOnException`); every other failure keeps retrying. Recheck the
+      two phrases on each OpenWA upgrade;
     - decide `MESSAGE_RETENTION_DAYS`. `openwa.sqlite` keeps everything: it
       was 22 MB on 2026-10-14 and 39 MB on 2026-10-22;
     - once v0.25.0 has run cleanly for a few days, delete `~/OpenWA-v0.23.7`
