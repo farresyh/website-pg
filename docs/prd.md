@@ -236,15 +236,16 @@ Requests come from Affiliates, through their portal (ADR-059). The platform owne
 | **REV-4** | Admin can bulk approve all pending reviews | **MVP** |
 | **REV-5** | System provides filters: status, rating, game, "with comment only" | **MVP** |
 
-## 6.14 Admin — Database Backups
+## 6.14 Admin — Backups
 
 | ID | Functional Requirement | Priority |
 | --- | --- | --- |
-| **BAK-1** | System displays backup stats: total count, latest timestamp, total size | **MVP** |
-| **BAK-2** | System displays backup table: filename, type (automatic/manual), size, created date, created by | **MVP** |
+| **BAK-1** | System displays backup stats: total count, total size, and the latest run of each source | **MVP** |
+| **BAK-2** | System displays backup table: source, filename, type (automatic/manual), size, created date, created by; filterable by source | **MVP** |
 | **BAK-3** | Admin can create manual backup | **MVP** |
 | **BAK-4** | Admin can download or delete backup files | **MVP** |
 | **BAK-5** | System supports automatic backup schedule (Daily/Weekly/Monthly) with retention period | **MVP** |
+| **BAK-6** | System backs up the OpenWA gateway's data (SQLite, WhatsApp session keys, its `.env`) daily, keeps 14 days, restore-tests every run, and an admin can run it before an OpenWA upgrade (ADR-039 2026-10-22 addendum) | **MVP** |
 
 ## 6.15 Admin — Store Themes
 
@@ -483,7 +484,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 | **Review** | `id`, `order_id`, `customer_email`, `game_id`, `package_id`, `rating` (1-5), `comment`, `status`, `created_at` | Customer feedback on a completed order. |
 | **BlacklistEntry** | `id`, `type` (player_id/email/phone), `value`, `reason`, `created_by`, `is_active`, timestamps | Internal fraud-prevention list, checked at checkout (FRAUD-1/2). Two tables, not one — corrects this row's original pre-build design (no `game_id`; a blacklist entry blocks everywhere, not per-game; `is_active` replaces hard-delete, see ADR-007's 2026-07-29 addendum for why). |
 | **BlacklistHit** | `id`, `blacklist_entry_id`, `player_id`, `customer_email`, `customer_phone`, `ip`, timestamps | One row per blocked checkout attempt (FRAUD-3's audit trail) — not in the original §8 design, added during the 2026-07-29 build since a blocked attempt never creates an `Order` and so has no other record. |
-| **BackupRun** | `id`, `status` (queued/running/success/failed), `triggered_by` (`system` or the admin's name), `disk`, `path`, `size_bytes`, `restore_test_passed`, `restore_test_details`, `error_message`, `started_at`, `finished_at`, timestamps | One backup attempt (`backup_runs`, ADR-039): the dump, where it landed, and its restore-test result. |
+| **BackupRun** | `id`, `source` (`database` / `openwa`), `status` (queued/running/success/failed), `triggered_by` (`system` or the admin's name), `disk`, `path`, `size_bytes`, `restore_test_passed`, `restore_test_details`, `error_message`, `started_at`, `finished_at`, timestamps | One backup attempt (`backup_runs`, ADR-039): the dump, where it landed, and its restore-test result. |
 | **PlayerValidatorProfile** / **PlayerRegionMapping** | Profile: `key`, `name`, `public_name`, `public_slug`, `public_image_url`, `last_test_result`, `last_tested_at`. Mapping: `game_id`, `player_validator_profile_id`, `country_code` (ISO alpha-2, the only part read), `country_name` (label) | A validator profile checks a player ID through one provider; a game's region mappings route the reported country to that game's variant (ADR-005 2026-10-16 addenda). Results are cached in `PlayerValidation`. |
 | **OrderCredential** | `order_id` (unique), `fields` (non-secret, plain), `secret_fields`, `secrets` (encrypted JSON), `secrets_set_at`, `closed_at`, `purged_at`, `consented_at`, `consent_text` | A login order's credentials (LOGIN-4). No relation from `Order`; excluded from the DB dump; secrets wiped by the sweep (LOGIN-6), consent kept. |
 | **CredentialReveal** | `order_id`, `actor_type` (admin/supplier), `actor_id`, `action` (reveal/replace/identifier), `field_key`, `ip`, `created_at` | Audit of every look at or change to a login (LOGIN-5, MSUP-4). Pruned after one year. |
@@ -507,7 +508,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
   - The system never relies solely on a supplier webhook/callback for final state — a scheduled reconciliation job independently confirms order and payment status (ORD-10, PAY-3).
 - **Error Handling :** All supplier API errors must be logged with full request/response payload, credentials and excess PII redacted. Admins are emailed (Plunk, every active admin) for a failed backup, a long Horizon queue wait and a stale FX rate. Stuck orders, supplier balance and circuit-breaker state are monitored on the Dashboard (System Health), not pushed. A low-supplier-balance email is designed with item 28 (ADR-115 2026-10-13 addendum), not built; it ships two weeks after launch. UptimeRobot polls `/api/health`, the OpenWA gateway's own health URL and `/api/health/whatsapp` (§16 item 11).
 - **Data Privacy :** Player IDs and customer personal data (including validation-response data such as in-game nickname/country) must be handled securely, retained only as long as operationally needed, and never over-logged. No logging of raw credentials. Admin action audit trails, including impersonation.
-- **Backup & Recovery :** Automatic daily backup, 7 daily / 4 weekly / 6 monthly retention (ADR-039, ADR-095). Manual backup via admin panel. Backups must be downloadable.
+- **Backup & Recovery :** Automatic daily backup, 7 daily / 4 weekly / 6 monthly retention (ADR-039, ADR-095); the OpenWA gateway's data daily, 14 days. Every archive is encrypted. Manual backup via admin panel. Backups must be downloadable.
 - **Multi-language :** Not built: the storefront and admin are English only. More languages, together with more currencies, are a later expansion outside Malaysia (§16 item 117).
 - **Financial Integrity :** Every entity representing money (order profit, withdrawal, voucher) is reconstructable from the `LedgerEntry` table alone. No balance is ever the sole record of truth (ADR-002).
 
@@ -712,7 +713,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. Renewal-reminder emails at H-3 and H+1 (Malaysia days), listed on the admin member page (item 64, live via #416 2026-10-13). WhatsApp reminders designed, waiting on a trigger (§16 item 85) | ADR-027, 055, 068, 080 |
 | Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. The voucher path was live-tested 2026-10-06 (a failed order's Issue Voucher code arrived on WhatsApp), along with the status card and not-found reply. Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14). **2026-10-12 (§16 item 69):** every order-number message gets a card or a not-found reply; the silent repeat throttles are removed (live via #416; the founder confirmed on a real phone 2026-10-13) **2026-10-19 (ADR-125 PR 2a, released via #514):** the same persisted queue also carries supplier-group posts on the bot session (`session`/`chat_id`), with a send slot per session, so customer pacing and the customer switch are unchanged | ADR-116 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
-| Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private): full DB dump except `player_validations`, encrypted, 7d/4w/6m retention, nightly at 02:07. **Restore test verified again 2026-10-15** (run #47, `restore_test_passed = 1`, 72s, after release #449); nightly runs 2026-10-01..15 had failed (§16 item 97, closed). Fixed in code on 2026-10-14. The fix adds one restore path shared by the nightly test and a new `app:restore-backup` command; restores go only into an empty database; DEFINER clauses are dropped on restore; verification is real (no missing table, no pending migration); 300s timeout on `redis-long`; and killed runs close themselves. Released 2026-10-15 (#441, then the fixed-name follow-up #442 via #449) with the ADR-117 exact-name grant. Earlier history: the 2026-09-14 GTID fix, build-log-archive | ADR-039, ADR-095, ADR-117 |
+| Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private): full DB dump except `player_validations`, 7d/4w/6m retention, nightly at 02:07. **Not encrypted on prod:** `BACKUP_ARCHIVE_PASSWORD` was never set (found 2026-10-22), so every archive since go-live is a plain zip in the private bucket. Fail-closed encryption and the OpenWA source (ADR-039 2026-10-22 addendum) are built, on `staging`, not yet released (§16 item 96). **Restore test verified again 2026-10-15** (run #47, `restore_test_passed = 1`, 72s, after release #449); nightly runs 2026-10-01..15 had failed (§16 item 97, closed). Fixed in code on 2026-10-14. The fix adds one restore path shared by the nightly test and a new `app:restore-backup` command; restores go only into an empty database; DEFINER clauses are dropped on restore; verification is real (no missing table, no pending migration); 300s timeout on `redis-long`; and killed runs close themselves. Released 2026-10-15 (#441, then the fixed-name follow-up #442 via #449) with the ADR-117 exact-name grant. Earlier history: the 2026-09-14 GTID fix, build-log-archive | ADR-039, ADR-095, ADR-117 |
 | Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-form picker (`ImageUrlInput`, live via #406, 2026-10-12) on Edit Game, Hero Slide and the two SEO OG-image fields; the URL stays a plain text field | ADR-095 |
 | SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage. **ADR-120 (live 2026-10-08):** tokens in every SEO field, per-brand canonical origin (canonical/sitemap/robots/llms/JSON-LD), all packages in HTML, Product `offers` + `aggregateRating`, fact line, admin FAQ + `FAQPage` | ADR-029, ADR-042, ADR-120 |
 | Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 (Telegram) dropped and its fields removed (live via #406, 2026-10-12). Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this. A re-upload shows at once (`?v=` on the URL, #409, live via #416; founder-checked 2026-10-13) | ADR-028, 089 |
@@ -773,9 +774,10 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
   `/api/health`, the OpenWA gateway and `/api/health/whatsapp` (third monitor
   added and alert-tested by the founder 2026-10-14).
 - **71** GSC recheck around 2026-10-22.
-- **96** OpenWA's remaining steps after the v0.25.0 upgrade (done
-  2026-10-22): daily backup of its SQLite data, retention, cleanup
-  (`400` non-retryable is built, on `staging`).
+- **96** OpenWA after the v0.25.0 upgrade (done 2026-10-22): backup and
+  enforced encryption are built, on `staging` — founder sets
+  `BACKUP_ARCHIVE_PASSWORD` + `OPENWA_INSTALL_DIR` first, then release;
+  then retention and cleanup (`400` non-retryable is also on `staging`).
 
 **D. Waiting on a trigger: don't build early**
 - **128** Shared admin loading skeleton (through the admin `DataTable`), only
@@ -1056,21 +1058,24 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
       and its three `.env.bak-*` files (they hold the gateway's secrets, as
       item 87's backups did).
 
-    **Backup gap (found 2026-10-22).** OpenWA stores everything in SQLite
-    on the box: `~/OpenWA/data/main.sqlite` (auth and audit) and
-    `openwa.sqlite` (sessions, messages, webhooks, chats). Nothing backs
-    them up off the box. The daily `database-backup` task covers Laravel's
-    MySQL only, and the box has no cron. The one-off tarball taken before
-    the upgrade (`~/openwa-backups/`) sits on the same disk, so it is a
-    rollback point, not a backup. ADR-075 said the gap was
-    tracked as item 56, but item 56 built only the R2 cutover for the app.
-    If the droplet is lost, so are the webhook secret, the issued API key
-    and both WhatsApp sessions. Both numbers would need a QR re-pair, and
-    the bots stay down until the ADR-114 re-provisioning is redone. Build
-    a scheduled daily backup of `data/` (OpenWA ships `scripts/backup.sh`)
-    to the same R2 bucket, with retention and a tested restore. Where it
-    runs, and which credential uploads it, needs a short grill (ADR-095
-    addendum) at build time.
+    **Backup (ADR-039 2026-10-22 addendum) — built 2026-10-22, on
+    `staging`, not yet released.** OpenWA's data had no off-box backup (the
+    tarball taken before the upgrade, `~/openwa-backups/`, sits on the same
+    disk). Now a second source of the one backup system: OpenWA's own
+    `scripts/backup.sh` plus its `.env`, AES-256 with
+    `BACKUP_ARCHIVE_PASSWORD`, to `r2_backups/openwa/`, nightly 19:37 UTC,
+    restore-tested through OpenWA's `restore.sh`, kept 14 days. The same
+    addendum enforces decision 4: prod never had the password, so every
+    database archive on R2 is a plain zip. Rollout, in this order:
+    1. founder: keep a new long password in the password manager, then set
+       `BACKUP_ARCHIVE_PASSWORD` and `OPENWA_INSTALL_DIR=/home/forge/OpenWA`
+       on Forge (the next 02:07 database run is then encrypted and
+       restore-tested, before any code ships);
+    2. release `staging`→`main`; "Backup Now → OpenWA", check its restore
+       test; one restore drill with the password from the password manager;
+    3. with the founder's go-ahead: delete the plaintext database archives on
+       R2, then `~/openwa-backups/`, `~/OpenWA-v0.23.7` and the
+       `.env.bak-*` files.
 
 104. **Reseller wallet top-up KPIs (founder, 2026-10-15) — design not started.**
     Nothing shows how often or how much Resellers top up their wallets. Today

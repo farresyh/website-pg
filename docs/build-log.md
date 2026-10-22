@@ -1564,3 +1564,29 @@ Verified in code on the way: the policy defaults (G 24 h, H 24 h, D 14 days, 20 
 - If OpenWA rewords the message, the match fails and the send falls back to retrying, which is the safe side. Recheck the two phrases on each OpenWA upgrade.
 
 **Verified.** 5 new tests (red → green): the client for both kinds of `400`, and both jobs through their middleware. Full suite: 2927 passed.
+
+## 2026-10-22 — Item 96: OpenWA backup to R2, and backup encryption enforced (ADR-039 addendum, on `staging`)
+
+**Why.** OpenWA's SQLite data and WhatsApp session keys lived only on the droplet. A grill with the founder (Q1–Q9, all recommendations accepted) settled the design: a second source of the one ADR-039 backup system, not a side script.
+
+**Found while grilling.** ADR-039 decision 4 (archives encrypted) was never true in prod. `BACKUP_ARCHIVE_PASSWORD` is absent from prod's `.env`, and `config('backup.backup.password')` is empty (checked read-only, as a boolean). spatie writes a plain zip in that case, so every database archive on R2 since go-live is plaintext. PRD §15 had said "encrypted"; it is corrected. The fix is fail-closed: in production, a run without the password fails and alerts instead.
+
+**What shipped (one PR).**
+- `backup_runs.source` (`database` / `openwa`). `BackupRun::queue()` is the one start path for the schedule and "Backup Now". `app:run-backup --source=`.
+- `RunOpenWaBackupJob` and `OpenWaBackup`:
+  - OpenWA's `scripts/backup.sh` makes the archive, plus OpenWA's `.env`, in one AES-256 zip, uploaded to `r2_backups/openwa/`;
+  - restore test through OpenWA's `scripts/restore.sh` into a throwaway dir, then integrity, API keys, configured sessions, Baileys JSON and `creds.json` checks;
+  - prune past 14 days, only after a passing run.
+- `BackupArchivePassword::require()` guards both sources. `BackupRestorer::extractOpenWa()` is shared by the nightly test and the new `app:restore-openwa-backup`. `app:restore-backup` refuses an OpenWA run.
+- Schedule `openwa-backup`, 19:37 UTC, `CRITICAL`. Stats and the Dashboard judge each source's latest run.
+- Admin `/middleware/backups`: Backup Database / Backup OpenWA buttons, a last-run card per source, a source filter and column. Checked in a real browser at 1440 px and 390 px (no page overflow; the header stacks on mobile).
+
+**Gotchas.**
+- The plan's "make it simple" version would have run OpenWA's scripts with Laravel's environment. They read `DATABASE_NAME` and friends from the environment before `./.env`, and Laravel's dotenv exports every variable. So they run under `env -i`.
+- The first leak test passed even without `-i`. Symfony Process inherits from `$_SERVER`/`$_ENV`, not `putenv`, and the test now sets all three, as dotenv does. It fails without `-i` (mutation-checked).
+- The script contract was proven against the real OpenWA v0.25.0 scripts, run locally on fake data: `backup.sh` leaves one flat `openwa-backup-*.tar.gz`, and `restore.sh` with `OPENWA_DATA_DIR=<tmp>` writes only there. Nothing ran against prod for this.
+- `OpenWaBackup` isn't `final` so the job test can mock it, the same as `BackupRestoreTester`.
+
+**Verified.** 22 new tests, including a real-process end-to-end test of encryption, the restore test, a torn Baileys file, a missing session, a wrong password, a failing script, the env leak and pruning. Full backend suite: 2953 passed. Admin `tsc`, `eslint` and `next build` are clean. `BackupRestoreMysqlTest` can't run on this Mac (no `mysqldump`), so CI's `backend-concurrency` covers it.
+
+**Not done yet (needs the founder, in order).** Set `BACKUP_ARCHIVE_PASSWORD` (kept in the password manager first) and `OPENWA_INSTALL_DIR` on Forge, then release, then "Backup Now → OpenWA" and a restore drill with the password from the password manager. After that, delete the plaintext R2 archives and the on-box leftovers. These are PRD §16 item 96's steps.
