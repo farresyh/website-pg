@@ -42,6 +42,12 @@ use Illuminate\Validation\ValidationException;
  */
 class AffiliateController extends Controller
 {
+    /**
+     * ADR-061 decision 8 / ADR-126 addendum decision 1: capabilities only
+     * an internal brand (`is_owned`) may switch on; forced off otherwise.
+     */
+    private const OWNED_BRAND_SWITCHES = ['membership_enabled', 'joki_enabled'];
+
     public function __construct(
         private readonly LedgerService $ledger,
         private readonly AffiliateSubscriptionService $subscriptions,
@@ -90,10 +96,14 @@ class AffiliateController extends Controller
         // ADR-061 decision 8: consumer Membership is an internal-brand-only
         // capability — a third-party affiliate can never turn it on, so the
         // toggle is ignored unless "our own brand" is set.
+        // ADR-126 addendum decision 1: Joki follows the same rule.
         $isOwned = (bool) ($data['is_owned'] ?? false);
-        $membershipEnabled = $isOwned && (bool) ($data['membership_enabled'] ?? false);
+        $ownedOnly = [];
+        foreach (self::OWNED_BRAND_SWITCHES as $key) {
+            $ownedOnly[$key] = $isOwned && (bool) ($data[$key] ?? false);
+        }
 
-        $affiliate = DB::transaction(function () use ($data, $request, $isOwned, $membershipEnabled) {
+        $affiliate = DB::transaction(function () use ($data, $request, $isOwned, $ownedOnly) {
             $affiliate = Affiliate::query()->create([
                 'business_name' => $data['business_name'],
                 'contact_name' => $data['contact_name'] ?? null,
@@ -103,7 +113,7 @@ class AffiliateController extends Controller
                 'max_markup_pct' => $data['max_markup_pct'] ?? null,
                 'status' => 'active',
                 'is_owned' => $isOwned,
-                'membership_enabled' => $membershipEnabled,
+                ...$ownedOnly,
                 'notes' => $data['notes'] ?? null,
             ]);
 
@@ -146,10 +156,10 @@ class AffiliateController extends Controller
         // be un-owned while it is the fallback tenant.
         $isOwned = $affiliate->is_primary
             || (array_key_exists('is_owned', $data) ? (bool) $data['is_owned'] : (bool) $affiliate->is_owned);
-        $membershipEnabled = $isOwned
-            && (array_key_exists('membership_enabled', $data)
-                ? (bool) $data['membership_enabled']
-                : (bool) $affiliate->membership_enabled);
+        $ownedOnly = [];
+        foreach (self::OWNED_BRAND_SWITCHES as $key) {
+            $ownedOnly[$key] = $isOwned && (array_key_exists($key, $data) ? (bool) $data[$key] : (bool) $affiliate->{$key});
+        }
 
         $affiliate->update([
             'business_name' => $data['business_name'],
@@ -159,7 +169,7 @@ class AffiliateController extends Controller
             'markup_pct' => $data['markup_pct'],
             'max_markup_pct' => $data['max_markup_pct'] ?? null,
             'is_owned' => $isOwned,
-            'membership_enabled' => $membershipEnabled,
+            ...$ownedOnly,
             'notes' => $data['notes'] ?? null,
         ]);
 
@@ -475,6 +485,7 @@ class AffiliateController extends Controller
             'is_owned' => (bool) $affiliate->is_owned,
             'is_primary' => (bool) $affiliate->is_primary,
             'membership_enabled' => (bool) $affiliate->membership_enabled,
+            'joki_enabled' => (bool) $affiliate->joki_enabled,
             // ADR-080 decision 4: the admin form warns before Membership
             // is turned off on a brand that still has active members.
             'active_membership_count' => (int) ($affiliate->active_membership_count ?? 0),

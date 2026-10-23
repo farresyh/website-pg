@@ -59,6 +59,7 @@ use App\Http\Controllers\Auth\MfaController;
 use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\JokiCatalogController;
 use App\Http\Controllers\ClientErrorController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\HealthController;
@@ -181,6 +182,16 @@ Route::post('/vouchers/preview', [VoucherPreviewController::class, 'store'])->mi
 // ADR-060 PR-4c: `storefront.brand` — the summary total must match what
 // the real checkout charges for this brand (anti-divergence).
 Route::post('/checkout/preview-totals', [CheckoutController::class, 'previewTotal'])->middleware(['throttle:30,1,checkout-preview-totals', 'storefront.brand']);
+
+// ADR-126 decision 12: the `/joki` page — the rank model, routes and
+// public settings, and a live quote from the same JokiPricingService the
+// checkout uses. 403 unless this brand sells joki (`brand.joki`). The
+// quote's limit matches the review total's: the page re-quotes as ranks
+// change. Joki itself is bought through `/checkout` with a `joki` block.
+Route::middleware('storefront.brand')->prefix('joki')->group(function () {
+    Route::get('/catalog', [JokiCatalogController::class, 'show'])->middleware('brand.joki');
+    Route::post('/quote', [JokiCatalogController::class, 'quote'])->middleware(['brand.joki', 'throttle:30,1,joki-quote']);
+});
 
 // Public "Validate Player ID" lookup (ADR-011, same no-auth reasoning
 // as checkout above) — backend half of the Player-ID Validation

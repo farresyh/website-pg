@@ -39,6 +39,7 @@ class UpdateAffiliateRequest extends FormRequest
             'notes' => ['nullable', 'string', 'max:5000'],
             'is_owned' => ['sometimes', 'boolean'],
             'membership_enabled' => ['sometimes', 'boolean'],
+            'joki_enabled' => ['sometimes', 'boolean'],
         ];
     }
 }

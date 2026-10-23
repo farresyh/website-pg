@@ -145,7 +145,6 @@ class Game extends Model
         return is_array($fields) ? array_values($fields) : [];
     }
 
-    /** ADR-125 decision 5: derived from the schema, never a second flag. */
     /** ADR-126 decision 2: a joki game, sold only through `/joki`, never listed in a catalog. */
     public function scopeJoki(Builder $query): Builder
     {
@@ -157,6 +156,7 @@ class Game extends Model
         return $query->where('is_joki', false);
     }
 
+    /** ADR-125 decision 5: derived from the schema, never a second flag. */
     public function isLoginGame(): bool
     {
         return $this->credentialFields() !== [];

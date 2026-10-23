@@ -3,6 +3,7 @@
 namespace App\Services\Order;
 
 use App\Services\Checkout\LoginCredentials;
+use App\Services\Joki\JokiPurchase;
 use App\Services\Pricing\PricingResolution;
 use DateTimeInterface;
 
@@ -60,6 +61,9 @@ final readonly class OrderDraft
         // ADR-125 decision 41: a login order's credential row, written in
         // the same transaction as the order INSERT.
         public ?LoginCredentials $credentials = null,
+        // ADR-126 decision 1: a joki order's `joki_orders` row, written in
+        // the same transaction as the order INSERT.
+        public ?JokiPurchase $joki = null,
     ) {}
 
     /**

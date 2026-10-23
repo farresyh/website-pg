@@ -8,25 +8,20 @@ use App\Models\Package;
 use App\Models\Supplier;
 use App\Models\WhatsAppGroup;
 use App\Services\Fulfillment\OrderFulfillmentService;
+use App\Services\Joki\JokiCatalog;
 use App\Services\Pricing\PricingBasis;
 
 /**
- * ADR-126: a joki game on the assignment pool (created by migration), its
- * penjoki, and a paid Fixed-basis order waiting in the pool. Needs
+ * ADR-126: the seeded joki game and pool, a penjoki, and a paid
+ * Fixed-basis order waiting in the pool. Needs
  * OrderFulfillmentFixtures and OrderCredentialFixtures.
  */
 trait JokiFixtures
 {
+    /** Joki set up as the admin's switch does it (JokiCatalog::ensure()). */
     private function jokiGame(): Game
     {
-        return Game::query()->firstOrCreate(['slug' => 'joki-mlbb'], [
-            'name' => 'Joki MLBB', 'is_active' => true, 'is_joki' => true,
-            'delivery_mode' => 'manual', 'delivery_subtext' => 'Siap dalam 1–3 hari',
-            'validation_rules' => ['credential_fields' => [
-                ['key' => 'email', 'label' => 'Moonton email', 'type' => 'email', 'required' => true, 'secret' => false, 'is_identifier' => true],
-                ['key' => 'password', 'label' => 'Password', 'type' => 'password', 'required' => true, 'secret' => true, 'is_identifier' => false],
-            ]],
-        ]);
+        return app(JokiCatalog::class)->ensure()->game;
     }
 
     private function jokiPackage(string $name = 'Joki Ranked'): Package
