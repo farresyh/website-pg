@@ -212,6 +212,7 @@ class RouteAccessTest extends TestCase
             'POST api/orders/{order}/check-supplier',
             'POST api/orders/{order}/confirm-failed',
             'POST api/orders/{order}/joki/assign',
+            'POST api/orders/{order}/joki/progress',
             'POST api/orders/{order}/manual/correct-to-delivered',
             'POST api/orders/{order}/manual/delivered',
             'POST api/orders/{order}/manual/failed',
