@@ -173,3 +173,9 @@
 - **Decision 23, Settings.** Rank-model edits change existing tiers only, and are refused if any route package no longer fits. A route is switched off, never deleted. The home banner is an ordinary Hero Slide linking to `/joki`, not a joki setting. Switching joki off stops new sales only: the pool stays active for paid orders (F5).
 - **Penjoki** are created in Middleware → Suppliers as pay-after manual suppliers with `joki_role: penjoki`.
 
+### 2026-10-24 addendum — PR 4b build notes (decisions 16, 23, 24)
+
+- **The Dashboard Joki card is hidden while all four counts are 0**, so it doesn't sit empty before launch. Any joki work shows it.
+- **Record payment** on the Penjoki tab is the existing supplier-transfer modal (super admin only, like Accounting), not a joki-only form.
+- **The rank model's icons** are any Gallery URL, not https-only, since local Gallery URLs are `http`.
+
