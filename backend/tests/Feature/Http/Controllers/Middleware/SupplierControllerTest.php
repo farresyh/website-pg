@@ -14,6 +14,7 @@ use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class SupplierControllerTest extends TestCase
@@ -331,6 +332,23 @@ class SupplierControllerTest extends TestCase
         ])->assertOk();
 
         $this->assertNull($response->json('connection_probe'));
+    }
+
+    /**
+     * Item 130: an unreachable supplier used to escape the real adapter
+     * chain as a ConnectionException and 500 the request. Real Gamevion
+     * binding (breaker included), only the network faked.
+     */
+    public function test_refresh_balance_reports_an_unreachable_supplier_instead_of_a_500(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = $this->supplier(['balance' => 123.45, 'api_config' => ['base_url' => 'https://api.gamevion.com', 'bearer_token' => 't', 'api_key' => 'k', 'sandbox' => false]]);
+        Http::fake(['*' => Http::failedConnection('cURL error 7: Failed to connect')]);
+
+        $response = $this->postJson("/api/middleware/suppliers/{$supplier->id}/refresh-balance")->assertOk();
+
+        $this->assertStringContainsString('CONNECTION_FAILED', $response->json('last_test_result'));
+        $this->assertEquals(123.45, $response->json('balance'), 'a failed check keeps the last known balance');
     }
 
     public function test_refresh_balance_calls_the_live_adapter_and_stores_the_result(): void

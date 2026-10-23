@@ -118,3 +118,17 @@ The limit was self-inflicted, not a second caller.
 2. **The price-list call is not retried.** A retry after a read timeout re-hits the limit. A failed price-list fails that sync run as before; the next scheduled sync (30 min) or a manual "Sync All Prices Now" is the retry. Every other Digiflazz call keeps the ADR-014 retry.
 
 **Consequence to track.** After release, the count of `listProducts` `exception` rows for Digiflazz should drop to near zero, and `rc 83` should stop appearing in `laravel.log`. Re-read the price-list durations if they move toward 30s.
+
+### 2026-10-23 addendum — a balance check never throws (PRD §16 item 130)
+
+**Context.** On 2026-10-22 at 00:00 UTC, `api.gamevion.com` refused connections. `app:refresh-supplier-balances` (decision 12, a CRITICAL task under ADR-122) exited 1, and `/api/health` stayed 503 until the next daily run. The cause was not that health judges an unfunded supplier. `CircuitBreakingSupplierAdapter` rethrows a `ConnectionException` on purpose (audit K-3, so `createOrder` can persist its reference, M-1), and no `checkBalance()` caller caught it. So:
+- the sweep aborted at Gamevion, and the suppliers after it (Digiflazz) weren't refreshed that day, despite the command's "never fatal to the rest" promise;
+- Refresh Balance, the post-save credential probe (decision 11) and Developer Tools returned a 500 for an unreachable supplier.
+
+**Decision** (founder, 2026-10-23, after a stress test against the code):
+1. **For `checkBalance` only, the breaker decorator returns a refused or timed-out connection as `SupplierResponse::failure('CONNECTION_FAILED', …, isServerError: true)`.** The breaker still counts it, once. This is the one seam every caller goes through, so all four are fixed together. `createOrder` and `checkStatus` still throw (M-1). `listProducts` still throws: it isn't counted by the breaker, and `SyncSupplierPricesJob` already isolates each supplier.
+2. **The daily refresh isolates each supplier.** An unreachable supplier is an ordinary failed response: it is recorded in `last_test_result`, its last known `balance` is kept, and the task succeeds. Any other exception is a bug: that supplier is recorded `failed: [ERROR] …`, the rest still refresh, and the task exits FAILURE so health pages.
+
+**Rejected.** Making health skip an unfunded supplier (it fixes none of the 500s, and a funded supplier would hit the same throw). A try/catch in each caller (four copies, and the next caller misses it). Moving the task to ROUTINE (a real bug would never page).
+
+**Consequence to track.** A supplier outage no longer turns health red through this task. It shows as `last_test_result` on `/admin/balance` and `/middleware/suppliers`. A real outage of a funded supplier is still caught by `price-sync-staleness-check` (email), the circuit breaker and NeedsReview orders.

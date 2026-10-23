@@ -11,6 +11,8 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * ADR-069 decision 12 — `Supplier.balance` is otherwise only ever
@@ -28,8 +30,12 @@ use Illuminate\Support\Facades\Log;
  * footing app:*-smoke-test already uses. `CircuitBreakingSupplierAdapter`
  * + `TransientFailureRetryPolicy` still wrap the call.
  *
- * One supplier failing (unconfigured, breaker open, network) is logged
- * and skipped — never fatal to the rest of the sweep.
+ * One supplier failing (unconfigured, breaker open, unreachable) is
+ * recorded and skipped — never fatal to the rest of the sweep. An
+ * unreachable supplier is an ordinary failed response (the breaker
+ * decorator returns it, item 130), so the task stays green. Any other
+ * exception is a bug: that supplier is skipped, the rest still refresh,
+ * and the task exits FAILURE so ADR-122's heartbeat turns health red.
  */
 #[Signature('app:refresh-supplier-balances')]
 #[Description('Refresh Supplier.balance for every active, configured supplier and warn on a low balance.')]
@@ -68,73 +74,90 @@ class RefreshSupplierBalancesCommand extends Command
             return self::SUCCESS;
         }
 
+        $crashed = false;
+
         foreach ($suppliers as $supplier) {
             try {
-                $adapter = $adapters->for($supplier);
-            } catch (UnsupportedSupplierException|SupplierNotConfiguredException $e) {
-                $this->warn("Skipping '{$supplier->slug}': {$e->getMessage()}");
-
-                continue;
-            }
-
-            $response = $adapter->checkBalance();
-
-            $update = [
-                'last_tested_at' => now(),
-                'last_test_result' => $response->success
-                    ? 'success'
-                    : "failed: [{$response->errorCode}] {$response->errorMessage}",
-            ];
-
-            if (! $response->success) {
-                $this->error("'{$supplier->slug}' balance check failed: {$response->errorMessage}");
-                $supplier->update($update);
-
-                continue;
-            }
-
-            $balance = $response->data['balance'] ?? null;
-
-            if ($balance !== null) {
-                $update['balance'] = $balance;
-            }
-
-            $supplier->update($update);
-
-            $threshold = $supplier->api_config['low_balance_threshold'] ?? null;
-
-            if ($balance !== null && $threshold !== null && is_numeric($threshold) && (float) $balance < (float) $threshold) {
-                Log::warning('Supplier balance is low', [
-                    'supplier' => $supplier->slug,
-                    'balance' => (float) $balance,
-                    'threshold' => (float) $threshold,
-                    'currency' => $supplier->currency,
+                $this->refresh($supplier, $adapters);
+            } catch (Throwable $e) {
+                $crashed = true;
+                report($e);
+                $supplier->update([
+                    'last_tested_at' => now(),
+                    'last_test_result' => 'failed: [ERROR] '.Str::limit($e->getMessage(), 200),
                 ]);
-                $this->warn("'{$supplier->slug}' balance {$balance} {$supplier->currency} is below threshold {$threshold}");
-            } else {
-                $this->info("'{$supplier->slug}' balance: {$balance} {$supplier->currency}");
-            }
-
-            // ADR-083 decision 6 — compares the just-refreshed
-            // `balance` against the funding ledger's own sum; never
-            // auto-corrects either side, only warns. `fundingDrift()`
-            // returns null when `drift_threshold` isn't configured
-            // (fail-safe to silent, same posture as low-balance above).
-            $drift = $supplier->fundingDrift();
-
-            if ($drift !== null && $drift['is_drifted']) {
-                Log::warning('Supplier funding ledger has drifted from the polled balance', [
-                    'supplier' => $supplier->slug,
-                    'polled_balance' => $drift['polled_balance'],
-                    'ledger_balance' => $drift['ledger_balance'],
-                    'variance' => $drift['variance'],
-                    'threshold' => $drift['threshold'],
-                    'currency' => $supplier->currency,
-                ]);
-                $this->warn("'{$supplier->slug}' funding ledger drifted: polled {$drift['polled_balance']} vs ledger {$drift['ledger_balance']} {$supplier->currency} (variance {$drift['variance']}, threshold {$drift['threshold']})");
+                $this->error("'{$supplier->slug}' balance refresh crashed: {$e->getMessage()}");
             }
         }
 
-        return self::SUCCESS;
+        return $crashed ? self::FAILURE : self::SUCCESS;
+    }
+
+    private function refresh(Supplier $supplier, SupplierAdapterFactory $adapters): void
+    {
+        try {
+            $adapter = $adapters->for($supplier);
+        } catch (UnsupportedSupplierException|SupplierNotConfiguredException $e) {
+            $this->warn("Skipping '{$supplier->slug}': {$e->getMessage()}");
+
+            return;
+        }
+
+        $response = $adapter->checkBalance();
+
+        $update = [
+            'last_tested_at' => now(),
+            'last_test_result' => $response->success
+                ? 'success'
+                : "failed: [{$response->errorCode}] {$response->errorMessage}",
+        ];
+
+        if (! $response->success) {
+            $this->error("'{$supplier->slug}' balance check failed: {$response->errorMessage}");
+            $supplier->update($update);
+
+            return;
+        }
+
+        $balance = $response->data['balance'] ?? null;
+
+        if ($balance !== null) {
+            $update['balance'] = $balance;
+        }
+
+        $supplier->update($update);
+
+        $threshold = $supplier->api_config['low_balance_threshold'] ?? null;
+
+        if ($balance !== null && $threshold !== null && is_numeric($threshold) && (float) $balance < (float) $threshold) {
+            Log::warning('Supplier balance is low', [
+                'supplier' => $supplier->slug,
+                'balance' => (float) $balance,
+                'threshold' => (float) $threshold,
+                'currency' => $supplier->currency,
+            ]);
+            $this->warn("'{$supplier->slug}' balance {$balance} {$supplier->currency} is below threshold {$threshold}");
+        } else {
+            $this->info("'{$supplier->slug}' balance: {$balance} {$supplier->currency}");
+        }
+
+        // ADR-083 decision 6 — compares the just-refreshed
+        // `balance` against the funding ledger's own sum; never
+        // auto-corrects either side, only warns. `fundingDrift()`
+        // returns null when `drift_threshold` isn't configured
+        // (fail-safe to silent, same posture as low-balance above).
+        $drift = $supplier->fundingDrift();
+
+        if ($drift !== null && $drift['is_drifted']) {
+            Log::warning('Supplier funding ledger has drifted from the polled balance', [
+                'supplier' => $supplier->slug,
+                'polled_balance' => $drift['polled_balance'],
+                'ledger_balance' => $drift['ledger_balance'],
+                'variance' => $drift['variance'],
+                'threshold' => $drift['threshold'],
+                'currency' => $supplier->currency,
+            ]);
+            $this->warn("'{$supplier->slug}' funding ledger drifted: polled {$drift['polled_balance']} vs ledger {$drift['ledger_balance']} {$supplier->currency} (variance {$drift['variance']}, threshold {$drift['threshold']})");
+        }
     }
 }
