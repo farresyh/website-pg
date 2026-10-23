@@ -1,6 +1,6 @@
 # ADR-126: Joki MLBB — owned-brand `/joki` page, a `Fixed` pricing basis, each penjoki a pay-after manual supplier with its own WhatsApp group, payout booked as cost
 
-> **Standing (2026-10-23):** Accepted (design); the 2026-10-23 addendum re-traces it against ADR-125 as built and records grill S1–S26 and stress test F1–F5, overriding the original where they differ. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-23):** Accepted. The 2026-10-23 addendum re-traces it against ADR-125 and records grill S1–S26 and stress test F1–F5, overriding the original where they differ; later 2026-10-23 addenda split PR 2, pin the pricing rule (Grading guarantees Mythic 15★) and record what each PR settled. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-17. Grilled with the founder (`/mattpocock-skills:grilling`, Q-A to Q-J plus the earlier scoping answers), after a money-critical trace in three read-only forks (joki checkout/pricing, supplier funding/accounting, reports/analytics), top findings re-checked by hand. Builds on [ADR-125](./ADR-125-login-top-up-manual-supplier.md) (manual suppliers, finalize seam, supplier groups, its 2026-10-17 addendum) and [ADR-124](./ADR-124-customer-account-credentials.md) (credentials). Built after both (PRD §16 item 114).
 
@@ -127,6 +127,7 @@
 ### 2026-10-23 addendum — PR 2a build notes (decisions 2, 9, 10, 11, 15, 16, 19, F1, F5)
 
 - **PR 2 is split** into 2a (money core: Fixed, pool, Assign, payout locks, hidden game, F1) and 2b (rank model, rates, pricing, joki checkout, `joki_orders`, switches), with the founder's agreement, so each money PR stays reviewable.
+- **Decisions 1/2 (naming):** the game flag is `games.is_joki` (in no catalog on any brand). The original decisions' `owned_brands_only` flag is not built: the owned-brand rule is the brand's own `joki_enabled` (addendum decision 1).
 - **Decision 15:** the pool flag is `suppliers.joki_role` (`pool` | `penjoki` | null), not a lone `is_assignment_pool` boolean. One column also marks who may be assigned, and a penjoki or the pool can't be picked as an ordinary package's supplier. The pool is also left off every supplier list and Health card, since it never holds money.
 - **Decisions 16/17:** a post and a login link belong to one assignment. For an assigned order the dedupe key ends `:assign:<id>`, and a link stores `joki_assignment_id`. Otherwise A → B → A would leave A with no new post and revive A's first link. Assign takes the order lock, then the penjoki's lock, and `setActive` takes the same penjoki lock for decision 19.
 - **Decision 10:** the restart happens in `fulfill()`'s attempt start (its one seam), back to the order's package supplier (the pool), for a joki order coming from Failed or NeedsReview.

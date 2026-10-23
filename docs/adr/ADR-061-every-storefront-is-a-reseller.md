@@ -1,6 +1,6 @@
 # ADR-061: Every storefront is a Reseller — abolish the platform-owner special-case
 
-> **Standing (2026-10-10):** In force, except decision 7's `('platform', null)` withdrawal from `/admin`: retired by [ADR-083](./ADR-083-internal-accounting-financial-reconciliation.md)'s 2026-10-10 addendum, decision 17 (money leaving to a director is an Envelope Ledger repayment or dividend). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-23):** In force, except decision 7's `('platform', null)` withdrawal from `/admin`: retired by [ADR-083](./ADR-083-internal-accounting-financial-reconciliation.md)'s 2026-10-10 addendum, decision 17 (money leaving to a director is an Envelope Ledger repayment or dividend). Decision 8's owned-brand-only rule also gates Joki (`joki_enabled`, [ADR-126](./ADR-126-joki-mlbb.md)). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 >
 > **Terminology:** written before [ADR-072](./ADR-072-reseller-system-split.md); "Reseller" in this file means today's **Affiliate** (whitelabel storefront owner).
 

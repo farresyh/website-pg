@@ -1749,3 +1749,27 @@ PR 2 was split in two with the founder's agreement: 2a is the money core, 2b the
   - Storefront `tsc` and lint pass.
   - A temporary e2e spec (since deleted) created a joki order in the throwaway e2e DB and opened Track Order. Screenshots at 1280 and 390 wide showed the climb, the current rank and the joki help text, with no horizontal scroll.
 
+## 2026-10-23 — Docs sync after Joki PR 1–3 (#536 merged)
+
+Checked against `git log origin/main..origin/staging` and read-only prod: payment methods (FPX on since 2026-10-22 09:52 UTC, FPX Business and DuitNow QR off) and the last migration (2026-10-22's, so nothing from #529–#536 runs on prod yet).
+
+- **PRD §14.** New "On `staging`, not released" paragraph (#529–#536). It says plainly that the item 130 fix isn't live, and that Joki PR 1 also changes Login Top-up.
+- **PRD §15.** New Joki MLBB row.
+- **PRD §16.** Items 114 and 130 updated; 130's closed line now says "not released".
+- **PRD §6.24 and §6.25.**
+  - LOGIN-6: per-login ceiling.
+  - MSUP-3/4/5/6: supplier re-check, posts per supplier and assignment, `.progress`, SLA up to 4320 and the explicit clock.
+  - New §6.25 Joki (JOKI-1..10). MSUP-5 already pointed at it.
+- **PRD §8.** New columns on Game, Supplier, Affiliate, Order (`fixed` basis, `manual_activity_at`), OrderCredential, SupplierLoginLink and CustomerNotification, and six joki entities.
+- **PRD §13 Glossary.**
+  - Joki no longer says "Designed, not built": the Glossary never states build status (the `adr.md` rule).
+  - Funding Mode cites ADR-126 for penjoki.
+  - New terms: Assignment pool, Mythic Grading.
+- **PRD §1 and §10.** The CHIP lines no longer repeat "all three methods off since 2026-10-07", which contradicted §14. Payment status now lives in §14 only.
+- **ADRs.** Standing updated, index and banner together:
+  - ADR-126: Accepted, with the later addenda;
+  - ADR-116: joki progress pacing;
+  - ADR-061: the owned-brand rule gates Joki.
+
+  ADR-126's PR 2a notes now record that the game flag is `games.is_joki`, not the original `owned_brands_only`.
+
