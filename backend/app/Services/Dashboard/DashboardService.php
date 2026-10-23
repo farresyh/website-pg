@@ -16,6 +16,7 @@ use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Currency\CurrencyRateService;
 use App\Services\Currency\CurrencyRateUnavailableException;
+use App\Services\Joki\JokiBoard;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
@@ -156,6 +157,8 @@ final class DashboardService
         $stalePendingCount = Order::query()
             ->where('is_test', false)
             ->where('delivery_status', DeliveryStatus::Pending->value)
+            // ADR-126 F4: a stale joki is on the Joki card instead.
+            ->notJoki()
             ->with(['supplier', 'package.components.supplier'])
             ->get()
             ->filter(fn (Order $order) => $order->isStalePending())
@@ -198,8 +201,10 @@ final class DashboardService
             'openwa_session_definition' => 'Last-known session.status event OpenWaWebhookController received, cache-backed (no live ping), 1h TTL. Null means no event in the last hour, not confirmed healthy.',
             'stuck_orders' => [
                 'value' => $needsReviewCount + $staleProcessingCount + $stalePendingCount,
-                'definition' => "COUNT of orders where delivery_status=needs_review, PLUS delivery_status=processing older than {$staleAfterMinutes} minutes, PLUS delivery_status=pending past its supplier's stale window (Supplier::pendingPolicy(): an API supplier's pending_stale_minutes, else DELIVERY_RECONCILIATION_PENDING_STALE_MINUTES; a manual supplier's reply SLA) — the same rule ReconcilePendingDeliveriesCommand uses. Excludes is_test orders.",
+                'definition' => "COUNT of orders where delivery_status=needs_review, PLUS delivery_status=processing older than {$staleAfterMinutes} minutes, PLUS delivery_status=pending past its supplier's stale window (Supplier::pendingPolicy(): an API supplier's pending_stale_minutes, else DELIVERY_RECONCILIATION_PENDING_STALE_MINUTES; a manual supplier's reply SLA) — the same rule ReconcilePendingDeliveriesCommand uses. A stale Pending joki order is counted on the Joki card instead (ADR-126 F4). Excludes is_test orders.",
             ],
+            // ADR-126 decision 24: the Joki card, from the Joki page's own filters.
+            'joki' => app(JokiBoard::class)->counts(),
             'pending_payments' => [
                 'value' => $pendingPaymentsCount,
                 'definition' => 'COUNT(*) where payment_status=pending, excludes is_test orders — the same population app:reconcile-pending-payments (PAY-3) targets.',
@@ -242,7 +247,7 @@ final class DashboardService
         }
 
         $criticalStale = collect($scheduledTasks)->where('tier', 'critical')->where('stale', true)->count();
-        $needsActionOrders = Order::query()->where('is_test', false)->needsAction()->count();
+        $needsActionOrders = Order::query()->where('is_test', false)->needsAction()->notJoki()->count();
         $red = [
             'scheduler_critical_stale' => $criticalStale,
             'queue_failed' => $failedJobs,

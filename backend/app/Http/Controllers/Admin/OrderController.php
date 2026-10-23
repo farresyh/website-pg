@@ -143,7 +143,8 @@ class OrderController extends Controller
             // ADR-108 decision 1 — shares Order::scopeNeedsAction() with
             // summary() below, so an already-compensated order (voucher/
             // wallet-refund/restore) never shows up asking for one.
-            'need_action' => $query->needsAction(),
+            // ADR-126 F4: a joki is on the Joki board's "needs voucher".
+            'need_action' => $query->needsAction()->notJoki(),
             // ADR-108 addendum 2026-10-09 — every failed delivery, compensated
             // or not; Reports' "View failed orders" opens this.
             'failed' => $query->where('delivery_status', DeliveryStatus::Failed->value),
@@ -178,6 +179,15 @@ class OrderController extends Controller
                     $q->whereNull('affiliate_id')
                         ->orWhereHas('affiliate', fn ($aq) => $aq->where('is_primary', true));
                 }),
+            default => null,
+        };
+
+        // ADR-126 decision 25: a login order has a credential row; joki is Fixed.
+        $hasLogin = fn ($q) => $q->selectRaw('1')->from('order_credentials')->whereColumn('order_credentials.order_id', 'orders.id');
+        match ($request->query('type')) {
+            'joki' => $query->joki(),
+            'login' => $query->notJoki()->whereExists($hasLogin),
+            'topup' => $query->notJoki()->whereNotExists($hasLogin),
             default => null,
         };
 
@@ -241,6 +251,7 @@ class OrderController extends Controller
         $parts = array_filter([
             $request->query('status') ? 'tab: '.$request->query('status') : null,
             $request->query('source') ? 'source: '.$request->query('source') : null,
+            in_array($request->query('type'), ['joki', 'login', 'topup'], true) ? 'type: '.$request->query('type') : null,
             $request->query('game_id') ? 'game #'.$request->query('game_id') : null,
             $request->query('search') ? 'search: "'.$request->query('search').'"' : null,
             $this->validDate($request->query('date_from')) ? 'created from '.$request->query('date_from') : null,
@@ -270,7 +281,7 @@ class OrderController extends Controller
      */
     public function summary(): JsonResponse
     {
-        $needAction = Order::query()->where('is_test', false)->needsAction()->count();
+        $needAction = Order::query()->where('is_test', false)->needsAction()->notJoki()->count();
 
         $row = Order::query()
             ->where('is_test', false)
