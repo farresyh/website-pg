@@ -248,10 +248,10 @@ export default function PartnerSuppliersPage() {
                   id="reply_sla_minutes"
                   type="number"
                   min={5}
-                  max={1440}
+                  max={4320}
                   value={slaValue}
                   onChange={(e) => setSlaValue(e.target.value)}
-                  hint="5 to 1440. The reminder goes out at the next 15-minute check after this."
+                  hint="5 to 4320 (3 days). The reminder goes out at the next 15-minute check after this."
                 />
               </DialogContent>
               <DialogFooter>

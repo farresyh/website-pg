@@ -29,6 +29,7 @@ export interface OrderListItem {
   delivered_at?: string | null;
   game: { id: number; name: string } | null;
   package: { id: number; name: string; supplier_package_ref?: string; catalog_code?: string | null } | null;
+  supplier_id: number | null;
   supplier_product_ref?: string | null;
   // Which brand's storefront this order belongs to (always set — every
   // order has an affiliate, ADR-061) and, for a wallet order placed via
@@ -538,6 +539,7 @@ export interface ManualQueueItem {
   supplier: string | null;
   player_id: string;
   delivery_status: "pending" | "needs_review";
+  supplier_id: number;
   paid_at: string | null;
   is_stale: boolean;
   login_wiped: boolean;
@@ -550,15 +552,16 @@ export function listManualQueue() {
 }
 
 /** ADR-125 decision 36: realCostSen null = the agreed cost; any other value needs a reason. */
-export function confirmManualDelivered(id: number, values: { real_cost_sen?: number | null; reason?: string | null }) {
+export function confirmManualDelivered(id: number, values: { supplier_id: number; real_cost_sen?: number | null; reason?: string | null }) {
   return apiFetch<{ order_number: string; delivery_status: string }>(`/api/orders/${id}/manual/delivered`, { method: "POST", body: values });
 }
 
-export function confirmManualFailed(id: number, reason: string) {
-  return apiFetch<{ order_number: string; delivery_status: string }>(`/api/orders/${id}/manual/failed`, { method: "POST", body: { reason } });
+/** ADR-126 decision 18: `supplierId` is the supplier on screen; the backend refuses if the order has moved. */
+export function confirmManualFailed(id: number, supplierId: number, reason: string) {
+  return apiFetch<{ order_number: string; delivery_status: string }>(`/api/orders/${id}/manual/failed`, { method: "POST", body: { supplier_id: supplierId, reason } });
 }
 
 /** ADR-125 decision 42: before any compensation only; the reason is required. */
-export function correctManualToDelivered(id: number, values: { real_cost_sen?: number | null; reason: string }) {
+export function correctManualToDelivered(id: number, values: { supplier_id: number; real_cost_sen?: number | null; reason: string }) {
   return apiFetch<{ order_number: string; delivery_status: string }>(`/api/orders/${id}/manual/correct-to-delivered`, { method: "POST", body: values });
 }
