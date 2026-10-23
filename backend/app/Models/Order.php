@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 class Order extends Model
@@ -70,6 +71,7 @@ class Order extends Model
         'paid_at',
         'delivery_status',
         'delivered_at',
+        'manual_activity_at',
         'payment_method',
         'payment_gateway',
         'channel_code',
@@ -102,6 +104,7 @@ class Order extends Model
         'delivery_status' => DeliveryStatus::class,
         'placed_via' => PlacedVia::class,
         'delivered_at' => 'datetime',
+        'manual_activity_at' => 'datetime',
         'supplier_response' => 'array',
     ];
 
@@ -164,7 +167,18 @@ class Order extends Model
 
         $policy = $this->fulfilmentSupplier()?->pendingPolicy() ?? Supplier::defaultPendingPolicy();
 
-        return $this->updated_at->lte(now()->subMinutes($policy['stale_minutes']));
+        return $this->pendingClock()->lte(now()->subMinutes($policy['stale_minutes']));
+    }
+
+    /**
+     * ADR-126 2026-10-23 addendum, decision 20: when this Pending order's
+     * wait started. A manual order's group post (later assign and progress)
+     * stamps `manual_activity_at`; before that, and for an API supplier,
+     * it is `updated_at`, which marks entry into Pending.
+     */
+    public function pendingClock(): Carbon
+    {
+        return $this->manual_activity_at ?? $this->updated_at;
     }
 
     /**
