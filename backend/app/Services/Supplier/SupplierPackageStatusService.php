@@ -8,6 +8,7 @@ use App\Models\Package;
 use App\Models\Supplier;
 use App\Services\Pricing\ComboPricingService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * ADR-046 decisions 9/10: switch all of one supplier's packages (or one
@@ -31,6 +32,7 @@ final class SupplierPackageStatusService
     /** @return array{updated: int, updated_combos: int} */
     public function deactivate(Supplier $supplier, int $adminUserId, ?string $reason, ?int $gameId = null): array
     {
+        $this->assertNotPool($supplier);
         $query = $this->packages($supplier, $gameId)->where('is_active', true);
         $packageIds = (clone $query)->pluck('id');
         $gameIds = (clone $query)->distinct()->pluck('game_id')->all();
@@ -72,6 +74,7 @@ final class SupplierPackageStatusService
     /** @return array{updated: int, updated_combos: int} */
     public function reactivate(Supplier $supplier, int $adminUserId, ?int $gameId = null): array
     {
+        $this->assertNotPool($supplier);
         $query = $this->packages($supplier, $gameId)->where('is_active', false)->where('deactivated_reason', self::REASON);
         $packageIds = (clone $query)->pluck('id');
         $gameIds = (clone $query)->distinct()->pluck('game_id')->all();
@@ -110,6 +113,14 @@ final class SupplierPackageStatusService
         }
         if ($gameIds !== []) {
             GameController::forgetIndexCache();
+        }
+    }
+
+    /** ADR-126 F1/F5: the pool's packages are joki's, switched with Joki itself. */
+    private function assertNotPool(Supplier $supplier): void
+    {
+        if ($supplier->isAssignmentPool()) {
+            throw ValidationException::withMessages(['supplier' => ['The joki pool\'s packages are managed in Joki settings.']]);
         }
     }
 }

@@ -67,7 +67,8 @@ final class DashboardService
     {
         $breakerConfig = config('services.circuit_breaker');
 
-        $suppliers = Supplier::query()->get()->map(function (Supplier $supplier) use ($breakerConfig) {
+        // ADR-126 F5: the joki pool holds no balance; a penjoki's is "Owed".
+        $suppliers = Supplier::query()->exceptAssignmentPool()->get()->map(function (Supplier $supplier) use ($breakerConfig) {
             $breaker = new CircuitBreaker(
                 name: $supplier->slug,
                 failureThreshold: $breakerConfig['failure_threshold'],
@@ -279,6 +280,7 @@ final class DashboardService
             // ADR-125 decision 56: activated before PR 2, so its posts are skipped.
             'manual_supplier_without_group' => Supplier::query()
                 ->where('driver', Supplier::DRIVER_MANUAL)
+                ->exceptAssignmentPool()
                 ->where('is_active', true)
                 ->whereNotExists(fn ($q) => $q->selectRaw('1')
                     ->from('whatsapp_groups')

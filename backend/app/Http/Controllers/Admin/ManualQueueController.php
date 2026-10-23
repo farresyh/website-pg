@@ -69,6 +69,8 @@ class ManualQueueController extends Controller
     {
         return response()->json(Supplier::query()
             ->where('driver', Supplier::DRIVER_MANUAL)
+            // ADR-126: a penjoki or the pool never supplies an ordinary package.
+            ->whereNull('joki_role')
             ->where('is_active', true)
             ->orderBy('name')
             ->get(['id', 'name', 'funding_mode']));
