@@ -851,6 +851,7 @@ final class ReportService
             ->keyBy(fn ($row) => $row->delivery_status instanceof DeliveryStatus ? $row->delivery_status->value : $row->delivery_status);
 
         // Awaiting = Orders' Need action: the same scope, so the two counts cannot drift.
+        // Joki included: Orders' tab leaves it to the Joki board (ADR-126 F4), money doesn't.
         $awaiting = $this->scopedOrders($from, $toExclusive, $affiliateId)
             ->needsAction()
             ->selectRaw('delivery_status, COUNT(*) as n')

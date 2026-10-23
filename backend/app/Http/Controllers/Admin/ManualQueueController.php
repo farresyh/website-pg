@@ -33,6 +33,8 @@ class ManualQueueController extends Controller
             ->whereIn('delivery_status', [DeliveryStatus::Pending->value, DeliveryStatus::NeedsReview->value])
             ->where('payment_status', PaymentStatus::Paid->value)
             ->where('is_test', false)
+            // ADR-126 decision 23: joki has its own board.
+            ->notJoki()
             ->oldest('paid_at')
             ->limit(200)
             ->get();

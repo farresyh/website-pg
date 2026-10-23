@@ -14,6 +14,7 @@ use App\Http\Controllers\Admin\FaqController;
 use App\Http\Controllers\Admin\GalleryImageController;
 use App\Http\Controllers\Admin\GameSeoController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
+use App\Http\Controllers\Admin\JokiAdminController;
 use App\Http\Controllers\Admin\JokiAssignmentController;
 use App\Http\Controllers\Admin\ManualQueueController;
 use App\Http\Controllers\Admin\MembershipController as AdminMembershipController;
@@ -59,11 +60,11 @@ use App\Http\Controllers\Auth\MfaController;
 use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\CheckoutController;
-use App\Http\Controllers\JokiCatalogController;
 use App\Http\Controllers\ClientErrorController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\HeroSlideController;
+use App\Http\Controllers\JokiCatalogController;
 use App\Http\Controllers\MembershipController;
 use App\Http\Controllers\MembershipOtpController;
 use App\Http\Controllers\Middleware\BackupController;
@@ -608,6 +609,20 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::post('/{order}/joki/progress', [JokiAssignmentController::class, 'progress']);
     });
 
+    // ADR-126 decisions 23-24: Admin → Joki. Orders and Penjoki for every
+    // admin; settings, the rank model and route packages super admin only.
+    Route::middleware('admin.role:super_admin,admin')->prefix('joki-admin')->group(function () {
+        Route::get('/orders', [JokiAdminController::class, 'orders']);
+        Route::get('/summary', [JokiAdminController::class, 'summary']);
+        Route::get('/penjoki', [JokiAdminController::class, 'penjoki']);
+    });
+    Route::middleware('admin.role:super_admin')->prefix('joki-admin')->group(function () {
+        Route::get('/settings', [JokiAdminController::class, 'settings']);
+        Route::put('/settings', [JokiAdminController::class, 'updateSettings']);
+        Route::put('/tiers', [JokiAdminController::class, 'updateTiers']);
+        Route::post('/routes', [JokiAdminController::class, 'storeRoute']);
+        Route::put('/routes/{jokiRoute}', [JokiAdminController::class, 'updateRoute']);
+    });
     Route::middleware('admin.role:super_admin,admin')->get('/manual-queue', [ManualQueueController::class, 'index']);
     Route::middleware('admin.role:super_admin,admin')->get('/manual-suppliers', [ManualQueueController::class, 'suppliers']);
 

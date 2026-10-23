@@ -167,6 +167,21 @@ class Order extends Model
         return $this->pricing_basis === PricingBasis::Fixed;
     }
 
+    /** The query-level mirror of isJoki(). */
+    public function scopeJoki(Builder $query): Builder
+    {
+        return $query->where('pricing_basis', PricingBasis::Fixed->value);
+    }
+
+    /**
+     * ADR-126 F4: the general Need Action, stuck count and Manual Queue
+     * leave joki to the Joki board (JokiBoard), which shows every one.
+     */
+    public function scopeNotJoki(Builder $query): Builder
+    {
+        return $query->where('pricing_basis', '!=', PricingBasis::Fixed->value);
+    }
+
     /** ADR-126 decision 1: what a joki order bought, and its progress. */
     public function jokiOrder(): HasOne
     {
