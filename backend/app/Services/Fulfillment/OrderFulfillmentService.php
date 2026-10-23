@@ -23,6 +23,7 @@ use App\Services\Voucher\VoucherService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
@@ -1066,8 +1067,13 @@ final class OrderFulfillmentService
      * observes the already-advanced state and throws
      * InvalidOrderTransitionException — same lock-then-guard pattern
      * fulfill() itself already uses for the identical PAY-2 reason.
+     *
+     * `$expectedSupplierId` (ADR-126 2026-10-23 addendum, decision 18): a
+     * manual confirmation names the supplier it acted for; a different
+     * supplier under the lock means the order was reassigned, and nothing
+     * is written.
      */
-    public function finalizePendingDelivery(Order $order, SupplierOutcome $outcome, ?string $supplierRef = null, mixed $supplierResponse = null, bool $resendUnsafeWithSameReference = false, bool $outcomeConfirmedFailed = false): Order
+    public function finalizePendingDelivery(Order $order, SupplierOutcome $outcome, ?string $supplierRef = null, mixed $supplierResponse = null, bool $resendUnsafeWithSameReference = false, bool $outcomeConfirmedFailed = false, ?int $expectedSupplierId = null): Order
     {
         if ($outcome === SupplierOutcome::Pending) {
             throw new OrderFulfillmentException(
@@ -1078,8 +1084,12 @@ final class OrderFulfillmentService
         $drawdownPrice = null;
         $contradicted = false;
 
-        $finalized = DB::transaction(function () use ($order, $outcome, $supplierRef, $supplierResponse, $resendUnsafeWithSameReference, $outcomeConfirmedFailed, &$drawdownPrice, &$contradicted) {
+        $finalized = DB::transaction(function () use ($order, $outcome, $supplierRef, $supplierResponse, $resendUnsafeWithSameReference, $outcomeConfirmedFailed, $expectedSupplierId, &$drawdownPrice, &$contradicted) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+
+            if ($expectedSupplierId !== null && $locked->supplier_id !== $expectedSupplierId) {
+                throw ValidationException::withMessages(['order' => ['This order was moved to another supplier.']]);
+            }
 
             Log::withContext(['reference_number' => $locked->reference_number]);
 

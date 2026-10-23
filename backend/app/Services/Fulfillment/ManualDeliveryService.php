@@ -30,26 +30,32 @@ final class ManualDeliveryService
         private readonly OrderStatusService $orderStatus,
     ) {}
 
-    public function confirmDelivered(Order $order, ?int $realCostSen, ?string $reason, string $confirmedBy, string $channel = 'admin'): Order
+    /**
+     * ADR-126 2026-10-23 addendum, decision 18: `$expectedSupplierId` is the
+     * supplier the caller acted for. Finalize re-checks it under the order
+     * lock, so a `.done` racing a reassignment can't finalize (or pay) an
+     * order that now belongs to another supplier.
+     */
+    public function confirmDelivered(Order $order, ?int $realCostSen, ?string $reason, string $confirmedBy, int $expectedSupplierId, string $channel = 'admin'): Order
     {
         $this->assertManual($order);
         $realCostSen = $this->realCost($order, $realCostSen, $reason);
         $response = $this->response($realCostSen, $reason, $confirmedBy, $channel);
 
-        $finalized = $this->fulfillment->finalizePendingDelivery($order, SupplierOutcome::Success, supplierResponse: $response);
+        $finalized = $this->fulfillment->finalizePendingDelivery($order, SupplierOutcome::Success, supplierResponse: $response, expectedSupplierId: $expectedSupplierId);
         $this->recordAttempt($finalized, 'success', $response, $reason, $confirmedBy);
 
         return $finalized;
     }
 
-    public function confirmFailed(Order $order, string $reason, string $confirmedBy, string $channel = 'admin'): Order
+    public function confirmFailed(Order $order, string $reason, string $confirmedBy, int $expectedSupplierId, string $channel = 'admin'): Order
     {
         $this->assertManual($order);
         $response = ['manual' => true, 'outcome' => 'failed', 'reason' => $reason, 'confirmed_by' => $confirmedBy, 'channel' => $channel];
 
         // A manual Failed is a confirmed non-delivery (decision 9), so it
         // lands on Failed, never NeedsReview.
-        $finalized = $this->fulfillment->finalizePendingDelivery($order, SupplierOutcome::Failure, supplierResponse: $response, outcomeConfirmedFailed: true);
+        $finalized = $this->fulfillment->finalizePendingDelivery($order, SupplierOutcome::Failure, supplierResponse: $response, outcomeConfirmedFailed: true, expectedSupplierId: $expectedSupplierId);
         $this->recordAttempt($finalized, 'failed', $response, $reason, $confirmedBy);
 
         return $finalized;

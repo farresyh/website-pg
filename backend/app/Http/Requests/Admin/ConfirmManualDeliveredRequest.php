@@ -22,6 +22,8 @@ class ConfirmManualDeliveredRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // ADR-126 2026-10-23 addendum, decision 18: the supplier the admin saw; finalize refuses if the order has since moved.
+            'supplier_id' => ['required', 'integer'],
             'real_cost_sen' => ['nullable', 'integer', 'min:1', 'max:100000000'],
             'reason' => ['nullable', 'string', 'max:500'],
         ];
