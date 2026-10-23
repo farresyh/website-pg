@@ -85,6 +85,7 @@ function CreateSupplierFields({ onClose, onSubmit, availableDrivers }: Omit<Crea
   const [currency, setCurrency] = useState("MYR");
   const [fundingMode, setFundingMode] = useState<"prepaid" | "pay_after">("prepaid");
   const [logoUrl, setLogoUrl] = useState("");
+  const [isPenjoki, setIsPenjoki] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -113,6 +114,7 @@ function CreateSupplierFields({ onClose, onSubmit, availableDrivers }: Omit<Crea
         currency: isManual ? "MYR" : currency.trim().toUpperCase(),
         funding_mode: isManual ? fundingMode : "prepaid",
         logo_url: logoUrl.trim() || undefined,
+        joki_role: isManual && fundingMode === "pay_after" && isPenjoki ? "penjoki" : undefined,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -195,6 +197,16 @@ function CreateSupplierFields({ onClose, onSubmit, availableDrivers }: Omit<Crea
               <OptionSelect id="supplier_funding_mode" value={fundingMode} options={fundingOptions} onChange={(v) => setFundingMode(v as "prepaid" | "pay_after")} />
               <p className="mt-1 text-theme-xs text-ink-subtle">Can be changed later in Edit. Payments are recorded in Accounting → Supplier Funding.</p>
             </div>
+          )}
+
+          {isManual && fundingMode === "pay_after" && (
+            <label className="flex items-start gap-2 text-theme-sm text-gray-700 dark:text-gray-300">
+              <input type="checkbox" className="mt-1" checked={isPenjoki} onChange={(e) => setIsPenjoki(e.target.checked)} />
+              <span>
+                A penjoki (Joki player)
+                <span className="block text-theme-xs text-ink-subtle">Gets joki orders through Assign in Admin → Joki, never an ordinary package. Can&apos;t be changed later.</span>
+              </span>
+            </label>
           )}
 
           <div>

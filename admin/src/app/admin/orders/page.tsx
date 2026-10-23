@@ -64,6 +64,7 @@ import {
   type OrderSummary,
   type IssueVoucherResult,
   type OrderSourceFilter,
+  type OrderTypeFilter,
   listOrders,
   getOrder,
   getOrderSummary,
@@ -82,6 +83,7 @@ import NeedsReviewBanner from "@/components/orders/NeedsReviewBanner";
 import RefundInformationCards from "@/components/orders/RefundInformationCards";
 import OrderDetailCards from "@/components/orders/OrderDetailCards";
 import CustomerLoginCard from "@/components/orders/CustomerLoginCard";
+import { JokiOrderCard } from "@/components/joki/JokiOrderCard";
 import OrderSummaryCards from "@/components/orders/OrderSummaryCards";
 import DeliveryLogsTable from "@/components/orders/DeliveryLogsTable";
 import ComboLegBreakdown from "@/components/orders/ComboLegBreakdown";
@@ -120,6 +122,14 @@ const SOURCE_FILTERS: { value: OrderSourceFilter | "all"; label: string }[] = [
   { value: "direct", label: "Direct" },
   { value: "affiliate", label: "Affiliate" },
   { value: "reseller", label: "Reseller" },
+];
+
+/** ADR-126 decision 25 — every order stays here; this narrows by kind. */
+const TYPE_FILTERS: { value: OrderTypeFilter | "all"; label: string }[] = [
+  { value: "all", label: "All types" },
+  { value: "topup", label: "Top-up" },
+  { value: "login", label: "Login" },
+  { value: "joki", label: "Joki" },
 ];
 
 /** ADR-108 decision 8 — every column hideable except Order # and Actions. */
@@ -244,6 +254,7 @@ function OrdersPageInner() {
   // the status tab above (can combine with any of them, same as the
   // Reports page's own filter row).
   const [source, setSource] = useState<OrderSourceFilter | "all">("all");
+  const [orderType, setOrderType] = useState<OrderTypeFilter | "all">(() => TYPE_FILTERS.find((f) => f.value === searchParams.get("type"))?.value ?? "all");
   const [gameId, setGameId] = useState<number | "all">("all");
   const [games, setGames] = useState<Game[]>([]);
   const [rangePreset, setRangePreset] = useState<DateRangePreset>("all");
@@ -281,26 +292,28 @@ function OrdersPageInner() {
       search: debouncedSearch || undefined,
       page: pageNumber,
       source: source === "all" ? undefined : source,
+      type: orderType === "all" ? undefined : orderType,
       gameId: gameId === "all" ? undefined : gameId,
       dateFrom,
       dateTo,
     }),
-    [status, debouncedSearch, pageNumber, source, gameId, dateFrom, dateTo],
+    [status, debouncedSearch, pageNumber, source, orderType, gameId, dateFrom, dateTo],
   );
   // Adjusted during render (React's own pattern for "reset state when
   // other state changes"), not in an effect — resets pagination to 1
   // whenever the filter/search changes, without a synchronous setState
   // call inside an effect.
-  const [paginationFilterKey, setPaginationFilterKey] = useState({ status, search: debouncedSearch, source, gameId, dateFrom, dateTo });
+  const [paginationFilterKey, setPaginationFilterKey] = useState({ status, search: debouncedSearch, source, orderType, gameId, dateFrom, dateTo });
   if (
     paginationFilterKey.status !== status ||
     paginationFilterKey.search !== debouncedSearch ||
     paginationFilterKey.source !== source ||
+    paginationFilterKey.orderType !== orderType ||
     paginationFilterKey.gameId !== gameId ||
     paginationFilterKey.dateFrom !== dateFrom ||
     paginationFilterKey.dateTo !== dateTo
   ) {
-    setPaginationFilterKey({ status, search: debouncedSearch, source, gameId, dateFrom, dateTo });
+    setPaginationFilterKey({ status, search: debouncedSearch, source, orderType, gameId, dateFrom, dateTo });
     setPageNumber(1);
   }
   const [page, setPage] = useState<OrderPage | null>(null);
@@ -833,6 +846,18 @@ function OrdersPageInner() {
 
         <OrderDetailCards order={selected} />
 
+        {selected.joki && (
+          <JokiOrderCard
+            key={`joki-${selected.id}`}
+            orderId={selected.id}
+            joki={selected.joki}
+            supplierId={selected.supplier?.id ?? null}
+            supplierName={selected.supplier?.name ?? null}
+            isPending={selected.delivery_status === "pending" && !selected.is_test}
+            onChanged={refreshSelected}
+          />
+        )}
+
         <CustomerLoginCard key={selected.id} orderId={selected.id} login={selected.customer_login} canManage={session?.role === "super_admin"} />
 
         {/* ADR-094 decision 12: empty/no-op for every ordinary order — only a combo order has legs to show. */}
@@ -937,6 +962,26 @@ function OrdersPageInner() {
 
       {/* ADR-108 decisions 5-8 — Source/Game/date-range filters + Columns toggle, orthogonal to the status tabs above. */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Select value={orderType} options={TYPE_FILTERS} optionLabel="label" optionValue="value" onValueChange={(e) => setOrderType(e.value as OrderTypeFilter | "all")}>
+          <SelectTrigger className="min-w-[8rem]" aria-label="Order type">
+            <SelectValue />
+            <SelectIndicator />
+          </SelectTrigger>
+          <SelectPortal>
+            <SelectPositioner>
+              <SelectPopup>
+                <SelectList>
+                  {TYPE_FILTERS.map((opt, index) => (
+                    <SelectOption key={opt.value} index={index}>
+                      {opt.label}
+                    </SelectOption>
+                  ))}
+                </SelectList>
+              </SelectPopup>
+            </SelectPositioner>
+          </SelectPortal>
+        </Select>
+
         <Select value={source} options={SOURCE_FILTERS} optionLabel="label" optionValue="value" onValueChange={(e) => setSource(e.value as OrderSourceFilter | "all")}>
           <SelectTrigger className="min-w-[9rem]">
             <SelectValue />

@@ -30,6 +30,7 @@ export interface AffiliateFormSubmitValues {
   notes: string | null;
   is_owned: boolean;
   membership_enabled: boolean;
+  joki_enabled: boolean;
   tier_id: number | null;
   user_name: string;
   user_email: string;
@@ -55,6 +56,7 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [isOwned, setIsOwned] = useState(editing?.is_owned ?? false);
   const [membershipEnabled, setMembershipEnabled] = useState(editing?.membership_enabled ?? false);
+  const [jokiEnabled, setJokiEnabled] = useState(editing?.joki_enabled ?? false);
   const [tierId, setTierId] = useState<string>("");
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
@@ -107,6 +109,7 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
         // (ADR-061) — the backend forces this off too, this just keeps
         // the payload honest.
         membership_enabled: isOwned && membershipEnabled,
+        joki_enabled: isOwned && jokiEnabled,
         tier_id: tierId === "" ? null : Number(tierId),
         user_name: userName,
         user_email: userEmail,
@@ -183,7 +186,10 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
                 if (next && (markupPct.trim() === "" || parseFloat(markupPct) === 0)) {
                   setMarkupPct("0");
                 }
-                if (!next) setMembershipEnabled(false);
+                if (!next) {
+                  setMembershipEnabled(false);
+                  setJokiEnabled(false);
+                }
               }}
             />
             Our own brand
@@ -196,6 +202,13 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
               <input type="checkbox" checked={membershipEnabled} onChange={(e) => setMembershipEnabled(e.target.checked)} />
               Enable consumer Membership on this storefront
               <span className="text-theme-xs text-ink-subtle">(also needs the global membership switch on)</span>
+            </label>
+          )}
+          {isOwned && (
+            <label className="mt-3 flex items-center gap-2 text-theme-sm text-gray-700 dark:text-gray-300">
+              <input type="checkbox" checked={jokiEnabled} onChange={(e) => setJokiEnabled(e.target.checked)} />
+              Sell Joki on this storefront
+              <span className="text-theme-xs text-ink-subtle">(also needs the Joki switch on, Admin → Joki → Settings)</span>
             </label>
           )}
           {isOwned && !membershipEnabled && (
