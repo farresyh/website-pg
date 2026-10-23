@@ -7,6 +7,7 @@ use App\Models\AffiliateDomain;
 use App\Models\AffiliateGame;
 use App\Models\AffiliateUser;
 use App\Models\Game;
+use App\Services\Joki\JokiCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -126,7 +127,7 @@ class StorefrontGameControllerTest extends TestCase
         $this->primaryAffiliate();
         $brand = $this->affiliate();
         $this->game('Mobile Legends');
-        $joki = Game::query()->create(['name' => 'Joki MLBB', 'slug' => 'joki-mlbb', 'is_active' => true, 'is_joki' => true]);
+        $joki = app(JokiCatalog::class)->ensure()->game;
         $token = $this->tokenFor($brand);
 
         $this->withToken($token)->getJson('/api/affiliate/storefront/games')

@@ -3,13 +3,12 @@
 namespace Tests\Concurrency;
 
 use App\Models\AdminUser;
-use App\Models\Game;
 use App\Models\JokiAssignment;
 use App\Models\Order;
-use App\Models\Package;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Models\WhatsAppGroup;
+use App\Services\Joki\JokiCatalog;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\PricingBasis;
@@ -46,12 +45,7 @@ class JokiAssignConcurrencyTest extends TestCase
 
     private function pendingJokiOrder(Supplier $on): Order
     {
-        $pool = Supplier::assignmentPool();
-        $package = Package::query()->create([
-            'game_id' => Game::query()->create(['name' => 'Joki MLBB', 'slug' => 'joki-mlbb', 'is_active' => true, 'is_joki' => true])->id,
-            'name' => 'Joki Ranked', 'cost_price' => 0, 'standard_selling_price' => 0,
-            'supplier_id' => $pool->id, 'supplier_package_ref' => 'JOKI-RACE',
-        ]);
+        $package = app(JokiCatalog::class)->ensure();
 
         return Order::query()->create(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
@@ -61,7 +55,7 @@ class JokiAssignConcurrencyTest extends TestCase
             'game_id' => $package->game_id,
             'package_id' => $package->id,
             'supplier_id' => $on->id,
-            'supplier_product_ref' => 'JOKI-RACE',
+            'supplier_product_ref' => $package->supplier_package_ref,
             'reference_number' => 'REF-JOKIRACE',
             'pricing_basis' => PricingBasis::Fixed->value,
             'cost_price' => 7000,
