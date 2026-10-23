@@ -787,7 +787,7 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
 - (none)
 
 **B. Needs a short grill / ADR addendum first**
-- **130** `/api/health` goes red when an unfunded supplier is down.
+- (none)
 
 **C. Founder actions (no code)**
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
@@ -1229,17 +1229,9 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     owed a refund under it. If the policy stays, build this before payments
     go live for real customers. The switch-over steps above apply either way.
 
-130. **An unfunded supplier being down turns `/api/health` red (found
-    2026-10-22).** `supplier-balance-refresh` is a CRITICAL task, and
-    `app:refresh-supplier-balances` exits 1 when any one supplier fails. On
-    2026-10-22, `api.gamevion.com` refused connections from 00:00 UTC.
-    Gamevion is unfunded and takes no orders, yet the health check stayed
-    503 until the next daily run, and UptimeRobot alerted. Decide (ADR-122
-    addendum): judge only active, funded suppliers for health, or record
-    per-supplier failure on the Dashboard without failing the task.
-
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **130** 2026-10-23: the cause was not health judging an unfunded supplier. A refused connection was thrown out of `checkBalance()`, which aborted the daily balance sweep (Digiflazz, after Gamevion, wasn't refreshed) and 500'd Refresh Balance, the credential probe and Developer Tools. The breaker decorator now returns it as a `CONNECTION_FAILED` response for `checkBalance` only (counted once; order calls still throw), and the daily refresh isolates each supplier, failing the task only on a real bug. ADR-069 2026-10-23 addendum; details: build-log 2026-10-23.
 - **124** 2026-10-22: Releases #514 and #517 verified on the box; #516 measured. DevTools on `/admin/orders` shows 0 OPTIONS requests. Pulse, 3 days: 15 slow requests spread evenly, not clustered at the scheduler ticks, none on admin endpoints. Details: build-log 2026-10-22.
 - **126** 2026-10-22: Login Top-up spec written from ADR-124/125 and the code: §6.24 (LOGIN-1..7, MSUP-1..7), §7.6 flow, §8 Supplier columns plus OrderCredential, CredentialReveal, WhatsAppGroup, SupplierLoginLink and CustomerNotification, and §11 now points at §16 group E with its shipped lines removed. `reply_sla_minutes` turned out to live in `api_config.manual`, not a column.
 - **127** 2026-10-22: Build/live status kept to §15 (headline §14). Removed from the Glossary, §6 (AUTH-7, the §6.7 status column now names the deciding ADR, RPT-4, THM-1, MUI), §7.3, §8, and the ADR-046 and ADR-125 banners. `adr.md`'s rule now covers banners and the Glossary. §10's integration status and §11's "Shipped" lines are left for item 126.

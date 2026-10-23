@@ -24,8 +24,7 @@ final class CircuitBreakingSupplierAdapter implements SupplierAdapter
     public function __construct(
         private readonly SupplierAdapter $inner,
         private readonly CircuitBreaker $breaker,
-    ) {
-    }
+    ) {}
 
     public function checkBalance(): SupplierResponse
     {
@@ -105,11 +104,21 @@ final class CircuitBreakingSupplierAdapter implements SupplierAdapter
         // (prod: 109 Digiflazz timeouts by 2026-09-29, clustered by
         // SyncSupplierPricesJob's own retries) without the order path
         // being down — counting it would pause real orders for nothing.
+        //
+        // Item 130 (ADR-069 2026-10-23 addendum): checkBalance is a read
+        // outside any order, so it gets the failure as a response instead.
+        // Every caller (daily refresh, Refresh Balance, credential probe,
+        // Developer Tools) already handles a failed response; a throw aborted
+        // the daily sweep and 500'd the admin actions.
         try {
             $response = $call();
         } catch (ConnectionException $e) {
             if ($callType !== 'listProducts') {
                 $this->breaker->recordFailure();
+            }
+
+            if ($callType === 'checkBalance') {
+                return SupplierResponse::failure('CONNECTION_FAILED', $e->getMessage(), isServerError: true);
             }
 
             throw $e;
