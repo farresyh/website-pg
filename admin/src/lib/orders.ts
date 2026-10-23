@@ -1,3 +1,4 @@
+import type { JokiOrderDetail } from "@/lib/joki";
 import { apiFetch, apiDownload } from "@/lib/api-client";
 import { todayInKL } from "@/lib/date-range";
 import type { Game } from "@/lib/games";
@@ -214,6 +215,8 @@ export interface OrderDetail extends OrderListItem {
   // ADR-125 decisions 8/42: a manual supplier's order — confirmed through
   // the Manual Queue actions, never Mark Delivered or Check from Supplier.
   is_manual_supplier?: boolean;
+  /** ADR-126: the Joki card; null for every non-joki order. */
+  joki?: JokiOrderDetail | null;
   // ADR-107 decision 3, generalized by ADR-111 decision 7 — true once ANY
   // order (not just combo) delivered with a reconciled negative
   // platform_profit, or a material drift from the pre-reconciliation
@@ -255,11 +258,15 @@ export type OrderStatusFilter =
 /** ADR-108 decision 5 — single-select, mirrors the Source column's own 3 states. */
 export type OrderSourceFilter = "reseller" | "affiliate" | "direct";
 
+/** ADR-126 decision 25: login = has a customer login; joki = the Fixed basis; top-up = neither. */
+export type OrderTypeFilter = "topup" | "login" | "joki";
+
 export interface OrderListFilters {
   status?: OrderStatusFilter;
   search?: string;
   page?: number;
   source?: OrderSourceFilter;
+  type?: OrderTypeFilter;
   gameId?: number;
   dateFrom?: string;
   dateTo?: string;
@@ -271,6 +278,7 @@ function buildOrderFilterQuery(params: OrderListFilters): URLSearchParams {
   if (params.search) query.set("search", params.search);
   if (params.page) query.set("page", String(params.page));
   if (params.source) query.set("source", params.source);
+  if (params.type) query.set("type", params.type);
   if (params.gameId) query.set("game_id", String(params.gameId));
   if (params.dateFrom) query.set("date_from", params.dateFrom);
   if (params.dateTo) query.set("date_to", params.dateTo);

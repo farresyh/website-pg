@@ -33,6 +33,8 @@ export interface AffiliateRow {
   is_owned: boolean;
   is_primary: boolean;
   membership_enabled: boolean;
+  /** ADR-126 decision 1: sells joki; owned brands only, and needs the global Joki switch. */
+  joki_enabled: boolean;
   /** ADR-080 decision 4: active consumer memberships on this brand — the form warns before Membership is turned off while this is > 0. */
   active_membership_count: number;
   deleted_at: string | null;
@@ -100,6 +102,8 @@ export interface CreateAffiliateValues {
   notes: string | null;
   is_owned: boolean;
   membership_enabled: boolean;
+  /** ADR-126 decision 1: sells joki; owned brands only, and needs the global Joki switch. */
+  joki_enabled: boolean;
   tier_id: number | null;
   user_name: string;
   user_email: string;

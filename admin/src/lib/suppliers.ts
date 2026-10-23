@@ -140,6 +140,8 @@ export interface CreateSupplierValues {
   currency: string;
   funding_mode: "prepaid" | "pay_after";
   logo_url?: string;
+  /** ADR-126 decision 8: a penjoki is a pay-after manual supplier. */
+  joki_role?: "penjoki";
 }
 
 export interface UpdateSupplierValues {
