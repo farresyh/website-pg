@@ -17,6 +17,7 @@ use App\Services\Joki\JokiBoard;
 use App\Services\Joki\JokiCatalog;
 use App\Services\Joki\JokiLadder;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Report\ReportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -37,9 +38,23 @@ class JokiAdminController extends Controller
 
     public function orders(Request $request): JsonResponse
     {
-        $request->validate(['filter' => ['nullable', Rule::in(JokiBoard::FILTERS)]]);
+        $request->validate([
+            'filter' => ['nullable', Rule::in(JokiBoard::FILTERS)],
+            'search' => ['nullable', 'string', 'max:100'],
+            'supplier_id' => ['nullable', 'integer'],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d'],
+        ]);
+
+        // The same search and KL-day date bounds as /orders (OrderController::applyFilters).
+        [$from, $toExclusive] = app(ReportService::class)->dateRangeFromDates($request->query('date_from'), $request->query('date_to'));
+        $search = $request->query('search');
 
         $page = $this->board->orders($request->query('filter'))
+            ->when($search, fn ($q) => $q->where(fn ($s) => $s->where('order_number', 'like', "%{$search}%")->orWhere('customer_email', 'like', "%{$search}%")))
+            ->when($request->query('supplier_id'), fn ($q, $id) => $q->where('supplier_id', (int) $id))
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
             ->with(['jokiOrder', 'supplier', 'package'])
             ->oldest('paid_at')
             ->paginate(25)
@@ -51,7 +66,8 @@ class JokiAdminController extends Controller
 
     public function summary(): JsonResponse
     {
-        return response()->json($this->board->counts());
+        // The page's "All Joki" card adds the total to the Dashboard card's four.
+        return response()->json([...$this->board->counts(), 'all' => $this->board->orders(null)->count()]);
     }
 
     /** Each penjoki's open orders and what the platform owes them (their pay-after funding ledger). */

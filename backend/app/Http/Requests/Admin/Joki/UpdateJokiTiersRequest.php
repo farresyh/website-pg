@@ -30,7 +30,18 @@ class UpdateJokiTiersRequest extends FormRequest
             'tiers.*.mythic_from_stars' => ['sometimes', 'integer', 'min:0', 'max:10000'],
             'tiers.*.rate_rm' => ['required', 'integer', 'min:1', 'max:10000'],
             'tiers.*.express_rate_rm' => ['required', 'integer', 'gte:tiers.*.rate_rm', 'max:10000'],
-            'tiers.*.icon_url' => ['sometimes', 'nullable', 'url:https', 'max:2048'],
+            'tiers.*.icon_url' => ['sometimes', 'nullable', 'url', 'max:2048'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'tiers.*.rate_rm.integer' => 'Whole ringgit only, no sen.',
+            'tiers.*.express_rate_rm.integer' => 'Whole ringgit only, no sen.',
         ];
     }
 }

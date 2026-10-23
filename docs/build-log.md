@@ -1816,3 +1816,55 @@ PR 4 is split like PR 2 (founder, 2026-10-24): **4a** is the backend and its tes
 - **Verified.**
   - `php artisan test`: 3026/3026 (`Adr126JokiAdminTest`, 11 new; `RouteAccessTest` lists the three admin-readable routes).
   - On the dev DB, `notJoki()` keeps all 189 existing orders.
+
+## 2026-10-24 — Joki PR 4b: the admin screens (ADR-126 decisions 16, 23-25)
+
+Stacked on PR 4a (#538).
+
+- **Admin → Joki** (`/admin/joki`, sidebar under Commerce):
+  - **Orders:** `JokiBoard`'s filters (All, Waiting, In progress, Stale, Needs voucher, Done, Failed). Each row shows the climb with the current rank, role and hero, the penjoki, time waited, last activity, SLA left or overdue, and sold price and payout. Assign is inline for Pending rows; other rows open Order Detail. `?filter=` deep-links from the Dashboard card.
+  - **Penjoki:** open orders, owed and group status. Record payment opens the existing `SupplierTransferModal` (its prop narrowed to the six fields it reads). Super admin only, like Accounting.
+  - **Settings** (super admin):
+    - the Joki switch: the first time it is switched on, it creates the joki game and calculator package;
+    - prices and rules;
+    - roles, Express wording and terms (`RichTextEditor`);
+    - the rank model (names, shape, whole-RM rates, icons from the Gallery);
+    - route packages (add, change the price, switch off).
+- **Order Detail Joki card.**
+  - The order detail response gains `joki`: ranks, requests, payout share, `is_with_penjoki`, Assign and progress history, and the rank model for the picker.
+  - For a Pending order, the card has Assign or Move, plus Update progress (penjoki only) through a shared `RankPicker`.
+- **Dashboard Joki card:** waiting, in progress, stale, and failed needing a voucher. Each number links to its board filter, and urgent non-zero numbers are red. The card is hidden while all four are 0, so it doesn't sit empty before launch.
+- **`/orders` Type select** (All / Top-up / Login / Joki). It accepts `?type=` and is part of the export filter.
+- **Brand form:** "Sell Joki on this storefront" (owned brands only), next to Membership. The brand list tags it "joki".
+- **Middleware → Suppliers create form:** an "A penjoki" tick on a pay-after manual supplier sends `joki_role: penjoki`.
+- **Backend touch-ups:**
+  - a tier icon accepts any URL (local Gallery URLs are `http`);
+  - a price with sen is refused with "Whole ringgit only, no sen."
+- **Verified.**
+  - `php artisan test`: 3027/3027. Admin: `tsc`, lint and `npm test` (17) pass, and `next build` succeeds.
+  - Browser check: built admin on `localhost:3000`, against a copy of the dev DB in the scratchpad (seeded with three joki orders and a penjoki; queue `sync`; OpenWA pointed at a dead port). The real dev DB was not touched.
+  - Flows checked:
+    - board, Assign, the Order Detail card and the Penjoki tab;
+    - Record payment modal;
+    - settings save (sen refused, Grading Express saved);
+    - route add;
+    - Dashboard card, and the `/orders` Joki filter (3 rows).
+  - At 390 px wide there is no horizontal page scroll; the table scrolls inside its card.
+  - Fixed during the check: a Failed row read "Waiting" for its penjoki, status tags were lowercase, and order numbers wrapped on mobile.
+
+### 2026-10-24 — PR 4b restyled on `/admin/orders`; board filters (founder)
+
+The founder found the first Joki screens untidy and unlike `/orders`, and asked for `/orders` as the benchmark plus the same filters.
+
+- **Shared components, not copies:**
+  - `StatusText` and the delivery/payment severity maps moved out of `orders/page.tsx` into `components/orders/StatusText.tsx`;
+  - `OptionSelect` moved out of `CreateSupplierModal` into `components/ui/option-select.tsx` (with a placeholder).
+  - Joki uses them with `DataTable`, `Input` and `Label`. No native selects or hand-rolled inputs are left.
+- **Orders tab:**
+  - five summary cards in `OrderSummaryCards`' style (Waiting carries the purple marker; All Joki uses a new `all` count from `/summary`);
+  - search with the underline filter tabs, and a filter row: penjoki, plus the same date presets as `/orders`;
+  - dot status text, and a two-line Climb / Waiting+SLA / Amount;
+  - View on every row, and Assign (in a dialog) on unassigned rows.
+- **Backend:** `/api/joki-admin/orders` takes `search` (order # or email), `supplier_id`, and `date_from`/`date_to`, with the same KL-day bounds on `created_at` as `/orders`. One new test.
+- **Penjoki tab:** in `DataTable`. **Settings:** cards in Order Detail's style, `Input`/`Label`, and the rank model and routes in bordered tables. **Order Detail Joki card:** laid out like `OrderDetailCards`. **Dashboard card:** summary-card style.
+- **Verified:** built admin against a seeded copy of the dev DB, with screenshots next to `/orders`. Assign through the dialog, search `DEMO3` returning 1 row, and no horizontal scroll at 390 px all passed. `tsc`, lint and tests pass.

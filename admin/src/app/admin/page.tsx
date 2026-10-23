@@ -36,6 +36,7 @@ import { HorizontalBarList } from "@/components/reports/HorizontalBarList";
 import { TrendChart } from "@/components/reports/TrendChart";
 import { formatRm, formatRmTick, formatRmValue, formatShortRange, toRm } from "@/components/reports/format";
 import { StatusStrip } from "@/components/dashboard/StatusStrip";
+import { JokiCard } from "@/components/dashboard/JokiCard";
 import { BusyHours } from "@/components/dashboard/BusyHours";
 import { Highlights } from "@/components/dashboard/Highlights";
 
@@ -228,6 +229,8 @@ function Briefing({
       {periodControl}
 
       {health ? <StatusStrip health={health} /> : <Pending error={null} />}
+
+      {health && <JokiCard counts={health.joki} />}
 
       <section aria-label="Key figures" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {s ? (
