@@ -27,6 +27,7 @@ class Game extends Model
         'player_validator_profile_id',
         'player_validator_enabled',
         'member_pricing_enabled',
+        'credential_max_days',
         'seo_title',
         'seo_title_local',
         'seo_description',
@@ -40,6 +41,7 @@ class Game extends Model
 
     protected $casts = [
         'is_active' => 'boolean',
+        'credential_max_days' => 'integer',
         'sort_order' => 'integer',
         'important_notes' => 'array',
         'supplier_mappings' => 'array',

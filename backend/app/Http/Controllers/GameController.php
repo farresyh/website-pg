@@ -7,6 +7,7 @@ use App\Http\Requests\Games\StoreLoginGameRequest;
 use App\Http\Requests\Games\UpdateGameCredentialSchemaRequest;
 use App\Http\Requests\Games\UpdateGameRequest;
 use App\Models\Game;
+use App\Models\OrderCredential;
 use App\Models\Package;
 use App\Models\SupplierProduct;
 use App\Services\Catalog\GameFulfilmentRule;
@@ -148,6 +149,9 @@ class GameController extends Controller
     public function update(UpdateGameRequest $request, Game $game): JsonResponse
     {
         $game->update($request->validated());
+        if ($game->wasChanged('credential_max_days')) {
+            OrderCredential::refreshExpiry($game->id);
+        }
         self::forgetIndexCache();
         // ADR-125 decision 37: the packages listing carries
         // `member_price_sen`, so a member-pricing switch must not wait out

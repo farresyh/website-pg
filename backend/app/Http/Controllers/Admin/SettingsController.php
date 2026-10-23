@@ -15,6 +15,7 @@ use App\Http\Requests\Settings\UpdatePlatformSettingsRequest;
 use App\Models\Affiliate;
 use App\Models\AffiliateBranding;
 use App\Models\AffiliateFooterSettings;
+use App\Models\OrderCredential;
 use App\Models\Package;
 use App\Models\PlatformSettings;
 use App\Models\PriceChangeLog;
@@ -160,6 +161,9 @@ class SettingsController extends Controller
     {
         $settings = PlatformSettings::current();
         $settings->update($request->validated());
+        if ($settings->wasChanged('credential_max_days')) {
+            OrderCredential::refreshExpiry();
+        }
 
         return response()->json($settings);
     }

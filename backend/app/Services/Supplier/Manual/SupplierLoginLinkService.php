@@ -5,7 +5,6 @@ namespace App\Services\Supplier\Manual;
 use App\Models\CredentialReveal;
 use App\Models\Order;
 use App\Models\OrderCredential;
-use App\Models\PlatformSettings;
 use App\Models\SupplierLoginLink;
 use App\Services\Order\DeliveryStatus;
 use Illuminate\Support\Facades\DB;
@@ -18,8 +17,8 @@ use Illuminate\Support\Str;
  *
  * Only the token's SHA-256 is stored. A link works only while its order is
  * still Pending on the same supplier with the same reference, so `.done`,
- * `.gagal` or a retry kills it with no revoke step; the login's wipe and the
- * D-ceiling expiry kill it too.
+ * `.gagal` or a retry kills it with no revoke step; the login's wipe and its
+ * ceiling (`secrets_expire_at`) kill it too.
  */
 final class SupplierLoginLinkService
 {
@@ -44,7 +43,7 @@ final class SupplierLoginLinkService
             'order_id' => $order->id,
             'supplier_id' => $order->supplier_id,
             'reference_number' => $order->reference_number,
-            'expires_at' => now()->addDays(PlatformSettings::current()->credential_max_days),
+            'expires_at' => $credential->secrets_expire_at,
         ]);
 
         return route('supplier-login.show', ['token' => $token]);
