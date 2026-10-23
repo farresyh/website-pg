@@ -215,7 +215,7 @@ class Adr125SupplierGroupPostTest extends TestCase
             ->post("/s/{$token}")->assertStatus(410)->assertDontSee('hunter2-secret');
         OrderCredential::query()->update(['purged_at' => null]);
 
-        app(ManualDeliveryService::class)->confirmDelivered($order->fresh(), null, null, 'Aina Admin');
+        app(ManualDeliveryService::class)->confirmDelivered($order->fresh(), null, null, 'Aina Admin', $this->manual->id);
 
         $this->get("/s/{$token}")->assertNotFound()->assertDontSee($order->order_number);
         $this->get('/s/AAAAAAAAAAAA')->assertNotFound();
@@ -226,7 +226,7 @@ class Adr125SupplierGroupPostTest extends TestCase
     {
         Queue::fake();
         $order = $this->pendingLoginOrder();
-        app(ManualDeliveryService::class)->confirmDelivered($order->fresh(), null, null, 'Aina Admin');
+        app(ManualDeliveryService::class)->confirmDelivered($order->fresh(), null, null, 'Aina Admin', $this->manual->id);
 
         $this->assertNull($this->send($this->posts($order)->sole()));
 
@@ -241,7 +241,7 @@ class Adr125SupplierGroupPostTest extends TestCase
         $order = $this->pendingLoginOrder();
         $oldToken = $this->tokenFrom($this->send($this->posts($order)->sole()));
 
-        app(ManualDeliveryService::class)->confirmFailed($order->fresh(), 'Password salah', 'wa:60123456789', 'supplier_bot');
+        app(ManualDeliveryService::class)->confirmFailed($order->fresh(), 'Password salah', 'wa:60123456789', $this->manual->id, 'supplier_bot');
         $retried = app(OrderFulfillmentService::class)->fulfill($order->fresh());
 
         $this->assertSame(DeliveryStatus::Pending, $retried->delivery_status);
@@ -271,7 +271,7 @@ class Adr125SupplierGroupPostTest extends TestCase
         // A retry whose own post was skipped counts, though its first attempt was sent.
         $posts = $this->posts($posted);
         $posts->first()->update(['status' => CustomerNotification::STATUS_SENT]);
-        app(ManualDeliveryService::class)->confirmFailed($posted->fresh(), 'Password salah', 'wa:60123456789', 'supplier_bot');
+        app(ManualDeliveryService::class)->confirmFailed($posted->fresh(), 'Password salah', 'wa:60123456789', $this->manual->id, 'supplier_bot');
         app(OrderFulfillmentService::class)->fulfill($posted->fresh());
         $this->assertSame(2, $attention()->get('supplier_posts_not_delivered'));
     }

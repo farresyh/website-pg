@@ -22,7 +22,9 @@ use Illuminate\Support\Facades\Log;
  *     - closed at least G hours ago;
  *     - its order is not paid (pending or failed) H hours after creation
  *       (a Paid can land after a Failed, so a failed payment waits too);
- *     - its secrets were stored or last replaced D days ago (the ceiling).
+ *     - its ceiling `secrets_expire_at` has passed (D days, or the game's
+ *       own days, from when the secrets were stored or last replaced;
+ *       ADR-126 2026-10-23 addendum, decision 22).
  *
  * A wipe nulls `secrets` and sets `purged_at` with a plain UPDATE: nothing
  * is decrypted, so a rotated APP_KEY can't stop it. Consent and the
@@ -51,7 +53,7 @@ class WipeOrderCredentialsCommand extends Command
                 ->orWhereHas('order', fn (Builder $o) => $o
                     ->where('payment_status', '!=', PaymentStatus::Paid->value)
                     ->where('created_at', '<=', $now->copy()->subHours($settings->credential_unpaid_hours)))
-                ->orWhere('secrets_set_at', '<=', $now->copy()->subDays($settings->credential_max_days)))
+                ->orWhere('secrets_expire_at', '<=', $now))
             ->update(['secrets' => null, 'purged_at' => $now]);
 
         $this->info("Stamped {$closed} closed, wiped {$wiped} order credential(s).");

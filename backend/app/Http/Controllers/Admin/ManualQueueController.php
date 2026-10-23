@@ -49,6 +49,7 @@ class ManualQueueController extends Controller
             'game' => $order->game?->name,
             'package' => $order->package?->name,
             'supplier' => $order->supplier?->name,
+            'supplier_id' => $order->supplier_id,
             'player_id' => $order->player_id,
             'delivery_status' => $order->delivery_status->value,
             'paid_at' => $order->paid_at?->toISOString(),
@@ -80,12 +81,13 @@ class ManualQueueController extends Controller
             $request->validated('real_cost_sen'),
             $request->validated('reason'),
             $request->user()->name,
+            (int) $request->validated('supplier_id'),
         ));
     }
 
     public function failed(ConfirmManualFailedRequest $request, Order $order): JsonResponse
     {
-        return $this->answer(fn () => $this->manual->confirmFailed($order, $request->validated('reason'), $request->user()->name));
+        return $this->answer(fn () => $this->manual->confirmFailed($order, $request->validated('reason'), $request->user()->name, (int) $request->validated('supplier_id')));
     }
 
     public function correctToDelivered(ConfirmManualDeliveredRequest $request, Order $order): JsonResponse

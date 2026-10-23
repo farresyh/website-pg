@@ -123,7 +123,7 @@ class WipeOrderCredentialsCommandTest extends TestCase
 
         // A super_admin replaced it on day 15: the order is still open.
         OrderCredential::query()->whereKey($credential->id)->update(['purged_at' => null]);
-        $credential->fresh()->forceFill(['secrets' => ['password' => 'hunter2-secret'], 'secrets_set_at' => now()])->save();
+        $credential->fresh()->forceFill(['secrets' => ['password' => 'hunter2-secret'], 'secrets_set_at' => now(), 'secrets_expire_at' => OrderCredential::expiryFor($order, now())])->save();
 
         $this->travel(1)->hours();
         $this->sweep();

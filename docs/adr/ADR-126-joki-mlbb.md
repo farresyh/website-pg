@@ -117,3 +117,10 @@
   4. admin;
   5. the `/joki` page.
 - Before launch, a local data test of every joki path (paid this month and delivered next month, failed, reassigned, retried) against the Monthly Summary, month close, Reports, Dashboard and the exports.
+
+### 2026-10-23 addendum — PR 1 build notes (decisions 17, 18, 20, 22)
+
+- **Decision 18:** the re-check lives inside `finalizePendingDelivery()`'s own lock (optional `expectedSupplierId`), not in an outer transaction, so a contradicting result's evidence still commits before the refusal. The admin's Delivered/Failed send the supplier shown on screen, so a reassignment between page load and click is refused too.
+- **Decision 20:** "written by the group post" means the moment the post is sent (`SupplierGroupNotifier::prepare()`), not when it is queued. A post skipped for having no group starts no clock.
+- **Decision 22:** changing D or a game's days recomputes the ceiling of every unwiped login it governs. Before this decision, the sweep read D live, so a lower D applied at once, and the stored column keeps that behaviour. A wiped login is left as it is.
+

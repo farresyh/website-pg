@@ -64,8 +64,8 @@ final class SupplierBotService
 
     private function done(Supplier $supplier, string $orderNumber, string $confirmedBy): string
     {
-        return $this->confirm($supplier, $orderNumber, function (Order $order) use ($confirmedBy) {
-            $this->manual->confirmDelivered($order, null, null, $confirmedBy, self::CHANNEL);
+        return $this->confirm($supplier, $orderNumber, function (Order $order) use ($supplier, $confirmedBy) {
+            $this->manual->confirmDelivered($order, null, null, $confirmedBy, $supplier->id, self::CHANNEL);
 
             return "✅ {$order->order_number} ditanda SELESAI. Terima kasih.";
         });
@@ -77,8 +77,8 @@ final class SupplierBotService
             return "Sila beri sebab. Contoh: .gagal {$orderNumber} password salah";
         }
 
-        return $this->confirm($supplier, $orderNumber, function (Order $order) use ($reason, $confirmedBy) {
-            $this->manual->confirmFailed($order, mb_substr($reason, 0, 255), $confirmedBy, self::CHANNEL);
+        return $this->confirm($supplier, $orderNumber, function (Order $order) use ($supplier, $reason, $confirmedBy) {
+            $this->manual->confirmFailed($order, mb_substr($reason, 0, 255), $confirmedBy, $supplier->id, self::CHANNEL);
 
             return "❌ {$order->order_number} ditanda GAGAL. Admin akan uruskan.";
         });
@@ -128,7 +128,7 @@ final class SupplierBotService
             ->where('supplier_id', $supplier->id)
             ->where('delivery_status', DeliveryStatus::Pending->value)
             ->where('is_test', false)
-            ->oldest('updated_at')
+            ->orderByRaw('COALESCE(manual_activity_at, updated_at)')
             ->limit(self::PENDING_LIST_LIMIT)
             ->get();
 
@@ -137,7 +137,7 @@ final class SupplierBotService
         }
 
         return "*Order menunggu ({$orders->count()})*\n".$orders
-            ->map(fn (Order $o) => "• {$o->order_number} · {$o->game?->name} · {$o->package?->name} · ".(int) $o->updated_at->diffInMinutes(now()).' min')
+            ->map(fn (Order $o) => "• {$o->order_number} · {$o->game?->name} · {$o->package?->name} · ".(int) $o->pendingClock()->diffInMinutes(now()).' min')
             ->implode("\n");
     }
 

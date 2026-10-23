@@ -50,13 +50,15 @@ final class OrderFactory
         return DB::transaction(function () use ($draft) {
             $order = $this->insert($draft);
             $credentials = $draft->credentials;
+            $now = now();
 
             OrderCredential::query()->create([
                 'order_id' => $order->id,
                 'fields' => $credentials->fields,
                 'secret_fields' => $credentials->secretFields,
                 'secrets' => $credentials->secrets,
-                'secrets_set_at' => now(),
+                'secrets_set_at' => $now,
+                'secrets_expire_at' => OrderCredential::expiryFor($order, $now),
                 'consented_at' => now(),
                 'consent_text' => $credentials->consentText,
             ]);

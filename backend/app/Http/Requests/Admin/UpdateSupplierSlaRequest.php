@@ -15,7 +15,7 @@ class UpdateSupplierSlaRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'reply_sla_minutes' => ['required', 'integer', 'min:5', 'max:1440'],
+            'reply_sla_minutes' => ['required', 'integer', 'min:5', 'max:4320'],
         ];
     }
 }

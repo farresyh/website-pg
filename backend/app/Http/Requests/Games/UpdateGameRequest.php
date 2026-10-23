@@ -38,6 +38,9 @@ use Illuminate\Validation\Validator;
  * catalog-display, same side of the split as everything else in this
  * FormRequest.
  *
+ * `credential_max_days`: ADR-126 2026-10-23 addendum, decision 22 — a
+ * login game's own wipe ceiling; a change moves its unwiped logins.
+ *
  * `member_pricing_enabled`: ADR-125 decision 7. A login game is held to
  * GameFulfilmentRule::loginGameSettings() (decisions 5/33/46).
  */
@@ -79,6 +82,8 @@ class UpdateGameRequest extends FormRequest
             'player_validator_profile_id' => ['nullable', 'integer', Rule::exists('player_validator_profiles', 'id')],
             'player_validator_enabled' => ['sometimes', 'boolean'],
             'member_pricing_enabled' => ['sometimes', 'boolean'],
+            // ADR-126 decision 22: keep a login at most this many days; blank = the policy's D. Same bounds as D.
+            'credential_max_days' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:90'],
         ];
     }
 

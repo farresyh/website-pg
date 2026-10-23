@@ -35,6 +35,8 @@ test("login top-up: create game -> checkout with login -> Manual Queue -> delive
 
   await page.getByRole("button", { name: "Edit Game" }).click();
   await page.getByRole("checkbox", { name: /Active \(visible to customers/ }).check();
+  // ADR-126 decision 22: this game keeps a login 30 days, not the policy's 14.
+  await page.locator("#game_credential_max_days").fill("30");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText(/— Active —/)).toBeVisible();
 
@@ -100,6 +102,9 @@ test("login top-up: create game -> checkout with login -> Manual Queue -> delive
   expect(delivered.delivery_status).toBe("delivered");
   expect(delivered.real_cost_price_sen).toBe(4000);
   expect(delivered.resend_attempts.some((a: { attempt_type: string; triggered_by: string }) => a.attempt_type === "manual_confirm")).toBe(true);
+  const login = delivered.customer_login;
+  const keptDays = (Date.parse(login.secrets_expire_at) - Date.parse(login.secrets_set_at)) / 86_400_000;
+  expect(keptDays).toBe(30);
 
   // 5. Customer status page: masked login, password-change line.
   await page.goto(`${STOREFRONT_URL}/order/status/${encodeURIComponent(orderNumber)}`);
