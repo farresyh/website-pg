@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Checkout;
 
+use App\Http\Requests\Joki\JokiSelectionRules;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -41,6 +42,7 @@ class PreviewCheckoutTotalRequest extends FormRequest
             'voucher_code' => ['nullable', 'string', 'max:32'],
             'customer_email' => ['nullable', 'required_with:voucher_code', 'email', 'max:255'],
             'customer_phone' => ['nullable', 'string', 'max:32'],
+            ...JokiSelectionRules::rules(),
         ];
     }
 }

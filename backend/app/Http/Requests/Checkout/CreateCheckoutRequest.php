@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Checkout;
 
+use App\Http\Requests\Joki\JokiSelectionRules;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -105,6 +106,9 @@ class CreateCheckoutRequest extends FormRequest
             ],
             'idempotency_key' => ['required', 'string', 'min:8', 'max:100'],
             'voucher_code' => ['nullable', 'string', 'max:32'],
+            // ADR-126: a joki order's ranks and requests; CheckoutController
+            // requires it on the joki game and refuses it on any other.
+            ...JokiSelectionRules::rules(),
         ];
     }
 }

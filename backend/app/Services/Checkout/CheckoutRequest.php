@@ -2,6 +2,7 @@
 
 namespace App\Services\Checkout;
 
+use App\Services\Joki\JokiPurchase;
 use App\Services\Pricing\PaymentMethodFeeConfig;
 
 /**
@@ -49,5 +50,8 @@ final class CheckoutRequest
         // member price, no quota) while `membershipId` still binds the
         // order to the member's email (ADR-068 decision 16).
         public readonly bool $memberPricingApplies = true,
+        // ADR-126: a joki order's purchase. Its Fixed pricing replaces the
+        // storefront chain; the cost/markup fields above are not read.
+        public readonly ?JokiPurchase $joki = null,
     ) {}
 }
