@@ -2,33 +2,33 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import RichTextEditor from "@/components/ui/RichTextEditor";
+import { StatusText } from "@/components/orders/StatusText";
 import { ApiError } from "@/lib/api-client";
 import { getJokiSettings, updateJokiSettings, type JokiSettings, type JokiSettingsResponse } from "@/lib/joki";
-import { JOKI_INPUT } from "@/components/joki/RankPicker";
 import { JokiRankModelEditor } from "@/components/joki/JokiRankModelEditor";
 import { JokiRoutesEditor } from "@/components/joki/JokiRoutesEditor";
-
-const LABEL = "mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300";
-const CARD = "rounded-2xl border border-gray-200 bg-surface p-6 dark:border-gray-800";
+import { JOKI_CARD, JOKI_CARD_HINT, JOKI_CARD_TITLE, JOKI_ERROR, JOKI_NOTICE } from "@/components/joki/jokiStyles";
 
 type NumberKey = "payout_share_pct" | "min_stars" | "grading_price_rm" | "grading_express_price_rm" | "grading_lands_at_stars" | "max_mythic_stars" | "progress_message_interval_minutes";
 
 const NUMBER_FIELDS: { key: NumberKey; label: string; hint: string; step?: string }[] = [
-  { key: "payout_share_pct", label: "Payout share (%)", hint: "Of the customer price, paid to the penjoki. Fixed on each order at checkout.", step: "0.01" },
-  { key: "min_stars", label: "Minimum stars", hint: "A smaller climb is refused unless it includes Grading." },
-  { key: "grading_price_rm", label: "Mythic Grading (RM)", hint: "Flat price; guarantees the star below." },
+  { key: "grading_price_rm", label: "Mythic Grading (RM)", hint: "Flat price. Guarantees the star below." },
   { key: "grading_express_price_rm", label: "Mythic Grading Express (RM)", hint: "Not below Grading." },
-  { key: "grading_lands_at_stars", label: "Grading lands at (Mythic ★)", hint: "If grading lands lower, the penjoki plays on to here at no charge." },
+  { key: "grading_lands_at_stars", label: "Grading lands at (Mythic ★)", hint: "If grading lands lower, the penjoki plays on at no charge." },
+  { key: "min_stars", label: "Minimum stars", hint: "A smaller climb is refused unless it includes Grading." },
   { key: "max_mythic_stars", label: "Mythic star cap", hint: "The highest target a customer can pick." },
-  { key: "progress_message_interval_minutes", label: "Progress WhatsApp interval (min)", hint: "At most one progress message per this many minutes." },
+  { key: "payout_share_pct", label: "Payout share (%)", hint: "Of the customer price, to the penjoki. Fixed on each order at checkout.", step: "0.01" },
+  { key: "progress_message_interval_minutes", label: "Progress WhatsApp interval (minutes)", hint: "At most one progress message per this many minutes." },
 ];
 
 /**
  * ADR-126 decisions 1, 3-7, 23: joki's panel settings (super admin). Prices
  * are whole ringgit; the backend refuses sen. Switching Joki on the first
  * time sets up the joki game and calculator package. Switching it off
- * stops new sales only — paid orders carry on. A brand also needs its own
+ * stops new sales only; paid orders carry on. A brand also needs its own
  * "Sell Joki" (Affiliates); the home banner is a Hero Slide linking to /joki.
  */
 export function JokiSettingsTab() {
@@ -69,22 +69,27 @@ export function JokiSettingsTab() {
     }
   }
 
-  if (!data || !form) return error ? <p className="text-sm text-error-600 dark:text-error-400">{error}</p> : <p className="text-sm text-ink-muted">Loading…</p>;
+  if (!data || !form) {
+    return error ? <p className={JOKI_ERROR}>{error}</p> : <p className="p-6 text-center text-sm text-ink-muted">Loading…</p>;
+  }
 
   const { settings } = data;
 
   return (
     <div className="space-y-6">
-      {error && <p className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>}
-      {notice && <p className="rounded-lg bg-success-50 px-4 py-3 text-sm text-success-600 dark:bg-success-500/15 dark:text-success-400">{notice}</p>}
+      {error && <p className={JOKI_ERROR}>{error}</p>}
+      {notice && <p className={JOKI_NOTICE}>{notice}</p>}
 
-      <section className={CARD}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <section className={JOKI_CARD}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-section-title font-semibold text-ink">Joki is {settings.is_enabled ? "on" : "off"}</h2>
-            <p className="mt-1 text-theme-xs text-ink-muted">
+            <div className="flex items-center gap-3">
+              <h2 className={JOKI_CARD_TITLE}>Joki sales</h2>
+              <StatusText severity={settings.is_enabled ? "success" : "secondary"}>{settings.is_enabled ? "on" : "off"}</StatusText>
+            </div>
+            <p className={JOKI_CARD_HINT}>
               {settings.is_enabled
-                ? "Owned brands with \"Sell Joki\" ticked sell it. Turning it off stops new sales; paid orders carry on."
+                ? "Owned brands with \"Sell Joki\" ticked (Affiliates) sell it. Turning it off stops new sales; paid orders carry on."
                 : data.is_set_up
                   ? "Not sold anywhere. Paid orders still carry on."
                   : "Not set up yet. Turning it on creates the joki game and its calculator."}
@@ -102,40 +107,44 @@ export function JokiSettingsTab() {
         </div>
       </section>
 
-      <section className={CARD}>
-        <h2 className="mb-4 text-section-title font-semibold text-ink">Prices and rules</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
+      <section className={JOKI_CARD}>
+        <h2 className={JOKI_CARD_TITLE}>Prices and rules</h2>
+        <p className={JOKI_CARD_HINT}>Whole ringgit only. Each order keeps the prices and share it was sold with.</p>
+        <div className="mt-5 grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
           {NUMBER_FIELDS.map(({ key, label, hint, step }) => (
             <div key={key}>
-              <label htmlFor={`joki-${key}`} className={LABEL}>{label}</label>
-              <input
+              <Label htmlFor={`joki-${key}`}>{label}</Label>
+              <Input
                 id={`joki-${key}`}
                 type="number"
                 min={0}
                 step={step ?? "1"}
-                className={`${JOKI_INPUT} w-full`}
-                value={form[key]}
+                value={String(form[key])}
                 onChange={(e) => setForm({ ...form, [key]: e.target.value === "" ? 0 : Number(e.target.value) })}
               />
-              <p className="mt-1 text-theme-xs text-ink-subtle">{hint}</p>
+              <p className="mt-1.5 text-theme-xs text-ink-muted">{hint}</p>
             </div>
           ))}
-          <div className="sm:col-span-2">
-            <label htmlFor="joki-roles" className={LABEL}>Roles (comma separated)</label>
-            <input id="joki-roles" className={`${JOKI_INPUT} w-full`} value={roles} onChange={(e) => setRoles(e.target.value)} />
+        </div>
+
+        <div className="mt-6 grid gap-5 border-t border-gray-100 pt-6 dark:border-gray-800">
+          <div>
+            <Label htmlFor="joki-roles">Roles</Label>
+            <Input id="joki-roles" value={roles} onChange={(e) => setRoles(e.target.value)} />
+            <p className="mt-1.5 text-theme-xs text-ink-muted">Comma separated. The customer picks one.</p>
           </div>
-          <div className="sm:col-span-2">
-            <label htmlFor="joki-express" className={LABEL}>Express description</label>
-            <input id="joki-express" className={`${JOKI_INPUT} w-full`} maxLength={500} value={form.express_description ?? ""} onChange={(e) => setForm({ ...form, express_description: e.target.value })} />
+          <div>
+            <Label htmlFor="joki-express">Express description</Label>
+            <Input id="joki-express" maxLength={500} value={form.express_description ?? ""} onChange={(e) => setForm({ ...form, express_description: e.target.value })} />
           </div>
-          <div className="sm:col-span-2">
-            <span className={LABEL}>Terms</span>
+          <div>
+            <Label>Terms</Label>
             <RichTextEditor value={form.terms_html ?? ""} onChange={(html) => setForm({ ...form, terms_html: html })} />
           </div>
         </div>
-        <div className="mt-4 flex justify-end">
+
+        <div className="mt-6 flex justify-end">
           <Button
-            size="small"
             disabled={saving}
             onClick={() =>
               save(
@@ -149,7 +158,7 @@ export function JokiSettingsTab() {
               )
             }
           >
-            Save
+            {saving ? "Saving…" : "Save settings"}
           </Button>
         </div>
       </section>

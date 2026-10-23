@@ -2,10 +2,13 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Tag } from "@/components/ui/tag";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { StatusText } from "@/components/orders/StatusText";
 import { ApiError } from "@/lib/api-client";
 import { createJokiRoute, updateJokiRoute, type JokiRank, type JokiRouteRow, type JokiTier } from "@/lib/joki";
-import { JOKI_INPUT, RankPicker } from "@/components/joki/RankPicker";
+import { RankPicker } from "@/components/joki/RankPicker";
+import { JOKI_CARD, JOKI_CARD_HINT, JOKI_CARD_TITLE, JOKI_ERROR, JOKI_TD, JOKI_TH } from "@/components/joki/jokiStyles";
 
 /**
  * ADR-126 decision 5: route packages — a founder-set promo price for one
@@ -48,59 +51,89 @@ export function JokiRoutesEditor({ tiers, routes, onSaved }: { tiers: JokiTier[]
   }
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-surface p-6 dark:border-gray-800">
-      <h2 className="mb-1 text-section-title font-semibold text-ink">Route packages</h2>
-      <p className="mb-4 text-theme-xs text-ink-muted">Promo prices for a fixed climb, independent of the calculator, which points customers to a cheaper route for the same climb.</p>
+    <section className={JOKI_CARD}>
+      <h2 className={JOKI_CARD_TITLE}>Route packages</h2>
+      <p className={JOKI_CARD_HINT}>Promo prices for a fixed climb, separate from the calculator. The calculator points customers to a cheaper route for the same climb.</p>
 
-      <ul className="mb-6 divide-y divide-gray-100 dark:divide-gray-800">
-        {routes.length === 0 && <li className="py-2 text-sm text-ink-muted">No routes yet.</li>}
-        {routes.map((r) => (
-          <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-theme-sm">
-            <div>
-              <p className="font-medium text-ink">{r.name} {!r.is_active && <Tag severity="secondary">Off</Tag>} {r.is_quotation && <Tag severity="info">Quotation</Tag>}</p>
-              <p className="text-theme-xs text-ink-muted">{r.from.label} → {r.to.label}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {!r.is_quotation && (
-                <>
-                  <span className="text-theme-xs text-ink-muted">RM</span>
-                  <input
-                    aria-label={`${r.name} price`}
-                    type="number"
-                    min={1}
-                    step={1}
-                    className={`${JOKI_INPUT} w-24`}
-                    value={prices[r.id] ?? String(r.price_rm ?? "")}
-                    onChange={(e) => setPrices({ ...prices, [r.id]: e.target.value })}
-                  />
-                  <Button size="small" variant="outlined" disabled={busy || prices[r.id] === undefined} onClick={() => run(() => updateJokiRoute(r.id, { price_rm: Number(prices[r.id]) }))}>Save price</Button>
-                </>
+      <div className="mt-5 overflow-hidden rounded-xl border border-gray-100 dark:border-gray-800">
+        <div className="max-w-full overflow-x-auto">
+          <table className="min-w-full">
+            <thead className="border-b border-gray-100 dark:border-gray-800">
+              <tr>
+                <th className={JOKI_TH}>Route</th>
+                <th className={JOKI_TH}>Climb</th>
+                <th className={JOKI_TH}>Price (RM)</th>
+                <th className={JOKI_TH}>Status</th>
+                <th className={JOKI_TH}>Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              {routes.length === 0 && (
+                <tr><td colSpan={5} className="p-6 text-center text-sm text-ink-muted">No route packages yet.</td></tr>
               )}
-              <Button size="small" variant="outlined" disabled={busy} onClick={() => run(() => updateJokiRoute(r.id, { is_active: !r.is_active }))}>
-                {r.is_active ? "Switch off" : "Switch on"}
-              </Button>
-            </div>
-          </li>
-        ))}
-      </ul>
-
-      <div className="space-y-3 rounded-xl border border-dashed border-gray-200 p-4 dark:border-gray-800">
-        <p className="text-theme-sm font-medium text-ink">Add a route</p>
-        <input aria-label="Route name" placeholder="e.g. Epic V → Mythic" className={`${JOKI_INPUT} w-full`} value={name} onChange={(e) => setName(e.target.value)} />
-        <div className="flex flex-wrap items-center gap-2 text-theme-sm text-ink-muted">From <RankPicker idPrefix="route-from" tiers={tiers} value={from} onChange={setFrom} allowGrading /></div>
-        <div className="flex flex-wrap items-center gap-2 text-theme-sm text-ink-muted">To <RankPicker idPrefix="route-to" tiers={tiers} value={to} onChange={(r) => setTo({ ...r, stars: r.stars ?? 0 })} /></div>
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-theme-sm text-ink-muted">
-            <input type="checkbox" checked={isQuotation} onChange={(e) => setIsQuotation(e.target.checked)} /> Quotation (no price)
-          </label>
-          {!isQuotation && (
-            <span className="flex items-center gap-2 text-theme-sm text-ink-muted">
-              RM <input aria-label="Route price" type="number" min={1} step={1} className={`${JOKI_INPUT} w-24`} value={price} onChange={(e) => setPrice(e.target.value)} />
-            </span>
-          )}
-          <Button size="small" onClick={add} disabled={busy || !name.trim() || (!isQuotation && !price)}>Add route</Button>
+              {routes.map((r) => (
+                <tr key={r.id}>
+                  <td className={`${JOKI_TD} font-medium text-ink`}>{r.name}</td>
+                  <td className={`${JOKI_TD} whitespace-nowrap`}>{r.from.label} → {r.to.label}</td>
+                  <td className={JOKI_TD}>
+                    {r.is_quotation ? (
+                      <span>Quotation</span>
+                    ) : (
+                      <div className="w-24">
+                        <Input aria-label={`${r.name} price`} type="number" min={1} step={1} value={prices[r.id] ?? String(r.price_rm ?? "")} onChange={(e) => setPrices({ ...prices, [r.id]: e.target.value })} />
+                      </div>
+                    )}
+                  </td>
+                  <td className={JOKI_TD}><StatusText severity={r.is_active ? "success" : "secondary"}>{r.is_active ? "on sale" : "off"}</StatusText></td>
+                  <td className={JOKI_TD}>
+                    <div className="flex gap-2">
+                      {!r.is_quotation && prices[r.id] !== undefined && (
+                        <Button size="small" disabled={busy} onClick={() => run(() => updateJokiRoute(r.id, { price_rm: Number(prices[r.id]) }))}>Save price</Button>
+                      )}
+                      <Button size="small" variant="outlined" disabled={busy} onClick={() => run(() => updateJokiRoute(r.id, { is_active: !r.is_active }))}>
+                        {r.is_active ? "Switch off" : "Switch on"}
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        {error && <p className="text-sm text-error-600 dark:text-error-400">{error}</p>}
+      </div>
+
+      <div className="mt-6 border-t border-gray-100 pt-6 dark:border-gray-800">
+        <h3 className="mb-4 text-sm font-semibold text-ink">Add a route package</h3>
+        <div className="grid gap-5">
+          <div>
+            <Label htmlFor="route-name">Name</Label>
+            <Input id="route-name" placeholder="e.g. Epic V → Mythic" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="grid gap-5 lg:grid-cols-2">
+            <div>
+              <Label htmlFor="route-from-tier">From</Label>
+              <RankPicker idPrefix="route-from" tiers={tiers} value={from} onChange={setFrom} allowGrading />
+            </div>
+            <div>
+              <Label htmlFor="route-to-tier">To</Label>
+              <RankPicker idPrefix="route-to" tiers={tiers} value={to} onChange={(r) => setTo({ ...r, stars: r.stars ?? 0 })} />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-end gap-5">
+            <div className="w-40">
+              <Label htmlFor="route-price">Price (RM)</Label>
+              <Input id="route-price" type="number" min={1} step={1} disabled={isQuotation} value={price} onChange={(e) => setPrice(e.target.value)} />
+            </div>
+            <label className="flex h-11 items-center gap-2 text-sm text-ink-muted">
+              <input type="checkbox" checked={isQuotation} onChange={(e) => setIsQuotation(e.target.checked)} />
+              Quotation (no price, the customer asks on WhatsApp)
+            </label>
+          </div>
+        </div>
+        {error && <p className={`mt-4 ${JOKI_ERROR}`}>{error}</p>}
+        <div className="mt-6 flex justify-end">
+          <Button onClick={add} disabled={busy || !name.trim() || (!isQuotation && !price)}>Add route package</Button>
+        </div>
       </div>
     </section>
   );

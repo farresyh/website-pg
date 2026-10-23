@@ -19,22 +19,28 @@ export function JokiCard({ counts }: { counts: JokiCounts }) {
   if (ITEMS.every(({ key }) => counts[key] === 0)) return null;
 
   return (
-    <section aria-label="Joki" className="rounded-2xl border border-gray-200 bg-surface p-4 dark:border-gray-800">
+    <section aria-label="Joki" className="rounded-2xl border border-gray-200 bg-surface p-5 dark:border-gray-800">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-theme-sm font-semibold text-ink">Joki</h2>
-        <Link href="/admin/joki" className="text-theme-xs text-cyan-ink hover:underline">Open Joki</Link>
+        <h2 className="text-section-title font-semibold text-ink">Joki</h2>
+        <Link href="/admin/joki" className="text-theme-xs font-medium text-cyan-ink hover:underline">Open Joki →</Link>
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {ITEMS.map(({ key, label, urgent }) => (
-          <Link
-            key={key}
-            href={`/admin/joki?filter=${key}`}
-            className="rounded-xl border border-gray-200 p-3 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-white/[0.03]"
-          >
-            <p className={`text-xl font-semibold ${urgent && counts[key] > 0 ? "text-error-600 dark:text-error-400" : "text-ink"}`}>{counts[key]}</p>
-            <p className="text-theme-xs text-ink-muted">{label}</p>
-          </Link>
-        ))}
+        {ITEMS.map(({ key, label, urgent }) => {
+          const hot = urgent && counts[key] > 0;
+          return (
+            <Link
+              key={key}
+              href={`/admin/joki?filter=${key}`}
+              className={`relative rounded-2xl border p-4 transition-colors ${
+                hot ? "border-purple-200 bg-purple-50" : "border-gray-200 bg-surface hover:border-gray-300 dark:border-gray-800 dark:hover:border-gray-700"
+              }`}
+            >
+              {hot && <span aria-hidden="true" className="absolute right-4 top-4 h-2 w-2 rounded-full bg-purple-600" />}
+              <p className={`text-overline font-medium uppercase tracking-wide ${hot ? "text-purple-ink" : "text-ink-muted"}`}>{label}</p>
+              <p className={`mt-1 text-metric-lg font-semibold ${hot ? "text-purple-ink" : "text-ink"}`}>{counts[key]}</p>
+            </Link>
+          );
+        })}
       </div>
     </section>
   );

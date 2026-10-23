@@ -13,18 +13,8 @@ import {
   DialogContent,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectIndicator,
-  SelectPortal,
-  SelectPositioner,
-  SelectPopup,
-  SelectList,
-  SelectOption,
-} from "@/components/ui/select";
 import type { CreateSupplierValues } from "@/lib/suppliers";
+import { OptionSelect } from "@/components/ui/option-select";
 
 /**
  * ADR-046 decision 4 + ADR-125 decision 1 — `availableDrivers` comes from
@@ -51,30 +41,6 @@ function driverLabel(driver: string): string {
 
 function slugify(value: string): string {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
-
-function OptionSelect({ id, value, options, onChange }: { id: string; value: string; options: { label: string; value: string }[]; onChange: (v: string) => void }) {
-  return (
-    <Select value={value} options={options} optionLabel="label" optionValue="value" onValueChange={(e) => onChange(e.value as string)}>
-      <SelectTrigger id={id}>
-        <SelectValue />
-        <SelectIndicator />
-      </SelectTrigger>
-      <SelectPortal>
-        <SelectPositioner>
-          <SelectPopup>
-            <SelectList>
-              {options.map((option, index) => (
-                <SelectOption key={option.value} index={index}>
-                  {option.label}
-                </SelectOption>
-              ))}
-            </SelectList>
-          </SelectPopup>
-        </SelectPositioner>
-      </SelectPortal>
-    </Select>
-  );
 }
 
 function CreateSupplierFields({ onClose, onSubmit, availableDrivers }: Omit<CreateSupplierModalProps, "isOpen">) {

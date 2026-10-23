@@ -121,15 +121,29 @@ export interface JokiOrderDetail {
   tiers: Pick<JokiTier, "id" | "name" | "kind" | "divisions" | "stars_per_division" | "mythic_from_stars">[];
 }
 
-export function listJokiOrders(filter: JokiFilter | "all", page = 1) {
+export interface JokiBoardFilters {
+  filter: JokiFilter | "all";
+  page: number;
+  search?: string;
+  supplierId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+/** The board plus the same search / date bounds as /orders, and a penjoki. */
+export function listJokiOrders({ filter, page, search, supplierId, dateFrom, dateTo }: JokiBoardFilters) {
   const query = new URLSearchParams({ page: String(page) });
   if (filter !== "all") query.set("filter", filter);
+  if (search) query.set("search", search);
+  if (supplierId) query.set("supplier_id", String(supplierId));
+  if (dateFrom) query.set("date_from", dateFrom);
+  if (dateTo) query.set("date_to", dateTo);
 
   return apiFetch<JokiBoardPage>(`/api/joki-admin/orders?${query}`);
 }
 
 export function getJokiCounts() {
-  return apiFetch<JokiCounts>("/api/joki-admin/summary");
+  return apiFetch<JokiCounts & { all: number }>("/api/joki-admin/summary");
 }
 
 export function listPenjoki() {

@@ -21,7 +21,7 @@
  * a later pass.
  */
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   DataTable,
@@ -83,6 +83,7 @@ import NeedsReviewBanner from "@/components/orders/NeedsReviewBanner";
 import RefundInformationCards from "@/components/orders/RefundInformationCards";
 import OrderDetailCards from "@/components/orders/OrderDetailCards";
 import CustomerLoginCard from "@/components/orders/CustomerLoginCard";
+import { StatusText, deliveryStatusSeverity, paymentStatusSeverity } from "@/components/orders/StatusText";
 import { JokiOrderCard } from "@/components/joki/JokiOrderCard";
 import OrderSummaryCards from "@/components/orders/OrderSummaryCards";
 import DeliveryLogsTable from "@/components/orders/DeliveryLogsTable";
@@ -158,28 +159,6 @@ function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
 }
 
-const paymentStatusSeverity: Record<OrderListItem["payment_status"], "warn" | "success" | "danger"> = {
-  pending: "warn",
-  paid: "success",
-  failed: "danger",
-};
-
-const deliveryStatusSeverity: Record<OrderListItem["delivery_status"], "secondary" | "warn" | "success" | "danger" | "info" | "review"> = {
-  not_started: "secondary",
-  processing: "warn",
-  delivered: "success",
-  failed: "danger",
-  // ADR-104 decision 3: the artifact's own distinct "review" token, not
-  // "warn" — closes the exact ADR-032 gap the comment below already
-  // flagged (needs_review and processing used to share one color).
-  needs_review: "review",
-  // ADR-032 — a distinct color from "processing" so an admin can tell
-  // at a glance this is waiting on an async supplier, not a normal
-  // in-flight delivery attempt.
-  pending: "info",
-  // ADR-094 decision 28 — final, but needs compensating for its undelivered part.
-  partially_delivered: "warn",
-};
 
 /**
  * ADR-108 decision 2 — at most one compensation Tag per row now,
@@ -199,32 +178,6 @@ function primaryCompensationTag(
   if (order.has_compensation_voucher) return { label: "Voucher Issued", severity: "warn" };
   if (order.has_used_voucher) return { label: "Voucher Paid", severity: "secondary" };
   return null;
-}
-
-// ADR-104: payment/delivery status specifically render as a dot + plain
-// text (no pill background), matching the artifact's own OrderDetailFailed/
-// OrdersPage mockups — every other Tag usage on this page (compensation
-// badges, pricing-basis badges, combo-leg/outcome tags) keeps the shared
-// `Tag` component's pill styling untouched. Same severity values already
-// computed above, just a different renderer — no status/label/data change.
-const STATUS_TEXT_COLOR: Record<string, string> = {
-  default: "text-cyan-ink",
-  secondary: "text-neutral-ink",
-  info: "text-info-ink",
-  success: "text-success-ink",
-  warn: "text-warning-ink",
-  danger: "text-danger-ink",
-  review: "text-review-ink",
-};
-
-function StatusText({ severity, children }: { severity: string; children: ReactNode }) {
-  const color = STATUS_TEXT_COLOR[severity] ?? "text-ink-muted";
-  return (
-    <span className={`inline-flex items-center gap-1.5 text-sm font-medium ${color}`}>
-      <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
-      {children}
-    </span>
-  );
 }
 
 export default function OrdersPage() {

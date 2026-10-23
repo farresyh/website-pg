@@ -115,6 +115,7 @@ class Adr126JokiAdminTest extends TestCase
         $this->assertSame([$done->order_number], $this->numbers('/api/joki-admin/orders?filter=done'));
         $this->assertSame([$failed->order_number], $this->numbers('/api/joki-admin/orders?filter=failed'));
         $this->assertCount(4, $this->numbers('/api/joki-admin/orders'));
+        $this->assertSame(['waiting' => 1, 'in_progress' => 1, 'stale' => 0, 'needs_voucher' => 1, 'all' => 4], $this->getJson('/api/joki-admin/summary')->json());
 
         $row = collect($this->getJson('/api/joki-admin/orders?filter=in_progress')->json('data'))->first();
         $this->assertSame('Penjoki amir', $row['penjoki']);
@@ -281,5 +282,21 @@ class Adr126JokiAdminTest extends TestCase
 
         $topup = $this->paidOrder(['order_number' => 'PG-TOPUP1']);
         $this->assertNull($this->getJson("/api/orders/{$topup->id}")->assertOk()->json('joki'));
+    }
+
+    public function test_the_board_filters_by_search_penjoki_and_date_like_orders(): void
+    {
+        $this->actAs('admin');
+        $amir = $this->penjoki('amir');
+        $mine = app(JokiAssignmentService::class)->assign($this->pendingJokiOrder(['customer_email' => 'siti@example.com']), $amir->id, 'Aina');
+        $other = $this->pendingJokiOrder();
+        $other->forceFill(['created_at' => now()->subDays(10)])->save();
+
+        $this->assertSame([$mine->order_number], $this->numbers('/api/joki-admin/orders?search=siti@'));
+        $this->assertSame([$mine->order_number], $this->numbers("/api/joki-admin/orders?search={$mine->order_number}"));
+        $this->assertSame([$mine->order_number], $this->numbers("/api/joki-admin/orders?supplier_id={$amir->id}"));
+        $today = now()->setTimezone('Asia/Kuala_Lumpur')->toDateString();
+        $this->assertSame([$mine->order_number], $this->numbers("/api/joki-admin/orders?date_from={$today}&date_to={$today}"));
+        $this->getJson('/api/joki-admin/orders?date_from=24-10-2026')->assertJsonValidationErrors('date_from');
     }
 }
