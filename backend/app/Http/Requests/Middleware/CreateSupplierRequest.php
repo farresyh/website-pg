@@ -13,7 +13,7 @@ use Illuminate\Validation\Rule;
  * its driver — the webhook, replay rule and config lookups are keyed on
  * it — so it is set here, never typed. Only a manual supplier names its
  * own slug, and it is always MYR (decision 9) with a funding mode
- * (decision 18).
+ * (decision 18). A penjoki (ADR-126) is a pay-after manual supplier.
  */
 class CreateSupplierRequest extends FormRequest
 {
@@ -45,6 +45,11 @@ class CreateSupplierRequest extends FormRequest
             'funding_mode' => ['required', Rule::in([Supplier::FUNDING_PREPAID, Supplier::FUNDING_PAY_AFTER])],
             'is_active' => ['sometimes', 'boolean'],
             'api_config' => ['sometimes', 'array'],
+            // ADR-126 decision 8: a penjoki is a pay-after manual supplier.
+            // The pool is the migration's one row, never created here.
+            'joki_role' => $manual && $this->input('funding_mode') === Supplier::FUNDING_PAY_AFTER
+                ? ['nullable', Rule::in([Supplier::JOKI_PENJOKI])]
+                : ['prohibited'],
         ];
     }
 }
