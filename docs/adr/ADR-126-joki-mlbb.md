@@ -133,3 +133,29 @@
 - **F1:** one `not.joki` route middleware covers every Games & Packages write route, rather than a check per controller method.
 - **F4 (Need Action) and the Manual Queue exclusion** move to PR 4 with the Joki page and Dashboard card, so a joki order is never left with nowhere to be seen.
 
+### 2026-10-23 addendum — PR 2b: the pricing rule and its build (decisions 1, 3-8, 12-14)
+
+**Founder's answers, recorded as decisions:**
+- **Stars.** A division is worth its own stars (Epic V 0★ → Epic IV 0★ = 5). A division's stars run 0 … n−1, and n stars is the next division at 0★. Elite has 4 stars per division. Both are panel data.
+- **Mythic Grading** is a flat price that guarantees Mythic `grading_lands_at_stars` (15). If grading lands lower, the penjoki plays on to 15★ at no charge. Stars past 15★ are charged at the Mythic band's rate. A target of Mythic 0–15★ costs Grading only. An account already in grading picks "Mythic (Grading)" as its current rank.
+
+**The rule** (`JokiPricingService`, the only price):
+- Each star is charged at the rate of the tier it is won in.
+- Grading is added when the climb crosses from below Mythic.
+- Mythic and up is priced on the Mythic star count, in bands from each tier's `mythic_from_stars`.
+- Fewer than `min_stars` paid stars is refused unless the climb includes Grading.
+- Express uses the Express rates and the Grading Express price.
+- A route package sells at its own price, Reguler only. A quotation route is never sold.
+- The calculator names a cheaper route package for the same climb.
+
+**Build decisions:**
+- **One checkout.** A joki order goes through `/api/checkout` with a `joki` block, not a second checkout. Login, blacklist, idempotency, voucher and the payment leg stay shared.
+  - `CheckoutController::sellableHere()` sends a joki game to `JokiCheckoutService`, which checks both switches on an owned brand and the role, then prices.
+  - `CheckoutService` takes the pre-resolved Fixed pricing.
+  - `OrderFactory` writes `joki_orders` in the order's transaction.
+  - The idempotency hash includes from, to and Express. The hero, role and play window are left out, like contact details.
+- **`JokiCatalog::ensure()`** creates the joki game and calculator package when joki is set up (PR 4's switch), not in a migration. Seeding them made them appear in every game count, sitemap and catalog test before joki existed. The migration seeds only joki-only tables (settings, rank model, draft rates).
+- **Roles** are a panel list in `joki_settings`. Login types are the joki game's credential schema (a select), edited like any login game's.
+- **The owned-brand rule** is one list in `AffiliateController` (`membership_enabled`, `joki_enabled`), and `Affiliate::jokiEnabledEffective()` re-checks `is_owned`.
+- **The `/joki` endpoints** (`/api/joki/catalog`, `/quote`) expose customer prices only, never the payout share.
+

@@ -1702,3 +1702,31 @@ PR 2 was split in two with the founder's agreement: 2a is the money core, 2b the
   - Admin `tsc` passed (`pricing_basis` gains `fixed`).
 - **Left for PR 4 on purpose:** joki out of the Manual Queue and Need Action (F4), together with the Joki page and Dashboard card that replace them. Until then a pool order past the pool's SLA appears as stale.
 
+## 2026-10-23 — Joki PR 2b (item 114): rank model, joki pricing and checkout
+
+**Founder's answers (2026-10-23):**
+- A division is worth its own stars: Epic V 0★ → Epic IV 0★ = 5 stars.
+- Elite has 4 stars per division (the 2026 sources; it is panel data anyway).
+- Mythic Grading is the 10 placement matches when an account first enters Mythic. Winning all 10 gives about 15 stars, which is why it is sold flat. Grading's flat price guarantees Mythic 15★: if the account lands lower, the penjoki plays on to 15★ at no extra charge, and only stars past 15★ are charged.
+
+**Built:**
+- **Tables.** `joki_settings` (one row), `joki_tiers` (rank model), `joki_routes` (route packages and quotations), `joki_orders` (snapshot) and `affiliates.joki_enabled`.
+- **Seeded draft data.** The 2026 ladder (Warrior 3×3, Elite 4×4, Master 4×4, GM/Epic/Legend 5×5, then Mythic bands at 0/25/50/100) and the ADR's draft rates: below Mythic RM2 (Warrior/Elite/Master assumed the same as GM; the ADR had no figure), Mythic RM4, Honor RM5, Glory RM6, Immortal RM7, Express = +RM1, Grading RM39. Grading Express is seeded at RM39 too and needs the founder's figure. Joki stays off.
+- **Pricing engine.** `JokiLadder` turns a rank into a star position, and validation errors are keyed `joki.from`/`joki.to`. `JokiPricingService::quote()` is the one price:
+  - each star at the rate of the tier it is won in;
+  - Grading added when crossing into Mythic;
+  - at least `min_stars` paid stars, unless the order includes Grading;
+  - a route package at its own price, Reguler only;
+  - a quotation route is refused;
+  - `cheaper_route` points to a route package selling the same climb for less.
+- **Checkout.** One storefront checkout: `CheckoutController::sellableHere()` (the two copies of the game/package availability check in `store()` and `previewTotal()` are merged into it) takes a joki game past the hidden-game rule and through `JokiCheckoutService::resolve()`, which checks both switches on an owned brand, validates the role against the panel list, and takes the quote and `resolveFixed` at the share in force now. `CheckoutService` uses the pre-resolved pricing, `OrderFactory` writes `joki_orders` in the order's transaction, and the idempotency hash includes the climb (from, to, Express).
+- **Endpoints for the `/joki` page.** `GET /api/joki/catalog` and `POST /api/joki/quote`, behind `brand.joki`. The payout share is never exposed.
+- **Admin.** `AffiliateController`'s owned-brand-only rule is now one list (`membership_enabled`, `joki_enabled`).
+
+**Found while building.** The first migration also seeded the joki game and calculator package. That broke 23 unrelated tests that count games or packages (SEO, game list, sitemap, reseller catalog, the CHIP smoke test), and it would have put a joki game into every catalog count on prod. The game and package are now made by `JokiCatalog::ensure()` (idempotent), which the admin's joki switch will call in PR 4. In the same file, PR 2a's `Game::scopeJoki()` had been inserted between `isLoginGame()` and its docblock; fixed.
+
+**Verified.**
+- `php artisan test`: 3005/3005, including `Adr126JokiPricingTest` (10, prices worked out by hand) and `Adr126JokiCheckoutTest` (8).
+- Concurrency suite: the joki, finalize, fulfil and settle tests (5/5).
+- e2e: 8/8. Dev DB migrated.
+
