@@ -41,6 +41,7 @@ class StoreAffiliateRequest extends FormRequest
             // one pre-Phase-2 row and never reassigned via CRUD.
             'is_owned' => ['sometimes', 'boolean'],
             'membership_enabled' => ['sometimes', 'boolean'],
+            'joki_enabled' => ['sometimes', 'boolean'],
             'tier_id' => ['nullable', 'integer', Rule::exists('affiliate_membership_tiers', 'id')->whereNull('deleted_at')],
             'user_name' => ['required', 'string', 'max:255'],
             'user_email' => ['required', 'email', 'max:255', Rule::unique('affiliate_users', 'email')],

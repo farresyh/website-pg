@@ -6,6 +6,7 @@ use App\Http\Middleware\AllowActiveCustomDomainCors;
 use App\Http\Middleware\AllowAdminCorsCredentials;
 use App\Http\Middleware\EnsureAccountType;
 use App\Http\Middleware\EnsureAdminRole;
+use App\Http\Middleware\EnsureBrandJokiEnabled;
 use App\Http\Middleware\EnsureNotJokiCatalog;
 use App\Http\Middleware\EnsureAdminSessionFresh;
 use App\Http\Middleware\EnsureBrandMembershipEnabled;
@@ -133,6 +134,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.role' => EnsureAdminRole::class,
             // ADR-126 F1: no Games & Packages write route touches a joki package.
             'not.joki' => EnsureNotJokiCatalog::class,
+            // ADR-126 addendum decision 1: the `/joki` page's endpoints.
+            'brand.joki' => EnsureBrandJokiEnabled::class,
             // ADR-121: the 7-day cap on an admin cookie login, and the
             // step-up gate on the five dangerous actions.
             'admin.session' => EnsureAdminSessionFresh::class,
