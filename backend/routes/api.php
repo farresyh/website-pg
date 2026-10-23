@@ -604,6 +604,8 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::post('/{order}/manual/correct-to-delivered', [ManualQueueController::class, 'correctToDelivered']);
         // ADR-126 decision 16 — hand a joki order to a penjoki.
         Route::post('/{order}/joki/assign', [JokiAssignmentController::class, 'store']);
+        // ADR-126 decision 10 — the admin's progress update.
+        Route::post('/{order}/joki/progress', [JokiAssignmentController::class, 'progress']);
     });
 
     Route::middleware('admin.role:super_admin,admin')->get('/manual-queue', [ManualQueueController::class, 'index']);
