@@ -1672,3 +1672,33 @@ Nothing joki-specific yet. Every manual order, which today means Login Top-up, g
 - **Gotchas.** The migration loops use `get()`, not `each()`: `each()` pages by offset while the loop rewrites the column it filters on, which skips rows. Testing the migrations on docker MySQL left the `llm_report_*` views behind, and every concurrency test then errored (`backend/AGENTS.md`, gotcha 8).
 - **Verified.** `php artisan test`: 2969 passed, including 11 new tests, red first. Concurrency suite: 33/37; the 4 are `BackupRestoreMysqlTest` (no local `mysqldump`). Migrations on MySQL: rewrite, backfill (set_at + D), NOT NULL and `down()`. Admin: tsc, lint, build, 17 unit tests. e2e: 8/8 on the last full run. Two earlier full runs each had one spec fail once (`admin-login-topup`, `storefront-checkout`), and both passed alone and on the rerun. `admin-login-topup` now sets a login game's days to 30 and asserts a 30-day ceiling on the order.
 
+## 2026-10-23 — Joki PR 2a (item 114): the Fixed basis, the assignment pool and Assign
+
+PR 2 was split in two with the founder's agreement: 2a is the money core, 2b the joki catalog and checkout. No customer can buy joki yet.
+
+- **Fixed basis.** `PricingBasis::Fixed` ("Fixed (joki)") and `OrderPricingResolver::resolveFixed(selling, share%)`: payout = `round(selling × share)` to the sen, platform = the rest, affiliate = 0. `Order::isJoki()` is the one predicate, and every path that could move the payout asks it:
+  - resend keeps the cost and refuses another package;
+  - a joki attempt after Failed/NeedsReview restarts on its package's supplier, the pool, inside `fulfill()`'s lock;
+  - Manual Delivered refuses any other cost;
+  - Bulk Markup skips joki games.
+
+  The only writers of `orders.cost_price` are OrderFactory and OrderResendService (grep), and both are covered.
+- **Catalog.** `games.is_joki`, and `AffiliateGame::hiddenGameIdsFor()` now always includes joki games. The affiliate portal's two copies of the rule were removed and route through it. The portal's game list leaves joki out, and its toggle 404s. A `not.joki` middleware covers every Games & Packages write route, and `GameFulfilmentRule::manualPackage` refuses a penjoki or the pool as a package supplier.
+- **Pool.** `suppliers.joki_role` (`pool` or `penjoki`; one column instead of the ADR's `is_assignment_pool` flag), plus the pool row created by the migration. `Supplier::isAssignmentPool()` is read by:
+  - the group post, the login link and the SLA reminder (none for the pool);
+  - Delivered and Correct-to-Delivered (refused);
+  - `setActive` (refused; F5);
+  - `SupplierPackageStatusService` and group linking (refused);
+  - the Dashboard "no group" and "not posted" counts and the Health supplier cards;
+  - the Middleware and Partners supplier lists. The manual-package supplier picker leaves out every joki role.
+- **Assign.** `JokiAssignmentService`, `POST /api/orders/{order}/joki/assign`, with a `joki_assignments` audit row. It takes the order lock, then the penjoki's lock, which is the same lock `setActive` now takes, so a penjoki with Pending orders can't be switched off (decision 19). Allowed for a Pending joki order only, to an active penjoki with a group, and never to the same penjoki.
+- **Found while building.**
+  - Reassigning A → B → A: the decision-17 key `(ref, supplier)` already had A's sent row, so A would get no post, and A's first link would have opened again. The key now ends `:assign:<id>` for an assigned order, and `supplier_login_links.joki_assignment_id` must match the order's current assignment. `customer_notifications.dedupe_key` widened 100 → 191.
+  - The migration's `down()` first deleted the pool and failed on the packages FK during the MySQL concurrency teardown. It now deletes the pool only when nothing references it; otherwise it switches the pool off.
+- **Verified.**
+  - `php artisan test`: 2986/2987. The one failure, `SyncSupplierProductsCommandTest::test_command_syncs_every_active_supplier_via_its_own_adapter`, passed alone and in two runs of the Console suite. That command reads `apiBacked()` suppliers only, so the pool can't reach it.
+  - New tests: `Adr126JokiCoreTest` (17), a portal test, and the route allowlist.
+  - Concurrency suite: 35/39. The 4 are `BackupRestoreMysqlTest` (no local `mysqldump`). The new `JokiAssignConcurrencyTest` covers Assign vs the old penjoki's `.done` and Assign vs switch-off; both passed 4 runs in a row.
+  - Admin `tsc` passed (`pricing_basis` gains `fixed`).
+- **Left for PR 4 on purpose:** joki out of the Manual Queue and Need Action (F4), together with the Joki page and Dashboard card that replace them. Until then a pool order past the pool's SLA appears as stale.
+
