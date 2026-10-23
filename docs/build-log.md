@@ -1616,3 +1616,18 @@ The founder decided the policy itself: after retries, a voucher for the full amo
 ## 2026-10-22 — Release #528 (`staging`→`main`): Refund Policy page live
 
 Requested by the founder. Merged as `d26c795`; CI and `deploy` green. Box checked: migration `2026_10_22_120000_add_refund_policy_content_to_affiliate_footer_settings` ran (batch 48), Horizon running, `/api/catalog/legal/refund-policy` 200, `https://pekangame.com/refund-policy` 200, no "Bank Negara" text on the home page. The founder then filled Refund Policy, About Us (contact block with the business address) and Terms (sections 1 and 5) in admin; checked through the public API: the refund page and terms mention 7 working days, about-us has the address, the old "do not process cash payouts" line is gone. The reply to CHIP is sent by the founder. `/api/health` still 503 from the Gamevion outage (previous entry); new PRD §16 item 130.
+
+## 2026-10-23 — First real Login Top-up order on prod; FPX on for CHIP's review; item 129 on hold
+
+**Status check (read-only).** The first encrypted database backup (run #57, 02:07 UTC) and the first scheduled OpenWA backup (#56, 19:37 UTC 2026-10-22) both passed their restore tests. `/api/health` is back to 200. Digiflazz is at IDR 797,643, which the founder accepts because no buyers are expected right now.
+
+**FPX is on, on purpose.** `fpx_chip` has been active since 2026-10-22 09:52 UTC so CHIP can review the site. The founder will switch it off again. PRD §14 had said all three methods were off; corrected.
+
+**Item 129 on hold.** The founder says the refund-to-original-method wording exists for CHIP's merchant review, and the policy goes back to voucher-only once CHIP approves. Moved to PRD §16 group D with that trigger.
+
+**Login Top-up, end to end on prod (ADR-124/125, first real order).** The founder bought PG-YTVHCNMQ2SZX (Roblox, test package "0 Robux", Gamevion Manual, `pay_after`), paid RM1.57 through FPX. Checked read-only at each step:
+- Paid at 04:36:42 UTC, order `pending`, `initial` attempt `pending`; `order_credentials` held the username in plain and the five secret fields encrypted, with the consent text.
+- The `supplier_order_post` was sent to the supplier group at 04:36:51. The founder opened the full-login link at 04:37:22, which wrote five `credential_reveals` rows (actor supplier, with IP).
+- `.done` in the group at 04:42:00: order `delivered`, real cost 50 sen (the agreed cost), profit 7 sen, the `initial` attempt resolved `success` plus a `manual_confirm` row naming `wa:601118884011` (decision 42; no reader sums attempt costs). Gamevion Manual got one `ORDER_DRAWDOWN` of −RM0.50, the amount owed. The bot replied in the group (the founder confirmed; the reply is a direct send, not queued).
+- The link stops working once the order leaves `pending`. `app:wipe-order-credentials` stamped `closed_at` at 04:45:07; the secrets are wiped G = 24 h later.
+- Track Order shows Paid / Delivered with the "change your game password" line (founder's screenshot).
