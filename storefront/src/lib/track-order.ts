@@ -49,6 +49,18 @@ export const TrackedOrderSchema = z.object({
   // delivered and this is still false, never re-shown once a review
   // exists. Server-truth, no client-side dismiss-forever state.
   has_review: z.boolean(),
+  // ADR-126 decision 10: a joki order's climb and latest rank (labels
+  // only). Optional so a push from an older backend still parses.
+  joki: z
+    .object({
+      from: z.string().nullable(),
+      to: z.string().nullable(),
+      current: z.string().nullable(),
+      current_at: z.string().nullable(),
+      is_express: z.boolean(),
+    })
+    .nullable()
+    .optional(),
 });
 
 export type TrackedOrder = z.infer<typeof TrackedOrderSchema>;

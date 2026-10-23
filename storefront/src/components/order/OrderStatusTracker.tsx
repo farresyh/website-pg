@@ -229,6 +229,8 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
   // ADR-125: a login order is topped up by hand through the customer's
   // own login, so it promises no minutes and asks for a password change.
   const isLoginOrder = order.fulfilment_kind === "login";
+  // ADR-126: a joki order is a login order played over days, not a top-up.
+  const joki = order.joki ?? null;
   const helpCopy = isPartial
     ? {
         heading: "Part of Your Order Couldn't Be Completed",
@@ -242,9 +244,11 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
         ? { heading: "Need Anything Else?", body: "Get this order's receipt on WhatsApp, or contact our Customer Support team if something isn't right." }
         : {
             heading: "Having an Issue with Your Order?",
-            body: isLoginOrder
-              ? "This top-up is done by hand, usually within 30 minutes. Get notified on WhatsApp when it's delivered, or contact our Customer Support team if it takes longer than an hour."
-              : "Get notified on WhatsApp when it's delivered, or contact our Customer Support team if your order status is delayed beyond 10 minutes.",
+            body: joki
+              ? "A penjoki plays your account to your target rank. Get progress updates on WhatsApp, or contact our Customer Support team anytime."
+              : isLoginOrder
+                ? "This top-up is done by hand, usually within 30 minutes. Get notified on WhatsApp when it's delivered, or contact our Customer Support team if it takes longer than an hour."
+                : "Get notified on WhatsApp when it's delivered, or contact our Customer Support team if your order status is delayed beyond 10 minutes.",
           };
   const showRateModal = order.delivery_status === "delivered" && !order.has_review && !rateModalDismissed;
 
@@ -287,9 +291,11 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
                 * the E2E golden path's strict getByText. */}
               <p className="font-display text-base font-bold uppercase tracking-tight">You&apos;re all set</p>
               <p className="text-[13px] leading-snug">
-                {isLoginOrder
-                  ? `Your top-up is done. We delete your login within about ${order.login_wipe_hours ?? 24} hours. Please change your game password now.`
-                  : "Your top-up is in your game account. Enjoy!"}
+                {joki
+                  ? `Your joki is done. We delete your login within about ${order.login_wipe_hours ?? 24} hours. Please change your game password now.`
+                  : isLoginOrder
+                    ? `Your top-up is done. We delete your login within about ${order.login_wipe_hours ?? 24} hours. Please change your game password now.`
+                    : "Your top-up is in your game account. Enjoy!"}
               </p>
             </div>
           </div>
@@ -356,6 +362,16 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
             <DetailRow k="Package" v={order.package_name ?? "-"} />
             <DetailRow k={isLoginOrder ? (order.player_label ?? "Login") : "Player ID"} v={order.player_id} mono />
             {order.server_id && <DetailRow k="Server ID" v={order.server_id} mono last />}
+            {joki && (
+              <>
+                <DetailRow k="Climb" v={`${joki.from ?? "-"} → ${joki.to ?? "-"}${joki.is_express ? " · Express" : ""}`} />
+                <DetailRow
+                  k="Rank now"
+                  v={joki.current ?? (order.delivery_status === "delivered" ? (joki.to ?? "-") : "Not started yet")}
+                  last
+                />
+              </>
+            )}
           </DetailCard>
 
           {hasContact && (
