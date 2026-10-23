@@ -45,7 +45,8 @@ class SupplierController extends Controller
     {
         $breakerConfig = config('services.circuit_breaker');
 
-        $suppliers = Supplier::query()->orderBy('name')->get()->map(function (Supplier $supplier) use ($breakerConfig) {
+        // ADR-126 F5: the joki pool holds no balance and is switched with Joki.
+        $suppliers = Supplier::query()->exceptAssignmentPool()->orderBy('name')->get()->map(function (Supplier $supplier) use ($breakerConfig) {
             $breaker = new CircuitBreaker(
                 name: $supplier->slug,
                 failureThreshold: $breakerConfig['failure_threshold'],

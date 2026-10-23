@@ -14,6 +14,7 @@ use App\Http\Controllers\Admin\FaqController;
 use App\Http\Controllers\Admin\GalleryImageController;
 use App\Http\Controllers\Admin\GameSeoController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
+use App\Http\Controllers\Admin\JokiAssignmentController;
 use App\Http\Controllers\Admin\ManualQueueController;
 use App\Http\Controllers\Admin\MembershipController as AdminMembershipController;
 use App\Http\Controllers\Admin\MembershipPlanController;
@@ -590,6 +591,8 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::post('/{order}/manual/delivered', [ManualQueueController::class, 'delivered']);
         Route::post('/{order}/manual/failed', [ManualQueueController::class, 'failed']);
         Route::post('/{order}/manual/correct-to-delivered', [ManualQueueController::class, 'correctToDelivered']);
+        // ADR-126 decision 16 — hand a joki order to a penjoki.
+        Route::post('/{order}/joki/assign', [JokiAssignmentController::class, 'store']);
     });
 
     Route::middleware('admin.role:super_admin,admin')->get('/manual-queue', [ManualQueueController::class, 'index']);
@@ -1056,18 +1059,22 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::put('/games/{game}', [GameController::class, 'update']);
         Route::delete('/games/{game}', [GameController::class, 'destroy']);
         Route::get('/games/{game}/packages', [GameController::class, 'packages']);
-        Route::post('/games/{game}/packages/combo', [PackageController::class, 'storeCombo']);
-        Route::post('/games/{game}/packages/manual', [PackageController::class, 'storeManual']);
-
-        Route::put('/packages/{package}', [PackageController::class, 'update']);
-        Route::patch('/packages/{package}/markup', [PackageController::class, 'updateMarkup']);
-        Route::patch('/packages/{package}/cost', [PackageController::class, 'updateCost']);
         Route::get('/packages/{package}/price-history', [PackageController::class, 'priceHistory']);
-        Route::patch('/packages/{package}/status', [PackageController::class, 'updateStatus']);
-        Route::patch('/packages/{package}/denomination', [PackageController::class, 'updateDenomination']);
-        Route::patch('/packages/{package}/catalog-code', [PackageController::class, 'updateCatalogCode']);
-        Route::patch('/packages/{package}/combo-override', [PackageController::class, 'updateComboOverride']);
-        Route::delete('/packages/{package}', [PackageController::class, 'destroy']);
+
+        // ADR-126 F1: joki keeps its own packages.
+        Route::middleware('not.joki')->group(function () {
+            Route::post('/games/{game}/packages/combo', [PackageController::class, 'storeCombo']);
+            Route::post('/games/{game}/packages/manual', [PackageController::class, 'storeManual']);
+
+            Route::put('/packages/{package}', [PackageController::class, 'update']);
+            Route::patch('/packages/{package}/markup', [PackageController::class, 'updateMarkup']);
+            Route::patch('/packages/{package}/cost', [PackageController::class, 'updateCost']);
+            Route::patch('/packages/{package}/status', [PackageController::class, 'updateStatus']);
+            Route::patch('/packages/{package}/denomination', [PackageController::class, 'updateDenomination']);
+            Route::patch('/packages/{package}/catalog-code', [PackageController::class, 'updateCatalogCode']);
+            Route::patch('/packages/{package}/combo-override', [PackageController::class, 'updateComboOverride']);
+            Route::delete('/packages/{package}', [PackageController::class, 'destroy']);
+        });
     });
 });
 

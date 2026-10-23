@@ -4,6 +4,7 @@ namespace App\Services\Fulfillment;
 
 use App\Models\Order;
 use App\Models\OrderResendAttempt;
+use App\Models\Supplier;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\OrderStatusService;
 use App\Services\Supplier\SupplierOutcome;
@@ -39,6 +40,8 @@ final class ManualDeliveryService
     public function confirmDelivered(Order $order, ?int $realCostSen, ?string $reason, string $confirmedBy, int $expectedSupplierId, string $channel = 'admin'): Order
     {
         $this->assertManual($order);
+        // Finalize re-checks that the locked order is still on this supplier.
+        $this->assertNotPool(Supplier::query()->find($expectedSupplierId));
         $realCostSen = $this->realCost($order, $realCostSen, $reason);
         $response = $this->response($realCostSen, $reason, $confirmedBy, $channel);
 
@@ -84,6 +87,8 @@ final class ManualDeliveryService
                 throw ValidationException::withMessages(['order' => ['This order was already compensated; it cannot be marked Delivered.']]);
             }
 
+            $this->assertNotPool($locked->supplier);
+
             $locked->update(['delivery_status' => $this->orderStatus->markNeedsReview($locked->delivery_status)->value]);
 
             $realCostSen = $this->realCost($locked, $realCostSen, $reason);
@@ -105,10 +110,27 @@ final class ManualDeliveryService
         }
     }
 
-    /** Decision 36: default the agreed cost; anything else needs a reason. */
+    /** ADR-126 decision 15: an order still waiting in the joki pool was played by nobody. */
+    private function assertNotPool(?Supplier $supplier): void
+    {
+        if ($supplier?->isAssignmentPool()) {
+            throw ValidationException::withMessages(['order' => ['This joki order has no penjoki yet. Assign one, or mark it Failed.']]);
+        }
+    }
+
+    /**
+     * Decision 36: default the agreed cost; anything else needs a reason.
+     * ADR-126 decision 9: a joki order's cost is the penjoki's agreed
+     * payout and is never changed here; extra or partial pay goes through
+     * the Budget Envelope.
+     */
     private function realCost(Order $order, ?int $realCostSen, ?string $reason): int
     {
         $realCostSen ??= $order->cost_price;
+
+        if ($order->isJoki() && $realCostSen !== $order->cost_price) {
+            throw ValidationException::withMessages(['real_cost_sen' => ['A joki order is paid at its agreed payout. Record extra pay as a Budget Envelope expense.']]);
+        }
 
         if ($realCostSen <= 0) {
             throw ValidationException::withMessages(['real_cost_sen' => ['The real cost must be more than zero.']]);

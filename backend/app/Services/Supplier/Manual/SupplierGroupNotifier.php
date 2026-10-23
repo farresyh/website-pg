@@ -81,7 +81,7 @@ final class SupplierGroupNotifier
         $orders = Order::query()
             ->where('delivery_status', DeliveryStatus::Pending->value)
             ->where('is_test', false)
-            ->whereHas('supplier', fn ($q) => $q->where('driver', Supplier::DRIVER_MANUAL))
+            ->whereHas('supplier', fn ($q) => $q->where('driver', Supplier::DRIVER_MANUAL)->exceptAssignmentPool())
             ->get(['id', 'reference_number', 'supplier_id']);
 
         $reached = CustomerNotification::query()
@@ -190,18 +190,26 @@ final class SupplierGroupNotifier
         return implode("\n", $lines);
     }
 
+    /** ADR-126 decision 15: an order waiting in the joki pool has no group to tell. */
     private function isWaitingOnManualSupplier(Order $order): bool
     {
         return $order->delivery_status === DeliveryStatus::Pending
             && ! $order->is_test
             && $order->supplier !== null
-            && ! $order->supplier->isApiBacked();
+            && ! $order->supplier->isApiBacked()
+            && ! $order->supplier->isAssignmentPool();
     }
 
-    /** ADR-126 2026-10-23 addendum, decision 17: one row per (attempt, supplier). */
+    /**
+     * ADR-126 2026-10-23 addendum, decision 17: one row per (attempt,
+     * supplier), and for a joki order per assignment too, so A → B → A
+     * still posts to A again.
+     */
     private static function dedupeKey(string $event, Order $order): string
     {
-        return self::attemptPrefix($event, $order)."supplier:{$order->supplier_id}";
+        $assignmentId = $order->currentJokiAssignmentId();
+
+        return self::attemptPrefix($event, $order)."supplier:{$order->supplier_id}".($assignmentId !== null ? ":assign:{$assignmentId}" : '');
     }
 
     private static function attemptPrefix(string $event, Order $order): string

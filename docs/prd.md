@@ -785,8 +785,8 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
 
 **A. Buildable now: code, no new design**
 - **114** Joki MLBB (ADR-126 2026-10-23 addendum, re-grilled). Build in five
-  PRs (PR 1 #533 to `staging`); launch is gated on item 131, CHIP payments,
-  item 129 and the rates.
+  PRs (PR 1 #533 merged; PR 2 split into 2a/2b, 2a built); launch is
+  gated on item 131, CHIP payments, item 129 and the rates.
 
 **B. Needs a short grill / ADR addendum first**
 - **131** Revenue by delivery date (MFRS 15/MPERS, data test, a start month
@@ -1179,8 +1179,11 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     type filter. Five PRs (ADR-126 addendum, "Consequence to track").
     Launch gates: item 131, CHIP payments, item 129, rank icons from the
     founder, and rates confirmed with the penjoki.
-    **PR 1 (decisions 17, 18, 20, 22) built 2026-10-23, #533 to
-    `staging`.** Next: PR 2, the joki backend.
+    **PR 1 (decisions 17, 18, 20, 22) built 2026-10-23, merged to
+    `staging` via #533.** PR 2 is split in two: **2a** (Fixed basis,
+    pool, Assign, payout locks, hidden game, F1) built 2026-10-23;
+    **2b** next (rank model and rates, `JokiPricingService`, joki
+    checkout and preview, `joki_orders`, the joki switches).
 
 117. **Expansion outside Malaysia: languages and currencies (founder,
     2026-10-17).** The storefront is English-only and prices are MYR-only

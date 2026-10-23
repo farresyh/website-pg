@@ -201,9 +201,18 @@ final class OrderFulfillmentService
             // common.
             Log::withContext(['reference_number' => $referenceNumber]);
 
+            // ADR-126 decision 10: a joki attempt after a failed one waits
+            // for a penjoki again (its package's supplier, the pool), never
+            // back on the penjoki who failed it. Its cost is the agreed
+            // payout and is not touched.
+            $restartSupplierId = $locked->isJoki() && in_array($locked->delivery_status, [DeliveryStatus::Failed, DeliveryStatus::NeedsReview], true)
+                ? $locked->package?->supplier_id
+                : null;
+
             $locked->update([
                 'reference_number' => $referenceNumber,
                 'delivery_status' => $processingStatus->value,
+                ...($restartSupplierId !== null ? ['supplier_id' => $restartSupplierId] : []),
             ]);
 
             return [$referenceNumber, $wasNotStarted, $resubmit];

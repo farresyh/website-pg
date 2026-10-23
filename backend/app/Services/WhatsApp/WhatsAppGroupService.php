@@ -70,6 +70,10 @@ final class WhatsAppGroupService
             throw ValidationException::withMessages(['supplier' => ['Only a manual supplier has a WhatsApp group.']]);
         }
 
+        if ($supplier->isAssignmentPool()) {
+            throw ValidationException::withMessages(['supplier' => ['The joki pool posts to no group; each penjoki has their own.']]);
+        }
+
         return $this->link(WhatsAppGroup::OWNER_SUPPLIER, $supplier->id, $whatsappGroupId);
     }
 
@@ -98,7 +102,7 @@ final class WhatsAppGroupService
     /** Decision 56: called by every path that switches a supplier on. */
     public function assertSupplierMayBeActive(Supplier $supplier): void
     {
-        if (! $supplier->isApiBacked() && $this->activeGroupFor($supplier) === null) {
+        if (! $supplier->isApiBacked() && ! $supplier->isAssignmentPool() && $this->activeGroupFor($supplier) === null) {
             throw ValidationException::withMessages(['is_active' => ['Link this supplier\'s WhatsApp group before activating it.']]);
         }
     }

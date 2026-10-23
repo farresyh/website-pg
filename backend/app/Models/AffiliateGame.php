@@ -35,19 +35,24 @@ class AffiliateGame extends Model
     ];
 
     /**
-     * The game ids a brand turned off on its storefront. Absent row =
-     * visible, so this is the whole exclusion set. The one place the
-     * storefront's catalog, checkout and Game ID Checker read it (ADR-123
-     * decision 9).
+     * The game ids a brand's storefront must not list or sell through its
+     * ordinary game page: the ones the brand turned off (absent row =
+     * visible), plus every joki game, which is never in any catalog
+     * (ADR-126 decision 2; it is sold only through `/joki`). The one place
+     * the storefront's catalog, checkout and Game ID Checker and the
+     * affiliate portal's catalog and pricing read it (ADR-123 decision 9).
      *
      * @return list<int>
      */
     public static function hiddenGameIdsFor(int $affiliateId): array
     {
-        return static::query()
+        return static::withoutAffiliateScope()
             ->where('affiliate_id', $affiliateId)
             ->where('is_visible', false)
             ->pluck('game_id')
+            ->merge(Game::query()->joki()->pluck('id'))
+            ->unique()
+            ->values()
             ->all();
     }
 

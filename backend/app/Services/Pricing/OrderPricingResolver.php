@@ -3,6 +3,7 @@
 namespace App\Services\Pricing;
 
 use App\Models\Membership;
+use InvalidArgumentException;
 
 /**
  * Decides which price an Order is charged at across every product-sale
@@ -131,6 +132,30 @@ final class OrderPricingResolver
             affiliateProfitSen: $breakdown->affiliateProfit,
             basis: PricingBasis::ResellerWallet,
             wholesaleMarkupPct: $tierMarkupPct,
+        );
+    }
+
+    /**
+     * ADR-126 decisions 2 and 7: a joki order. The selling price is fixed
+     * (JokiPricingService's table price) and the payout is derived from
+     * it: `round(selling × share%)` to the sen, never to the ringgit. The
+     * platform keeps the rest; at a 100% share that is RM0 by design.
+     */
+    public function resolveFixed(int $sellingPriceSen, float $payoutSharePct): PricingResolution
+    {
+        if ($sellingPriceSen <= 0 || $payoutSharePct <= 0 || $payoutSharePct > 100) {
+            throw new InvalidArgumentException("A fixed price needs a positive price and a payout share in (0, 100]; got {$sellingPriceSen} sen at {$payoutSharePct}%.");
+        }
+
+        $payoutSen = (int) round($sellingPriceSen * $payoutSharePct / 100);
+
+        return new PricingResolution(
+            costPriceSen: $payoutSen,
+            standardSellingPriceSen: $sellingPriceSen,
+            sellingPriceSen: $sellingPriceSen,
+            platformProfitSen: $sellingPriceSen - $payoutSen,
+            affiliateProfitSen: 0,
+            basis: PricingBasis::Fixed,
         );
     }
 

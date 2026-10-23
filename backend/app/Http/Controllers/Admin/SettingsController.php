@@ -195,7 +195,8 @@ class SettingsController extends Controller
         $gameIds = [];
 
         DB::transaction(function () use ($markupPercent, &$changed, &$gameIds) {
-            Package::query()->where('is_combo', false)->chunkById(100, function ($packages) use ($markupPercent, &$changed, &$gameIds) {
+            // ADR-126 F1: joki prices live only in joki's own tables.
+            Package::query()->where('is_combo', false)->whereDoesntHave('game', fn ($q) => $q->joki())->chunkById(100, function ($packages) use ($markupPercent, &$changed, &$gameIds) {
                 foreach ($packages as $package) {
                     $newStandardSellingPrice = $this->markup->calculateStandardSellingPrice($package->cost_price, $markupPercent);
 

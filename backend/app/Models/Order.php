@@ -158,6 +158,34 @@ class Order extends Model
         return $this->player_id.($this->server_id ? " ({$this->server_id})" : '');
     }
 
+    /**
+     * ADR-126: a joki order — the only orders priced on the Fixed basis.
+     * Its cost is the penjoki's agreed payout and no path may move it.
+     */
+    public function isJoki(): bool
+    {
+        return $this->pricing_basis === PricingBasis::Fixed;
+    }
+
+    /** ADR-126 decision 16: every Assign of this joki order, oldest first. */
+    public function jokiAssignments(): HasMany
+    {
+        return $this->hasMany(JokiAssignment::class)->orderBy('id');
+    }
+
+    /**
+     * The assignment the order is on now, or null if it was never assigned
+     * (every non-joki order). A group post and a login link belong to one
+     * assignment, so a reassignment — even back to an earlier penjoki —
+     * gets a fresh post and kills the old link.
+     */
+    public function currentJokiAssignmentId(): ?int
+    {
+        $id = JokiAssignment::query()->where('order_id', $this->id)->max('id');
+
+        return $id === null ? null : (int) $id;
+    }
+
     /** ADR-125 decision 3: Pending past its supplier's stale window (Supplier::pendingPolicy()). */
     public function isStalePending(): bool
     {

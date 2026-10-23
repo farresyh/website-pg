@@ -10,7 +10,6 @@ use App\Models\AffiliateGame;
 use App\Models\Game;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 
 /**
  * ADR-060 PR-6 — the Catalog tab. Every active platform game is visible
@@ -33,11 +32,12 @@ class StorefrontGameController extends Controller
 
         $games = Game::query()
             ->where('is_active', true)
+            ->notJoki()
             ->when($request->filled('search'), fn ($q) => $q->where('name', 'like', '%'.$request->string('search').'%'))
             ->orderBy('name')
             ->get(['id', 'name', 'slug', 'category']);
 
-        $hidden = $this->hiddenGameIds($affiliate->id)->flip();
+        $hidden = collect(AffiliateGame::hiddenGameIdsFor($affiliate->id))->flip();
 
         return response()->json([
             'games' => $games->map(fn (Game $g) => [
@@ -55,7 +55,7 @@ class StorefrontGameController extends Controller
     {
         $affiliate = $request->user()->affiliateOwner();
         $this->assertWritable($affiliate);
-        abort_unless($game->is_active, 404);
+        abort_unless($game->is_active && ! $game->is_joki, 404);
 
         $isVisible = $request->boolean('is_visible');
 
@@ -85,19 +85,8 @@ class StorefrontGameController extends Controller
     private function wouldHideLastVisibleGame(int $affiliateId, int $gameId): bool
     {
         $activeIds = Game::query()->where('is_active', true)->pluck('id');
-        $visibleIds = $activeIds->diff($this->hiddenGameIds($affiliateId));
+        $visibleIds = $activeIds->diff(AffiliateGame::hiddenGameIdsFor($affiliateId));
 
         return $visibleIds->contains($gameId) && $visibleIds->count() <= 1;
-    }
-
-    /**
-     * @return Collection<int, int>
-     */
-    private function hiddenGameIds(int $affiliateId): Collection
-    {
-        return AffiliateGame::withoutAffiliateScope()
-            ->where('affiliate_id', $affiliateId)
-            ->where('is_visible', false)
-            ->pluck('game_id');
     }
 }

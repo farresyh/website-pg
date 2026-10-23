@@ -36,8 +36,13 @@ class GameFulfilmentRule
             return 'Manual packages need a login game (one with a credential schema).';
         }
 
-        return $supplier->isApiBacked()
-            ? 'A manual package needs a manual supplier.'
+        if ($supplier->isApiBacked()) {
+            return 'A manual package needs a manual supplier.';
+        }
+
+        // ADR-126: joki's packages are kept by joki, on the pool.
+        return $supplier->joki_role !== null
+            ? 'A penjoki or the joki pool cannot supply an ordinary package.'
             : null;
     }
 

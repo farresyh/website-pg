@@ -138,10 +138,7 @@ class PricingController extends Controller
      */
     private function visiblePackages(int $affiliateId): Collection
     {
-        $hiddenGameIds = AffiliateGame::withoutAffiliateScope()
-            ->where('affiliate_id', $affiliateId)
-            ->where('is_visible', false)
-            ->pluck('game_id');
+        $hiddenGameIds = AffiliateGame::hiddenGameIdsFor($affiliateId);
 
         return Package::query()
             ->where('is_active', true)

@@ -18,6 +18,12 @@ namespace App\Services\Pricing;
  * `cost x (1 + tier.markup_percent)` plus the affiliate's own margin. An
  * affiliate whose tier has lapsed falls back to `Standard` (ADR-060
  * 2026-09-05 addendum, decision 3), never its own basis.
+ *
+ * ADR-126 decision 2: a joki order stamps `Fixed` — the selling price is
+ * the server's rate-table price and the cost is the penjoki's payout
+ * (price × payout share). No tier markup, member price or affiliate
+ * margin. Its cost is locked: every path that could move it (resend,
+ * retry, Manual Delivered, Bulk Markup) asks Order::isJoki().
  */
 enum PricingBasis: string
 {
@@ -25,6 +31,7 @@ enum PricingBasis: string
     case Member = 'member';
     case ResellerWallet = 'reseller-wallet';
     case Affiliate = 'affiliate';
+    case Fixed = 'fixed';
 
     /** The one human label per basis (item 63: exports hand-mapped two of four). */
     public function label(): string
@@ -34,6 +41,7 @@ enum PricingBasis: string
             self::Member => 'Member',
             self::ResellerWallet => 'Reseller wallet',
             self::Affiliate => 'Affiliate',
+            self::Fixed => 'Fixed (joki)',
         };
     }
 }

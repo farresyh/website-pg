@@ -58,7 +58,8 @@ final class ReportAssistantService
           - payment_method (e.g. fpx)
           - pricing_basis, one of: {pricing_basis_values} ('standard' = retail storefront,
             'member' = member price, 'affiliate' = an affiliate's whitelabel storefront,
-            'reseller-wallet' = a prepaid-wallet Reseller order)
+            'reseller-wallet' = a prepaid-wallet Reseller order, 'fixed' = a joki
+            (rank-boosting) order, whose cost is the penjoki's agreed payout)
           - delivery_status, one of: {delivery_status_values}
           - affiliate_id, affiliate_name (the whitelabel storefront brand; null = primary brand)
           - wallet_reseller_id, reseller_name (a prepaid-wallet Reseller order; null = not one)

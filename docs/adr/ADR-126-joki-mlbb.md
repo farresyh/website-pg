@@ -124,3 +124,12 @@
 - **Decision 20:** "written by the group post" means the moment the post is sent (`SupplierGroupNotifier::prepare()`), not when it is queued. A post skipped for having no group starts no clock.
 - **Decision 22:** changing D or a game's days recomputes the ceiling of every unwiped login it governs. Before this decision, the sweep read D live, so a lower D applied at once, and the stored column keeps that behaviour. A wiped login is left as it is.
 
+### 2026-10-23 addendum — PR 2a build notes (decisions 2, 9, 10, 11, 15, 16, 19, F1, F5)
+
+- **PR 2 is split** into 2a (money core: Fixed, pool, Assign, payout locks, hidden game, F1) and 2b (rank model, rates, pricing, joki checkout, `joki_orders`, switches), with the founder's agreement, so each money PR stays reviewable.
+- **Decision 15:** the pool flag is `suppliers.joki_role` (`pool` | `penjoki` | null), not a lone `is_assignment_pool` boolean. One column also marks who may be assigned, and a penjoki or the pool can't be picked as an ordinary package's supplier. The pool is also left off every supplier list and Health card, since it never holds money.
+- **Decisions 16/17:** a post and a login link belong to one assignment. For an assigned order the dedupe key ends `:assign:<id>`, and a link stores `joki_assignment_id`. Otherwise A → B → A would leave A with no new post and revive A's first link. Assign takes the order lock, then the penjoki's lock, and `setActive` takes the same penjoki lock for decision 19.
+- **Decision 10:** the restart happens in `fulfill()`'s attempt start (its one seam), back to the order's package supplier (the pool), for a joki order coming from Failed or NeedsReview.
+- **F1:** one `not.joki` route middleware covers every Games & Packages write route, rather than a check per controller method.
+- **F4 (Need Action) and the Manual Queue exclusion** move to PR 4 with the Joki page and Dashboard card, so a joki order is never left with nowhere to be seen.
+
