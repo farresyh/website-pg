@@ -40,4 +40,14 @@ class SaveJokiRouteRequest extends FormRequest
             'is_active' => ['sometimes', 'boolean'],
         ];
     }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'price_rm.integer' => 'Whole ringgit only, no sen.',
+        ];
+    }
 }

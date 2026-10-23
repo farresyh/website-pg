@@ -9,6 +9,9 @@ use App\Http\Requests\ResendOrderDeliveryRequest;
 use App\Jobs\FulfillOrderJob;
 use App\Jobs\ResendOrderDeliveryJob;
 use App\Models\CredentialReveal;
+use App\Models\JokiAssignment;
+use App\Models\JokiProgressUpdate;
+use App\Models\JokiTier;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\OrderCredential;
@@ -952,6 +955,42 @@ class OrderController extends Controller
             // equals Platform Profit.
             'effective_cost_price' => $order->effectiveCostPriceSen(),
             'cost_basis' => $order->costBasis(),
+            // ADR-126 decisions 10, 16: the Joki card — what was bought, who
+            // has it, every Assign and progress update, and the rank model
+            // for the progress picker.
+            'joki' => $order->isJoki() ? $this->jokiDetail($order) : null,
         ]);
+    }
+
+    /** @return array<string, mixed> */
+    private function jokiDetail(Order $order): array
+    {
+        $joki = $order->jokiOrder;
+
+        return [
+            'from_rank' => $joki?->from_rank,
+            'to_rank' => $joki?->to_rank,
+            'current_rank' => $joki?->current_rank,
+            'current_rank_at' => $joki?->current_rank_at?->toISOString(),
+            'is_express' => (bool) $joki?->is_express,
+            'role' => $joki?->role,
+            'hero_request' => $joki?->hero_request,
+            'play_window' => $joki?->play_window,
+            'payout_share_pct' => $joki?->payout_share_pct,
+            'is_with_penjoki' => (bool) $order->supplier?->isPenjoki(),
+            'assignments' => $order->jokiAssignments()->with(['fromSupplier:id,name', 'toSupplier:id,name'])->get()->map(fn (JokiAssignment $a) => [
+                'from' => $a->fromSupplier?->name,
+                'to' => $a->toSupplier?->name,
+                'by' => $a->assigned_by,
+                'at' => $a->created_at?->toISOString(),
+            ]),
+            'progress' => JokiProgressUpdate::query()->where('order_id', $order->id)->oldest('id')->get()->map(fn (JokiProgressUpdate $u) => [
+                'rank' => $u->rank['label'] ?? null,
+                'by' => $u->actor,
+                'channel' => $u->channel,
+                'at' => $u->created_at?->toISOString(),
+            ]),
+            'tiers' => JokiTier::query()->orderBy('sort_order')->get(['id', 'name', 'kind', 'divisions', 'stars_per_division', 'mythic_from_stars']),
+        ];
     }
 }

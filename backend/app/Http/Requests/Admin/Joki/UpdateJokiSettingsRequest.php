@@ -37,4 +37,15 @@ class UpdateJokiSettingsRequest extends FormRequest
             'progress_message_interval_minutes' => ['sometimes', 'integer', 'min:0', 'max:1440'],
         ];
     }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'grading_price_rm.integer' => 'Whole ringgit only, no sen.',
+            'grading_express_price_rm.integer' => 'Whole ringgit only, no sen.',
+        ];
+    }
 }
