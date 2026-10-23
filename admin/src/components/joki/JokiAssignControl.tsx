@@ -47,7 +47,9 @@ export function JokiAssignControl({ orderId, currentSupplierId, onDone }: {
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         {penjoki !== null && options.length === 0 ? (
-          <p className="text-sm text-ink-muted">No other active penjoki with a WhatsApp group.</p>
+          <p className="text-sm text-ink-muted">
+            {currentSupplierId ? "No other active penjoki with a WhatsApp group." : "No active penjoki with a WhatsApp group yet. Add one in Middleware → Suppliers."}
+          </p>
         ) : (
           <>
             <OptionSelect

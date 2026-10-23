@@ -27,6 +27,8 @@ interface SiteConfigInput {
   membershipEnabled: boolean;
   priceListEnabled: boolean;
   checkIdEnabled: boolean;
+  /** ADR-126 decision 2: this brand sells joki (`/joki` answers). */
+  jokiEnabled: boolean;
   branding: Branding;
 }
 
@@ -34,6 +36,7 @@ interface SiteConfig {
   membershipEnabled: boolean;
   priceListEnabled: boolean;
   checkIdEnabled: boolean;
+  jokiEnabled: boolean;
   branding: Branding;
   whatsappHref: string | null;
   orderWhatsappHref: string | null;

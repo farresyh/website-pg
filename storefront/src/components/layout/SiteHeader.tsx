@@ -27,7 +27,7 @@ const NAV_ACTIVE = "border-primary text-primary-on-surface";
 const NAV_IDLE = "border-transparent hover:text-primary-on-surface";
 export default function SiteHeader() {
   const { query, setQuery } = useSearch();
-  const { membershipEnabled, checkIdEnabled, branding } = useSiteConfig();
+  const { membershipEnabled, checkIdEnabled, jokiEnabled, branding } = useSiteConfig();
   const pathname = usePathname();
   const productsActive = pathname === "/" || (pathname.startsWith("/order/") && !pathname.startsWith("/order/status"));
 
@@ -58,6 +58,15 @@ export default function SiteHeader() {
           <Link href="/#popular-picks" aria-current={productsActive ? "page" : undefined} className={navClass(productsActive)}>
             All Products
           </Link>
+          {jokiEnabled && (
+            <Link
+              href="/joki"
+              aria-current={pathname.startsWith("/joki") ? "page" : undefined}
+              className={navClass(pathname.startsWith("/joki"))}
+            >
+              Joki Rank
+            </Link>
+          )}
           {membershipEnabled && (
             <Link
               href="/membership"
