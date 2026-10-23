@@ -1,6 +1,6 @@
 # ADR-125: Login Top-up (Roblox, eFootball) — manual suppliers as a `driver` behind `SupplierAdapter`, one finalize seam for every confirmation, a supplier WhatsApp group per supplier, admin-entered packages at an agreed cost
 
-> **Standing (2026-10-22):** In force; PR 1 split into 1a/1b and decisions corrected by the 2026-10-18 stress-test addendum and the 2026-10-18 PR 1b pre-build addendum (decisions 36–47); PR 2 split into 2a/2b and corrected by the 2026-10-19 pre-build addendum (decisions 48–61); build addenda add decisions 62–64 (64: a manual supplier's switch takes its packages off sale). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-23):** In force; the 2026-10-23 addendum points at ADR-126's revisions (post key with supplier, supplier re-check under lock, explicit stale clock, pool supplier); PR 1 split into 1a/1b and decisions corrected by the 2026-10-18 stress-test addendum and the 2026-10-18 PR 1b pre-build addendum (decisions 36–47); PR 2 split into 2a/2b and corrected by the 2026-10-19 pre-build addendum (decisions 48–61); build addenda add decisions 62–64 (64: a manual supplier's switch takes its packages off sale). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-17. Grilled with the founder (`/mattpocock-skills:grilling`, Q1–Q19), after a money-critical code-trace pass, then an adversarial stress test (three read-only forks, one per layer: checkout/catalog, fulfillment/ledger, bot/link). The stress test changed five decisions before they were written; its top findings were re-checked by hand. Build not started (PRD §16 item 113). Depends on [ADR-124](./ADR-124-customer-account-credentials.md). [ADR-126](./ADR-126-joki-mlbb.md) (Joki) builds on this ADR.
 
@@ -250,3 +250,7 @@ As built (2b):
 - Order Detail labels a bot row "Supplier group" with its group id ("Order post" / "SLA reminder").
 - Dashboard: red "N orders not posted to the supplier" counts waiting orders whose current attempt never reached the group (a sent post of an earlier attempt doesn't count); amber "N active suppliers with no WhatsApp group".
 - e2e `supplier-group-bot.spec.ts` (ADR-023 2026-10-19 addendum).
+
+### 2026-10-23 addendum — changes made by ADR-126's 2026-10-23 addendum
+
+ADR-126's 2026-10-23 addendum revises four rules here, for every manual order, not only joki. The supplier post's dedupe key gains the supplier (its decision 17). `confirmDelivered`/`confirmFailed` re-check the supplier under the lock (decision 18). Staleness reads a new `orders.manual_activity_at` (the post time for Login Top-up, as today), and the SLA maximum becomes 3 days (decision 20). A pool supplier flag exempts the joki pool from decision 56 and from the group posts (decision 15). Detail is in ADR-126.
