@@ -119,4 +119,18 @@ class StorefrontGameControllerTest extends TestCase
 
         $this->assertDatabaseMissing('affiliate_game', ['affiliate_id' => $brand->id, 'game_id' => $only->id]);
     }
+
+    /** ADR-126 decision 2: a joki game is no brand's to show or hide. */
+    public function test_a_joki_game_is_not_in_the_portal_catalog_and_cannot_be_toggled(): void
+    {
+        $this->primaryAffiliate();
+        $brand = $this->affiliate();
+        $this->game('Mobile Legends');
+        $joki = Game::query()->create(['name' => 'Joki MLBB', 'slug' => 'joki-mlbb', 'is_active' => true, 'is_joki' => true]);
+        $token = $this->tokenFor($brand);
+
+        $this->withToken($token)->getJson('/api/affiliate/storefront/games')
+            ->assertOk()->assertJsonPath('games.*.name', ['Mobile Legends']);
+        $this->withToken($token)->putJson("/api/affiliate/storefront/games/{$joki->id}", ['is_visible' => true])->assertNotFound();
+    }
 }
