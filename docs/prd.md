@@ -785,8 +785,8 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
 
 **A. Buildable now: code, no new design**
 - **114** Joki MLBB (ADR-126 2026-10-23 addendum, re-grilled). Build in five
-  PRs (PR 1 #533 and PR 2a #534 merged; PR 2b built); launch is gated
-  on item 131, CHIP payments, item 129 and the rates.
+  PRs (PR 1, 2a, 2b merged; PR 3 built); launch is gated on item 131,
+  CHIP payments, item 129 and the rates.
 
 **B. Needs a short grill / ADR addendum first**
 - **131** Revenue by delivery date (MFRS 15/MPERS, data test, a start month
@@ -1185,9 +1185,12 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     **2b** built 2026-10-23 (rank model and draft rates,
     `JokiPricingService`, joki checkout and preview through the one
     checkout, `joki_orders`, `/api/joki/catalog` + `/quote`, the joki
-    switches, `JokiCatalog::ensure()`). Next: PR 3 (progress and
-    WhatsApp). Founder to set the Grading Express price and confirm the
-    Warrior/Elite/Master rates (seeded at RM2).
+    switches, `JokiCatalog::ensure()`). **PR 3** built 2026-10-23
+    (`.progress` and the admin progress update, Track Order climb and
+    current rank, paced WhatsApp progress to opted-in customers). Next:
+    PR 4 (admin Joki page, settings, Dashboard card, F4). Founder to set
+    the Grading Express price and confirm the Warrior/Elite/Master rates
+    (seeded at RM2).
 
 117. **Expansion outside Malaysia: languages and currencies (founder,
     2026-10-17).** The storefront is English-only and prices are MYR-only

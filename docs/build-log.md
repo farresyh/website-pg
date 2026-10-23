@@ -1730,3 +1730,22 @@ PR 2 was split in two with the founder's agreement: 2a is the money core, 2b the
 - Concurrency suite: the joki, finalize, fulfil and settle tests (5/5).
 - e2e: 8/8. Dev DB migrated.
 
+## 2026-10-23 — Joki PR 3 (item 114): progress, Track Order and the customer's WhatsApp update
+
+- **One seam.** `JokiProgressService::record()` is used by the penjoki's `.progress` and by the admin's `POST /api/orders/{order}/joki/progress`.
+  - Under the order lock: a Pending joki order held by a penjoki (never the pool), and for the bot only the penjoki it is assigned to.
+  - It checks the rank against the panel model, then writes `joki_progress_updates`, `joki_orders.current_rank` and `manual_activity_at` (decision 21).
+- **`.progress PG-… Epic III 2`.** `JokiRankParser` reads a division in Roman numerals or digits; a tier by name, last word, a 3+ letter prefix, or `GM`. For Mythic+ it reads the star count and takes the band from the stars (`Mythic 30` → Mythical Honor 30★). The bot answers in Malay, and the help text lists the command.
+- **Customer WhatsApp (decision 10, S23).** `CustomerNotificationService::jokiProgress()`:
+  - opted-in customers only (the receipt rule);
+  - the first update goes at once; after that at most one message per `joki_settings.progress_message_interval_minutes` (default 120);
+  - while one message is queued, a newer update adds nothing, and the message is worded at send time with the latest rank (`prepare()`, now called by `SendCustomerWhatsAppJob` for the customer session too);
+  - dropped at send time if the order finished or the customer sent STOP.
+  - `WhatsAppOutbox::enqueue()` gains `notBefore`.
+- **Track Order.** `customerSafePayload()` gains `joki` (from, to, current, Express; labels only). `OrderObserver` also broadcasts on a `manual_activity_at` change, so an open page updates. The WhatsApp status card shows the climb and the current rank.
+- **Storefront.** The Game & Package card shows "Climb" and "Rank now". A joki order no longer gets the login top-up copy ("usually within 30 minutes", "Your top-up is done").
+- **Verified.**
+  - `php artisan test`: 3015/3015 (`Adr126JokiProgressTest`, 10 new).
+  - Storefront `tsc` and lint pass.
+  - A temporary e2e spec (since deleted) created a joki order in the throwaway e2e DB and opened Track Order. Screenshots at 1280 and 390 wide showed the climb, the current rank and the joki help text, with no horizontal scroll.
+

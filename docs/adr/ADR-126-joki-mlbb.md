@@ -159,3 +159,9 @@
 - **The owned-brand rule** is one list in `AffiliateController` (`membership_enabled`, `joki_enabled`), and `Affiliate::jokiEnabledEffective()` re-checks `is_owned`.
 - **The `/joki` endpoints** (`/api/joki/catalog`, `/quote`) expose customer prices only, never the payout share.
 
+### 2026-10-23 addendum — PR 3 build notes (decisions 10 and 21)
+
+- **Pacing.** The first progress message goes at once. After that, a new message is scheduled no earlier than the last one's send time plus the panel interval. While one is queued, newer updates add nothing: the message is worded when it is sent, with the latest rank, so the customer always gets the current state and never a backlog. It is dropped at send time if the order is no longer being played or the customer opted out.
+- **`.progress` reading.** For Mythic and up, the rank is read from the star count, so a penjoki who types `Mythic 30` is recorded as Mythical Honor 30★. Tier names match on the full name, the last word, a prefix of 3+ letters, or `GM`.
+- **Broadcast.** Progress reaches an open Track Order page through the existing `OrderObserver` seam (now also on `manual_activity_at`), not a second broadcast path.
+
