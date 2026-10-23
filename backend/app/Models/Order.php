@@ -167,6 +167,12 @@ class Order extends Model
         return $this->pricing_basis === PricingBasis::Fixed;
     }
 
+    /** ADR-126 decision 1: what a joki order bought, and its progress. */
+    public function jokiOrder(): HasOne
+    {
+        return $this->hasOne(JokiOrder::class);
+    }
+
     /** ADR-126 decision 16: every Assign of this joki order, oldest first. */
     public function jokiAssignments(): HasMany
     {

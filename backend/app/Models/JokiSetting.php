@@ -13,6 +13,7 @@ class JokiSetting extends Model
     protected $fillable = [
         'is_enabled', 'payout_share_pct', 'min_stars', 'grading_price_rm', 'grading_express_price_rm',
         'grading_lands_at_stars', 'max_mythic_stars', 'roles', 'express_description', 'terms_html',
+        'progress_message_interval_minutes',
     ];
 
     protected $casts = [
@@ -24,6 +25,7 @@ class JokiSetting extends Model
         'grading_lands_at_stars' => 'integer',
         'max_mythic_stars' => 'integer',
         'roles' => 'array',
+        'progress_message_interval_minutes' => 'integer',
     ];
 
     public static function current(): self

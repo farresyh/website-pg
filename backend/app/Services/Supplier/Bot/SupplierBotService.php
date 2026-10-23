@@ -5,6 +5,9 @@ namespace App\Services\Supplier\Bot;
 use App\Models\Order;
 use App\Models\Supplier;
 use App\Services\Fulfillment\ManualDeliveryService;
+use App\Services\Joki\JokiLadder;
+use App\Services\Joki\JokiProgressService;
+use App\Services\Joki\JokiRankParser;
 use App\Services\OpenWa\OpenWaClient;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\InvalidOrderTransitionException;
@@ -31,6 +34,7 @@ final class SupplierBotService
     public function __construct(
         private readonly ManualDeliveryService $manual,
         private readonly OpenWaClient $openWa,
+        private readonly JokiProgressService $jokiProgress,
     ) {}
 
     public function handle(Supplier $supplier, string $whatsappGroupId, string $rawText, ?string $sender): void
@@ -56,6 +60,7 @@ final class SupplierBotService
             '.done' => $orderNumber === null ? self::help() : $this->done($supplier, $orderNumber, $confirmedBy),
             '.gagal' => $orderNumber === null ? self::help() : $this->failed($supplier, $orderNumber, trim($parts[2] ?? ''), $confirmedBy),
             '.pending' => $this->pendingList($supplier),
+            '.progress' => $orderNumber === null ? self::help() : $this->progress($supplier, $orderNumber, trim($parts[2] ?? ''), $confirmedBy),
             default => self::help(),
         };
 
@@ -121,6 +126,43 @@ final class SupplierBotService
         }
     }
 
+    /**
+     * ADR-126 decision 10: `.progress PG-XXXX Epic III 2` (Mythic and up:
+     * `Mythic 30`). Plain text, checked against the rank model; the order
+     * must be this penjoki's own and still being played.
+     */
+    private function progress(Supplier $supplier, string $orderNumber, string $rankText, string $confirmedBy): string
+    {
+        $order = Order::query()
+            ->where('order_number', $orderNumber)
+            ->where('supplier_id', $supplier->id)
+            ->where('is_test', false)
+            ->first();
+
+        if ($order === null || ! $order->isJoki()) {
+            return "Order {$orderNumber} tiada dalam senarai anda.";
+        }
+
+        if ($order->delivery_status !== DeliveryStatus::Pending) {
+            return "{$orderNumber} tidak lagi dalam proses.";
+        }
+
+        try {
+            $rank = (new JokiRankParser(JokiLadder::current()))->parse($rankText);
+            $joki = $this->jokiProgress->record($order, $rank, $confirmedBy, self::CHANNEL, $supplier->id);
+        } catch (ValidationException $e) {
+            if (array_key_exists('rank', $e->errors())) {
+                return "Rank tidak sah. Contoh: .progress {$orderNumber} Epic III 2 (Mythic: .progress {$orderNumber} Mythic 30)";
+            }
+
+            Log::warning('Supplier bot progress refused', ['order_number' => $orderNumber, 'errors' => $e->errors()]);
+
+            return "{$orderNumber} tidak dapat dikemas kini. Sila hubungi admin.";
+        }
+
+        return "📈 {$orderNumber}: {$joki->current_rank['label']} (sasaran {$joki->to_rank['label']}). Terima kasih.";
+    }
+
     private function pendingList(Supplier $supplier): string
     {
         $orders = Order::query()
@@ -143,6 +185,6 @@ final class SupplierBotService
 
     private static function help(): string
     {
-        return "Arahan:\n.done PG-XXXX — top-up selesai\n.gagal PG-XXXX sebab — tak dapat buat\n.pending — senarai order menunggu";
+        return "Arahan:\n.done PG-XXXX — top-up selesai\n.gagal PG-XXXX sebab — tak dapat buat\n.progress PG-XXXX Epic III 2 — rank semasa (joki)\n.pending — senarai order menunggu";
     }
 }

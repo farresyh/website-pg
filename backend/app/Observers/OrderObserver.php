@@ -31,7 +31,9 @@ final class OrderObserver
 {
     public function updated(Order $order): void
     {
-        if ($order->wasChanged(['payment_status', 'delivery_status'])) {
+        // ADR-126 decision 10: `manual_activity_at` too, so a joki progress
+        // update reaches an open Track Order page.
+        if ($order->wasChanged(['payment_status', 'delivery_status', 'manual_activity_at'])) {
             DB::afterCommit(function () use ($order) {
                 try {
                     broadcast(new OrderStatusUpdated($order));

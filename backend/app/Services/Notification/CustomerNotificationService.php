@@ -3,6 +3,7 @@
 namespace App\Services\Notification;
 
 use App\Models\CustomerNotification;
+use App\Models\JokiSetting;
 use App\Models\Order;
 use App\Models\PlatformSettings;
 use App\Models\Voucher;
@@ -12,6 +13,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Support\BrandIdentity;
 use App\Support\MalaysiaTime;
 use App\Support\PhoneNumber;
+use DateTimeInterface;
 
 /**
  * ADR-116: the one place a customer WhatsApp notification is decided,
@@ -43,6 +45,8 @@ final class CustomerNotificationService
     public const EVENT_START_REPLY = 'start_reply';
 
     public const EVENT_ORDER_NOT_FOUND = 'order_not_found';
+
+    public const EVENT_JOKI_PROGRESS = 'joki_progress';
 
     public function __construct(private readonly WhatsAppOutbox $outbox) {}
 
@@ -139,6 +143,78 @@ final class CustomerNotificationService
         );
     }
 
+    /**
+     * ADR-126 decision 10 and S23: a joki order's rank moved. Only for a
+     * customer who opted in (as receipts). The first update goes at once;
+     * after that at most one message per `progress_message_interval_minutes`
+     * (panel, default 120). While one is waiting to go, a newer update adds
+     * nothing: prepare() words it at send time with the latest rank.
+     */
+    public function jokiProgress(int $orderId): void
+    {
+        $order = Order::query()->find($orderId);
+        $phone = PhoneNumber::normalize($order?->customer_phone);
+
+        if ($order === null || ! $order->isJoki() || ! $this->inScope($order) || $phone === null || ! WhatsappContact::receivesReceipts($phone)) {
+            return;
+        }
+
+        $earlier = CustomerNotification::query()
+            ->where('order_id', $order->id)
+            ->where('event', self::EVENT_JOKI_PROGRESS)
+            ->orderByDesc('id')
+            ->get(['id', 'status', 'sent_at', 'created_at']);
+
+        if ($earlier->contains('status', CustomerNotification::STATUS_QUEUED)) {
+            return;
+        }
+
+        $last = $earlier->first();
+        $interval = JokiSetting::current()->progress_message_interval_minutes;
+
+        $this->queue(
+            event: self::EVENT_JOKI_PROGRESS,
+            dedupeKey: self::EVENT_JOKI_PROGRESS.':order:'.$order->id.':n'.($earlier->count() + 1),
+            rawPhone: $phone,
+            message: 'Joki progress update (worded when sent).',
+            orderId: $order->id,
+            voucherId: null,
+            notBefore: $last === null ? null : ($last->sent_at ?? $last->created_at)->copy()->addMinutes($interval),
+        );
+    }
+
+    /**
+     * The text a queued customer message goes out with. A joki progress
+     * update is worded now, with the latest rank, or dropped (null) when
+     * the order is no longer being played or the customer stopped updates.
+     */
+    public function prepare(CustomerNotification $notification): ?string
+    {
+        if ($notification->event !== self::EVENT_JOKI_PROGRESS) {
+            return $notification->message;
+        }
+
+        $order = Order::query()->with('jokiOrder')->find($notification->order_id);
+        $current = $order?->jokiOrder?->current_rank;
+
+        if ($order === null || $order->delivery_status !== DeliveryStatus::Pending || $current === null
+            || $notification->phone === null || ! WhatsappContact::receivesReceipts($notification->phone)) {
+            return null;
+        }
+
+        $brand = $this->brand($order->affiliate_id);
+
+        return implode("\n", [
+            "*{$brand['name']}* · Order {$order->order_number}",
+            '',
+            "🎮 Joki progress: {$current['label']}",
+            "🎯 Target: {$order->jokiOrder->to_rank['label']}",
+            '',
+            "Track it: https://{$brand['host']}/order/status/{$order->order_number}",
+            'Reply STOP to stop these updates.',
+        ]);
+    }
+
     private function queueReceipt(Order $order, string $phone): void
     {
         $this->queue(
@@ -233,7 +309,7 @@ final class CustomerNotificationService
         return implode("\n", $lines);
     }
 
-    private function queue(string $event, string $dedupeKey, ?string $rawPhone, string $message, ?int $orderId, ?int $voucherId): void
+    private function queue(string $event, string $dedupeKey, ?string $rawPhone, string $message, ?int $orderId, ?int $voucherId, ?DateTimeInterface $notBefore = null): void
     {
         $phone = PhoneNumber::normalize($rawPhone);
 
@@ -245,6 +321,7 @@ final class CustomerNotificationService
             phone: $phone,
             orderId: $orderId,
             voucherId: $voucherId,
+            notBefore: $notBefore,
             skipReason: match (true) {
                 ! PlatformSettings::current()->whatsapp_notifications_enabled => 'WhatsApp notifications are switched off',
                 config('services.openwa.cs_session_id') === null => 'Customer-support WhatsApp session is not configured',
