@@ -17,6 +17,21 @@ import { catalogCache, safeRead } from "@/lib/cache";
  * (`z.infer`), not separately hand-written interfaces.
  */
 
+/** ADR-125 decision 6: one login-form field on the wire (also the `/joki` catalog's, ADR-126). */
+export const CredentialFieldWireSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  type: z.enum(["text", "email", "password", "select"]),
+  options: z.array(z.string()).optional(),
+  required: z.boolean(),
+  secret: z.boolean(),
+  is_identifier: z.boolean(),
+});
+
+export function toCredentialField(f: z.infer<typeof CredentialFieldWireSchema>): CredentialField {
+  return { key: f.key, label: f.label, type: f.type, options: f.options, required: f.required, secret: f.secret, isIdentifier: f.is_identifier };
+}
+
 const CatalogGameWireSchema = z.object({
   id: z.number(),
   slug: z.string(),
@@ -46,19 +61,7 @@ const CatalogGameWireSchema = z.object({
   delivery_subtext: z.string().optional(),
   player_validator_enabled: z.boolean(),
   /** ADR-125 decision 6 — detail-only; empty for a Player ID game. */
-  credential_fields: z
-    .array(
-      z.object({
-        key: z.string(),
-        label: z.string(),
-        type: z.enum(["text", "email", "password", "select"]),
-        options: z.array(z.string()).optional(),
-        required: z.boolean(),
-        secret: z.boolean(),
-        is_identifier: z.boolean(),
-      }),
-    )
-    .optional(),
+  credential_fields: z.array(CredentialFieldWireSchema).optional(),
   credential_consent_text: z.string().nullable().optional(),
   price_from_sen: z.number().nullable().optional(),
   created_at: z.string().optional(),
@@ -201,15 +204,7 @@ function toGameDetail(wire: CatalogGameWire): GameDetail {
     importantNotes: wire.important_notes ?? [],
     deliveryMode: wire.delivery_mode ?? "instant",
     deliverySubtext: wire.delivery_subtext ?? "Average delivery: 1–3 minutes",
-    credentialFields: (wire.credential_fields ?? []).map((f) => ({
-      key: f.key,
-      label: f.label,
-      type: f.type,
-      options: f.options,
-      required: f.required,
-      secret: f.secret,
-      isIdentifier: f.is_identifier,
-    })),
+    credentialFields: (wire.credential_fields ?? []).map(toCredentialField),
     credentialConsentText: wire.credential_consent_text ?? null,
   };
 }
