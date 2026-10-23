@@ -166,3 +166,10 @@
 - **`.progress` reading.** For Mythic and up, the rank is read from the star count, so a penjoki who types `Mythic 30` is recorded as Mythical Honor 30★. Tier names match on the full name, the last word, a prefix of 3+ letters, or `GM`.
 - **Broadcast.** Progress reaches an open Track Order page through the existing `OrderObserver` seam (now also on `manual_activity_at`), not a second broadcast path.
 
+### 2026-10-24 addendum — PR 4a build notes (decisions 23-25, F4)
+
+- **PR 4 is split** into 4a (backend: `JokiBoard`, `/api/joki-admin/*`, F4, the `/orders` type filter) and 4b (admin screens), like PR 2.
+- **F4, founder's choice.** A Failed, uncompensated joki leaves the general Need Action and becomes the Joki card's 4th number, "needs voucher", next to waiting, in progress and stale (decision 24 named three). Reports' "awaiting compensation" keeps joki. NeedsReview stays in the general count and also counts as stale on the board.
+- **Decision 23, Settings.** Rank-model edits change existing tiers only, and are refused if any route package no longer fits. A route is switched off, never deleted. The home banner is an ordinary Hero Slide linking to `/joki`, not a joki setting. Switching joki off stops new sales only: the pool stays active for paid orders (F5).
+- **Penjoki** are created in Middleware → Suppliers as pay-after manual suppliers with `joki_role: penjoki`.
+

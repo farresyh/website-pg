@@ -1773,3 +1773,46 @@ Checked against `git log origin/main..origin/staging` and read-only prod: paymen
 
   ADR-126's PR 2a notes now record that the game flag is `games.is_joki`, not the original `owned_brands_only`.
 
+
+## 2026-10-24 — Joki PR 4a: the admin backend (ADR-126 decisions 23-25, F4)
+
+PR 4 is split like PR 2 (founder, 2026-10-24): **4a** is the backend and its tests, **4b** the admin screens.
+
+- **`JokiBoard`** (`app/Services/Joki`) defines the Joki page's filters and the Dashboard card in one place, over paid, real joki orders:
+  - `waiting`: Pending on the pool;
+  - `in_progress`: Pending with a penjoki;
+  - `stale`: past its SLA (`isStalePending`), or NeedsReview;
+  - `needs_voucher`: `needsAction()`;
+  - `done` and `failed`.
+- **F4.** `Order::scopeJoki()` / `scopeNotJoki()` (Fixed basis) take joki out of:
+  - `/orders` Need Action (filter and summary);
+  - the Dashboard's `needs_action_orders` and stale-pending part of `stuck_orders`;
+  - the Manual Queue.
+  - **Founder's choice (2026-10-24):** a Failed, uncompensated joki is the card's 4th number, "needs voucher", so it is never left with nowhere to be seen.
+  - Reports' "awaiting compensation" keeps joki: it is money, not a work queue.
+  - `needs_review` stays general.
+- **`/orders?type=all|topup|login|joki`** (decision 25):
+  - login = has an `order_credentials` row;
+  - joki = Fixed;
+  - the export's scope line names the type.
+- **`/api/joki-admin/*`** (`JokiAdminController`):
+  - every admin: `orders` (paginated board rows: ranks, penjoki, payout, last activity, SLA due) and `summary`;
+  - every admin: `penjoki` (open orders, `owed_sen` from the pay-after ledger, has group);
+  - super admin: `settings`, `tiers` and `routes`.
+  - Assign and progress stay on `JokiAssignmentController`. Recording a payment is the existing supplier-transfer action.
+- **Settings.**
+  - Whole ringgit is enforced by `integer` rules. Share: 0–100, two decimals. Grading Express is never below Grading. The Mythic cap must be above the highest band. `terms_html` is Purified (`rich_text`).
+  - **`is_enabled: true` calls `JokiCatalog::ensure()`.** Off only stops new sales; the pool stays active for paid orders.
+- **Rank model.**
+  - Only existing tiers are edited (adding or removing a tier is not built). Express is not below Reguler.
+  - The Mythic bands must start at 0★ and climb.
+  - Every route must still read on the new ladder, or the whole edit rolls back.
+- **Route packages.**
+  - A new route is a joki `Package` on the pool (price fields 0, F1) plus its `joki_routes` row.
+  - The climb is checked on the ladder: the target must be above the start.
+  - A route is switched off, never deleted, because past orders point at its package. A quotation clears the price.
+- **Penjoki** are created in Middleware → Suppliers: `joki_role: penjoki` is accepted only on a pay-after manual supplier, and the pool can't be made there.
+- **Banner and "Joki Rank" menu.** No new setting. The banner is an ordinary Hero Slide linking to `/joki`, and the menu item is PR 5's, shown when `/api/joki/catalog` answers.
+- **Verified.**
+  - `php artisan test`: 3026/3026 (`Adr126JokiAdminTest`, 11 new; `RouteAccessTest` lists the three admin-readable routes).
+  - On the dev DB, `notJoki()` keeps all 189 existing orders.
