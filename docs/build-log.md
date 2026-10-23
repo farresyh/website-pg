@@ -1639,3 +1639,24 @@ Requested by the founder. Merged as `d26c795`; CI and `deploy` green. Box checke
 **Fix, at the seam.** The breaker decorator returns a connection failure as `CONNECTION_FAILED` for `checkBalance` only, after counting it once. Order calls and `listProducts` are unchanged. The daily refresh now isolates each supplier: an unreachable one is recorded and the task succeeds; an unexpected exception is recorded `failed: [ERROR] …`, reported, the rest still refresh, and the task exits FAILURE.
 
 **Tests (red first).** The breaker test that used `checkBalance` to prove propagation now uses `createOrder`/`checkStatus`. New: a balance connection failure is returned and counted once (threshold 2); the daily refresh keeps refreshing Digiflazz after an unreachable Gamevion (real decorator) and after a crashing one (task fails); Refresh Balance on an unreachable supplier (real Gamevion binding, `Http::failedConnection`) returns 200 with `CONNECTION_FAILED` and keeps the last balance (it was a 500). Full suite: 2958 passed. No migration, no frontend change.
+
+## 2026-10-23 — Joki (item 114): ADR-126 re-traced and re-grilled before building
+
+**Why.** ADR-126 dated from 2026-10-17, before ADR-125's decisions 48–64 were built. The founder asked for a full re-check before building ("tidak tampal menampal").
+
+**How.**
+- Three read-only code-trace forks, one per layer: checkout/pricing, ledger/fulfilment, downstream readers. Their top findings were re-checked by hand.
+- A grill with the founder in Malay (S1–S26), then a final stress test (F1–F5).
+- Competitor price lists (Gamevion, Muzzzyyy) compared against a draft rate table.
+
+**Findings that changed the design:**
+- **Post dedupe key.** It had no supplier, so an assigned penjoki's group would never get the post.
+- **Reassign vs `.done` race.** The old penjoki's `.done` could book the drawdown against the new penjoki.
+- **Resend.** It rewrites `cost_price` and `supplier_id` from the package, even on a plain retry.
+- **Bulk Markup.** It rewrites every non-combo package's price.
+- **Stale rule.** It reads `orders.updated_at`, and the manual SLA maximum is 1 day.
+- **Wipe ceiling.** D = 14 days for every login.
+- **`PricingBasis::label()`.** It would throw on a new case, crashing the Reports export.
+- **Revenue month.** Revenue is scoped by `paid_at` but the customer liability by `delivered_at`, which drifts closed months for a multi-day joki. That is now item 131, a launch gate.
+
+**Result.** The ADR-126 2026-10-23 addendum (25 decisions), with pointer addenda in ADR-124 and ADR-125. Item 114 moves to group A, with five PRs and launch gates. The rapspoint page refused automated fetches (HTTP 403), so the draft rates use the 2026-10-17 rates recorded in ADR-126 at the platform's own IDR rate (0.000226, 2026-10-23). Competitor prices confirmed the 25/50-star Mythic thresholds.

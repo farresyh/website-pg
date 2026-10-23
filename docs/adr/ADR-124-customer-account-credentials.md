@@ -1,6 +1,6 @@
 # ADR-124: Customer account credentials — own encrypted table, super-admin reveal with MFA step-up and an audit row, wiped by one sweep once the order closes
 
-> **Standing (2026-10-19):** In force; the 2026-10-18 addendum revises decision 7; the 2026-10-19 addendum replaces the supplier link's signed URL with a short hashed token (ADR-125 decisions 50–52). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-23):** In force; the 2026-10-18 addendum revises decision 7; the 2026-10-19 addendum replaces the supplier link's signed URL with a short hashed token (ADR-125 decisions 50–52); the 2026-10-23 addendum stores the wipe ceiling per row (ADR-126). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-17. Grilled with the founder in two rounds (`/mattpocock-skills:grilling`, Q1–Q13) after a by-hand check of the order lifecycle and every exposure path. Build not started (PRD §16 item 112). Shared foundation for [ADR-125](./ADR-125-login-top-up-manual-supplier.md) (Login Top-up) and [ADR-126](./ADR-126-joki-mlbb.md) (Joki).
 
@@ -85,3 +85,7 @@ Decided in [ADR-125](./ADR-125-login-top-up-manual-supplier.md)'s PR 2 pre-build
 3. The link is minted when the post is sent and never stored in the message text.
 
 Points 2 and 4 (GET shows no secret; each POST is audited with actor = supplier) are unchanged.
+
+### 2026-10-23 addendum — each login stores its own wipe ceiling (ADR-126 2026-10-23 addendum, decision 22)
+
+The D ceiling becomes a per-row `order_credentials.secrets_expire_at`, computed by one helper from the game's optional "keep login at most (days)", else the Customer Login Policy's D. The sweep and the supplier link read it. Existing rows are backfilled with `secrets_set_at + D`. G, H and everything else here are unchanged.

@@ -533,7 +533,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 # 11. Proposed Features / Future Phases
 
-The scheduled roadmap lives in §16, group E ("New features: after the backlog"), each with its own ADR and grill: self-serve reseller signup (13), Marketing Campaigns (57), Joki MLBB (114), more languages and currencies (117), and others. Shipped features are tracked in §15, not here.
+The scheduled roadmap lives in §16, group E ("New features: after the backlog"), each with its own ADR and grill: self-serve reseller signup (13), Marketing Campaigns (57), more languages and currencies (117), and others. Joki MLBB (114) moved to group A after its 2026-10-23 re-grill. Shipped features are tracked in §15, not here.
 
 Unscheduled ideas, not on the backlog:
 
@@ -784,10 +784,12 @@ and PR 1b on 2026-10-18. Items 124–128 added 2026-10-19 after the docs audit
 and the admin-loading investigation (#515, #516). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- (none)
+- **114** Joki MLBB (ADR-126 2026-10-23 addendum, re-grilled). Build in five
+  PRs; launch is gated on item 131, CHIP payments, item 129 and the rates.
 
 **B. Needs a short grill / ADR addendum first**
-- (none)
+- **131** Revenue by delivery date (MFRS 15/MPERS, data test, a start month
+  that leaves closed months unchanged). Must ship before Joki launches.
 
 **C. Founder actions (no code)**
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
@@ -841,9 +843,6 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
 - **25** Portal "needs attention" aggregate.
 - **57** Marketing Campaigns (ADR-118, designed).
 - **94** Best-selling products per game in Reports.
-- **114** Joki MLBB on owned brands (ADR-126, accepted design): `/joki`
-  rank calculator + route packages, penjoki as pay-after manual suppliers.
-  Re-trace ADR-126 against ADR-125 decisions 48–64 before building.
 - **117** Storefront in more languages and currencies, to sell outside
   Malaysia. Long-term, not soon (founder, 2026-10-17).
 
@@ -975,7 +974,8 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     decide item 115 (COGS at real, funded cost). The rest waits for a real
     accountant: the pack's contents and format (it suggested one ZIP a month
     with six folders), revenue and COGS by **delivery** date instead of
-    `paid_at` (paid-but-undelivered at month end shown as a liability),
+    `paid_at` (paid-but-undelivered at month end shown as a liability; now
+    item 131, decided ahead of the accountant because Joki needs it),
     vouchers treated by reason (compensation = liability, promotion =
     revenue reduction), and whether transfer fees belong in inventory cost.
     Storing the CHIP file and dated folders went to item 120.
@@ -1162,19 +1162,22 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
       down (fail-closed can lock the founder out of admin), E2E test keys,
       and whether checkout needs it too.
 
-114. **Joki MLBB (ADR-126, accepted design 2026-10-17).** Owned brands only,
-    gated in `hiddenGameIdsFor()` (two drifted copies route through it).
-    `PricingBasis::Fixed`: selling price from the admin rate table, cost =
-    payout share (default 100%) × selling price. A real `Package` per order
-    (calculator + route packages); package-swap resend blocked. Each penjoki
-    a pay-after manual supplier with its own group; "Joki – Unassigned" then
-    Assign. `.progress` updates shown on Order Detail, Track Order and
-    WhatsApp (at most one per 2 hours). Full store-credit refund; partial
-    penjoki pay is an envelope expense. Launch needs the MLBB rank model and
-    an RM rate table the founder approves. ADR-126 was written on
-    2026-10-17, before ADR-125 decisions 48–64 (short hashed supplier link,
-    activation needs a group, decision 64's package-off-sale switch); re-run
-    the code-trace pass against them before building.
+114. **Joki MLBB (ADR-126; re-traced and re-grilled 2026-10-23).** The
+    2026-10-23 addendum replaces the earlier summary here. Joki follows the
+    Membership pattern (`joki_enabled` only on an owned brand, plus a global
+    switch), and the game is hidden from every catalog. Rank model, rates,
+    route packages and payout share (default 100%, snapshotted) are all
+    set in the panel, in whole RM. `PricingBasis::Fixed` locks the cost:
+    resend keeps it, Bulk Markup skips joki, and Retry returns the order to
+    the pool. New orders wait on an explicit pool supplier. Assign happens
+    in the admin under a lock, with an audit row. The post key gains the
+    supplier, Delivered re-checks the supplier, and the stale clock is
+    explicit (`manual_activity_at`, SLA max 3 days). Each login keeps its
+    own wipe ceiling (joki 30 days). There is an Admin → Joki page and a
+    Dashboard card, joki is out of "Need Action", and `/orders` gets a
+    type filter. Five PRs (ADR-126 addendum, "Consequence to track").
+    Launch gates: item 131, CHIP payments, item 129, rank icons from the
+    founder, and rates confirmed with the penjoki.
 
 117. **Expansion outside Malaysia: languages and currencies (founder,
     2026-10-17).** The storefront is English-only and prices are MYR-only
@@ -1202,6 +1205,17 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     it needs the founder's sign-off (ADR-104 decision 7). A browser data
     cache stays out unless measurement demands it: stale data on money
     screens is a real risk.
+
+131. **Revenue recognised by delivery date (from the Joki grill, 2026-10-23;
+    ADR-126 2026-10-23 addendum, decision 14).** `RecognisedRevenue` scopes
+    delivered orders by `paid_at`, while `CashPositionService` treats an
+    order as owed until `delivered_at`. Instant top-up hides the gap. A
+    multi-day joki (paid on 28 Oct, delivered on 5 Nov) would add revenue
+    to a closed month (month-close drift) and land its drawdown in the next
+    month's "not in COGS" line. Decide with MFRS 15/MPERS citations and a
+    local data test of every joki path. Pick a start month so September
+    and any later closed month stay unchanged. This is the "revenue by
+    delivery date" part of item 81. It must ship before Joki launches.
 
 129. **Refund to the original payment method (founder, 2026-10-22) —
     revises ADR-004, needs its grill and a code-trace pass.** CHIP's
