@@ -19,11 +19,18 @@ class Supplier extends Model
     /** ADR-125 decision 3: a manual Pending order is stale this long after it was posted, unless `reply_sla_minutes` says otherwise. */
     public const DEFAULT_MANUAL_SLA_MINUTES = 30;
 
+    /** ADR-126 decision 15: the one supplier a paid joki order waits on until it is assigned. */
+    public const JOKI_POOL = 'pool';
+
+    /** ADR-126 decision 8: a penjoki, a pay-after manual supplier with its own WhatsApp group. */
+    public const JOKI_PENJOKI = 'penjoki';
+
     protected $fillable = [
         'name',
         'slug',
         'driver',
         'funding_mode',
+        'joki_role',
         'logo_url',
         'is_active',
         'api_config',
@@ -80,6 +87,32 @@ class Supplier extends Model
     public function scopeApiBacked(Builder $query): Builder
     {
         return $query->where('driver', '!=', self::DRIVER_MANUAL);
+    }
+
+    /**
+     * ADR-126 decision 15: the pool posts to no group, mints no login
+     * link, gets no SLA reminder, is never Delivered and is switched only
+     * by the joki switch. Every one of those rules asks this.
+     */
+    public function isAssignmentPool(): bool
+    {
+        return $this->joki_role === self::JOKI_POOL;
+    }
+
+    public function isPenjoki(): bool
+    {
+        return $this->joki_role === self::JOKI_PENJOKI;
+    }
+
+    public function scopeExceptAssignmentPool(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q->whereNull('joki_role')->orWhere('joki_role', '!=', self::JOKI_POOL));
+    }
+
+    /** Created by the 2026-10-23 joki migration; there is exactly one. */
+    public static function assignmentPool(): self
+    {
+        return self::query()->where('joki_role', self::JOKI_POOL)->firstOrFail();
     }
 
     /** An API supplier with credentials filled in: what price sync, its schedule gate and staleness alert run on. */

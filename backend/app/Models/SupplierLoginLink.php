@@ -22,11 +22,13 @@ class SupplierLoginLink extends Model
         'order_id',
         'supplier_id',
         'reference_number',
+        'joki_assignment_id',
         'expires_at',
     ];
 
     protected $casts = [
         'expires_at' => 'datetime',
+        'joki_assignment_id' => 'integer',
     ];
 
     public function order(): BelongsTo

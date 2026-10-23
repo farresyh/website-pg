@@ -135,7 +135,7 @@ export interface OrderDetail extends OrderListItem {
   wholesale_markup_pct?: string | null;
   voucher_discount: number | null;
   affiliate_profit: number;
-  pricing_basis: "standard" | "member" | "reseller-wallet" | "affiliate";
+  pricing_basis: "standard" | "member" | "reseller-wallet" | "affiliate" | "fixed";
   member_discount_percent: string | null;
   // ADR-105 decision 3 — the package's own markup_percent at checkout
   // time, frozen for a Member-basis order only (null for every other
