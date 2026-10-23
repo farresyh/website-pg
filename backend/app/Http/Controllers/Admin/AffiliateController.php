@@ -20,6 +20,7 @@ use App\Services\Affiliate\AffiliateTierFeeService;
 use App\Services\Affiliate\Domain\AffiliateDomainService;
 use App\Services\Affiliate\Domain\DomainProviderException;
 use App\Services\Auth\AccountOwnerType;
+use App\Services\Cache\NextRevalidation;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Membership\MembershipStatus;
@@ -180,6 +181,11 @@ class AffiliateController extends Controller
         if ($affiliate->wasChanged(['markup_pct', 'membership_enabled'])) {
             CatalogController::forgetPackagesCacheForMembership();
             CatalogController::forgetIndexCache();
+        }
+
+        // ADR-126 decision 1: the storefront's "Joki Rank" menu and /joki read this brand's switch.
+        if ($affiliate->wasChanged('joki_enabled')) {
+            NextRevalidation::purge();
         }
 
         return response()->json($this->detailShape($affiliate->fresh()));

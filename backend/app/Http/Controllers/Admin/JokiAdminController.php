@@ -13,6 +13,7 @@ use App\Models\Order;
 use App\Models\Package;
 use App\Models\Supplier;
 use App\Models\WhatsAppGroup;
+use App\Services\Cache\NextRevalidation;
 use App\Services\Joki\JokiBoard;
 use App\Services\Joki\JokiCatalog;
 use App\Services\Joki\JokiLadder;
@@ -145,6 +146,8 @@ class JokiAdminController extends Controller
         }
 
         $settings->update($data);
+        // The storefront caches /joki's catalog and the menu under `catalog`.
+        NextRevalidation::purge();
 
         return response()->json($settings->fresh());
     }
@@ -161,6 +164,7 @@ class JokiAdminController extends Controller
 
             $this->assertLadderReads();
         });
+        NextRevalidation::purge();
 
         return response()->json(JokiLadder::current()->tiers()->values());
     }
@@ -186,6 +190,8 @@ class JokiAdminController extends Controller
             return JokiRoute::query()->create(['package_id' => $package->id, ...$this->routeColumns($data)]);
         });
 
+        NextRevalidation::purge();
+
         return response()->json(['id' => $route->id], 201);
     }
 
@@ -205,6 +211,7 @@ class JokiAdminController extends Controller
             $route->update($this->routeColumns($data + ['is_quotation' => $route->is_quotation]));
             $route->package->update(array_intersect_key($data, array_flip(['name', 'is_active'])));
         });
+        NextRevalidation::purge();
 
         return response()->json(['id' => $route->id]);
     }
