@@ -33,6 +33,7 @@ final class OrderStatusCard
             ...self::timeline($order, $player),
             '',
             $item,
+            ...self::jokiLines($order),
             '',
             self::closingLine($order, $brand),
         ]);
@@ -60,6 +61,24 @@ final class OrderStatusCard
             DeliveryStatus::PartiallyDelivered => ["✅ Paid · {$paid}", "⚠️ Partly delivered · {$player}"],
             default => ["✅ Paid · {$paid}", '⏳ Processing', "○ Delivery to {$player}"],
         };
+    }
+
+    /**
+     * ADR-126 decision 10: a joki order's climb and latest rank.
+     *
+     * @return list<string>
+     */
+    private static function jokiLines(Order $order): array
+    {
+        $joki = $order->isJoki() ? $order->jokiOrder : null;
+        if ($joki === null) {
+            return [];
+        }
+
+        return array_values(array_filter([
+            "🎯 {$joki->from_rank['label']} → {$joki->to_rank['label']}",
+            $joki->current_rank !== null ? "🎮 Now: {$joki->current_rank['label']}" : null,
+        ]));
     }
 
     /** @param  array{name: string, host: string}  $brand */
