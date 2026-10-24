@@ -1901,3 +1901,11 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - Storefront and admin: `tsc`, lint and build pass.
   - e2e: 9/9 in the full run (and repeatedly before the calculator change).
   - Screenshots of `/joki` on desktop and at 390 px (no horizontal scroll), the Review Modal, the status page and the admin card.
+
+## 2026-10-24 — #540 merged (Joki PR 5); session paused
+
+- **#540 merged to `staging` (`53ade00`)** with the founder's go-ahead, after CI went green on its second run. The first failed only on `check-loading-boundaries.mjs`, fixed with the skeleton. Every Joki PR (1–5) is now on `staging`, not released. Joki is off on prod until its launch gates are met (PRD §16 item 114).
+- **Local only:** the founder's dev DB has Joki on, "Sell Joki" on PekanGame, and the Epic tier's icon (a founder-supplied image, through the Gallery ingest).
+- **Open, not diagnosed:** in the founder's Chrome, every request to `https://kedairuncit-backend.test` fails with 503 or "Failed to fetch", so `/joki` shows broken icons and no price. `curl` to the same URLs gets 200, the `.test` resolver and Herd's nginx are fine, there is no system proxy, and the Herd nginx log is empty, so the requests seem not to reach Herd.
+  - A headless check with `--ignore-certificate-errors` hid this. Verify local UI in the founder's own browser, not only headless.
+  - Picked up next session.
