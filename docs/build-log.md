@@ -2018,11 +2018,11 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - delete `ReportDemoSeeder`;
   - a browser pass over every money page.
 
-## 2026-10-25 — ADR-127 PR D: money flows
+## 2026-10-24 — ADR-127 PR D: money flows
 
 - **Founder decisions (grilled in Malay):**
   - Mark Delivered takes the supplier's charged price.
-  - There is no partial or extra penjoki pay. Decision 8 counted that cost twice: an envelope expense already reduces its envelope, and the operating profit leaves envelope expenses out (ADR-127 2026-10-25 addendum).
+  - There is no partial or extra penjoki pay. Decision 8 counted that cost twice: an envelope expense already reduces its envelope, and the operating profit leaves envelope expenses out (ADR-127 2026-10-24 addendum).
 - **Built, each test red first:**
   - **Mark Delivered (NeedsReview).** The admin enters `supplier_price`, in the supplier's currency, read off its dashboard. It becomes the real cost and the one drawdown. The path had recorded no drawdown.
   - **The drawdown is unique in the database.** A virtual `drawdown_key` column is unique for `ORDER_DRAWDOWN` only, so repeated transfer corrections stay allowed. On prod, read-only today: 35 drawdowns, no duplicate.
