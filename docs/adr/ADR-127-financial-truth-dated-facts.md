@@ -127,3 +127,17 @@
   - [ADR-083](./ADR-083-internal-accounting-financial-reconciliation.md): revenue month and the role of drift.
   - [ADR-111](./ADR-111-real-cost-profit-reconciliation-at-delivery-time.md) decision 8: the flag is removed.
   - [ADR-126](./ADR-126-joki-mlbb.md) decisions 11 and 13: partial and extra pay become cost of sales.
+
+### 2026-10-24 addendum — PR A and PR B1 build notes (decisions 1, 2, 10, 12)
+
+- **PR B is split into B1 and B2.**
+  - B1: recognition by `recognised_at`, plus invariants 1 and 4.
+  - B2: CHIP `paid_on` and fee (F1, F2, F5), the restore date (F4), `assertOpen`, the remaining past-period readers, and invariant 2.
+- **`recognised_at` is stamped in `LedgerService::creditOrderProfit()` before its `is_test` return,** so a sandbox order is recognised like any other. Every reader already excludes `is_test`.
+- **The backfill takes the first `order_profit` ledger row's time, else `delivered_at`.**
+- **The Reports Bridge needed a new row:** "Recognised here, paid in another range" (`recognised_from_other_periods`). "Orders not recognised" now also holds orders paid in the range but delivered after it. An order that was recognised but never paid stays unexplained on purpose.
+- **The Monthly Summary's affiliate commission and Cash Position's undelivered claim** now use `recognised_at`. COGS follows through `RecognisedRevenue`.
+- **Test fixtures:**
+  - `OrderFactory::delivered()` sets `recognised_at` to `delivered_at`, else `paid_at`.
+  - A settled partial is recognised at the moment it is settled, so a test that settles one freezes the clock inside its range.
+- **The scenario builder creates its world on the scenario's clock** (`boot($startsAt)`). A top-up on the real clock fell outside September and broke invariant 5.

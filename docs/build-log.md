@@ -1940,3 +1940,18 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - The other invariants arrive with the PR that makes them true. `FakeSupplierAdapter` (sandbox, e2e) is unchanged.
 - **Gotcha:** the first version created the reseller's opening top-up at the real clock (October). September's Cash Position correctly left it out, and invariant 5 read -RM22.10. Scenario data must be created on the scenario's own clock.
 - **Verified:** `php artisan test` passes 3032/3032, and Pint is clean.
+
+## 2026-10-24 — ADR-127 PR A merged (#543); PR B1: revenue at `recognised_at`
+
+- **#543 merged** with the founder's go-ahead, after CI went green.
+- **PR B split** (ADR-127 2026-10-24 addendum). This is **B1**.
+- **Red first.** `FinancialScenarioTest` gained an order paid on 30 September at 23:50 and delivered at 00:10 on 1 October (a scripted Pending, finished through `finalizePendingDelivery`).
+  - Before the fix, September's paid money (RM74.84) showed as recognised plus owed = RM101.79: the order counted twice (S1, proven).
+  - October's revenue did not contain the order at all.
+- **Fix:**
+  - `orders.recognised_at` (indexed, backfilled), stamped once in `creditOrderProfit()`.
+  - `RecognisedRevenue`, affiliate commission and Cash Position's undelivered claim read `recognised_at`.
+  - The Reports Bridge gained "Recognised here, paid in another range". Admin `AccountingBridge` shows the new row.
+- **Invariants 1 and 4 now hold.** Paid, uncompensated money is either recognised or owed at every month end.
+- **Local dev DB:** migrated (plain `migrate`). 167 of 167 Delivered orders recognised, none moved month.
+- **Verified:** `php artisan test` passes 3035/3035; admin `tsc` and lint pass.
