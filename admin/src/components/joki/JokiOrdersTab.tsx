@@ -241,7 +241,10 @@ export function JokiOrdersTab({ initialFilter, reloadKey }: { initialFilter: Jok
                           {row.penjoki ? <span className="text-ink">{row.penjoki}</span> : pending ? <span className="text-purple-ink">Unassigned</span> : "—"}
                         </DataTableCell>
                         <DataTableCell className={`${TD} whitespace-nowrap`}>
-                          {row.paid_at ? duration(Math.max(0, minutesBetween(row.paid_at, now))) : "—"}
+                          {/* A finished order is no longer waiting: its age since payment would read as e.g. "115d". */}
+                          {row.paid_at && (pending || row.delivery_status === "needs_review")
+                            ? duration(Math.max(0, minutesBetween(row.paid_at, now)))
+                            : "—"}
                           {slaMinutes !== null && (
                             <div className={`text-theme-xs ${slaMinutes < 0 ? "text-danger-ink" : "text-ink-muted"}`}>
                               SLA {duration(slaMinutes)} {slaMinutes < 0 ? "overdue" : "left"}
