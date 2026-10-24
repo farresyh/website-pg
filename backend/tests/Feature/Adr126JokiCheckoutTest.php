@@ -162,6 +162,31 @@ class Adr126JokiCheckoutTest extends TestCase
         $this->assertSame(1, Order::query()->count());
     }
 
+    /** Found building PR 5: the voucher preview priced the joki package's own RM0 (F1), not the climb. */
+    public function test_the_voucher_preview_prices_the_climb_like_checkout(): void
+    {
+        $this->enableJoki();
+        $voucher = $this->voucher(['amount' => 5000, 'remaining' => 5000]);
+
+        $this->postJson('/api/vouchers/preview', [
+            'game_id' => $this->game()->id,
+            'package_id' => $this->calculator()->id,
+            'voucher_code' => $voucher->code,
+            'customer_email' => 'buyer@example.com',
+            'joki' => ['from' => $this->rank('Epic', 5, 0), 'to' => $this->rank('Epic', 4, 0), 'is_express' => true],
+        ])->assertOk()
+            ->assertJsonPath('discount', 1500)
+            ->assertJsonPath('remaining_after', 3500);
+
+        // No climb, no price: refused like checkout, never previewed at RM0.
+        $this->postJson('/api/vouchers/preview', [
+            'game_id' => $this->game()->id,
+            'package_id' => $this->calculator()->id,
+            'voucher_code' => $voucher->code,
+            'customer_email' => 'buyer@example.com',
+        ])->assertJsonValidationErrors('joki.from');
+    }
+
     public function test_the_review_total_is_the_charge(): void
     {
         $this->bindGateway();

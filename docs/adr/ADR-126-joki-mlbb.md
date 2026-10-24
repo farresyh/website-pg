@@ -179,3 +179,10 @@
 - **Record payment** on the Penjoki tab is the existing supplier-transfer modal (super admin only, like Accounting), not a joki-only form.
 - **The rank model's icons** are any Gallery URL, not https-only, since local Gallery URLs are `http`.
 
+### 2026-10-24 addendum — PR 5 build notes (decisions 1, 2, 3, 12)
+
+- **The calculator is a stepper, at the founder's request after comparing rapspoint.com.** Each side walks the panel's ladder one division (or Mythic band) at a time with ‹ ›, shows the ranks either side faded, and sets stars with ▲ ▼. In Mythic the star count can also be typed, and the band follows it. It opens on the second-highest divisional tier's lowest division, one step to go, so a price shows at once. The two sides sit side by side on a phone too. It keeps PekanGame's own style, not the reference's. The rank icons are the founder's, set in the panel.
+- **The voucher preview prices a joki climb through `JokiCheckoutService`** (found building this PR). It had priced the joki package's own RM0 (F1), so a voucher previewed a RM0 discount while checkout applied the real one. It now takes the `joki` block, like checkout and its review total.
+- **Joki saves and the brand's switch purge the storefront's catalog cache** (`NextRevalidation::purge()`), so `/joki` and the menu follow the panel within one request, not the 30 s backstop.
+- **The menu item and `/joki` read the same signal:** `/api/joki/catalog` answers only where the brand sells joki. The home banner stays an ordinary Hero Slide.
+

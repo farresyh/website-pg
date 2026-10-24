@@ -1,3 +1,4 @@
+import type { JokiSelection } from "@/lib/joki";
 import { z } from "zod";
 import { apiFetch } from "@/lib/api-client";
 import { parseResponse } from "@/lib/schema-validation";
@@ -28,6 +29,8 @@ export async function previewVoucher(
   voucherCode: string,
   customerEmail: string,
   customerPhone?: string,
+  /** ADR-126: the climb, so a joki voucher is previewed against the price checkout charges. */
+  joki?: JokiSelection,
 ) {
   const path = "/api/vouchers/preview";
   const raw = await apiFetch<unknown>(path, {
@@ -38,6 +41,7 @@ export async function previewVoucher(
       voucher_code: voucherCode,
       customer_email: customerEmail,
       customer_phone: customerPhone || undefined,
+      joki,
     },
   });
   return parseResponse(VoucherPreviewResultSchema, raw, "VoucherPreviewResult", path);

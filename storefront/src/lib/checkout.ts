@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiFetch } from "@/lib/api-client";
 import { parseResponse } from "@/lib/schema-validation";
+import type { JokiSelection } from "@/lib/joki";
 
 /**
  * Real request/response contracts for two backend endpoints —
@@ -15,6 +16,16 @@ import { parseResponse } from "@/lib/schema-validation";
  * the same fact able to drift apart, which is what this ADR exists to
  * close.
  */
+
+const JokiRankSchema = z.object({ tier_id: z.number(), division: z.number().nullable(), stars: z.number().nullable() });
+const JokiSelectionSchema = z.object({
+  from: JokiRankSchema.optional(),
+  to: JokiRankSchema.optional(),
+  is_express: z.boolean().optional(),
+  hero_request: z.string().max(255).optional(),
+  role: z.string().max(50).optional(),
+  play_window: z.string().max(255).optional(),
+});
 
 const ValidatePlayerResultSchema = z.object({
   status: z.enum(["invalid", "region_unknown", "wrong_region", "wrong_zone", "valid"]),
@@ -82,6 +93,8 @@ const CheckoutPayloadSchema = z.object({
    * Modal's own "Apply" preview.
    */
   voucher_code: z.string().optional(),
+  /** ADR-126: a joki order's climb and requests; the price is never sent (ORD-9). */
+  joki: JokiSelectionSchema.optional(),
 });
 
 export type CheckoutPayload = z.infer<typeof CheckoutPayloadSchema>;
@@ -154,6 +167,7 @@ export interface CheckoutTotalPreviewParams {
   voucher_code?: string;
   customer_email?: string;
   customer_phone?: string;
+  joki?: JokiSelection;
 }
 
 export async function previewCheckoutTotal(params: CheckoutTotalPreviewParams, membershipToken?: string) {

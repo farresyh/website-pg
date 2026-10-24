@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\Voucher\PreviewVoucherRequest;
 use App\Models\Game;
 use App\Models\Package;
+use App\Services\Joki\JokiCheckoutService;
 use App\Services\Pricing\PricingService;
 use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherService;
@@ -33,6 +34,7 @@ class VoucherPreviewController extends Controller
         private readonly PricingService $pricing,
         private readonly VoucherService $vouchers,
         private readonly StorefrontBrand $storefrontBrand,
+        private readonly JokiCheckoutService $jokiCheckout,
     ) {}
 
     public function store(PreviewVoucherRequest $request): JsonResponse
@@ -54,19 +56,25 @@ class VoucherPreviewController extends Controller
         // order at — `calculateForAffiliate` with a null `tierMarkupPct`
         // is byte-identical to the old `calculate()` for the primary /
         // lapsed brand (ADR-060 PR-4b).
-        $pricingBreakdown = $this->pricing->calculateForAffiliate(
-            $package->cost_price,
-            $package->standard_selling_price,
-            $brand->wholesaleTierMarkupPct(),
-            (float) $brand->markup_pct,
-        );
+        //
+        // ADR-126 F1: a joki package's own price is never read; the climb is
+        // priced by JokiCheckoutService, the seam checkout and its review
+        // total use, so the preview's discount is the one checkout applies.
+        $sellingPriceSen = $game->is_joki
+            ? $this->jokiCheckout->resolve($package, (array) ($data['joki'] ?? []), $brand)->pricing->sellingPriceSen
+            : $this->pricing->calculateForAffiliate(
+                $package->cost_price,
+                $package->standard_selling_price,
+                $brand->wholesaleTierMarkupPct(),
+                (float) $brand->markup_pct,
+            )->sellingPrice;
 
         try {
             $preview = $this->vouchers->preview(
                 $data['voucher_code'],
                 $data['customer_email'],
                 $data['customer_phone'] ?? null,
-                $pricingBreakdown->sellingPrice,
+                $sellingPriceSen,
                 $brand->id,
             );
         } catch (InvalidVoucherException) {
@@ -76,7 +84,7 @@ class VoucherPreviewController extends Controller
         }
 
         return response()->json([
-            'selling_price' => $pricingBreakdown->sellingPrice,
+            'selling_price' => $sellingPriceSen,
             'discount' => $preview->discountSen,
             'remaining_after' => $preview->remainingAfterSen,
         ]);

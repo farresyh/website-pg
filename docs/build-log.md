@@ -1868,3 +1868,36 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
 - **Backend:** `/api/joki-admin/orders` takes `search` (order # or email), `supplier_id`, and `date_from`/`date_to`, with the same KL-day bounds on `created_at` as `/orders`. One new test.
 - **Penjoki tab:** in `DataTable`. **Settings:** cards in Order Detail's style, `Input`/`Label`, and the rank model and routes in bordered tables. **Order Detail Joki card:** laid out like `OrderDetailCards`. **Dashboard card:** summary-card style.
 - **Verified:** built admin against a seeded copy of the dev DB, with screenshots next to `/orders`. Assign through the dialog, search `DEMO3` returning 1 row, and no horizontal scroll at 390 px all passed. `tsc`, lint and tests pass.
+
+## 2026-10-24 — Joki PR 5: the `/joki` page (ADR-126 decisions 1, 2, 3, 12)
+
+#538 (4a) and #539 (4b) were merged to `staging` with the founder's go-ahead. #539 was retargeted to `staging` before #538 was merged with `--delete-branch`.
+
+- **`/joki`** (`app/joki/page.tsx`, `components/joki/JokiOrderForm.tsx`) follows the top-up order page. It reuses `Stepper`, `StepCard`, `LoginAccountFields`, `OrderSummarySidebar`, `ReviewModal` and the sticky mobile bar, with three steps:
+  - **Choose your climb.** A calculator (`JokiRankStepper`) for any climb, or route packages. Quotation routes link to WhatsApp.
+  - **Account & requests.** The joki game's login form, consent, role, hero and play window.
+  - **Payment.**
+
+  The price is always the backend's: `/api/joki/quote` for the climb, and `preview-totals` with the `joki` block for the fee and total. Checkout sends the `joki` block and never a price. It answers 404 where the brand doesn't sell joki.
+- **Rank calculator (founder, after comparing rapspoint.com).**
+  - ‹ › move one division or Mythic band; ▲ ▼ set the stars, which are kept across divisions as far as they fit.
+  - Mythic stars can be typed, and the band follows them.
+  - The target never goes below the start, and moving the start up pushes it along.
+  - It opens on Epic V → Epic IV, priced at once. Both sides sit side by side on a phone too.
+  - Icons come from the panel's rank model, with a lettered badge until the founder's icons are set.
+- **Shared, not copied.** `PaymentChannelPicker` was moved out of `OrderForm` unchanged. The login-field wire schema and its mapping are exported from `lib/catalog.ts`.
+- **Menu and sitemap.** "Joki Rank" is in the header and the mobile More drawer, and `/joki` is in the sitemap, all only where `/api/joki/catalog` answers. `BottomNav` treats `/joki` as a checkout (the sticky bar takes its place).
+- **Fix (found building it): the voucher preview priced the joki package's RM0 (F1).** `VoucherPreviewController` now prices a joki game through `JokiCheckoutService` and takes the `joki` block. `ReviewModal` passes it. There is a red-to-green test.
+- **Cache.** Joki settings, rank model and route saves, and a brand's `joki_enabled` change, call `NextRevalidation::purge()`.
+- **E2E golden path** (`storefront-joki.spec.ts`):
+  - the admin switches Joki on and ticks "Sell Joki";
+  - a guest prices a climb (RM10, then one more star RM12) and pays;
+  - the webhook comes in, and the order waits on the pool;
+  - the status page shows the climb, and the board shows it Unassigned.
+- **CI catch:** `check-loading-boundaries.mjs` failed because `/joki` had no `loading.tsx`, so navigation would freeze. It now reuses `OrderPageSkeleton`, since the page has the order page's shape. Run that script locally before pushing a new storefront route.
+- **Gotcha: the e2e storefront's Data Cache survived rebuilds while the DB is rebuilt every run.** A cached catalog from an earlier run named a package that no longer existed ("The selected package id is invalid"). The storefront `webServer` command now clears `.next/cache/fetch-cache` first. This also explains a flaky "Joki is not available" seen earlier the same day.
+- **Verified.**
+  - `php artisan test`: 3029/3029.
+  - Storefront and admin: `tsc`, lint and build pass.
+  - e2e: 9/9 in the full run (and repeatedly before the calculator change).
+  - Screenshots of `/joki` on desktop and at 390 px (no horizontal scroll), the Review Modal, the status page and the admin card.
