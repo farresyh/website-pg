@@ -1894,6 +1894,7 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - a guest prices a climb (RM10, then one more star RM12) and pays;
   - the webhook comes in, and the order waits on the pool;
   - the status page shows the climb, and the board shows it Unassigned.
+- **CI catch:** `check-loading-boundaries.mjs` failed because `/joki` had no `loading.tsx`, so navigation would freeze. It now reuses `OrderPageSkeleton`, since the page has the order page's shape. Run that script locally before pushing a new storefront route.
 - **Gotcha: the e2e storefront's Data Cache survived rebuilds while the DB is rebuilt every run.** A cached catalog from an earlier run named a package that no longer existed ("The selected package id is invalid"). The storefront `webServer` command now clears `.next/cache/fetch-cache` first. This also explains a flaky "Joki is not available" seen earlier the same day.
 - **Verified.**
   - `php artisan test`: 3029/3029.
