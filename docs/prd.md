@@ -845,13 +845,23 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
   months that cannot move, CHIP `paid_on`/fee recorded, a scenario builder
   with 11 cross-page invariants. Five stacked PRs (A–E, ADR-127 build
   order). Merged to `staging`, not released: A (#543), B1 (#544), B2 (#545),
-  C (#546), D (#548). **PR E** is open as a PR: joki in the scenario,
-  `FinancialScenarioSeeder` (dev DB), `ReportDemoSeeder` deleted, the
-  browser pass, and a pay-after supplier payment split from the prepaid
-  top-up line. Then this item is done. Must ship before Joki launches.
+  C (#546), D (#548). **PR E** (#549) is open: joki and the money around
+  the orders (bank, CHIP fees and settlements, membership, CHIP top-ups,
+  withdrawals, resends, an IDR supplier) in the scenario; the cash
+  equation closes to the sen; `FinancialScenarioSeeder` (dev DB);
+  `ReportDemoSeeder` deleted; the pay-after line; the membership gate fix.
+  Then this item is done, except item 132. Must ship before Joki launches.
 
 **B. Needs a short grill / ADR addendum first**
-- None open.
+- **132** IDR supplier COGS at a moving (perpetual) weighted average
+  (founder, 2026-10-25). Found by ADR-127 PR E's cash equation: the
+  cumulative average since inception leaks between months when deposit
+  rates change (RM4.01 over three months on the dev data; Digiflazz in
+  production). Revises ADR-083's 2026-10-17 addendum (COGS at funded
+  cost). Money-critical: grill plus the code-trace of every reader of
+  `weightedAverageRate()` (COGS, supplier corrections, the month-end
+  prepaid/payable, closed months) before building. Should land before the
+  next release.
 
 **C. Founder actions (no code)**
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches

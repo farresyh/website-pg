@@ -1,6 +1,6 @@
 # ADR-127: Financial truth from dated facts — revenue at recognition, closed months that cannot move, and a scenario builder that proves every page agrees
 
-> **Standing (2026-10-24):** Accepted; decision 8 withdrawn (2026-10-24 addendum: no partial or extra penjoki pay); PR E build notes split pay-after supplier payments on the Monthly Summary. Revises [ADR-083](./ADR-083-internal-accounting-financial-reconciliation.md) (revenue month, closed-month drift), [ADR-111](./ADR-111-real-cost-profit-reconciliation-at-delivery-time.md) decision 8 (the feature flag is removed) [ADR-126](./ADR-126-joki-mlbb.md) decisions 11/13 (penjoki partial and extra pay, removed by the 2026-10-24 addendum), and, through its build addenda, [ADR-104](./ADR-104-admin-panel-visual-redesign.md) R10 (store credit), [ADR-087](./ADR-087-admin-reports-llm-assistant.md) (Report Assistant view) and [ADR-024](./ADR-024-voucher-at-checkout.md) (dated restore and revoke). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-24):** Accepted; decision 8 withdrawn (2026-10-24 addendum: no partial or extra penjoki pay); PR E build notes split pay-after supplier payments on the Monthly Summary; PR E completed 2026-10-25 (cash equation closes, membership gate fixed, IDR averaging pending, §16 item 132). Revises [ADR-083](./ADR-083-internal-accounting-financial-reconciliation.md) (revenue month, closed-month drift), [ADR-111](./ADR-111-real-cost-profit-reconciliation-at-delivery-time.md) decision 8 (the feature flag is removed) [ADR-126](./ADR-126-joki-mlbb.md) decisions 11/13 (penjoki partial and extra pay, removed by the 2026-10-24 addendum), and, through its build addenda, [ADR-104](./ADR-104-admin-panel-visual-redesign.md) R10 (store credit), [ADR-087](./ADR-087-admin-reports-llm-assistant.md) (Report Assistant view) and [ADR-024](./ADR-024-voucher-at-checkout.md) (dated restore and revoke). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-24. Grilled with the founder (`/mattpocock-skills:grilling`, Q1–Q13, two rounds; the founder delegated Q9–Q13 to the recommended answers), then stress-tested against the code before writing (below). Money-critical trace done in three read-only forks (checkout and pricing; ledger, fulfillment and compensation; downstream readers), with every top finding re-checked by hand and against production read-only. Expands PRD §16 item 131 at the founder's request (2026-10-24) from "revenue by delivery date" to the whole money-reporting surface. Gates the Joki launch (item 114).
 
@@ -235,4 +235,33 @@
   - Production, read-only: 3 prepaid transfers, no pay-after payment yet.
 - **Finding: the Joki board's "Waiting"** showed a finished order's age since payment (e.g. "115d"). It now shows only for an open order.
 - **Found restarting the dev stack:** admin and storefront both used Next's default port, so whichever started first took :3000. The admin's session cookie works only there. They are pinned to :3000 and :3001.
+
+### 2026-10-25 addendum — PR E completed: the money around the orders, and two findings
+
+- **The founder asked why six flows were not tested with the rest. They are now, in PR E.** Decision 12 had listed them. PR E's first cut drove only orders, and noted the rest as "not driven yet" without raising it.
+  - `FinancialScenario` (via its `MoneyFlows` trait) now drives each through the real route, service or admin action:
+    - share capital;
+    - CHIP's own fee and paid time on every payment;
+    - CHIP settlement files through the real `ingest()`;
+    - membership through `/membership/subscribe`, and member-priced orders;
+    - CHIP wallet top-ups;
+    - affiliate withdrawals (request, approve, complete);
+    - resends;
+    - a second supplier in IDR, with daily FX rates and deposits at their own rates.
+  - The seeder drives all of them daily or weekly.
+- **The company's bank is modelled, so the cash equation is a test.**
+  - New invariant: the September close's gap is 0 to the sen, with CHIP payments still unsettled at month end. CHIP's RM1-per-payment estimate offsets the channel fee charged to the customer. The real fee's difference is recognised at settlement.
+  - It goes red if a single bank flow is left out.
+  - On the dev data the close's gap is exactly July–August's unallocated profit (closes start in September) plus the IDR residual below.
+- **Finding 1, fixed: the membership gate judged the wrong brand.**
+  - What happened: ADR-080 pinned `EnsureBrandMembershipEnabled` ahead of the throttle, which also put it ahead of `ResolveStorefrontBrand`. On an affiliate's domain, OTP, subscribe-options and subscribe were gated by the platform brand's switch.
+  - Production, read-only: PekanGame has membership on and the "FixFast Demo" affiliate has it off, so FixFast's domain left the surface open. All 3 subscription attempts were on PekanGame.
+  - Now the resolver is pinned ahead of the gate. A test proves both directions. One older test passed only because of the bug; it now sets its brand's switch.
+- **Finding 2, decision pending: IDR COGS at a cumulative average leaks between months.**
+  - `FundedCostOfSales::weightedAverageRate()` averages every deposit since inception. A month's COGS is costed at that month-end rate and never revisited, while the remaining prepaid balance is valued at the latest rate. So COGS plus the balance differs from the ringgit actually sent as soon as deposit rates change between months.
+  - On the dev data: RM4.01 over three months. It affects Digiflazz in production.
+  - The founder chose a moving (perpetual) weighted average, after a grill and the money-critical code-trace (PRD §16 item 132). It is not built in PR E.
+- **Scenario fixes found on the way:**
+  - Membership attempts and top-ups have no `paid_at`; F5 dates them by their ledger fact, so the scenario does too. On sqlite, a missing column in a `where` silently compared a string.
+  - The scenario never settles a payment "in the future" when days are scripted out of order.
 
