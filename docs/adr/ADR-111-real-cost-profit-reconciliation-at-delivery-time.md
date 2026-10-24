@@ -1,6 +1,6 @@
 # ADR-111: Real-cost profit reconciliation at delivery time — widens ADR-033's FX conversion boundary to a second call site
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-24):** In force; decision 8's feature flag is removed by [ADR-127](./ADR-127-financial-truth-dated-facts.md) (2026-10-24 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — grilled (`/mattpocock-skills:grilling`, 2 rounds, 8 questions) 2026-09-21/22, sparked by a real production incident investigated live via SSH. **Built 2026-09-22, decisions 1-9 exactly as decided below, no design changes made mid-build. 🟢 LIVE PROD, flag enabled, verified against a real delivered order same day.** Feature-flagged (`config('services.real_cost_reconciliation.enabled')`) — capture (decision 2) runs unconditionally on every delivery; only whether it's USED to recompute `platform_profit` (decision 3) is gated. Founder set `REAL_COST_RECONCILIATION_ENABLED=true` in Forge before the `staging`→`main` release (PR #266); confirmed live via SSH against real order `PG-4VPQQFOLJQQ1` (Digiflazz, delivered 2026-09-22 06:45:53 UTC) — `real_cost_price_sen=360`, `cost_basis=real`, `platform_profit=36` exactly matches `selling_price(396) − real_cost(360) − affiliate_profit(0)`.
 
@@ -67,3 +67,7 @@ Price Sync resolved the supplier's rate once per run and recorded it in `PriceSy
 - Delivery-time real cost (`OrderFulfillmentService::captureRealCostSen`) keeps calling `convertToSen()` once per leg, at the rate current at delivery, unchanged.
 
 No stored price moves: within a 24h cache TTL, the rates were already equal in practice.
+
+### 2026-10-24 addendum — the feature flag is removed (ADR-127 decision 10)
+
+`REAL_COST_RECONCILIATION_ENABLED` has been `true` in production since 2026-09-22, while the default `false` meant every test, e2e run and seeder ran profit logic production never runs. The flag is removed; the real-cost path is the only path. [ADR-127](./ADR-127-financial-truth-dated-facts.md).

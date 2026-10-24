@@ -1,6 +1,6 @@
 # ADR-126: Joki MLBB — owned-brand `/joki` page, a `Fixed` pricing basis, each penjoki a pay-after manual supplier with its own WhatsApp group, payout booked as cost
 
-> **Standing (2026-10-23):** Accepted. The 2026-10-23 addendum re-traces it against ADR-125 and records grill S1–S26 and stress test F1–F5, overriding the original where they differ; later 2026-10-23 addenda split PR 2, pin the pricing rule (Grading guarantees Mythic 15★) and record what each PR settled. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-24):** Accepted; decisions 11/13 (where penjoki partial and extra pay is classified) revised by [ADR-127](./ADR-127-financial-truth-dated-facts.md) (2026-10-24 addendum). The 2026-10-23 addendum re-traces it against ADR-125 and records grill S1–S26 and stress test F1–F5, overriding the original where they differ; later 2026-10-23 addenda split PR 2, pin the pricing rule (Grading guarantees Mythic 15★) and record what each PR settled. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-17. Grilled with the founder (`/mattpocock-skills:grilling`, Q-A to Q-J plus the earlier scoping answers), after a money-critical trace in three read-only forks (joki checkout/pricing, supplier funding/accounting, reports/analytics), top findings re-checked by hand. Builds on [ADR-125](./ADR-125-login-top-up-manual-supplier.md) (manual suppliers, finalize seam, supplier groups, its 2026-10-17 addendum) and [ADR-124](./ADR-124-customer-account-credentials.md) (credentials). Built after both (PRD §16 item 114).
 
@@ -186,3 +186,9 @@
 - **Joki saves and the brand's switch purge the storefront's catalog cache** (`NextRevalidation::purge()`), so `/joki` and the menu follow the panel within one request, not the 30 s backstop.
 - **The menu item and `/joki` read the same signal:** `/api/joki/catalog` answers only where the brand sells joki. The home banner stays an ordinary Hero Slide.
 
+### 2026-10-24 addendum — penjoki partial and extra pay is cost of sales (ADR-127 decision 8)
+
+- Revises decisions 11 and 13 and the 2026-10-23 addendum's decisions 9 and 13. Partial-work and extra pay to a penjoki stays a Budget Envelope posting, but its categories ("Joki – partial work", "Joki – extra pay") sit in the Monthly Summary's cost-of-sales block, not operating expenses. `reference_no` must be the order's reference (validated), so Reports and the Joki margin include it.
+- Pay for a failed attempt is expensed in the month paid on its own line, "Failed joki cost" (IFRS 15.98(c)), and never joins the COGS of a later successful attempt.
+- A joki is recognised as revenue at a point in time, on delivery (ADR-127 decision 6), consistent with decision 11's full refund on failure.
+- The Joki launch is gated on ADR-127 being built (PRD §16 items 114 and 131).
