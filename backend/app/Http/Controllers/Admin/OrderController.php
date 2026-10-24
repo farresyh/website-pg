@@ -696,6 +696,7 @@ class OrderController extends Controller
         $result = $fulfillment->markDeliveredManually(
             $order,
             $request->validated('supplier_ref'),
+            (float) $request->validated('supplier_price'),
             $request->validated('note'),
             $request->user()->name,
         );

@@ -193,7 +193,7 @@ class CustomerWhatsAppOptInTest extends TestCase
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
 
         // Admin Mark Delivered: one of the four paths into Delivered, all through creditProfit().
-        $this->postJson("/api/orders/{$second->id}/mark-delivered", ['supplier_ref' => 'X1', 'note' => 'confirmed'])->assertOk();
+        $this->postJson("/api/orders/{$second->id}/mark-delivered", ['supplier_ref' => 'X1', 'supplier_price' => 4.75, 'note' => 'confirmed'])->assertOk();
 
         $receipt = CustomerNotification::query()->where('order_id', $second->id)->sole();
         $this->assertSame('delivered_receipt', $receipt->event);
@@ -208,7 +208,7 @@ class CustomerWhatsAppOptInTest extends TestCase
         $order = $this->order(['delivery_status' => DeliveryStatus::NeedsReview->value]);
         Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
 
-        $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'X1', 'note' => 'confirmed'])->assertOk();
+        $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'X1', 'supplier_price' => 4.75, 'note' => 'confirmed'])->assertOk();
 
         $this->assertSame(0, CustomerNotification::query()->count());
         Queue::assertNotPushed(SendCustomerWhatsAppJob::class);

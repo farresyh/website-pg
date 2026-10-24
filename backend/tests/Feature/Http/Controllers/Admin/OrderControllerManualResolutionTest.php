@@ -37,6 +37,7 @@ class OrderControllerManualResolutionTest extends TestCase
 
         $response = $this->postJson("/api/orders/{$order->id}/mark-delivered", [
             'supplier_ref' => 'GV-RAPI-CONFIRMED1',
+            'supplier_price' => 4.75,
             'note' => 'Confirmed via Gamevion dashboard, TARGET/SERVICE/date matched.',
         ]);
 
@@ -75,7 +76,7 @@ class OrderControllerManualResolutionTest extends TestCase
         $response = $this->postJson("/api/orders/{$order->id}/mark-delivered", []);
 
         $response->assertUnprocessable();
-        $response->assertJsonValidationErrors('supplier_ref');
+        $response->assertJsonValidationErrors(['supplier_ref', 'supplier_price']);
     }
 
     public function test_mark_delivered_rejects_an_order_that_is_not_needs_review(): void
@@ -86,7 +87,7 @@ class OrderControllerManualResolutionTest extends TestCase
             'delivery_status' => DeliveryStatus::Failed->value,
         ]);
 
-        $response = $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1']);
+        $response = $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1', 'supplier_price' => 4.75]);
 
         $response->assertUnprocessable();
         $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
@@ -110,7 +111,7 @@ class OrderControllerManualResolutionTest extends TestCase
             'reason' => 'test',
         ]);
 
-        $response = $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1']);
+        $response = $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1', 'supplier_price' => 4.75]);
 
         $response->assertUnprocessable();
         $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
@@ -157,7 +158,7 @@ class OrderControllerManualResolutionTest extends TestCase
             'leg_number' => 2, 'status' => DeliveryStatus::NeedsReview->value, 'failure_reason' => 'Duplicate reference',
         ]);
 
-        $response = $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1']);
+        $response = $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1', 'supplier_price' => 4.75]);
 
         $response->assertUnprocessable();
         $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
@@ -174,7 +175,7 @@ class OrderControllerManualResolutionTest extends TestCase
         ]);
         $this->actingAsAdmin();
 
-        $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1'])->assertNotFound();
+        $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1', 'supplier_price' => 4.75])->assertNotFound();
     }
 
     /**

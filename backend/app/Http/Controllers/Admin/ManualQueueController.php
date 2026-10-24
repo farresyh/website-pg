@@ -114,7 +114,7 @@ class ManualQueueController extends Controller
         try {
             $order = $action();
         } catch (InvalidOrderTransitionException) {
-            throw ValidationException::withMessages(['order' => ['This order is already finished.']]);
+            throw ValidationException::withMessages(['order' => ['This order is already finished or was compensated.']]);
         }
 
         return response()->json([

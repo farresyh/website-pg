@@ -1101,7 +1101,12 @@ final class OrderFulfillmentService
             // that contradicts a terminal status is kept as evidence and
             // logged, never applied. Committed before the caller sees the
             // usual "already finalized" exception below.
-            if (self::contradictsFinalStatus($locked->delivery_status, $outcome)) {
+            // ADR-127 decision 11: a Success on an order already
+            // compensated is refused the same way, whoever reports it
+            // (a webhook, the poll, Manual Queue, a supplier's `.done`):
+            // the customer keeps the compensation, never both.
+            if (self::contradictsFinalStatus($locked->delivery_status, $outcome)
+                || ($outcome === SupplierOutcome::Success && $locked->isAlreadyCompensated())) {
                 $locked->update(['supplier_response' => array_merge(
                     is_array($locked->supplier_response) ? $locked->supplier_response : [],
                     ['late_supplier_result' => is_array($supplierResponse) ? $supplierResponse : ['outcome' => $outcome->value]],
@@ -1406,26 +1411,51 @@ final class OrderFulfillmentService
      * 'success' (this method exists only to confirm a delivery, never a
      * failure), `note`/`triggered_by` come from this call's own params.
      */
-    public function markDeliveredManually(Order $order, string $supplierRef, ?string $note, string $confirmedBy): Order
+    public function markDeliveredManually(Order $order, string $supplierRef, float $supplierPrice, ?string $note, string $confirmedBy): Order
     {
-        return DB::transaction(function () use ($order, $supplierRef, $note, $confirmedBy) {
+        $delivered = DB::transaction(function () use ($order, $supplierRef, $supplierPrice, $note, $confirmedBy) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
             $deliveredStatus = $this->orderStatus->markDeliveredManually($locked->delivery_status);
 
+            // ADR-127 decision 11: re-checked under the lock; the
+            // controller's own check can go stale before it.
+            if ($locked->isAlreadyCompensated()) {
+                throw ValidationException::withMessages([
+                    'delivery_status' => ['This order has already been compensated (voucher issued/restored or wallet refunded) — it cannot be marked delivered.'],
+                ]);
+            }
+
             Log::withContext(['reference_number' => $locked->reference_number]);
 
-            $locked->update([
+            // ADR-127 PR D: the price the admin read off the supplier's
+            // dashboard with the invoice, in the supplier's currency. It
+            // is the real cost (ADR-111) and the drawdown, as a webhook's
+            // `price` would have been.
+            $supplierResponse = [
+                'manually_confirmed' => true,
+                'confirmed_by' => $confirmedBy,
+                'note' => $note,
+                'price' => $supplierPrice,
+                'confirmed_at' => now()->toISOString(),
+            ];
+            $realCostPriceSen = $locked->supplier === null
+                ? null
+                : $this->captureRealCostSen($supplierResponse, $locked->supplier->currency);
+
+            $updateData = [
                 'supplier_ref' => $supplierRef,
-                'supplier_response' => [
-                    'manually_confirmed' => true,
-                    'confirmed_by' => $confirmedBy,
-                    'note' => $note,
-                    'confirmed_at' => now()->toISOString(),
-                ],
+                'supplier_response' => $supplierResponse,
                 'delivery_status' => $deliveredStatus->value,
                 'delivered_at' => now(),
-            ]);
+                'real_cost_price_sen' => $realCostPriceSen,
+            ];
+
+            if ($realCostPriceSen !== null) {
+                $updateData += $this->reconcileRealCostProfit($locked, $realCostPriceSen);
+            }
+
+            $locked->update($updateData);
 
             OrderResendAttempt::query()->create([
                 'order_id' => $locked->id,
@@ -1450,6 +1480,11 @@ final class OrderFulfillmentService
 
             return $locked->fresh();
         });
+
+        // After commit, as every other drawdown (ADR-083 decision 3).
+        $this->supplierFunding->recordOrderDrawdown($delivered, $supplierPrice);
+
+        return $delivered;
     }
 
     /**
