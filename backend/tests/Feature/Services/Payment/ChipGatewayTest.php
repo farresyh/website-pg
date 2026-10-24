@@ -368,6 +368,25 @@ class ChipGatewayTest extends TestCase
         $this->assertSame(10000, $event->amountSen);
     }
 
+    /** ADR-127 F1/F2: CHIP's own paid time and fee ride on the event; absent before payment. */
+    public function test_parse_webhook_event_carries_chips_paid_time_and_fee(): void
+    {
+        $paid = $this->gateway()->parseWebhookEvent([
+            'event_type' => 'purchase.paid', 'id' => 'purchase-123', 'reference' => 'KRS-1', 'status' => 'paid',
+            'purchase' => ['total' => 10000],
+            'payment' => ['paid_on' => 1790783880, 'fee_amount' => 87, 'net_amount' => 9913],
+        ]);
+        $unpaid = $this->gateway()->parseWebhookEvent([
+            'event_type' => 'purchase.payment_failure', 'id' => 'purchase-123', 'reference' => 'KRS-1', 'status' => 'error',
+            'purchase' => ['total' => 10000], 'payment' => null,
+        ]);
+
+        $this->assertSame(1790783880, $paid->paidOn);
+        $this->assertSame(87, $paid->feeSen);
+        $this->assertNull($unpaid->paidOn);
+        $this->assertNull($unpaid->feeSen);
+    }
+
     public function test_parse_webhook_event_maps_a_payment_failure(): void
     {
         $event = $this->gateway()->parseWebhookEvent([

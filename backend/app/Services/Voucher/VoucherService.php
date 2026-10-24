@@ -367,7 +367,7 @@ final class VoucherService
 
             $voucher->save();
 
-            $redemption->update(['status' => 'restored', 'restored_amount' => $restoredAmount]);
+            $redemption->update(['status' => 'restored', 'restored_amount' => $restoredAmount, 'restored_at' => now()]);
         });
     }
 

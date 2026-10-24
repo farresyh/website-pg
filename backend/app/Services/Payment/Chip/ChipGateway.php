@@ -197,12 +197,16 @@ final class ChipGateway implements PaymentGateway
 
     public function parseWebhookEvent(array $payload): PaymentWebhookEvent
     {
+        $purchase = $this->normalizePurchase($payload);
+
         return new PaymentWebhookEvent(
             eventType: $payload['event_type'] ?? 'unknown',
             referenceId: $payload['reference'] ?? '',
             paymentRequestId: $payload['id'] ?? '',
             status: $this->mapPurchaseStatus($payload['status'] ?? ''),
             amountSen: (int) ($payload['purchase']['total'] ?? 0),
+            paidOn: $purchase['paid_on'],
+            feeSen: $purchase['fee_sen'],
         );
     }
 
@@ -343,6 +347,10 @@ final class ChipGateway implements PaymentGateway
             // keep comparing it as a plain int against its own stored
             // `*_sen` column with strict `!==` without re-deriving this.
             'amount_sen' => isset($body['purchase']['total']) ? (int) $body['purchase']['total'] : null,
+            // ADR-127 F1/F2: when CHIP accepted the payment (Unix time) and
+            // the fee it charged; `payment` is null until the purchase is paid.
+            'paid_on' => isset($body['payment']['paid_on']) ? (int) $body['payment']['paid_on'] : null,
+            'fee_sen' => isset($body['payment']['fee_amount']) ? (int) $body['payment']['fee_amount'] : null,
         ];
     }
 }

@@ -9,7 +9,6 @@ use App\Models\Order;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\Voucher;
-use App\Models\VoucherRedemption;
 use App\Models\Withdrawal;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\PaymentStatus;
@@ -172,17 +171,7 @@ final class CashPositionService
             ->where(fn ($q) => $q->whereNull('order_id')->orWhereHas('sourceOrder', fn ($o) => $o->where('is_test', false)))
             ->with(['redemptions', 'mergeAsSource'])
             ->get()
-            ->sum(function (Voucher $voucher) use ($toExclusive) {
-                if ($voucher->mergeAsSource !== null && $voucher->mergeAsSource->created_at < $toExclusive) {
-                    return 0;
-                }
-
-                $before = $voucher->redemptions->filter(fn (VoucherRedemption $r) => $r->created_at < $toExclusive);
-                // A restore carries only `updated_at`, and it is written once.
-                $restored = $before->filter(fn (VoucherRedemption $r) => $r->status === 'restored' && $r->updated_at < $toExclusive);
-
-                return max(0, $voucher->amount - (int) $before->sum('amount') + (int) $restored->sum('restored_amount'));
-            });
+            ->sum(fn (Voucher $voucher) => $voucher->balanceAsOf($toExclusive));
     }
 
     /**
@@ -205,7 +194,7 @@ final class CashPositionService
 
         return (int) $orders
             ->reject(fn (Order $o) => ($o->voucher !== null && $o->voucher->created_at < $toExclusive)
-                || ($o->voucherRedemption?->status === 'restored' && $o->voucherRedemption->updated_at < $toExclusive)
+                || ($o->voucherRedemption?->status === 'restored' && $o->voucherRedemption->restored_at < $toExclusive)
                 || (($walletRefunds[$o->id] ?? null) !== null && $walletRefunds[$o->id]->created_at < $toExclusive))
             ->sum('selling_price');
     }

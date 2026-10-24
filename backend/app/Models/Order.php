@@ -69,6 +69,7 @@ class Order extends Model
         'profit_reconciled_flagged',
         'payment_status',
         'paid_at',
+        'gateway_fee_sen',
         'delivery_status',
         'delivered_at',
         'recognised_at',

@@ -349,14 +349,14 @@ final class SettlementReconciliationService
 
         $memberships = MembershipCheckoutAttempt::query()
             ->where('status', MembershipCheckoutAttemptStatus::Paid->value)
-            ->when($from, fn ($q) => $q->where('updated_at', '>=', $from))->where('updated_at', '<', $toExclusive)
+            ->whereHas('feeRecord', fn ($q) => $q->when($from, fn ($q) => $q->where('created_at', '>=', $from))->where('created_at', '<', $toExclusive))
             ->whereNotIn('payment_ref', $settledRefs)
             ->get(['subscription_number', 'total_charged_sen'])
             ->map(fn (MembershipCheckoutAttempt $m) => ['reference' => $m->subscription_number, 'amount_sen' => $m->total_charged_sen]);
 
         $walletTopups = WalletTopupAttempt::query()
             ->where('status', WalletTopupAttemptStatus::Paid->value)
-            ->when($from, fn ($q) => $q->where('updated_at', '>=', $from))->where('updated_at', '<', $toExclusive)
+            ->whereHas('ledgerCredit', fn ($q) => $q->when($from, fn ($q) => $q->where('created_at', '>=', $from))->where('created_at', '<', $toExclusive))
             ->whereNotIn('chip_payment_ref', $settledRefs)
             ->get(['reference', 'total_charged_sen'])
             ->map(fn (WalletTopupAttempt $w) => ['reference' => $w->reference, 'amount_sen' => $w->total_charged_sen]);

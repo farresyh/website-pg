@@ -69,7 +69,7 @@ final class PaymentReconciliationService
         $amountSen = is_array($payment->data) ? ($payment->data['amount_sen'] ?? null) : null;
 
         $outcome = match ($payment->status) {
-            PaymentStatus::Paid => $this->paymentOutcomes->applyPaid($order, $amountSen),
+            PaymentStatus::Paid => $this->paymentOutcomes->applyPaid($order, $amountSen, $payment->data['paid_on'] ?? null, $payment->data['fee_sen'] ?? null),
             PaymentStatus::Failed => $this->paymentOutcomes->applyFailed($order),
             default => null,
         };

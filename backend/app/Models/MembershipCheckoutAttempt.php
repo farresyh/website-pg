@@ -6,6 +6,7 @@ use App\Models\Concerns\LeavesPendingOnce;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * ADR-068 decision 2 — one self-serve membership subscription payment
@@ -28,6 +29,7 @@ class MembershipCheckoutAttempt extends Model
         'payment_ref',
         'checkout_url',
         'status',
+        'gateway_fee_sen',
     ];
 
     protected $casts = [
@@ -44,5 +46,11 @@ class MembershipCheckoutAttempt extends Model
     public function affiliate(): BelongsTo
     {
         return $this->belongsTo(Affiliate::class);
+    }
+
+    /** The fee record a paid attempt wrote, once, with its ledger credit: its accounting date (ADR-127 F5). */
+    public function feeRecord(): HasOne
+    {
+        return $this->hasOne(MembershipFeeRecord::class, 'idempotency_key', 'subscription_number');
     }
 }

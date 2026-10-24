@@ -73,6 +73,8 @@ final class FakePaymentGateway implements PaymentGateway
                 default => PaymentStatus::Pending,
             },
             amountSen: (int) ($payload['purchase']['total'] ?? 0),
+            paidOn: isset($payload['payment']['paid_on']) ? (int) $payload['payment']['paid_on'] : null,
+            feeSen: isset($payload['payment']['fee_amount']) ? (int) $payload['payment']['fee_amount'] : null,
         );
     }
 }

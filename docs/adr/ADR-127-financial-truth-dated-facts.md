@@ -141,3 +141,23 @@
   - `OrderFactory::delivered()` sets `recognised_at` to `delivered_at`, else `paid_at`.
   - A settled partial is recognised at the moment it is settled, so a test that settles one freezes the clock inside its range.
 - **The scenario builder creates its world on the scenario's clock** (`boot($startsAt)`). A top-up on the real clock fell outside September and broke invariant 5.
+
+### 2026-10-24 addendum — PR B2 build notes (decisions 3, 4, 5; F1–F5; invariant 2)
+
+- **F1/F2.**
+  - `ChipGateway::normalizePurchase()` reads `payment.paid_on` and `payment.fee_amount`. The webhook event and the reconciliation sweeps take them from there.
+  - `applyPaid()` sets `paid_at` from `paid_on`. It falls back to our processing time when CHIP sent none, when the time is outside the order's life (before `created_at` or in the future), or when it falls in a closed month.
+  - `gateway_fee_sen` is stored on orders, wallet top-ups and membership attempts. Comparing it with the settlement file's fee is a page change and belongs to PR C.
+- **F5 revised.** No `paid_at` was added to the top-up and membership attempts. With one, a top-up near midnight could put the CHIP-unsettled asset and the wallet liability in different months. Instead, the asset, the liability and the Register all read the same fact: the wallet credit (`WalletTopupAttempt::ledgerCredit`) or the fee record (`MembershipCheckoutAttempt::feeRecord`).
+- **F4.** `voucher_redemptions.restored_at` is written by the one restore writer and backfilled from `updated_at`. `Voucher::balanceAsOf()` is now the one place a voucher balance at a past instant is rebuilt; Cash Position and breakage both use it.
+  - Breakage is the balance at the moment the voucher expired.
+  - A redemption restored after expiry counts as breakage in the month of the restore.
+- **Decision 4.** `AccountingPeriod::assertOpen()` guards:
+  - recording a supplier transfer, and correcting one (on the old and the new date);
+  - voiding a transfer (the void removes it from its own month's funding lines);
+  - posting to an envelope, and voiding a posting, since the reversal is dated with the original. Reopening a month is exempt.
+
+  Manual supplier adjustments are dated today, so they need no guard. `ClosedPeriodGuardTest` lists every guarded writer.
+- **Invariant 2 caught S10.** The Summary's reseller-wallet line was today's balance. It is now the balance at the month end, read from the ledger. The admin "as of" timestamp is gone.
+- **Register (S2).** An order recognised in its paid month keeps one row. An order recognised in a later month keeps only the money received on its `order` row, and its cost and net go on its own `order_recognised` row, dated `recognised_at`.
+- **Invariant 2 is proven on scenario data.** September is closed, then a September order is delivered, the wallet moves and a failure is compensated. September's live Summary, Cash Position (assets and claims) and Register equal what they were at the close.

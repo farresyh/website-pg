@@ -1955,3 +1955,23 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
 - **Invariants 1 and 4 now hold.** Paid, uncompensated money is either recognised or owed at every month end.
 - **Local dev DB:** migrated (plain `migrate`). 167 of 167 Delivered orders recognised, none moved month.
 - **Verified:** `php artisan test` passes 3035/3035; admin `tsc` and lint pass.
+
+## 2026-10-24 — ADR-127 PR B2: dated facts everywhere, closed months that cannot move
+
+- **Stacked on B1 (#544).** Every step below went red first, then green:
+  - **CHIP's own paid time and fee (F1, F2).** `paid_at` was our processing time, so a late webhook moved a 23:58 payment into the next month. It is now `payment.paid_on`, with a fallback to processing time when the value is missing, implausible, or in a closed month. The fee is kept as `gateway_fee_sen`.
+  - **One date per fact (F4, F5).** Restores carry `restored_at`. The top-up and membership CHIP-unsettled asset is dated by the same ledger fact as the wallet liability; the attempt's `updated_at` is no longer read.
+  - **Closed-month guard.** Transfers, transfer corrections and voids, and envelope postings and voids refuse a closed month. A void used to silently rewrite the month it voided.
+  - **Breakage at expiry (S7).** `Voucher::balanceAsOf()` is now shared with Cash Position.
+  - **Invariant 2.** The scenario closes September, then keeps trading. The new invariant caught the last Summary line reading current state: the reseller wallet balance (S10), now taken at the month end. The Register gained `order_recognised` rows (S2).
+- **Gotchas:**
+  - Several test fixtures were impossible in production, and were masked until now:
+    - a voucher whose `remaining` doesn't match its redemptions;
+    - a "Paid" top-up with no wallet credit;
+    - Delivered orders with no recognition.
+  - A wallet test had asserted the old "always today's balance" rule. It now asserts the month-end rule.
+- **Local dev DB:** migrated (`gateway_fee_sen`, `restored_at`).
+- **Verified:**
+  - `php artisan test` passes 3046/3046.
+  - Admin `tsc` and lint pass.
+  - Pint is clean.

@@ -2,12 +2,14 @@
 
 namespace Tests\Feature\Accounting;
 
+use App\Models\AccountingPeriodClose;
 use App\Models\Affiliate;
 use App\Models\Order;
 use App\Models\SupplierLedgerEntry;
 use App\Services\Accounting\CashPositionService;
-use App\Services\Accounting\RecognisedRevenue;
 use App\Services\Accounting\MonthlyAccountingSummaryService;
+use App\Services\Accounting\RecognisedRevenue;
+use App\Services\Accounting\TransactionRegisterService;
 use App\Services\Affiliate\AffiliateEarningsService;
 use App\Services\Dashboard\DashboardService;
 use App\Services\Order\DeliveryStatus;
@@ -28,6 +30,11 @@ class FinancialScenarioTest extends TestCase
     private FinancialScenario $scenario;
 
     private Order $crossMonth;
+
+    private AccountingPeriodClose $septemberClose;
+
+    /** @var list<array<string, mixed>> */
+    private array $septemberRegisterAtClose;
 
     protected function setUp(): void
     {
@@ -58,14 +65,28 @@ class FinancialScenarioTest extends TestCase
         $s->at('2026-10-01 00:10')->supplierDelivers($this->crossMonth);
 
         $s->at('2026-10-02 11:00')->pay($s->storefrontOrder($small));
+
+        // Paid in September, still with the supplier when September is closed.
+        $s->supplierAdapter->pendingNext();
+        $lateSeptember = $s->at('2026-09-29 20:00')->pay($s->storefrontOrder($mid));
+
+        $this->septemberClose = $s->at('2026-10-10 10:00')->closeMonth(2026, 9);
+        $this->septemberRegisterAtClose = app(TransactionRegisterService::class)->rows(...MonthlyAccountingSummaryService::monthBounds(2026, 9));
+
+        // After the close: the September order is delivered, the wallet moves, a failure is compensated.
+        $s->at('2026-10-12 09:00')->supplierDelivers($lateSeptember);
+        $s->at('2026-10-15 14:00')->resellerApiOrder($mid);
+        $s->supplierAdapter->failNext();
+        $octoberFailed = $s->at('2026-10-16 16:00')->pay($s->storefrontOrder($small));
+        $s->at('2026-10-17 10:00')->compensate($octoberFailed);
     }
 
     public function test_the_scenario_produces_every_outcome_it_scripts(): void
     {
-        $this->assertSame(6, Order::query()->where('delivery_status', DeliveryStatus::Delivered->value)->count());
-        $this->assertSame(1, Order::query()->where('delivery_status', DeliveryStatus::Failed->value)->count());
+        $this->assertSame(8, Order::query()->where('delivery_status', DeliveryStatus::Delivered->value)->count());
+        $this->assertSame(2, Order::query()->where('delivery_status', DeliveryStatus::Failed->value)->count());
         $this->assertSame(2, Order::query()->where('affiliate_profit', '>', 0)->count());
-        $this->assertSame(1, Order::query()->whereNotNull('wallet_reseller_id')->count());
+        $this->assertSame(2, Order::query()->whereNotNull('wallet_reseller_id')->count());
     }
 
     /** Invariant 6: selling = cost + platform profit + affiliate profit, with real cost after delivery. */
@@ -105,15 +126,15 @@ class FinancialScenarioTest extends TestCase
     /** ADR-127 decision 1: revenue, cost and affiliate commission belong to the month the order was delivered. */
     public function test_an_order_paid_in_one_month_and_delivered_in_the_next_is_october_revenue(): void
     {
-        $summary = app(MonthlyAccountingSummaryService::class);
-        $september = $summary->forPeriod(2026, 9);
-        $october = $summary->forPeriod(2026, 10);
-        $order = $this->crossMonth->fresh();
+        $revenue = app(RecognisedRevenue::class);
+        $september = $revenue->recognisedOrders(...MonthlyAccountingSummaryService::monthBounds(2026, 9));
+        $october = $revenue->recognisedOrders(...MonthlyAccountingSummaryService::monthBounds(2026, 10));
 
-        $this->assertSame($order->selling_price, $october['sales_revenue_sen'] - $this->smallOctoberOrderSellingSen());
-        $this->assertSame($order->affiliate_profit, $october['affiliate_commission_expense_sen']);
-        $this->assertNotContains($order->id, app(RecognisedRevenue::class)->recognisedOrders(...MonthlyAccountingSummaryService::monthBounds(2026, 9))->pluck('id'));
-        $this->assertSame(0, $september['affiliate_commission_expense_sen'] - $this->septemberAffiliateCommissionSen());
+        $this->assertNotContains($this->crossMonth->id, $september->pluck('id'));
+        $this->assertContains($this->crossMonth->id, $october->pluck('id'));
+        $this->assertSame((int) $october->sum('selling_price'), app(MonthlyAccountingSummaryService::class)->forPeriod(2026, 10)['sales_revenue_sen']);
+        $this->assertSame((int) $october->sum('affiliate_profit'), app(MonthlyAccountingSummaryService::class)->forPeriod(2026, 10)['affiliate_commission_expense_sen']);
+        $this->assertSame((int) $september->sum('affiliate_profit'), app(MonthlyAccountingSummaryService::class)->forPeriod(2026, 9)['affiliate_commission_expense_sen']);
     }
 
     /**
@@ -139,15 +160,28 @@ class FinancialScenarioTest extends TestCase
         }
     }
 
-    private function smallOctoberOrderSellingSen(): int
+    /** Invariant 2 (ADR-127 decision 3): what happens after a close never changes the closed month. */
+    public function test_a_closed_months_figures_never_move_after_the_close(): void
     {
-        return (int) Order::query()->where('paid_at', '>=', MonthlyAccountingSummaryService::monthBounds(2026, 10)[0])->where('id', '!=', $this->crossMonth->id)->sum('selling_price');
+        $live = app(MonthlyAccountingSummaryService::class)->forPeriod(2026, 9);
+        // The close's own allocation was pending when it was taken; it is a posting now.
+        $position = app(CashPositionService::class)->asOf(2026, 9);
+
+        $this->assertSame($this->septemberClose->profit_lines, $live);
+        foreach (['assets', 'claims'] as $side) {
+            $this->assertSame($this->septemberClose->equation[$side], $position[$side], $side);
+        }
+
+        $this->assertSame($this->septemberRegisterAtClose, app(TransactionRegisterService::class)->rows(...MonthlyAccountingSummaryService::monthBounds(2026, 9)));
     }
 
-    private function septemberAffiliateCommissionSen(): int
+    /** ADR-127 P1: an order recognised after its paid month gets its own Register row in the month it was recognised. */
+    public function test_the_register_books_a_late_recognition_in_its_own_month(): void
     {
-        [$from, $to] = MonthlyAccountingSummaryService::monthBounds(2026, 9);
+        $october = collect(app(TransactionRegisterService::class)->rows(...MonthlyAccountingSummaryService::monthBounds(2026, 10)));
+        $recognised = $october->where('type', 'order_recognised')->pluck('reference');
 
-        return (int) Order::query()->where('delivered_at', '>=', $from)->where('delivered_at', '<', $to)->sum('affiliate_profit');
+        $this->assertContains($this->crossMonth->order_number, $recognised);
+        $this->assertCount(2, $recognised);
     }
 }

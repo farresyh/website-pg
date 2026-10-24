@@ -4,11 +4,13 @@ namespace App\Services\Payment;
 
 use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
+use App\Services\Accounting\AccountingPeriod;
 use App\Services\Membership\MembershipQuotaService;
 use App\Services\Order\InvalidOrderTransitionException;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Voucher\VoucherService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -43,9 +45,9 @@ final class OrderPaymentOutcomeService
      * fulfilment; after a failure or a compensation (M-4, ADR-102
      * 2026-09-29 addendum) → Paid but NeedsReview, never auto-fulfilled.
      */
-    public function applyPaid(Order $order, ?int $amountSen): OrderPaymentOutcome
+    public function applyPaid(Order $order, ?int $amountSen, ?int $paidOn = null, ?int $feeSen = null): OrderPaymentOutcome
     {
-        $outcome = DB::transaction(function () use ($order, $amountSen) {
+        $outcome = DB::transaction(function () use ($order, $amountSen, $paidOn, $feeSen) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
             if ($locked->payment_status === PaymentStatus::Paid) {
@@ -70,7 +72,7 @@ final class OrderPaymentOutcomeService
                     'delivery_status' => $locked->delivery_status->value,
                 ]);
 
-                $attributes = ['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()];
+                $attributes = ['payment_status' => PaymentStatus::Paid->value, ...$this->paidFacts($locked, $paidOn, $feeSen)];
 
                 try {
                     $attributes['delivery_status'] = $this->orderStatus->markNeedsReview($locked->delivery_status)->value;
@@ -84,7 +86,7 @@ final class OrderPaymentOutcomeService
                 return OrderPaymentOutcome::FlaggedForReview;
             }
 
-            $locked->update(['payment_status' => PaymentStatus::Paid->value, 'paid_at' => now()]);
+            $locked->update(['payment_status' => PaymentStatus::Paid->value, ...$this->paidFacts($locked, $paidOn, $feeSen)]);
 
             return OrderPaymentOutcome::Fulfilling;
         });
@@ -116,5 +118,26 @@ final class OrderPaymentOutcomeService
 
             return OrderPaymentOutcome::Failed;
         });
+    }
+
+    /**
+     * ADR-127 F1/F2: `paid_at` is when CHIP accepted the payment, so a
+     * late webhook or the reconciliation sweep no longer moves a 23:58
+     * payment into the next day or month. Our own processing time is used
+     * when CHIP sent no time, when its time falls outside the order's life
+     * (before it was created, or in the future), or when it falls in a
+     * closed month (decision 3).
+     *
+     * @return array{paid_at: Carbon, gateway_fee_sen: int|null}
+     */
+    private function paidFacts(Order $order, ?int $paidOn, ?int $feeSen): array
+    {
+        $paidAt = $paidOn === null ? null : Carbon::createFromTimestamp($paidOn, 'UTC');
+
+        if ($paidAt === null || $paidAt->lt($order->created_at) || $paidAt->gt(now()) || AccountingPeriod::isClosed($paidAt)) {
+            $paidAt = now();
+        }
+
+        return ['paid_at' => $paidAt, 'gateway_fee_sen' => $feeSen];
     }
 }

@@ -48,7 +48,7 @@ const LINES: { key: keyof MonthlyAccountingSummary; label: string; definition: s
   { key: "admin_issued_vouchers_sen", label: "Admin-issued vouchers (no order)", definition: "Vouchers an admin gave away this month that were not for a failed order. A real cost: the customer never paid us for them. It lowers operating profit, and the same credit is spendable by the customer, so do not add it to the line below. A Campaign promo code is a different thing, costed per order." },
   { key: "supplier_manual_adjustments_sen", label: "Supplier balance corrections", definition: "Manual corrections to a supplier's prepaid balance this month (e.g. a deposit fee missed at entry), in MYR at the month-end rate. Corrections on a voided transfer are left out." },
   { key: "failed_order_credit_issued_sen", label: "Failed-order store credit issued", definition: "Store credit issued this month for a failed or partly delivered order. The customer already paid, so we owe it back: a liability, not an expense, and operating profit leaves it out. A voucher made by merging others is not new credit and is not counted. What customers can still spend overall is on the month close's cash equation." },
-  { key: "reseller_wallet_balance_sen", label: "Reseller wallet balance", definition: "Money resellers have prepaid into their wallets, which isn't ours — a liability, not revenue. Always the CURRENT balance (see the \"as of\" timestamp next to it), never this period's own month-end figure. The month close's equation has the month-end figure." },
+  { key: "reseller_wallet_balance_sen", label: "Reseller wallet balance", definition: "Money resellers have prepaid into their wallets, which isn't ours — a liability, not revenue. The balance at this month's end (today's balance for the current month)." },
   { key: "envelope_manual_expenses_sen", label: "Manual expenses (Envelope)", definition: "Expenses recorded in the Envelope Ledger this month, including ones a director paid. Information only: they already came out of their envelopes, so operating profit does not subtract them again." },
 ];
 
@@ -61,10 +61,6 @@ export default function MonthlyAccountingSummaryPage() {
   const [summary, setSummary] = useState<MonthlyAccountingSummary | null>(null);
   const [monthClose, setMonthClose] = useState<MonthClose | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // reseller_wallet_balance_sen is always the CURRENT balance, never scoped
-  // to the viewed period — this timestamps exactly when that snapshot was
-  // taken, so it's never mistaken for a real month-end figure.
-  const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
 
   function load(y: number, m: number) {
     return Promise.all([getMonthlyAccountingSummary(y, m), getMonthClose(y, m)])
@@ -72,7 +68,6 @@ export default function MonthlyAccountingSummaryPage() {
         setError(null);
         setSummary(s);
         setMonthClose(c);
-        setFetchedAt(new Date());
       })
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load the summary."));
   }
@@ -154,11 +149,6 @@ export default function MonthlyAccountingSummaryPage() {
                       {line.key === "cogs_sen" && summary.cogs_fallback_order_count > 0 && (
                         <span className="text-theme-xs text-warning-600 dark:text-warning-400">
                           ({summary.cogs_fallback_order_count} order{summary.cogs_fallback_order_count === 1 ? "" : "s"} at their own cost: no deposit drawdown or rate recorded)
-                        </span>
-                      )}
-                      {line.key === "reseller_wallet_balance_sen" && fetchedAt && (
-                        <span className="text-theme-xs text-ink-subtle">
-                          (as of {fetchedAt.toLocaleString("en-MY", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })})
                         </span>
                       )}
                     </span>
