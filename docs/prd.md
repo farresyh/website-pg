@@ -670,7 +670,7 @@ account; the founder will switch it off again. FPX Business and DuitNow QR
 stay off (checked 2026-10-23).
 
 **On `staging`, not released (checked 2026-10-24; prod's last migration is
-2026-10-22's).** PRs #529–#548:
+2026-10-22's).** PRs #529–#549:
 - the item 130 fix (#531). Until it is released, a refused supplier
   connection can still abort the daily balance sweep on prod;
 - Joki PR 1 (#533). It changes Login Top-up too: the post key carries
@@ -688,11 +688,17 @@ stay off (checked 2026-10-23).
   closed September does not move;
 - ADR-127 PR D (#548): Mark Delivered records the supplier's price as real
   cost and drawdown, one drawdown per order (unique index), Delivered
-  refused on a compensated order, no partial or extra penjoki pay.
+  refused on a compensated order, no partial or extra penjoki pay;
+- ADR-127 PR E (#549): the scenario drives every money flow and the cash
+  equation closes to the sen; `FinancialScenarioSeeder` replaces
+  `ReportDemoSeeder`; the Monthly Summary splits pay-after supplier
+  payments from prepaid top-ups; the membership gate judges the brand the
+  request came from (prod "FixFast Demo" had its surface open).
 
 Thirteen additive migrations (six Joki, seven ADR-127). Every Joki PR is merged.
 Joki stays switched off and can't be bought until its launch gates are met
-(§16 item 114); ADR-127 PR E is open as a PR.
+(§16 item 114). Every ADR-127 PR is merged; item 132 (IDR moving average)
+is designed and is the next build.
 
 **Latest release 2026-10-22 (`staging`→`main`, PR #528).** Merged as
 `d26c795`; CI and `deploy` green, box verified the same day (migration
@@ -845,23 +851,19 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
   months that cannot move, CHIP `paid_on`/fee recorded, a scenario builder
   with 11 cross-page invariants. Five stacked PRs (A–E, ADR-127 build
   order). Merged to `staging`, not released: A (#543), B1 (#544), B2 (#545),
-  C (#546), D (#548). **PR E** (#549) is open: joki and the money around
-  the orders (bank, CHIP fees and settlements, membership, CHIP top-ups,
-  withdrawals, resends, an IDR supplier) in the scenario; the cash
-  equation closes to the sen; `FinancialScenarioSeeder` (dev DB);
-  `ReportDemoSeeder` deleted; the pay-after line; the membership gate fix.
-  Then this item is done, except item 132. Must ship before Joki launches.
+  C (#546), D (#548), E (#549). Built: every PR. Left before Joki launches:
+  item 132 (below) and the release.
+- **132** IDR supplier COGS at a moving (perpetual) weighted average
+  (founder, 2026-10-25), found by PR E's cash equation (RM4.01 over three
+  months on the dev data; Digiflazz in production from its next deposit).
+  Grilled (Q1–Q12) and stress-tested: ADR-083 2026-10-25 addendum. **Next
+  session: build** on a `feature/*` branch: the replayed pool in
+  `FundedCostOfSales`, used by COGS, drawdowns not in COGS, the Summary's
+  supplier corrections line and `CashPositionService`; a two-month IDR
+  invariant red first. Land it before the next Digiflazz deposit.
 
 **B. Needs a short grill / ADR addendum first**
-- **132** IDR supplier COGS at a moving (perpetual) weighted average
-  (founder, 2026-10-25). Found by ADR-127 PR E's cash equation: the
-  cumulative average since inception leaks between months when deposit
-  rates change (RM4.01 over three months on the dev data; Digiflazz in
-  production, from its next deposit). Grilled (Q1–Q12) and stress-tested:
-  ADR-083 2026-10-25 addendum (from 1 Oct 2026, opening at September's
-  close value, replayed pool, voided transfers and their rows left out).
-  Building on `feature/item-132-idr-moving-average`. Should land before the
-  next Digiflazz deposit and the next release.
+- None open.
 
 **C. Founder actions (no code)**
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
@@ -1312,8 +1314,8 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     recognition on Reports and the Report Assistant; a profit bridge; and
     `FinancialScenario`, which proves the invariants on data the real system
     produced. No start month was needed: on prod no order was paid and
-    delivered in different months. PR D (money flows) is merged; PR E (dev
-    data, browser pass) is open (group A line above). It must ship before Joki launches.
+    delivered in different months. Every PR (A–E) is merged to `staging`;
+    PR E's cash equation found item 132 (group A line above). It must ship before Joki launches.
 
 129. **Refund to the original payment method (founder, 2026-10-22) —
     revises ADR-004, needs its grill and a code-trace pass.** CHIP's
