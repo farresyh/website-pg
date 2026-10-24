@@ -202,6 +202,33 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
     }
 
     /**
+     * ADR-127 PR E: paying a pay-after supplier (a penjoki, a manual
+     * supplier) settles what we owe it; it is not a prepaid top-up. Its
+     * own line, neither one profit-and-loss; the bank fee stays one line.
+     */
+    public function test_a_pay_after_payment_is_its_own_line_not_a_prepaid_top_up(): void
+    {
+        $prepaid = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'MYR']);
+        $payAfter = Supplier::query()->create([
+            'name' => 'Penjoki Amir', 'slug' => 'penjoki-amir', 'driver' => Supplier::DRIVER_MANUAL,
+            'funding_mode' => Supplier::FUNDING_PAY_AFTER, 'api_config' => [], 'currency' => 'MYR',
+        ]);
+        foreach ([[$prepaid, 20000, 500], [$payAfter, 7000, 100]] as [$supplier, $sent, $fee]) {
+            SupplierTransfer::query()->create([
+                'transferred_on' => '2026-09-05', 'supplier_id' => $supplier->id, 'source_channel' => 'bank',
+                'amount_myr_sent' => $sent, 'fee_myr' => $fee, 'currency' => 'MYR', 'amount_foreign_received' => (string) ($sent / 100),
+            ]);
+        }
+
+        $summary = $this->service()->forPeriod(2026, 9);
+
+        $this->assertSame(20000, $summary['supplier_prepaid_topup_sen']);
+        $this->assertSame(7000, $summary['pay_after_supplier_payments_sen']);
+        $this->assertSame(600, $summary['bank_transfer_fees_sen']);
+        $this->assertSame(-600, $summary['operating_profit_sen']);
+    }
+
+    /**
      * ADR-083 2026-10-10 addendum, decision 15: a transfer typed in on
      * 2 Oct for money that left the bank on 30 Sep belongs to September.
      */

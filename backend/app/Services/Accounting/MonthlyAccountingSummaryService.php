@@ -6,6 +6,7 @@ use App\Models\BudgetEnvelopePosting;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\PaymentSettlement;
+use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\Voucher;
@@ -80,7 +81,8 @@ final class MonthlyAccountingSummaryService
             'membership_revenue_sen' => $this->membershipRevenue($from, $toExclusive),
             ...$this->costOfSales->forPeriod($from, $toExclusive),
             'payment_processing_gain_loss_sen' => $this->paymentProcessingGainLoss($from, $toExclusive),
-            'supplier_prepaid_topup_sen' => $this->supplierPrepaidTopup($from, $toExclusive),
+            'supplier_prepaid_topup_sen' => $this->supplierTransfersSent($from, $toExclusive, payAfter: false),
+            'pay_after_supplier_payments_sen' => $this->supplierTransfersSent($from, $toExclusive, payAfter: true),
             'bank_transfer_fees_sen' => $this->bankTransferFees($from, $toExclusive),
             'affiliate_commission_expense_sen' => $this->affiliateCommissionExpense($from, $toExclusive),
             'affiliate_tier_fees_sen' => $this->affiliateTierFees($from, $toExclusive),
@@ -99,7 +101,8 @@ final class MonthlyAccountingSummaryService
      * information only. Deliberately left out: compensation vouchers (a liability — the cash
      * was received and kept) and envelope expenses (they already reduced
      * their envelope; subtracting here again counts them twice). Capital
-     * movements (supplier top-up, wallet balance) are not P&L at all.
+     * movements (supplier top-up, pay-after supplier payments, wallet
+     * balance) are not P&L at all.
      *
      * @param  array<string, int>  $lines
      */
@@ -318,10 +321,19 @@ final class MonthlyAccountingSummaryService
      * portion by summing a line that already includes it plus a second
      * line for the same fee.
      */
-    private function supplierPrepaidTopup(Carbon $from, Carbon $toExclusive): int
+    /**
+     * Capital sent to suppliers, split by funding mode (ADR-127 PR E): a
+     * prepaid supplier's is a top-up (an asset), a pay-after supplier's
+     * (a penjoki, a manual supplier) settles what we owe it. Neither is
+     * profit and loss; the bank fee for both is `bankTransferFees()`.
+     */
+    private function supplierTransfersSent(Carbon $from, Carbon $toExclusive, bool $payAfter): int
     {
         return (int) SupplierTransfer::query()
             ->whereNull('voided_at')
+            ->whereHas('supplier', fn ($q) => $payAfter
+                ? $q->where('funding_mode', Supplier::FUNDING_PAY_AFTER)
+                : $q->where('funding_mode', '!=', Supplier::FUNDING_PAY_AFTER))
             ->where('transferred_on', '>=', $from->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
             ->where('transferred_on', '<', $toExclusive->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
             ->sum('amount_myr_sent');
