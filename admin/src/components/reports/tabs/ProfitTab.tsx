@@ -8,7 +8,8 @@
  */
 
 import { useState } from "react";
-import { getGameBreakdown, getReportSummary, getReportTrend } from "@/lib/reports";
+import { getAccountingBridge, getGameBreakdown, getReportSummary, getReportTrend } from "@/lib/reports";
+import { ProfitBridge } from "../AccountingBridge";
 import { type TrendBucket, autoBucket, bucketRows, marginPct } from "@/lib/report-buckets";
 import { KpiCard, Pending, ReportCard, SegmentedControl, previousLabelOf, useReport, type ReportTabProps } from "../ReportKit";
 import { TrendChart } from "../TrendChart";
@@ -26,6 +27,7 @@ export function ProfitTab(props: ReportTabProps) {
   const summary = useReport(props, () => getReportSummary(filters, compare));
   const trend = useReport(props, () => getReportTrend(filters));
   const games = useReport(props, () => getGameBreakdown(filters));
+  const bridge = useReport(props, () => getAccountingBridge(filters));
   const [bucketChoice, setBucketChoice] = useState<TrendBucket | null>(null);
 
   const s = summary.data;
@@ -53,6 +55,7 @@ export function ProfitTab(props: ReportTabProps) {
         />
       </div>
       {summary.error && <Pending error={summary.error} className="-mt-3 mb-6" />}
+      {bridge.data?.profit_bridge && <ProfitBridge bridge={bridge.data.profit_bridge} />}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-6 lg:col-span-2">

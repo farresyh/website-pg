@@ -8,6 +8,7 @@ use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\Reseller;
 use App\Models\Voucher;
+use App\Services\Accounting\MonthlyAccountingSummaryService;
 use App\Services\Accounting\RecognisedRevenue;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
@@ -18,6 +19,7 @@ use App\Support\PeriodComparison;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -61,6 +63,58 @@ use Illuminate\Support\Facades\DB;
  */
 final class ReportService
 {
+    /**
+     * ADR-127 decision 9 — walks Reports' owner profit (market rate, from
+     * the ledger) to the Monthly Summary's operating profit (accounts):
+     *
+     *   owner_profit
+     *   + membership_revenue + payment_processing_gain_loss − bank_transfer_fees
+     *   + affiliate_tier_fees + voucher_breakage − admin_issued_vouchers
+     *   + supplier_manual_adjustments
+     *   − cogs_funding_difference (funded cost above the order's own cost)
+     *   − manual_profit_corrections (ledger corrections, both sides: in owner
+     *     profit and commission, not in the accounts' revenue and cost)
+     *   = operating_profit + unexplained_difference
+     *
+     * `unexplained_difference` must be 0 and is always returned. An open
+     * bound becomes the beginning of time or now. Company-wide only.
+     */
+    public function profitBridge(?CarbonImmutable $from, ?CarbonImmutable $toExclusive): array
+    {
+        $from ??= CarbonImmutable::create(2000, 1, 1, 0, 0, 0, 'UTC');
+        $toExclusive ??= CarbonImmutable::now()->addSecond()->startOfSecond();
+        $lines = app(MonthlyAccountingSummaryService::class)->profitLines(Carbon::instance($from), Carbon::instance($toExclusive));
+        $ownerProfit = $this->profitTotals($from, $toExclusive, null)['platform'];
+
+        $corrections = (int) LedgerEntry::query()
+            ->join('orders', fn ($join) => $join->on('orders.id', '=', 'ledger_entries.reference_id')->where('ledger_entries.reference_type', '=', 'order'))
+            ->where('ledger_entries.type', 'order_profit')
+            ->whereNotNull('ledger_entries.reason')
+            ->where('orders.is_test', false)
+            ->where('ledger_entries.created_at', '>=', $from)
+            ->where('ledger_entries.created_at', '<', $toExclusive)
+            ->sum('ledger_entries.amount');
+
+        $rows = [
+            'owner_profit' => $ownerProfit,
+            'membership_revenue' => $lines['membership_revenue_sen'],
+            'payment_processing_gain_loss' => $lines['payment_processing_gain_loss_sen'],
+            'bank_transfer_fees' => -$lines['bank_transfer_fees_sen'],
+            'affiliate_tier_fees' => $lines['affiliate_tier_fees_sen'],
+            'voucher_breakage' => $lines['voucher_breakage_sen'],
+            'admin_issued_vouchers' => -$lines['admin_issued_vouchers_sen'],
+            'supplier_manual_adjustments' => $lines['supplier_manual_adjustments_sen'],
+            'cogs_funding_difference' => -$lines['cogs_funding_difference_sen'],
+            'manual_profit_corrections' => -$corrections,
+        ];
+
+        return [
+            ...$rows,
+            'operating_profit' => $lines['operating_profit_sen'],
+            'unexplained_difference' => array_sum($rows) - $lines['operating_profit_sen'],
+        ];
+    }
+
     /**
      * ADR-086 filter-unification follow-up (2026-09-11) — replaces the
      * Reports page's old separate Year/Month picker with one date-range
@@ -318,7 +372,7 @@ final class ReportService
     public function dailyTrend(CarbonImmutable $from, CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
         $salesByDate = $this->salesByGroup($this->scopedOrders($from, $toExclusive, $affiliateId), $this->dayBucketExpr('paid_at'));
-        $profitByDate = $this->profitByGroup($from, $toExclusive, $affiliateId, $this->dayBucketExpr('orders.recognised_at'));
+        $profitByDate = $this->profitByGroup($from, $toExclusive, $affiliateId, $this->dayBucketExpr(LedgerEntry::orderProfitDateSql()));
 
         $startKl = $from->setTimezone(MalaysiaTime::TIMEZONE)->startOfDay();
         $endKlExclusive = $toExclusive->setTimezone(MalaysiaTime::TIMEZONE)->startOfDay();
@@ -432,7 +486,7 @@ final class ReportService
             ->get()
             ->keyBy('report_key');
 
-        $profitByDate = $this->profitByGroup($from, $toExclusive, $affiliateId, $this->dayBucketExpr('orders.recognised_at'));
+        $profitByDate = $this->profitByGroup($from, $toExclusive, $affiliateId, $this->dayBucketExpr(LedgerEntry::orderProfitDateSql()));
 
         $rows = [];
 
@@ -1013,16 +1067,16 @@ final class ReportService
             })
             ->where('ledger_entries.type', 'order_profit')
             ->where('orders.is_test', false)
-            // ADR-127 P1: profit is earned when the order is recognised, so it
-            // is filed by `recognised_at`; sales stay on `paid_at`.
-            ->whereNotNull('orders.recognised_at');
+            // ADR-127 P1: profit is filed by when it was earned (recognition,
+            // or a correction's own date); sales stay on `paid_at`.
+            ->whereRaw(LedgerEntry::orderProfitDateSql().' IS NOT NULL');
 
         if ($from !== null) {
-            $query->where('orders.recognised_at', '>=', $from);
+            $query->whereRaw(LedgerEntry::orderProfitDateSql().' >= ?', [$from]);
         }
 
         if ($toExclusive !== null) {
-            $query->where('orders.recognised_at', '<', $toExclusive);
+            $query->whereRaw(LedgerEntry::orderProfitDateSql().' < ?', [$toExclusive]);
         }
 
         if ($affiliateId !== null) {
@@ -1079,16 +1133,16 @@ final class ReportService
             })
             ->where('ledger_entries.type', 'order_profit')
             ->where('orders.is_test', false)
-            // ADR-127 P1: profit is earned when the order is recognised, so it
-            // is filed by `recognised_at`; sales stay on `paid_at`.
-            ->whereNotNull('orders.recognised_at');
+            // ADR-127 P1: profit is filed by when it was earned (recognition,
+            // or a correction's own date); sales stay on `paid_at`.
+            ->whereRaw(LedgerEntry::orderProfitDateSql().' IS NOT NULL');
 
         if ($from !== null) {
-            $query->where('orders.recognised_at', '>=', $from);
+            $query->whereRaw(LedgerEntry::orderProfitDateSql().' >= ?', [$from]);
         }
 
         if ($toExclusive !== null) {
-            $query->where('orders.recognised_at', '<', $toExclusive);
+            $query->whereRaw(LedgerEntry::orderProfitDateSql().' < ?', [$toExclusive]);
         }
 
         if ($affiliateId !== null) {

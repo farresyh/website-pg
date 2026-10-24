@@ -50,6 +50,32 @@ final class MonthlyAccountingSummaryService
         [$from, $toExclusive] = self::monthBounds($year, $month);
 
         $lines = [
+            ...$this->profitLinesBefore($from, $toExclusive),
+            'reseller_wallet_balance_sen' => $this->resellerWalletBalance($toExclusive),
+            'envelope_manual_expenses_sen' => array_sum($this->envelopeExpensesByCategory($year, $month)),
+        ];
+
+        return [...$lines, 'operating_profit_sen' => self::operatingProfit($lines)];
+    }
+
+    /**
+     * The profit-and-loss lines for any range (the Reports profit Bridge,
+     * ADR-127 decision 9), with the operating profit they make. Same lines,
+     * same order, as a month's summary, minus its two non-P&L lines.
+     *
+     * @return array<string, int>
+     */
+    public function profitLines(Carbon $from, Carbon $toExclusive): array
+    {
+        $lines = $this->profitLinesBefore($from, $toExclusive);
+
+        return [...$lines, 'operating_profit_sen' => self::operatingProfit($lines)];
+    }
+
+    /** @return array<string, int> */
+    private function profitLinesBefore(Carbon $from, Carbon $toExclusive): array
+    {
+        return [
             'sales_revenue_sen' => $this->salesRevenue($from, $toExclusive),
             'membership_revenue_sen' => $this->membershipRevenue($from, $toExclusive),
             ...$this->costOfSales->forPeriod($from, $toExclusive),
@@ -62,11 +88,7 @@ final class MonthlyAccountingSummaryService
             'admin_issued_vouchers_sen' => $this->adminIssuedVouchers($from, $toExclusive),
             'supplier_manual_adjustments_sen' => $this->supplierManualAdjustments($from, $toExclusive),
             'failed_order_credit_issued_sen' => $this->failedOrderCreditIssued($from, $toExclusive),
-            'reseller_wallet_balance_sen' => $this->resellerWalletBalance($toExclusive),
-            'envelope_manual_expenses_sen' => array_sum($this->envelopeExpensesByCategory($year, $month)),
         ];
-
-        return [...$lines, 'operating_profit_sen' => self::operatingProfit($lines)];
     }
 
     /**
@@ -334,8 +356,8 @@ final class MonthlyAccountingSummaryService
             ->where('ledger_entries.type', 'order_profit')
             ->where('ledger_entries.owner_type', 'affiliate')
             ->where('orders.is_test', false)
-            ->where('orders.recognised_at', '>=', $from)
-            ->where('orders.recognised_at', '<', $toExclusive)
+            ->whereRaw(LedgerEntry::orderProfitDateSql().' >= ?', [$from])
+            ->whereRaw(LedgerEntry::orderProfitDateSql().' < ?', [$toExclusive])
             ->sum('ledger_entries.amount');
     }
 

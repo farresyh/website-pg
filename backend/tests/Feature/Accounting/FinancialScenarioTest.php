@@ -14,6 +14,7 @@ use App\Services\Accounting\RecognisedRevenue;
 use App\Services\Accounting\TransactionRegisterService;
 use App\Services\Affiliate\AffiliateEarningsService;
 use App\Services\Dashboard\DashboardService;
+use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Report\ReportService;
@@ -282,5 +283,33 @@ class FinancialScenarioTest extends TestCase
         Voucher::query()->create(['order_id' => $failed->id, 'affiliate_id' => $failed->affiliate_id, 'code' => 'SANDBOX-1', 'customer_email' => 'x@sandbox.test', 'amount' => 50000, 'remaining' => 50000, 'status' => 'active', 'reason' => 'sandbox']);
 
         $this->assertEquals($before, $figures());
+    }
+
+    /** ADR-127 P1: a manual profit correction is profit of the month it was made, never of its order's month. */
+    public function test_a_later_profit_correction_never_moves_a_past_months_reports_profit(): void
+    {
+        $reports = app(ReportService::class);
+        $september = fn () => $reports->summary(...[...self::month(2026, 9), null])['platform_profit'];
+        $october = fn () => $reports->summary(...[...self::month(2026, 10), null])['platform_profit'];
+        [$septemberBefore, $octoberBefore] = [$september(), $october()];
+        $septemberOrder = app(RecognisedRevenue::class)->recognisedOrders(...MonthlyAccountingSummaryService::monthBounds(2026, 9))->first();
+
+        $this->scenario->at('2026-10-20 10:00');
+        app(LedgerService::class)->credit(LedgerOwnerType::Platform, null, -50, 'order_profit', 'order', $septemberOrder->id, $this->scenario->admin->id, 'Scenario: supplier charged more');
+
+        $this->assertSame($septemberBefore, $september());
+        $this->assertSame($octoberBefore - 50, $october());
+        $this->assertSame(0, app(ReportService::class)->profitBridge(...self::month(2026, 10))['unexplained_difference']);
+    }
+
+    /** ADR-127 decision 9: owner profit (market rate) walks to operating profit (accounts) with nothing unexplained. */
+    public function test_the_profit_bridge_explains_every_month(): void
+    {
+        foreach ([[2026, 9], [2026, 10]] as [$year, $month]) {
+            $bridge = app(ReportService::class)->profitBridge(...self::month($year, $month));
+
+            $this->assertSame(0, $bridge['unexplained_difference'], "{$year}-{$month}: ".json_encode($bridge));
+            $this->assertSame(app(MonthlyAccountingSummaryService::class)->forPeriod($year, $month)['operating_profit_sen'], $bridge['operating_profit']);
+        }
     }
 }

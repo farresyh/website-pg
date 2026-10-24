@@ -159,6 +159,7 @@ class ReportController extends Controller
 
         return response()->json([
             'bridge' => $this->affiliateId($request) === null ? $this->reports->accountingBridge($from, $toExclusive) : null,
+            'profit_bridge' => $this->affiliateId($request) === null ? $this->reports->profitBridge($from, $toExclusive) : null,
         ]);
     }
 
