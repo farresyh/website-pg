@@ -1,6 +1,6 @@
 # ADR-088: Reports — unified date-range filter (reverses RPT-2's decoupled-trend rule) + export widening
 
-> **Standing (2026-10-15):** In force; decision 4 retired by ADR-049's 2026-10-15 addendum (see this file's 2026-10-15 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-24):** In force; decision 4 retired by ADR-049's 2026-10-15 addendum (see this file's 2026-10-15 addendum); decision 6's demo seeder deleted by ADR-127 PR E (2026-10-24 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted & built — 2026-09-11, same day as ADR-086/087. Backend + frontend on `feature/reports-unified-date-range-filter`.
 
@@ -28,3 +28,8 @@ A single date-range filter (decisions 1-2) is the direct fix for the founder's o
 ### 2026-10-15 addendum — decision 4 retired
 
 Customer Analytics moved to the shared `from`/`to` date range (ADR-049 2026-10-15 addendum, decision 8), so `ReportService::dateRangeForYearMonth()` lost its last caller and was removed with its test. `ReportService` now has one range-resolution method, `dateRangeFromDates()`. Decisions 1–3, 5 and 6 are unchanged.
+
+### 2026-10-24 addendum — decision 6's demo seeder is deleted (ADR-127 PR E)
+
+- `ReportDemoSeeder` wrote orders and ledger rows directly, and its orders broke the price identity (ADR-127 Context). It is deleted. The local dev data now comes from `FinancialScenarioSeeder`, which drives the real system (ADR-127 decision 12).
+

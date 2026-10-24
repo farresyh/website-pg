@@ -169,6 +169,14 @@ return Application::configure(basePath: dirname(__DIR__))
             before: ThrottleRequests::class,
             prepend: EnsureBrandMembershipEnabled::class,
         );
+        // The gate judges the brand the request came from, so the brand
+        // resolver must run first. Pinning the gate above put it ahead of
+        // ResolveStorefrontBrand, which judged an affiliate's domain by the
+        // platform brand (found by ADR-127 PR E's scenario).
+        $middleware->prependToPriorityList(
+            before: EnsureBrandMembershipEnabled::class,
+            prepend: ResolveStorefrontBrand::class,
+        );
         // Same trap for the Reseller API (ADR-074 2026-10-13 addendum): its
         // limiters key on the Reseller that EnsureResellerApiKey resolves,
         // so auth must run before the throttle.

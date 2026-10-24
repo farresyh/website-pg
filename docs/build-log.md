@@ -2039,3 +2039,44 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - `php artisan test` passes 3061/3061, including the new tests.
   - The PR D service tests and `FinancialScenarioTest` pass on MySQL (35/35).
   - Admin `tsc` and lint pass.
+
+## 2026-10-24 — ADR-127 PR E: dev data, browser pass, two findings
+
+- **#548 (PR D) merged** to `staging` with the founder's go-ahead, after green CI.
+- **Joki in the scenario:** delivered, failed (the penjoki is owed nothing), reassigned (only the second penjoki is paid), and a joki paid in September and finished in October. A new invariant covers the penjoki payout.
+- **`FinancialScenarioSeeder`** fills the dev DB with four months (about 1,500 orders) through the real system. `ReportDemoSeeder` is deleted (ADR-088 addendum).
+- **Local dev DB** (founder: "buang je"):
+  - backed up to `backend/database/database.sqlite.bak-before-pr-e-2026-10-24`;
+  - 189 `DEMO-` orders, their 199 ledger rows and one voucher removed;
+  - the seeder run: 1,578 orders, no price-identity or drawdown exception, 0 unexplained on the bridge every month, the September close equal to its live figure.
+- **Gotchas:**
+  - The first seeding runs failed with "database is locked": `./scripts/dev.sh` (Horizon) was on the same sqlite file. Claude stopped it at the founder's request, restored the backup, removed `DEMO-` again, seeded, and restarted it.
+  - The database cache store kept rate-limit hits from an earlier run, because the scenario replays the clock. The scenario now uses the array cache.
+  - Restarting `dev.sh` let the storefront take :3000, which broke admin login (its cookie works only on :3000). The admin and storefront ports are now pinned.
+- **Browser pass:** 11 money pages, with no API error. Two findings, both fixed:
+  - **A pay-after supplier payment was counted as a prepaid top-up** on the Monthly Summary. It now has its own line, "Supplier payments — pay-after". Production, read-only: no pay-after payment yet.
+  - **The Joki "Waiting" column** showed a finished order's age since payment.
+- **Verified:**
+  - `php artisan test` passes 3064/3064.
+  - Admin `tsc` and lint pass.
+  - The Summary's split was checked in the browser: October's prepaid RM12,000 and pay-after RM1,170 add up to the old RM13,170.
+
+## 2026-10-25 — ADR-127 PR E completed: the six untested flows, two findings
+
+- **Founder question:** were the accounts correct? Claude listed what the scenario did not drive yet (membership, CHIP top-ups, withdrawals, resends, an IDR supplier, CHIP settlement with the bank). The founder asked why they weren't tested with the rest. Claude had scoped them out without raising it. They are now in #549.
+- **Built:**
+  - The `MoneyFlows` trait and a `ChipSettlementFile` writer; the bank modelled as dated flows.
+  - Five new invariants: the cash equation closes with a 0 gap, membership revenue agrees, IDR costs at funded rate, CHIP fees recorded, resend and withdrawal.
+  - The seeder drives all of it.
+- **Finding 1, fixed:** the membership gate ran before the brand resolver, so an affiliate's domain was gated by the platform's switch (ADR-080 2026-10-25 addendum). Production: "FixFast Demo" (off) had the surface open; no attempt there.
+- **Finding 2, pending (§16 item 132):** IDR COGS at a cumulative average leaks between months (RM4.01 over three months on the dev data). The founder chose a moving average, after a grill.
+- **Gotchas:**
+  - `membership_checkout_attempts` and `wallet_topup_attempts` have no `paid_at`. On sqlite, `where('paid_at', …)` compared a string and returned nothing, silently.
+  - A first invariant formula ("gap = Σ fee − RM1 × count") passed by coincidence, while memberships were never settled. The true invariant is a 0 gap.
+- **Dev DB:** restored from the backup, `DEMO-` removed again, reseeded. The result:
+  - 1,590 orders, 53 members, 115 settlements, 4 withdrawals;
+  - no price-identity or drawdown exception;
+  - the bridge leaves 0 unexplained every month.
+- **Verified:**
+  - `php artisan test` passes 3070/3070.
+  - 11 money pages in the browser, no API error. The October Summary adds up to its operating profit by hand.

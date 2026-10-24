@@ -15,6 +15,7 @@ export interface MonthlyAccountingSummary {
   drawdowns_not_in_cogs_sen: number;
   payment_processing_gain_loss_sen: number;
   supplier_prepaid_topup_sen: number;
+  pay_after_supplier_payments_sen: number;
   bank_transfer_fees_sen: number;
   affiliate_commission_expense_sen: number;
   affiliate_tier_fees_sen: number;
