@@ -41,9 +41,10 @@ class ReportServiceTest extends TestCase
         return [$todayKl->subDays($days - 1)->setTimezone('UTC'), $todayKl->addDay()->setTimezone('UTC')];
     }
 
+    /** A Delivered order here was recognised when it was paid (ADR-127). */
     private function order(array $overrides = []): Order
     {
-        return Order::query()->create(array_merge(['placed_via' => 'storefront',
+        $attributes = array_merge(['placed_via' => 'storefront',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'order_number' => 'KRS-'.uniqid(),
             'customer_email' => 'buyer@example.com',
@@ -59,7 +60,10 @@ class ReportServiceTest extends TestCase
             'paid_at' => now(),
             'delivery_status' => DeliveryStatus::Delivered->value,
             'is_test' => false,
-        ], $overrides));
+        ], $overrides);
+        $attributes['recognised_at'] ??= $attributes['delivery_status'] === DeliveryStatus::Delivered->value ? $attributes['paid_at'] : null;
+
+        return Order::query()->create($attributes);
     }
 
     public function test_summary_only_counts_paid_orders(): void

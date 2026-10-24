@@ -12,6 +12,7 @@ use App\Models\SupplierProduct;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Order\PlacedVia;
 use App\Services\Pricing\PricingBasis;
 use App\Services\ReportAssistant\Gemini\FakeGeminiClient;
 use App\Services\ReportAssistant\Gemini\GeminiClient;
@@ -246,9 +247,11 @@ class ReportAssistantControllerTest extends TestCase
 
         $planPrompt = $fake->calls[0]['systemPrompt'];
         $this->assertStringContainsString('SUM(net_sales)', $planPrompt);
-        $this->assertStringContainsString('SUM(platform_profit) / SUM(net_sales)', $planPrompt);
+        // ADR-127: profit is filed by recognition, as on the Reports page.
+        $this->assertStringContainsString('SUM(platform_profit), filed by recognised_at_kl', $planPrompt);
+        $this->assertStringContainsString('that profit / SUM(net_sales)', $planPrompt);
         $this->assertStringNotContainsString('final_amount - cost_price - transaction_fee', $planPrompt);
-        foreach ([...PricingBasis::cases(), ...DeliveryStatus::cases()] as $case) {
+        foreach ([...PricingBasis::cases(), ...DeliveryStatus::cases(), ...PlacedVia::cases()] as $case) {
             $this->assertStringContainsString("'{$case->value}'", $planPrompt);
         }
     }

@@ -46,6 +46,8 @@ export interface ChipSettledTransaction {
   local_gross_sen: number | null;
   amount_sen: number;
   fee_sen: number;
+  /** ADR-127 F2: the fee CHIP reported when the payment was confirmed; null if not reported. Compare to `fee_sen`. */
+  reported_fee_sen: number | null;
   net_amount_sen: number;
   acquirer: string;
   settled_on: string;

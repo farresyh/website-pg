@@ -85,6 +85,22 @@ export interface ReportAccountingBridge {
   unexplained_difference: number;
 }
 
+/** ADR-127 decision 9 — owner profit (market rate) walked to operating profit (accounts); null under an affiliate filter. Signed sen. */
+export interface ReportProfitBridge {
+  owner_profit: number;
+  membership_revenue: number;
+  payment_processing_gain_loss: number;
+  bank_transfer_fees: number;
+  affiliate_tier_fees: number;
+  voucher_breakage: number;
+  admin_issued_vouchers: number;
+  supplier_manual_adjustments: number;
+  cogs_funding_difference: number;
+  manual_profit_corrections: number;
+  operating_profit: number;
+  unexplained_difference: number;
+}
+
 /** One delivery status's compensation (ADR-104 R8, revised 2026-10-09). */
 export interface CompensationBlock {
   count: number;
@@ -267,7 +283,7 @@ export function getReportSummary(filters: ReportFilters, compare?: CompareMode) 
 
 export function getAccountingBridge(filters: ReportFilters) {
   const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
-  return apiFetch<{ bridge: ReportAccountingBridge | null }>(`/api/reports/accounting-bridge${query}`);
+  return apiFetch<{ bridge: ReportAccountingBridge | null; profit_bridge: ReportProfitBridge | null }>(`/api/reports/accounting-bridge${query}`);
 }
 
 export function getFailedCompensated(filters: ReportFilters) {

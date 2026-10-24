@@ -4,7 +4,6 @@ namespace App\Services\Accounting;
 
 use App\Models\BudgetEnvelopePosting;
 use App\Models\LedgerEntry;
-use App\Models\MembershipFeeRecord;
 use App\Models\Order;
 use App\Models\PaymentSettlement;
 use App\Models\SupplierLedgerEntry;
@@ -51,6 +50,32 @@ final class MonthlyAccountingSummaryService
         [$from, $toExclusive] = self::monthBounds($year, $month);
 
         $lines = [
+            ...$this->profitLinesBefore($from, $toExclusive),
+            'reseller_wallet_balance_sen' => $this->resellerWalletBalance($toExclusive),
+            'envelope_manual_expenses_sen' => array_sum($this->envelopeExpensesByCategory($year, $month)),
+        ];
+
+        return [...$lines, 'operating_profit_sen' => self::operatingProfit($lines)];
+    }
+
+    /**
+     * The profit-and-loss lines for any range (the Reports profit Bridge,
+     * ADR-127 decision 9), with the operating profit they make. Same lines,
+     * same order, as a month's summary, minus its two non-P&L lines.
+     *
+     * @return array<string, int>
+     */
+    public function profitLines(Carbon $from, Carbon $toExclusive): array
+    {
+        $lines = $this->profitLinesBefore($from, $toExclusive);
+
+        return [...$lines, 'operating_profit_sen' => self::operatingProfit($lines)];
+    }
+
+    /** @return array<string, int> */
+    private function profitLinesBefore(Carbon $from, Carbon $toExclusive): array
+    {
+        return [
             'sales_revenue_sen' => $this->salesRevenue($from, $toExclusive),
             'membership_revenue_sen' => $this->membershipRevenue($from, $toExclusive),
             ...$this->costOfSales->forPeriod($from, $toExclusive),
@@ -63,11 +88,7 @@ final class MonthlyAccountingSummaryService
             'admin_issued_vouchers_sen' => $this->adminIssuedVouchers($from, $toExclusive),
             'supplier_manual_adjustments_sen' => $this->supplierManualAdjustments($from, $toExclusive),
             'failed_order_credit_issued_sen' => $this->failedOrderCreditIssued($from, $toExclusive),
-            'reseller_wallet_balance_sen' => $this->resellerWalletBalance($toExclusive),
-            'envelope_manual_expenses_sen' => array_sum($this->envelopeExpensesByCategory($year, $month)),
         ];
-
-        return [...$lines, 'operating_profit_sen' => self::operatingProfit($lines)];
     }
 
     /**
@@ -142,7 +163,8 @@ final class MonthlyAccountingSummaryService
      * so `expires_at` alone decides. A sandbox order's voucher was never
      * customer cash.
      *
-     * ADR-127 P1: the balance at the moment it expired, not today's
+     * ADR-127 P1: also a revoked voucher's balance at the moment it was
+     * revoked, in that month. And the balance at the moment it expired, not today's
      * `remaining`; a redemption restored onto it after it expired is
      * breakage of the month of the restore. So a later restore never
      * changes an earlier month.
@@ -166,7 +188,16 @@ final class MonthlyAccountingSummaryService
             ->whereHas('voucher', fn ($v) => $v->whereColumn('vouchers.expires_at', '<', 'voucher_redemptions.restored_at')->where($notSandbox))
             ->sum('restored_amount');
 
-        return (int) $atExpiry + (int) $restoredAfterExpiry;
+        // A revoked voucher's unspent balance, in the month it was revoked.
+        $revoked = Voucher::query()
+            ->where('revoked_at', '>=', $from)
+            ->where('revoked_at', '<', $toExclusive)
+            ->where($notSandbox)
+            ->with(['redemptions', 'mergeAsSource'])
+            ->get()
+            ->sum(fn (Voucher $v) => $v->balanceAsOf($v->revoked_at));
+
+        return (int) $atExpiry + (int) $restoredAfterExpiry + (int) $revoked;
     }
 
     /**
@@ -237,12 +268,19 @@ final class MonthlyAccountingSummaryService
         return $this->revenue->revenueSen($from, $toExclusive);
     }
 
+    /**
+     * ADR-127 decision 7: one source, the platform's `membership_fee` ledger
+     * rows, which Reports and the Report Assistant already read. A waived
+     * (RM0) fee record writes no ledger row, so the totals are equal.
+     */
     private function membershipRevenue(Carbon $from, Carbon $toExclusive): int
     {
-        return (int) MembershipFeeRecord::query()
+        return (int) LedgerEntry::query()
+            ->where('owner_type', LedgerOwnerType::Platform->value)
+            ->where('type', 'membership_fee')
             ->where('created_at', '>=', $from)
             ->where('created_at', '<', $toExclusive)
-            ->sum('amount_sen');
+            ->sum('amount');
     }
 
     /**
@@ -318,8 +356,8 @@ final class MonthlyAccountingSummaryService
             ->where('ledger_entries.type', 'order_profit')
             ->where('ledger_entries.owner_type', 'affiliate')
             ->where('orders.is_test', false)
-            ->where('orders.recognised_at', '>=', $from)
-            ->where('orders.recognised_at', '<', $toExclusive)
+            ->whereRaw(LedgerEntry::orderProfitDateSql().' >= ?', [$from])
+            ->whereRaw(LedgerEntry::orderProfitDateSql().' < ?', [$toExclusive])
             ->sum('ledger_entries.amount');
     }
 
@@ -348,7 +386,7 @@ final class MonthlyAccountingSummaryService
     private function failedOrderCreditIssued(Carbon $from, Carbon $toExclusive): int
     {
         return (int) Voucher::query()
-            ->whereNotNull('order_id')
+            ->whereHas('sourceOrder', fn ($o) => $o->where('is_test', false))
             ->where('created_at', '>=', $from)
             ->where('created_at', '<', $toExclusive)
             ->sum('amount');

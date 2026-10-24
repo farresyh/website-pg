@@ -406,6 +406,7 @@ final class TransactionRegisterService
             // (Path A) voucher is a business decision, not a
             // checkout-generated one.
             ->compensation()
+            ->whereHas('sourceOrder', fn ($o) => $o->where('is_test', false))
             ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
             ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
             ->get()

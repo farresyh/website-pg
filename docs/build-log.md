@@ -1975,3 +1975,21 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - `php artisan test` passes 3046/3046.
   - Admin `tsc` and lint pass.
   - Pint is clean.
+
+## 2026-10-24 — ADR-127 PR C: one truth across the money pages
+
+- **Stacked on B2 (#545).** Everything below went red first (see the ADR-127 PR C addendum for details):
+  - **Profit by when it was earned.** Reports, the Report Assistant (`recognised_at_kl`, `placed_via`) and the Summary's commission now file profit by recognition. A manual correction is filed by the day it was made.
+  - **One store credit.** Reports now matches Cash Position (`Voucher::outstandingAt`).
+  - **One membership source** (the ledger), plus the missing `is_test` filters.
+  - **Names.** Sales, Revenue (recognised), Owner profit (market rate), Customer spend. The Overview chart had called paid-date sales "Revenue".
+  - **A profit bridge** from owner profit to operating profit on the Profit tab, with nothing unexplained.
+  - **The settlement fee check.** The fee CHIP reported at payment is shown beside the settlement file's fee.
+- **Findings fixed in this session** (founder rule: finish findings in session):
+  - A later manual profit correction moved a past month's Reports profit.
+  - A voucher revoke left no date, so Cash Position kept owing a revoked balance forever. It is now a locked, dated `VoucherService::revoke()`, and its unspent balance is breakage of the revoke month.
+- **Local dev DB:** migrated (`revoked_at`, `llm_report_orders` view, `reported_fee_sen`).
+- **Verified:**
+  - `php artisan test` passes 3056/3056.
+  - Admin `tsc` and lint pass.
+  - The browser pass over every money page is still to do, with the full data set (ADR-127 PR E).

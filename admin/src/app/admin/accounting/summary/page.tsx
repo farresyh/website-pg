@@ -33,7 +33,7 @@ function rm(sen: number): string {
  * profit is decided in MonthlyAccountingSummaryService::operatingProfit().
  */
 const LINES: { key: keyof MonthlyAccountingSummary; label: string; definition: string }[] = [
-  { key: "sales_revenue_sen", label: "Sales revenue", definition: "Total selling price of every order delivered this month — gross income, before subtracting what we paid suppliers. Not profit on its own." },
+  { key: "sales_revenue_sen", label: "Revenue (recognised)", definition: "Total selling price of every order delivered (recognised) this month, whenever it was paid — gross income, before subtracting what we paid suppliers. Not profit on its own. Money paid for an order not yet delivered is owed to the customer, not revenue (ADR-127)." },
   { key: "membership_revenue_sen", label: "Membership revenue", definition: "Total membership subscription fees collected this month." },
   { key: "cogs_sen", label: "COGS (at funded cost)", definition: "Cost of Goods Sold for this month's recognised orders, at what we actually paid for the supplier deposit: each order's drawdown from the deposit × the MYR we paid per unit (blended over every top-up up to the month's last day). A supplier paid in MYR counts at face value. This is the accounting cost; it is subtracted from operating profit." },
   { key: "cogs_at_order_cost_sen", label: "↳ COGS at per-order cost", definition: "The same orders at the cost shown on each order (Transaction Register, Customer Detail): the supplier's price at the market rate on the day it was delivered. Information only. This line plus the next one equals COGS." },

@@ -161,3 +161,29 @@
 - **Invariant 2 caught S10.** The Summary's reseller-wallet line was today's balance. It is now the balance at the month end, read from the ledger. The admin "as of" timestamp is gone.
 - **Register (S2).** An order recognised in its paid month keeps one row. An order recognised in a later month keeps only the money received on its `order` row, and its cost and net go on its own `order_recognised` row, dated `recognised_at`.
 - **Invariant 2 is proven on scenario data.** September is closed, then a September order is delivered, the wallet moves and a failure is compensated. September's live Summary, Cash Position (assets and claims) and Register equal what they were at the close.
+
+### 2026-10-24 addendum — PR C build notes (decisions 7, 9, 11; invariants 3, 7, 8, 9, 11; two new findings)
+
+- **Reports and the Report Assistant file profit by when it was earned.**
+  - `LedgerEntry::orderProfitDateSql()` is one rule: the automatic credit is dated by its order's `recognised_at`, and a manual correction (`reason` set) by its own `created_at`.
+  - Reports, the trend buckets, and the Summary's affiliate commission all read it. Sales stay on `paid_at`.
+  - `llm_report_orders` gains `recognised_at_kl` and `placed_via`, and the prompt files profit by recognition.
+- **New finding: a manual profit correction moved a past month.** Reports dated it by its order's month, so a correction made today rewrote an earlier month's profit. The Register already dated it correctly; Reports and the commission line now do too.
+- **Store credit is one figure (invariant 9), revising ADR-104 R10.** `Voucher::outstandingAt()` together with `balanceAsOf()` is used by both Cash Position and Reports. Reports had counted today's `remaining` of compensation vouchers only. An admin-issued (Path A) voucher now counts too: the Summary expenses it when it is issued, so its unspent balance is owed.
+- **New finding: a voucher revoke left no dated fact.**
+  - What happened: `VoucherController::revoke` flipped `status` with no lock and no date. Cash Position kept owing the balance forever, and no month recorded it.
+  - Now: `VoucherService::revoke()` locks the voucher and writes `revoked_at`. The balance is 0 from then on, and the unspent balance is income of the revoke month, on the breakage line. Production has no revoked voucher.
+- **Membership revenue has one source (decision 7):** the platform's `membership_fee` ledger rows. A waived RM0 fee writes no ledger row, so the totals are unchanged.
+- **The `is_test` filter is added** to `failedOrderCreditIssued` and to the Register's voucher rows.
+- **Decision 9, the labels.**
+  - The Reports Overview chart said "Revenue" for paid-date sales; it now says "Sales".
+  - The Summary's line is "Revenue (recognised)".
+  - The owner-profit KPIs say "(market rate)".
+  - Customer Analytics says "Customer spend".
+- **Decision 9, the profit bridge.** `ReportService::profitBridge()` walks owner profit (market rate) to operating profit (accounts) through the Summary's own lines. Those lines are now available for any range via `MonthlyAccountingSummaryService::profitLines()`. Manual corrections are their own row, and the unexplained difference must be 0. It is shown on the Reports Profit tab, and hidden under an affiliate filter.
+- **F2, shown.** Settlement ingest copies the fee CHIP reported at payment to `chip_settled_transactions.reported_fee_sen`. The Settlements page flags any row where the file's fee differs.
+- **Proven in `FinancialScenarioTest`:**
+  - invariants 3, 7, 8, 9 and 11;
+  - the profit bridge;
+  - Reports profit by recognition;
+  - a later correction never moves a past month.

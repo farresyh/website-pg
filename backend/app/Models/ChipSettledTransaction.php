@@ -22,6 +22,7 @@ class ChipSettledTransaction extends Model
         'local_fee_sen',
         'amount_sen',
         'fee_sen',
+        'reported_fee_sen',
         'net_amount_sen',
         'acquirer',
         'settled_on',
@@ -34,6 +35,7 @@ class ChipSettledTransaction extends Model
         'local_fee_sen' => 'integer',
         'amount_sen' => 'integer',
         'fee_sen' => 'integer',
+        'reported_fee_sen' => 'integer',
         'net_amount_sen' => 'integer',
         'settled_on' => 'date:Y-m-d',
     ];

@@ -30,7 +30,11 @@ class ReportCompensationTest extends TestCase
 
     private function order(array $overrides = []): Order
     {
-        return Order::factory()->create(array_merge(['paid_at' => self::PAID_AT], $overrides));
+        $attributes = array_merge(['paid_at' => self::PAID_AT], $overrides);
+        // A Delivered order here was recognised when it was paid (ADR-127).
+        $attributes['recognised_at'] ??= ($attributes['delivery_status'] ?? null) === DeliveryStatus::Delivered ? $attributes['paid_at'] : null;
+
+        return Order::factory()->create($attributes);
     }
 
     private function voucher(?Order $source, array $overrides = []): Voucher
@@ -201,25 +205,25 @@ class ReportCompensationTest extends TestCase
     }
 
     /** R10 — Σ remaining of active, unexpired compensation vouchers, as of now. */
-    public function test_outstanding_store_credit_counts_only_live_compensation_vouchers(): void
+    /** ADR-127 invariant 9: the same vouchers and balances as Cash Position's claim, Path A included. */
+    public function test_outstanding_store_credit_is_every_live_voucher_balance(): void
     {
         $failed = fn () => $this->order(['delivery_status' => DeliveryStatus::Failed]);
-        $this->voucher($failed(), ['remaining' => 600]);                                   // counted
-        $this->voucher($failed(), ['remaining' => 250, 'expires_at' => now()->addDay()]);  // counted
-        $this->voucher($failed(), ['remaining' => 900, 'expires_at' => now()->subDay()]);  // expired
-        $this->voucher($failed(), ['remaining' => 0, 'status' => 'exhausted']);
-        $this->voucher($failed(), ['remaining' => 300, 'status' => 'revoked']);
-        $this->voucher(null, ['remaining' => 5000]);                                       // Path A
-        $this->voucher($this->order(['is_test' => true]), ['remaining' => 700]);            // sandbox source
+        $this->voucher($failed(), ['amount' => 600, 'remaining' => 600]);                                   // counted
+        $this->voucher($failed(), ['amount' => 250, 'remaining' => 250, 'expires_at' => now()->addDay()]);  // counted
+        $this->voucher($failed(), ['amount' => 900, 'remaining' => 900, 'expires_at' => now()->subDay()]);  // expired
+        $this->voucher($failed(), ['amount' => 300, 'remaining' => 300, 'status' => 'revoked', 'revoked_at' => now()->subHour()]);
+        $this->voucher(null, ['amount' => 5000, 'remaining' => 5000]);                                      // Path A, counted
+        $this->voucher($this->order(['is_test' => true]), ['amount' => 700, 'remaining' => 700]);            // sandbox source
 
-        $this->assertSame(850, (new ReportService)->outstandingStoreCredit(null));
+        $this->assertSame(600 + 250 + 5000, (new ReportService)->outstandingStoreCredit(null));
     }
 
     public function test_outstanding_store_credit_follows_the_affiliate_filter(): void
     {
         $other = $this->otherAffiliate();
-        $this->voucher($this->order(['delivery_status' => DeliveryStatus::Failed]), ['remaining' => 600]);
-        $this->voucher($this->order(['delivery_status' => DeliveryStatus::Failed, 'affiliate_id' => $other->id]), ['remaining' => 250]);
+        $this->voucher($this->order(['delivery_status' => DeliveryStatus::Failed]), ['amount' => 600, 'remaining' => 600]);
+        $this->voucher($this->order(['delivery_status' => DeliveryStatus::Failed, 'affiliate_id' => $other->id]), ['amount' => 250, 'remaining' => 250]);
 
         $this->assertSame(250, (new ReportService)->outstandingStoreCredit($other->id));
     }
