@@ -21,6 +21,7 @@ use App\Models\WalletTopupAttempt;
 use App\Models\Withdrawal;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\Ledger\LedgerOwnerType;
+use App\Services\Ledger\LedgerService;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -30,7 +31,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\PartialComboOrders;
-use App\Services\Ledger\LedgerService;
 use Tests\TestCase;
 
 /**
@@ -83,6 +83,7 @@ class TransactionRegisterControllerTest extends TestCase
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::Delivered->value,
             'paid_at' => now(),
+            'recognised_at' => now(),
         ]);
         // Mirrors OrderFulfillmentService::creditProfit() — the real
         // source of truth for a delivered order's realized profit.
@@ -135,6 +136,7 @@ class TransactionRegisterControllerTest extends TestCase
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::Delivered->value,
             'paid_at' => now(),
+            'recognised_at' => now(),
         ]);
 
         $row = collect($this->getJson('/api/accounting/transactions')->assertOk()->json('data'))->firstWhere('reference', 'KRS-REG-REAL');

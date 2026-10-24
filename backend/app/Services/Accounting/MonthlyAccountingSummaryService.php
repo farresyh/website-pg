@@ -63,7 +63,7 @@ final class MonthlyAccountingSummaryService
             'admin_issued_vouchers_sen' => $this->adminIssuedVouchers($from, $toExclusive),
             'supplier_manual_adjustments_sen' => $this->supplierManualAdjustments($from, $toExclusive),
             'failed_order_credit_issued_sen' => $this->failedOrderCreditIssued($from, $toExclusive),
-            'reseller_wallet_balance_sen' => $this->resellerWalletBalance(),
+            'reseller_wallet_balance_sen' => $this->resellerWalletBalance($toExclusive),
             'envelope_manual_expenses_sen' => array_sum($this->envelopeExpensesByCategory($year, $month)),
         ];
 
@@ -213,24 +213,16 @@ final class MonthlyAccountingSummaryService
 
     /**
      * 2026-09-30 addendum (Bucket C, decision 9) — "money you hold for
-     * resellers, which isn't yours." Deliberately **not** a `$from`/
-     * `$toExclusive`-scoped period figure like every other line here —
-     * a wallet balance only ever has one real value, *now*; there is no
-     * historical point-in-time snapshot mechanism (`ResellerWalletService
-     * ::balance()` is a live `SUM(amount)` over `ledger_entries`, same
-     * for every reseller combined here). Even when viewing a past
-     * month's summary, this line shows today's real balance — the
-     * frontend labels it with a live "as of" timestamp so it's never
-     * mistaken for that period's own month-end figure. A true historical
-     * snapshot would need a new scheduled snapshot job; not built since
-     * this line's whole purpose (don't forget resellers' money isn't
-     * yours) is already served by a current figure for a solo-founder's
-     * once-a-month copy into the external SaaS.
+     * resellers, which isn't yours." The balance at the month end, from
+     * the append-only wallet ledger (ADR-127 P1). It used to be today's
+     * balance, which moved a closed month's figure with every later top-up
+     * or order. For the current month it is today's balance.
      */
-    private function resellerWalletBalance(): int
+    private function resellerWalletBalance(Carbon $toExclusive): int
     {
         return (int) LedgerEntry::query()
             ->where('owner_type', LedgerOwnerType::ResellerWallet->value)
+            ->where('created_at', '<', $toExclusive)
             ->sum('amount');
     }
 

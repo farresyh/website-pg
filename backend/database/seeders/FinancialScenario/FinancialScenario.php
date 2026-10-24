@@ -2,9 +2,12 @@
 
 namespace Database\Seeders\FinancialScenario;
 
+use App\Models\AccountingPeriodClose;
 use App\Models\AdminUser;
 use App\Models\Affiliate;
 use App\Models\AffiliateDomain;
+use App\Models\BudgetEnvelope;
+use App\Models\CashAccount;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
@@ -12,6 +15,7 @@ use App\Models\PaymentMethod;
 use App\Models\Reseller;
 use App\Models\ResellerTier;
 use App\Models\Supplier;
+use App\Services\Accounting\MonthCloseService;
 use App\Services\Affiliate\AffiliateDomainStatus;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Fulfillment\OrderSettlementService;
@@ -189,6 +193,24 @@ final class FinancialScenario
         app(OrderSettlementService::class)->settle($order, $this->admin->id, 'Scenario compensation');
 
         return $order->fresh();
+    }
+
+    /** The admin closes a month as on the Monthly Summary: all profit to one envelope, the bank balance as counted. */
+    public function closeMonth(int $year, int $month): AccountingPeriodClose
+    {
+        $closes = app(MonthCloseService::class);
+        $preview = $closes->preview($year, $month);
+        $envelope = BudgetEnvelope::query()->where('is_active', true)->orderBy('id')->firstOrFail();
+        $bank = CashAccount::query()->firstOrCreate(['name' => 'Scenario Bank'], ['is_active' => true]);
+
+        return $closes->close(
+            $year,
+            $month,
+            $preview['allocate_sen'] === 0 ? [] : [['budget_envelope_id' => $envelope->id, 'amount_sen' => $preview['allocate_sen']]],
+            CashAccount::query()->where('is_active', true)->get()->map(fn (CashAccount $a) => ['cash_account_id' => $a->id, 'balance_sen' => 0])->all(),
+            'Scenario: the bank is not modelled',
+            $this->admin->id,
+        );
     }
 
     /** The wallet balance as the Reseller API reports it to the reseller. */

@@ -260,18 +260,22 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
      * for a past month's period still returns today's real balance
      * (there's no historical snapshot mechanism).
      */
-    public function test_reseller_wallet_balance_is_the_current_total_across_every_reseller(): void
+    /** ADR-127 P1: the balance at the month end across every reseller, so a later top-up never moves a closed month. */
+    public function test_reseller_wallet_balance_is_the_month_end_total_across_every_reseller(): void
     {
-        LedgerEntry::query()->create(['owner_type' => LedgerOwnerType::ResellerWallet->value, 'owner_id' => 1, 'type' => 'wallet_topup', 'amount' => 30000, 'reference_type' => 'wallet_topup_attempt', 'reference_id' => 1]);
-        LedgerEntry::query()->create(['owner_type' => LedgerOwnerType::ResellerWallet->value, 'owner_id' => 1, 'type' => 'wallet_debit', 'amount' => -5000, 'reference_type' => 'order', 'reference_id' => 1]);
-        LedgerEntry::query()->create(['owner_type' => LedgerOwnerType::ResellerWallet->value, 'owner_id' => 2, 'type' => 'wallet_topup', 'amount' => 10000, 'reference_type' => 'wallet_topup_attempt', 'reference_id' => 2]);
+        $ref = 0;
+        $row = function (int $owner, string $type, int $amount, string $at) use (&$ref) {
+            LedgerEntry::query()->forceCreate(['owner_type' => LedgerOwnerType::ResellerWallet->value, 'owner_id' => $owner, 'type' => $type, 'amount' => $amount, 'reference_type' => 'wallet_topup_attempt', 'reference_id' => ++$ref, 'created_at' => $at]);
+        };
+        $row(1, 'wallet_topup', 30000, '2026-09-05 00:00:00');
+        $row(1, 'wallet_debit', -5000, '2026-09-20 00:00:00');
+        $row(2, 'wallet_topup', 10000, '2026-09-30 15:59:00'); // 23:59 on 30 Sep KL
+        $row(2, 'wallet_topup', 99000, '2026-09-30 16:00:00'); // 00:00 on 1 Oct KL — October
         // A different owner type must never leak into this total.
         LedgerEntry::query()->create(['owner_type' => LedgerOwnerType::Platform->value, 'owner_id' => null, 'type' => 'order_profit', 'amount' => 999999, 'reference_type' => 'order', 'reference_id' => 1]);
 
-        // Requesting a period from months ago must still return today's real total, not zero/historical.
-        $summary = $this->service()->forPeriod(2020, 1);
-
-        $this->assertSame(30000 - 5000 + 10000, $summary['reseller_wallet_balance_sen']);
+        $this->assertSame(30000 - 5000 + 10000, $this->service()->forPeriod(2026, 9)['reseller_wallet_balance_sen']);
+        $this->assertSame(0, $this->service()->forPeriod(2026, 8)['reseller_wallet_balance_sen']);
     }
 
     public function test_failed_order_credit_issued_counts_only_vouchers_tied_to_an_order(): void
