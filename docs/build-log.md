@@ -1993,3 +1993,27 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - `php artisan test` passes 3056/3056.
   - Admin `tsc` and lint pass.
   - The browser pass over every money page is still to do, with the full data set (ADR-127 PR E).
+
+## 2026-10-24 — ADR-127 A, B1, B2 and C merged to `staging`; docs synced
+
+- **Merged with the founder's go-ahead, each after green CI:**
+  - #543 (PR A);
+  - #544 (B1);
+  - #545 (B2), retargeted to `staging` before its parent merged;
+  - #546 (C), also retargeted first.
+
+  Every one is on `staging` and unreleased; the release waits for the founder.
+- **Docs sync.**
+  - PRD §14 lists #529–#546 and the six ADR-127 migrations.
+  - The §15 rows for Reports, Vouchers, Customer Analytics and Internal Accounting carry the ADR-127 notes.
+  - The §16 item 131 entry and its detail text are rewritten (the old "pick a start month" step was not needed).
+  - ADR-024, ADR-083, ADR-087 and ADR-104 have Standing and dated addenda for what ADR-127 revised.
+- **Next session: ADR-127 PR D.**
+  - Mark Delivered goes through the drawdown seam, with a unique index.
+  - Delivered is refused on a compensated order.
+  - Penjoki pay is booked as cost of sales.
+  - Joki is counted once on the Dashboard.
+- **Then PR E:**
+  - a dev-DB seeder;
+  - delete `ReportDemoSeeder`;
+  - a browser pass over every money page.

@@ -1,6 +1,6 @@
 # ADR-087: Admin Reports LLM Assistant — Gemini-backed, curated read-only SQL views, additive to the Reports tabs
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-24):** In force; `llm_report_orders` gains `recognised_at_kl` and `placed_via`, and profit is filed by recognition ([ADR-127](./ADR-127-financial-truth-dated-facts.md), 2026-10-24 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted & built — grilled 2026-09-11 (`/mattpocock-skills:grilling`, 3 rounds), built 2026-09-12 on `feature/llm-report-assistant`. Depends on ADR-086: the curated views this ADR defines sit on top of ADR-086's rewritten grouped-SQL layer and reuse its business-rule logic (`paid_at` scope, double-count-safe profit) via correlated subqueries baked into the view definitions themselves, rather than reimplementing that logic separately.
 
@@ -69,3 +69,7 @@ The curated-view approach (decision 1) is the resolution to the safety-vs-flexib
 *Consequence to track.* Any change to the Net Sales rule now has one PHP place plus the view; the parity test fails until both match. Customer data (`customer_email`/`customer_phone`) is still in the view and can reach Gemini if a query selects it; not changed here.
 
 **🟢 BUILT 2026-10-08** (`feature/2026-10-08-item63-llm-views-tier-fee`).
+
+### 2026-10-24 addendum — recognition date and channel (ADR-127)
+
+`llm_report_orders` gains `recognised_at_kl` (when the order became revenue) and `placed_via` (the channel). The prompt files profit by `recognised_at_kl` and sales by `paid_at_kl`, the way the Reports page now does, so their figures agree (ADR-127 invariant 8).
