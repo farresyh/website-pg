@@ -393,7 +393,12 @@ export default function PaymentSettlementsPage() {
                               )}
                             </td>
                             <td className={TD}>{rm(t.amount_sen)}</td>
-                            <td className={TD}>{rm(t.fee_sen)}</td>
+                            <td className={TD}>
+                              {rm(t.fee_sen)}
+                              {t.reported_fee_sen !== null && t.reported_fee_sen !== t.fee_sen && (
+                                <span className="ml-2"><Tag severity="warn">{rm(t.reported_fee_sen)} at payment</Tag></span>
+                              )}
+                            </td>
                             <td className={TD}>{rm(t.net_amount_sen)}</td>
                             <td className={TD}>{t.acquirer}</td>
                             <td className={TD}>{t.settled_on}</td>

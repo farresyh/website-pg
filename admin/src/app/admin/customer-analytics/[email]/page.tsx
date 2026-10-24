@@ -209,7 +209,7 @@ export default function CustomerDetailPage() {
 
         <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-xl bg-blue-50 p-4 text-center dark:bg-blue-500/10">
-            <p className="text-theme-xs text-gray-500 dark:text-gray-400">Total Revenue</p>
+            <p className="text-theme-xs text-gray-500 dark:text-gray-400">Customer spend</p>
             <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">{formatRm(revenue)}</p>
           </div>
           <div className="rounded-xl bg-green-50 p-4 text-center dark:bg-green-500/10">
@@ -237,7 +237,7 @@ export default function CustomerDetailPage() {
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               <tr>
-                <td className="py-2 text-gray-700 dark:text-gray-300">Total Revenue</td>
+                <td className="py-2 text-gray-700 dark:text-gray-300">Customer spend</td>
                 <td className="py-2 text-gray-800 dark:text-white/90">{formatRm(revenue)}</td>
                 <td className="py-2 text-gray-500 dark:text-gray-400">100%</td>
               </tr>
@@ -354,7 +354,7 @@ export default function CustomerDetailPage() {
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Source</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Revenue</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Spend</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Affiliate Profit</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">System Profit</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>

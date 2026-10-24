@@ -71,7 +71,7 @@ export function OverviewTab(props: ReportTabProps) {
     <div>
       <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
         <KpiCard lead label="Paid sales" value={s ? formatRm(s.total_sales) : "—"} sub={s ? `${s.orders_count.toLocaleString()} paid orders` : undefined} change={cmp?.changes.total_sales} previousLabel={previousLabel} onClick={() => onOpenTab("sales")} />
-        <KpiCard lead label="Owner profit" value={s ? formatRm(s.platform_profit) : "—"} sub={s ? `${s.margin_pct.toFixed(2)}% margin` : undefined} change={cmp?.changes.platform_profit} previousLabel={previousLabel} note={profitNote} onClick={() => onOpenTab("profit")} />
+        <KpiCard lead label="Owner profit (market rate)" value={s ? formatRm(s.platform_profit) : "—"} sub={s ? `${s.margin_pct.toFixed(2)}% margin` : undefined} change={cmp?.changes.platform_profit} previousLabel={previousLabel} note={profitNote} onClick={() => onOpenTab("profit")} />
         <KpiCard label="Paid orders" value={s ? s.orders_count.toLocaleString() : "—"} sub={funnel.data ? `${funnel.data.by_status.delivered} delivered · ${funnel.data.by_status.failed} failed` : undefined} change={cmp?.changes.orders_count} previousLabel={previousLabel} onClick={() => onOpenTab("orders")} />
         <KpiCard label="Avg order value" value={s ? formatRm(s.avg_order_value) : "—"} sub="Per paid order" change={cmp?.changes.avg_order_value} previousLabel={previousLabel} />
         <KpiCard label="Affiliate profit" value={s ? formatRm(s.affiliate_profit) : "—"} sub="Earned by affiliates" change={cmp?.changes.affiliate_profit} previousLabel={previousLabel} onClick={() => onOpenTab("partners")} />
@@ -103,7 +103,7 @@ export function OverviewTab(props: ReportTabProps) {
                 value={measure}
                 onChange={setMeasure}
                 options={[
-                  { value: "money", label: "Revenue & profit" },
+                  { value: "money", label: "Sales & profit" },
                   { value: "orders", label: "Orders" },
                 ]}
               />
@@ -118,7 +118,7 @@ export function OverviewTab(props: ReportTabProps) {
               panels={
                 measure === "money"
                   ? [
-                      { title: "Revenue (RM)", kind: "bar", series: [{ label: "Revenue", values: buckets.map((b) => toRm(b.sales)), color: "chart-1" }], formatValue: formatRmValue, formatTick: formatRmTick },
+                      { title: "Sales (RM)", kind: "bar", series: [{ label: "Sales", values: buckets.map((b) => toRm(b.sales)), color: "chart-1" }], formatValue: formatRmValue, formatTick: formatRmTick },
                       { title: "Owner profit (RM)", kind: "bar", series: [{ label: "Owner profit", values: buckets.map((b) => toRm(b.platform_profit)), color: "chart-2" }], formatValue: formatRmValue, formatTick: formatRmTick },
                     ]
                   : [
