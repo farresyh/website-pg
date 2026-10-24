@@ -21,7 +21,8 @@ import PaymentChannelPicker from "@/components/order/PaymentChannelPicker";
 import OrderSummarySidebar from "@/components/order/OrderSummarySidebar";
 import ReviewModal from "@/components/order/ReviewModal";
 import { idInputClass, idLabelClass } from "@/components/order/idFields";
-import JokiRankPicker from "@/components/joki/JokiRankPicker";
+import JokiRankStepper, { jokiStops, rankAt } from "@/components/joki/JokiRankStepper";
+import { CaretDoubleRight } from "@phosphor-icons/react/dist/ssr";
 
 type Mode = "calculator" | "route";
 
@@ -58,8 +59,31 @@ export default function JokiOrderForm({ catalog, paymentChannels, whatsappHref }
 
   // Step 1: the climb.
   const [mode, setMode] = useState<Mode>("calculator");
-  const [from, setFrom] = useState<JokiRank | null>(null);
-  const [to, setTo] = useState<JokiRank | null>(null);
+  // Start where most customers are, like the reference calculators: the
+  // second-highest divisional tier's lowest division, one step to go.
+  // The price shows at once.
+  const fromStops = jokiStops(tiers, true);
+  const toStops = jokiStops(tiers, false);
+  const divisional = tiers.filter((t) => t.kind === "divisional");
+  const startTier = divisional[Math.max(0, divisional.length - 2)];
+  const startIndex = Math.max(0, fromStops.findIndex((s) => s.tier.id === startTier?.id));
+  const [from, setFromRaw] = useState<JokiRank | null>(() => (fromStops[startIndex] ? rankAt(fromStops[startIndex]) : null));
+  const [to, setTo] = useState<JokiRank | null>(() => (toStops[startIndex + 1] ? rankAt(toStops[startIndex + 1]) : null));
+
+  // Where a rank sits on the target's ladder (Grading = the first Mythic band).
+  function toIndexOf(rank: JokiRank): number {
+    return toStops.findIndex((s) => s.tier.id === rank.tier_id && (rank.stars === null || s.division === rank.division));
+  }
+  // The target never sits below the start; moving the start up pushes it along.
+  const targetMinStop = from ? Math.max(0, toIndexOf(from)) : 0;
+  function setFrom(rank: JokiRank) {
+    setFromRaw(rank);
+    const startAt = toIndexOf(rank);
+    if (to && startAt >= 0 && toIndexOf(to) < startAt) {
+      const next = toStops[rank.stars === null ? startAt : startAt + 1] ?? toStops[startAt];
+      if (next) setTo(rankAt(next));
+    }
+  }
   const [isExpress, setIsExpress] = useState(false);
   const [routeId, setRouteId] = useState<number | null>(null);
   const selectedRoute = sellableRoutes.find((r) => r.package_id === routeId) ?? null;
@@ -265,8 +289,25 @@ export default function JokiOrderForm({ catalog, paymentChannels, whatsappHref }
 
           {mode === "calculator" ? (
             <div className="flex flex-col gap-5">
-              <JokiRankPicker id="joki-from" label="Your rank now" tiers={tiers} value={from} onChange={setFrom} allowGrading maxMythicStars={settings.max_mythic_stars} />
-              <JokiRankPicker id="joki-to" label="Target rank" tiers={tiers} value={to} onChange={setTo} maxMythicStars={settings.max_mythic_stars} />
+              <div className="rounded-lg border-2 border-ink bg-surface-container-lowest p-3 neo sm:p-4">
+                <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-1 sm:gap-6">
+                  {from && (
+                    <JokiRankStepper id="joki-from" label="Your rank now" tiers={tiers} value={from} onChange={setFrom} allowGrading maxMythicStars={settings.max_mythic_stars} />
+                  )}
+                  <CaretDoubleRight size={22} weight="bold" className="mt-[72px] text-primary-on-surface sm:mt-24" aria-hidden="true" />
+                  {to && (
+                    <JokiRankStepper id="joki-to" label="Target rank" tiers={tiers} value={to} onChange={setTo} minStop={targetMinStop} maxMythicStars={settings.max_mythic_stars} />
+                  )}
+                </div>
+                <div className="mt-5 border-t-2 border-ink/15 pt-4 text-center" aria-live="polite">
+                  {quote ? (
+                    <p className="font-mono text-3xl font-bold text-primary-on-surface" data-testid="joki-climb-price">RM{quote.total_rm.toFixed(2)}</p>
+                  ) : quoteError ? null : (
+                    <p className="font-mono text-3xl font-bold text-on-surface-variant/50">RM—</p>
+                  )}
+                  <p className="mt-1 text-xs text-on-surface-variant">Minimum {settings.min_stars} stars per order</p>
+                </div>
+              </div>
 
               <label className="flex items-start gap-3 rounded-md border-2 border-ink bg-surface-container-lowest p-3">
                 <input type="checkbox" checked={isExpress} onChange={(e) => setIsExpress(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" />
@@ -291,7 +332,7 @@ export default function JokiOrderForm({ catalog, paymentChannels, whatsappHref }
                     ))}
                   </ul>
                   <div className="mt-2 flex justify-between border-t-2 border-ink/15 pt-2 font-display text-sm font-bold uppercase">
-                    <span>Climb price</span>
+                    <span>Total</span>
                     <span className="font-mono text-primary-on-surface">RM{quote.total_rm.toFixed(2)}</span>
                   </div>
                   {quote.cheaper_route && (
@@ -310,7 +351,7 @@ export default function JokiOrderForm({ catalog, paymentChannels, whatsappHref }
               )}
               {settings.grading_price_rm > 0 && (
                 <p className="text-xs text-on-surface-variant">
-                  Climbing into Mythic includes Mythic Grading (RM{settings.grading_price_rm}), which guarantees Mythic {settings.grading_lands_at_stars}★. Minimum {settings.min_stars} stars per order.
+                  Climbing into Mythic includes Mythic Grading (RM{settings.grading_price_rm}), which guarantees Mythic {settings.grading_lands_at_stars}★.
                 </p>
               )}
             </div>
