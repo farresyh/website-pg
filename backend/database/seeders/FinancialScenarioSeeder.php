@@ -25,8 +25,11 @@ use Illuminate\Support\Carbon;
  * real scheduler would poll the scenario's Pending orders, whose supplier
  * exists only in this process.
  *
- * Not driven yet: membership, CHIP wallet top-ups, affiliate withdrawals
- * and resends (the scenario has no action for them).
+ * It also drives the money around the orders: share capital, both
+ * suppliers' funding (one in IDR at a daily rate), CHIP's daily payout
+ * through a settlement file, membership, wallet top-ups by FPX, affiliate
+ * withdrawals and resends. Months from September are closed with the
+ * modelled bank, so each close's gap is only CHIP's fee estimate.
  */
 class FinancialScenarioSeeder extends Seeder
 {
@@ -41,7 +44,13 @@ class FinancialScenarioSeeder extends Seeder
         $until = CarbonImmutable::now('Asia/Kuala_Lumpur')->subHours(2);
         $s = FinancialScenario::boot(self::FROM.' 08:00');
         $penjoki = $s->enableJoki(penjokiCount: 3);
+        $s->fundCompany(5_000_000);
         $s->supplierTransfer($s->apiSupplier, 1_500_000);
+        $s->fundIdrSupplier(500_000, 3_750.0);
+        $s->enableMembership();
+        $idrRate = 0.000270;
+        /** @var array<int, CarbonImmutable> $members  customer => membership expiry */
+        $members = [];
 
         /** @var list<Order> $pendingTomorrow */
         $pendingTomorrow = [];
@@ -61,13 +70,25 @@ class FinancialScenarioSeeder extends Seeder
                 $s->at($day->addMinutes($minute++)->format('Y-m-d H:i'));
             };
 
-            // Morning back office: yesterday's leftovers, and the joki finished overnight.
+            // Morning back office: CHIP's payout, today's rupiah rate,
+            // yesterday's leftovers, and the joki finished overnight.
+            $tick();
+            $s->settleChip();
+            $idrRate = max(0.000262, min(0.000288, $idrRate * (1 + mt_rand(-50, 50) / 10_000)));
+            $s->setIdrRate($idrRate);
+
             foreach ($pendingTomorrow as $order) {
                 $tick();
                 $s->supplierDelivers($order);
             }
             foreach ($failedYesterday as $order) {
                 $tick();
+                // Some failures are resent and delivered instead (ADR-105).
+                if (! $order->isJoki() && mt_rand(1, 100) <= 40) {
+                    $s->resend($order);
+
+                    continue;
+                }
                 $compensated = $s->compensate($order);
                 $code = Voucher::query()->where('order_id', $compensated->id)->value('code');
                 if ($code !== null && ! $compensated->isJoki() && mt_rand(1, 100) <= 60) {
@@ -92,6 +113,22 @@ class FinancialScenarioSeeder extends Seeder
                 $s->closeMonth($last->year, $last->month);
             }
 
+            // A new member most days; the affiliate withdraws its earnings on the 10th.
+            if (mt_rand(1, 100) <= 45) {
+                $tick();
+                $customer = mt_rand(1, 400);
+                if (! isset($members[$customer]) || $members[$customer]->lt($day)) {
+                    $members[$customer] = CarbonImmutable::parse($s->subscribeMember($customer, mt_rand(1, 100) <= 70 ? 'Tier 1' : 'Tier 2')->expires_at);
+                }
+            }
+            if ($day->day === 10) {
+                $tick();
+                $earnings = app(\App\Services\Affiliate\AffiliateEarningsService::class)->balance($s->affiliate);
+                if ($earnings >= 1_000) {
+                    $s->affiliateWithdraws($earnings);
+                }
+            }
+
             $count = self::ORDERS_PER_DAY + mt_rand(-4, 4) + ($day->isWeekend() ? 3 : 0);
             $times = array_map(fn () => mt_rand(8 * 60, 23 * 60 + 30), range(1, $count));
             sort($times);
@@ -99,7 +136,11 @@ class FinancialScenarioSeeder extends Seeder
             foreach ($times as $orderMinute) {
                 $s->at($day->addMinutes($orderMinute)->format('Y-m-d H:i'));
                 $roll = mt_rand(1, 100);
-                $package = $s->packages[mt_rand(0, count($s->packages) - 1)];
+                // A quarter of the top-ups are Free Fire, on the IDR supplier.
+                $idr = mt_rand(1, 100) <= 25;
+                $catalog = $idr ? $s->idrPackages : $s->packages;
+                $adapter = $idr ? $s->idrAdapter : $s->supplierAdapter;
+                $package = $catalog[mt_rand(0, count($catalog) - 1)];
 
                 if ($roll <= 15) {
                     $s->resellerApiOrder($package);
@@ -120,20 +161,23 @@ class FinancialScenarioSeeder extends Seeder
 
                 $outcome = mt_rand(1, 100);
                 match (true) {
-                    $outcome <= 4 => $s->supplierAdapter->failNext(),
-                    $outcome <= 8 => $s->supplierAdapter->pendingNext(),
-                    $outcome <= 10 => $s->supplierAdapter->ambiguousNext(),
-                    $outcome <= 16 => $s->supplierAdapter->costNext($package->cost_price + mt_rand(-30, 40)),
+                    $outcome <= 4 => $adapter->failNext(),
+                    $outcome <= 8 => $adapter->pendingNext(),
+                    $outcome <= 10 => $adapter->ambiguousNext(),
+                    $outcome <= 16 => $adapter->costNext($package->cost_price + mt_rand(-30, 40)),
                     default => null,
                 };
 
                 $voucher = $roll <= 23 && $vouchers !== [] ? array_shift($vouchers) : null;
+                $customer = $voucher[0] ?? mt_rand(1, 400);
+                // A voucher is spent on the brand that issued it; a member buys on PekanGame, signed in.
+                $onAffiliate = $voucher[2] ?? $roll <= 40;
                 $order = $s->pay($s->storefrontOrder(
                     $package,
-                    // A voucher is spent on the brand that issued it.
-                    onAffiliateBrand: $voucher[2] ?? $roll <= 40,
-                    customer: $voucher[0] ?? mt_rand(1, 400),
+                    onAffiliateBrand: $onAffiliate,
+                    customer: $customer,
                     voucherCode: $voucher[1] ?? null,
+                    asMember: ! $onAffiliate && isset($members[$customer]) && $members[$customer]->gt($day),
                 ));
 
                 match ($order->delivery_status) {
@@ -150,17 +194,19 @@ class FinancialScenarioSeeder extends Seeder
                 $s->adminConfirmsDelivered($order, $chargedSen);
             }
 
-            // Weekly back office: fund the API supplier, pay each penjoki what is owed, top up the reseller.
+            // Weekly back office: fund both suppliers, pay each penjoki what is
+            // owed, and the reseller tops up (bank transfer or FPX, by turns).
             if ($day->isSunday()) {
                 $tick();
                 $s->supplierTransfer($s->apiSupplier, 400_000);
+                $s->fundIdrSupplier(150_000, mt_rand(3_650, 3_800) * 1.0);
                 foreach ($penjoki as $p) {
                     $owed = (int) round(-(float) $p->fresh()->supplierLedgerBalance() * 100);
                     if ($owed > 0) {
                         $s->supplierTransfer($p, $owed);
                     }
                 }
-                $s->topUpWallet(150_000);
+                $day->weekOfYear % 2 === 0 ? $s->topUpWallet(150_000) : $s->walletTopupViaChip(150_000);
             }
         }
 

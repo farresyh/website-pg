@@ -8,6 +8,7 @@ use App\Models\Affiliate;
 use App\Models\AffiliateDomain;
 use App\Models\BudgetEnvelope;
 use App\Models\CashAccount;
+use App\Models\CurrencyRate;
 use App\Models\Game;
 use App\Models\JokiSetting;
 use App\Models\JokiTier;
@@ -62,9 +63,19 @@ use RuntimeException;
  */
 final class FinancialScenario
 {
+    use MoneyFlows;
+
     public readonly ScriptedSupplierAdapter $supplierAdapter;
 
     public readonly Supplier $apiSupplier;
+
+    /** The IDR supplier (Digiflazz-like): prices in rupiah, funded in ringgit at its own deposit rate. */
+    public readonly ScriptedSupplierAdapter $idrAdapter;
+
+    public readonly Supplier $idrSupplier;
+
+    /** @var list<Package> */
+    public readonly array $idrPackages;
 
     public readonly Affiliate $platform;
 
@@ -130,6 +141,17 @@ final class FinancialScenario
         $this->affiliate = $this->affiliateBrand();
         $this->packages = $this->catalog();
         [$this->reseller, $this->apiKey] = $this->walletReseller();
+
+        if (! CurrencyRate::query()->where('from', 'IDR')->where('to', 'MYR')->exists()) {
+            $this->setIdrRate(0.000270);
+        }
+        $this->idrAdapter = new ScriptedSupplierAdapter(fn (int $sen) => round($sen / 100 / $this->idrRate()));
+        $this->idrSupplier = Supplier::query()->firstOrCreate(
+            ['slug' => 'scenario-idr'],
+            ['name' => 'Scenario IDR Supplier', 'driver' => 'scenario-idr', 'funding_mode' => Supplier::FUNDING_PREPAID, 'api_config' => [], 'currency' => 'IDR', 'is_active' => true],
+        );
+        app()->instance('supplier-adapter.scenario-idr', $this->idrAdapter);
+        $this->idrPackages = $this->idrCatalog();
     }
 
     /** Moves the clock to a Malaysia wall-clock time; every following action happens then. */
@@ -141,11 +163,15 @@ final class FinancialScenario
     }
 
     /** A guest checkout on the platform brand, or on the affiliate's own domain. */
-    public function storefrontOrder(Package $package, bool $onAffiliateBrand = false, ?int $customer = null, ?string $voucherCode = null): Order
+    public function storefrontOrder(Package $package, bool $onAffiliateBrand = false, ?int $customer = null, ?string $voucherCode = null, bool $asMember = false): Order
     {
-        $headers = $onAffiliateBrand ? ['X-Storefront-Host' => $this->affiliateHost()] : [];
         $n = ++$this->sequence;
         $c = $customer ?? $n;
+        $headers = $onAffiliateBrand ? ['X-Storefront-Host' => $this->affiliateHost()] : [];
+        // A signed-in member gets member pricing (ADR-068); the token names the brand.
+        if ($asMember) {
+            $headers['Authorization'] = 'Bearer '.$this->memberToken($c);
+        }
 
         $this->call('POST', '/api/checkout', array_filter([
             'game_id' => $package->game_id,
@@ -170,13 +196,7 @@ final class FinancialScenario
             return $order->fresh();
         }
 
-        $this->call('POST', '/api/webhooks/chip', [
-            'event_type' => 'purchase.paid',
-            'id' => $order->payment_ref,
-            'reference' => $order->reference_number,
-            'status' => 'paid',
-            'purchase' => ['total' => $order->final_amount],
-        ]);
+        $this->chipPaid($order->payment_ref, $order->reference_number, $order->final_amount);
 
         return $order->fresh();
     }
@@ -201,7 +221,7 @@ final class FinancialScenario
             $order->fresh(),
             SupplierOutcome::Success,
             $order->supplier_ref,
-            ['supplier_ref' => $order->supplier_ref, 'status' => 'delivered', 'price' => $order->cost_price / 100],
+            ['supplier_ref' => $order->supplier_ref, 'status' => 'delivered', 'price' => $this->adapterFor($order->supplier)->price($order->cost_price)],
         );
     }
 
@@ -306,12 +326,14 @@ final class FinancialScenario
             $supplier, now('Asia/Kuala_Lumpur')->toDateString(), 'bank', $amountSen, 0, 'MYR',
             number_format($amountSen / 100, 2, '.', ''), null, 'SCN-TRF-'.(++$this->sequence), null, $this->admin->id, PaidFrom::CompanyAccount,
         );
+        $this->bank(-$amountSen);
     }
 
     /** The admin credits the reseller's wallet after a bank transfer. */
     public function topUpWallet(int $amountSen): void
     {
         app(ResellerWalletService::class)->manualCredit($this->reseller, $amountSen, 'Scenario top-up', null, $this->admin->id, 'scenario-topup-'.Str::uuid());
+        $this->bank($amountSen);
     }
 
     /** The admin compensates a Failed order (store-credit voucher, ADR-024). */
@@ -334,8 +356,12 @@ final class FinancialScenario
             $year,
             $month,
             $preview['allocate_sen'] === 0 ? [] : [['budget_envelope_id' => $envelope->id, 'amount_sen' => $preview['allocate_sen']]],
-            CashAccount::query()->where('is_active', true)->get()->map(fn (CashAccount $a) => ['cash_account_id' => $a->id, 'balance_sen' => 0])->all(),
-            'Scenario: the bank is not modelled',
+            // The scenario's bank holds all the cash; any other account is counted at 0.
+            CashAccount::query()->where('is_active', true)->get()->map(fn (CashAccount $a) => [
+                'cash_account_id' => $a->id,
+                'balance_sen' => $a->id === $bank->id ? $this->bankAsOf(CarbonImmutable::create($year, $month, 1)->endOfMonth()->toDateString()) : 0,
+            ])->all(),
+            'Scenario: CHIP fee estimate on unsettled payments',
             $this->admin->id,
         );
     }
@@ -400,6 +426,29 @@ final class FinancialScenario
         ), [[86, 421, 500], [172, 842, 990], [429, 2105, 2450], [878, 4210, 4890]]);
     }
 
+    /**
+     * Free Fire on the IDR supplier. Each package's ringgit cost is its
+     * rupiah price at today's rate, as price sync would set it (ADR-033).
+     *
+     * @return list<Package>
+     */
+    private function idrCatalog(): array
+    {
+        $game = Game::query()->firstOrCreate(
+            ['slug' => 'scenario-ff'],
+            ['name' => 'Scenario Free Fire', 'is_active' => true, 'reseller_code' => 'SCF'],
+        );
+
+        return array_map(function (array $p) use ($game) {
+            $cost = (int) round($p[1] * $this->idrRate() * 100);
+
+            return Package::query()->firstOrCreate(
+                ['game_id' => $game->id, 'denomination' => $p[0]],
+                ['name' => "{$p[0]} Diamonds", 'cost_price' => $cost, 'standard_selling_price' => (int) round($cost * 1.15), 'markup_percent' => 15, 'is_active' => true, 'supplier_id' => $this->idrSupplier->id, 'supplier_package_ref' => "SCF-{$p[0]}"],
+            );
+        }, [[100, 15_000], [310, 46_000], [720, 105_000]]);
+    }
+
     /** @return array{Reseller, string} */
     private function walletReseller(): array
     {
@@ -409,6 +458,7 @@ final class FinancialScenario
 
         if (app(ResellerWalletService::class)->balance($reseller) === 0) {
             app(ResellerWalletService::class)->manualCredit($reseller, 500_000, 'Scenario opening top-up', null, $this->admin->id, 'scenario-opening-topup-'.$reseller->id);
+            $this->bank(500_000);
         }
 
         return [$reseller, app(ResellerApiKeyService::class)->issue($reseller, 'Scenario key')['plainText']];

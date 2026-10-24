@@ -49,6 +49,15 @@ class FinancialScenarioTest extends TestCase
     /** @var list<Supplier> */
     private array $penjoki;
 
+    private Order $memberOrder;
+
+    private Order $resent;
+
+    /** @var list<Order> */
+    private array $idrOrders = [];
+
+    private \App\Models\Withdrawal $withdrawal;
+
     /** @var list<array<string, mixed>> */
     private array $septemberRegisterAtClose;
 
@@ -63,6 +72,29 @@ class FinancialScenarioTest extends TestCase
     {
         $s = $this->scenario;
         [$small, $mid, $large] = $s->packages;
+        [$ffSmall, $ffMid] = $s->idrPackages;
+
+        // The money around the orders: capital in, both suppliers funded
+        // (the IDR one at a deposit rate better than the market's),
+        // membership on, and CHIP paying out every week.
+        $s->at('2026-09-01 09:10')->fundCompany(2_000_000);
+        $s->at('2026-09-01 09:20')->supplierTransfer($s->apiSupplier, 300_000);
+        $s->at('2026-09-01 09:30')->fundIdrSupplier(100_000, 3_750.0);
+        $s->at('2026-09-01 09:40')->enableMembership();
+
+        $s->at('2026-09-02 12:00')->subscribeMember(7001);
+        $this->memberOrder = $s->at('2026-09-09 19:00')->pay($s->storefrontOrder($mid, customer: 7001, asMember: true));
+
+        $this->idrOrders[] = $s->at('2026-09-04 15:00')->pay($s->storefrontOrder($ffSmall));
+        $s->at('2026-09-15 08:00')->setIdrRate(0.000275);
+        $this->idrOrders[] = $s->at('2026-09-18 16:00')->pay($s->storefrontOrder($ffMid));
+        $s->at('2026-09-20 09:00')->fundIdrSupplier(50_000, 3_650.0);
+        $s->at('2026-09-11 11:00')->walletTopupViaChip(50_000);
+
+        // Failed, then resent on the same package: delivered, never compensated.
+        $s->supplierAdapter->failNext();
+        $this->resent = $s->at('2026-09-25 13:00')->pay($s->storefrontOrder($small));
+        $s->at('2026-09-26 10:00')->resend($this->resent);
 
         $s->at('2026-09-03 10:00')->pay($s->storefrontOrder($small));
         $s->at('2026-09-05 21:30')->pay($s->storefrontOrder($mid, onAffiliateBrand: true));
@@ -114,6 +146,9 @@ class FinancialScenarioTest extends TestCase
         $s->supplierAdapter->pendingNext();
         $lateSeptember = $s->at('2026-09-29 20:00')->pay($s->storefrontOrder($mid));
 
+        foreach (['2026-09-08', '2026-09-15', '2026-09-22', '2026-09-29', '2026-10-06'] as $day) {
+            $s->at("{$day} 12:00")->settleChip();
+        }
         $this->septemberClose = $s->at('2026-10-10 10:00')->closeMonth(2026, 9);
         $this->septemberRegisterAtClose = app(TransactionRegisterService::class)->rows(...MonthlyAccountingSummaryService::monthBounds(2026, 9));
 
@@ -123,11 +158,14 @@ class FinancialScenarioTest extends TestCase
         $s->supplierAdapter->failNext();
         $octoberFailed = $s->at('2026-10-16 16:00')->pay($s->storefrontOrder($small));
         $s->at('2026-10-17 10:00')->compensate($octoberFailed);
+        $this->idrOrders[] = $s->at('2026-10-18 20:00')->pay($s->storefrontOrder($ffSmall));
+        $this->withdrawal = $s->at('2026-10-20 10:00')->affiliateWithdraws(100);
+        $s->at('2026-10-20 12:00')->settleChip();
     }
 
     public function test_the_scenario_produces_every_outcome_it_scripts(): void
     {
-        $this->assertSame(12, Order::query()->where('delivery_status', DeliveryStatus::Delivered->value)->count());
+        $this->assertSame(17, Order::query()->where('delivery_status', DeliveryStatus::Delivered->value)->count());
         $this->assertSame(3, Order::query()->where('delivery_status', DeliveryStatus::Failed->value)->count());
         $this->assertSame(1, Order::query()->whereNotNull('real_cost_price_sen')->whereJsonContains('supplier_response->manually_confirmed', true)->count());
         $this->assertSame(2, Order::query()->where('affiliate_profit', '>', 0)->count());
@@ -169,7 +207,7 @@ class FinancialScenarioTest extends TestCase
         $this->assertSame(0, SupplierLedgerEntry::query()->where('reference_type', 'order')->where('reference_id', $failed->id)->count());
         $this->assertSame($failed->selling_price, Voucher::query()->where('order_id', $failed->id)->sole()->amount);
 
-        $this->assertSame(0, BudgetEnvelopePosting::query()->where('type', '!=', EnvelopePostingType::ProfitAllocation->value)->count());
+        $this->assertSame(0, BudgetEnvelopePosting::query()->whereIn('type', [EnvelopePostingType::Expense->value, EnvelopePostingType::DirectorPaidExpense->value])->count());
     }
 
     /** ADR-127 decision 6: a joki paid in September and finished in October is October revenue. */
@@ -177,6 +215,62 @@ class FinancialScenarioTest extends TestCase
     {
         $order = $this->joki['cross_month']->fresh();
         $this->assertSame('2026-10', $order->recognised_at->setTimezone('Asia/Kuala_Lumpur')->format('Y-m'));
+    }
+
+    /**
+     * The cash equation closes to the sen. With the bank modelled, the
+     * September close has no gap: every ringgit in the bank, at a supplier
+     * or still with CHIP is owed to someone or allocated to an envelope.
+     * CHIP's RM1-a-payment estimate on what is unsettled at month end
+     * offsets the channel fee charged to the customer, whose difference
+     * from CHIP's real fee is recognised when the payment settles.
+     */
+    public function test_the_cash_equation_closes_with_no_gap(): void
+    {
+        $this->assertGreaterThan(0, $this->septemberClose->equation['chip_unsettled_count']);
+        $this->assertSame(0, $this->septemberClose->gap_sen, json_encode($this->septemberClose->equation));
+    }
+
+    /** Membership (ADR-068): the fee is revenue the month it is paid, the same figure on the Summary and on Reports; the member's order is priced as a member's. */
+    public function test_membership_revenue_agrees_and_the_member_pays_member_prices(): void
+    {
+        $fee = \App\Models\MembershipPlan::query()->where('name', 'Tier 2')->value('fee_sen');
+        $september = app(MonthlyAccountingSummaryService::class)->forPeriod(2026, 9);
+
+        $this->assertSame($fee, $september['membership_revenue_sen']);
+        $this->assertSame($fee, app(ReportService::class)->membershipBreakdown(...self::month(2026, 9), affiliateId: null)['membership_fee_revenue']);
+        $this->assertSame(\App\Services\Pricing\PricingBasis::Member, $this->memberOrder->fresh()->pricing_basis);
+    }
+
+    /** An IDR supplier funded at its own deposit rates: the deposit-vs-market line is real, and COGS is per-order cost plus it. */
+    public function test_an_idr_supplier_costs_at_its_funded_rate(): void
+    {
+        $september = app(MonthlyAccountingSummaryService::class)->forPeriod(2026, 9);
+
+        $this->assertNotSame(0, $september['cogs_funding_difference_sen']);
+        $this->assertSame($september['cogs_sen'], $september['cogs_at_order_cost_sen'] + $september['cogs_funding_difference_sen']);
+        foreach ($this->idrOrders as $o) {
+            $this->assertNotNull($o->fresh()->real_cost_price_sen, "order {$o->reference_number}");
+        }
+    }
+
+    /** CHIP's own fee is recorded on every CHIP payment, so the processing gain or loss is measured, not assumed. */
+    public function test_chip_fees_are_recorded_and_measured(): void
+    {
+        $missing = Order::query()->where('payment_gateway', 'chip')->where('payment_status', 'paid')->where('final_amount', '>', 0)->whereNull('gateway_fee_sen')->get(['order_number', 'payment_gateway', 'payment_ref', 'wallet_reseller_id', 'final_amount'])->toArray();
+        $this->assertSame([], $missing, json_encode($missing));
+        $this->assertNotSame(0, app(MonthlyAccountingSummaryService::class)->forPeriod(2026, 9)['payment_processing_gain_loss_sen']);
+    }
+
+    /** A resend delivers the failed order instead of compensating it; an affiliate withdrawal is paid and leaves no claim. */
+    public function test_a_resend_delivers_and_a_withdrawal_is_paid(): void
+    {
+        $resent = $this->resent->fresh();
+        $this->assertSame(DeliveryStatus::Delivered, $resent->delivery_status);
+        $this->assertFalse($resent->isAlreadyCompensated());
+
+        $this->assertSame(\App\Services\Withdrawal\WithdrawalStatus::Completed, $this->withdrawal->status);
+        $this->assertSame(0, app(CashPositionService::class)->asOf(2026, 10)['claims']['affiliate_withdrawals_unpaid_sen']);
     }
 
     /** Invariant 10: every Delivered order from an API supplier has exactly one drawdown. */
