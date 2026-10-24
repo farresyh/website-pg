@@ -390,7 +390,7 @@ Rank boosting: the customer picks a current and target MLBB rank, pays, and hand
 | **JOKI-1** | Joki is sold only where both the global Joki switch (`joki_settings.is_enabled`) and the brand's own `joki_enabled` are on, on an owned brand (`is_owned`; the admin forces it off otherwise). The joki game (`games.is_joki`) is in no catalog on any brand and in no Affiliate portal list; its packages are kept by joki, never by the Games & Packages screens or Bulk Markup | **Critical** |
 | **JOKI-2** | The price is computed on the server from the panel's rank model and rates (whole RM): a star is paid at the rate of the tier it is won in, a division is worth its own stars, Mythic Grading is one flat price that guarantees Mythic 15★, Mythic and up is priced on the Mythic star count, Express uses the Express rates, and a climb of fewer than the minimum stars is refused unless it includes Grading. A route package sells its own climb at its own price (Reguler only); a quotation route is never sold. The client sends ranks and Express only | **Critical** |
 | **JOKI-3** | A joki order is an ordinary order on the `Fixed` pricing basis: selling price = the joki price, cost = the penjoki's payout = price × the payout share in force at checkout (default 100%), no tier markup, no member price, no affiliate margin. It goes through the one storefront checkout (login, consent, blacklist, idempotency, voucher, payment), and its `joki_orders` row (ranks, Express, hero/role/play window, a snapshot of the quote, model, rates, share and terms) is written in the order's transaction | **Critical** |
-| **JOKI-4** | No path changes a joki order's payout: resend keeps the cost and refuses another package, a retry after Failed returns the order to the pool at the same cost, Manual Delivered refuses another cost, Bulk Markup skips joki. Extra or partial pay is a Budget Envelope expense | **Critical** |
+| **JOKI-4** | No path changes a joki order's payout: resend keeps the cost and refuses another package, a retry after Failed returns the order to the pool at the same cost, Manual Delivered refuses another cost, Bulk Markup skips joki. There is no extra or partial pay: a failed or reassigned order pays the penjoki nothing (ADR-126 2026-10-25 addendum) | **Critical** |
 | **JOKI-5** | A paid joki order waits on the assignment pool. An admin assigns it (Pending only, under the order and penjoki locks, to an active penjoki with a group), writing a `joki_assignments` row; the order and a fresh login link go to that penjoki's group. Reassigning kills the old link and the old penjoki's `.done`. A penjoki with orders in progress can't be switched off | **Critical** |
 | **JOKI-6** | Progress: the penjoki sends `.progress PG-… Epic III 2` (Mythic and up: `Mythic 30`), or an admin updates it from Order Detail. Each update is checked against the rank model, kept in `joki_progress_updates`, sets the order's current rank and restarts its stale clock | **Important** |
 | **JOKI-7** | The customer sees the climb and the current rank on Track Order (live) and in the WhatsApp status card. An opted-in customer gets a WhatsApp progress message: the first at once, then at most one per panel interval (default 2 h), always with the latest rank, never after the order finishes or the customer stops updates | **Important** |
@@ -842,9 +842,10 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
   months that cannot move, CHIP `paid_on`/fee recorded, a scenario builder
   with 11 cross-page invariants. Five stacked PRs (A–E, ADR-127 build
   order). Merged to `staging`, not released: A (#543), B1 (#544), B2 (#545),
-  C (#546). Next: **PR D** (Mark Delivered drawdown seam + unique index,
-  Delivered refused on a compensated order, penjoki pay as cost of sales,
-  joki counted once on the Dashboard), then **PR E** (dev-DB scenario
+  C (#546). **PR D** (Mark Delivered records the supplier's price as real
+  cost and drawdown, a unique drawdown index, Delivered refused on a
+  compensated order at the finalize seam, no partial or extra penjoki pay,
+  joki counted once on the Dashboard) is open as a PR. Then **PR E** (dev-DB scenario
   seeder, delete `ReportDemoSeeder`, browser pass of every money page). Must ship before Joki launches.
 
 **B. Needs a short grill / ADR addendum first**
@@ -1299,8 +1300,8 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     recognition on Reports and the Report Assistant; a profit bridge; and
     `FinancialScenario`, which proves the invariants on data the real system
     produced. No start month was needed: on prod no order was paid and
-    delivered in different months. Left: PR D and PR E (group A line
-    above). It must ship before Joki launches.
+    delivered in different months. PR D (money flows) is built; left: PR E
+    (group A line above). It must ship before Joki launches.
 
 129. **Refund to the original payment method (founder, 2026-10-22) —
     revises ADR-004, needs its grill and a code-trace pass.** CHIP's
