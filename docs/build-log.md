@@ -2080,3 +2080,13 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
 - **Verified:**
   - `php artisan test` passes 3070/3070.
   - 11 money pages in the browser, no API error. The October Summary adds up to its operating profit by hand.
+
+## 2026-10-25 — #549 merged; item 132 grilled and designed
+
+- **#549 (ADR-127 PR E) merged** to `staging` with the founder's go-ahead, after green CI. Every ADR-127 PR (#542–#549) is now on `staging`, unreleased.
+- **Item 132 grilled in Malay** (Q1–Q12) and stress-tested. It is ADR-083's 2026-10-25 addendum: foreign-currency deposits at a moving weighted average from 1 October 2026, a replayed pool opening at September's close value, a drawdown's cost fixed when drawn, and voided transfers with all their rows left out.
+- **Production facts, read-only:**
+  - three live Digiflazz deposits, all in September;
+  - the running IDR balance never negative (41 rows);
+  - the two voids of 15 September were written as `MANUAL_ADJUSTMENT` rows (−1,224,819 IDR).
+- **Founder:** build in the next session.
