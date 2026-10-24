@@ -79,6 +79,7 @@ export interface ReportAccountingBridge {
   transaction_fees: number;
   voucher_discounts: number;
   not_recognised: number;
+  recognised_from_other_periods: number;
   partial_compensation: number;
   recognised_revenue: number;
   unexplained_difference: number;

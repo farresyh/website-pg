@@ -13,6 +13,7 @@ use App\Models\Reseller;
 use App\Models\ResellerTier;
 use App\Models\Supplier;
 use App\Services\Affiliate\AffiliateDomainStatus;
+use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Fulfillment\OrderSettlementService;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
@@ -20,6 +21,7 @@ use App\Services\Payment\Fake\FakePaymentGateway;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Reseller\ResellerApiKeyService;
 use App\Services\Reseller\ResellerWalletService;
+use App\Services\Supplier\SupplierOutcome;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Http\Request;
@@ -168,6 +170,17 @@ final class FinancialScenario
         ], ['Authorization' => "Bearer {$this->apiKey}"]);
 
         return Order::query()->latest('id')->firstOrFail();
+    }
+
+    /** The supplier reports a Pending order delivered (its webhook or the poll), at the order's catalog cost. */
+    public function supplierDelivers(Order $order): Order
+    {
+        return app(OrderFulfillmentService::class)->finalizePendingDelivery(
+            $order->fresh(),
+            SupplierOutcome::Success,
+            $order->supplier_ref,
+            ['supplier_ref' => $order->supplier_ref, 'status' => 'delivered', 'price' => $order->cost_price / 100],
+        );
     }
 
     /** The admin compensates a Failed order (store-credit voucher, ADR-024). */

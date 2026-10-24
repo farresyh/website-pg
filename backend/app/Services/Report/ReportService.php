@@ -245,20 +245,23 @@ final class ReportService
      * − voucher_discount + transaction_fee`, so:
      *
      *   paid_sales − transaction_fees + voucher_discounts
-     *   − not_recognised (failed / in flight / unsettled partial: selling_price net of wallet refunds)
+     *   − not_recognised (paid in the range, not recognised in it: failed, in flight,
+     *     an unsettled partial, or delivered in a later range; selling_price net of wallet refunds)
+     *   + recognised_from_other_periods (recognised in the range, paid in another one; ADR-127)
      *   − partial_compensation (settled partials: compensation not already out of Paid sales as a wallet refund)
      *   = recognised_revenue + unexplained_difference
      *
      * `unexplained_difference` must be 0; it is returned, never hidden,
-     * so a future drift between the two definitions shows on the page.
+     * so a future drift between the two definitions shows on the page. An
+     * order recognised but never paid stays unexplained on purpose.
      * Company-wide only: the Monthly Summary has no affiliate dimension.
      */
     public function accountingBridge(?CarbonImmutable $from, ?CarbonImmutable $toExclusive): array
     {
         $revenue = app(RecognisedRevenue::class);
+        $recognisedIds = $revenue->recognisedOrders($from, $toExclusive)->pluck('id')->all();
         $settledPartials = $revenue->settledPartialOrders($from, $toExclusive)
             ->filter(fn (Order $o) => $o->payment_status === PaymentStatus::Paid);
-        $settledIds = $settledPartials->pluck('id')->all();
 
         // selling_price net of wallet refunds, from the shared Net Sales seam.
         $netSelling = 'selling_price - '.Order::walletRefundSql();
@@ -268,23 +271,29 @@ final class ReportService
             ->first();
 
         $notRecognised = (int) $this->scopedOrders($from, $toExclusive, null)
-            ->where('delivery_status', '!=', DeliveryStatus::Delivered->value)
-            ->whereNotIn('id', $settledIds)
+            ->whereNotIn('id', $recognisedIds)
             ->sum(DB::raw($netSelling));
 
-        $settledNetSelling = (int) $this->scopedOrders($from, $toExclusive, null)
-            ->whereIn('id', $settledIds)
+        $paidInRange = $this->scopedOrders($from, $toExclusive, null)->pluck('id')->all();
+        $fromOtherPeriods = (int) $this->scopedOrders(null, null, null)
+            ->whereIn('id', $recognisedIds)
+            ->whereNotIn('id', $paidInRange)
+            ->sum(DB::raw($netSelling));
+
+        $settledNetSelling = (int) Order::query()
+            ->whereIn('id', $settledPartials->pluck('id'))
             ->sum(DB::raw($netSelling));
         $partialCompensation = $settledNetSelling - (int) $settledPartials->sum(fn (Order $o) => $revenue->keptSen($o));
 
         $recognised = $revenue->revenueSen($from, $toExclusive);
-        $walked = (int) $totals->paid_sales - (int) $totals->fees + (int) $totals->discounts - $notRecognised - $partialCompensation;
+        $walked = (int) $totals->paid_sales - (int) $totals->fees + (int) $totals->discounts - $notRecognised + $fromOtherPeriods - $partialCompensation;
 
         return [
             'paid_sales' => (int) $totals->paid_sales,
             'transaction_fees' => (int) $totals->fees,
             'voucher_discounts' => (int) $totals->discounts,
             'not_recognised' => $notRecognised,
+            'recognised_from_other_periods' => $fromOtherPeriods,
             'partial_compensation' => $partialCompensation,
             'recognised_revenue' => $recognised,
             'unexplained_difference' => $walked - $recognised,

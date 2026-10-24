@@ -71,6 +71,7 @@ class Order extends Model
         'paid_at',
         'delivery_status',
         'delivered_at',
+        'recognised_at',
         'manual_activity_at',
         'payment_method',
         'payment_gateway',
@@ -104,6 +105,7 @@ class Order extends Model
         'delivery_status' => DeliveryStatus::class,
         'placed_via' => PlacedVia::class,
         'delivered_at' => 'datetime',
+        'recognised_at' => 'datetime',
         'manual_activity_at' => 'datetime',
         'supplier_response' => 'array',
     ];
