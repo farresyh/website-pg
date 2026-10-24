@@ -12,7 +12,6 @@ use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Models\Withdrawal;
 use App\Services\Ledger\LedgerOwnerType;
-use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Withdrawal\WithdrawalStatus;
 use App\Support\MalaysiaTime;
@@ -187,8 +186,8 @@ final class CashPositionService
     }
 
     /**
-     * Orders paid by the month end whose goods were neither delivered nor
-     * compensated by then: the customer is owed the selling price (a voucher
+     * Orders paid by the month end that were neither recognised as revenue
+     * (`recognised_at`, ADR-127) nor compensated by then: the customer is owed the selling price (a voucher
      * or wallet balance spent on it moved into this claim when it was
      * spent). A partial delivery stays here until it is compensated.
      */
@@ -198,7 +197,7 @@ final class CashPositionService
             ->where('is_test', false)
             ->where('payment_status', PaymentStatus::Paid->value)
             ->where('paid_at', '<', $toExclusive)
-            ->where(fn ($q) => $q->where('delivery_status', '!=', DeliveryStatus::Delivered->value)->orWhere('delivered_at', '>=', $toExclusive))
+            ->where(fn ($q) => $q->whereNull('recognised_at')->orWhere('recognised_at', '>=', $toExclusive))
             ->with(['voucher', 'voucherRedemption'])
             ->get();
 

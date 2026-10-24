@@ -27,9 +27,19 @@ class ReportAccountingBridgeTest extends TestCase
 
     private const PAID_AT = '2026-10-10 04:00:00';
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // A settled partial is recognised when it is settled (ADR-127): keep that inside October.
+        $this->travelTo(self::PAID_AT);
+    }
+
+    /** A Delivered order here was recognised when it was paid. */
     private function order(array $overrides = []): Order
     {
-        return Order::factory()->create(array_merge(['paid_at' => self::PAID_AT, 'voucher_discount' => 0], $overrides));
+        $delivered = ($overrides['delivery_status'] ?? null) === DeliveryStatus::Delivered;
+
+        return Order::factory()->create(array_merge(['paid_at' => self::PAID_AT, 'voucher_discount' => 0, 'recognised_at' => $delivered ? self::PAID_AT : null], $overrides));
     }
 
     private function october(): array
@@ -111,5 +121,21 @@ class ReportAccountingBridgeTest extends TestCase
 
         $this->assertSame(1000, $bridge['recognised_revenue']);
         $this->assertSame(0, $bridge['unexplained_difference']);
+    }
+
+    /** ADR-127: paid in September, delivered in October — October revenue, walked by its own row. */
+    public function test_an_order_paid_in_an_earlier_month_is_walked_in_by_its_own_row(): void
+    {
+        $this->order(['delivery_status' => DeliveryStatus::Delivered, 'paid_at' => '2026-09-30 15:50:00', 'recognised_at' => '2026-09-30 16:10:00']);
+
+        $october = (new ReportService)->accountingBridge(...$this->october());
+        $september = (new ReportService)->accountingBridge(...(new ReportService)->dateRangeFromDates('2026-09-01', '2026-09-30'));
+
+        $this->assertSame(1000, $october['recognised_from_other_periods']);
+        $this->assertSame(1000, $october['recognised_revenue']);
+        $this->assertSame(0, $october['unexplained_difference']);
+        $this->assertSame(1000, $september['not_recognised']);
+        $this->assertSame(0, $september['recognised_revenue']);
+        $this->assertSame(0, $september['unexplained_difference']);
     }
 }

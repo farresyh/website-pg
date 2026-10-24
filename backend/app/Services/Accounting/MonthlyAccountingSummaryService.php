@@ -295,6 +295,7 @@ final class MonthlyAccountingSummaryService
     /**
      * ADR-086's "profit is ledger-sourced, never `Order.affiliate_profit`
      * directly" rule — same join shape as `ReportService::profitTotals()`.
+     * Filed by `recognised_at`, with the revenue it is earned on (ADR-127).
      */
     private function affiliateCommissionExpense(Carbon $from, Carbon $toExclusive): int
     {
@@ -306,8 +307,8 @@ final class MonthlyAccountingSummaryService
             ->where('ledger_entries.type', 'order_profit')
             ->where('ledger_entries.owner_type', 'affiliate')
             ->where('orders.is_test', false)
-            ->where('orders.paid_at', '>=', $from)
-            ->where('orders.paid_at', '<', $toExclusive)
+            ->where('orders.recognised_at', '>=', $from)
+            ->where('orders.recognised_at', '<', $toExclusive)
             ->sum('ledger_entries.amount');
     }
 

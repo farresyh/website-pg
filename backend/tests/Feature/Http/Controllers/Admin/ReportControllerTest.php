@@ -40,6 +40,7 @@ class ReportControllerTest extends TestCase
             'payment_status' => PaymentStatus::Paid->value,
             'paid_at' => now(),
             'delivery_status' => DeliveryStatus::Delivered->value,
+            'recognised_at' => now(),
             'is_test' => false,
         ], $overrides));
     }

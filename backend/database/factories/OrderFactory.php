@@ -68,9 +68,16 @@ class OrderFactory extends Factory
         return $this->state(fn () => ['payment_status' => PaymentStatus::Pending]);
     }
 
+    /**
+     * A delivered order is recognised revenue (ADR-127 decision 2): when
+     * not given, `recognised_at` is its delivery time, else its payment time.
+     */
     public function delivered(): static
     {
-        return $this->state(fn () => ['delivery_status' => DeliveryStatus::Delivered]);
+        return $this->state(fn () => ['delivery_status' => DeliveryStatus::Delivered])
+            ->afterMaking(function (Order $order) {
+                $order->recognised_at ??= $order->delivered_at ?? $order->paid_at;
+            });
     }
 
     public function forAffiliate(Affiliate $affiliate): static

@@ -834,8 +834,8 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
   delivery date" to every money page). Revenue at `recognised_at`, closed
   months that cannot move, CHIP `paid_on`/fee recorded, a scenario builder
   with 11 cross-page invariants. Five stacked PRs (A–E, ADR-127 build
-  order). PR A (flag removed, scenario builder, invariants 5/6/10) open;
-  B–E next. Must ship before Joki launches.
+  order). PR A merged (#543: flag removed, scenario builder, invariants
+  5/6/10). PR B split: B1 (`recognised_at`, invariants 1/4) open; B2, C–E next. Must ship before Joki launches.
 
 **B. Needs a short grill / ADR addendum first**
 - None open.

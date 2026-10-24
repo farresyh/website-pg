@@ -13,9 +13,11 @@ use Illuminate\Support\Collection;
  * 2026-10-08 addendum R7 so the Monthly Summary's "Sales revenue" and
  * the Reports Bridge to Accounting read one definition and cannot drift.
  *
- * Revenue is recognised on delivery, scoped by `paid_at`: Σ
- * `selling_price` of delivered orders, plus each settled partial order's
- * `selling_price` net of its compensation. It deliberately does not
+ * Revenue is recognised on delivery, filed by `recognised_at` (ADR-127
+ * decision 1; it was `paid_at`, which put an order paid in one month and
+ * delivered in the next into neither month's lines): Σ `selling_price`
+ * of delivered orders, plus each settled partial order's `selling_price`
+ * net of its compensation. It deliberately does not
  * filter `payment_status` (the original definition); the Bridge's
  * "Unexplained difference" row is what surfaces a delivered order that
  * was never paid. Null bounds mean all time.
@@ -74,8 +76,8 @@ final class RecognisedRevenue
     {
         return $query
             ->where('is_test', false)
-            ->whereNotNull('paid_at')
-            ->when($from, fn (Builder $q) => $q->where('paid_at', '>=', $from))
-            ->when($toExclusive, fn (Builder $q) => $q->where('paid_at', '<', $toExclusive));
+            ->whereNotNull('recognised_at')
+            ->when($from, fn (Builder $q) => $q->where('recognised_at', '>=', $from))
+            ->when($toExclusive, fn (Builder $q) => $q->where('recognised_at', '<', $toExclusive));
     }
 }

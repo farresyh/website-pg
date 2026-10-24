@@ -100,6 +100,11 @@ final class LedgerService
      */
     public function creditOrderProfit(Order $order): void
     {
+        // ADR-127 decision 2: the one recognition moment. Both callers hold the order's lock.
+        if ($order->recognised_at === null) {
+            $order->forceFill(['recognised_at' => now()])->save();
+        }
+
         if ($order->is_test) {
             return;
         }

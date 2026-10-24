@@ -19,7 +19,8 @@ export function AccountingBridge({ bridge }: { bridge: ReportAccountingBridge })
     { sign: "", label: "Paid sales", note: "Money collected on paid orders", sen: bridge.paid_sales, strong: true },
     { sign: "−", label: "Customer-paid transaction fees", note: "Accounting books these under payment processing", sen: bridge.transaction_fees },
     { sign: "+", label: "Checkout voucher discounts", note: "Accounting counts the price before the discount", sen: bridge.voucher_discounts },
-    { sign: "−", label: "Orders not recognised", note: "Failed, still in flight, or an unsettled partial delivery", sen: bridge.not_recognised },
+    { sign: "−", label: "Orders not recognised in this range", note: "Failed, still in flight, an unsettled partial delivery, or delivered after the range", sen: bridge.not_recognised },
+    { sign: "+", label: "Recognised here, paid in another range", note: "Delivered in this range, paid earlier (ADR-127)", sen: bridge.recognised_from_other_periods },
     { sign: "−", label: "Compensation on settled partial orders", sen: bridge.partial_compensation },
     { sign: "=", label: "Recognised revenue", note: "Matches Accounting › Monthly Summary", sen: bridge.recognised_revenue, strong: true },
   ];

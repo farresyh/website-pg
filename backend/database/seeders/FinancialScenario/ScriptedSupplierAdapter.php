@@ -28,6 +28,12 @@ final class ScriptedSupplierAdapter implements SupplierAdapter
         $this->queue[] = SupplierResponse::failure('confirmed_failed', 'Scenario: supplier refused', resendUnsafeWithSameReference: true, outcomeConfirmedFailed: true);
     }
 
+    /** The next order is accepted but not yet done; `FinancialScenario::supplierDelivers()` finishes it later. */
+    public function pendingNext(): void
+    {
+        $this->queue[] = SupplierResponse::pending(['supplier_ref' => 'SCN-'.Str::upper(Str::random(10))]);
+    }
+
     /** The next order succeeds at a real cost other than its catalog cost (sen). */
     public function costNext(int $realCostSen): void
     {
