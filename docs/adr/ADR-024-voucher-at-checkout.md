@@ -1,6 +1,6 @@
 # ADR-024: Voucher-at-Checkout — redemption timing, wallet model, and admin visibility (built 2026-08-14)
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-24):** In force; a restore and a revoke are dated facts and a revoke is locked ([ADR-127](./ADR-127-financial-truth-dated-facts.md), 2026-10-24 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-08-13 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
 
@@ -180,3 +180,8 @@ The full-cover path (M-6) already failed closed on the voucher, but still decrem
 5. **The WhatsApp line formats in Malaysia time explicitly.** 15:59:59 UTC is already the same calendar day, so it was right by coincidence; now it is right on purpose.
 
 *Consequence to track.* Breakage is unchanged in practice: a voucher dated the 31st is stored before the next month's Malaysia midnight. `'Asia/Kuala_Lumpur'` is still typed in five services; voucher code reads `ReportService::TIMEZONE` as Accounting already does. Consolidating it is §16 item 90.
+
+### 2026-10-24 addendum — restores and revokes are dated facts (ADR-127)
+
+- A restore writes `voucher_redemptions.restored_at`. A revoke goes through `VoucherService::revoke()`, which locks the voucher like a redemption does and writes `vouchers.revoked_at`. Before this, a revoke was an unlocked status flip with no date.
+- Every past-period reader rebuilds a balance with `Voucher::balanceAsOf()`. A revoked voucher holds nothing after its revoke. Its unspent balance is income of the revoke month, on the breakage line.
