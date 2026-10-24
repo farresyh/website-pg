@@ -62,6 +62,11 @@ class FinancialScenarioTest extends TestCase
         $s->supplierAdapter->costNext(900);
         $s->at('2026-09-12 09:00')->pay($s->storefrontOrder($mid));
 
+        // The supplier's answer is unknown; the admin confirms it on the dashboard, charged RM1 over catalog.
+        $s->supplierAdapter->ambiguousNext();
+        $ambiguous = $s->at('2026-09-14 13:00')->pay($s->storefrontOrder($mid));
+        $s->at('2026-09-15 09:30')->adminConfirmsDelivered($ambiguous, $mid->cost_price + 100);
+
         $s->supplierAdapter->failNext();
         $failed = $s->at('2026-09-20 15:00')->pay($s->storefrontOrder($small));
         $s->at('2026-09-21 10:00')->compensate($failed);
@@ -90,7 +95,8 @@ class FinancialScenarioTest extends TestCase
 
     public function test_the_scenario_produces_every_outcome_it_scripts(): void
     {
-        $this->assertSame(8, Order::query()->where('delivery_status', DeliveryStatus::Delivered->value)->count());
+        $this->assertSame(9, Order::query()->where('delivery_status', DeliveryStatus::Delivered->value)->count());
+        $this->assertSame(1, Order::query()->whereNotNull('real_cost_price_sen')->whereJsonContains('supplier_response->manually_confirmed', true)->count());
         $this->assertSame(2, Order::query()->where('delivery_status', DeliveryStatus::Failed->value)->count());
         $this->assertSame(2, Order::query()->where('affiliate_profit', '>', 0)->count());
         $this->assertSame(2, Order::query()->whereNotNull('wallet_reseller_id')->count());

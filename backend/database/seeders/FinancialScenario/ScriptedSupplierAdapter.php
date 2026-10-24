@@ -34,6 +34,12 @@ final class ScriptedSupplierAdapter implements SupplierAdapter
         $this->queue[] = SupplierResponse::pending(['supplier_ref' => 'SCN-'.Str::upper(Str::random(10))]);
     }
 
+    /** The next order's outcome is unknown and unsafe to resubmit (Gamevion-style), so it lands on NeedsReview. */
+    public function ambiguousNext(): void
+    {
+        $this->queue[] = SupplierResponse::failure('duplicate_reference', 'Scenario: outcome unknown', resendUnsafeWithSameReference: true);
+    }
+
     /** The next order succeeds at a real cost other than its catalog cost (sen). */
     public function costNext(int $realCostSen): void
     {
