@@ -30,6 +30,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\PartialComboOrders;
+use App\Services\Ledger\LedgerService;
 use Tests\TestCase;
 
 /**
@@ -718,11 +719,13 @@ class TransactionRegisterControllerTest extends TestCase
     {
         $this->actAsSuperAdmin();
         $reseller = Reseller::query()->create(['business_name' => 'Naeem Industries']);
-        WalletTopupAttempt::query()->create([
+        $paid = WalletTopupAttempt::query()->create([
             'reseller_id' => $reseller->id, 'reference' => 'TOPUP-PAID-1', 'amount_sen' => 30000,
             'total_charged_sen' => 30500, 'channel_code' => 'fpx', 'status' => WalletTopupAttemptStatus::Paid->value,
             'expires_at' => now()->addMinutes(30),
         ]);
+        // A paid top-up always has its wallet credit (completeTopup writes both); the row is dated by it (ADR-127 F5).
+        (new LedgerService)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, 30000, 'wallet_topup', 'wallet_topup_attempt', $paid->id);
         WalletTopupAttempt::query()->create([
             'reseller_id' => $reseller->id, 'reference' => 'TOPUP-PENDING-1', 'amount_sen' => 10000,
             'total_charged_sen' => 10200, 'channel_code' => 'fpx', 'status' => WalletTopupAttemptStatus::Pending->value,

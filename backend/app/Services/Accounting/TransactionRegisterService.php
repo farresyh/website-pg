@@ -446,14 +446,17 @@ final class TransactionRegisterService
      */
     private function walletTopupRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
     {
+        // Dated by the wallet credit, the same fact the wallet balance and
+        // the CHIP-unsettled asset read (ADR-127 F5), not the attempt's start.
         return WalletTopupAttempt::query()
-            ->with('reseller')
+            ->with(['reseller', 'ledgerCredit'])
             ->where('status', WalletTopupAttemptStatus::Paid->value)
-            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
-            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
+            ->whereHas('ledgerCredit', fn ($q) => $q
+                ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+                ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive)))
             ->get()
             ->map(fn (WalletTopupAttempt $topup) => [
-                'date' => $topup->created_at->toIso8601String(),
+                'date' => $topup->ledgerCredit->created_at->toIso8601String(),
                 'type' => 'reseller_wallet_topup',
                 'reference' => $topup->reference,
                 'description' => 'Reseller wallet top-up — '.($topup->reseller?->business_name ?? 'unknown reseller'),

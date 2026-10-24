@@ -178,8 +178,7 @@ final class CashPositionService
                 }
 
                 $before = $voucher->redemptions->filter(fn (VoucherRedemption $r) => $r->created_at < $toExclusive);
-                // A restore carries only `updated_at`, and it is written once.
-                $restored = $before->filter(fn (VoucherRedemption $r) => $r->status === 'restored' && $r->updated_at < $toExclusive);
+                $restored = $before->filter(fn (VoucherRedemption $r) => $r->status === 'restored' && $r->restored_at < $toExclusive);
 
                 return max(0, $voucher->amount - (int) $before->sum('amount') + (int) $restored->sum('restored_amount'));
             });
@@ -205,7 +204,7 @@ final class CashPositionService
 
         return (int) $orders
             ->reject(fn (Order $o) => ($o->voucher !== null && $o->voucher->created_at < $toExclusive)
-                || ($o->voucherRedemption?->status === 'restored' && $o->voucherRedemption->updated_at < $toExclusive)
+                || ($o->voucherRedemption?->status === 'restored' && $o->voucherRedemption->restored_at < $toExclusive)
                 || (($walletRefunds[$o->id] ?? null) !== null && $walletRefunds[$o->id]->created_at < $toExclusive))
             ->sum('selling_price');
     }
