@@ -8,7 +8,7 @@ import { loginAdminApi, loginAsAdmin } from "./helpers";
 // login and pays; after the (simulated) CHIP webhook the order waits for
 // a penjoki on the assignment pool, the status page shows the climb, and
 // the admin's Joki board lists it as waiting. Draft rates: Epic V 0★ →
-// Legend V 0★ is 25 Epic stars at RM2 = RM50.
+// Epic IV 1★ is 6 Epic stars at RM2 = RM12.
 test("joki: switch on -> price a climb on /joki -> pay -> waits for a penjoki", async ({ page, request }) => {
   test.slow();
 
@@ -45,9 +45,13 @@ test("joki: switch on -> price a climb on /joki -> pay -> waits for a penjoki", 
     .toBe(true);
   await expect(page.getByRole("link", { name: "Joki Rank" }).first()).toBeAttached();
 
-  await page.getByRole("group", { name: "Your rank now" }).getByRole("button", { name: "Epic" }).click();
-  await page.getByRole("group", { name: "Target rank" }).getByRole("button", { name: "Legend" }).click();
-  await expect(page.getByText("RM50.00").first()).toBeVisible();
+  // The calculator opens on Epic V → Epic IV (5 Epic stars at RM2), priced at once.
+  await expect(page.getByTestId("joki-from-label")).toHaveText("Epic V");
+  await expect(page.getByTestId("joki-to-label")).toHaveText("Epic IV");
+  await expect(page.getByTestId("joki-climb-price")).toHaveText("RM10.00");
+  // One more target star: 6 stars.
+  await page.getByRole("button", { name: "Target rank: more stars" }).click();
+  await expect(page.getByTestId("joki-climb-price")).toHaveText("RM12.00");
 
   await page.locator("#login_login_type").selectOption("Moonton");
   await page.locator("#login_user_id").fill("123456789");
@@ -81,7 +85,7 @@ test("joki: switch on -> price a climb on /joki -> pay -> waits for a penjoki", 
   const { data } = await (await request.get(`${BACKEND_URL}/api/orders?type=joki&search=${encodeURIComponent(orderNumber)}`, { headers: adminHeaders })).json();
   const orderId: number = data[0].id;
   const order = await (await request.get(`${BACKEND_URL}/api/orders/${orderId}`, { headers: adminHeaders })).json();
-  expect(order.selling_price).toBe(5000);
+  expect(order.selling_price).toBe(1200);
   expect(order.pricing_basis).toBe("fixed");
 
   const webhook = await request.post(`${BACKEND_URL}/api/webhooks/chip`, {
@@ -99,7 +103,7 @@ test("joki: switch on -> price a climb on /joki -> pay -> waits for a penjoki", 
 
   // 4. The customer sees the climb; the admin sees it waiting.
   await page.goto(`${STOREFRONT_URL}/order/status/${encodeURIComponent(orderNumber)}`);
-  await expect(page.getByText("Epic V 0★ → Legend V 0★")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Epic V 0★ → Epic IV 1★")).toBeVisible({ timeout: 30_000 });
 
   await page.goto(`${ADMIN_URL}/admin/joki`);
   await expect(page.getByRole("row", { name: new RegExp(orderNumber) })).toContainText("Unassigned");
