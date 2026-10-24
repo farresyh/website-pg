@@ -121,15 +121,15 @@ final class ManualDeliveryService
     /**
      * Decision 36: default the agreed cost; anything else needs a reason.
      * ADR-126 decision 9: a joki order's cost is the penjoki's agreed
-     * payout and is never changed here; extra or partial pay goes through
-     * the Budget Envelope.
+     * payout and is never changed here. ADR-127 PR D: there is no partial
+     * or extra pay, so the payout is the whole joki cost.
      */
     private function realCost(Order $order, ?int $realCostSen, ?string $reason): int
     {
         $realCostSen ??= $order->cost_price;
 
         if ($order->isJoki() && $realCostSen !== $order->cost_price) {
-            throw ValidationException::withMessages(['real_cost_sen' => ['A joki order is paid at its agreed payout. Record extra pay as a Budget Envelope expense.']]);
+            throw ValidationException::withMessages(['real_cost_sen' => ['A joki order is paid at its agreed payout, nothing more or less.']]);
         }
 
         if ($realCostSen <= 0) {

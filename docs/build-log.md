@@ -2017,3 +2017,25 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - a dev-DB seeder;
   - delete `ReportDemoSeeder`;
   - a browser pass over every money page.
+
+## 2026-10-24 — ADR-127 PR D: money flows
+
+- **Founder decisions (grilled in Malay):**
+  - Mark Delivered takes the supplier's charged price.
+  - There is no partial or extra penjoki pay. Decision 8 counted that cost twice: an envelope expense already reduces its envelope, and the operating profit leaves envelope expenses out (ADR-127 2026-10-24 addendum).
+- **Built, each test red first:**
+  - **Mark Delivered (NeedsReview).** The admin enters `supplier_price`, in the supplier's currency, read off its dashboard. It becomes the real cost and the one drawdown. The path had recorded no drawdown.
+  - **The drawdown is unique in the database.** A virtual `drawdown_key` column is unique for `ORDER_DRAWDOWN` only, so repeated transfer corrections stay allowed. On prod, read-only today: 35 drawdowns, no duplicate.
+  - **Delivered is refused on a compensated order.** This happens at `finalizePendingDelivery()` (Manual Queue, `.done`, a webhook) under the lock, and in `markDeliveredManually()`. A Paid-after-Failed order with a restored voucher could have reached Delivered through Manual Queue or `.done`.
+  - **The Dashboard's stuck count leaves out a joki in NeedsReview**; the Joki card counts it.
+  - **`FinancialScenario`** gains a NeedsReview order confirmed above catalog cost, covered by invariants 6 and 10.
+- **Gotchas:**
+  - MySQL reads `||` as OR, so the virtual column's expression is per driver.
+  - MySQL JSON reorders keys, so a JSON `assertSame` passed on sqlite and failed on MySQL.
+  - A killed MySQL run left the `llm_report_*` views behind (backend gotcha 8).
+- **Combo legs need no guard.** Traced: a combo can be compensated only once no leg is Pending, and a resend is refused afterwards.
+- **Local dev DB:** migrated (`drawdown_key`).
+- **Verified:**
+  - `php artisan test` passes 3061/3061, including the new tests.
+  - The PR D service tests and `FinancialScenarioTest` pass on MySQL (35/35).
+  - Admin `tsc` and lint pass.

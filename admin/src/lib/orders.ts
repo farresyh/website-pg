@@ -151,7 +151,7 @@ export interface OrderDetail extends OrderListItem {
   // Full Game shape (not the list endpoint's {id,name} projection) —
   // ADR-017's resend gate needs player_validator_enabled/profile_id.
   game: Game | null;
-  supplier: { id: number; name: string } | null;
+  supplier: { id: number; name: string; currency?: string } | null;
   // affiliate/wallet_reseller inherited from OrderListItem — non-null
   // wallet_reseller here is also the signal the order detail screen
   // uses to swap "Issue Voucher" for "Refund to Wallet" (ADR-073
@@ -467,7 +467,14 @@ export function refundOrderToWallet(id: number) {
  * paste back the real invoice number they find there. Backend rejects
  * (422) unless delivery_status is already "needs_review".
  */
-export function markOrderDelivered(id: number, values: { supplier_ref: string; note?: string }) {
+export interface MarkOrderDeliveredValues {
+  supplier_ref: string;
+  /** ADR-127 PR D: what the supplier charged, in its own currency; the real cost and the drawdown. */
+  supplier_price: number;
+  note?: string;
+}
+
+export function markOrderDelivered(id: number, values: MarkOrderDeliveredValues) {
   return apiFetch<OrderDetail>(`/api/orders/${id}/mark-delivered`, { method: "POST", body: values });
 }
 

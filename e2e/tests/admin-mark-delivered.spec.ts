@@ -32,6 +32,8 @@ test("admin login -> needs_review order -> Mark as Delivered", async ({ page }) 
   await page.getByRole("button", { name: "Mark as Delivered…" }).click();
 
   await page.locator("#mark_delivered_supplier_ref").fill("GV-E2E-CONFIRMED-INVOICE");
+  // ADR-127 PR D: the price the supplier charged, the order's real cost and drawdown.
+  await page.locator("#mark_delivered_supplier_price").fill("4.75");
   // exact:true — same reasoning as the Issue Voucher spec's own
   // submit-button locator: the trigger button's accessible name
   // ("Mark as Delivered…") would otherwise substring-match this one,

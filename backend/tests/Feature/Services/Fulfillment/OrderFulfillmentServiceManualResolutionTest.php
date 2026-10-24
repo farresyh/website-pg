@@ -16,7 +16,9 @@ use App\Services\Order\InvalidOrderTransitionException;
 use App\Services\Order\OrderStatusService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Supplier\SupplierOutcome;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Validation\ValidationException;
 use Tests\Support\OrderFulfillmentFixtures;
 use Tests\TestCase;
 
@@ -31,7 +33,7 @@ class OrderFulfillmentServiceManualResolutionTest extends TestCase
         $order = $this->paidOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
 
         $result = $this->service($this->fakeSupplierAdapter(true))
-            ->markDeliveredManually($order, 'GV-RAPI-MANUAL1', 'confirmed via Gamevion dashboard', 'Jane Admin');
+            ->markDeliveredManually($order, 'GV-RAPI-MANUAL1', 9.00, 'confirmed via Gamevion dashboard', 'Jane Admin');
 
         $this->assertSame(DeliveryStatus::Delivered, $result->delivery_status);
         $this->assertSame('GV-RAPI-MANUAL1', $result->supplier_ref);
@@ -50,7 +52,7 @@ class OrderFulfillmentServiceManualResolutionTest extends TestCase
         ]);
 
         $this->service($this->fakeSupplierAdapter(true))
-            ->markDeliveredManually($order, 'GV-RAPI-MANUAL2', null, 'Jane Admin');
+            ->markDeliveredManually($order, 'GV-RAPI-MANUAL2', 8.00, null, 'Jane Admin');
 
         $this->assertSame(150, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
         $this->assertSame(50, (int) LedgerEntry::query()->where('owner_type', 'affiliate')->sum('amount'));
@@ -73,7 +75,7 @@ class OrderFulfillmentServiceManualResolutionTest extends TestCase
         ]);
 
         $result = $this->service($this->fakeSupplierAdapter(true))
-            ->markDeliveredManually($order, 'GV-RAPI-MANUAL3', 'TARGET/SERVICE matched', 'Jane Admin');
+            ->markDeliveredManually($order, 'GV-RAPI-MANUAL3', 9.00, 'TARGET/SERVICE matched', 'Jane Admin');
 
         $attempt = OrderResendAttempt::query()->where('order_id', $result->id)->sole();
         $this->assertSame('manual_confirm', $attempt->attempt_type);
@@ -99,7 +101,7 @@ class OrderFulfillmentServiceManualResolutionTest extends TestCase
         $this->expectException(InvalidOrderTransitionException::class);
 
         $this->service($this->fakeSupplierAdapter(true))
-            ->markDeliveredManually($order, 'GV-RAPI-MANUAL3', null, 'Jane Admin');
+            ->markDeliveredManually($order, 'GV-RAPI-MANUAL3', 9.00, null, 'Jane Admin');
     }
 
     /**
@@ -310,5 +312,95 @@ class OrderFulfillmentServiceManualResolutionTest extends TestCase
             ->finalizePendingDelivery($order, SupplierOutcome::Failure, null, ['status' => 'Gagal', 'buyer_last_saldo' => 500000]);
 
         $this->assertSame(0, SupplierLedgerEntry::query()->count());
+    }
+
+    /** ADR-127 decision 11: the admin's price is the real cost and the one drawdown, as a webhook's would be. */
+    public function test_mark_delivered_manually_records_the_real_cost_and_one_drawdown(): void
+    {
+        $order = $this->paidOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+
+        $result = $this->service($this->fakeSupplierAdapter(true))
+            ->markDeliveredManually($order, 'GV-RAPI-MANUAL4', 9.40, null, 'Jane Admin');
+
+        $this->assertSame(940, $result->real_cost_price_sen);
+        $this->assertSame(1000 - 940, $result->platform_profit);
+        $this->assertSame(60, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
+
+        $drawdown = SupplierLedgerEntry::query()->sole();
+        $this->assertSame(SupplierLedgerEntryType::OrderDrawdown->value, $drawdown->type);
+        $this->assertSame('order', $drawdown->reference_type);
+        $this->assertSame($order->id, $drawdown->reference_id);
+        $this->assertEqualsWithDelta(-9.40, (float) $drawdown->amount, 0.0001);
+    }
+
+    /** ADR-127 decision 11: checked under the lock, so a compensation given after the controller's check still wins. */
+    public function test_mark_delivered_manually_refuses_a_compensated_order(): void
+    {
+        $order = $this->paidOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $this->voucherFor($order);
+
+        try {
+            $this->service($this->fakeSupplierAdapter(true))
+                ->markDeliveredManually($order, 'GV-RAPI-MANUAL5', 9.00, null, 'Jane Admin');
+            $this->fail('A compensated order was marked delivered.');
+        } catch (ValidationException) {
+        }
+
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+        $this->assertSame(0, LedgerEntry::query()->count());
+        $this->assertSame(0, SupplierLedgerEntry::query()->count());
+    }
+
+    /**
+     * ADR-127 decision 11: a Paid-after-Failed order whose voucher was
+     * restored sits in NeedsReview. A Success from any reporter (Manual
+     * Queue, `.done`, a webhook) is kept as evidence and never applied.
+     */
+    public function test_a_success_on_a_compensated_order_is_kept_as_evidence_not_applied(): void
+    {
+        $order = $this->paidOrder(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $this->voucherFor($order);
+
+        try {
+            $this->service($this->fakeSupplierAdapter(true))
+                ->finalizePendingDelivery($order, SupplierOutcome::Success, 'DGFLZ-LATE-1', ['status' => 'Sukses', 'price' => 9.5]);
+            $this->fail('A compensated order was finalized as delivered.');
+        } catch (InvalidOrderTransitionException) {
+        }
+
+        $fresh = $order->fresh();
+        $this->assertSame(DeliveryStatus::NeedsReview, $fresh->delivery_status);
+        $this->assertEquals(['status' => 'Sukses', 'price' => 9.5], $fresh->supplier_response['late_supplier_result']);
+        $this->assertNull($fresh->delivered_at);
+        $this->assertSame(0, LedgerEntry::query()->count());
+        $this->assertSame(0, SupplierLedgerEntry::query()->count());
+    }
+
+    /** ADR-127 decision 11: the database keeps an order to one drawdown; a transfer may still take several corrections. */
+    public function test_the_database_refuses_a_second_drawdown_for_one_order(): void
+    {
+        $order = $this->paidOrder();
+        $row = ['supplier_id' => $order->supplier_id, 'amount' => -9, 'currency' => 'MYR', 'reference_type' => 'order', 'reference_id' => $order->id];
+
+        SupplierLedgerEntry::query()->create([...$row, 'type' => SupplierLedgerEntryType::ManualAdjustment->value, 'reason' => 'a']);
+        SupplierLedgerEntry::query()->create([...$row, 'type' => SupplierLedgerEntryType::ManualAdjustment->value, 'reason' => 'b']);
+        SupplierLedgerEntry::query()->create([...$row, 'type' => SupplierLedgerEntryType::OrderDrawdown->value]);
+
+        $this->expectException(UniqueConstraintViolationException::class);
+        SupplierLedgerEntry::query()->create([...$row, 'type' => SupplierLedgerEntryType::OrderDrawdown->value]);
+    }
+
+    private function voucherFor(Order $order): void
+    {
+        Voucher::query()->create([
+            'order_id' => $order->id,
+            'affiliate_id' => $order->affiliate_id,
+            'code' => 'KRS-PRD-'.$order->id,
+            'customer_email' => 'buyer@example.com',
+            'amount' => 1000,
+            'remaining' => 1000,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
     }
 }

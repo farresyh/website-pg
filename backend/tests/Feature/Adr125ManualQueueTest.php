@@ -155,7 +155,7 @@ class Adr125ManualQueueTest extends TestCase
     {
         $order = $this->paidOrder(['supplier_id' => $this->manual->id, 'delivery_status' => DeliveryStatus::NeedsReview->value]);
 
-        $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'X'])->assertJsonValidationErrors('delivery_status');
+        $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'X', 'supplier_price' => 4.75])->assertJsonValidationErrors('delivery_status');
 
         $this->postJson("/api/orders/{$order->id}/manual/delivered", ['supplier_id' => $order->supplier_id, 'supplier_id' => $order->supplier_id])->assertOk();
         $this->assertSame([-9.0], $this->drawdowns($order));

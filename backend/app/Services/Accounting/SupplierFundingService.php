@@ -10,9 +10,10 @@ use App\Models\SupplierTransfer;
 use App\Models\SupplierTransferCorrection;
 use App\Support\MalaysiaTime;
 use Carbon\CarbonInterface;
-use Illuminate\Support\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -390,6 +391,9 @@ final class SupplierFundingService
                 'reference_type' => $referenceType,
                 'reference_id' => $referenceId,
             ]);
+        } catch (UniqueConstraintViolationException) {
+            // ADR-127 decision 11: a concurrent writer recorded it first.
+            return;
         } catch (\Throwable $e) {
             Log::error('Failed to record supplier ledger drawdown — order delivery stands, drift check will catch the gap', [
                 'order_id' => $order->id,

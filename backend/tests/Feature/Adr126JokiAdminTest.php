@@ -97,6 +97,17 @@ class Adr126JokiAdminTest extends TestCase
         $this->assertSame([$waiting->order_number], $this->numbers('/api/joki-admin/orders?filter=stale'));
     }
 
+    /** ADR-127 decision 11: a joki in NeedsReview is counted once, on the Joki card. */
+    public function test_a_joki_in_needs_review_is_counted_once_on_the_joki_card(): void
+    {
+        $joki = $this->pendingJokiOrder();
+        $joki->update(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+
+        $health = app(DashboardService::class)->health();
+        $this->assertSame(0, $health['stuck_orders']['value']);
+        $this->assertSame(1, $health['joki']['stale']);
+    }
+
     // --- Decision 23: the board's filters ------------------------------------
 
     public function test_the_board_splits_waiting_in_progress_done_and_failed(): void

@@ -1,6 +1,6 @@
 # ADR-127: Financial truth from dated facts — revenue at recognition, closed months that cannot move, and a scenario builder that proves every page agrees
 
-> **Standing (2026-10-24):** Accepted. Revises [ADR-083](./ADR-083-internal-accounting-financial-reconciliation.md) (revenue month, closed-month drift), [ADR-111](./ADR-111-real-cost-profit-reconciliation-at-delivery-time.md) decision 8 (the feature flag is removed) [ADR-126](./ADR-126-joki-mlbb.md) decisions 11/13 (where penjoki partial and extra pay is classified), and, through its build addenda, [ADR-104](./ADR-104-admin-panel-visual-redesign.md) R10 (store credit), [ADR-087](./ADR-087-admin-reports-llm-assistant.md) (Report Assistant view) and [ADR-024](./ADR-024-voucher-at-checkout.md) (dated restore and revoke). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-24):** Accepted; decision 8 withdrawn (2026-10-24 addendum: no partial or extra penjoki pay). Revises [ADR-083](./ADR-083-internal-accounting-financial-reconciliation.md) (revenue month, closed-month drift), [ADR-111](./ADR-111-real-cost-profit-reconciliation-at-delivery-time.md) decision 8 (the feature flag is removed) [ADR-126](./ADR-126-joki-mlbb.md) decisions 11/13 (penjoki partial and extra pay, removed by the 2026-10-24 addendum), and, through its build addenda, [ADR-104](./ADR-104-admin-panel-visual-redesign.md) R10 (store credit), [ADR-087](./ADR-087-admin-reports-llm-assistant.md) (Report Assistant view) and [ADR-024](./ADR-024-voucher-at-checkout.md) (dated restore and revoke). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-24. Grilled with the founder (`/mattpocock-skills:grilling`, Q1–Q13, two rounds; the founder delegated Q9–Q13 to the recommended answers), then stress-tested against the code before writing (below). Money-critical trace done in three read-only forks (checkout and pricing; ledger, fulfillment and compensation; downstream readers), with every top finding re-checked by hand and against production read-only. Expands PRD §16 item 131 at the founder's request (2026-10-24) from "revenue by delivery date" to the whole money-reporting surface. Gates the Joki launch (item 114).
 
@@ -187,3 +187,28 @@
   - the profit bridge;
   - Reports profit by recognition;
   - a later correction never moves a past month.
+
+### 2026-10-24 addendum — PR D build notes (decision 11; decision 8 withdrawn; invariants 6 and 10)
+
+- **Decision 8 is withdrawn (founder, 2026-10-24): a penjoki gets no partial or extra pay.**
+  - A failed joki is refunded to the customer in full and the penjoki gets nothing. On a reassigned order, only the penjoki who delivers is paid, the full payout.
+  - The agreed payout (`cost_price`) is the whole joki cost, so the Joki margin on Reports is exact and nothing is posted to the Budget Envelope for joki.
+  - Why: decision 8 as written counted the cost twice. An envelope expense already reduces its envelope, and the Monthly Summary's operating profit leaves envelope expenses out for that reason (`MonthlyAccountingSummaryService::operatingProfit()`). Moving the same posting into cost of sales would also lower the month's operating profit, and with it the allocation. The categories were never built, so nothing is removed from data.
+  - The penjoki carries the risk of a failed or reassigned order. That belongs in the penjoki's terms.
+- **Mark Delivered (NeedsReview only) takes the price the supplier charged.**
+  - The admin copies it from the supplier's dashboard with the invoice number, in the supplier's currency (`supplier_price`, required).
+  - It becomes the real cost (ADR-111, `captureRealCostSen` and `reconcileRealCostProfit`) and the drawdown, recorded after commit like every other drawdown. Before this, the path recorded neither.
+  - The founder chose this over converting the catalog cost back, which would drift with the exchange rate.
+- **The unique drawdown index is on a virtual column.**
+  - `supplier_ledger_entries.drawdown_key` is `reference_type:reference_id` for `ORDER_DRAWDOWN` rows and NULL for every other type, and it is unique.
+  - A plain unique on (reference_type, reference_id, type) would also refuse a second `MANUAL_ADJUSTMENT` correction of one transfer, which is allowed.
+  - `recordOrderDrawdown()` treats the index refusing a duplicate as "already recorded". Production, read-only on 2026-10-24: 35 drawdowns, no duplicate.
+- **Delivered is refused on a compensated order at the seam, under the lock.**
+  - The gap: a Paid-after-Failed order whose voucher was restored lands in NeedsReview. `ManualDeliveryService::confirmDelivered()` (Manual Queue, a supplier's `.done`) reached `finalizePendingDelivery()`, which had no compensation check. The `OrderController` check ran outside the lock.
+  - Now `finalizePendingDelivery()` treats a Success on an `isAlreadyCompensated()` order like ADR-102's contradicting result. The answer is kept as evidence (`late_supplier_result`), the status doesn't change, and the caller gets `InvalidOrderTransitionException`, which every caller already handles. `markDeliveredManually()` re-checks under its own lock.
+  - The combo leg path needs no guard. `OrderSettlementService::settle()` compensates only a Failed or PartiallyDelivered order. While any leg is Pending, `resolveComboOutcome()` keeps the order Pending, and after compensation `fulfillCombo()` refuses a resend. So a compensated combo never has a pending leg to finalize.
+- **Joki NeedsReview is counted once:** on the Joki card's stale count, not the Dashboard's stuck count.
+- **Proven:**
+  - `FinancialScenario` adds a NeedsReview order the admin confirms at a price above catalog. Invariants 6 and 10 now cover that path. With the drawdown line removed, invariant 10 fails.
+  - Service tests: real cost and one drawdown, the compensated refusal on both paths (red without the guard), and the index on sqlite and MySQL.
+

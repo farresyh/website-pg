@@ -142,6 +142,8 @@ final class DashboardService
 
         $needsReviewCount = Order::query()
             ->where('is_test', false)
+            // ADR-127 decision 11: a joki in NeedsReview is on the Joki card's stale count.
+            ->notJoki()
             ->where('delivery_status', DeliveryStatus::NeedsReview->value)
             ->count();
 
@@ -201,7 +203,7 @@ final class DashboardService
             'openwa_session_definition' => 'Last-known session.status event OpenWaWebhookController received, cache-backed (no live ping), 1h TTL. Null means no event in the last hour, not confirmed healthy.',
             'stuck_orders' => [
                 'value' => $needsReviewCount + $staleProcessingCount + $stalePendingCount,
-                'definition' => "COUNT of orders where delivery_status=needs_review, PLUS delivery_status=processing older than {$staleAfterMinutes} minutes, PLUS delivery_status=pending past its supplier's stale window (Supplier::pendingPolicy(): an API supplier's pending_stale_minutes, else DELIVERY_RECONCILIATION_PENDING_STALE_MINUTES; a manual supplier's reply SLA) — the same rule ReconcilePendingDeliveriesCommand uses. A stale Pending joki order is counted on the Joki card instead (ADR-126 F4). Excludes is_test orders.",
+                'definition' => "COUNT of orders where delivery_status=needs_review, PLUS delivery_status=processing older than {$staleAfterMinutes} minutes, PLUS delivery_status=pending past its supplier's stale window (Supplier::pendingPolicy(): an API supplier's pending_stale_minutes, else DELIVERY_RECONCILIATION_PENDING_STALE_MINUTES; a manual supplier's reply SLA) — the same rule ReconcilePendingDeliveriesCommand uses. A NeedsReview or stale Pending joki order is counted on the Joki card instead (ADR-126 F4, ADR-127 decision 11). Excludes is_test orders.",
             ],
             // ADR-126 decision 24: the Joki card, from the Joki page's own filters.
             'joki' => app(JokiBoard::class)->counts(),

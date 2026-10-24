@@ -187,6 +187,18 @@ final class FinancialScenario
         );
     }
 
+    /** The admin confirms a NeedsReview order on the supplier's dashboard: its invoice and the price charged, in ringgit. */
+    public function adminConfirmsDelivered(Order $order, int $chargedSen): Order
+    {
+        return app(OrderFulfillmentService::class)->markDeliveredManually(
+            $order->fresh(),
+            'SCN-INV-'.$order->id,
+            $chargedSen / 100,
+            'Scenario: matched on the supplier dashboard',
+            $this->admin->name,
+        );
+    }
+
     /** The admin compensates a Failed order (store-credit voucher, ADR-024). */
     public function compensate(Order $order): Order
     {
