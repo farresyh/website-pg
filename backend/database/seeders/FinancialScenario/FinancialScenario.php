@@ -8,19 +8,29 @@ use App\Models\Affiliate;
 use App\Models\AffiliateDomain;
 use App\Models\BudgetEnvelope;
 use App\Models\CashAccount;
+use App\Models\CurrencyRate;
 use App\Models\Game;
+use App\Models\JokiSetting;
+use App\Models\JokiTier;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\PaymentMethod;
 use App\Models\Reseller;
 use App\Models\ResellerTier;
 use App\Models\Supplier;
+use App\Models\WhatsAppGroup;
 use App\Services\Accounting\MonthCloseService;
+use App\Services\Accounting\PaidFrom;
+use App\Services\Accounting\SupplierFundingService;
 use App\Services\Affiliate\AffiliateDomainStatus;
+use App\Services\Fulfillment\ManualDeliveryService;
 use App\Services\Fulfillment\OrderFulfillmentService;
+use App\Services\Joki\JokiAssignmentService;
+use App\Services\Joki\JokiCatalog;
 use App\Services\Fulfillment\OrderSettlementService;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Services\Order\PaymentStatus;
 use App\Services\Payment\Fake\FakePaymentGateway;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Reseller\ResellerApiKeyService;
@@ -53,9 +63,19 @@ use RuntimeException;
  */
 final class FinancialScenario
 {
+    use MoneyFlows;
+
     public readonly ScriptedSupplierAdapter $supplierAdapter;
 
     public readonly Supplier $apiSupplier;
+
+    /** The IDR supplier (Digiflazz-like): prices in rupiah, funded in ringgit at its own deposit rate. */
+    public readonly ScriptedSupplierAdapter $idrAdapter;
+
+    public readonly Supplier $idrSupplier;
+
+    /** @var list<Package> */
+    public readonly array $idrPackages;
 
     public readonly Affiliate $platform;
 
@@ -79,7 +99,9 @@ final class FinancialScenario
             throw new RuntimeException('The financial scenario never runs in production.');
         }
 
-        config(['queue.default' => 'sync', 'broadcasting.default' => 'null']);
+        // The array cache keeps rate limits from leaking between runs on a
+        // dev DB whose cache store is the database (the clock is replayed).
+        config(['queue.default' => 'sync', 'broadcasting.default' => 'null', 'cache.default' => 'array']);
         Http::preventStrayRequests();
         Http::fake();
         Mail::fake();
@@ -119,6 +141,17 @@ final class FinancialScenario
         $this->affiliate = $this->affiliateBrand();
         $this->packages = $this->catalog();
         [$this->reseller, $this->apiKey] = $this->walletReseller();
+
+        if (! CurrencyRate::query()->where('from', 'IDR')->where('to', 'MYR')->exists()) {
+            $this->setIdrRate(0.000270);
+        }
+        $this->idrAdapter = new ScriptedSupplierAdapter(fn (int $sen) => round($sen / 100 / $this->idrRate()));
+        $this->idrSupplier = Supplier::query()->firstOrCreate(
+            ['slug' => 'scenario-idr'],
+            ['name' => 'Scenario IDR Supplier', 'driver' => 'scenario-idr', 'funding_mode' => Supplier::FUNDING_PREPAID, 'api_config' => [], 'currency' => 'IDR', 'is_active' => true],
+        );
+        app()->instance('supplier-adapter.scenario-idr', $this->idrAdapter);
+        $this->idrPackages = $this->idrCatalog();
     }
 
     /** Moves the clock to a Malaysia wall-clock time; every following action happens then. */
@@ -130,21 +163,27 @@ final class FinancialScenario
     }
 
     /** A guest checkout on the platform brand, or on the affiliate's own domain. */
-    public function storefrontOrder(Package $package, bool $onAffiliateBrand = false): Order
+    public function storefrontOrder(Package $package, bool $onAffiliateBrand = false, ?int $customer = null, ?string $voucherCode = null, bool $asMember = false): Order
     {
-        $headers = $onAffiliateBrand ? ['X-Storefront-Host' => $this->affiliateHost()] : [];
         $n = ++$this->sequence;
+        $c = $customer ?? $n;
+        $headers = $onAffiliateBrand ? ['X-Storefront-Host' => $this->affiliateHost()] : [];
+        // A signed-in member gets member pricing (ADR-068); the token names the brand.
+        if ($asMember) {
+            $headers['Authorization'] = 'Bearer '.$this->memberToken($c);
+        }
 
-        $this->call('POST', '/api/checkout', [
+        $this->call('POST', '/api/checkout', array_filter([
             'game_id' => $package->game_id,
             'package_id' => $package->id,
-            'customer_email' => "buyer{$n}@scenario.test",
-            'customer_name' => "Buyer {$n}",
-            'customer_phone' => '60123'.str_pad((string) $n, 6, '0', STR_PAD_LEFT),
-            'player_id' => (string) (100000000 + $n),
+            'customer_email' => "buyer{$c}@scenario.test",
+            'customer_name' => "Buyer {$c}",
+            'customer_phone' => '60123'.str_pad((string) $c, 6, '0', STR_PAD_LEFT),
+            'player_id' => (string) (100000000 + $c),
             'channel_code' => 'FPX_SCN',
             'idempotency_key' => (string) Str::uuid(),
-        ], $headers);
+            'voucher_code' => $voucherCode,
+        ]), $headers);
 
         return Order::query()->latest('id')->firstOrFail();
     }
@@ -152,13 +191,12 @@ final class FinancialScenario
     /** CHIP reports the payment as paid; fulfillment runs in this process. */
     public function pay(Order $order): Order
     {
-        $this->call('POST', '/api/webhooks/chip', [
-            'event_type' => 'purchase.paid',
-            'id' => $order->payment_ref,
-            'reference' => $order->reference_number,
-            'status' => 'paid',
-            'purchase' => ['total' => $order->final_amount],
-        ]);
+        // A voucher that covers the whole order pays it at checkout; CHIP never sees it.
+        if ($order->payment_status !== PaymentStatus::Pending) {
+            return $order->fresh();
+        }
+
+        $this->chipPaid($order->payment_ref, $order->reference_number, $order->final_amount);
 
         return $order->fresh();
     }
@@ -183,7 +221,7 @@ final class FinancialScenario
             $order->fresh(),
             SupplierOutcome::Success,
             $order->supplier_ref,
-            ['supplier_ref' => $order->supplier_ref, 'status' => 'delivered', 'price' => $order->cost_price / 100],
+            ['supplier_ref' => $order->supplier_ref, 'status' => 'delivered', 'price' => $this->adapterFor($order->supplier)->price($order->cost_price)],
         );
     }
 
@@ -197,6 +235,105 @@ final class FinancialScenario
             'Scenario: matched on the supplier dashboard',
             $this->admin->name,
         );
+    }
+
+    /**
+     * Joki switched on as the admin does it (ADR-126): the catalog, the
+     * panel switch (and the payout share, when given) and the platform brand. Returns the penjoki, each a
+     * pay-after manual supplier with its own WhatsApp group.
+     *
+     * @return list<Supplier>
+     */
+    public function enableJoki(?float $payoutSharePct = null, int $penjokiCount = 2): array
+    {
+        app(JokiCatalog::class)->ensure();
+        // A null share keeps the panel's own settings (the dev DB's).
+        $settings = JokiSetting::current();
+        $settings->update(array_filter([
+            'is_enabled' => true,
+            'payout_share_pct' => $payoutSharePct,
+            'terms_html' => blank($settings->terms_html) ? '<p>Scenario terms.</p>' : null,
+        ], fn ($v) => $v !== null));
+        $this->platform->update(['joki_enabled' => true]);
+
+        return array_map(function (int $i) {
+            $penjoki = Supplier::query()->firstOrCreate(['slug' => "scenario-penjoki-{$i}"], [
+                'name' => "Scenario Penjoki {$i}", 'driver' => Supplier::DRIVER_MANUAL, 'funding_mode' => Supplier::FUNDING_PAY_AFTER,
+                'api_config' => [], 'currency' => 'MYR', 'joki_role' => Supplier::JOKI_PENJOKI, 'is_active' => true,
+            ]);
+            WhatsAppGroup::query()->firstOrCreate(['owner_type' => 'supplier', 'owner_id' => $penjoki->id], ['whatsapp_group_id' => "scenario-penjoki-{$i}@g.us"]);
+
+            return $penjoki;
+        }, range(1, $penjokiCount));
+    }
+
+    /**
+     * A joki checkout on the platform brand through the one /checkout,
+     * priced by the server from the climb (ADR-126). A rank is
+     * [tier name, division or null, stars].
+     *
+     * @param  array{0: string, 1: ?int, 2: int}  $from
+     * @param  array{0: string, 1: ?int, 2: int}  $to
+     */
+    public function jokiOrder(array $from, array $to, bool $express = false): Order
+    {
+        $calculator = app(JokiCatalog::class)->ensure();
+        $n = ++$this->sequence;
+        $rank = fn (array $r) => ['tier_id' => JokiTier::query()->where('name', $r[0])->value('id'), 'division' => $r[1], 'stars' => $r[2]];
+
+        $this->call('POST', '/api/checkout', [
+            'game_id' => $calculator->game_id,
+            'package_id' => $calculator->id,
+            'customer_email' => "joki{$n}@scenario.test",
+            'customer_name' => "Joki Buyer {$n}",
+            'customer_phone' => '60124'.str_pad((string) $n, 6, '0', STR_PAD_LEFT),
+            'channel_code' => 'FPX_SCN',
+            'idempotency_key' => (string) Str::uuid(),
+            'credentials' => ['login_type' => 'Moonton', 'user_id' => (string) (300000000 + $n), 'login' => "player{$n}", 'password' => 'scenario-secret'],
+            'credential_consent' => true,
+            'joki' => ['from' => $rank($from), 'to' => $rank($to), 'is_express' => $express, 'hero_request' => 'Ling', 'role' => 'Jungler', 'play_window' => '8pm – 12am'],
+        ]);
+
+        return Order::query()->latest('id')->firstOrFail();
+    }
+
+    /** The admin gives a paid joki to a penjoki (or moves it to another). */
+    public function assignJoki(Order $order, Supplier $penjoki): Order
+    {
+        return app(JokiAssignmentService::class)->assign($order->fresh(), $penjoki->id, $this->admin->name);
+    }
+
+    /** The penjoki sends `.done`: delivered at the agreed payout. */
+    public function penjokiDelivers(Order $order): Order
+    {
+        $order = $order->fresh();
+
+        return app(ManualDeliveryService::class)->confirmDelivered($order, null, null, 'penjoki', $order->supplier_id, 'supplier_bot');
+    }
+
+    /** The penjoki sends `.gagal`: the order fails and the penjoki is owed nothing. */
+    public function penjokiFails(Order $order, string $reason = 'Scenario: could not climb'): Order
+    {
+        $order = $order->fresh();
+
+        return app(ManualDeliveryService::class)->confirmFailed($order, $reason, 'penjoki', $order->supplier_id, 'supplier_bot');
+    }
+
+    /** The founder records a bank transfer to a supplier: funding an API supplier, or paying a penjoki what is owed (MYR). */
+    public function supplierTransfer(Supplier $supplier, int $amountSen): void
+    {
+        app(SupplierFundingService::class)->recordTransfer(
+            $supplier, now('Asia/Kuala_Lumpur')->toDateString(), 'bank', $amountSen, 0, 'MYR',
+            number_format($amountSen / 100, 2, '.', ''), null, 'SCN-TRF-'.(++$this->sequence), null, $this->admin->id, PaidFrom::CompanyAccount,
+        );
+        $this->bank(-$amountSen);
+    }
+
+    /** The admin credits the reseller's wallet after a bank transfer. */
+    public function topUpWallet(int $amountSen): void
+    {
+        app(ResellerWalletService::class)->manualCredit($this->reseller, $amountSen, 'Scenario top-up', null, $this->admin->id, 'scenario-topup-'.Str::uuid());
+        $this->bank($amountSen);
     }
 
     /** The admin compensates a Failed order (store-credit voucher, ADR-024). */
@@ -219,8 +356,12 @@ final class FinancialScenario
             $year,
             $month,
             $preview['allocate_sen'] === 0 ? [] : [['budget_envelope_id' => $envelope->id, 'amount_sen' => $preview['allocate_sen']]],
-            CashAccount::query()->where('is_active', true)->get()->map(fn (CashAccount $a) => ['cash_account_id' => $a->id, 'balance_sen' => 0])->all(),
-            'Scenario: the bank is not modelled',
+            // The scenario's bank holds all the cash; any other account is counted at 0.
+            CashAccount::query()->where('is_active', true)->get()->map(fn (CashAccount $a) => [
+                'cash_account_id' => $a->id,
+                'balance_sen' => $a->id === $bank->id ? $this->bankAsOf(CarbonImmutable::create($year, $month, 1)->endOfMonth()->toDateString()) : 0,
+            ])->all(),
+            'Scenario: CHIP fee estimate on unsettled payments',
             $this->admin->id,
         );
     }
@@ -285,6 +426,29 @@ final class FinancialScenario
         ), [[86, 421, 500], [172, 842, 990], [429, 2105, 2450], [878, 4210, 4890]]);
     }
 
+    /**
+     * Free Fire on the IDR supplier. Each package's ringgit cost is its
+     * rupiah price at today's rate, as price sync would set it (ADR-033).
+     *
+     * @return list<Package>
+     */
+    private function idrCatalog(): array
+    {
+        $game = Game::query()->firstOrCreate(
+            ['slug' => 'scenario-ff'],
+            ['name' => 'Scenario Free Fire', 'is_active' => true, 'reseller_code' => 'SCF'],
+        );
+
+        return array_map(function (array $p) use ($game) {
+            $cost = (int) round($p[1] * $this->idrRate() * 100);
+
+            return Package::query()->firstOrCreate(
+                ['game_id' => $game->id, 'denomination' => $p[0]],
+                ['name' => "{$p[0]} Diamonds", 'cost_price' => $cost, 'standard_selling_price' => (int) round($cost * 1.15), 'markup_percent' => 15, 'is_active' => true, 'supplier_id' => $this->idrSupplier->id, 'supplier_package_ref' => "SCF-{$p[0]}"],
+            );
+        }, [[100, 15_000], [310, 46_000], [720, 105_000]]);
+    }
+
     /** @return array{Reseller, string} */
     private function walletReseller(): array
     {
@@ -294,6 +458,7 @@ final class FinancialScenario
 
         if (app(ResellerWalletService::class)->balance($reseller) === 0) {
             app(ResellerWalletService::class)->manualCredit($reseller, 500_000, 'Scenario opening top-up', null, $this->admin->id, 'scenario-opening-topup-'.$reseller->id);
+            $this->bank(500_000);
         }
 
         return [$reseller, app(ResellerApiKeyService::class)->issue($reseller, 'Scenario key')['plainText']];

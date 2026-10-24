@@ -19,8 +19,14 @@ use Illuminate\Support\Str;
  */
 final class ScriptedSupplierAdapter implements SupplierAdapter
 {
-    /** @var list<SupplierResponse|float> */
+    /** @var list<SupplierResponse|int> */
     private array $queue = [];
+
+    /**
+     * @param  (\Closure(int): float)|null  $toSupplierPrice  ringgit sen to the supplier's own currency
+     *                                                        (an IDR supplier echoes rupiah); null = MYR
+     */
+    public function __construct(private readonly ?\Closure $toSupplierPrice = null) {}
 
     /** The next order fails, confirmed (Digiflazz-style), so it lands on Failed. */
     public function failNext(): void
@@ -43,7 +49,7 @@ final class ScriptedSupplierAdapter implements SupplierAdapter
     /** The next order succeeds at a real cost other than its catalog cost (sen). */
     public function costNext(int $realCostSen): void
     {
-        $this->queue[] = $realCostSen / 100;
+        $this->queue[] = $realCostSen;
     }
 
     public function createOrder(SupplierOrderRequest $request): SupplierResponse
@@ -54,14 +60,20 @@ final class ScriptedSupplierAdapter implements SupplierAdapter
             return $next;
         }
 
-        $price = $next ?? Order::query()->findOrFail($request->orderId)->cost_price / 100;
+        $sen = $next ?? Order::query()->findOrFail($request->orderId)->cost_price;
 
         return SupplierResponse::success([
             'supplier_ref' => 'SCN-'.Str::upper(Str::random(10)),
-            'price' => $price,
+            'price' => $this->price($sen),
             'player_id' => $request->playerId,
             'server_id' => $request->serverId,
         ]);
+    }
+
+    /** What the supplier charges, in its own currency, for a ringgit cost. */
+    public function price(int $sen): float
+    {
+        return $this->toSupplierPrice === null ? $sen / 100 : ($this->toSupplierPrice)($sen);
     }
 
     public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
