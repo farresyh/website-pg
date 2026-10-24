@@ -53,8 +53,8 @@ class OrderFulfillmentServiceComboProfitTest extends TestCase
         $order = $this->paidComboOrder($combo, ['affiliate_profit' => 0]);
 
         $adapter = $this->queuedAdapter([
-            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]),
-            SupplierResponse::success(['supplier_ref' => 'SREF-B', 'price' => 480]),
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 5.0]),
+            SupplierResponse::success(['supplier_ref' => 'SREF-B', 'price' => 5.0]),
         ]);
 
         $result = $this->service($adapter)->fulfill($order);
@@ -85,7 +85,7 @@ class OrderFulfillmentServiceComboProfitTest extends TestCase
         $order = $this->paidComboOrder($combo, ['affiliate_profit' => 0]);
 
         $firstAttemptAdapter = $this->queuedAdapter([
-            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 480]),
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 5.0]),
             SupplierResponse::failure('insufficient_balance', 'No balance'),
         ]);
         $firstResult = $this->service($firstAttemptAdapter)->fulfill($order);
@@ -96,12 +96,12 @@ class OrderFulfillmentServiceComboProfitTest extends TestCase
         $b->update(['cost_price' => 700]);
 
         $retryAdapter = $this->queuedAdapter([
-            SupplierResponse::success(['supplier_ref' => 'SREF-B-RETRY', 'price' => 700]),
+            SupplierResponse::success(['supplier_ref' => 'SREF-B-RETRY', 'price' => 7.0]),
         ]);
         $secondResult = $this->service($retryAdapter)->fulfill($firstResult->fresh());
 
         $this->assertSame(DeliveryStatus::Delivered, $secondResult->delivery_status);
-        // selling_price 1500 - (liveCost 500 + 700) - affiliate_profit 0 = 300
+        // selling_price 1500 - (real cost 500 + 700) - affiliate_profit 0 = 300
         $this->assertSame(300, $secondResult->platform_profit);
     }
 
@@ -128,8 +128,8 @@ class OrderFulfillmentServiceComboProfitTest extends TestCase
         $order = $this->paidComboOrder($combo, ['affiliate_profit' => 0]);
 
         $adapter = $this->queuedAdapter([
-            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 1000]),
-            SupplierResponse::success(['supplier_ref' => 'SREF-B', 'price' => 1000]),
+            SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 10.0]),
+            SupplierResponse::success(['supplier_ref' => 'SREF-B', 'price' => 10.0]),
         ]);
 
         $result = $this->service($adapter)->fulfill($order);
@@ -156,7 +156,7 @@ class OrderFulfillmentServiceComboProfitTest extends TestCase
         $combo = $this->comboPackage($gameId, [['package' => $a, 'quantity' => 1]]);
         $order = $this->paidComboOrder($combo, ['affiliate_profit' => 50, 'selling_price' => 900]);
 
-        $adapter = $this->queuedAdapter([SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 500])]);
+        $adapter = $this->queuedAdapter([SupplierResponse::success(['supplier_ref' => 'SREF-A', 'price' => 5.0])]);
         $result = $this->service($adapter)->fulfill($order);
 
         $this->assertSame(50, $result->affiliate_profit);
@@ -204,9 +204,8 @@ class OrderFulfillmentServiceComboProfitTest extends TestCase
      * same direct-model pattern this file already uses for
      * isPartialComboDelivery() coverage above.
      */
-    public function test_resolve_combo_outcome_uses_real_cost_with_per_leg_fallback_when_flag_enabled(): void
+    public function test_resolve_combo_outcome_uses_real_cost_with_per_leg_fallback(): void
     {
-        config(['services.real_cost_reconciliation.enabled' => true]);
         $supplier = $this->supplier();
         $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
         $a = $this->componentPackage($supplier, $gameId, ['cost_price' => 500]);

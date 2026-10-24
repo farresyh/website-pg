@@ -501,9 +501,8 @@ class OrderResendServiceProfitTest extends TestCase
      * (950) and resend()'s own pre-fulfill estimate (50) — the final
      * stored figure must reflect the real cost, not either estimate.
      */
-    public function test_fulfill_overwrites_resends_own_estimate_with_the_real_cost_when_flag_enabled(): void
+    public function test_fulfill_overwrites_resends_own_estimate_with_the_real_cost(): void
     {
-        config(['services.real_cost_reconciliation.enabled' => true]);
         $supplier = $this->supplier();
         $game = $this->game();
         $original = $this->package($game, $supplier, ['cost_price' => 900, 'standard_selling_price' => 1000]);

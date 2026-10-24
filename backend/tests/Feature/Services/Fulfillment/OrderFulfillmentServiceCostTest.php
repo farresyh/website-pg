@@ -78,33 +78,14 @@ class OrderFulfillmentServiceCostTest extends TestCase
     }
 
     /**
-     * ADR-111 decision 2: real cost is captured on EVERY successful
-     * delivery regardless of the feature flag — only whether it's USED
-     * to recompute platform_profit is gated (decision 8).
-     */
-    public function test_fulfill_captures_real_cost_price_sen_but_leaves_platform_profit_untouched_when_flag_disabled(): void
-    {
-        config(['services.real_cost_reconciliation.enabled' => false]);
-        $order = $this->paidOrder(['platform_profit' => 100]);
-
-        $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'REF-1', 'price' => 8.5]))
-            ->fulfill($order);
-
-        $this->assertSame(850, $result->real_cost_price_sen);
-        $this->assertSame(100, $result->platform_profit);
-        $this->assertFalse($result->profit_reconciled_flagged);
-    }
-
-    /**
-     * ADR-111 decision 3/4: when the flag is enabled, EVERY successful
+     * ADR-111 decision 3/4: EVERY successful
      * delivery (not just a retry) recomputes platform_profit as the
      * basis-agnostic residual — closing the gap the ADR's own Context
      * called out as the biggest latent one (a plain first delivery never
      * reconciled against anything beyond the checkout-time estimate).
      */
-    public function test_fulfill_reconciles_platform_profit_with_real_cost_when_flag_enabled(): void
+    public function test_fulfill_reconciles_platform_profit_with_real_cost(): void
     {
-        config(['services.real_cost_reconciliation.enabled' => true]);
         $order = $this->paidOrder(['selling_price' => 1000, 'affiliate_profit' => 0, 'platform_profit' => 100]);
 
         $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'REF-1', 'price' => 8.5]))
@@ -121,9 +102,8 @@ class OrderFulfillmentServiceCostTest extends TestCase
      * 1% of selling_price) even when the reconciled result is still
      * positive — not just on an outright loss.
      */
-    public function test_fulfill_flags_a_material_positive_profit_drift_when_flag_enabled(): void
+    public function test_fulfill_flags_a_material_positive_profit_drift(): void
     {
-        config(['services.real_cost_reconciliation.enabled' => true]);
         $order = $this->paidOrder(['selling_price' => 1000, 'affiliate_profit' => 0, 'platform_profit' => 100]);
 
         $result = $this->service($this->fakeSupplierAdapter(true, ['supplier_ref' => 'REF-1', 'price' => 2.0]))
@@ -142,7 +122,6 @@ class OrderFulfillmentServiceCostTest extends TestCase
      */
     public function test_fulfill_falls_back_to_catalog_profit_when_fx_rate_is_unavailable(): void
     {
-        config(['services.real_cost_reconciliation.enabled' => true]);
         Http::fake(['open.er-api.com/*' => Http::response(['message' => 'Server error'], 500)]);
         // Pre-create the default test supplier with a non-MYR currency —
         // paidOrder()'s own firstOrCreate() then finds this row instead

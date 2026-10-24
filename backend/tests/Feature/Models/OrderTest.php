@@ -173,7 +173,6 @@ class OrderTest extends TestCase
     /** ADR-094 decision 35 — a settled partial order's cost covers only its delivered legs, out of what it kept. */
     public function test_cost_basis_of_a_settled_partial_combo_counts_only_the_delivered_legs(): void
     {
-        config(['services.real_cost_reconciliation.enabled' => true]);
         $delivered = $this->componentPackage();
         $failed = $this->componentPackage(['name' => '2976 Diamonds', 'denomination' => 2976, 'supplier_package_ref' => 'GV-2976', 'cost_price' => 25000, 'standard_selling_price' => 27500]);
         $order = $this->makeOrder([

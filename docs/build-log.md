@@ -1909,3 +1909,34 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
 - **Open, not diagnosed:** in the founder's Chrome, every request to `https://kedairuncit-backend.test` fails with 503 or "Failed to fetch", so `/joki` shows broken icons and no price. `curl` to the same URLs gets 200, the `.test` resolver and Herd's nginx are fine, there is no system proxy, and the Herd nginx log is empty, so the requests seem not to reach Herd.
   - A headless check with `--ignore-certificate-errors` hid this. Verify local UI in the founder's own browser, not only headless.
   - Picked up next session.
+
+## 2026-10-24 — ADR-127 designed (item 131 widened); PR A: real-cost flag removed, financial scenario builder
+
+- **Design (#542, merged).** The founder widened item 131 from "revenue by delivery date" to every money page. A three-layer read-only trace (checkout and pricing; ledger, fulfillment and compensation; downstream readers), the grill (Q1–Q13) and a stress test produced [ADR-127](./adr/ADR-127-financial-truth-dated-facts.md). Its rule P1: a figure for any past period comes only from dated facts that never change. It revises ADR-083, ADR-111 decision 8 and ADR-126 decisions 11/13.
+- **Production, read-only, 2026-10-24:**
+  - 46 orders, 32 of them Delivered.
+  - No order was paid in one month and delivered in another.
+  - September is the only closed month.
+  - There are no duplicate supplier-ledger references.
+  - `REAL_COST_RECONCILIATION_ENABLED=true`.
+  - So no data patch is needed for ADR-127.
+- **PR A (`feature/adr-127-pr-a-scenario-builder`):**
+  - **The real-cost flag is removed (ADR-127 decision 10).** Real cost is the only path. Five tests failed once it was gone:
+    - Four combo tests wrote the supplier's `price` in sen (`480`), while adapters return ringgit. The off default had hidden this.
+    - One Digiflazz webhook test asserted the checkout estimate, under a comment saying `price` is "never used". In production it has been the real cost since ADR-111.
+  - **`Database\Seeders\FinancialScenario\FinancialScenario`** builds money data by driving the real system:
+    - Checkout, the CHIP webhook and the Reseller API through the HTTP kernel, so prices are resolved server-side.
+    - Back-office actions through the admin's services.
+    - The API supplier is a `ScriptedSupplierAdapter`. By default it returns the catalog cost in ringgit, and a scenario can queue a failure or a different real cost for the next order.
+  - **The builder is safe by construction:**
+    - It refuses to run in production.
+    - The queue is `sync`, so no Horizon worker can reach a real supplier.
+    - Outbound HTTP is refused, and mail and notifications are faked.
+    - The world is created at the scenario's start time.
+  - **`FinancialScenarioTest` proves invariants 5, 6 and 10** on that data:
+    - Wallet and affiliate balances agree on Dashboard, Summary, Cash Position, the portal and the API.
+    - The price identity holds with real cost.
+    - Every delivered API order has exactly one drawdown.
+  - The other invariants arrive with the PR that makes them true. `FakeSupplierAdapter` (sandbox, e2e) is unchanged.
+- **Gotcha:** the first version created the reseller's opening top-up at the real clock (October). September's Cash Position correctly left it out, and invariant 5 read -RM22.10. Scenario data must be created on the scenario's own clock.
+- **Verified:** `php artisan test` passes 3032/3032, and Pint is clean.

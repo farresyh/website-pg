@@ -186,7 +186,6 @@ trait ComboFulfillmentFixtures
 
     private function assertComboReconciliationHoldsForBasis(string $pricingBasis, int $affiliateProfit): void
     {
-        config(['services.real_cost_reconciliation.enabled' => true]);
         $supplier = $this->supplier();
         $gameId = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb-'.uniqid()])->id;
         $a = $this->componentPackage($supplier, $gameId, ['cost_price' => 500]);
