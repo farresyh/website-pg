@@ -3,12 +3,15 @@
 namespace Tests\Feature\Accounting;
 
 use App\Models\AccountingPeriodClose;
+use App\Models\BudgetEnvelopePosting;
 use App\Models\Affiliate;
 use App\Models\LedgerEntry;
 use App\Models\Order;
+use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Models\Voucher;
 use App\Services\Accounting\CashPositionService;
+use App\Services\Accounting\EnvelopePostingType;
 use App\Services\Accounting\MonthlyAccountingSummaryService;
 use App\Services\Accounting\RecognisedRevenue;
 use App\Services\Accounting\TransactionRegisterService;
@@ -39,6 +42,12 @@ class FinancialScenarioTest extends TestCase
     private Order $crossMonth;
 
     private AccountingPeriodClose $septemberClose;
+
+    /** @var array<string, Order> */
+    private array $joki = [];
+
+    /** @var list<Supplier> */
+    private array $penjoki;
 
     /** @var list<array<string, mixed>> */
     private array $septemberRegisterAtClose;
@@ -78,6 +87,29 @@ class FinancialScenarioTest extends TestCase
 
         $s->at('2026-10-02 11:00')->pay($s->storefrontOrder($small));
 
+        // Joki (ADR-126) at an 80% payout share: delivered, failed (the
+        // penjoki gets nothing), reassigned (only the second is paid), and
+        // one paid in September and finished in October.
+        $this->penjoki = $s->at('2026-09-01 10:00')->enableJoki(80.0);
+        [$amir, $budi] = $this->penjoki;
+        $this->joki['delivered'] = $s->at('2026-09-06 20:00')->pay($s->jokiOrder(['Epic', 5, 0], ['Epic', 3, 0]));
+        $s->at('2026-09-06 20:30')->assignJoki($this->joki['delivered'], $amir);
+        $s->at('2026-09-08 22:00')->penjokiDelivers($this->joki['delivered']);
+
+        $this->joki['failed'] = $s->at('2026-09-16 19:00')->pay($s->jokiOrder(['Epic', 5, 0], ['Epic', 4, 0]));
+        $s->at('2026-09-16 19:10')->assignJoki($this->joki['failed'], $amir);
+        $s->at('2026-09-17 23:00')->penjokiFails($this->joki['failed']);
+        $s->at('2026-09-18 10:00')->compensate($this->joki['failed']);
+
+        $this->joki['reassigned'] = $s->at('2026-09-22 18:00')->pay($s->jokiOrder(['Epic', 4, 0], ['Epic', 2, 0], express: true));
+        $s->at('2026-09-22 18:05')->assignJoki($this->joki['reassigned'], $amir);
+        $s->at('2026-09-23 09:00')->assignJoki($this->joki['reassigned'], $budi);
+        $s->at('2026-09-24 21:00')->penjokiDelivers($this->joki['reassigned']);
+
+        $this->joki['cross_month'] = $s->at('2026-09-29 21:00')->pay($s->jokiOrder(['Epic', 5, 0], ['Epic', 4, 0]));
+        $s->at('2026-09-29 21:05')->assignJoki($this->joki['cross_month'], $budi);
+        $s->at('2026-10-03 22:00')->penjokiDelivers($this->joki['cross_month']);
+
         // Paid in September, still with the supplier when September is closed.
         $s->supplierAdapter->pendingNext();
         $lateSeptember = $s->at('2026-09-29 20:00')->pay($s->storefrontOrder($mid));
@@ -95,9 +127,9 @@ class FinancialScenarioTest extends TestCase
 
     public function test_the_scenario_produces_every_outcome_it_scripts(): void
     {
-        $this->assertSame(9, Order::query()->where('delivery_status', DeliveryStatus::Delivered->value)->count());
+        $this->assertSame(12, Order::query()->where('delivery_status', DeliveryStatus::Delivered->value)->count());
+        $this->assertSame(3, Order::query()->where('delivery_status', DeliveryStatus::Failed->value)->count());
         $this->assertSame(1, Order::query()->whereNotNull('real_cost_price_sen')->whereJsonContains('supplier_response->manually_confirmed', true)->count());
-        $this->assertSame(2, Order::query()->where('delivery_status', DeliveryStatus::Failed->value)->count());
         $this->assertSame(2, Order::query()->where('affiliate_profit', '>', 0)->count());
         $this->assertSame(2, Order::query()->whereNotNull('wallet_reseller_id')->count());
     }
@@ -109,6 +141,42 @@ class FinancialScenarioTest extends TestCase
             $cost = $o->real_cost_price_sen ?? $o->cost_price;
             $this->assertSame($o->selling_price, $cost + $o->platform_profit + $o->affiliate_profit, "order {$o->reference_number}");
         });
+    }
+
+    /**
+     * ADR-126/127 2026-10-24 addenda: the agreed payout is the whole joki
+     * cost. A penjoki is owed only for what they delivered; a failed or
+     * moved-away order owes them nothing, and nothing goes through the
+     * Budget Envelope.
+     */
+    public function test_a_penjoki_is_owed_only_the_payout_of_what_they_delivered(): void
+    {
+        [$amir, $budi] = $this->penjoki;
+        $delivered = $this->joki['delivered']->fresh();
+        $reassigned = $this->joki['reassigned']->fresh();
+        $crossMonth = $this->joki['cross_month']->fresh();
+
+        foreach ([$delivered, $reassigned, $crossMonth] as $o) {
+            $this->assertSame(DeliveryStatus::Delivered, $o->delivery_status);
+            $this->assertSame($o->cost_price, $o->real_cost_price_sen, "order {$o->reference_number}");
+            $this->assertSame(intdiv($o->selling_price * 80, 100), $o->cost_price, "order {$o->reference_number}");
+        }
+
+        $this->assertEqualsWithDelta(-$delivered->cost_price / 100, (float) $amir->fresh()->supplierLedgerBalance(), 0.001);
+        $this->assertEqualsWithDelta(-($reassigned->cost_price + $crossMonth->cost_price) / 100, (float) $budi->fresh()->supplierLedgerBalance(), 0.001);
+
+        $failed = $this->joki['failed']->fresh();
+        $this->assertSame(0, SupplierLedgerEntry::query()->where('reference_type', 'order')->where('reference_id', $failed->id)->count());
+        $this->assertSame($failed->selling_price, Voucher::query()->where('order_id', $failed->id)->sole()->amount);
+
+        $this->assertSame(0, BudgetEnvelopePosting::query()->where('type', '!=', EnvelopePostingType::ProfitAllocation->value)->count());
+    }
+
+    /** ADR-127 decision 6: a joki paid in September and finished in October is October revenue. */
+    public function test_a_joki_finished_next_month_is_that_months_revenue(): void
+    {
+        $order = $this->joki['cross_month']->fresh();
+        $this->assertSame('2026-10', $order->recognised_at->setTimezone('Asia/Kuala_Lumpur')->format('Y-m'));
     }
 
     /** Invariant 10: every Delivered order from an API supplier has exactly one drawdown. */
@@ -195,7 +263,8 @@ class FinancialScenarioTest extends TestCase
         $recognised = $october->where('type', 'order_recognised')->pluck('reference');
 
         $this->assertContains($this->crossMonth->order_number, $recognised);
-        $this->assertCount(2, $recognised);
+        $this->assertContains($this->joki['cross_month']->order_number, $recognised);
+        $this->assertCount(3, $recognised);
     }
 
     /** ADR-127 P1 on Reports: profit belongs to the month its order was recognised, so a past month's Reports profit cannot move later. */
