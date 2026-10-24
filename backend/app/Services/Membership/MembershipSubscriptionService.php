@@ -110,7 +110,8 @@ final class MembershipSubscriptionService
      * webhook and the reconcile sweep can both run this for the same
      * attempt without doubling anything.
      */
-    public function completePaidAttempt(MembershipCheckoutAttempt $attempt): void
+    /** @param  int|null  $gatewayFeeSen  the fee CHIP reported (ADR-127 F2) */
+    public function completePaidAttempt(MembershipCheckoutAttempt $attempt, ?int $gatewayFeeSen = null): void
     {
         // ADR-080 decision 5: the subscribe -> brand-disabled -> webhook
         // race. The payment is honoured (the member paid in good faith
@@ -137,7 +138,7 @@ final class MembershipSubscriptionService
         );
 
         if ($attempt->status !== MembershipCheckoutAttemptStatus::Paid) {
-            $attempt->update(['status' => MembershipCheckoutAttemptStatus::Paid->value]);
+            $attempt->update(['status' => MembershipCheckoutAttemptStatus::Paid->value, 'gateway_fee_sen' => $gatewayFeeSen]);
         }
     }
 

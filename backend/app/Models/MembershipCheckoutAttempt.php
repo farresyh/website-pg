@@ -28,6 +28,7 @@ class MembershipCheckoutAttempt extends Model
         'payment_ref',
         'checkout_url',
         'status',
+        'gateway_fee_sen',
     ];
 
     protected $casts = [

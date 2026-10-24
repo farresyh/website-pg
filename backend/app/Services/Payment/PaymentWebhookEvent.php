@@ -18,6 +18,8 @@ final class PaymentWebhookEvent
         public readonly PaymentStatus $status,
         public readonly int $amountSen,
         public readonly ?string $failureCode = null,
-    ) {
-    }
+        // ADR-127 F1/F2: CHIP's own paid time (Unix) and fee, when it sent them.
+        public readonly ?int $paidOn = null,
+        public readonly ?int $feeSen = null,
+    ) {}
 }

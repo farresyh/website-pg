@@ -91,13 +91,13 @@ class ReconcilePendingMembershipPaymentsCommand extends Command
         $amountSen = is_array($payment->data) ? ($payment->data['amount_sen'] ?? null) : null;
 
         match ($payment->status) {
-            PaymentStatus::Paid => $this->recover($attempt, $subscriptions, $amountSen),
+            PaymentStatus::Paid => $this->recover($attempt, $subscriptions, $amountSen, $payment->data['fee_sen'] ?? null),
             PaymentStatus::Failed => $attempt->leavePending(MembershipCheckoutAttemptStatus::Failed),
             default => $this->expireIfStale($attempt, $expireAfterHours, is_array($payment->data) ? ($payment->data['status'] ?? null) : null),
         };
     }
 
-    private function recover(MembershipCheckoutAttempt $attempt, MembershipSubscriptionService $subscriptions, mixed $amountSen): void
+    private function recover(MembershipCheckoutAttempt $attempt, MembershipSubscriptionService $subscriptions, mixed $amountSen, ?int $feeSen = null): void
     {
         // Defense-in-depth, same as ReconcilePendingPaymentsCommand's own
         // recover(): a mismatch (a missing amount included) is enough not
@@ -111,7 +111,7 @@ class ReconcilePendingMembershipPaymentsCommand extends Command
             return;
         }
 
-        $subscriptions->completePaidAttempt($attempt);
+        $subscriptions->completePaidAttempt($attempt, $feeSen);
 
         Log::info('Membership reconciliation: recovered a stuck-pending subscription');
     }
