@@ -5,7 +5,6 @@ namespace Tests\Feature\Services\Accounting;
 use App\Models\AdminUser;
 use App\Models\BudgetEnvelope;
 use App\Models\LedgerEntry;
-use App\Models\Membership;
 use App\Models\MembershipFeeRecord;
 use App\Models\MembershipPlan;
 use App\Models\Order;
@@ -17,15 +16,19 @@ use App\Models\Voucher;
 use App\Models\VoucherMerge;
 use App\Models\VoucherRedemption;
 use App\Services\Accounting\BudgetEnvelopeService;
+use App\Services\Accounting\CashPositionService;
 use App\Services\Accounting\EnvelopePostingType;
 use App\Services\Accounting\ExpenseCategory;
 use App\Services\Accounting\MonthlyAccountingSummaryService;
 use App\Services\Accounting\PaidFrom;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\Ledger\LedgerOwnerType;
+use App\Services\Membership\MembershipFeeService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Voucher\VoucherService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Tests\Support\PartialComboOrders;
 use Tests\TestCase;
 
@@ -124,38 +127,23 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $this->assertSame(2400, $october['cogs_sen']);
     }
 
-    public function test_membership_revenue_sums_fee_records_in_period(): void
+    /** Through the real fee seam, which writes the record and its ledger credit together; a waived fee is RM0. */
+    public function test_membership_revenue_is_the_months_membership_fee_ledger_rows(): void
     {
+        Mail::fake();
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
-        $membership = Membership::query()->create([
-            'affiliate_id' => $this->primaryAffiliate()->id,
-            'email' => 'member@example.com',
-            'membership_plan_id' => $plan->id,
-            'status' => 'active',
-            'cycle_started_at' => now(),
-            'quota_remaining_sen' => $plan->quota_sen,
-            'expires_at' => now()->addDays(30),
-        ]);
+        $fees = app(MembershipFeeService::class);
+        $pay = function (string $at, string $email, int $amount, string $key) use ($fees, $plan) {
+            $this->travelTo($at);
+            $fees->recordFeePaid($this->primaryAffiliate()->id, $email, $plan->id, $amount, null, null, $key);
+        };
 
-        $inPeriod = MembershipFeeRecord::query()->create([
-            'membership_id' => $membership->id,
-            'membership_plan_id' => $plan->id,
-            'amount_sen' => 2500,
-            'idempotency_key' => 'idem-in-period',
-        ]);
-        $inPeriod->forceFill(['created_at' => '2026-09-10 00:00:00'])->save();
+        $pay('2026-08-01 00:00:00', 'early@example.com', 2500, 'idem-august');
+        $pay('2026-09-10 00:00:00', 'member@example.com', 2500, 'idem-september');
+        $pay('2026-09-12 00:00:00', 'waived@example.com', 0, 'idem-waived');
 
-        $outOfPeriod = MembershipFeeRecord::query()->create([
-            'membership_id' => $membership->id,
-            'membership_plan_id' => $plan->id,
-            'amount_sen' => 2500,
-            'idempotency_key' => 'idem-out-of-period',
-        ]);
-        $outOfPeriod->forceFill(['created_at' => '2026-08-01 00:00:00'])->save();
-
-        $summary = $this->service()->forPeriod(2026, 9);
-
-        $this->assertSame(2500, $summary['membership_revenue_sen']);
+        $this->assertSame(2500, $this->service()->forPeriod(2026, 9)['membership_revenue_sen']);
+        $this->assertSame(2500, (int) MembershipFeeRecord::query()->whereBetween('created_at', ['2026-08-31 16:00:00', '2026-09-30 15:59:59'])->sum('amount_sen'));
     }
 
     public function test_payment_processing_gain_loss_is_matched_fee_minus_file_fee_across_settlements_in_month(): void
@@ -384,6 +372,21 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $this->voucher(['order_id' => $testOrder->id, 'amount' => 4000, 'remaining' => 4000, 'expires_at' => '2026-09-20 00:00:00']);
 
         $this->assertSame(300, $this->service()->forPeriod(2026, 9)['voucher_breakage_sen']);
+    }
+
+    /** ADR-127 P1: a revoke is a dated fact — the unspent balance is income of the revoke month, and stops being owed from then on. */
+    public function test_a_revoked_vouchers_balance_leaves_the_claims_and_is_income_of_the_revoke_month(): void
+    {
+        $voucher = $this->voucher(['amount' => 1000, 'remaining' => 1000, 'order_id' => Order::factory()->create()->id]);
+        $this->travelTo('2026-10-05 04:00:00');
+
+        app(VoucherService::class)->revoke($voucher);
+
+        $this->assertNotNull($voucher->fresh()->revoked_at);
+        $this->assertSame(0, $this->service()->forPeriod(2026, 9)['voucher_breakage_sen']);
+        $this->assertSame(1000, $this->service()->forPeriod(2026, 10)['voucher_breakage_sen']);
+        $this->assertSame(1000, app(CashPositionService::class)->asOf(2026, 9)['claims']['vouchers_outstanding_sen']);
+        $this->assertSame(0, app(CashPositionService::class)->asOf(2026, 10)['claims']['vouchers_outstanding_sen']);
     }
 
     /** ADR-127 P1: a redemption restored after the voucher expired is the restore month's breakage; September does not move. */

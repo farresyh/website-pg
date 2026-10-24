@@ -4,18 +4,24 @@ namespace Tests\Feature\Accounting;
 
 use App\Models\AccountingPeriodClose;
 use App\Models\Affiliate;
+use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\SupplierLedgerEntry;
+use App\Models\Voucher;
 use App\Services\Accounting\CashPositionService;
 use App\Services\Accounting\MonthlyAccountingSummaryService;
 use App\Services\Accounting\RecognisedRevenue;
 use App\Services\Accounting\TransactionRegisterService;
 use App\Services\Affiliate\AffiliateEarningsService;
 use App\Services\Dashboard\DashboardService;
+use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Report\ReportService;
 use App\Services\Reseller\ResellerWalletService;
+use Carbon\CarbonImmutable;
 use Database\Seeders\FinancialScenario\FinancialScenario;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -183,5 +189,98 @@ class FinancialScenarioTest extends TestCase
 
         $this->assertContains($this->crossMonth->order_number, $recognised);
         $this->assertCount(2, $recognised);
+    }
+
+    /** ADR-127 P1 on Reports: profit belongs to the month its order was recognised, so a past month's Reports profit cannot move later. */
+    public function test_reports_profit_is_filed_by_recognition(): void
+    {
+        $reports = app(ReportService::class);
+
+        foreach ([[2026, 9], [2026, 10]] as [$year, $month]) {
+            [$from, $to] = MonthlyAccountingSummaryService::monthBounds($year, $month);
+            $recognised = app(RecognisedRevenue::class)->recognisedOrders($from, $to);
+            $summary = $reports->summary(CarbonImmutable::instance($from), CarbonImmutable::instance($to), null);
+
+            $this->assertSame((int) $recognised->sum('affiliate_profit'), $summary['affiliate_profit'], "{$year}-{$month}");
+            $this->assertSame(
+                (int) LedgerEntry::query()->where('type', 'order_profit')->where('owner_type', 'platform')->whereIn('reference_id', $recognised->pluck('id'))->sum('amount'),
+                $summary['platform_profit'],
+                "{$year}-{$month}",
+            );
+        }
+    }
+
+    /** @return array{0: CarbonImmutable, 1: CarbonImmutable} */
+    private static function month(int $year, int $month): array
+    {
+        return array_map(fn ($at) => CarbonImmutable::instance($at), MonthlyAccountingSummaryService::monthBounds($year, $month));
+    }
+
+    /** Invariant 3: the Reports Bridge walks paid sales to the Summary's revenue with nothing unexplained. */
+    public function test_the_bridge_explains_every_month(): void
+    {
+        foreach ([[2026, 9], [2026, 10]] as [$year, $month]) {
+            $bridge = app(ReportService::class)->accountingBridge(...self::month($year, $month));
+
+            $this->assertSame(0, $bridge['unexplained_difference'], "{$year}-{$month}");
+            $this->assertSame(app(MonthlyAccountingSummaryService::class)->forPeriod($year, $month)['sales_revenue_sen'], $bridge['recognised_revenue']);
+        }
+    }
+
+    /** Invariant 7: per order, the Register's net (its order row, recognition row and corrections) is the ledger's platform profit. */
+    public function test_the_register_nets_to_the_ledger_per_order(): void
+    {
+        $net = collect(app(TransactionRegisterService::class)->rows(null, null))
+            ->whereIn('type', ['order', 'order_recognised', 'order_profit_correction'])
+            ->groupBy('reference')
+            ->map(fn ($rows) => (int) $rows->sum('net_sen'));
+
+        Order::query()->where('payment_status', 'paid')->each(function (Order $o) use ($net) {
+            $ledger = (int) LedgerEntry::query()->where('type', 'order_profit')->where('owner_type', 'platform')->where('reference_id', $o->id)->sum('amount');
+            $this->assertSame($ledger, $net->get($o->order_number, 0), $o->order_number);
+        });
+    }
+
+    /** Invariant 8: Reports and the Report Assistant's view give the same sales (by paid date) and profit (by recognition). */
+    public function test_reports_and_the_report_assistant_agree(): void
+    {
+        foreach ([['2026-09-01', '2026-10-01', 2026, 9], ['2026-10-01', '2026-11-01', 2026, 10]] as [$from, $to, $year, $month]) {
+            $summary = app(ReportService::class)->summary(...[...self::month($year, $month), null]);
+            $view = fn (string $column, string $date) => (int) DB::table('llm_report_orders')->where($date, '>=', $from)->where($date, '<', $to)->sum($column);
+
+            $this->assertSame($summary['total_sales'], $view('net_sales', 'paid_at_kl'), "{$year}-{$month} sales");
+            $this->assertSame($summary['platform_profit'], $view('platform_profit', 'recognised_at_kl'), "{$year}-{$month} profit");
+        }
+    }
+
+    /** Invariant 9: store credit on Reports is Cash Position's claim. */
+    public function test_store_credit_agrees_between_reports_and_cash_position(): void
+    {
+        $this->assertGreaterThan(0, app(ReportService::class)->outstandingStoreCredit(null));
+        $this->assertSame(
+            app(CashPositionService::class)->asOf(2026, 10)['claims']['vouchers_outstanding_sen'],
+            app(ReportService::class)->outstandingStoreCredit(null),
+        );
+    }
+
+    /** Invariant 11: a sandbox order changes no figure on any money page. */
+    public function test_a_sandbox_order_changes_no_figure(): void
+    {
+        $figures = fn () => [
+            app(MonthlyAccountingSummaryService::class)->forPeriod(2026, 9),
+            app(MonthlyAccountingSummaryService::class)->forPeriod(2026, 10),
+            app(CashPositionService::class)->asOf(2026, 10),
+            app(ReportService::class)->summary(...[...self::month(2026, 10), null]),
+            app(ReportService::class)->outstandingStoreCredit(null),
+            app(TransactionRegisterService::class)->rows(null, null),
+        ];
+        $before = $figures();
+
+        $delivered = Order::factory()->delivered()->create(['is_test' => true, 'paid_at' => now(), 'selling_price' => 99900, 'final_amount' => 99900]);
+        app(LedgerService::class)->creditOrderProfit($delivered);
+        $failed = Order::factory()->create(['is_test' => true, 'paid_at' => now(), 'delivery_status' => DeliveryStatus::Failed, 'final_amount' => 50000]);
+        Voucher::query()->create(['order_id' => $failed->id, 'affiliate_id' => $failed->affiliate_id, 'code' => 'SANDBOX-1', 'customer_email' => 'x@sandbox.test', 'amount' => 50000, 'remaining' => 50000, 'status' => 'active', 'reason' => 'sandbox']);
+
+        $this->assertEquals($before, $figures());
     }
 }

@@ -5,6 +5,7 @@ namespace App\Services\ReportAssistant;
 use App\Models\AdminUser;
 use App\Models\ReportAssistantAuditLog;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Order\PlacedVia;
 use App\Services\Pricing\PricingBasis;
 use App\Services\ReportAssistant\Gemini\GeminiClient;
 use App\Support\MalaysiaTime;
@@ -53,6 +54,9 @@ final class ReportAssistantService
         per-order columns here, pre-computed from the ledger so you cannot
         double-count them; just aggregate the columns directly.
           - order_id, order_number, paid_at_kl (Asia/Kuala_Lumpur datetime)
+          - recognised_at_kl (Asia/Kuala_Lumpur datetime the order became revenue: delivered, or a
+            partial delivery settled; null while it is not yet delivered, or if it failed)
+          - placed_via, one of: {placed_via_values} (the channel: storefront checkout, Reseller API, reseller WhatsApp bot)
           - customer_email, customer_phone
           - game_id, game_name, package_id, package_name
           - payment_method (e.g. fpx)
@@ -80,7 +84,9 @@ final class ReportAssistantService
           Use the Reports page's definitions, so answers match it:
             sales/revenue = SUM(net_sales) over every row, failed orders included (a failed
             retail order's money is kept as store credit; a refunded wallet order nets to 0);
-            profit = SUM(platform_profit); margin % = SUM(platform_profit) / SUM(net_sales) * 100.
+            profit = SUM(platform_profit), filed by recognised_at_kl (profit is earned when the order
+            is delivered, so "profit in September" means rows whose recognised_at_kl is in September,
+            not paid_at_kl); margin % = that profit / SUM(net_sales) * 100.
           Never compute profit or margin yourself from cost_price/final_amount/transaction_fee.
 
         llm_report_membership_fees — one row per membership subscription/renewal fee
@@ -116,6 +122,7 @@ final class ReportAssistantService
 
         return strtr(self::SCHEMA_DESCRIPTION, [
             '{pricing_basis_values}' => $quoted(PricingBasis::cases()),
+            '{placed_via_values}' => $quoted(PlacedVia::cases()),
             '{delivery_status_values}' => $quoted(DeliveryStatus::cases()),
         ]);
     }

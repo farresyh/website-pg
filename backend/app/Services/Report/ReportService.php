@@ -310,16 +310,15 @@ final class ReportService
      * time" to the first paid order through today (ADR-104 R17), so this
      * method never has to guess a range to zero-fill.
      *
-     * Both sales and profit are attributed to the order's own `paid_at`
-     * day (KL), even though profit may only be ledger-credited later
-     * once delivery completes — grilled 2026-08-26: acceptable because
-     * delivery on this platform is near-instant in practice, and this
-     * keeps the sales/profit overlay visually matched day-for-day.
+     * Sales are attributed to the order's `paid_at` day (KL) and profit
+     * to its `recognised_at` day (ADR-127 P1; it was `paid_at`, accepted
+     * in 2026-08 while delivery was near-instant, until joki and manual
+     * orders made a past day's profit move when they were delivered).
      */
     public function dailyTrend(CarbonImmutable $from, CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
         $salesByDate = $this->salesByGroup($this->scopedOrders($from, $toExclusive, $affiliateId), $this->dayBucketExpr('paid_at'));
-        $profitByDate = $this->profitByGroup($from, $toExclusive, $affiliateId, $this->dayBucketExpr('orders.paid_at'));
+        $profitByDate = $this->profitByGroup($from, $toExclusive, $affiliateId, $this->dayBucketExpr('orders.recognised_at'));
 
         $startKl = $from->setTimezone(MalaysiaTime::TIMEZONE)->startOfDay();
         $endKlExclusive = $toExclusive->setTimezone(MalaysiaTime::TIMEZONE)->startOfDay();
@@ -433,7 +432,7 @@ final class ReportService
             ->get()
             ->keyBy('report_key');
 
-        $profitByDate = $this->profitByGroup($from, $toExclusive, $affiliateId, $this->dayBucketExpr('orders.paid_at'));
+        $profitByDate = $this->profitByGroup($from, $toExclusive, $affiliateId, $this->dayBucketExpr('orders.recognised_at'));
 
         $rows = [];
 
@@ -893,21 +892,23 @@ final class ReportService
     }
 
     /**
-     * ADR-104 2026-10-08 addendum R10 — store credit still owed to
-     * customers, as of now (not period-scoped, like the Monthly Summary's
-     * reseller wallet balance): Σ `remaining` of active, unexpired
-     * compensation vouchers. Path A vouchers are a discount promise, not
-     * cash held, so they are excluded. The affiliate filter follows the
-     * source order's brand, like every other Reports figure.
+     * ADR-104 2026-10-08 addendum R10, revised by ADR-127 (invariant 9) —
+     * store credit still owed to customers now: the same vouchers and the
+     * same rebuilt balance as Cash Position's claim. An admin-issued
+     * (Path A) voucher counts too: the Monthly Summary expensed it when
+     * issued, so what is unspent is owed. The affiliate filter is the
+     * voucher's own brand.
      */
     public function outstandingStoreCredit(?int $affiliateId): int
     {
+        // Timestamps are whole seconds: include everything up to this one.
+        $now = now()->addSecond()->startOfSecond();
+
         return (int) Voucher::query()
-            ->compensation()
-            ->where('status', 'active')
-            ->where(fn (Builder $q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
-            ->when($affiliateId, fn (Builder $q) => $q->whereHas('sourceOrder', fn (Builder $o) => $o->where('affiliate_id', $affiliateId)))
-            ->sum('remaining');
+            ->outstandingAt($now)
+            ->when($affiliateId, fn (Builder $q) => $q->where('affiliate_id', $affiliateId))
+            ->get()
+            ->sum(fn (Voucher $voucher) => $voucher->balanceAsOf($now));
     }
 
     /**
@@ -1012,14 +1013,16 @@ final class ReportService
             })
             ->where('ledger_entries.type', 'order_profit')
             ->where('orders.is_test', false)
-            ->whereNotNull('orders.paid_at');
+            // ADR-127 P1: profit is earned when the order is recognised, so it
+            // is filed by `recognised_at`; sales stay on `paid_at`.
+            ->whereNotNull('orders.recognised_at');
 
         if ($from !== null) {
-            $query->where('orders.paid_at', '>=', $from);
+            $query->where('orders.recognised_at', '>=', $from);
         }
 
         if ($toExclusive !== null) {
-            $query->where('orders.paid_at', '<', $toExclusive);
+            $query->where('orders.recognised_at', '<', $toExclusive);
         }
 
         if ($affiliateId !== null) {
@@ -1076,14 +1079,16 @@ final class ReportService
             })
             ->where('ledger_entries.type', 'order_profit')
             ->where('orders.is_test', false)
-            ->whereNotNull('orders.paid_at');
+            // ADR-127 P1: profit is earned when the order is recognised, so it
+            // is filed by `recognised_at`; sales stay on `paid_at`.
+            ->whereNotNull('orders.recognised_at');
 
         if ($from !== null) {
-            $query->where('orders.paid_at', '>=', $from);
+            $query->where('orders.recognised_at', '>=', $from);
         }
 
         if ($toExclusive !== null) {
-            $query->where('orders.paid_at', '<', $toExclusive);
+            $query->where('orders.recognised_at', '<', $toExclusive);
         }
 
         if ($affiliateId !== null) {

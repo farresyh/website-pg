@@ -166,10 +166,7 @@ final class CashPositionService
     private function vouchersOutstanding(Carbon $toExclusive): int
     {
         return (int) Voucher::query()
-            ->where('created_at', '<', $toExclusive)
-            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>=', $toExclusive))
-            ->where(fn ($q) => $q->whereNull('order_id')->orWhereHas('sourceOrder', fn ($o) => $o->where('is_test', false)))
-            ->with(['redemptions', 'mergeAsSource'])
+            ->outstandingAt($toExclusive)
             ->get()
             ->sum(fn (Voucher $voucher) => $voucher->balanceAsOf($toExclusive));
     }

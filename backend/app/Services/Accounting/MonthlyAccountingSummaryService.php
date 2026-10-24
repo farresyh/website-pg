@@ -4,7 +4,6 @@ namespace App\Services\Accounting;
 
 use App\Models\BudgetEnvelopePosting;
 use App\Models\LedgerEntry;
-use App\Models\MembershipFeeRecord;
 use App\Models\Order;
 use App\Models\PaymentSettlement;
 use App\Models\SupplierLedgerEntry;
@@ -142,7 +141,8 @@ final class MonthlyAccountingSummaryService
      * so `expires_at` alone decides. A sandbox order's voucher was never
      * customer cash.
      *
-     * ADR-127 P1: the balance at the moment it expired, not today's
+     * ADR-127 P1: also a revoked voucher's balance at the moment it was
+     * revoked, in that month. And the balance at the moment it expired, not today's
      * `remaining`; a redemption restored onto it after it expired is
      * breakage of the month of the restore. So a later restore never
      * changes an earlier month.
@@ -166,7 +166,16 @@ final class MonthlyAccountingSummaryService
             ->whereHas('voucher', fn ($v) => $v->whereColumn('vouchers.expires_at', '<', 'voucher_redemptions.restored_at')->where($notSandbox))
             ->sum('restored_amount');
 
-        return (int) $atExpiry + (int) $restoredAfterExpiry;
+        // A revoked voucher's unspent balance, in the month it was revoked.
+        $revoked = Voucher::query()
+            ->where('revoked_at', '>=', $from)
+            ->where('revoked_at', '<', $toExclusive)
+            ->where($notSandbox)
+            ->with(['redemptions', 'mergeAsSource'])
+            ->get()
+            ->sum(fn (Voucher $v) => $v->balanceAsOf($v->revoked_at));
+
+        return (int) $atExpiry + (int) $restoredAfterExpiry + (int) $revoked;
     }
 
     /**
@@ -237,12 +246,19 @@ final class MonthlyAccountingSummaryService
         return $this->revenue->revenueSen($from, $toExclusive);
     }
 
+    /**
+     * ADR-127 decision 7: one source, the platform's `membership_fee` ledger
+     * rows, which Reports and the Report Assistant already read. A waived
+     * (RM0) fee record writes no ledger row, so the totals are equal.
+     */
     private function membershipRevenue(Carbon $from, Carbon $toExclusive): int
     {
-        return (int) MembershipFeeRecord::query()
+        return (int) LedgerEntry::query()
+            ->where('owner_type', LedgerOwnerType::Platform->value)
+            ->where('type', 'membership_fee')
             ->where('created_at', '>=', $from)
             ->where('created_at', '<', $toExclusive)
-            ->sum('amount_sen');
+            ->sum('amount');
     }
 
     /**
@@ -348,7 +364,7 @@ final class MonthlyAccountingSummaryService
     private function failedOrderCreditIssued(Carbon $from, Carbon $toExclusive): int
     {
         return (int) Voucher::query()
-            ->whereNotNull('order_id')
+            ->whereHas('sourceOrder', fn ($o) => $o->where('is_test', false))
             ->where('created_at', '>=', $from)
             ->where('created_at', '<', $toExclusive)
             ->sum('amount');
