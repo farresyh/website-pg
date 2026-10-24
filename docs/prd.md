@@ -829,10 +829,15 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
   merged to `staging` (#533–#536), PR 4a/4b merged (#538, #539), PR 5
   (`/joki`) merged (#540). Every planned PR is merged, not released. Launch is gated
   on item 131, CHIP payments, item 129, the rank icons and the rates.
+- **131** Financial truth from dated facts (ADR-127, grilled and
+  stress-tested 2026-10-24; scope widened by the founder from "revenue by
+  delivery date" to every money page). Revenue at `recognised_at`, closed
+  months that cannot move, CHIP `paid_on`/fee recorded, a scenario builder
+  with 11 cross-page invariants. Five stacked PRs (A–E, ADR-127 build
+  order). Must ship before Joki launches.
 
 **B. Needs a short grill / ADR addendum first**
-- **131** Revenue by delivery date (MFRS 15/MPERS, data test, a start month
-  that leaves closed months unchanged). Must ship before Joki launches.
+- None open.
 
 **C. Founder actions (no code)**
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
