@@ -10,6 +10,7 @@ use App\Models\PaymentSettlement;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\Voucher;
+use App\Models\VoucherRedemption;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Report\ReportService;
 use App\Support\MalaysiaTime;
@@ -140,14 +141,32 @@ final class MonthlyAccountingSummaryService
      * remaining balance as income. Expiry is lazy (the status never flips),
      * so `expires_at` alone decides. A sandbox order's voucher was never
      * customer cash.
+     *
+     * ADR-127 P1: the balance at the moment it expired, not today's
+     * `remaining`; a redemption restored onto it after it expired is
+     * breakage of the month of the restore. So a later restore never
+     * changes an earlier month.
      */
     private function voucherBreakage(Carbon $from, Carbon $toExclusive): int
     {
-        return (int) Voucher::query()
+        $notSandbox = fn ($q) => $q->whereNull('order_id')->orWhereHas('sourceOrder', fn ($o) => $o->where('is_test', false));
+
+        $atExpiry = Voucher::query()
             ->where('expires_at', '>=', $from)
             ->where('expires_at', '<', $toExclusive)
-            ->where(fn ($q) => $q->whereNull('order_id')->orWhereHas('sourceOrder', fn ($o) => $o->where('is_test', false)))
-            ->sum('remaining');
+            ->where($notSandbox)
+            ->with(['redemptions', 'mergeAsSource'])
+            ->get()
+            ->sum(fn (Voucher $v) => $v->balanceAsOf($v->expires_at));
+
+        $restoredAfterExpiry = VoucherRedemption::query()
+            ->where('status', 'restored')
+            ->where('restored_at', '>=', $from)
+            ->where('restored_at', '<', $toExclusive)
+            ->whereHas('voucher', fn ($v) => $v->whereColumn('vouchers.expires_at', '<', 'voucher_redemptions.restored_at')->where($notSandbox))
+            ->sum('restored_amount');
+
+        return (int) $atExpiry + (int) $restoredAfterExpiry;
     }
 
     /**

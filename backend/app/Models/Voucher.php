@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
@@ -128,5 +129,23 @@ class Voucher extends Model
     public function mergeAsSource(): HasOne
     {
         return $this->hasOne(VoucherMerge::class, 'source_voucher_id');
+    }
+
+    /**
+     * ADR-127 P1: what the customer could spend at `$at`, rebuilt from the
+     * redemption history (`remaining` is only today's figure). A source
+     * merged away by then holds nothing; its balance lives on in the target.
+     * Needs `redemptions` and `mergeAsSource` loaded.
+     */
+    public function balanceAsOf(CarbonInterface $at): int
+    {
+        if ($this->mergeAsSource !== null && $this->mergeAsSource->created_at < $at) {
+            return 0;
+        }
+
+        $before = $this->redemptions->filter(fn (VoucherRedemption $r) => $r->created_at < $at);
+        $restored = $before->filter(fn (VoucherRedemption $r) => $r->status === 'restored' && $r->restored_at < $at);
+
+        return max(0, $this->amount - (int) $before->sum('amount') + (int) $restored->sum('restored_amount'));
     }
 }
