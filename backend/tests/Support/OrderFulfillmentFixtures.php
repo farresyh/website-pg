@@ -222,7 +222,6 @@ trait OrderFulfillmentFixtures
 
     private function assertReconciliationHoldsForBasis(string $pricingBasis, int $affiliateProfit): void
     {
-        config(['services.real_cost_reconciliation.enabled' => true]);
         $order = $this->paidOrder([
             'pricing_basis' => $pricingBasis,
             'selling_price' => 1000,

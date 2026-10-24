@@ -41,7 +41,6 @@ class OrderSettlementServiceTest extends TestCase
     {
         parent::setUp();
         $this->adminId = AdminUser::factory()->create(['role' => 'admin'])->id;
-        config(['services.real_cost_reconciliation.enabled' => true]);
     }
 
     private function service(): OrderSettlementService

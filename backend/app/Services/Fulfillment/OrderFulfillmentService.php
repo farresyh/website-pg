@@ -338,7 +338,7 @@ final class OrderFulfillmentService
                     'real_cost_price_sen' => $realCostPriceSen,
                 ];
 
-                if ($realCostPriceSen !== null && config('services.real_cost_reconciliation.enabled', false)) {
+                if ($realCostPriceSen !== null) {
                     $updateData += $this->reconcileRealCostProfit($locked, $realCostPriceSen);
                 }
 
@@ -883,16 +883,12 @@ final class OrderFulfillmentService
                     : $this->orderStatus->markDelivered($locked->delivery_status);
 
                 // ADR-107 decision 2, cost input widened by ADR-111
-                // decision 3/8: real per-transaction cost when the flag
-                // is enabled (decision 2's leg-level capture, falling
-                // back to this leg's own live catalog cost only if ITS
-                // real cost is missing — a genuinely unavailable FX rate
-                // at that one leg's delivery moment, decision 6); the
-                // flag disabled restores the exact pre-ADR-111 live
-                // catalog-cost-only aggregation (decision 8's kill
-                // switch). Never a frozen snapshot either way — there
+                // decision 3: real per-transaction cost (decision 2's
+                // leg-level capture, falling back to this leg's own live
+                // catalog cost only if ITS real cost is missing — a
+                // genuinely unavailable FX rate at that one leg's delivery
+                // moment, decision 6). Never a frozen snapshot — there
                 // isn't one for cost, only `selling_price_sen` (decision 1).
-                $useRealCost = config('services.real_cost_reconciliation.enabled', false);
                 $costTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->costSen());
                 $reconciledPlatformProfit = $locked->selling_price - $costTotal - $locked->affiliate_profit;
 
@@ -914,7 +910,6 @@ final class OrderFulfillmentService
                         'order_id' => $locked->id,
                         'reconciled_platform_profit' => $reconciledPlatformProfit,
                         'cost_total' => $costTotal,
-                        'used_real_cost' => $useRealCost,
                         'affiliate_profit' => $locked->affiliate_profit,
                         'frozen_selling_price' => $locked->selling_price,
                     ]);
@@ -1140,7 +1135,7 @@ final class OrderFulfillmentService
                     'real_cost_price_sen' => $realCostPriceSen,
                 ];
 
-                if ($realCostPriceSen !== null && config('services.real_cost_reconciliation.enabled', false)) {
+                if ($realCostPriceSen !== null) {
                     $updateData += $this->reconcileRealCostProfit($locked, $realCostPriceSen);
                 }
 

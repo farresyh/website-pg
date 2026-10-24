@@ -92,7 +92,6 @@ class Adr125ManualQueueTest extends TestCase
 
     public function test_a_different_real_cost_needs_a_reason_and_reconciles_profit(): void
     {
-        config(['services.real_cost_reconciliation.enabled' => true]);
         $order = $this->pendingManualOrder();
 
         $this->postJson("/api/orders/{$order->id}/manual/delivered", ['supplier_id' => $order->supplier_id, 'real_cost_sen' => 950])->assertJsonValidationErrors('reason');
