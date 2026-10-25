@@ -3,25 +3,31 @@
 namespace Tests\Feature\Accounting;
 
 use App\Models\AccountingPeriodClose;
-use App\Models\BudgetEnvelopePosting;
 use App\Models\Affiliate;
+use App\Models\BudgetEnvelopePosting;
 use App\Models\LedgerEntry;
+use App\Models\MembershipPlan;
 use App\Models\Order;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
+use App\Models\SupplierTransfer;
 use App\Models\Voucher;
+use App\Models\Withdrawal;
 use App\Services\Accounting\CashPositionService;
 use App\Services\Accounting\EnvelopePostingType;
 use App\Services\Accounting\MonthlyAccountingSummaryService;
 use App\Services\Accounting\RecognisedRevenue;
+use App\Services\Accounting\SupplierFundingService;
 use App\Services\Accounting\TransactionRegisterService;
 use App\Services\Affiliate\AffiliateEarningsService;
 use App\Services\Dashboard\DashboardService;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Pricing\PricingBasis;
 use App\Services\Report\ReportService;
 use App\Services\Reseller\ResellerWalletService;
+use App\Services\Withdrawal\WithdrawalStatus;
 use Carbon\CarbonImmutable;
 use Database\Seeders\FinancialScenario\FinancialScenario;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -56,7 +62,7 @@ class FinancialScenarioTest extends TestCase
     /** @var list<Order> */
     private array $idrOrders = [];
 
-    private \App\Models\Withdrawal $withdrawal;
+    private Withdrawal $withdrawal;
 
     /** @var list<array<string, mixed>> */
     private array $septemberRegisterAtClose;
@@ -231,15 +237,46 @@ class FinancialScenarioTest extends TestCase
         $this->assertSame(0, $this->septemberClose->gap_sen, json_encode($this->septemberClose->equation));
     }
 
+    /**
+     * ADR-083 2026-10-25 addendum (§16 item 132): from October an IDR
+     * supplier is costed at a moving weighted average, so deposits at
+     * different rates in different months, and a balance correction, still
+     * leave every close with no gap: each ringgit sent is a cost in some
+     * month or still in the prepaid balance.
+     */
+    public function test_idr_deposits_at_changing_rates_leave_no_gap_at_any_close(): void
+    {
+        $s = $this->scenario;
+        [$ffSmall, $ffMid] = $s->idrPackages;
+
+        $s->at('2026-10-21 09:00')->fundIdrSupplier(80_000, 3_500.0);
+        $s->at('2026-10-22 15:00')->pay($s->storefrontOrder($ffMid));
+        $s->at('2026-10-27 12:00')->settleChip();
+        $october = $s->at('2026-11-05 10:00')->closeMonth(2026, 10);
+
+        $s->at('2026-11-06 09:00')->fundIdrSupplier(60_000, 3_900.0);
+        $s->at('2026-11-10 15:00')->pay($s->storefrontOrder($ffSmall));
+        $s->at('2026-11-12 15:00')->pay($s->storefrontOrder($ffMid));
+        app(SupplierFundingService::class)->recordManualAdjustment(
+            SupplierTransfer::query()->latest('id')->firstOrFail(), '-12345.0000', 'Scenario: supplier balance short', $s->admin->id,
+        );
+        $s->at('2026-11-24 12:00')->settleChip();
+        $november = $s->at('2026-12-03 10:00')->closeMonth(2026, 11);
+
+        $this->assertSame(0, $october->gap_sen, json_encode($october->equation));
+        $this->assertSame(0, $november->gap_sen, json_encode($november->equation));
+        $this->assertLessThan(0, $november->profit_lines['supplier_manual_adjustments_sen']);
+    }
+
     /** Membership (ADR-068): the fee is revenue the month it is paid, the same figure on the Summary and on Reports; the member's order is priced as a member's. */
     public function test_membership_revenue_agrees_and_the_member_pays_member_prices(): void
     {
-        $fee = \App\Models\MembershipPlan::query()->where('name', 'Tier 2')->value('fee_sen');
+        $fee = MembershipPlan::query()->where('name', 'Tier 2')->value('fee_sen');
         $september = app(MonthlyAccountingSummaryService::class)->forPeriod(2026, 9);
 
         $this->assertSame($fee, $september['membership_revenue_sen']);
         $this->assertSame($fee, app(ReportService::class)->membershipBreakdown(...self::month(2026, 9), affiliateId: null)['membership_fee_revenue']);
-        $this->assertSame(\App\Services\Pricing\PricingBasis::Member, $this->memberOrder->fresh()->pricing_basis);
+        $this->assertSame(PricingBasis::Member, $this->memberOrder->fresh()->pricing_basis);
     }
 
     /** An IDR supplier funded at its own deposit rates: the deposit-vs-market line is real, and COGS is per-order cost plus it. */
@@ -269,7 +306,7 @@ class FinancialScenarioTest extends TestCase
         $this->assertSame(DeliveryStatus::Delivered, $resent->delivery_status);
         $this->assertFalse($resent->isAlreadyCompensated());
 
-        $this->assertSame(\App\Services\Withdrawal\WithdrawalStatus::Completed, $this->withdrawal->status);
+        $this->assertSame(WithdrawalStatus::Completed, $this->withdrawal->status);
         $this->assertSame(0, app(CashPositionService::class)->asOf(2026, 10)['claims']['affiliate_withdrawals_unpaid_sen']);
     }
 

@@ -2091,6 +2091,14 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - the two voids of 15 September were written as `MANUAL_ADJUSTMENT` rows (−1,224,819 IDR).
 - **Founder:** build in the next session.
 
+## 2026-10-25 — Item 132 built: IDR deposits at a moving weighted average
+
+- **What:** ADR-083's 2026-10-25 addendum, built on `feature/item-132-idr-moving-average` (#551).
+  - `MovingAveragePool` replays a foreign-currency supplier's pool from 1 October 2026. It opens with the units at 30 September at that day's cumulative average, which is September's close value, so September does not move. A deposit adds its net units and ringgit at the start of its `transferred_on` day. Every other row takes `round(pool_sen × units ÷ pool_units)`. An empty pool uses the last known average.
+  - A voided transfer and every row that references it are left out.
+  - `SupplierRowValuer` costs a row the same way for every reader: COGS, drawdowns not in COGS, and the Summary's supplier corrections line. `CashPositionService` reads the pool's month-end value. An MYR supplier and any row before the opening keep the old rate.
+- **Test first:** `FinancialScenarioTest` gained IDR deposits at RM1/3,500 IDR (October) and RM1/3,900 IDR (November), plus a November balance correction. On the old method the October close had a gap of −33 sen. It is now 0 for both months. `MovingAveragePoolTest` checks the arithmetic by hand: conservation to the sen, the empty pool, the opening and month-end cut, the voided transfer, and a correction at the average.
+- **Not done yet:** merge, release, then a read-only check that prod October moves only a few sen.
 ## 2026-10-25 — Joki offered from Epic up
 
 - **Founder:** offer joki from Epic up and drop Warrior, Elite, Master and Grandmaster. The founder chose a migration over a per-tier panel switch (ADR-126 2026-10-25 addendum).
