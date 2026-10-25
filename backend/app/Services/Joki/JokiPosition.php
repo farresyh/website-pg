@@ -6,7 +6,7 @@ use App\Models\JokiTier;
 
 /**
  * A validated rank on the ladder. `divisional`: `index` counts stars from
- * Warrior's first; `grading`: Legend finished, Mythic Grading not played;
+ * Epic's first; `grading`: Legend finished, Mythic Grading not played;
  * `mythic`: `mythicStars` on the Mythic star count.
  */
 final readonly class JokiPosition

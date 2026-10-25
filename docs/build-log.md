@@ -2090,3 +2090,16 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - the running IDR balance never negative (41 rows);
   - the two voids of 15 September were written as `MANUAL_ADJUSTMENT` rows (−1,224,819 IDR).
 - **Founder:** build in the next session.
+
+## 2026-10-25 — Joki offered from Epic up
+
+- **Founder:** offer joki from Epic up and drop Warrior, Elite, Master and Grandmaster. The founder chose a migration over a per-tier panel switch (ADR-126 2026-10-25 addendum).
+- **Built** on `feature/joki-epic-and-up`:
+  - The migration `2026_10_25_100000_remove_joki_tiers_below_epic` deletes the four tiers. It refuses if a route references them; `down()` restores them.
+  - The `GM` alias is removed from `JokiRankParser`.
+  - Tests now expect six tiers starting at Epic.
+- **Verified:**
+  - `php artisan test`: 3070/3070.
+  - The local dev DB was migrated and now has Epic, Legend and the four Mythic tiers.
+  - The local `/api/joki/catalog` lists Epic first. A quote from Epic V 0★ to Legend V 0★ is 25 stars × RM2 = RM50.
+  - The storefront and admin read the tiers from the API, with no tier name hardcoded. There was no browser screenshot, because local Chrome to `.test` is still broken.

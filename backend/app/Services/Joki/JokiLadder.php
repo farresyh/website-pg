@@ -52,7 +52,7 @@ final class JokiLadder
         return $this->divisional->concat($this->mythic);
     }
 
-    /** Stars from Warrior's first to Legend finished: the Grading state's index. */
+    /** Stars from the lowest tier's first (Epic V 0★) to Legend finished: the Grading state's index. */
     public function belowMythicStars(): int
     {
         return $this->belowMythicStars;
