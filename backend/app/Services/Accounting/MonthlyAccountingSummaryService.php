@@ -220,8 +220,10 @@ final class MonthlyAccountingSummaryService
 
     /**
      * Decision 11 (Q26) — a partial supplier-balance correction recorded
-     * this month, in MYR at the month-end rate. A voided transfer's
-     * adjustments are reversed by its void, so they are skipped.
+     * this month, in MYR at the month-end rate, or from the pool's opening
+     * at the pool's average when it was made (2026-10-25 addendum, Q6). A
+     * voided transfer's adjustments are reversed by its void, so they are
+     * skipped.
      */
     private function supplierManualAdjustments(Carbon $from, Carbon $toExclusive): int
     {
@@ -230,13 +232,9 @@ final class MonthlyAccountingSummaryService
             ->where('created_at', '>=', $from)
             ->where('created_at', '<', $toExclusive)
             ->whereIn('reference_id', SupplierTransfer::query()->whereNull('voided_at')->select('id'))
-            ->selectRaw('supplier_id, SUM(amount) as total')
-            ->groupBy('supplier_id')
-            ->get();
+            ->get(['id', 'supplier_id', 'amount', 'created_at']);
 
-        $lastDay = self::klLastDay($toExclusive);
-
-        return (int) $rows->sum(fn ($row) => (int) round(((float) $row->total) * ($this->costOfSales->weightedAverageRate((int) $row->supplier_id, $lastDay) ?? 0.0) * 100));
+        return $this->costOfSales->valuer($rows, self::klLastDay($toExclusive))->value($rows);
     }
 
     /** The KL calendar date of the last day before an exclusive UTC bound. */
