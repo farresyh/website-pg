@@ -804,7 +804,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Membership (VIP, per-brand) | 🟢 Live in prod (kill switch ON) — 2 fixed tiers, email-OTP identity, live member pricing + quota, self-serve subscribe + pay via CHIP, admin per-member detail. Real tier numbers set. Per-brand `/membership` fully gated. Renewal-reminder emails at H-3 and H+1 (Malaysia days), listed on the admin member page (item 64, live via #416 2026-10-13). WhatsApp reminders designed, waiting on a trigger (§16 item 85) | ADR-027, 055, 068, 080 |
 | Customer notifications (WhatsApp) | 🟢 Live in prod since 2026-09-30, switch **ON**. The CS-session webhook was added (its secret fixed by the model), and OpenWA `SEND_PACING` is on. Founder live-tested: two Delivered receipts sent, each branded by its own order (FixFast and PekanGame from one number), and `STOP` confirmed. The voucher path was live-tested 2026-10-06 (a failed order's Issue Voucher code arrived on WhatsApp), along with the status card and not-found reply. Voucher codes are sent proactively (Issue/Restore Voucher; a standalone voucher with a phone). Delivered receipts go to opted-in numbers. Sends go from the OpenWA `customer-support` session on a paced one-worker lane, recorded in `customer_notifications` and shown on the admin order and voucher pages. Email deliberately not used. **Follow-up #326 released to `main` 2026-10-01 via #332** (order number = opt-in, timeline status card, not-found reply, `START`, skipped revival, reordered help card; see §14). **2026-10-12 (§16 item 69):** every order-number message gets a card or a not-found reply; the silent repeat throttles are removed (live via #416; the founder confirmed on a real phone 2026-10-13) **2026-10-19 (ADR-125 PR 2a, released via #514):** the same persisted queue also carries supplier-group posts on the bot session (`session`/`chat_id`), with a send slot per session, so customer pacing and the customer switch are unchanged | ADR-116 |
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped) | ADR-053, 082 |
-| Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private): full DB dump except `player_validations`, 7d/4w/6m retention, nightly at 02:07. **Encrypted only from 2026-10-22:** `BACKUP_ARCHIVE_PASSWORD` was unset from go-live until the founder set it on 2026-10-22, so every archive before then is a plain zip in the private bucket (deleted in §16 item 96 step 3). Fail-closed encryption and the OpenWA source (ADR-039 2026-10-22 addendum) are live since release #526 (2026-10-22); the first OpenWA run and a restore drill are §16 item 96. **Restore test verified again 2026-10-15** (run #47, `restore_test_passed = 1`, 72s, after release #449); nightly runs 2026-10-01..15 had failed (§16 item 97, closed). Fixed in code on 2026-10-14. The fix adds one restore path shared by the nightly test and a new `app:restore-backup` command; restores go only into an empty database; DEFINER clauses are dropped on restore; verification is real (no missing table, no pending migration); 300s timeout on `redis-long`; and killed runs close themselves. Released 2026-10-15 (#441, then the fixed-name follow-up #442 via #449) with the ADR-117 exact-name grant. Earlier history: the 2026-09-14 GTID fix, build-log-archive | ADR-039, ADR-095, ADR-117 |
+| Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private): full DB dump except `player_validations`, 7d/4w/6m retention, nightly at 02:07. **Encrypted only from 2026-10-22:** `BACKUP_ARCHIVE_PASSWORD` was unset from go-live until the founder set it on 2026-10-22, so every archive before then is a plain zip in the private bucket (deleted 2026-10-25, §16 item 96). Fail-closed encryption and the OpenWA source (ADR-039 2026-10-22 addendum) are live since release #526 (2026-10-22); OpenWA runs nightly at 19:37 with a passing restore test since 2026-10-22; a password-manager restore drill is §16 item 96. **Restore test verified again 2026-10-15** (run #47, `restore_test_passed = 1`, 72s, after release #449); nightly runs 2026-10-01..15 had failed (§16 item 97, closed). Fixed in code on 2026-10-14. The fix adds one restore path shared by the nightly test and a new `app:restore-backup` command; restores go only into an empty database; DEFINER clauses are dropped on restore; verification is real (no missing table, no pending migration); 300s timeout on `redis-long`; and killed runs close themselves. Released 2026-10-15 (#441, then the fixed-name follow-up #442 via #449) with the ADR-117 exact-name grant. Earlier history: the 2026-09-14 GTID fix, build-log-archive | ADR-039, ADR-095, ADR-117 |
 | Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning. `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-form picker (`ImageUrlInput`, live via #406, 2026-10-12) on Edit Game, Hero Slide and the two SEO OG-image fields; the URL stays a plain text field | ADR-095 |
 | SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage. **ADR-120 (live 2026-10-08):** tokens in every SEO field, per-brand canonical origin (canonical/sitemap/robots/llms/JSON-LD), all packages in HTML, Product `offers` + `aggregateRating`, fact line, admin FAQ + `FAQPage` | ADR-029, ADR-042, ADR-120 |
 | Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 (Telegram) dropped and its fields removed (live via #406, 2026-10-12). Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this. A re-upload shows at once (`?v=` on the URL, #409, live via #416; founder-checked 2026-10-13). **2026-10-22:** a fourth legal page, Refund Policy (`/refund-policy`, edited beside Terms/Privacy/About Us), for CHIP's merchant review, live via #528 | ADR-028, 089 |
@@ -886,11 +886,10 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
   `/api/health`, the OpenWA gateway and `/api/health/whatsapp` (third monitor
   added and alert-tested by the founder 2026-10-14).
-- **71** GSC recheck around 2026-10-22.
-- **96** OpenWA after the v0.25.0 upgrade (done 2026-10-22): backup and
-  enforced encryption and the `400` fix are live (release #526,
-  2026-10-22) — next, "Backup Now → OpenWA" and a restore drill; then
-  retention and cleanup.
+- **96** OpenWA after the v0.25.0 upgrade: backup, encryption, the `400`
+  fix and the cleanup are done (2026-10-25). Left: restart OpenWA in Forge so
+  `MESSAGE_RETENTION_DAYS=90` takes effect, and one restore drill with the
+  password from the password manager.
 
 **D. Waiting on a trigger: don't build early**
 - **129** Refund to the original payment method, on hold until CHIP answers
@@ -1051,8 +1050,6 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     (`ENGINE_TYPE` is global, so a switch would also move `customer-support`), and
     plan the QR re-pairing of both numbers.
 
-71. **GSC recheck around 2026-10-22** (Pages report: duplicate / canonical reasons, indexed vs not indexed). ADR-120 went live 2026-10-08 (#369); the admin SEO › FAQ click-through was done by the founder on 2026-10-10. Founder-deferred: GA4, default OG image, Bing.
-
 74. **Ask the external reviewer before the first non-zero affiliate tier
     fee** (ADR-083 2026-10-08 addendum). The Monthly Summary shows the fee
     as a neutral line; the reviewer decides whether it is revenue or a
@@ -1186,11 +1183,17 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
        `OPENWA_INSTALL_DIR=/home/forge/OpenWA` on Forge; Horizon restarted
        (the next 02:07 database run is the first encrypted one — check its
        `backup_runs` row);
-    2. ✅ released 2026-10-22 (#526). Next: "Backup Now → OpenWA", check
-       its restore test; one restore drill with the password from the password manager;
-    3. with the founder's go-ahead: delete the plaintext database archives on
-       R2, then `~/openwa-backups/`, `~/OpenWA-v0.23.7` and the
-       `.env.bak-*` files.
+    2. ✅ released 2026-10-22 (#526). "Backup Now → OpenWA" ran 2026-10-22
+       (run #55) and every nightly OpenWA run since has passed its restore
+       test. **Left:** one restore drill with the password from the password
+       manager (founder);
+    3. ✅ done 2026-10-25 with the founder's go-ahead: the 10 plaintext
+       database archives on R2 deleted, then `~/openwa-backups/` and
+       `~/OpenWA-v0.23.7` (with its three `.env.bak-*` files).
+
+    **Retention:** `MESSAGE_RETENTION_DAYS=90` added to OpenWA's `.env`
+    2026-10-25 (founder's choice; the backend never reads OpenWA's message
+    history). **Left:** the founder restarts OpenWA in Forge so it applies.
 
 104. **Reseller wallet top-up KPIs (founder, 2026-10-15) — design not started.**
     Nothing shows how often or how much Resellers top up their wallets. Today
@@ -1363,6 +1366,7 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **71** 2026-10-25: GSC recheck (data to 16/10). The duplicate and canonical reasons ADR-120 targeted are gone. Left: 3 "Page with redirect" (`http://`, `www` → apex, as intended) and 42 "Discovered – currently not indexed", none crawled yet; robots, canonicals and the sitemap (50 URLs, read 25/10, Success) checked fine, so it is crawl priority on a new domain. Indexing requested for 5 top pages. `/order/call-of-duty-mobile` is `noindex` because the game is inactive (since 2026-10-18), which is correct. Details: build-log 2026-10-25.
 - **130** 2026-10-23: the cause was not health judging an unfunded supplier. A refused connection was thrown out of `checkBalance()`, which aborted the daily balance sweep (Digiflazz, after Gamevion, wasn't refreshed) and 500'd Refresh Balance, the credential probe and Developer Tools. The breaker decorator now returns it as a `CONNECTION_FAILED` response for `checkBalance` only (counted once; order calls still throw), and the daily refresh isolates each supplier, failing the task only on a real bug. ADR-069 2026-10-23 addendum; details: build-log 2026-10-23. Released 2026-10-25 (#554). Prod hit the original failure once more that morning (a Gamevion SSL timeout at 00:00 UTC, before the release).
 - **124** 2026-10-22: Releases #514 and #517 verified on the box; #516 measured. DevTools on `/admin/orders` shows 0 OPTIONS requests. Pulse, 3 days: 15 slow requests spread evenly, not clustered at the scheduler ticks, none on admin endpoints. Details: build-log 2026-10-22.
 - **126** 2026-10-22: Login Top-up spec written from ADR-124/125 and the code: §6.24 (LOGIN-1..7, MSUP-1..7), §7.6 flow, §8 Supplier columns plus OrderCredential, CredentialReveal, WhatsAppGroup, SupplierLoginLink and CustomerNotification, and §11 now points at §16 group E with its shipped lines removed. `reply_sla_minutes` turned out to live in `api_config.manual`, not a column.
