@@ -199,3 +199,11 @@
 - There is no "Joki – partial work" or "Joki – extra pay" category and no joki envelope posting. The joki cost is `cost_price`, so the Joki margin on Reports is exact.
 - The penjoki terms must say so.
 
+
+### 2026-10-25 addendum — joki is offered from Epic up (founder)
+
+- Revises decision 3's rank model. Warrior, Elite, Master and Grandmaster are removed, so the ladder starts at Epic V 0★. The `/joki` calculator, the quote, the admin rank editor and the penjoki's `.progress` all read the ladder, so each starts at Epic with no other change.
+- Done by a migration (`remove_joki_tiers_below_epic`), not a per-tier switch: the founder chose the simpler option. Offering a lower rank again means a new migration (its `down()` restores the four at their old places).
+- The migration refuses to run if any route starts or ends below Epic. Joki was never released, so production has none. An order keeps its own rank snapshot.
+- The `GM` alias in `.progress` is gone with Grandmaster.
+- The launch gate "confirm the Warrior/Elite/Master rates" no longer exists.

@@ -2099,6 +2099,18 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - `SupplierRowValuer` costs a row the same way for every reader: COGS, drawdowns not in COGS, and the Summary's supplier corrections line. `CashPositionService` reads the pool's month-end value. An MYR supplier and any row before the opening keep the old rate.
 - **Test first:** `FinancialScenarioTest` gained IDR deposits at RM1/3,500 IDR (October) and RM1/3,900 IDR (November), plus a November balance correction. On the old method the October close had a gap of −33 sen. It is now 0 for both months. `MovingAveragePoolTest` checks the arithmetic by hand: conservation to the sen, the empty pool, the opening and month-end cut, the voided transfer, and a correction at the average.
 - **Not done yet:** merge, release, then a read-only check that prod October moves only a few sen.
+## 2026-10-25 — Joki offered from Epic up
+
+- **Founder:** offer joki from Epic up and drop Warrior, Elite, Master and Grandmaster. The founder chose a migration over a per-tier panel switch (ADR-126 2026-10-25 addendum).
+- **Built** on `feature/joki-epic-and-up`:
+  - The migration `2026_10_25_100000_remove_joki_tiers_below_epic` deletes the four tiers. It refuses if a route references them; `down()` restores them.
+  - The `GM` alias is removed from `JokiRankParser`.
+  - Tests now expect six tiers starting at Epic.
+- **Verified:**
+  - `php artisan test`: 3070/3070.
+  - The local dev DB was migrated and now has Epic, Legend and the four Mythic tiers.
+  - The local `/api/joki/catalog` lists Epic first. A quote from Epic V 0★ to Legend V 0★ is 25 stars × RM2 = RM50.
+  - The storefront and admin read the tiers from the API, with no tier name hardcoded. There was no browser screenshot, because local Chrome to `.test` is still broken.
 
 ## 2026-10-25 — Dashboard System details in plain words
 

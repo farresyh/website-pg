@@ -15,12 +15,10 @@ use Illuminate\Validation\ValidationException;
  *    is taken from the stars, so `Mythic 30` reads as Mythical Honor 30★.
  *
  * A tier is matched case- and space-insensitively on its name, its last
- * word (`Honor`), a prefix of three letters or more, or `GM`.
+ * word (`Honor`), or a prefix of three letters or more.
  */
 final class JokiRankParser
 {
-    private const ALIASES = ['gm' => 'grandmaster'];
-
     private const ROMAN = ['i' => 1, 'ii' => 2, 'iii' => 3, 'iv' => 4, 'v' => 5, 'vi' => 6, 'vii' => 7, 'viii' => 8];
 
     public function __construct(private readonly JokiLadder $ladder) {}
@@ -53,7 +51,7 @@ final class JokiRankParser
 
     private function match(string $input): ?JokiTier
     {
-        $key = self::ALIASES[$this->normalize($input)] ?? $this->normalize($input);
+        $key = $this->normalize($input);
         if (strlen($key) < 2) {
             return null;
         }

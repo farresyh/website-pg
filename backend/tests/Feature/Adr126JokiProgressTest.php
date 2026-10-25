@@ -147,8 +147,8 @@ class Adr126JokiProgressTest extends TestCase
 
     public function test_progress_accepts_mythic_star_counts_short_names_and_digits(): void
     {
-        $this->say(".progress {$this->order->order_number} GM 2 4");
-        $this->assertSame('Grandmaster II 4★', JokiOrder::query()->sole()->current_rank['label']);
+        $this->say(".progress {$this->order->order_number} leg 2 4");
+        $this->assertSame('Legend II 4★', JokiOrder::query()->sole()->current_rank['label']);
 
         $this->say(".progress {$this->order->order_number} Mythic 30");
         $this->assertSame('Mythical Honor 30★', JokiOrder::query()->sole()->fresh()->current_rank['label']);
