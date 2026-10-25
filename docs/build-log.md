@@ -2123,3 +2123,20 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - Dashboard tests pass (40), along with admin `tsc` and lint.
   - Local screenshot of the panel with the suppliers tooltip open and a late task.
   - Locally, `supplier-balance-refresh`'s heartbeat was set late on purpose to show the error line.
+
+## 2026-10-25 — Release #554 live (`staging`→`main`, #529–#553)
+
+- **Before release:**
+  - Prod `/api/health` had been 503 since 25 Oct 00:00 UTC. `supplier-balance-refresh` failed on a Gamevion `check-balance` SSL timeout (cURL 28), which aborted the sweep before Digiflazz. This is item 130's failure; its fix (#531) was on `staging` only.
+  - Read-only checks: 0 duplicate drawdowns, so the unique `drawdown_key` index was safe. October snapshot: COGS 38,506 sen, Digiflazz prepaid 18,549 sen.
+- **Merged** with the founder's go-ahead:
+  - #551 (item 132);
+  - #552 (joki from Epic up), after a docs conflict with #551 was resolved by keeping both;
+  - #553 (plain tooltips), same kind of conflict;
+  - then release #554 as `0d6b8ad`. CI and `deploy` were green.
+- **Box, read-only:**
+  - release `81129239` is live, and all 14 migrations ran;
+  - Horizon is running;
+  - `joki_tiers` = Epic, Legend and the four Mythic tiers; joki is off;
+  - October COGS and prepaid are unchanged. The pool matches the old method to the sen, at 797,643 IDR = 18,549 sen, because there has been no deposit since September.
+- **Still red:** `/api/health` stays `scheduler: false` until `supplier-balance-refresh` succeeds. `schedule:test` would not clear it, because it runs the event without firing `ScheduledTaskFinished`, so no heartbeat is written. It clears at the next daily run (00:00 UTC), now with the fix live.
