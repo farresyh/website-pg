@@ -63,3 +63,23 @@ Further check, at the founder's prompt: is a charting library the actual house s
    - Fix: every Sales aggregate (`summary()`, `dailyTrend()`/`dailyBreakdown()` via `salesByGroup()`, `gameBreakdown()`/`paymentMethodBreakdown()`/`affiliateBreakdown()`/`resellerBreakdown()` via the same `salesByGroup()`) now nets `final_amount` against any `wallet_refund` ledger entry tied to that same order (a correlated subquery, `ReportService::netSalesExpr()`), scoped by the **order's own `paid_at`**, never the refund's own `created_at` — so a refund posted on a later day still nets against the day the order was originally paid, keeping every day/period self-contained (never showing a negative "Sales" day purely from an old refund). Per-order raw figures (the "Latest Order" info card, `exportRows()`'s CSV) are left untouched — the fix targets aggregate Sales, not the per-order factual record already surfaced elsewhere via ADR-102's Refund Information badges. `orders_count` is unaffected — a refunded order still real, still counted, just contributes RM0 net sales.
    - **`CustomerAnalyticsService`'s `total_spent` inherits the same fix** (it already reuses this ADR's pinned rule "verbatim" by its own doc comment, ADR-049 decision 2) — `aggregatesByEmail()`'s raw SQL gets the same correlated-subquery net expression, `customerDetail()`'s PHP-side `total_spent`/`monthly_trend`/`top_packages`/`top_sources` figures net via a batched per-order `wallet_refund` lookup (`attachNetFinalAmount()`). No separate ADR-049 addendum — cross-referenced here instead, one source of truth for the rule both services share.
    - Tests: +2 `ReportServiceTest` (summary + resellerBreakdown net against a real refund scenario), +2 `ReportMembershipBreakdownTest` (bucket exclusion, affiliate-scoped fee revenue), +1 `CustomerAnalyticsServiceTest`. Full backend suite **2185/2185** green, Pint clean, `admin/` `tsc` clean.
+
+### 2026-10-25 addendum — one order, one place: a wallet order is its Reseller's only (founder)
+
+**Context.** A reseller-wallet order carries the primary brand's `affiliate_id` (ADR-073 decision 5). The founder found PekanGame at RM563.72 / 37 orders on Reports → Partners → Affiliate performance, although only RM110.60 / 22 orders were sold on its storefront. The rest, RM453.12 / 15 orders, were Naeem Industries' and FixFast's wallet orders, which the Reseller table already shows. So adding the brands and the resellers counted those orders twice.
+
+**Decision.** The primary brand is an Affiliate like any other. An Affiliate's figures are its storefront orders only. A reseller-wallet order counts toward its Reseller only, on every view that filters or groups by Affiliate:
+- Reports' Affiliate performance;
+- the Reports Affiliate filter, on every tab;
+- the Customer Analytics Affiliate filter;
+- the Admin Affiliates list's order count;
+- the affiliate portal's sales aggregate;
+- the Report Assistant's `llm_report_orders` view, where `affiliate_id` and `affiliate_name` are null for a wallet order.
+
+The rule lives in one place: `Order::scopeSoldByAffiliate()` and `Order::affiliateKeySql()`.
+
+**Unchanged.** Sales by channel, the Reseller table, the Orders Source filter and Customer Analytics' Source were already exclusive. Accounting never splits by Affiliate.
+
+Production check, read-only: wallet orders have `affiliate_profit` 0. Their 11 affiliate `order_profit` ledger rows (owner 1) are all RM0, and the primary affiliate's balance is RM0. So no money figure moves.
+
+**Proof.** `FinancialScenarioTest::test_a_wallet_order_counts_toward_its_reseller_only`: brands plus resellers equal total sales, both through the breakdown and through the filter. It also covers the Customer Analytics filter, the Affiliates list count and the view. It was red before the fix: brands plus resellers came to 23,910 sen against a total of 21,700.

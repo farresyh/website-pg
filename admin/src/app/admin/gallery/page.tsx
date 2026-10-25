@@ -25,6 +25,9 @@ import {
   getGalleryImageReferences,
 } from "@/lib/gallery";
 
+/** UploadGalleryImageRequest's `max:5120` (KB). */
+const GALLERY_MAX_BYTES = 5 * 1024 * 1024;
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -90,6 +93,12 @@ export default function GalleryPage() {
       // One request per file — matches the backend's single-file-per-
       // request contract (UploadGalleryImageRequest); a multi-file
       // drop just fires several uploads, not one multi-file endpoint.
+      // The gallery's own limit (UploadGalleryImageRequest: 5 MB), said before the upload, by file name.
+      const tooBig = Array.from(files).find((f) => f.size > GALLERY_MAX_BYTES);
+      if (tooBig) {
+        setError(`${tooBig.name} is ${formatSize(tooBig.size)}. Each image can be up to 5 MB.`);
+        return;
+      }
       for (const file of Array.from(files)) {
         await uploadGalleryImage(file);
       }

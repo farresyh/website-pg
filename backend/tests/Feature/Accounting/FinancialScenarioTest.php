@@ -20,6 +20,8 @@ use App\Services\Accounting\RecognisedRevenue;
 use App\Services\Accounting\SupplierFundingService;
 use App\Services\Accounting\TransactionRegisterService;
 use App\Services\Affiliate\AffiliateEarningsService;
+use App\Services\CustomerAnalytics\CustomerAnalyticsService;
+use App\Services\CustomerAnalytics\CustomerFilters;
 use App\Services\Dashboard\DashboardService;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
@@ -32,6 +34,7 @@ use Carbon\CarbonImmutable;
 use Database\Seeders\FinancialScenario\FinancialScenario;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
@@ -266,6 +269,48 @@ class FinancialScenarioTest extends TestCase
         $this->assertSame(0, $october->gap_sen, json_encode($october->equation));
         $this->assertSame(0, $november->gap_sen, json_encode($november->equation));
         $this->assertLessThan(0, $november->profit_lines['supplier_manual_adjustments_sen']);
+    }
+
+    /**
+     * ADR-086 2026-10-25 addendum: one order, one place. A reseller-wallet
+     * order carries the primary brand's affiliate_id but counts toward its
+     * Reseller only, on every view that splits by Affiliate: Reports'
+     * breakdown and filter, Customer Analytics' filter, the Affiliates
+     * list and the Report Assistant's view. So the brands plus the
+     * resellers add up to the whole, never more.
+     */
+    public function test_a_wallet_order_counts_toward_its_reseller_only(): void
+    {
+        $s = $this->scenario;
+        $reports = app(ReportService::class);
+        [$from, $to] = self::month(2026, 9);
+        $wallet = Order::query()->whereNotNull('wallet_reseller_id')->where('payment_status', 'paid')->where('is_test', false);
+        $this->assertGreaterThan(0, (clone $wallet)->count());
+        $this->assertSame(0, (clone $wallet)->where('affiliate_id', '!=', $s->platform->id)->count(), 'the premise: a wallet order carries the primary brand');
+
+        $total = $reports->summary($from, $to, null)['total_sales'];
+        $brands = array_sum(array_column($reports->affiliateBreakdown($from, $to, null), 'sales'));
+        $resellers = array_sum(array_column(array_filter($reports->resellerBreakdown($from, $to, null), fn ($r) => $r['reseller_id'] !== null), 'sales'));
+        $this->assertGreaterThan(0, $resellers);
+        $this->assertSame($total, $brands + $resellers);
+
+        $byFilter = $reports->summary($from, $to, $s->platform->id)['total_sales'] + $reports->summary($from, $to, $s->affiliate->id)['total_sales'];
+        $this->assertSame($total, $byFilter + $resellers);
+        $this->assertSame([], array_filter($reports->resellerBreakdown($from, $to, $s->platform->id), fn ($r) => $r['reseller_id'] !== null));
+
+        $storefront = Order::query()->where('affiliate_id', $s->platform->id)->whereNull('wallet_reseller_id')->where('payment_status', 'paid')->where('is_test', false);
+        $analytics = app(CustomerAnalyticsService::class)->stats(new CustomerFilters(affiliateId: $s->platform->id));
+        $this->assertSame((clone $storefront)->distinct()->count('customer_email'), $analytics['total_customers']);
+
+        Sanctum::actingAs($s->admin);
+        $row = collect($this->getJson('/api/affiliates')->assertOk()->json('affiliates'))->firstWhere('id', $s->platform->id);
+        $this->assertSame(Order::query()->where('affiliate_id', $s->platform->id)->whereNull('wallet_reseller_id')->count(), $row['orders_count']);
+
+        $this->assertSame(0, DB::table('llm_report_orders')->whereNotNull('affiliate_id')->whereNotNull('wallet_reseller_id')->count());
+        $this->assertSame(
+            (int) DB::table('llm_report_orders')->sum('net_sales'),
+            (int) DB::table('llm_report_orders')->whereNotNull('affiliate_id')->sum('net_sales') + (int) DB::table('llm_report_orders')->whereNotNull('wallet_reseller_id')->sum('net_sales'),
+        );
     }
 
     /** Membership (ADR-068): the fee is revenue the month it is paid, the same figure on the Summary and on Reports; the member's order is priced as a member's. */

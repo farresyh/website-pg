@@ -583,8 +583,9 @@ final class ReportService
      */
     public function affiliateBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
-        $sales = $this->salesByGroup($this->scopedOrders($from, $toExclusive, $affiliateId), 'COALESCE(affiliate_id, 0)');
-        $profitByAffiliate = $this->profitByGroup($from, $toExclusive, $affiliateId, 'COALESCE(orders.affiliate_id, 0)');
+        // A reseller-wallet order is its Reseller's, never its brand's (ADR-086 2026-10-25 addendum).
+        $sales = $this->salesByGroup($this->scopedOrders($from, $toExclusive, $affiliateId)->whereNull('wallet_reseller_id'), 'COALESCE(affiliate_id, 0)');
+        $profitByAffiliate = $this->profitByGroup($from, $toExclusive, $affiliateId, 'COALESCE(orders.affiliate_id, 0)', storefrontOnly: true);
 
         $affiliateIds = $sales->keys()->reject(fn ($id) => (int) $id === 0)->all();
         $affiliateNames = Affiliate::query()->whereIn('id', $affiliateIds)->pluck('business_name', 'id');
@@ -1052,7 +1053,7 @@ final class ReportService
         }
 
         if ($affiliateId !== null) {
-            $query->where('affiliate_id', $affiliateId);
+            $query->soldByAffiliate($affiliateId);
         }
 
         return $query;
@@ -1080,7 +1081,8 @@ final class ReportService
         }
 
         if ($affiliateId !== null) {
-            $query->where('orders.affiliate_id', $affiliateId);
+            // Order::scopeSoldByAffiliate() on the joined orders: a wallet order is its Reseller's only.
+            $query->where('orders.affiliate_id', $affiliateId)->whereNull('orders.wallet_reseller_id');
         }
 
         $totals = $query->selectRaw('ledger_entries.owner_type as owner_type, SUM(ledger_entries.amount) as total')
@@ -1124,7 +1126,7 @@ final class ReportService
      *
      * @return Collection<string, array{platform: int, affiliate: int}>
      */
-    private function profitByGroup(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId, string $groupExpr): Collection
+    private function profitByGroup(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId, string $groupExpr, bool $storefrontOnly = false): Collection
     {
         $query = LedgerEntry::query()
             ->join('orders', function ($join) {
@@ -1146,7 +1148,12 @@ final class ReportService
         }
 
         if ($affiliateId !== null) {
-            $query->where('orders.affiliate_id', $affiliateId);
+            // Order::scopeSoldByAffiliate() on the joined orders: a wallet order is its Reseller's only.
+            $query->where('orders.affiliate_id', $affiliateId)->whereNull('orders.wallet_reseller_id');
+        }
+
+        if ($storefrontOnly) {
+            $query->whereNull('orders.wallet_reseller_id');
         }
 
         return $query

@@ -154,8 +154,23 @@ export async function apiFetch<T>(path: string, { body, headers, ...init }: Requ
  * be JSON.stringify'd or sent with an explicit `Content-Type` (the
  * browser sets the multipart boundary itself).
  */
+/** What the server takes in one request; nginx refuses more before Laravel or CORS headers see it (PHP and nginx set to 12 MB in Forge, 2026-10-25). */
+export const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
+
 export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
-  const response = await apiRequest(path, { method: "POST", body: formData });
+  const tooBig = [...formData.values()].find((v): v is File => v instanceof File && v.size > MAX_UPLOAD_BYTES);
+  if (tooBig) {
+    throw new ApiError(413, "file_too_large", `${tooBig.name} is ${(tooBig.size / 1048576).toFixed(1)} MB; the server takes up to ${MAX_UPLOAD_BYTES / 1048576} MB.`);
+  }
+
+  let response: Response;
+  try {
+    response = await apiRequest(path, { method: "POST", body: formData });
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    // A refusal from nginx (413) carries no CORS headers, so the browser reports only a network error.
+    throw new ApiError(0, "upload_failed", "The upload didn't reach the server: the file may be too large, or the connection dropped. Try again or use a smaller file.");
+  }
 
   return (await response.json().catch(() => null)) as T;
 }

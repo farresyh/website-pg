@@ -809,6 +809,25 @@ class Order extends Model
     }
 
     /**
+     * ADR-086 2026-10-25 addendum: one order, one place. A reseller-wallet
+     * order also carries the primary brand's `affiliate_id` (ADR-073
+     * decision 5), but it belongs to its Reseller only; an Affiliate's
+     * figures (the primary brand's too) are its storefront orders. Every
+     * admin view that filters or groups orders by Affiliate goes through
+     * this or `affiliateKeySql()`.
+     */
+    public function scopeSoldByAffiliate(Builder $query, int $affiliateId, string $table = 'orders'): Builder
+    {
+        return $query->where("{$table}.affiliate_id", $affiliateId)->whereNull("{$table}.wallet_reseller_id");
+    }
+
+    /** The Affiliate an order counts toward, as SQL: null for a reseller-wallet order. */
+    public static function affiliateKeySql(string $table = 'orders'): string
+    {
+        return "CASE WHEN {$table}.wallet_reseller_id IS NULL THEN {$table}.affiliate_id END";
+    }
+
+    /**
      * Scope a public storefront proof-of-ownership lookup (track-order,
      * review submission — ADR-011 / ADR-053) to the brand whose
      * storefront the request came in on (ADR-060 `X-Storefront-Host` →
