@@ -65,7 +65,8 @@ class AffiliateController extends Controller
     {
         $affiliates = Affiliate::query()
             ->with(['subscription.tier' => fn ($q) => $q->withTrashed()])
-            ->withCount('orders')
+            // A reseller-wallet order is its Reseller's, not the primary brand's (ADR-086 2026-10-25 addendum).
+            ->withCount(['orders' => fn ($q) => $q->whereNull('wallet_reseller_id')])
             ->withCount(['memberships as active_membership_count' => fn ($q) => $q->where('status', MembershipStatus::Active)])
             ->orderBy('business_name')
             ->get();

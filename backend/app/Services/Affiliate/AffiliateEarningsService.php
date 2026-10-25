@@ -127,7 +127,7 @@ final class AffiliateEarningsService
     private function salesAggregate(Affiliate $affiliate, CarbonImmutable $fromUtc): array
     {
         $row = Order::query()
-            ->where('affiliate_id', $affiliate->id)
+            ->soldByAffiliate($affiliate->id)
             ->where('is_test', false)
             ->where('payment_status', PaymentStatus::Paid->value)
             ->whereNotNull('paid_at')
