@@ -1258,7 +1258,7 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     switches, `JokiCatalog::ensure()`). **PR 3** built 2026-10-23
     (`.progress` and the admin progress update, Track Order climb and
     current rank, paced WhatsApp progress to opted-in customers). All
-    four merged to `staging` (#533–#536), not released. **PR 4a** built
+    four merged to `staging` (#533–#536). **PR 4a** built
     2026-10-24 (the admin backend: `JokiBoard`, `/api/joki-admin/*`, joki
     out of Need Action and the Manual Queue with a "needs voucher" count
     on the Joki card, the `/orders` type filter, penjoki creation).
@@ -1266,11 +1266,11 @@ and the admin-loading investigation (#515, #516). Re-verify before building.
     Settings; Assign and progress on Order Detail; Record payment; the
     Dashboard card; the `/orders` type select; "Sell Joki" in the brand
     form; the penjoki tick on supplier create). PR 4a and 4b merged to
-    `staging` via #538 and #539, not released. **PR 5** built 2026-10-24
+    `staging` via #538 and #539. **PR 5** built 2026-10-24
     (the `/joki` page with the interactive rank calculator, the "Joki
     Rank" menu and sitemap entry, the voucher preview priced like
     checkout, a joki e2e golden path), merged via #540. Every planned PR
-    is merged to `staging`, not released; what remains is the launch
+    is released (2026-10-25, #554); what remains is the launch
     gates. Founder to set the
     Grading Express price, confirm the rates, and supply the rank icons.
     2026-10-25: joki is offered from Epic up; the four lower tiers are
