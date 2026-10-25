@@ -2111,3 +2111,15 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - The local dev DB was migrated and now has Epic, Legend and the four Mythic tiers.
   - The local `/api/joki/catalog` lists Epic first. A quote from Epic V 0★ to Legend V 0★ is 25 stars × RM2 = RM50.
   - The storefront and admin read the tiers from the API, with no tier name hardcoded. There was no browser screenshot, because local Chrome to `.test` is still broken.
+
+## 2026-10-25 — Dashboard System details in plain words
+
+- **Founder:** the (i) tooltips on System details showed developer text (column names, class names), which an admin can't act on. Rewrite them for an admin.
+- **Built** on `fix/dashboard-plain-tooltips`:
+  - The seven definitions now live in `DashboardService::DEFINITIONS` as plain English. Each says what the figure is and what to do about it; the exact rule stays in the code that computes it.
+  - A late scheduled task now shows "Supplier balance refresh", not `supplier-balance-refresh`.
+  - The scheduler's raw "failed with exit code [1]" line becomes "stopped with an error on its last run (details in the server log)". The raw text is kept in the hover title.
+- **Verified:**
+  - Dashboard tests pass (40), along with admin `tsc` and lint.
+  - Local screenshot of the panel with the suppliers tooltip open and a late task.
+  - Locally, `supplier-balance-refresh`'s heartbeat was set late on purpose to show the error line.
