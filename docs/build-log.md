@@ -2093,7 +2093,7 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
 
 ## 2026-10-25 — Item 132 built: IDR deposits at a moving weighted average
 
-- **What:** ADR-083's 2026-10-25 addendum, built on `feature/item-132-idr-moving-average`.
+- **What:** ADR-083's 2026-10-25 addendum, built on `feature/item-132-idr-moving-average` (#551).
   - `MovingAveragePool` replays a foreign-currency supplier's pool from 1 October 2026. It opens with the units at 30 September at that day's cumulative average, which is September's close value, so September does not move. A deposit adds its net units and ringgit at the start of its `transferred_on` day. Every other row takes `round(pool_sen × units ÷ pool_units)`. An empty pool uses the last known average.
   - A voided transfer and every row that references it are left out.
   - `SupplierRowValuer` costs a row the same way for every reader: COGS, drawdowns not in COGS, and the Summary's supplier corrections line. `CashPositionService` reads the pool's month-end value. An MYR supplier and any row before the opening keep the old rate.
