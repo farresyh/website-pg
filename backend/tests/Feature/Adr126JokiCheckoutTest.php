@@ -214,8 +214,8 @@ class Adr126JokiCheckoutTest extends TestCase
             ->assertJsonPath('settings.grading_price_rm', 39)
             ->assertJsonPath('settings.grading_lands_at_stars', 15)
             ->assertJsonPath('settings.roles.3', 'Jungler')
-            ->assertJsonPath('tiers.4.name', 'Epic')
-            ->assertJsonPath('tiers.4.rate_rm', 2);
+            ->assertJsonPath('tiers.0.name', 'Epic')
+            ->assertJsonPath('tiers.0.rate_rm', 2);
         $this->assertSame('password', collect($catalog->json('credential_fields'))->firstWhere('key', 'password')['type']);
         $this->assertArrayNotHasKey('payout_share_pct', $catalog->json('settings'));
 

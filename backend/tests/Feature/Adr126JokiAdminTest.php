@@ -289,7 +289,7 @@ class Adr126JokiAdminTest extends TestCase
         $joki = $this->getJson("/api/orders/{$order->id}")->assertOk()->json('joki');
         $this->assertTrue($joki['is_with_penjoki']);
         $this->assertSame([['from' => 'Joki – waiting for a penjoki', 'to' => 'Penjoki amir', 'by' => 'Aina']], collect($joki['assignments'])->map(fn ($a) => array_diff_key($a, ['at' => 1]))->all());
-        $this->assertCount(10, $joki['tiers']);
+        $this->assertCount(6, $joki['tiers']); // Epic up (ADR-126 2026-10-25 addendum)
 
         $topup = $this->paidOrder(['order_number' => 'PG-TOPUP1']);
         $this->assertNull($this->getJson("/api/orders/{$topup->id}")->assertOk()->json('joki'));
