@@ -2124,6 +2124,23 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - Local screenshot of the panel with the suppliers tooltip open and a late task.
   - Locally, `supplier-balance-refresh`'s heartbeat was set late on purpose to show the error line.
 
+## 2026-10-25 — Release #554 live (`staging`→`main`, #529–#553)
+
+- **Before release:**
+  - Prod `/api/health` had been 503 since 25 Oct 00:00 UTC. `supplier-balance-refresh` failed on a Gamevion `check-balance` SSL timeout (cURL 28), which aborted the sweep before Digiflazz. This is item 130's failure; its fix (#531) was on `staging` only.
+  - Read-only checks: 0 duplicate drawdowns, so the unique `drawdown_key` index was safe. October snapshot: COGS 38,506 sen, Digiflazz prepaid 18,549 sen.
+- **Merged** with the founder's go-ahead:
+  - #551 (item 132);
+  - #552 (joki from Epic up), after a docs conflict with #551 was resolved by keeping both;
+  - #553 (plain tooltips), same kind of conflict;
+  - then release #554 as `0d6b8ad`. CI and `deploy` were green.
+- **Box, read-only:**
+  - release `81129239` is live, and all 14 migrations ran;
+  - Horizon is running;
+  - `joki_tiers` = Epic, Legend and the four Mythic tiers; joki is off;
+  - October COGS and prepaid are unchanged. The pool matches the old method to the sen, at 797,643 IDR = 18,549 sen, because there has been no deposit since September.
+- **Still red:** `/api/health` stays `scheduler: false` until `supplier-balance-refresh` succeeds. `schedule:test` would not clear it, because it runs the event without firing `ScheduledTaskFinished`, so no heartbeat is written. It clears at the next daily run (00:00 UTC), now with the fix live.
+
 ## 2026-10-25 — Affiliate vs Reseller, one place per order; Joki rank model save; clear upload errors
 
 - **Founder findings:**
@@ -2145,19 +2162,23 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - `php artisan test` 3079/3079, and the invariant test was red first.
   - admin `npm test`, `tsc` and lint.
   - Local browser: the rank model `PUT` returns 200; a 6 MB file shows "big-photo.png is 6.0 MB. Each image can be up to 5 MB."; Partners shows PekanGame at 1,046 storefront orders (243 wallet orders no longer counted).
-## 2026-10-25 — Release #554 live (`staging`→`main`, #529–#553)
 
-- **Before release:**
-  - Prod `/api/health` had been 503 since 25 Oct 00:00 UTC. `supplier-balance-refresh` failed on a Gamevion `check-balance` SSL timeout (cURL 28), which aborted the sweep before Digiflazz. This is item 130's failure; its fix (#531) was on `staging` only.
-  - Read-only checks: 0 duplicate drawdowns, so the unique `drawdown_key` index was safe. October snapshot: COGS 38,506 sen, Digiflazz prepaid 18,549 sen.
-- **Merged** with the founder's go-ahead:
-  - #551 (item 132);
-  - #552 (joki from Epic up), after a docs conflict with #551 was resolved by keeping both;
-  - #553 (plain tooltips), same kind of conflict;
-  - then release #554 as `0d6b8ad`. CI and `deploy` were green.
+## 2026-10-25 — Release #557 live (#556); the day in one place
+
+- **Release #557** (`staging`→`main`, founder's go-ahead), merged as `369fbbb`. CI and `deploy` were green.
 - **Box, read-only:**
-  - release `81129239` is live, and all 14 migrations ran;
-  - Horizon is running;
-  - `joki_tiers` = Epic, Legend and the four Mythic tiers; joki is off;
-  - October COGS and prepaid are unchanged. The pool matches the old method to the sen, at 797,643 IDR = 18,549 sen, because there has been no deposit since September.
-- **Still red:** `/api/health` stays `scheduler: false` until `supplier-balance-refresh` succeeds. `schedule:test` would not clear it, because it runs the event without firing `ScheduledTaskFinished`, so no heartbeat is written. It clears at the next daily run (00:00 UTC), now with the fix live.
+  - release `81131278` is live; migration `2026_10_25_110000` ran; Horizon is running;
+  - the `llm_report_orders` view has 0 rows with both an affiliate and a reseller;
+  - all-time Partners, before → after: PekanGame RM563.72 / 37 → RM110.60 / 22. FixFast Demo is RM8.19 / 4; Naeem RM446.56 / 11 and FixFast RM6.56 / 4 stay under Resellers.
+  - Brands plus resellers = RM571.91 = total sales. Before, they added up to RM1,025.03.
+- **The day, in order:**
+  1. Item 132 (IDR moving average) built test-first, #551.
+  2. Joki offered from Epic up, #552.
+  3. Plain Dashboard tooltips, #553.
+  4. Release #554, which also carried Joki (off), ADR-127 and the item 130 fix.
+  5. The founder found the Joki rank model wouldn't save, gallery uploads failed, and wallet orders were counted under PekanGame. All three were fixed in #556 and released as #557.
+- **Founder actions done:** Forge Max File Upload Size set to 12 MB.
+- **Open:**
+  - `/api/health` is 503 until `supplier-balance-refresh` runs at 00:00 UTC on 2026-10-26, now with the item 130 fix live.
+  - The Joki launch gates (§16 item 114): CHIP approval, item 129, rank icons, and the rates with the Grading Express price.
+- **Lesson:** a figure that "groups by brand" must say which orders a brand owns. The wallet order's primary-brand `affiliate_id` (ADR-073) had been handled correctly in three views and wrongly in five. The rule now lives in one place: `Order::scopeSoldByAffiliate()`.
