@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api-client";
-import type { OrderDetail, OrderPage, ResendOption } from "@/lib/orders";
+import type { MarkOrderDeliveredValues, OrderDetail, OrderPage, ResendOption } from "@/lib/orders";
 
 /**
  * ADR-018 — a middleware-only sandbox for exercising the real Order
@@ -77,7 +77,7 @@ export function resendSandboxOrderDelivery(id: number, values: ResendSandboxOrde
  * order uses, so no LedgerEntry is written even though the response
  * shape is identical to a real one.
  */
-export function markSandboxOrderDelivered(id: number, values: { supplier_ref: string; note?: string }) {
+export function markSandboxOrderDelivered(id: number, values: MarkOrderDeliveredValues) {
   return apiFetch<SandboxOrderDetail>(`/api/middleware/sandbox/${id}/mark-delivered`, { method: "POST", body: values });
 }
 

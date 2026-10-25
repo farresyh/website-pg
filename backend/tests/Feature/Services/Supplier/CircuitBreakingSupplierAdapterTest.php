@@ -38,9 +38,7 @@ class CircuitBreakingSupplierAdapterTest extends TestCase
         {
             public int $calls = 0;
 
-            public function __construct(private array $responses)
-            {
-            }
+            public function __construct(private array $responses) {}
 
             public function checkBalance(): SupplierResponse
             {
@@ -138,14 +136,49 @@ class CircuitBreakingSupplierAdapterTest extends TestCase
         $breaker = new CircuitBreaker('test-'.uniqid(), failureThreshold: 3, cooldownSeconds: 60);
         $adapter = new CircuitBreakingSupplierAdapter($inner, $breaker);
 
-        foreach (range(1, 3) as $_) {
+        $calls = [
+            fn () => $adapter->createOrder(new SupplierOrderRequest('P1', 'REF-1', '123')),
+            fn () => $adapter->checkStatus(new SupplierStatusCheckRequest('REF-1')),
+            fn () => $adapter->checkBalance(),
+        ];
+
+        foreach ($calls as $i => $call) {
             try {
-                $adapter->checkBalance();
-                $this->fail('ConnectionException should propagate to the caller');
+                $call();
+                if ($i < 2) {
+                    $this->fail('ConnectionException should propagate from an order-path call');
+                }
             } catch (ConnectionException) {
             }
         }
 
+        $this->assertTrue($breaker->isOpen());
+    }
+
+    /**
+     * Item 130 (ADR-069 2026-10-23 addendum): a balance read is never part
+     * of an order, so a refused connection comes back as a failed response
+     * instead of a throw. Every checkBalance caller (daily refresh, Refresh
+     * Balance, credential probe, Developer Tools) then handles it as any
+     * other failure. The breaker still counts it, exactly once.
+     */
+    public function test_a_balance_check_connection_failure_is_returned_and_counted_once(): void
+    {
+        $inner = $this->fakeInner([
+            new ConnectionException('cURL error 7: Failed to connect'),
+            new ConnectionException('cURL error 7: Failed to connect'),
+        ]);
+        $breaker = new CircuitBreaker('test-'.uniqid(), failureThreshold: 2, cooldownSeconds: 60);
+        $adapter = new CircuitBreakingSupplierAdapter($inner, $breaker);
+
+        $response = $adapter->checkBalance();
+
+        $this->assertFalse($response->success);
+        $this->assertSame('CONNECTION_FAILED', $response->errorCode);
+        $this->assertStringContainsString('cURL error 7', $response->errorMessage);
+        $this->assertFalse($breaker->isOpen(), 'one failure must be counted once, not twice');
+
+        $adapter->checkBalance();
         $this->assertTrue($breaker->isOpen());
     }
 

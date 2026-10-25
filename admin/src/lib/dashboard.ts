@@ -1,3 +1,4 @@
+import type { JokiCounts } from "@/lib/joki";
 import { apiFetch } from "@/lib/api-client";
 import type { AttentionItem } from "@/lib/dashboard-briefing";
 
@@ -92,6 +93,8 @@ export interface DashboardHealth {
   openwa_cs_session: { status: string; at: string } | null;
   openwa_session_definition: string;
   stuck_orders: { value: number; definition: string };
+  /** ADR-126 decision 24: the Joki card (JokiBoard's counts); joki is left out of stuck_orders and Need Action. */
+  joki: JokiCounts;
   pending_payments: { value: number; definition: string };
   queue: { pending: number; failed: number; definition: string };
   /** ADR-122 — per-task scheduler heartbeat; a stale critical task also fails /api/health. */

@@ -8,7 +8,8 @@
  */
 
 import { useState } from "react";
-import { getGameBreakdown, getReportSummary, getReportTrend } from "@/lib/reports";
+import { getAccountingBridge, getGameBreakdown, getReportSummary, getReportTrend } from "@/lib/reports";
+import { ProfitBridge } from "../AccountingBridge";
 import { type TrendBucket, autoBucket, bucketRows, marginPct } from "@/lib/report-buckets";
 import { KpiCard, Pending, ReportCard, SegmentedControl, previousLabelOf, useReport, type ReportTabProps } from "../ReportKit";
 import { TrendChart } from "../TrendChart";
@@ -26,6 +27,7 @@ export function ProfitTab(props: ReportTabProps) {
   const summary = useReport(props, () => getReportSummary(filters, compare));
   const trend = useReport(props, () => getReportTrend(filters));
   const games = useReport(props, () => getGameBreakdown(filters));
+  const bridge = useReport(props, () => getAccountingBridge(filters));
   const [bucketChoice, setBucketChoice] = useState<TrendBucket | null>(null);
 
   const s = summary.data;
@@ -43,7 +45,7 @@ export function ProfitTab(props: ReportTabProps) {
   return (
     <div>
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard lead label="Owner profit" value={s ? formatRm(s.platform_profit) : "—"} sub={rangeIncludesToday ? "Recognised on delivery, so today can still move" : "Recognised on delivered orders"} change={cmp?.changes.platform_profit} previousLabel={previousLabel} />
+        <KpiCard lead label="Owner profit (market rate)" value={s ? formatRm(s.platform_profit) : "—"} sub={rangeIncludesToday ? "Recognised on delivery, so today can still move" : "Recognised on delivered orders"} change={cmp?.changes.platform_profit} previousLabel={previousLabel} />
         <KpiCard label="Margin" value={s ? `${s.margin_pct.toFixed(2)}%` : "—"} sub="Owner profit ÷ paid sales" change={cmp?.changes.margin_pct} previousLabel={previousLabel} />
         <KpiCard label="Affiliate profit" value={s ? formatRm(s.affiliate_profit) : "—"} sub="Earned by affiliates" change={cmp?.changes.affiliate_profit} previousLabel={previousLabel} />
         <KpiCard
@@ -53,6 +55,7 @@ export function ProfitTab(props: ReportTabProps) {
         />
       </div>
       {summary.error && <Pending error={summary.error} className="-mt-3 mb-6" />}
+      {bridge.data?.profit_bridge && <ProfitBridge bridge={bridge.data.profit_bridge} />}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-6 lg:col-span-2">

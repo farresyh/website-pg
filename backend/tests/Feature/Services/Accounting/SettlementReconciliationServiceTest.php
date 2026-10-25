@@ -122,6 +122,27 @@ class SettlementReconciliationServiceTest extends TestCase
         unlink($path);
     }
 
+    /** ADR-127 F2: the fee CHIP reported at payment rides along, so the page can show where the file's fee differs. */
+    public function test_the_fee_chip_reported_at_payment_is_kept_beside_the_files_fee(): void
+    {
+        Order::factory()->create([
+            'order_number' => 'PG-FEE1', 'payment_gateway' => 'chip', 'payment_ref' => 'tx-fee-1',
+            'payment_status' => PaymentStatus::Paid, 'paid_at' => '2026-09-07 12:00:00',
+            'final_amount' => 1100, 'transaction_fee' => 100, 'gateway_fee_sen' => 87,
+        ]);
+        $path = SettlementFixture::build('2026-09-07 to 2026-09-07', '11.00', '1.00', '10.00', [
+            ['transaction_id' => 'tx-fee-1', 'reference' => 'PG-FEE1', 'amount' => '11.00', 'fee' => '1.00', 'net' => '10.00', 'settled_on' => '2026-09-07 12:32'],
+        ]);
+
+        $this->ingest($path);
+
+        $recorded = ChipSettledTransaction::query()->where('transaction_id', 'tx-fee-1')->sole();
+        $this->assertSame(87, $recorded->reported_fee_sen);
+        $this->assertSame(100, $recorded->fee_sen);
+
+        unlink($path);
+    }
+
     public function test_matches_a_transaction_to_a_paid_membership_checkout_attempt(): void
     {
         $attempt = $this->paidMembershipAttempt(['payment_ref' => 'tx-membership-1']);

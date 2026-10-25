@@ -37,7 +37,8 @@ import { todayInKL } from "@/lib/date-range";
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  supplier: Supplier;
+  /** Only what the form reads, so Admin → Joki's penjoki list can open it too (ADR-126 decision 12). */
+  supplier: Pick<Supplier, "id" | "name" | "currency" | "funding_mode" | "is_api_backed" | "balance">;
 }
 
 function formatForeign(amount: string, currency: string): string {

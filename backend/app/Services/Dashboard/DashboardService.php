@@ -16,6 +16,7 @@ use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Currency\CurrencyRateService;
 use App\Services\Currency\CurrencyRateUnavailableException;
+use App\Services\Joki\JokiBoard;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
@@ -55,6 +56,21 @@ final class DashboardService
     ) {}
 
     /**
+     * The (i) text on the Dashboard's System details, written for an admin,
+     * not a developer (founder, 2026-10-25). The exact rule behind each
+     * figure is the code that computes it in health().
+     */
+    private const DEFINITIONS = [
+        'suppliers' => 'Each supplier\'s balance as their own system last reported it, in their own currency (Digiflazz is in rupiah). The RM figure under it is only an estimate for comparing. "Circuit open": orders to that supplier are paused for a short while after repeated errors, then it tries again by itself. "Low balance": below the level set in Middleware, so top up soon. "Funding drift": the supplier\'s balance no longer matches our own record of top-ups and orders; check Accounting.',
+        'reseller_wallets' => 'Money resellers have topped up but not spent yet. We owe them this as stock. Supplier balances should stay well above it: a reseller can spend their wallet straight away, but the CHIP money that paid for their top-up reaches our bank only 1 to 2 days later.',
+        'whatsapp' => 'Whether each WhatsApp number (the reseller bot, and the one that messages customers) was connected the last time WhatsApp told us, and when. "No recent event" means nothing was heard in the last hour. That is often fine, but if messages are not going out, check here first.',
+        'stuck_orders' => 'Paid orders that have not finished as expected: the supplier gave an unclear answer (you need to confirm it), still processing after %d minutes, or still waiting longer than that supplier usually takes. The system keeps re-checking them; open any that stay here in Orders. Joki orders are counted on the Joki card instead.',
+        'pending_payments' => 'Orders where the customer started paying but CHIP has not confirmed it yet. The system re-checks them with CHIP automatically. Most are customers who left the payment page, which is normal.',
+        'queue' => 'Order deliveries waiting to be sent to a supplier right now, and ones that failed to run. A few waiting is normal and clears within seconds. Any failed one means a delivery job crashed: tell the developer.',
+        'scheduled_tasks' => 'Jobs the system runs automatically on a timer: checking supplier balances, backups, price sync, payment checks and more. "Late" means a job missed its usual run. A late critical job also turns the public health check red, which sends an UptimeRobot alert. This shows that a job ran, not that everything inside it went well.',
+    ];
+
+    /**
      * DASH-2 — supplier status is derived from CircuitBreaker::state(),
      * never a live ping (would blow the §9 2-second budget and risks
      * tripping the very breaker being displayed). "Stuck orders" reuses
@@ -67,7 +83,8 @@ final class DashboardService
     {
         $breakerConfig = config('services.circuit_breaker');
 
-        $suppliers = Supplier::query()->get()->map(function (Supplier $supplier) use ($breakerConfig) {
+        // ADR-126 F5: the joki pool holds no balance; a penjoki's is "Owed".
+        $suppliers = Supplier::query()->exceptAssignmentPool()->get()->map(function (Supplier $supplier) use ($breakerConfig) {
             $breaker = new CircuitBreaker(
                 name: $supplier->slug,
                 failureThreshold: $breakerConfig['failure_threshold'],
@@ -140,6 +157,8 @@ final class DashboardService
 
         $needsReviewCount = Order::query()
             ->where('is_test', false)
+            // ADR-127 decision 11: a joki in NeedsReview is on the Joki card's stale count.
+            ->notJoki()
             ->where('delivery_status', DeliveryStatus::NeedsReview->value)
             ->count();
 
@@ -155,6 +174,8 @@ final class DashboardService
         $stalePendingCount = Order::query()
             ->where('is_test', false)
             ->where('delivery_status', DeliveryStatus::Pending->value)
+            // ADR-126 F4: a stale joki is on the Joki card instead.
+            ->notJoki()
             ->with(['supplier', 'package.components.supplier'])
             ->get()
             ->filter(fn (Order $order) => $order->isStalePending())
@@ -173,7 +194,7 @@ final class DashboardService
         return [
             'attention' => $this->attention($suppliers, $needsReviewCount, $staleProcessingCount + $stalePendingCount, $failedJobs, $scheduledTasks, $openWaSession, $openWaCsSession),
             'suppliers' => $suppliers,
-            'suppliers_definition' => 'circuit_state read from CircuitBreaker::state() (cache-backed, per-supplier breaker keyed by Supplier.slug) — never a live ping to the supplier. balance mirrors Supplier.balance, the last value the supplier\'s own API reported (not ledger-governed, ADR-002 does not apply to it), in that supplier\'s own currency — never assume MYR. balance_myr_equivalent is a display-only conversion (CurrencyRateService, cached ~24h) for comparing suppliers at a glance; null means the conversion is unavailable right now, not that the balance is zero. drift (ADR-083 decision 6) compares that same balance against SUM(supplier_ledger_entries) — null when no drift_threshold is configured for this supplier, meaning "not watched", not "not drifted".',
+            'suppliers_definition' => self::DEFINITIONS['suppliers'],
             // 2026-09-28 addendum: real-time reseller-wallet-float vs
             // supplier-balance visibility (a genuine treasury risk, not
             // a bookkeeping concern — see the comment above where this is
@@ -181,7 +202,7 @@ final class DashboardService
             // yet.
             'reseller_wallet_liability_sen' => $resellerWalletLiabilitySen,
             'total_supplier_balance_myr_equivalent' => $totalSupplierBalanceMyrEquivalent,
-            'reseller_wallet_liability_definition' => 'reseller_wallet_liability_sen = SUM(ledger_entries.amount), sen, owner_type=reseller_wallet, across every reseller — the total outstanding spendable credit resellers are currently holding. total_supplier_balance_myr_equivalent sums every supplier\'s own balance_myr_equivalent above. This should stay comfortably above the wallet liability — a reseller can spend their wallet balance against supplier stock immediately, while the CHIP cash that funded that top-up only settles to the company bank T+1/T+2.',
+            'reseller_wallet_liability_definition' => self::DEFINITIONS['reseller_wallets'],
             // PR-F build addendum decision 5 — an active health signal
             // for the Reseller Bot channel's OpenWA session, reversed
             // from this screen's usual "no live ping" posture only in
@@ -194,26 +215,28 @@ final class DashboardService
             'openwa_session' => $openWaSession,
             // ADR-116 decision 11 — the customer-support session, same shape.
             'openwa_cs_session' => $openWaCsSession,
-            'openwa_session_definition' => 'Last-known session.status event OpenWaWebhookController received, cache-backed (no live ping), 1h TTL. Null means no event in the last hour, not confirmed healthy.',
+            'openwa_session_definition' => self::DEFINITIONS['whatsapp'],
             'stuck_orders' => [
                 'value' => $needsReviewCount + $staleProcessingCount + $stalePendingCount,
-                'definition' => "COUNT of orders where delivery_status=needs_review, PLUS delivery_status=processing older than {$staleAfterMinutes} minutes, PLUS delivery_status=pending past its supplier's stale window (Supplier::pendingPolicy(): an API supplier's pending_stale_minutes, else DELIVERY_RECONCILIATION_PENDING_STALE_MINUTES; a manual supplier's reply SLA) — the same rule ReconcilePendingDeliveriesCommand uses. Excludes is_test orders.",
+                'definition' => sprintf(self::DEFINITIONS['stuck_orders'], $staleAfterMinutes),
             ],
+            // ADR-126 decision 24: the Joki card, from the Joki page's own filters.
+            'joki' => app(JokiBoard::class)->counts(),
             'pending_payments' => [
                 'value' => $pendingPaymentsCount,
-                'definition' => 'COUNT(*) where payment_status=pending, excludes is_test orders — the same population app:reconcile-pending-payments (PAY-3) targets.',
+                'definition' => self::DEFINITIONS['pending_payments'],
             ],
             'queue' => [
                 // Live Redis queue size (waiting + delayed + reserved) — the
                 // `jobs` table this used to read is unused since ADR-048.
                 'pending' => (int) collect(self::MONITORED_QUEUES)->sum(fn (string $queue) => Queue::size($queue)),
                 'failed' => $failedJobs,
-                'definition' => 'Pending = live Redis queue size (waiting + delayed + in-flight); failed = COUNT(*) from failed_jobs. Order lanes only ('.implode(', ', self::MONITORED_QUEUES).') — the delivery-critical FulfillOrderJob/ResendOrderDeliveryJob/CheckSupplierDeliveryJob path. The default/price-sync/backups queues aren\'t part of the money-critical customer-facing path this screen monitors.',
+                'definition' => self::DEFINITIONS['queue'],
             ],
             // ADR-122 — the detail behind /api/health's `scheduler` boolean.
             'scheduled_tasks' => [
                 'tasks' => $scheduledTasks,
-                'definition' => 'One row per scheduled task (scheduled_task_heartbeats). last_ok_at = the scheduler last ran it with exit code 0 (a run skipped by its overlap lock does not count). stale = it missed its due runs: a task that runs more than once a day may miss one, then 30 minutes grace; a daily task may miss none, 60 minutes grace. A stale critical task fails /api/health (UptimeRobot alerts); a stale routine task shows here only. This is whether the task ran, not whether a job it dispatched (backup, price sync) succeeded.',
+                'definition' => self::DEFINITIONS['scheduled_tasks'],
             ],
         ];
     }
@@ -241,7 +264,7 @@ final class DashboardService
         }
 
         $criticalStale = collect($scheduledTasks)->where('tier', 'critical')->where('stale', true)->count();
-        $needsActionOrders = Order::query()->where('is_test', false)->needsAction()->count();
+        $needsActionOrders = Order::query()->where('is_test', false)->needsAction()->notJoki()->count();
         $red = [
             'scheduler_critical_stale' => $criticalStale,
             'queue_failed' => $failedJobs,
@@ -279,6 +302,7 @@ final class DashboardService
             // ADR-125 decision 56: activated before PR 2, so its posts are skipped.
             'manual_supplier_without_group' => Supplier::query()
                 ->where('driver', Supplier::DRIVER_MANUAL)
+                ->exceptAssignmentPool()
                 ->where('is_active', true)
                 ->whereNotExists(fn ($q) => $q->selectRaw('1')
                     ->from('whatsapp_groups')

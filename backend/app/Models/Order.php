@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 class Order extends Model
@@ -68,8 +69,11 @@ class Order extends Model
         'profit_reconciled_flagged',
         'payment_status',
         'paid_at',
+        'gateway_fee_sen',
         'delivery_status',
         'delivered_at',
+        'recognised_at',
+        'manual_activity_at',
         'payment_method',
         'payment_gateway',
         'channel_code',
@@ -102,6 +106,8 @@ class Order extends Model
         'delivery_status' => DeliveryStatus::class,
         'placed_via' => PlacedVia::class,
         'delivered_at' => 'datetime',
+        'recognised_at' => 'datetime',
+        'manual_activity_at' => 'datetime',
         'supplier_response' => 'array',
     ];
 
@@ -155,6 +161,55 @@ class Order extends Model
         return $this->player_id.($this->server_id ? " ({$this->server_id})" : '');
     }
 
+    /**
+     * ADR-126: a joki order — the only orders priced on the Fixed basis.
+     * Its cost is the penjoki's agreed payout and no path may move it.
+     */
+    public function isJoki(): bool
+    {
+        return $this->pricing_basis === PricingBasis::Fixed;
+    }
+
+    /** The query-level mirror of isJoki(). */
+    public function scopeJoki(Builder $query): Builder
+    {
+        return $query->where('pricing_basis', PricingBasis::Fixed->value);
+    }
+
+    /**
+     * ADR-126 F4: the general Need Action, stuck count and Manual Queue
+     * leave joki to the Joki board (JokiBoard), which shows every one.
+     */
+    public function scopeNotJoki(Builder $query): Builder
+    {
+        return $query->where('pricing_basis', '!=', PricingBasis::Fixed->value);
+    }
+
+    /** ADR-126 decision 1: what a joki order bought, and its progress. */
+    public function jokiOrder(): HasOne
+    {
+        return $this->hasOne(JokiOrder::class);
+    }
+
+    /** ADR-126 decision 16: every Assign of this joki order, oldest first. */
+    public function jokiAssignments(): HasMany
+    {
+        return $this->hasMany(JokiAssignment::class)->orderBy('id');
+    }
+
+    /**
+     * The assignment the order is on now, or null if it was never assigned
+     * (every non-joki order). A group post and a login link belong to one
+     * assignment, so a reassignment — even back to an earlier penjoki —
+     * gets a fresh post and kills the old link.
+     */
+    public function currentJokiAssignmentId(): ?int
+    {
+        $id = JokiAssignment::query()->where('order_id', $this->id)->max('id');
+
+        return $id === null ? null : (int) $id;
+    }
+
     /** ADR-125 decision 3: Pending past its supplier's stale window (Supplier::pendingPolicy()). */
     public function isStalePending(): bool
     {
@@ -164,7 +219,18 @@ class Order extends Model
 
         $policy = $this->fulfilmentSupplier()?->pendingPolicy() ?? Supplier::defaultPendingPolicy();
 
-        return $this->updated_at->lte(now()->subMinutes($policy['stale_minutes']));
+        return $this->pendingClock()->lte(now()->subMinutes($policy['stale_minutes']));
+    }
+
+    /**
+     * ADR-126 2026-10-23 addendum, decision 20: when this Pending order's
+     * wait started. A manual order's group post (later assign and progress)
+     * stamps `manual_activity_at`; before that, and for an API supplier,
+     * it is `updated_at`, which marks entry into Pending.
+     */
+    public function pendingClock(): Carbon
+    {
+        return $this->manual_activity_at ?? $this->updated_at;
     }
 
     /**

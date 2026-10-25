@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -27,6 +28,8 @@ class Game extends Model
         'player_validator_profile_id',
         'player_validator_enabled',
         'member_pricing_enabled',
+        'credential_max_days',
+        'is_joki',
         'seo_title',
         'seo_title_local',
         'seo_description',
@@ -40,6 +43,8 @@ class Game extends Model
 
     protected $casts = [
         'is_active' => 'boolean',
+        'credential_max_days' => 'integer',
+        'is_joki' => 'boolean',
         'sort_order' => 'integer',
         'important_notes' => 'array',
         'supplier_mappings' => 'array',
@@ -138,6 +143,17 @@ class Game extends Model
         $fields = $this->validation_rules['credential_fields'] ?? null;
 
         return is_array($fields) ? array_values($fields) : [];
+    }
+
+    /** ADR-126 decision 2: a joki game, sold only through `/joki`, never listed in a catalog. */
+    public function scopeJoki(Builder $query): Builder
+    {
+        return $query->where('is_joki', true);
+    }
+
+    public function scopeNotJoki(Builder $query): Builder
+    {
+        return $query->where('is_joki', false);
     }
 
     /** ADR-125 decision 5: derived from the schema, never a second flag. */

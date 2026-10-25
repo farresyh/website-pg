@@ -6,13 +6,12 @@ use App\Models\BudgetEnvelopeEntry;
 use App\Models\BudgetEnvelopePosting;
 use App\Models\LedgerEntry;
 use App\Models\Order;
+use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\Voucher;
-use App\Models\VoucherRedemption;
 use App\Models\Withdrawal;
 use App\Services\Ledger\LedgerOwnerType;
-use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Withdrawal\WithdrawalStatus;
 use App\Support\MalaysiaTime;
@@ -107,7 +106,8 @@ final class CashPositionService
 
     /**
      * Each supplier's balance in its own currency as of the month end, in MYR
-     * at the month-end blended rate. A top-up counts from the day the money
+     * at the month-end blended rate; from October 2026, a foreign-currency
+     * supplier's at its moving-average pool (2026-10-25 addendum). A top-up counts from the day the money
      * left the bank (`transferred_on`, decision 15), every other movement
      * from when it was recorded. ADR-125 decision 20: split by sign per
      * supplier before summing, so a pay-after supplier's debt is a payable
@@ -127,8 +127,14 @@ final class CashPositionService
             ->groupBy('supplier_id')
             ->get();
 
+        $pooled = $toExclusive > MovingAveragePool::opensAt()
+            ? Supplier::query()->whereIn('id', $balances->pluck('supplier_id'))->where('currency', '!=', 'MYR')->pluck('id')->all()
+            : [];
+
         // ponytail: a foreign-currency supplier with no transfer by the month end has no rate; its balance is then only drawdowns, valued at 0.
-        $sen = $balances->map(fn ($row) => (int) round(((float) $row->balance) * ($this->costOfSales->weightedAverageRate((int) $row->supplier_id, $lastDay) ?? 0.0) * 100));
+        $sen = $balances->map(fn ($row) => in_array((int) $row->supplier_id, $pooled, true)
+            ? MovingAveragePool::replay((int) $row->supplier_id, $this->costOfSales, $toExclusive)->sen
+            : (int) round(((float) $row->balance) * ($this->costOfSales->weightedAverageRate((int) $row->supplier_id, $lastDay) ?? 0.0) * 100));
 
         return [
             'prepaid' => (int) $sen->filter(fn (int $v) => $v > 0)->sum(),
@@ -168,27 +174,14 @@ final class CashPositionService
     private function vouchersOutstanding(Carbon $toExclusive): int
     {
         return (int) Voucher::query()
-            ->where('created_at', '<', $toExclusive)
-            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>=', $toExclusive))
-            ->where(fn ($q) => $q->whereNull('order_id')->orWhereHas('sourceOrder', fn ($o) => $o->where('is_test', false)))
-            ->with(['redemptions', 'mergeAsSource'])
+            ->outstandingAt($toExclusive)
             ->get()
-            ->sum(function (Voucher $voucher) use ($toExclusive) {
-                if ($voucher->mergeAsSource !== null && $voucher->mergeAsSource->created_at < $toExclusive) {
-                    return 0;
-                }
-
-                $before = $voucher->redemptions->filter(fn (VoucherRedemption $r) => $r->created_at < $toExclusive);
-                // A restore carries only `updated_at`, and it is written once.
-                $restored = $before->filter(fn (VoucherRedemption $r) => $r->status === 'restored' && $r->updated_at < $toExclusive);
-
-                return max(0, $voucher->amount - (int) $before->sum('amount') + (int) $restored->sum('restored_amount'));
-            });
+            ->sum(fn (Voucher $voucher) => $voucher->balanceAsOf($toExclusive));
     }
 
     /**
-     * Orders paid by the month end whose goods were neither delivered nor
-     * compensated by then: the customer is owed the selling price (a voucher
+     * Orders paid by the month end that were neither recognised as revenue
+     * (`recognised_at`, ADR-127) nor compensated by then: the customer is owed the selling price (a voucher
      * or wallet balance spent on it moved into this claim when it was
      * spent). A partial delivery stays here until it is compensated.
      */
@@ -198,7 +191,7 @@ final class CashPositionService
             ->where('is_test', false)
             ->where('payment_status', PaymentStatus::Paid->value)
             ->where('paid_at', '<', $toExclusive)
-            ->where(fn ($q) => $q->where('delivery_status', '!=', DeliveryStatus::Delivered->value)->orWhere('delivered_at', '>=', $toExclusive))
+            ->where(fn ($q) => $q->whereNull('recognised_at')->orWhere('recognised_at', '>=', $toExclusive))
             ->with(['voucher', 'voucherRedemption'])
             ->get();
 
@@ -206,7 +199,7 @@ final class CashPositionService
 
         return (int) $orders
             ->reject(fn (Order $o) => ($o->voucher !== null && $o->voucher->created_at < $toExclusive)
-                || ($o->voucherRedemption?->status === 'restored' && $o->voucherRedemption->updated_at < $toExclusive)
+                || ($o->voucherRedemption?->status === 'restored' && $o->voucherRedemption->restored_at < $toExclusive)
                 || (($walletRefunds[$o->id] ?? null) !== null && $walletRefunds[$o->id]->created_at < $toExclusive))
             ->sum('selling_price');
     }

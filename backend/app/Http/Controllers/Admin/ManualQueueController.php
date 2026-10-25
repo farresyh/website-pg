@@ -33,6 +33,8 @@ class ManualQueueController extends Controller
             ->whereIn('delivery_status', [DeliveryStatus::Pending->value, DeliveryStatus::NeedsReview->value])
             ->where('payment_status', PaymentStatus::Paid->value)
             ->where('is_test', false)
+            // ADR-126 decision 23: joki has its own board.
+            ->notJoki()
             ->oldest('paid_at')
             ->limit(200)
             ->get();
@@ -49,6 +51,7 @@ class ManualQueueController extends Controller
             'game' => $order->game?->name,
             'package' => $order->package?->name,
             'supplier' => $order->supplier?->name,
+            'supplier_id' => $order->supplier_id,
             'player_id' => $order->player_id,
             'delivery_status' => $order->delivery_status->value,
             'paid_at' => $order->paid_at?->toISOString(),
@@ -68,6 +71,8 @@ class ManualQueueController extends Controller
     {
         return response()->json(Supplier::query()
             ->where('driver', Supplier::DRIVER_MANUAL)
+            // ADR-126: a penjoki or the pool never supplies an ordinary package.
+            ->whereNull('joki_role')
             ->where('is_active', true)
             ->orderBy('name')
             ->get(['id', 'name', 'funding_mode']));
@@ -80,12 +85,13 @@ class ManualQueueController extends Controller
             $request->validated('real_cost_sen'),
             $request->validated('reason'),
             $request->user()->name,
+            (int) $request->validated('supplier_id'),
         ));
     }
 
     public function failed(ConfirmManualFailedRequest $request, Order $order): JsonResponse
     {
-        return $this->answer(fn () => $this->manual->confirmFailed($order, $request->validated('reason'), $request->user()->name));
+        return $this->answer(fn () => $this->manual->confirmFailed($order, $request->validated('reason'), $request->user()->name, (int) $request->validated('supplier_id')));
     }
 
     public function correctToDelivered(ConfirmManualDeliveredRequest $request, Order $order): JsonResponse
@@ -108,7 +114,7 @@ class ManualQueueController extends Controller
         try {
             $order = $action();
         } catch (InvalidOrderTransitionException) {
-            throw ValidationException::withMessages(['order' => ['This order is already finished.']]);
+            throw ValidationException::withMessages(['order' => ['This order is already finished or was compensated.']]);
         }
 
         return response()->json([

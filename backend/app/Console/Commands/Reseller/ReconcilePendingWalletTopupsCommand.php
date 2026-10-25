@@ -133,13 +133,13 @@ class ReconcilePendingWalletTopupsCommand extends Command
         $amountSen = is_array($payment->data) ? ($payment->data['amount_sen'] ?? null) : null;
 
         match ($payment->status) {
-            PaymentStatus::Paid => $this->recover($attempt, $wallets, $amountSen),
+            PaymentStatus::Paid => $this->recover($attempt, $wallets, $amountSen, $payment->data['fee_sen'] ?? null),
             PaymentStatus::Failed => $attempt->leavePending(WalletTopupAttemptStatus::Failed),
             default => $this->expireIfPastWindow($attempt),
         };
     }
 
-    private function recover(WalletTopupAttempt $attempt, ResellerWalletService $wallets, mixed $amountSen): void
+    private function recover(WalletTopupAttempt $attempt, ResellerWalletService $wallets, mixed $amountSen, ?int $feeSen = null): void
     {
         // Defense-in-depth, same as the sibling commands' own recover():
         // a mismatch (a missing amount included) is enough not to
@@ -153,7 +153,7 @@ class ReconcilePendingWalletTopupsCommand extends Command
             return;
         }
 
-        $wallets->completeTopup($attempt);
+        $wallets->completeTopup($attempt, $feeSen);
 
         Log::info('Wallet top-up reconciliation: recovered a stuck-pending top-up');
     }

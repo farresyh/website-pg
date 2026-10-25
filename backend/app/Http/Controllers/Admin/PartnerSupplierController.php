@@ -31,7 +31,8 @@ class PartnerSupplierController extends Controller
 
     public function index(): JsonResponse
     {
-        $suppliers = Supplier::query()->where('driver', Supplier::DRIVER_MANUAL)->orderBy('name')->get();
+        // ADR-126 F5: the joki pool is switched with Joki, not here.
+        $suppliers = Supplier::query()->where('driver', Supplier::DRIVER_MANUAL)->exceptAssignmentPool()->orderBy('name')->get();
 
         $pending = Order::query()
             ->whereIn('supplier_id', $suppliers->pluck('id'))

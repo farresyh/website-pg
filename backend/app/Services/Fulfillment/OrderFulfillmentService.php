@@ -23,6 +23,7 @@ use App\Services\Voucher\VoucherService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
@@ -200,9 +201,18 @@ final class OrderFulfillmentService
             // common.
             Log::withContext(['reference_number' => $referenceNumber]);
 
+            // ADR-126 decision 10: a joki attempt after a failed one waits
+            // for a penjoki again (its package's supplier, the pool), never
+            // back on the penjoki who failed it. Its cost is the agreed
+            // payout and is not touched.
+            $restartSupplierId = $locked->isJoki() && in_array($locked->delivery_status, [DeliveryStatus::Failed, DeliveryStatus::NeedsReview], true)
+                ? $locked->package?->supplier_id
+                : null;
+
             $locked->update([
                 'reference_number' => $referenceNumber,
                 'delivery_status' => $processingStatus->value,
+                ...($restartSupplierId !== null ? ['supplier_id' => $restartSupplierId] : []),
             ]);
 
             return [$referenceNumber, $wasNotStarted, $resubmit];
@@ -328,7 +338,7 @@ final class OrderFulfillmentService
                     'real_cost_price_sen' => $realCostPriceSen,
                 ];
 
-                if ($realCostPriceSen !== null && config('services.real_cost_reconciliation.enabled', false)) {
+                if ($realCostPriceSen !== null) {
                     $updateData += $this->reconcileRealCostProfit($locked, $realCostPriceSen);
                 }
 
@@ -873,16 +883,12 @@ final class OrderFulfillmentService
                     : $this->orderStatus->markDelivered($locked->delivery_status);
 
                 // ADR-107 decision 2, cost input widened by ADR-111
-                // decision 3/8: real per-transaction cost when the flag
-                // is enabled (decision 2's leg-level capture, falling
-                // back to this leg's own live catalog cost only if ITS
-                // real cost is missing — a genuinely unavailable FX rate
-                // at that one leg's delivery moment, decision 6); the
-                // flag disabled restores the exact pre-ADR-111 live
-                // catalog-cost-only aggregation (decision 8's kill
-                // switch). Never a frozen snapshot either way — there
+                // decision 3: real per-transaction cost (decision 2's
+                // leg-level capture, falling back to this leg's own live
+                // catalog cost only if ITS real cost is missing — a
+                // genuinely unavailable FX rate at that one leg's delivery
+                // moment, decision 6). Never a frozen snapshot — there
                 // isn't one for cost, only `selling_price_sen` (decision 1).
-                $useRealCost = config('services.real_cost_reconciliation.enabled', false);
                 $costTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->costSen());
                 $reconciledPlatformProfit = $locked->selling_price - $costTotal - $locked->affiliate_profit;
 
@@ -904,7 +910,6 @@ final class OrderFulfillmentService
                         'order_id' => $locked->id,
                         'reconciled_platform_profit' => $reconciledPlatformProfit,
                         'cost_total' => $costTotal,
-                        'used_real_cost' => $useRealCost,
                         'affiliate_profit' => $locked->affiliate_profit,
                         'frozen_selling_price' => $locked->selling_price,
                     ]);
@@ -1066,8 +1071,13 @@ final class OrderFulfillmentService
      * observes the already-advanced state and throws
      * InvalidOrderTransitionException — same lock-then-guard pattern
      * fulfill() itself already uses for the identical PAY-2 reason.
+     *
+     * `$expectedSupplierId` (ADR-126 2026-10-23 addendum, decision 18): a
+     * manual confirmation names the supplier it acted for; a different
+     * supplier under the lock means the order was reassigned, and nothing
+     * is written.
      */
-    public function finalizePendingDelivery(Order $order, SupplierOutcome $outcome, ?string $supplierRef = null, mixed $supplierResponse = null, bool $resendUnsafeWithSameReference = false, bool $outcomeConfirmedFailed = false): Order
+    public function finalizePendingDelivery(Order $order, SupplierOutcome $outcome, ?string $supplierRef = null, mixed $supplierResponse = null, bool $resendUnsafeWithSameReference = false, bool $outcomeConfirmedFailed = false, ?int $expectedSupplierId = null): Order
     {
         if ($outcome === SupplierOutcome::Pending) {
             throw new OrderFulfillmentException(
@@ -1078,8 +1088,12 @@ final class OrderFulfillmentService
         $drawdownPrice = null;
         $contradicted = false;
 
-        $finalized = DB::transaction(function () use ($order, $outcome, $supplierRef, $supplierResponse, $resendUnsafeWithSameReference, $outcomeConfirmedFailed, &$drawdownPrice, &$contradicted) {
+        $finalized = DB::transaction(function () use ($order, $outcome, $supplierRef, $supplierResponse, $resendUnsafeWithSameReference, $outcomeConfirmedFailed, $expectedSupplierId, &$drawdownPrice, &$contradicted) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+
+            if ($expectedSupplierId !== null && $locked->supplier_id !== $expectedSupplierId) {
+                throw ValidationException::withMessages(['order' => ['This order was moved to another supplier.']]);
+            }
 
             Log::withContext(['reference_number' => $locked->reference_number]);
 
@@ -1087,7 +1101,12 @@ final class OrderFulfillmentService
             // that contradicts a terminal status is kept as evidence and
             // logged, never applied. Committed before the caller sees the
             // usual "already finalized" exception below.
-            if (self::contradictsFinalStatus($locked->delivery_status, $outcome)) {
+            // ADR-127 decision 11: a Success on an order already
+            // compensated is refused the same way, whoever reports it
+            // (a webhook, the poll, Manual Queue, a supplier's `.done`):
+            // the customer keeps the compensation, never both.
+            if (self::contradictsFinalStatus($locked->delivery_status, $outcome)
+                || ($outcome === SupplierOutcome::Success && $locked->isAlreadyCompensated())) {
                 $locked->update(['supplier_response' => array_merge(
                     is_array($locked->supplier_response) ? $locked->supplier_response : [],
                     ['late_supplier_result' => is_array($supplierResponse) ? $supplierResponse : ['outcome' => $outcome->value]],
@@ -1121,7 +1140,7 @@ final class OrderFulfillmentService
                     'real_cost_price_sen' => $realCostPriceSen,
                 ];
 
-                if ($realCostPriceSen !== null && config('services.real_cost_reconciliation.enabled', false)) {
+                if ($realCostPriceSen !== null) {
                     $updateData += $this->reconcileRealCostProfit($locked, $realCostPriceSen);
                 }
 
@@ -1392,26 +1411,51 @@ final class OrderFulfillmentService
      * 'success' (this method exists only to confirm a delivery, never a
      * failure), `note`/`triggered_by` come from this call's own params.
      */
-    public function markDeliveredManually(Order $order, string $supplierRef, ?string $note, string $confirmedBy): Order
+    public function markDeliveredManually(Order $order, string $supplierRef, float $supplierPrice, ?string $note, string $confirmedBy): Order
     {
-        return DB::transaction(function () use ($order, $supplierRef, $note, $confirmedBy) {
+        $delivered = DB::transaction(function () use ($order, $supplierRef, $supplierPrice, $note, $confirmedBy) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
             $deliveredStatus = $this->orderStatus->markDeliveredManually($locked->delivery_status);
 
+            // ADR-127 decision 11: re-checked under the lock; the
+            // controller's own check can go stale before it.
+            if ($locked->isAlreadyCompensated()) {
+                throw ValidationException::withMessages([
+                    'delivery_status' => ['This order has already been compensated (voucher issued/restored or wallet refunded) — it cannot be marked delivered.'],
+                ]);
+            }
+
             Log::withContext(['reference_number' => $locked->reference_number]);
 
-            $locked->update([
+            // ADR-127 PR D: the price the admin read off the supplier's
+            // dashboard with the invoice, in the supplier's currency. It
+            // is the real cost (ADR-111) and the drawdown, as a webhook's
+            // `price` would have been.
+            $supplierResponse = [
+                'manually_confirmed' => true,
+                'confirmed_by' => $confirmedBy,
+                'note' => $note,
+                'price' => $supplierPrice,
+                'confirmed_at' => now()->toISOString(),
+            ];
+            $realCostPriceSen = $locked->supplier === null
+                ? null
+                : $this->captureRealCostSen($supplierResponse, $locked->supplier->currency);
+
+            $updateData = [
                 'supplier_ref' => $supplierRef,
-                'supplier_response' => [
-                    'manually_confirmed' => true,
-                    'confirmed_by' => $confirmedBy,
-                    'note' => $note,
-                    'confirmed_at' => now()->toISOString(),
-                ],
+                'supplier_response' => $supplierResponse,
                 'delivery_status' => $deliveredStatus->value,
                 'delivered_at' => now(),
-            ]);
+                'real_cost_price_sen' => $realCostPriceSen,
+            ];
+
+            if ($realCostPriceSen !== null) {
+                $updateData += $this->reconcileRealCostProfit($locked, $realCostPriceSen);
+            }
+
+            $locked->update($updateData);
 
             OrderResendAttempt::query()->create([
                 'order_id' => $locked->id,
@@ -1436,6 +1480,11 @@ final class OrderFulfillmentService
 
             return $locked->fresh();
         });
+
+        // After commit, as every other drawdown (ADR-083 decision 3).
+        $this->supplierFunding->recordOrderDrawdown($delivered, $supplierPrice);
+
+        return $delivered;
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Services\Notification;
 use App\Jobs\SendCustomerWhatsAppJob;
 use App\Models\CustomerNotification;
 use Carbon\CarbonImmutable;
+use DateTimeInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Cache;
 
@@ -39,6 +40,9 @@ final class WhatsAppOutbox
         ?int $orderId = null,
         ?int $voucherId = null,
         ?string $skipReason = null,
+        // ADR-126 decision 10: the earliest a message may go (a paced joki
+        // progress update); null = the session's next pacing slot.
+        ?DateTimeInterface $notBefore = null,
     ): void {
         try {
             $notification = CustomerNotification::query()->create([
@@ -71,7 +75,8 @@ final class WhatsAppOutbox
         }
 
         if ($skipReason === null) {
-            SendCustomerWhatsAppJob::dispatch($notification->id)->delay($this->nextSendSlot($session));
+            $later = $notBefore !== null && $notBefore > now();
+            SendCustomerWhatsAppJob::dispatch($notification->id)->delay($later ? CarbonImmutable::instance($notBefore) : $this->nextSendSlot($session));
         }
     }
 

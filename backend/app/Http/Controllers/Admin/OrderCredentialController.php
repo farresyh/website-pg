@@ -56,9 +56,11 @@ class OrderCredentialController extends Controller
             abort_if(Order::query()->closed()->whereKey($order->id)->exists(), 409, 'This order is closed; its login is no longer needed.');
 
             $secrets = $credential->purged_at === null ? ($credential->secrets ?? []) : [];
+            $now = now();
             $credential->forceFill([
                 'secrets' => [...$secrets, $field => $request->validated('value')],
-                'secrets_set_at' => now(),
+                'secrets_set_at' => $now,
+                'secrets_expire_at' => OrderCredential::expiryFor($this->realOrder($order), $now),
                 'purged_at' => null,
             ])->save();
 

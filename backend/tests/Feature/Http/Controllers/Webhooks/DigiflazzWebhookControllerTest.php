@@ -129,17 +129,18 @@ class DigiflazzWebhookControllerTest extends TestCase
         $this->assertSame('SN-999888', $order->supplier_ref);
         $this->assertNotNull($order->delivered_at);
         // The raw webhook `data` object is stored verbatim as the
-        // supplier_response audit trail (informational — `price` is
-        // never used to compute anything, exactly as the synchronous
-        // path never trusts the supplier's echoed price).
+        // supplier_response audit trail; its `price` is the real cost
+        // (ADR-111), and platform profit is the residual against it.
         $this->assertSame('Sukses', $order->supplier_response['status']);
         $this->assertSame('SN-999888', $order->supplier_response['sn']);
+        $this->assertNotNull($order->real_cost_price_sen);
+        $this->assertSame(1000 - $order->real_cost_price_sen, $order->platform_profit);
 
         $this->assertDatabaseHas('ledger_entries', [
             'reference_type' => 'order',
             'reference_id' => $order->id,
             'type' => 'order_profit',
-            'amount' => 150,
+            'amount' => $order->platform_profit,
         ]);
     }
 

@@ -5,7 +5,6 @@ namespace Tests\Feature\Services\Accounting;
 use App\Models\AdminUser;
 use App\Models\BudgetEnvelope;
 use App\Models\LedgerEntry;
-use App\Models\Membership;
 use App\Models\MembershipFeeRecord;
 use App\Models\MembershipPlan;
 use App\Models\Order;
@@ -15,16 +14,21 @@ use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\Voucher;
 use App\Models\VoucherMerge;
+use App\Models\VoucherRedemption;
 use App\Services\Accounting\BudgetEnvelopeService;
+use App\Services\Accounting\CashPositionService;
 use App\Services\Accounting\EnvelopePostingType;
 use App\Services\Accounting\ExpenseCategory;
 use App\Services\Accounting\MonthlyAccountingSummaryService;
 use App\Services\Accounting\PaidFrom;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\Ledger\LedgerOwnerType;
+use App\Services\Membership\MembershipFeeService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Voucher\VoucherService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Tests\Support\PartialComboOrders;
 use Tests\TestCase;
 
@@ -123,38 +127,23 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $this->assertSame(2400, $october['cogs_sen']);
     }
 
-    public function test_membership_revenue_sums_fee_records_in_period(): void
+    /** Through the real fee seam, which writes the record and its ledger credit together; a waived fee is RM0. */
+    public function test_membership_revenue_is_the_months_membership_fee_ledger_rows(): void
     {
+        Mail::fake();
         $plan = MembershipPlan::query()->where('name', 'Tier 2')->firstOrFail();
-        $membership = Membership::query()->create([
-            'affiliate_id' => $this->primaryAffiliate()->id,
-            'email' => 'member@example.com',
-            'membership_plan_id' => $plan->id,
-            'status' => 'active',
-            'cycle_started_at' => now(),
-            'quota_remaining_sen' => $plan->quota_sen,
-            'expires_at' => now()->addDays(30),
-        ]);
+        $fees = app(MembershipFeeService::class);
+        $pay = function (string $at, string $email, int $amount, string $key) use ($fees, $plan) {
+            $this->travelTo($at);
+            $fees->recordFeePaid($this->primaryAffiliate()->id, $email, $plan->id, $amount, null, null, $key);
+        };
 
-        $inPeriod = MembershipFeeRecord::query()->create([
-            'membership_id' => $membership->id,
-            'membership_plan_id' => $plan->id,
-            'amount_sen' => 2500,
-            'idempotency_key' => 'idem-in-period',
-        ]);
-        $inPeriod->forceFill(['created_at' => '2026-09-10 00:00:00'])->save();
+        $pay('2026-08-01 00:00:00', 'early@example.com', 2500, 'idem-august');
+        $pay('2026-09-10 00:00:00', 'member@example.com', 2500, 'idem-september');
+        $pay('2026-09-12 00:00:00', 'waived@example.com', 0, 'idem-waived');
 
-        $outOfPeriod = MembershipFeeRecord::query()->create([
-            'membership_id' => $membership->id,
-            'membership_plan_id' => $plan->id,
-            'amount_sen' => 2500,
-            'idempotency_key' => 'idem-out-of-period',
-        ]);
-        $outOfPeriod->forceFill(['created_at' => '2026-08-01 00:00:00'])->save();
-
-        $summary = $this->service()->forPeriod(2026, 9);
-
-        $this->assertSame(2500, $summary['membership_revenue_sen']);
+        $this->assertSame(2500, $this->service()->forPeriod(2026, 9)['membership_revenue_sen']);
+        $this->assertSame(2500, (int) MembershipFeeRecord::query()->whereBetween('created_at', ['2026-08-31 16:00:00', '2026-09-30 15:59:59'])->sum('amount_sen'));
     }
 
     public function test_payment_processing_gain_loss_is_matched_fee_minus_file_fee_across_settlements_in_month(): void
@@ -213,6 +202,33 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
     }
 
     /**
+     * ADR-127 PR E: paying a pay-after supplier (a penjoki, a manual
+     * supplier) settles what we owe it; it is not a prepaid top-up. Its
+     * own line, neither one profit-and-loss; the bank fee stays one line.
+     */
+    public function test_a_pay_after_payment_is_its_own_line_not_a_prepaid_top_up(): void
+    {
+        $prepaid = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'MYR']);
+        $payAfter = Supplier::query()->create([
+            'name' => 'Penjoki Amir', 'slug' => 'penjoki-amir', 'driver' => Supplier::DRIVER_MANUAL,
+            'funding_mode' => Supplier::FUNDING_PAY_AFTER, 'api_config' => [], 'currency' => 'MYR',
+        ]);
+        foreach ([[$prepaid, 20000, 500], [$payAfter, 7000, 100]] as [$supplier, $sent, $fee]) {
+            SupplierTransfer::query()->create([
+                'transferred_on' => '2026-09-05', 'supplier_id' => $supplier->id, 'source_channel' => 'bank',
+                'amount_myr_sent' => $sent, 'fee_myr' => $fee, 'currency' => 'MYR', 'amount_foreign_received' => (string) ($sent / 100),
+            ]);
+        }
+
+        $summary = $this->service()->forPeriod(2026, 9);
+
+        $this->assertSame(20000, $summary['supplier_prepaid_topup_sen']);
+        $this->assertSame(7000, $summary['pay_after_supplier_payments_sen']);
+        $this->assertSame(600, $summary['bank_transfer_fees_sen']);
+        $this->assertSame(-600, $summary['operating_profit_sen']);
+    }
+
+    /**
      * ADR-083 2026-10-10 addendum, decision 15: a transfer typed in on
      * 2 Oct for money that left the bank on 30 Sep belongs to September.
      */
@@ -259,18 +275,22 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
      * for a past month's period still returns today's real balance
      * (there's no historical snapshot mechanism).
      */
-    public function test_reseller_wallet_balance_is_the_current_total_across_every_reseller(): void
+    /** ADR-127 P1: the balance at the month end across every reseller, so a later top-up never moves a closed month. */
+    public function test_reseller_wallet_balance_is_the_month_end_total_across_every_reseller(): void
     {
-        LedgerEntry::query()->create(['owner_type' => LedgerOwnerType::ResellerWallet->value, 'owner_id' => 1, 'type' => 'wallet_topup', 'amount' => 30000, 'reference_type' => 'wallet_topup_attempt', 'reference_id' => 1]);
-        LedgerEntry::query()->create(['owner_type' => LedgerOwnerType::ResellerWallet->value, 'owner_id' => 1, 'type' => 'wallet_debit', 'amount' => -5000, 'reference_type' => 'order', 'reference_id' => 1]);
-        LedgerEntry::query()->create(['owner_type' => LedgerOwnerType::ResellerWallet->value, 'owner_id' => 2, 'type' => 'wallet_topup', 'amount' => 10000, 'reference_type' => 'wallet_topup_attempt', 'reference_id' => 2]);
+        $ref = 0;
+        $row = function (int $owner, string $type, int $amount, string $at) use (&$ref) {
+            LedgerEntry::query()->forceCreate(['owner_type' => LedgerOwnerType::ResellerWallet->value, 'owner_id' => $owner, 'type' => $type, 'amount' => $amount, 'reference_type' => 'wallet_topup_attempt', 'reference_id' => ++$ref, 'created_at' => $at]);
+        };
+        $row(1, 'wallet_topup', 30000, '2026-09-05 00:00:00');
+        $row(1, 'wallet_debit', -5000, '2026-09-20 00:00:00');
+        $row(2, 'wallet_topup', 10000, '2026-09-30 15:59:00'); // 23:59 on 30 Sep KL
+        $row(2, 'wallet_topup', 99000, '2026-09-30 16:00:00'); // 00:00 on 1 Oct KL — October
         // A different owner type must never leak into this total.
         LedgerEntry::query()->create(['owner_type' => LedgerOwnerType::Platform->value, 'owner_id' => null, 'type' => 'order_profit', 'amount' => 999999, 'reference_type' => 'order', 'reference_id' => 1]);
 
-        // Requesting a period from months ago must still return today's real total, not zero/historical.
-        $summary = $this->service()->forPeriod(2020, 1);
-
-        $this->assertSame(30000 - 5000 + 10000, $summary['reseller_wallet_balance_sen']);
+        $this->assertSame(30000 - 5000 + 10000, $this->service()->forPeriod(2026, 9)['reseller_wallet_balance_sen']);
+        $this->assertSame(0, $this->service()->forPeriod(2026, 8)['reseller_wallet_balance_sen']);
     }
 
     public function test_failed_order_credit_issued_counts_only_vouchers_tied_to_an_order(): void
@@ -369,15 +389,45 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
 
     public function test_voucher_breakage_is_the_remaining_balance_of_vouchers_expiring_in_the_month(): void
     {
-        $this->voucher(['remaining' => 300, 'expires_at' => '2026-09-20 00:00:00']);
-        $this->voucher(['remaining' => 0, 'status' => 'exhausted', 'expires_at' => '2026-09-21 00:00:00']);
-        $this->voucher(['remaining' => 700, 'expires_at' => '2026-09-30 16:00:00']); // 1 Oct KL — October
-        $this->voucher(['remaining' => 900, 'expires_at' => null]);
+        $this->voucher(['amount' => 300, 'remaining' => 300, 'expires_at' => '2026-09-20 00:00:00']);
+        $spent = $this->voucher(['amount' => 400, 'remaining' => 0, 'status' => 'exhausted', 'expires_at' => '2026-09-21 00:00:00']);
+        VoucherRedemption::query()->forceCreate(['voucher_id' => $spent->id, 'order_id' => Order::factory()->create()->id, 'amount' => 400, 'status' => 'committed', 'created_at' => '2026-09-12 00:00:00']);
+        $this->voucher(['amount' => 700, 'remaining' => 700, 'expires_at' => '2026-09-30 16:00:00']); // 1 Oct KL — October
+        $this->voucher(['amount' => 900, 'remaining' => 900, 'expires_at' => null]);
         // A sandbox order's compensation voucher was never customer cash.
         $testOrder = Order::factory()->create(['is_test' => true]);
-        $this->voucher(['order_id' => $testOrder->id, 'remaining' => 4000, 'expires_at' => '2026-09-20 00:00:00']);
+        $this->voucher(['order_id' => $testOrder->id, 'amount' => 4000, 'remaining' => 4000, 'expires_at' => '2026-09-20 00:00:00']);
 
         $this->assertSame(300, $this->service()->forPeriod(2026, 9)['voucher_breakage_sen']);
+    }
+
+    /** ADR-127 P1: a revoke is a dated fact — the unspent balance is income of the revoke month, and stops being owed from then on. */
+    public function test_a_revoked_vouchers_balance_leaves_the_claims_and_is_income_of_the_revoke_month(): void
+    {
+        $voucher = $this->voucher(['amount' => 1000, 'remaining' => 1000, 'order_id' => Order::factory()->create()->id]);
+        $this->travelTo('2026-10-05 04:00:00');
+
+        app(VoucherService::class)->revoke($voucher);
+
+        $this->assertNotNull($voucher->fresh()->revoked_at);
+        $this->assertSame(0, $this->service()->forPeriod(2026, 9)['voucher_breakage_sen']);
+        $this->assertSame(1000, $this->service()->forPeriod(2026, 10)['voucher_breakage_sen']);
+        $this->assertSame(1000, app(CashPositionService::class)->asOf(2026, 9)['claims']['vouchers_outstanding_sen']);
+        $this->assertSame(0, app(CashPositionService::class)->asOf(2026, 10)['claims']['vouchers_outstanding_sen']);
+    }
+
+    /** ADR-127 P1: a redemption restored after the voucher expired is the restore month's breakage; September does not move. */
+    public function test_a_restore_after_expiry_never_changes_the_month_the_voucher_expired_in(): void
+    {
+        $voucher = $this->voucher(['amount' => 1000, 'remaining' => 700, 'expires_at' => '2026-09-20 00:00:00']);
+        $redemption = VoucherRedemption::query()->forceCreate(['voucher_id' => $voucher->id, 'order_id' => Order::factory()->create()->id, 'amount' => 300, 'status' => 'committed', 'created_at' => '2026-09-12 00:00:00']);
+        $this->assertSame(700, $this->service()->forPeriod(2026, 9)['voucher_breakage_sen']);
+
+        $redemption->forceFill(['status' => 'restored', 'restored_amount' => 300, 'restored_at' => '2026-10-05 00:00:00'])->save();
+        $voucher->update(['remaining' => 1000]);
+
+        $this->assertSame(700, $this->service()->forPeriod(2026, 9)['voucher_breakage_sen']);
+        $this->assertSame(300, $this->service()->forPeriod(2026, 10)['voucher_breakage_sen']);
     }
 
     public function test_admin_issued_vouchers_are_path_a_only_never_compensation_or_a_merge_result(): void
@@ -422,7 +472,7 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $failed = Order::factory()->create(['paid_at' => '2026-09-15 10:00:00', 'delivery_status' => DeliveryStatus::Failed]);
         $this->voucher(['order_id' => $failed->id, 'amount' => 3000]); // Path B
         $this->voucher(['amount' => 200]); // admin-issued
-        $this->voucher(['remaining' => 50, 'expires_at' => '2026-09-20 00:00:00'], '2026-08-01 00:00:00'); // breakage
+        $this->voucher(['amount' => 50, 'remaining' => 50, 'expires_at' => '2026-09-20 00:00:00'], '2026-08-01 00:00:00'); // breakage
         LedgerEntry::query()->forceCreate([
             'owner_type' => LedgerOwnerType::Affiliate->value, 'owner_id' => 1, 'type' => 'affiliate_tier_fee',
             'amount' => -70, 'reference_type' => 'affiliate_subscription', 'reference_id' => 1, 'created_at' => '2026-09-10 00:00:00',

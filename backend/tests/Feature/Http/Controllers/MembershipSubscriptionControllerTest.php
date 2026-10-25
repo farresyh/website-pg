@@ -137,6 +137,37 @@ class MembershipSubscriptionControllerTest extends TestCase
         $this->assertDatabaseCount('membership_checkout_attempts', 0);
     }
 
+    /**
+     * ADR-080's gate must judge the brand the request came from. It ran
+     * before ResolveStorefrontBrand (its priority pin put it ahead), so on
+     * an affiliate's domain it judged the platform brand instead (found by
+     * ADR-127 PR E's scenario).
+     */
+    public function test_the_gate_judges_the_affiliate_domain_the_request_came_from(): void
+    {
+        $affiliate = Affiliate::query()->create([
+            'business_name' => 'Gate Resell', 'markup_pct' => 10, 'max_markup_pct' => 30, 'status' => 'active', 'membership_enabled' => false,
+        ]);
+        AffiliateDomain::query()->create([
+            'affiliate_id' => $affiliate->id, 'hostname' => 'shop.gate.test', 'status' => AffiliateDomainStatus::Active, 'is_primary' => true,
+        ]);
+        $token = app(MembershipSessionTokenService::class)->issue($affiliate->id, 'member@example.com');
+        $headers = ['Authorization' => "Bearer {$token}", 'X-Storefront-Host' => 'shop.gate.test'];
+
+        $this->getJson('/api/membership/subscribe-options', $headers)->assertForbidden();
+        $this->postJson('/api/membership/subscribe', [
+            'membership_plan_id' => $this->tier('Tier 2')->id,
+            'payment_method' => 'fpx',
+            'idempotency_key' => 'idem-affiliate-gate',
+        ], $headers)->assertForbidden();
+        $this->assertDatabaseCount('membership_checkout_attempts', 0);
+
+        // And the other way round: the affiliate sells membership while the platform brand does not.
+        $affiliate->update(['membership_enabled' => true]);
+        $this->primaryAffiliate()->update(['membership_enabled' => false]);
+        $this->getJson('/api/membership/subscribe-options', $headers)->assertOk();
+    }
+
     public function test_subscribe_creates_an_attempt_and_returns_the_checkout_url_and_server_computed_total(): void
     {
         $token = $this->tokenFor('member@example.com');
@@ -172,6 +203,8 @@ class MembershipSubscriptionControllerTest extends TestCase
     {
         $affiliate = Affiliate::query()->create([
             'business_name' => 'Acme Resell', 'markup_pct' => 10, 'max_markup_pct' => 30, 'status' => 'active',
+            // The brand sells membership; this test passed without it only while the gate judged the platform brand.
+            'membership_enabled' => true,
         ]);
         AffiliateDomain::query()->create([
             'affiliate_id' => $affiliate->id,

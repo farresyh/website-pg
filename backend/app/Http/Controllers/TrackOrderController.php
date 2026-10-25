@@ -94,6 +94,15 @@ class TrackOrderController extends Controller
             // popup: shown once delivery_status=delivered and this is
             // still false, never re-shown once a review exists.
             'has_review' => $order->review !== null,
+            // ADR-126 decision 10: a joki order's climb and latest rank.
+            // Labels only — never the payout, share or penjoki.
+            'joki' => $order->isJoki() && $order->jokiOrder !== null ? [
+                'from' => $order->jokiOrder->from_rank['label'] ?? null,
+                'to' => $order->jokiOrder->to_rank['label'] ?? null,
+                'current' => $order->jokiOrder->current_rank['label'] ?? null,
+                'current_at' => $order->jokiOrder->current_rank_at?->toISOString(),
+                'is_express' => $order->jokiOrder->is_express,
+            ] : null,
         ];
     }
 }

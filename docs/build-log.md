@@ -1612,3 +1612,514 @@ CHIP is reviewing LWF Group Sdn. Bhd.'s merchant account. Its list included a re
 The new page is a fourth admin-edited legal page (`affiliate_footer_settings.refund_policy_content`, sanitized like the other three, served by `/api/catalog/legal/refund-policy`, rendered at `/refund-policy`). It is linked from the footer, the mobile drawer, the sitemap (6 static routes now) and `llms.txt`. Checked in a browser on the e2e harness: the admin saves the field, the storefront page shows it with `{store_name}` resolved, the footer link is there, and no "Bank Negara" text remains on the home or refund page.
 
 The founder decided the policy itself: after retries, a voucher for the full amount or a full refund to the original payment method within 7 working days, at the customer's choice. That revises ADR-004. How a refund is made and recorded is not designed yet (PRD §16 item 129), and it must be built before payment methods are switched on for the new account. The page text is admin content, so it can be published before then.
+
+## 2026-10-22 — Release #528 (`staging`→`main`): Refund Policy page live
+
+Requested by the founder. Merged as `d26c795`; CI and `deploy` green. Box checked: migration `2026_10_22_120000_add_refund_policy_content_to_affiliate_footer_settings` ran (batch 48), Horizon running, `/api/catalog/legal/refund-policy` 200, `https://pekangame.com/refund-policy` 200, no "Bank Negara" text on the home page. The founder then filled Refund Policy, About Us (contact block with the business address) and Terms (sections 1 and 5) in admin; checked through the public API: the refund page and terms mention 7 working days, about-us has the address, the old "do not process cash payouts" line is gone. The reply to CHIP is sent by the founder. `/api/health` still 503 from the Gamevion outage (previous entry); new PRD §16 item 130.
+
+## 2026-10-23 — First real Login Top-up order on prod; FPX on for CHIP's review; item 129 on hold
+
+**Status check (read-only).** The first encrypted database backup (run #57, 02:07 UTC) and the first scheduled OpenWA backup (#56, 19:37 UTC 2026-10-22) both passed their restore tests. `/api/health` is back to 200. Digiflazz is at IDR 797,643, which the founder accepts because no buyers are expected right now.
+
+**FPX is on, on purpose.** `fpx_chip` has been active since 2026-10-22 09:52 UTC so CHIP can review the site. The founder will switch it off again. PRD §14 had said all three methods were off; corrected.
+
+**Item 129 on hold.** The founder says the refund-to-original-method wording exists for CHIP's merchant review, and the policy goes back to voucher-only once CHIP approves. Moved to PRD §16 group D with that trigger.
+
+**Login Top-up, end to end on prod (ADR-124/125, first real order).** The founder bought PG-YTVHCNMQ2SZX (Roblox, test package "0 Robux", Gamevion Manual, `pay_after`), paid RM1.57 through FPX. Checked read-only at each step:
+- Paid at 04:36:42 UTC, order `pending`, `initial` attempt `pending`; `order_credentials` held the username in plain and the five secret fields encrypted, with the consent text.
+- The `supplier_order_post` was sent to the supplier group at 04:36:51. The founder opened the full-login link at 04:37:22, which wrote five `credential_reveals` rows (actor supplier, with IP).
+- `.done` in the group at 04:42:00: order `delivered`, real cost 50 sen (the agreed cost), profit 7 sen, the `initial` attempt resolved `success` plus a `manual_confirm` row naming `wa:601118884011` (decision 42; no reader sums attempt costs). Gamevion Manual got one `ORDER_DRAWDOWN` of −RM0.50, the amount owed. The bot replied in the group (the founder confirmed; the reply is a direct send, not queued).
+- The link stops working once the order leaves `pending`. `app:wipe-order-credentials` stamped `closed_at` at 04:45:07; the secrets are wiped G = 24 h later.
+- Track Order shows Paid / Delivered with the "change your game password" line (founder's screenshot).
+
+## 2026-10-23 — Item 130: a balance check never throws (ADR-069 addendum)
+
+**Root cause, from the prod log of 2026-10-22 00:00:26 UTC.** Gamevion refused connections; `GamevionAdapter::checkBalance()` let the `ConnectionException` through, and `CircuitBreakingSupplierAdapter` rethrows it on purpose (K-3: `createOrder` needs the throw for M-1). `app:refresh-supplier-balances` didn't catch it, so the sweep exited 1 at Gamevion. Digiflazz, next in line, wasn't refreshed that day, and the CRITICAL heartbeat turned `/api/health` red. The same throw 500'd Refresh Balance, the credential probe and Developer Tools. The item's first framing ("health judges an unfunded supplier") would have patched only the symptom.
+
+**Fix, at the seam.** The breaker decorator returns a connection failure as `CONNECTION_FAILED` for `checkBalance` only, after counting it once. Order calls and `listProducts` are unchanged. The daily refresh now isolates each supplier: an unreachable one is recorded and the task succeeds; an unexpected exception is recorded `failed: [ERROR] …`, reported, the rest still refresh, and the task exits FAILURE.
+
+**Tests (red first).** The breaker test that used `checkBalance` to prove propagation now uses `createOrder`/`checkStatus`. New: a balance connection failure is returned and counted once (threshold 2); the daily refresh keeps refreshing Digiflazz after an unreachable Gamevion (real decorator) and after a crashing one (task fails); Refresh Balance on an unreachable supplier (real Gamevion binding, `Http::failedConnection`) returns 200 with `CONNECTION_FAILED` and keeps the last balance (it was a 500). Full suite: 2958 passed. No migration, no frontend change.
+
+## 2026-10-23 — Joki (item 114): ADR-126 re-traced and re-grilled before building
+
+**Why.** ADR-126 dated from 2026-10-17, before ADR-125's decisions 48–64 were built. The founder asked for a full re-check before building ("tidak tampal menampal").
+
+**How.**
+- Three read-only code-trace forks, one per layer: checkout/pricing, ledger/fulfilment, downstream readers. Their top findings were re-checked by hand.
+- A grill with the founder in Malay (S1–S26), then a final stress test (F1–F5).
+- Competitor price lists (Gamevion, Muzzzyyy) compared against a draft rate table.
+
+**Findings that changed the design:**
+- **Post dedupe key.** It had no supplier, so an assigned penjoki's group would never get the post.
+- **Reassign vs `.done` race.** The old penjoki's `.done` could book the drawdown against the new penjoki.
+- **Resend.** It rewrites `cost_price` and `supplier_id` from the package, even on a plain retry.
+- **Bulk Markup.** It rewrites every non-combo package's price.
+- **Stale rule.** It reads `orders.updated_at`, and the manual SLA maximum is 1 day.
+- **Wipe ceiling.** D = 14 days for every login.
+- **`PricingBasis::label()`.** It would throw on a new case, crashing the Reports export.
+- **Revenue month.** Revenue is scoped by `paid_at` but the customer liability by `delivered_at`, which drifts closed months for a multi-day joki. That is now item 131, a launch gate.
+
+**Result.** The ADR-126 2026-10-23 addendum (25 decisions), with pointer addenda in ADR-124 and ADR-125. Item 114 moves to group A, with five PRs and launch gates. The rapspoint page refused automated fetches (HTTP 403), so the draft rates use the 2026-10-17 rates recorded in ADR-126 at the platform's own IDR rate (0.000226, 2026-10-23). Competitor prices confirmed the 25/50-star Mythic thresholds.
+
+## 2026-10-23 — Joki PR 1 (item 114): shared manual-order seams (ADR-126 decisions 17, 18, 20, 22), PR #533 to `staging`
+
+Nothing joki-specific yet. Every manual order, which today means Login Top-up, gets these fixes.
+
+- **Post key (17).** The dedupe key is `…:ref:<ref>:supplier:<id>`. RETRY compares the reference only, so a reassigned order's first post to a new group reads ORDER BARU. A migration appends each existing row's current supplier. Nothing reassigns an order yet, so that supplier is the one the post went to.
+- **Supplier re-check (18).** `finalizePendingDelivery()` takes an optional `expectedSupplierId` and refuses inside its own lock, writing nothing. A first version wrapped finalize in an outer transaction instead. It was dropped because a contradicting result's `late_supplier_result` evidence, which finalize commits before throwing, would have been rolled back. The admin sends the supplier on screen (required by both FormRequests), and the bot sends the group's supplier.
+- **Stale clock (20).** `orders.manual_activity_at` is stamped in `SupplierGroupNotifier::prepare()` when the post is actually sent, so a post skipped for having no group starts no clock. `Order::pendingClock()` returns it, else `updated_at`. The SLA reminder's minutes and `.pending` read it too. SLA max is 4320 minutes.
+- **Login ceiling (22).** `order_credentials.secrets_expire_at` (NOT NULL) comes from `OrderCredential::expiryFor()`. `games.credential_max_days` is set in Edit Game, for a login game only. Before, the sweep read D live, so lowering D applied to every held login at once. To keep that behaviour, changing D or a game's days recomputes the unwiped logins it governs (`refreshExpiry()`).
+- **Gotchas.** The migration loops use `get()`, not `each()`: `each()` pages by offset while the loop rewrites the column it filters on, which skips rows. Testing the migrations on docker MySQL left the `llm_report_*` views behind, and every concurrency test then errored (`backend/AGENTS.md`, gotcha 8).
+- **Verified.** `php artisan test`: 2969 passed, including 11 new tests, red first. Concurrency suite: 33/37; the 4 are `BackupRestoreMysqlTest` (no local `mysqldump`). Migrations on MySQL: rewrite, backfill (set_at + D), NOT NULL and `down()`. Admin: tsc, lint, build, 17 unit tests. e2e: 8/8 on the last full run. Two earlier full runs each had one spec fail once (`admin-login-topup`, `storefront-checkout`), and both passed alone and on the rerun. `admin-login-topup` now sets a login game's days to 30 and asserts a 30-day ceiling on the order.
+
+## 2026-10-23 — Joki PR 2a (item 114): the Fixed basis, the assignment pool and Assign
+
+PR 2 was split in two with the founder's agreement: 2a is the money core, 2b the joki catalog and checkout. No customer can buy joki yet.
+
+- **Fixed basis.** `PricingBasis::Fixed` ("Fixed (joki)") and `OrderPricingResolver::resolveFixed(selling, share%)`: payout = `round(selling × share)` to the sen, platform = the rest, affiliate = 0. `Order::isJoki()` is the one predicate, and every path that could move the payout asks it:
+  - resend keeps the cost and refuses another package;
+  - a joki attempt after Failed/NeedsReview restarts on its package's supplier, the pool, inside `fulfill()`'s lock;
+  - Manual Delivered refuses any other cost;
+  - Bulk Markup skips joki games.
+
+  The only writers of `orders.cost_price` are OrderFactory and OrderResendService (grep), and both are covered.
+- **Catalog.** `games.is_joki`, and `AffiliateGame::hiddenGameIdsFor()` now always includes joki games. The affiliate portal's two copies of the rule were removed and route through it. The portal's game list leaves joki out, and its toggle 404s. A `not.joki` middleware covers every Games & Packages write route, and `GameFulfilmentRule::manualPackage` refuses a penjoki or the pool as a package supplier.
+- **Pool.** `suppliers.joki_role` (`pool` or `penjoki`; one column instead of the ADR's `is_assignment_pool` flag), plus the pool row created by the migration. `Supplier::isAssignmentPool()` is read by:
+  - the group post, the login link and the SLA reminder (none for the pool);
+  - Delivered and Correct-to-Delivered (refused);
+  - `setActive` (refused; F5);
+  - `SupplierPackageStatusService` and group linking (refused);
+  - the Dashboard "no group" and "not posted" counts and the Health supplier cards;
+  - the Middleware and Partners supplier lists. The manual-package supplier picker leaves out every joki role.
+- **Assign.** `JokiAssignmentService`, `POST /api/orders/{order}/joki/assign`, with a `joki_assignments` audit row. It takes the order lock, then the penjoki's lock, which is the same lock `setActive` now takes, so a penjoki with Pending orders can't be switched off (decision 19). Allowed for a Pending joki order only, to an active penjoki with a group, and never to the same penjoki.
+- **Found while building.**
+  - Reassigning A → B → A: the decision-17 key `(ref, supplier)` already had A's sent row, so A would get no post, and A's first link would have opened again. The key now ends `:assign:<id>` for an assigned order, and `supplier_login_links.joki_assignment_id` must match the order's current assignment. `customer_notifications.dedupe_key` widened 100 → 191.
+  - The migration's `down()` first deleted the pool and failed on the packages FK during the MySQL concurrency teardown. It now deletes the pool only when nothing references it; otherwise it switches the pool off.
+- **Verified.**
+  - `php artisan test`: 2986/2987. The one failure, `SyncSupplierProductsCommandTest::test_command_syncs_every_active_supplier_via_its_own_adapter`, passed alone and in two runs of the Console suite. That command reads `apiBacked()` suppliers only, so the pool can't reach it.
+  - New tests: `Adr126JokiCoreTest` (17), a portal test, and the route allowlist.
+  - Concurrency suite: 35/39. The 4 are `BackupRestoreMysqlTest` (no local `mysqldump`). The new `JokiAssignConcurrencyTest` covers Assign vs the old penjoki's `.done` and Assign vs switch-off; both passed 4 runs in a row.
+  - Admin `tsc` passed (`pricing_basis` gains `fixed`).
+- **Left for PR 4 on purpose:** joki out of the Manual Queue and Need Action (F4), together with the Joki page and Dashboard card that replace them. Until then a pool order past the pool's SLA appears as stale.
+
+## 2026-10-23 — Joki PR 2b (item 114): rank model, joki pricing and checkout
+
+**Founder's answers (2026-10-23):**
+- A division is worth its own stars: Epic V 0★ → Epic IV 0★ = 5 stars.
+- Elite has 4 stars per division (the 2026 sources; it is panel data anyway).
+- Mythic Grading is the 10 placement matches when an account first enters Mythic. Winning all 10 gives about 15 stars, which is why it is sold flat. Grading's flat price guarantees Mythic 15★: if the account lands lower, the penjoki plays on to 15★ at no extra charge, and only stars past 15★ are charged.
+
+**Built:**
+- **Tables.** `joki_settings` (one row), `joki_tiers` (rank model), `joki_routes` (route packages and quotations), `joki_orders` (snapshot) and `affiliates.joki_enabled`.
+- **Seeded draft data.** The 2026 ladder (Warrior 3×3, Elite 4×4, Master 4×4, GM/Epic/Legend 5×5, then Mythic bands at 0/25/50/100) and the ADR's draft rates: below Mythic RM2 (Warrior/Elite/Master assumed the same as GM; the ADR had no figure), Mythic RM4, Honor RM5, Glory RM6, Immortal RM7, Express = +RM1, Grading RM39. Grading Express is seeded at RM39 too and needs the founder's figure. Joki stays off.
+- **Pricing engine.** `JokiLadder` turns a rank into a star position, and validation errors are keyed `joki.from`/`joki.to`. `JokiPricingService::quote()` is the one price:
+  - each star at the rate of the tier it is won in;
+  - Grading added when crossing into Mythic;
+  - at least `min_stars` paid stars, unless the order includes Grading;
+  - a route package at its own price, Reguler only;
+  - a quotation route is refused;
+  - `cheaper_route` points to a route package selling the same climb for less.
+- **Checkout.** One storefront checkout: `CheckoutController::sellableHere()` (the two copies of the game/package availability check in `store()` and `previewTotal()` are merged into it) takes a joki game past the hidden-game rule and through `JokiCheckoutService::resolve()`, which checks both switches on an owned brand, validates the role against the panel list, and takes the quote and `resolveFixed` at the share in force now. `CheckoutService` uses the pre-resolved pricing, `OrderFactory` writes `joki_orders` in the order's transaction, and the idempotency hash includes the climb (from, to, Express).
+- **Endpoints for the `/joki` page.** `GET /api/joki/catalog` and `POST /api/joki/quote`, behind `brand.joki`. The payout share is never exposed.
+- **Admin.** `AffiliateController`'s owned-brand-only rule is now one list (`membership_enabled`, `joki_enabled`).
+
+**Found while building.** The first migration also seeded the joki game and calculator package. That broke 23 unrelated tests that count games or packages (SEO, game list, sitemap, reseller catalog, the CHIP smoke test), and it would have put a joki game into every catalog count on prod. The game and package are now made by `JokiCatalog::ensure()` (idempotent), which the admin's joki switch will call in PR 4. In the same file, PR 2a's `Game::scopeJoki()` had been inserted between `isLoginGame()` and its docblock; fixed.
+
+**Verified.**
+- `php artisan test`: 3005/3005, including `Adr126JokiPricingTest` (10, prices worked out by hand) and `Adr126JokiCheckoutTest` (8).
+- Concurrency suite: the joki, finalize, fulfil and settle tests (5/5).
+- e2e: 8/8. Dev DB migrated.
+
+## 2026-10-23 — Joki PR 3 (item 114): progress, Track Order and the customer's WhatsApp update
+
+- **One seam.** `JokiProgressService::record()` is used by the penjoki's `.progress` and by the admin's `POST /api/orders/{order}/joki/progress`.
+  - Under the order lock: a Pending joki order held by a penjoki (never the pool), and for the bot only the penjoki it is assigned to.
+  - It checks the rank against the panel model, then writes `joki_progress_updates`, `joki_orders.current_rank` and `manual_activity_at` (decision 21).
+- **`.progress PG-… Epic III 2`.** `JokiRankParser` reads a division in Roman numerals or digits; a tier by name, last word, a 3+ letter prefix, or `GM`. For Mythic+ it reads the star count and takes the band from the stars (`Mythic 30` → Mythical Honor 30★). The bot answers in Malay, and the help text lists the command.
+- **Customer WhatsApp (decision 10, S23).** `CustomerNotificationService::jokiProgress()`:
+  - opted-in customers only (the receipt rule);
+  - the first update goes at once; after that at most one message per `joki_settings.progress_message_interval_minutes` (default 120);
+  - while one message is queued, a newer update adds nothing, and the message is worded at send time with the latest rank (`prepare()`, now called by `SendCustomerWhatsAppJob` for the customer session too);
+  - dropped at send time if the order finished or the customer sent STOP.
+  - `WhatsAppOutbox::enqueue()` gains `notBefore`.
+- **Track Order.** `customerSafePayload()` gains `joki` (from, to, current, Express; labels only). `OrderObserver` also broadcasts on a `manual_activity_at` change, so an open page updates. The WhatsApp status card shows the climb and the current rank.
+- **Storefront.** The Game & Package card shows "Climb" and "Rank now". A joki order no longer gets the login top-up copy ("usually within 30 minutes", "Your top-up is done").
+- **Verified.**
+  - `php artisan test`: 3015/3015 (`Adr126JokiProgressTest`, 10 new).
+  - Storefront `tsc` and lint pass.
+  - A temporary e2e spec (since deleted) created a joki order in the throwaway e2e DB and opened Track Order. Screenshots at 1280 and 390 wide showed the climb, the current rank and the joki help text, with no horizontal scroll.
+
+## 2026-10-23 — Docs sync after Joki PR 1–3 (#536 merged)
+
+Checked against `git log origin/main..origin/staging` and read-only prod: payment methods (FPX on since 2026-10-22 09:52 UTC, FPX Business and DuitNow QR off) and the last migration (2026-10-22's, so nothing from #529–#536 runs on prod yet).
+
+- **PRD §14.** New "On `staging`, not released" paragraph (#529–#536). It says plainly that the item 130 fix isn't live, and that Joki PR 1 also changes Login Top-up.
+- **PRD §15.** New Joki MLBB row.
+- **PRD §16.** Items 114 and 130 updated; 130's closed line now says "not released".
+- **PRD §6.24 and §6.25.**
+  - LOGIN-6: per-login ceiling.
+  - MSUP-3/4/5/6: supplier re-check, posts per supplier and assignment, `.progress`, SLA up to 4320 and the explicit clock.
+  - New §6.25 Joki (JOKI-1..10). MSUP-5 already pointed at it.
+- **PRD §8.** New columns on Game, Supplier, Affiliate, Order (`fixed` basis, `manual_activity_at`), OrderCredential, SupplierLoginLink and CustomerNotification, and six joki entities.
+- **PRD §13 Glossary.**
+  - Joki no longer says "Designed, not built": the Glossary never states build status (the `adr.md` rule).
+  - Funding Mode cites ADR-126 for penjoki.
+  - New terms: Assignment pool, Mythic Grading.
+- **PRD §1 and §10.** The CHIP lines no longer repeat "all three methods off since 2026-10-07", which contradicted §14. Payment status now lives in §14 only.
+- **ADRs.** Standing updated, index and banner together:
+  - ADR-126: Accepted, with the later addenda;
+  - ADR-116: joki progress pacing;
+  - ADR-061: the owned-brand rule gates Joki.
+
+  ADR-126's PR 2a notes now record that the game flag is `games.is_joki`, not the original `owned_brands_only`.
+
+
+## 2026-10-24 — Joki PR 4a: the admin backend (ADR-126 decisions 23-25, F4)
+
+PR 4 is split like PR 2 (founder, 2026-10-24): **4a** is the backend and its tests, **4b** the admin screens.
+
+- **`JokiBoard`** (`app/Services/Joki`) defines the Joki page's filters and the Dashboard card in one place, over paid, real joki orders:
+  - `waiting`: Pending on the pool;
+  - `in_progress`: Pending with a penjoki;
+  - `stale`: past its SLA (`isStalePending`), or NeedsReview;
+  - `needs_voucher`: `needsAction()`;
+  - `done` and `failed`.
+- **F4.** `Order::scopeJoki()` / `scopeNotJoki()` (Fixed basis) take joki out of:
+  - `/orders` Need Action (filter and summary);
+  - the Dashboard's `needs_action_orders` and stale-pending part of `stuck_orders`;
+  - the Manual Queue.
+  - **Founder's choice (2026-10-24):** a Failed, uncompensated joki is the card's 4th number, "needs voucher", so it is never left with nowhere to be seen.
+  - Reports' "awaiting compensation" keeps joki: it is money, not a work queue.
+  - `needs_review` stays general.
+- **`/orders?type=all|topup|login|joki`** (decision 25):
+  - login = has an `order_credentials` row;
+  - joki = Fixed;
+  - the export's scope line names the type.
+- **`/api/joki-admin/*`** (`JokiAdminController`):
+  - every admin: `orders` (paginated board rows: ranks, penjoki, payout, last activity, SLA due) and `summary`;
+  - every admin: `penjoki` (open orders, `owed_sen` from the pay-after ledger, has group);
+  - super admin: `settings`, `tiers` and `routes`.
+  - Assign and progress stay on `JokiAssignmentController`. Recording a payment is the existing supplier-transfer action.
+- **Settings.**
+  - Whole ringgit is enforced by `integer` rules. Share: 0–100, two decimals. Grading Express is never below Grading. The Mythic cap must be above the highest band. `terms_html` is Purified (`rich_text`).
+  - **`is_enabled: true` calls `JokiCatalog::ensure()`.** Off only stops new sales; the pool stays active for paid orders.
+- **Rank model.**
+  - Only existing tiers are edited (adding or removing a tier is not built). Express is not below Reguler.
+  - The Mythic bands must start at 0★ and climb.
+  - Every route must still read on the new ladder, or the whole edit rolls back.
+- **Route packages.**
+  - A new route is a joki `Package` on the pool (price fields 0, F1) plus its `joki_routes` row.
+  - The climb is checked on the ladder: the target must be above the start.
+  - A route is switched off, never deleted, because past orders point at its package. A quotation clears the price.
+- **Penjoki** are created in Middleware → Suppliers: `joki_role: penjoki` is accepted only on a pay-after manual supplier, and the pool can't be made there.
+- **Banner and "Joki Rank" menu.** No new setting. The banner is an ordinary Hero Slide linking to `/joki`, and the menu item is PR 5's, shown when `/api/joki/catalog` answers.
+- **Verified.**
+  - `php artisan test`: 3026/3026 (`Adr126JokiAdminTest`, 11 new; `RouteAccessTest` lists the three admin-readable routes).
+  - On the dev DB, `notJoki()` keeps all 189 existing orders.
+
+## 2026-10-24 — Joki PR 4b: the admin screens (ADR-126 decisions 16, 23-25)
+
+Stacked on PR 4a (#538).
+
+- **Admin → Joki** (`/admin/joki`, sidebar under Commerce):
+  - **Orders:** `JokiBoard`'s filters (All, Waiting, In progress, Stale, Needs voucher, Done, Failed). Each row shows the climb with the current rank, role and hero, the penjoki, time waited, last activity, SLA left or overdue, and sold price and payout. Assign is inline for Pending rows; other rows open Order Detail. `?filter=` deep-links from the Dashboard card.
+  - **Penjoki:** open orders, owed and group status. Record payment opens the existing `SupplierTransferModal` (its prop narrowed to the six fields it reads). Super admin only, like Accounting.
+  - **Settings** (super admin):
+    - the Joki switch: the first time it is switched on, it creates the joki game and calculator package;
+    - prices and rules;
+    - roles, Express wording and terms (`RichTextEditor`);
+    - the rank model (names, shape, whole-RM rates, icons from the Gallery);
+    - route packages (add, change the price, switch off).
+- **Order Detail Joki card.**
+  - The order detail response gains `joki`: ranks, requests, payout share, `is_with_penjoki`, Assign and progress history, and the rank model for the picker.
+  - For a Pending order, the card has Assign or Move, plus Update progress (penjoki only) through a shared `RankPicker`.
+- **Dashboard Joki card:** waiting, in progress, stale, and failed needing a voucher. Each number links to its board filter, and urgent non-zero numbers are red. The card is hidden while all four are 0, so it doesn't sit empty before launch.
+- **`/orders` Type select** (All / Top-up / Login / Joki). It accepts `?type=` and is part of the export filter.
+- **Brand form:** "Sell Joki on this storefront" (owned brands only), next to Membership. The brand list tags it "joki".
+- **Middleware → Suppliers create form:** an "A penjoki" tick on a pay-after manual supplier sends `joki_role: penjoki`.
+- **Backend touch-ups:**
+  - a tier icon accepts any URL (local Gallery URLs are `http`);
+  - a price with sen is refused with "Whole ringgit only, no sen."
+- **Verified.**
+  - `php artisan test`: 3027/3027. Admin: `tsc`, lint and `npm test` (17) pass, and `next build` succeeds.
+  - Browser check: built admin on `localhost:3000`, against a copy of the dev DB in the scratchpad (seeded with three joki orders and a penjoki; queue `sync`; OpenWA pointed at a dead port). The real dev DB was not touched.
+  - Flows checked:
+    - board, Assign, the Order Detail card and the Penjoki tab;
+    - Record payment modal;
+    - settings save (sen refused, Grading Express saved);
+    - route add;
+    - Dashboard card, and the `/orders` Joki filter (3 rows).
+  - At 390 px wide there is no horizontal page scroll; the table scrolls inside its card.
+  - Fixed during the check: a Failed row read "Waiting" for its penjoki, status tags were lowercase, and order numbers wrapped on mobile.
+
+### 2026-10-24 — PR 4b restyled on `/admin/orders`; board filters (founder)
+
+The founder found the first Joki screens untidy and unlike `/orders`, and asked for `/orders` as the benchmark plus the same filters.
+
+- **Shared components, not copies:**
+  - `StatusText` and the delivery/payment severity maps moved out of `orders/page.tsx` into `components/orders/StatusText.tsx`;
+  - `OptionSelect` moved out of `CreateSupplierModal` into `components/ui/option-select.tsx` (with a placeholder).
+  - Joki uses them with `DataTable`, `Input` and `Label`. No native selects or hand-rolled inputs are left.
+- **Orders tab:**
+  - five summary cards in `OrderSummaryCards`' style (Waiting carries the purple marker; All Joki uses a new `all` count from `/summary`);
+  - search with the underline filter tabs, and a filter row: penjoki, plus the same date presets as `/orders`;
+  - dot status text, and a two-line Climb / Waiting+SLA / Amount;
+  - View on every row, and Assign (in a dialog) on unassigned rows.
+- **Backend:** `/api/joki-admin/orders` takes `search` (order # or email), `supplier_id`, and `date_from`/`date_to`, with the same KL-day bounds on `created_at` as `/orders`. One new test.
+- **Penjoki tab:** in `DataTable`. **Settings:** cards in Order Detail's style, `Input`/`Label`, and the rank model and routes in bordered tables. **Order Detail Joki card:** laid out like `OrderDetailCards`. **Dashboard card:** summary-card style.
+- **Verified:** built admin against a seeded copy of the dev DB, with screenshots next to `/orders`. Assign through the dialog, search `DEMO3` returning 1 row, and no horizontal scroll at 390 px all passed. `tsc`, lint and tests pass.
+
+## 2026-10-24 — Joki PR 5: the `/joki` page (ADR-126 decisions 1, 2, 3, 12)
+
+#538 (4a) and #539 (4b) were merged to `staging` with the founder's go-ahead. #539 was retargeted to `staging` before #538 was merged with `--delete-branch`.
+
+- **`/joki`** (`app/joki/page.tsx`, `components/joki/JokiOrderForm.tsx`) follows the top-up order page. It reuses `Stepper`, `StepCard`, `LoginAccountFields`, `OrderSummarySidebar`, `ReviewModal` and the sticky mobile bar, with three steps:
+  - **Choose your climb.** A calculator (`JokiRankStepper`) for any climb, or route packages. Quotation routes link to WhatsApp.
+  - **Account & requests.** The joki game's login form, consent, role, hero and play window.
+  - **Payment.**
+
+  The price is always the backend's: `/api/joki/quote` for the climb, and `preview-totals` with the `joki` block for the fee and total. Checkout sends the `joki` block and never a price. It answers 404 where the brand doesn't sell joki.
+- **Rank calculator (founder, after comparing rapspoint.com).**
+  - ‹ › move one division or Mythic band; ▲ ▼ set the stars, which are kept across divisions as far as they fit.
+  - Mythic stars can be typed, and the band follows them.
+  - The target never goes below the start, and moving the start up pushes it along.
+  - It opens on Epic V → Epic IV, priced at once. Both sides sit side by side on a phone too.
+  - Icons come from the panel's rank model, with a lettered badge until the founder's icons are set.
+- **Shared, not copied.** `PaymentChannelPicker` was moved out of `OrderForm` unchanged. The login-field wire schema and its mapping are exported from `lib/catalog.ts`.
+- **Menu and sitemap.** "Joki Rank" is in the header and the mobile More drawer, and `/joki` is in the sitemap, all only where `/api/joki/catalog` answers. `BottomNav` treats `/joki` as a checkout (the sticky bar takes its place).
+- **Fix (found building it): the voucher preview priced the joki package's RM0 (F1).** `VoucherPreviewController` now prices a joki game through `JokiCheckoutService` and takes the `joki` block. `ReviewModal` passes it. There is a red-to-green test.
+- **Cache.** Joki settings, rank model and route saves, and a brand's `joki_enabled` change, call `NextRevalidation::purge()`.
+- **E2E golden path** (`storefront-joki.spec.ts`):
+  - the admin switches Joki on and ticks "Sell Joki";
+  - a guest prices a climb (RM10, then one more star RM12) and pays;
+  - the webhook comes in, and the order waits on the pool;
+  - the status page shows the climb, and the board shows it Unassigned.
+- **CI catch:** `check-loading-boundaries.mjs` failed because `/joki` had no `loading.tsx`, so navigation would freeze. It now reuses `OrderPageSkeleton`, since the page has the order page's shape. Run that script locally before pushing a new storefront route.
+- **Gotcha: the e2e storefront's Data Cache survived rebuilds while the DB is rebuilt every run.** A cached catalog from an earlier run named a package that no longer existed ("The selected package id is invalid"). The storefront `webServer` command now clears `.next/cache/fetch-cache` first. This also explains a flaky "Joki is not available" seen earlier the same day.
+- **Verified.**
+  - `php artisan test`: 3029/3029.
+  - Storefront and admin: `tsc`, lint and build pass.
+  - e2e: 9/9 in the full run (and repeatedly before the calculator change).
+  - Screenshots of `/joki` on desktop and at 390 px (no horizontal scroll), the Review Modal, the status page and the admin card.
+
+## 2026-10-24 — #540 merged (Joki PR 5); session paused
+
+- **#540 merged to `staging` (`53ade00`)** with the founder's go-ahead, after CI went green on its second run. The first failed only on `check-loading-boundaries.mjs`, fixed with the skeleton. Every Joki PR (1–5) is now on `staging`, not released. Joki is off on prod until its launch gates are met (PRD §16 item 114).
+- **Local only:** the founder's dev DB has Joki on, "Sell Joki" on PekanGame, and the Epic tier's icon (a founder-supplied image, through the Gallery ingest).
+- **Open, not diagnosed:** in the founder's Chrome, every request to `https://kedairuncit-backend.test` fails with 503 or "Failed to fetch", so `/joki` shows broken icons and no price. `curl` to the same URLs gets 200, the `.test` resolver and Herd's nginx are fine, there is no system proxy, and the Herd nginx log is empty, so the requests seem not to reach Herd.
+  - A headless check with `--ignore-certificate-errors` hid this. Verify local UI in the founder's own browser, not only headless.
+  - Picked up next session.
+
+## 2026-10-24 — ADR-127 designed (item 131 widened); PR A: real-cost flag removed, financial scenario builder
+
+- **Design (#542, merged).** The founder widened item 131 from "revenue by delivery date" to every money page. A three-layer read-only trace (checkout and pricing; ledger, fulfillment and compensation; downstream readers), the grill (Q1–Q13) and a stress test produced [ADR-127](./adr/ADR-127-financial-truth-dated-facts.md). Its rule P1: a figure for any past period comes only from dated facts that never change. It revises ADR-083, ADR-111 decision 8 and ADR-126 decisions 11/13.
+- **Production, read-only, 2026-10-24:**
+  - 46 orders, 32 of them Delivered.
+  - No order was paid in one month and delivered in another.
+  - September is the only closed month.
+  - There are no duplicate supplier-ledger references.
+  - `REAL_COST_RECONCILIATION_ENABLED=true`.
+  - So no data patch is needed for ADR-127.
+- **PR A (`feature/adr-127-pr-a-scenario-builder`):**
+  - **The real-cost flag is removed (ADR-127 decision 10).** Real cost is the only path. Five tests failed once it was gone:
+    - Four combo tests wrote the supplier's `price` in sen (`480`), while adapters return ringgit. The off default had hidden this.
+    - One Digiflazz webhook test asserted the checkout estimate, under a comment saying `price` is "never used". In production it has been the real cost since ADR-111.
+  - **`Database\Seeders\FinancialScenario\FinancialScenario`** builds money data by driving the real system:
+    - Checkout, the CHIP webhook and the Reseller API through the HTTP kernel, so prices are resolved server-side.
+    - Back-office actions through the admin's services.
+    - The API supplier is a `ScriptedSupplierAdapter`. By default it returns the catalog cost in ringgit, and a scenario can queue a failure or a different real cost for the next order.
+  - **The builder is safe by construction:**
+    - It refuses to run in production.
+    - The queue is `sync`, so no Horizon worker can reach a real supplier.
+    - Outbound HTTP is refused, and mail and notifications are faked.
+    - The world is created at the scenario's start time.
+  - **`FinancialScenarioTest` proves invariants 5, 6 and 10** on that data:
+    - Wallet and affiliate balances agree on Dashboard, Summary, Cash Position, the portal and the API.
+    - The price identity holds with real cost.
+    - Every delivered API order has exactly one drawdown.
+  - The other invariants arrive with the PR that makes them true. `FakeSupplierAdapter` (sandbox, e2e) is unchanged.
+- **Gotcha:** the first version created the reseller's opening top-up at the real clock (October). September's Cash Position correctly left it out, and invariant 5 read -RM22.10. Scenario data must be created on the scenario's own clock.
+- **Verified:** `php artisan test` passes 3032/3032, and Pint is clean.
+
+## 2026-10-24 — ADR-127 PR A merged (#543); PR B1: revenue at `recognised_at`
+
+- **#543 merged** with the founder's go-ahead, after CI went green.
+- **PR B split** (ADR-127 2026-10-24 addendum). This is **B1**.
+- **Red first.** `FinancialScenarioTest` gained an order paid on 30 September at 23:50 and delivered at 00:10 on 1 October (a scripted Pending, finished through `finalizePendingDelivery`).
+  - Before the fix, September's paid money (RM74.84) showed as recognised plus owed = RM101.79: the order counted twice (S1, proven).
+  - October's revenue did not contain the order at all.
+- **Fix:**
+  - `orders.recognised_at` (indexed, backfilled), stamped once in `creditOrderProfit()`.
+  - `RecognisedRevenue`, affiliate commission and Cash Position's undelivered claim read `recognised_at`.
+  - The Reports Bridge gained "Recognised here, paid in another range". Admin `AccountingBridge` shows the new row.
+- **Invariants 1 and 4 now hold.** Paid, uncompensated money is either recognised or owed at every month end.
+- **Local dev DB:** migrated (plain `migrate`). 167 of 167 Delivered orders recognised, none moved month.
+- **Verified:** `php artisan test` passes 3035/3035; admin `tsc` and lint pass.
+
+## 2026-10-24 — ADR-127 PR B2: dated facts everywhere, closed months that cannot move
+
+- **Stacked on B1 (#544).** Every step below went red first, then green:
+  - **CHIP's own paid time and fee (F1, F2).** `paid_at` was our processing time, so a late webhook moved a 23:58 payment into the next month. It is now `payment.paid_on`, with a fallback to processing time when the value is missing, implausible, or in a closed month. The fee is kept as `gateway_fee_sen`.
+  - **One date per fact (F4, F5).** Restores carry `restored_at`. The top-up and membership CHIP-unsettled asset is dated by the same ledger fact as the wallet liability; the attempt's `updated_at` is no longer read.
+  - **Closed-month guard.** Transfers, transfer corrections and voids, and envelope postings and voids refuse a closed month. A void used to silently rewrite the month it voided.
+  - **Breakage at expiry (S7).** `Voucher::balanceAsOf()` is now shared with Cash Position.
+  - **Invariant 2.** The scenario closes September, then keeps trading. The new invariant caught the last Summary line reading current state: the reseller wallet balance (S10), now taken at the month end. The Register gained `order_recognised` rows (S2).
+- **Gotchas:**
+  - Several test fixtures were impossible in production, and were masked until now:
+    - a voucher whose `remaining` doesn't match its redemptions;
+    - a "Paid" top-up with no wallet credit;
+    - Delivered orders with no recognition.
+  - A wallet test had asserted the old "always today's balance" rule. It now asserts the month-end rule.
+- **Local dev DB:** migrated (`gateway_fee_sen`, `restored_at`).
+- **Verified:**
+  - `php artisan test` passes 3046/3046.
+  - Admin `tsc` and lint pass.
+  - Pint is clean.
+
+## 2026-10-24 — ADR-127 PR C: one truth across the money pages
+
+- **Stacked on B2 (#545).** Everything below went red first (see the ADR-127 PR C addendum for details):
+  - **Profit by when it was earned.** Reports, the Report Assistant (`recognised_at_kl`, `placed_via`) and the Summary's commission now file profit by recognition. A manual correction is filed by the day it was made.
+  - **One store credit.** Reports now matches Cash Position (`Voucher::outstandingAt`).
+  - **One membership source** (the ledger), plus the missing `is_test` filters.
+  - **Names.** Sales, Revenue (recognised), Owner profit (market rate), Customer spend. The Overview chart had called paid-date sales "Revenue".
+  - **A profit bridge** from owner profit to operating profit on the Profit tab, with nothing unexplained.
+  - **The settlement fee check.** The fee CHIP reported at payment is shown beside the settlement file's fee.
+- **Findings fixed in this session** (founder rule: finish findings in session):
+  - A later manual profit correction moved a past month's Reports profit.
+  - A voucher revoke left no date, so Cash Position kept owing a revoked balance forever. It is now a locked, dated `VoucherService::revoke()`, and its unspent balance is breakage of the revoke month.
+- **Local dev DB:** migrated (`revoked_at`, `llm_report_orders` view, `reported_fee_sen`).
+- **Verified:**
+  - `php artisan test` passes 3056/3056.
+  - Admin `tsc` and lint pass.
+  - The browser pass over every money page is still to do, with the full data set (ADR-127 PR E).
+
+## 2026-10-24 — ADR-127 A, B1, B2 and C merged to `staging`; docs synced
+
+- **Merged with the founder's go-ahead, each after green CI:**
+  - #543 (PR A);
+  - #544 (B1);
+  - #545 (B2), retargeted to `staging` before its parent merged;
+  - #546 (C), also retargeted first.
+
+  Every one is on `staging` and unreleased; the release waits for the founder.
+- **Docs sync.**
+  - PRD §14 lists #529–#546 and the six ADR-127 migrations.
+  - The §15 rows for Reports, Vouchers, Customer Analytics and Internal Accounting carry the ADR-127 notes.
+  - The §16 item 131 entry and its detail text are rewritten (the old "pick a start month" step was not needed).
+  - ADR-024, ADR-083, ADR-087 and ADR-104 have Standing and dated addenda for what ADR-127 revised.
+- **Next session: ADR-127 PR D.**
+  - Mark Delivered goes through the drawdown seam, with a unique index.
+  - Delivered is refused on a compensated order.
+  - Penjoki pay is booked as cost of sales.
+  - Joki is counted once on the Dashboard.
+- **Then PR E:**
+  - a dev-DB seeder;
+  - delete `ReportDemoSeeder`;
+  - a browser pass over every money page.
+
+## 2026-10-24 — ADR-127 PR D: money flows
+
+- **Founder decisions (grilled in Malay):**
+  - Mark Delivered takes the supplier's charged price.
+  - There is no partial or extra penjoki pay. Decision 8 counted that cost twice: an envelope expense already reduces its envelope, and the operating profit leaves envelope expenses out (ADR-127 2026-10-24 addendum).
+- **Built, each test red first:**
+  - **Mark Delivered (NeedsReview).** The admin enters `supplier_price`, in the supplier's currency, read off its dashboard. It becomes the real cost and the one drawdown. The path had recorded no drawdown.
+  - **The drawdown is unique in the database.** A virtual `drawdown_key` column is unique for `ORDER_DRAWDOWN` only, so repeated transfer corrections stay allowed. On prod, read-only today: 35 drawdowns, no duplicate.
+  - **Delivered is refused on a compensated order.** This happens at `finalizePendingDelivery()` (Manual Queue, `.done`, a webhook) under the lock, and in `markDeliveredManually()`. A Paid-after-Failed order with a restored voucher could have reached Delivered through Manual Queue or `.done`.
+  - **The Dashboard's stuck count leaves out a joki in NeedsReview**; the Joki card counts it.
+  - **`FinancialScenario`** gains a NeedsReview order confirmed above catalog cost, covered by invariants 6 and 10.
+- **Gotchas:**
+  - MySQL reads `||` as OR, so the virtual column's expression is per driver.
+  - MySQL JSON reorders keys, so a JSON `assertSame` passed on sqlite and failed on MySQL.
+  - A killed MySQL run left the `llm_report_*` views behind (backend gotcha 8).
+- **Combo legs need no guard.** Traced: a combo can be compensated only once no leg is Pending, and a resend is refused afterwards.
+- **Local dev DB:** migrated (`drawdown_key`).
+- **Verified:**
+  - `php artisan test` passes 3061/3061, including the new tests.
+  - The PR D service tests and `FinancialScenarioTest` pass on MySQL (35/35).
+  - Admin `tsc` and lint pass.
+
+## 2026-10-24 — ADR-127 PR E: dev data, browser pass, two findings
+
+- **#548 (PR D) merged** to `staging` with the founder's go-ahead, after green CI.
+- **Joki in the scenario:** delivered, failed (the penjoki is owed nothing), reassigned (only the second penjoki is paid), and a joki paid in September and finished in October. A new invariant covers the penjoki payout.
+- **`FinancialScenarioSeeder`** fills the dev DB with four months (about 1,500 orders) through the real system. `ReportDemoSeeder` is deleted (ADR-088 addendum).
+- **Local dev DB** (founder: "buang je"):
+  - backed up to `backend/database/database.sqlite.bak-before-pr-e-2026-10-24`;
+  - 189 `DEMO-` orders, their 199 ledger rows and one voucher removed;
+  - the seeder run: 1,578 orders, no price-identity or drawdown exception, 0 unexplained on the bridge every month, the September close equal to its live figure.
+- **Gotchas:**
+  - The first seeding runs failed with "database is locked": `./scripts/dev.sh` (Horizon) was on the same sqlite file. Claude stopped it at the founder's request, restored the backup, removed `DEMO-` again, seeded, and restarted it.
+  - The database cache store kept rate-limit hits from an earlier run, because the scenario replays the clock. The scenario now uses the array cache.
+  - Restarting `dev.sh` let the storefront take :3000, which broke admin login (its cookie works only on :3000). The admin and storefront ports are now pinned.
+- **Browser pass:** 11 money pages, with no API error. Two findings, both fixed:
+  - **A pay-after supplier payment was counted as a prepaid top-up** on the Monthly Summary. It now has its own line, "Supplier payments — pay-after". Production, read-only: no pay-after payment yet.
+  - **The Joki "Waiting" column** showed a finished order's age since payment.
+- **Verified:**
+  - `php artisan test` passes 3064/3064.
+  - Admin `tsc` and lint pass.
+  - The Summary's split was checked in the browser: October's prepaid RM12,000 and pay-after RM1,170 add up to the old RM13,170.
+
+## 2026-10-25 — ADR-127 PR E completed: the six untested flows, two findings
+
+- **Founder question:** were the accounts correct? Claude listed what the scenario did not drive yet (membership, CHIP top-ups, withdrawals, resends, an IDR supplier, CHIP settlement with the bank). The founder asked why they weren't tested with the rest. Claude had scoped them out without raising it. They are now in #549.
+- **Built:**
+  - The `MoneyFlows` trait and a `ChipSettlementFile` writer; the bank modelled as dated flows.
+  - Five new invariants: the cash equation closes with a 0 gap, membership revenue agrees, IDR costs at funded rate, CHIP fees recorded, resend and withdrawal.
+  - The seeder drives all of it.
+- **Finding 1, fixed:** the membership gate ran before the brand resolver, so an affiliate's domain was gated by the platform's switch (ADR-080 2026-10-25 addendum). Production: "FixFast Demo" (off) had the surface open; no attempt there.
+- **Finding 2, pending (§16 item 132):** IDR COGS at a cumulative average leaks between months (RM4.01 over three months on the dev data). The founder chose a moving average, after a grill.
+- **Gotchas:**
+  - `membership_checkout_attempts` and `wallet_topup_attempts` have no `paid_at`. On sqlite, `where('paid_at', …)` compared a string and returned nothing, silently.
+  - A first invariant formula ("gap = Σ fee − RM1 × count") passed by coincidence, while memberships were never settled. The true invariant is a 0 gap.
+- **Dev DB:** restored from the backup, `DEMO-` removed again, reseeded. The result:
+  - 1,590 orders, 53 members, 115 settlements, 4 withdrawals;
+  - no price-identity or drawdown exception;
+  - the bridge leaves 0 unexplained every month.
+- **Verified:**
+  - `php artisan test` passes 3070/3070.
+  - 11 money pages in the browser, no API error. The October Summary adds up to its operating profit by hand.
+
+## 2026-10-25 — #549 merged; item 132 grilled and designed
+
+- **#549 (ADR-127 PR E) merged** to `staging` with the founder's go-ahead, after green CI. Every ADR-127 PR (#542–#549) is now on `staging`, unreleased.
+- **Item 132 grilled in Malay** (Q1–Q12) and stress-tested. It is ADR-083's 2026-10-25 addendum: foreign-currency deposits at a moving weighted average from 1 October 2026, a replayed pool opening at September's close value, a drawdown's cost fixed when drawn, and voided transfers with all their rows left out.
+- **Production facts, read-only:**
+  - three live Digiflazz deposits, all in September;
+  - the running IDR balance never negative (41 rows);
+  - the two voids of 15 September were written as `MANUAL_ADJUSTMENT` rows (−1,224,819 IDR).
+- **Founder:** build in the next session.
+
+## 2026-10-25 — Item 132 built: IDR deposits at a moving weighted average
+
+- **What:** ADR-083's 2026-10-25 addendum, built on `feature/item-132-idr-moving-average` (#551).
+  - `MovingAveragePool` replays a foreign-currency supplier's pool from 1 October 2026. It opens with the units at 30 September at that day's cumulative average, which is September's close value, so September does not move. A deposit adds its net units and ringgit at the start of its `transferred_on` day. Every other row takes `round(pool_sen × units ÷ pool_units)`. An empty pool uses the last known average.
+  - A voided transfer and every row that references it are left out.
+  - `SupplierRowValuer` costs a row the same way for every reader: COGS, drawdowns not in COGS, and the Summary's supplier corrections line. `CashPositionService` reads the pool's month-end value. An MYR supplier and any row before the opening keep the old rate.
+- **Test first:** `FinancialScenarioTest` gained IDR deposits at RM1/3,500 IDR (October) and RM1/3,900 IDR (November), plus a November balance correction. On the old method the October close had a gap of −33 sen. It is now 0 for both months. `MovingAveragePoolTest` checks the arithmetic by hand: conservation to the sen, the empty pool, the opening and month-end cut, the voided transfer, and a correction at the average.
+- **Not done yet:** merge, release, then a read-only check that prod October moves only a few sen.
+## 2026-10-25 — Joki offered from Epic up
+
+- **Founder:** offer joki from Epic up and drop Warrior, Elite, Master and Grandmaster. The founder chose a migration over a per-tier panel switch (ADR-126 2026-10-25 addendum).
+- **Built** on `feature/joki-epic-and-up`:
+  - The migration `2026_10_25_100000_remove_joki_tiers_below_epic` deletes the four tiers. It refuses if a route references them; `down()` restores them.
+  - The `GM` alias is removed from `JokiRankParser`.
+  - Tests now expect six tiers starting at Epic.
+- **Verified:**
+  - `php artisan test`: 3070/3070.
+  - The local dev DB was migrated and now has Epic, Legend and the four Mythic tiers.
+  - The local `/api/joki/catalog` lists Epic first. A quote from Epic V 0★ to Legend V 0★ is 25 stars × RM2 = RM50.
+  - The storefront and admin read the tiers from the API, with no tier name hardcoded. There was no browser screenshot, because local Chrome to `.test` is still broken.
+
+## 2026-10-25 — Dashboard System details in plain words
+
+- **Founder:** the (i) tooltips on System details showed developer text (column names, class names), which an admin can't act on. Rewrite them for an admin.
+- **Built** on `fix/dashboard-plain-tooltips`:
+  - The seven definitions now live in `DashboardService::DEFINITIONS` as plain English. Each says what the figure is and what to do about it; the exact rule stays in the code that computes it.
+  - A late scheduled task now shows "Supplier balance refresh", not `supplier-balance-refresh`.
+  - The scheduler's raw "failed with exit code [1]" line becomes "stopped with an error on its last run (details in the server log)". The raw text is kept in the hover title.
+- **Verified:**
+  - Dashboard tests pass (40), along with admin `tsc` and lint.
+  - Local screenshot of the panel with the suppliers tooltip open and a late task.
+  - Locally, `supplier-balance-refresh`'s heartbeat was set late on purpose to show the error line.

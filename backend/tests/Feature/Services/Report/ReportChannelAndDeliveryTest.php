@@ -21,7 +21,11 @@ class ReportChannelAndDeliveryTest extends TestCase
 
     private function order(array $overrides = []): Order
     {
-        return Order::factory()->create(array_merge(['paid_at' => now(), 'delivery_status' => DeliveryStatus::Delivered], $overrides));
+        $attributes = array_merge(['paid_at' => now(), 'delivery_status' => DeliveryStatus::Delivered], $overrides);
+        // A Delivered order here was recognised when it was paid (ADR-127).
+        $attributes['recognised_at'] ??= $attributes['delivery_status'] === DeliveryStatus::Delivered ? $attributes['paid_at'] : null;
+
+        return Order::factory()->create($attributes);
     }
 
     private function external(): Affiliate

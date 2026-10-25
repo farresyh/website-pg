@@ -39,6 +39,8 @@ final class BudgetEnvelopeService
         $lines = array_map(fn (array $l) => ['budget_envelope_id' => (int) $l['budget_envelope_id'], 'amount_sen' => (int) $l['amount_sen']], $lines);
         $this->assertHeader($type, $counterparty, $fundType, $expenseCategory);
         $this->assertLines($type, $lines);
+        // A month close posts its own allocation while the month is still open, so this never blocks it.
+        AccountingPeriod::assertOpen($transactionDate, 'transaction_date');
 
         return AccountingFileStore::storeThen($receipt, config('filesystems.accounting_disk'), 'accounting/budget-envelopes', $transactionDate,
             fn (?string $receiptPath) => DB::transaction(function () use ($type, $lines, $transactionDate, $description, $adminUserId, $counterparty, $fundType, $expenseCategory, $referenceNo, $receiptPath) {
@@ -79,6 +81,11 @@ final class BudgetEnvelopeService
 
             if ($locked->type === EnvelopePostingType::ProfitAllocation && ! $reopeningClose) {
                 $this->reject('posting', 'A profit allocation belongs to its month close — reopen that month on the Monthly Summary instead.');
+            }
+
+            // The reversal is dated with the original, so it would change that month (ADR-127 decision 4).
+            if (! $reopeningClose) {
+                AccountingPeriod::assertOpen($locked->transaction_date->toDateString(), 'posting');
             }
 
             if ($locked->reverses_posting_id !== null) {

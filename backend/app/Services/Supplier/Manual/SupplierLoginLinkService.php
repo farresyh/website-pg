@@ -5,7 +5,6 @@ namespace App\Services\Supplier\Manual;
 use App\Models\CredentialReveal;
 use App\Models\Order;
 use App\Models\OrderCredential;
-use App\Models\PlatformSettings;
 use App\Models\SupplierLoginLink;
 use App\Services\Order\DeliveryStatus;
 use Illuminate\Support\Facades\DB;
@@ -17,9 +16,10 @@ use Illuminate\Support\Str;
  * platform besides a super_admin reveal.
  *
  * Only the token's SHA-256 is stored. A link works only while its order is
- * still Pending on the same supplier with the same reference, so `.done`,
- * `.gagal` or a retry kills it with no revoke step; the login's wipe and the
- * D-ceiling expiry kill it too.
+ * still Pending on the same supplier with the same reference (and, for a
+ * joki order, the same assignment, ADR-126 decision 16), so `.done`,
+ * `.gagal` or a retry kills it with no revoke step; the login's wipe and its
+ * ceiling (`secrets_expire_at`) kill it too.
  */
 final class SupplierLoginLinkService
 {
@@ -44,7 +44,8 @@ final class SupplierLoginLinkService
             'order_id' => $order->id,
             'supplier_id' => $order->supplier_id,
             'reference_number' => $order->reference_number,
-            'expires_at' => now()->addDays(PlatformSettings::current()->credential_max_days),
+            'joki_assignment_id' => $order->currentJokiAssignmentId(),
+            'expires_at' => $credential->secrets_expire_at,
         ]);
 
         return route('supplier-login.show', ['token' => $token]);
@@ -66,6 +67,7 @@ final class SupplierLoginLinkService
         if ($link === null || $link->order === null
             || $link->order->supplier_id !== $link->supplier_id
             || $link->order->reference_number !== $link->reference_number
+            || $link->order->currentJokiAssignmentId() !== $link->joki_assignment_id
             || ! $this->attemptIsOpen($link->order)) {
             return null;
         }
@@ -122,9 +124,12 @@ final class SupplierLoginLinkService
         return $fields->map(fn (array $field) => ['label' => $field['label'], 'value' => (string) $secrets[$field['key']]])->all();
     }
 
+    /** ADR-126 decision 15: nobody plays an order still in the joki pool. */
     private function attemptIsOpen(Order $order): bool
     {
-        return $order->delivery_status === DeliveryStatus::Pending && ! $order->is_test;
+        return $order->delivery_status === DeliveryStatus::Pending
+            && ! $order->is_test
+            && ! ($order->supplier?->isAssignmentPool() ?? false);
     }
 
     private static function hash(string $token): string

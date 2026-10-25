@@ -45,7 +45,9 @@ final class OrderResendService
     public function preflight(Order $order, Package $targetPackage): ResendImpact
     {
         [$blockedField, $blockedReason] = $this->blockedBy($order, $targetPackage) ?? [null, null];
-        $liveCostPrice = $targetPackage->cost_price;
+        // ADR-126 decision 9: a joki order's cost is the penjoki's agreed
+        // payout, never its package's (unread) price fields.
+        $liveCostPrice = $order->isJoki() ? $order->cost_price : $targetPackage->cost_price;
 
         return new ResendImpact(
             costPriceSen: $liveCostPrice,
@@ -243,6 +245,12 @@ final class OrderResendService
         // A combo uses the ordinary Retry instead.
         if ($order->package?->is_combo || $targetPackage->is_combo) {
             return ['package_id', 'A combo order cannot be resent to a different package — use the ordinary Resend Delivery retry instead.'];
+        }
+
+        // ADR-126 decision 9: a joki order keeps its package; Retry
+        // returns it to the pool instead.
+        if ($order->isJoki() && $targetPackage->id !== $order->package_id) {
+            return ['package_id', 'A joki order keeps its package. Use Retry to send it back to the pool.'];
         }
 
         // ADR-102 2026-10-05 addendum, decision 8.

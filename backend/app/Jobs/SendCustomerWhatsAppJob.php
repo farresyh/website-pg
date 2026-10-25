@@ -6,6 +6,7 @@ use App\Models\CustomerNotification;
 use App\Services\OpenWa\OpenWaClient;
 use App\Services\OpenWa\OpenWaPacingLimitedException;
 use App\Services\OpenWa\OpenWaRecipientNotOnWhatsAppException;
+use App\Services\Notification\CustomerNotificationService;
 use App\Services\Supplier\Manual\SupplierGroupNotifier;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -69,12 +70,18 @@ final class SendCustomerWhatsAppJob implements ShouldQueue
 
         // ADR-125 decision 52: a supplier post is finished here, so its login
         // link is minted at send time and never stored. A post or reminder for
-        // an attempt that is no longer waiting is skipped, not sent.
+        // an attempt that is no longer waiting is skipped, not sent. ADR-126
+        // decision 10: a joki progress message is worded here too, with the
+        // latest rank, and skipped if it no longer applies.
         $isBot = $notification->session === CustomerNotification::SESSION_BOT;
-        $text = $isBot ? app(SupplierGroupNotifier::class)->prepare($notification) : $notification->message;
+        $text = $isBot
+            ? app(SupplierGroupNotifier::class)->prepare($notification)
+            : app(CustomerNotificationService::class)->prepare($notification);
 
         if ($text === null) {
-            $notification->update(['status' => CustomerNotification::STATUS_SKIPPED, 'error' => 'The order is no longer waiting for this supplier']);
+            $notification->update(['status' => CustomerNotification::STATUS_SKIPPED, 'error' => $isBot
+                ? 'The order is no longer waiting for this supplier'
+                : 'No longer applies (order finished or the customer stopped updates)']);
 
             return;
         }

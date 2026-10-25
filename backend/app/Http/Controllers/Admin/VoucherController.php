@@ -252,14 +252,6 @@ class VoucherController extends Controller
 
     public function revoke(Request $request, Voucher $voucher): JsonResponse
     {
-        if ($voucher->status !== 'active') {
-            throw ValidationException::withMessages([
-                'status' => ['Only an active voucher can be revoked.'],
-            ]);
-        }
-
-        $voucher->update(['status' => 'revoked']);
-
-        return response()->json($voucher);
+        return response()->json($this->vouchers->revoke($voucher));
     }
 }

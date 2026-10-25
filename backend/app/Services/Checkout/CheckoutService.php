@@ -18,6 +18,7 @@ use App\Services\Pricing\CheckoutTotal;
 use App\Services\Pricing\CheckoutTotalService;
 use App\Services\Pricing\OrderPricingResolver;
 use App\Services\Pricing\PaymentMethodFeeConfig;
+use App\Services\Pricing\PricingResolution;
 use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherPreview;
 use App\Services\Voucher\VoucherService;
@@ -65,7 +66,8 @@ final class CheckoutService
      */
     public function initiate(CheckoutRequest $request, PaymentGateway $gateway): Order
     {
-        $pricing = $this->pricingResolver->resolveStorefront(
+        // ADR-126 decision 8: a joki order arrives already priced (Fixed).
+        $pricing = $request->joki?->pricing ?? $this->pricingResolver->resolveStorefront(
             $request->costPriceSen,
             $request->standardSellingPriceSen,
             $request->packageMarkupPercent,
@@ -145,6 +147,7 @@ final class CheckoutService
                 paymentGateway: $request->paymentGateway,
                 channelCode: $request->channelCode,
                 credentials: $request->credentials,
+                joki: $request->joki,
             ));
         } catch (DuplicateOrderException $e) {
             throw new DuplicateCheckoutAttemptException(
@@ -537,8 +540,10 @@ final class CheckoutService
         ?string $customerPhone,
         ?float $tierMarkupPct = null,
         ?int $affiliateId = null,
+        // ADR-126 decision 8: a joki review total, priced as its checkout will be.
+        ?PricingResolution $pricing = null,
     ): CheckoutTotalPreview {
-        $pricing = $this->pricingResolver->resolveStorefront(
+        $pricing ??= $this->pricingResolver->resolveStorefront(
             $costPriceSen,
             $standardSellingPriceSen,
             $packageMarkupPercent,

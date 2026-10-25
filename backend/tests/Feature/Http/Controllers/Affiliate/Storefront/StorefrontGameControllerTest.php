@@ -7,6 +7,7 @@ use App\Models\AffiliateDomain;
 use App\Models\AffiliateGame;
 use App\Models\AffiliateUser;
 use App\Models\Game;
+use App\Services\Joki\JokiCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -118,5 +119,19 @@ class StorefrontGameControllerTest extends TestCase
             ->assertStatus(422);
 
         $this->assertDatabaseMissing('affiliate_game', ['affiliate_id' => $brand->id, 'game_id' => $only->id]);
+    }
+
+    /** ADR-126 decision 2: a joki game is no brand's to show or hide. */
+    public function test_a_joki_game_is_not_in_the_portal_catalog_and_cannot_be_toggled(): void
+    {
+        $this->primaryAffiliate();
+        $brand = $this->affiliate();
+        $this->game('Mobile Legends');
+        $joki = app(JokiCatalog::class)->ensure()->game;
+        $token = $this->tokenFor($brand);
+
+        $this->withToken($token)->getJson('/api/affiliate/storefront/games')
+            ->assertOk()->assertJsonPath('games.*.name', ['Mobile Legends']);
+        $this->withToken($token)->putJson("/api/affiliate/storefront/games/{$joki->id}", ['is_visible' => true])->assertNotFound();
     }
 }

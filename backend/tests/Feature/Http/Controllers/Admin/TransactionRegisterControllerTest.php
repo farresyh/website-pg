@@ -21,6 +21,7 @@ use App\Models\WalletTopupAttempt;
 use App\Models\Withdrawal;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\Ledger\LedgerOwnerType;
+use App\Services\Ledger\LedgerService;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -82,6 +83,7 @@ class TransactionRegisterControllerTest extends TestCase
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::Delivered->value,
             'paid_at' => now(),
+            'recognised_at' => now(),
         ]);
         // Mirrors OrderFulfillmentService::creditProfit() — the real
         // source of truth for a delivered order's realized profit.
@@ -134,6 +136,7 @@ class TransactionRegisterControllerTest extends TestCase
             'payment_status' => PaymentStatus::Paid->value,
             'delivery_status' => DeliveryStatus::Delivered->value,
             'paid_at' => now(),
+            'recognised_at' => now(),
         ]);
 
         $row = collect($this->getJson('/api/accounting/transactions')->assertOk()->json('data'))->firstWhere('reference', 'KRS-REG-REAL');
@@ -718,11 +721,13 @@ class TransactionRegisterControllerTest extends TestCase
     {
         $this->actAsSuperAdmin();
         $reseller = Reseller::query()->create(['business_name' => 'Naeem Industries']);
-        WalletTopupAttempt::query()->create([
+        $paid = WalletTopupAttempt::query()->create([
             'reseller_id' => $reseller->id, 'reference' => 'TOPUP-PAID-1', 'amount_sen' => 30000,
             'total_charged_sen' => 30500, 'channel_code' => 'fpx', 'status' => WalletTopupAttemptStatus::Paid->value,
             'expires_at' => now()->addMinutes(30),
         ]);
+        // A paid top-up always has its wallet credit (completeTopup writes both); the row is dated by it (ADR-127 F5).
+        (new LedgerService)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, 30000, 'wallet_topup', 'wallet_topup_attempt', $paid->id);
         WalletTopupAttempt::query()->create([
             'reseller_id' => $reseller->id, 'reference' => 'TOPUP-PENDING-1', 'amount_sen' => 10000,
             'total_charged_sen' => 10200, 'channel_code' => 'fpx', 'status' => WalletTopupAttemptStatus::Pending->value,

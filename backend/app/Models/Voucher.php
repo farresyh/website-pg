@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
@@ -21,6 +22,7 @@ class Voucher extends Model
         'amount',
         'remaining',
         'status',
+        'revoked_at',
         'expires_at',
         'reason',
         'created_by',
@@ -31,6 +33,7 @@ class Voucher extends Model
         'amount' => 'integer',
         'remaining' => 'integer',
         'expires_at' => 'datetime',
+        'revoked_at' => 'datetime',
     ];
 
     /**
@@ -128,5 +131,42 @@ class Voucher extends Model
     public function mergeAsSource(): HasOne
     {
         return $this->hasOne(VoucherMerge::class, 'source_voucher_id');
+    }
+
+    /**
+     * ADR-127 P1: what the customer could spend at `$at`, rebuilt from the
+     * redemption history (`remaining` is only today's figure). A source
+     * merged away by then holds nothing; its balance lives on in the target.
+     * Needs `redemptions` and `mergeAsSource` loaded.
+     */
+    public function balanceAsOf(CarbonInterface $at): int
+    {
+        if ($this->revoked_at !== null && $this->revoked_at < $at) {
+            return 0;
+        }
+
+        if ($this->mergeAsSource !== null && $this->mergeAsSource->created_at < $at) {
+            return 0;
+        }
+
+        $before = $this->redemptions->filter(fn (VoucherRedemption $r) => $r->created_at < $at);
+        $restored = $before->filter(fn (VoucherRedemption $r) => $r->status === 'restored' && $r->restored_at < $at);
+
+        return max(0, $this->amount - (int) $before->sum('amount') + (int) $restored->sum('restored_amount'));
+    }
+
+    /**
+     * ADR-127 invariant 9: the vouchers whose balance a customer could still
+     * spend at `$at` — created by then, not expired, not from a sandbox
+     * order. Sum `balanceAsOf($at)` over them (eager-load `redemptions` and
+     * `mergeAsSource`). Cash Position and Reports read store credit through this.
+     */
+    public function scopeOutstandingAt(Builder $query, CarbonInterface $at): Builder
+    {
+        return $query
+            ->where('created_at', '<', $at)
+            ->where(fn (Builder $q) => $q->whereNull('expires_at')->orWhere('expires_at', '>=', $at))
+            ->where(fn (Builder $q) => $q->whereNull('order_id')->orWhereHas('sourceOrder', fn (Builder $o) => $o->where('is_test', false)))
+            ->with(['redemptions', 'mergeAsSource']);
     }
 }

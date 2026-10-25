@@ -4,12 +4,13 @@ namespace App\Services\Accounting;
 
 use App\Models\BudgetEnvelopePosting;
 use App\Models\LedgerEntry;
-use App\Models\MembershipFeeRecord;
 use App\Models\Order;
 use App\Models\PaymentSettlement;
+use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\Voucher;
+use App\Models\VoucherRedemption;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Report\ReportService;
 use App\Support\MalaysiaTime;
@@ -50,11 +51,38 @@ final class MonthlyAccountingSummaryService
         [$from, $toExclusive] = self::monthBounds($year, $month);
 
         $lines = [
+            ...$this->profitLinesBefore($from, $toExclusive),
+            'reseller_wallet_balance_sen' => $this->resellerWalletBalance($toExclusive),
+            'envelope_manual_expenses_sen' => array_sum($this->envelopeExpensesByCategory($year, $month)),
+        ];
+
+        return [...$lines, 'operating_profit_sen' => self::operatingProfit($lines)];
+    }
+
+    /**
+     * The profit-and-loss lines for any range (the Reports profit Bridge,
+     * ADR-127 decision 9), with the operating profit they make. Same lines,
+     * same order, as a month's summary, minus its two non-P&L lines.
+     *
+     * @return array<string, int>
+     */
+    public function profitLines(Carbon $from, Carbon $toExclusive): array
+    {
+        $lines = $this->profitLinesBefore($from, $toExclusive);
+
+        return [...$lines, 'operating_profit_sen' => self::operatingProfit($lines)];
+    }
+
+    /** @return array<string, int> */
+    private function profitLinesBefore(Carbon $from, Carbon $toExclusive): array
+    {
+        return [
             'sales_revenue_sen' => $this->salesRevenue($from, $toExclusive),
             'membership_revenue_sen' => $this->membershipRevenue($from, $toExclusive),
             ...$this->costOfSales->forPeriod($from, $toExclusive),
             'payment_processing_gain_loss_sen' => $this->paymentProcessingGainLoss($from, $toExclusive),
-            'supplier_prepaid_topup_sen' => $this->supplierPrepaidTopup($from, $toExclusive),
+            'supplier_prepaid_topup_sen' => $this->supplierTransfersSent($from, $toExclusive, payAfter: false),
+            'pay_after_supplier_payments_sen' => $this->supplierTransfersSent($from, $toExclusive, payAfter: true),
             'bank_transfer_fees_sen' => $this->bankTransferFees($from, $toExclusive),
             'affiliate_commission_expense_sen' => $this->affiliateCommissionExpense($from, $toExclusive),
             'affiliate_tier_fees_sen' => $this->affiliateTierFees($from, $toExclusive),
@@ -62,11 +90,7 @@ final class MonthlyAccountingSummaryService
             'admin_issued_vouchers_sen' => $this->adminIssuedVouchers($from, $toExclusive),
             'supplier_manual_adjustments_sen' => $this->supplierManualAdjustments($from, $toExclusive),
             'failed_order_credit_issued_sen' => $this->failedOrderCreditIssued($from, $toExclusive),
-            'reseller_wallet_balance_sen' => $this->resellerWalletBalance(),
-            'envelope_manual_expenses_sen' => array_sum($this->envelopeExpensesByCategory($year, $month)),
         ];
-
-        return [...$lines, 'operating_profit_sen' => self::operatingProfit($lines)];
     }
 
     /**
@@ -77,7 +101,8 @@ final class MonthlyAccountingSummaryService
      * information only. Deliberately left out: compensation vouchers (a liability — the cash
      * was received and kept) and envelope expenses (they already reduced
      * their envelope; subtracting here again counts them twice). Capital
-     * movements (supplier top-up, wallet balance) are not P&L at all.
+     * movements (supplier top-up, pay-after supplier payments, wallet
+     * balance) are not P&L at all.
      *
      * @param  array<string, int>  $lines
      */
@@ -140,14 +165,42 @@ final class MonthlyAccountingSummaryService
      * remaining balance as income. Expiry is lazy (the status never flips),
      * so `expires_at` alone decides. A sandbox order's voucher was never
      * customer cash.
+     *
+     * ADR-127 P1: also a revoked voucher's balance at the moment it was
+     * revoked, in that month. And the balance at the moment it expired, not today's
+     * `remaining`; a redemption restored onto it after it expired is
+     * breakage of the month of the restore. So a later restore never
+     * changes an earlier month.
      */
     private function voucherBreakage(Carbon $from, Carbon $toExclusive): int
     {
-        return (int) Voucher::query()
+        $notSandbox = fn ($q) => $q->whereNull('order_id')->orWhereHas('sourceOrder', fn ($o) => $o->where('is_test', false));
+
+        $atExpiry = Voucher::query()
             ->where('expires_at', '>=', $from)
             ->where('expires_at', '<', $toExclusive)
-            ->where(fn ($q) => $q->whereNull('order_id')->orWhereHas('sourceOrder', fn ($o) => $o->where('is_test', false)))
-            ->sum('remaining');
+            ->where($notSandbox)
+            ->with(['redemptions', 'mergeAsSource'])
+            ->get()
+            ->sum(fn (Voucher $v) => $v->balanceAsOf($v->expires_at));
+
+        $restoredAfterExpiry = VoucherRedemption::query()
+            ->where('status', 'restored')
+            ->where('restored_at', '>=', $from)
+            ->where('restored_at', '<', $toExclusive)
+            ->whereHas('voucher', fn ($v) => $v->whereColumn('vouchers.expires_at', '<', 'voucher_redemptions.restored_at')->where($notSandbox))
+            ->sum('restored_amount');
+
+        // A revoked voucher's unspent balance, in the month it was revoked.
+        $revoked = Voucher::query()
+            ->where('revoked_at', '>=', $from)
+            ->where('revoked_at', '<', $toExclusive)
+            ->where($notSandbox)
+            ->with(['redemptions', 'mergeAsSource'])
+            ->get()
+            ->sum(fn (Voucher $v) => $v->balanceAsOf($v->revoked_at));
+
+        return (int) $atExpiry + (int) $restoredAfterExpiry + (int) $revoked;
     }
 
     /**
@@ -167,8 +220,10 @@ final class MonthlyAccountingSummaryService
 
     /**
      * Decision 11 (Q26) — a partial supplier-balance correction recorded
-     * this month, in MYR at the month-end rate. A voided transfer's
-     * adjustments are reversed by its void, so they are skipped.
+     * this month, in MYR at the month-end rate, or from the pool's opening
+     * at the pool's average when it was made (2026-10-25 addendum, Q6). A
+     * voided transfer's adjustments are reversed by its void, so they are
+     * skipped.
      */
     private function supplierManualAdjustments(Carbon $from, Carbon $toExclusive): int
     {
@@ -177,13 +232,9 @@ final class MonthlyAccountingSummaryService
             ->where('created_at', '>=', $from)
             ->where('created_at', '<', $toExclusive)
             ->whereIn('reference_id', SupplierTransfer::query()->whereNull('voided_at')->select('id'))
-            ->selectRaw('supplier_id, SUM(amount) as total')
-            ->groupBy('supplier_id')
-            ->get();
+            ->get(['id', 'supplier_id', 'amount', 'created_at']);
 
-        $lastDay = self::klLastDay($toExclusive);
-
-        return (int) $rows->sum(fn ($row) => (int) round(((float) $row->total) * ($this->costOfSales->weightedAverageRate((int) $row->supplier_id, $lastDay) ?? 0.0) * 100));
+        return $this->costOfSales->valuer($rows, self::klLastDay($toExclusive))->value($rows);
     }
 
     /** The KL calendar date of the last day before an exclusive UTC bound. */
@@ -194,24 +245,16 @@ final class MonthlyAccountingSummaryService
 
     /**
      * 2026-09-30 addendum (Bucket C, decision 9) — "money you hold for
-     * resellers, which isn't yours." Deliberately **not** a `$from`/
-     * `$toExclusive`-scoped period figure like every other line here —
-     * a wallet balance only ever has one real value, *now*; there is no
-     * historical point-in-time snapshot mechanism (`ResellerWalletService
-     * ::balance()` is a live `SUM(amount)` over `ledger_entries`, same
-     * for every reseller combined here). Even when viewing a past
-     * month's summary, this line shows today's real balance — the
-     * frontend labels it with a live "as of" timestamp so it's never
-     * mistaken for that period's own month-end figure. A true historical
-     * snapshot would need a new scheduled snapshot job; not built since
-     * this line's whole purpose (don't forget resellers' money isn't
-     * yours) is already served by a current figure for a solo-founder's
-     * once-a-month copy into the external SaaS.
+     * resellers, which isn't yours." The balance at the month end, from
+     * the append-only wallet ledger (ADR-127 P1). It used to be today's
+     * balance, which moved a closed month's figure with every later top-up
+     * or order. For the current month it is today's balance.
      */
-    private function resellerWalletBalance(): int
+    private function resellerWalletBalance(Carbon $toExclusive): int
     {
         return (int) LedgerEntry::query()
             ->where('owner_type', LedgerOwnerType::ResellerWallet->value)
+            ->where('created_at', '<', $toExclusive)
             ->sum('amount');
     }
 
@@ -226,12 +269,19 @@ final class MonthlyAccountingSummaryService
         return $this->revenue->revenueSen($from, $toExclusive);
     }
 
+    /**
+     * ADR-127 decision 7: one source, the platform's `membership_fee` ledger
+     * rows, which Reports and the Report Assistant already read. A waived
+     * (RM0) fee record writes no ledger row, so the totals are equal.
+     */
     private function membershipRevenue(Carbon $from, Carbon $toExclusive): int
     {
-        return (int) MembershipFeeRecord::query()
+        return (int) LedgerEntry::query()
+            ->where('owner_type', LedgerOwnerType::Platform->value)
+            ->where('type', 'membership_fee')
             ->where('created_at', '>=', $from)
             ->where('created_at', '<', $toExclusive)
-            ->sum('amount_sen');
+            ->sum('amount');
     }
 
     /**
@@ -269,10 +319,19 @@ final class MonthlyAccountingSummaryService
      * portion by summing a line that already includes it plus a second
      * line for the same fee.
      */
-    private function supplierPrepaidTopup(Carbon $from, Carbon $toExclusive): int
+    /**
+     * Capital sent to suppliers, split by funding mode (ADR-127 PR E): a
+     * prepaid supplier's is a top-up (an asset), a pay-after supplier's
+     * (a penjoki, a manual supplier) settles what we owe it. Neither is
+     * profit and loss; the bank fee for both is `bankTransferFees()`.
+     */
+    private function supplierTransfersSent(Carbon $from, Carbon $toExclusive, bool $payAfter): int
     {
         return (int) SupplierTransfer::query()
             ->whereNull('voided_at')
+            ->whereHas('supplier', fn ($q) => $payAfter
+                ? $q->where('funding_mode', Supplier::FUNDING_PAY_AFTER)
+                : $q->where('funding_mode', '!=', Supplier::FUNDING_PAY_AFTER))
             ->where('transferred_on', '>=', $from->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
             ->where('transferred_on', '<', $toExclusive->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
             ->sum('amount_myr_sent');
@@ -295,6 +354,7 @@ final class MonthlyAccountingSummaryService
     /**
      * ADR-086's "profit is ledger-sourced, never `Order.affiliate_profit`
      * directly" rule — same join shape as `ReportService::profitTotals()`.
+     * Filed by `recognised_at`, with the revenue it is earned on (ADR-127).
      */
     private function affiliateCommissionExpense(Carbon $from, Carbon $toExclusive): int
     {
@@ -306,8 +366,8 @@ final class MonthlyAccountingSummaryService
             ->where('ledger_entries.type', 'order_profit')
             ->where('ledger_entries.owner_type', 'affiliate')
             ->where('orders.is_test', false)
-            ->where('orders.paid_at', '>=', $from)
-            ->where('orders.paid_at', '<', $toExclusive)
+            ->whereRaw(LedgerEntry::orderProfitDateSql().' >= ?', [$from])
+            ->whereRaw(LedgerEntry::orderProfitDateSql().' < ?', [$toExclusive])
             ->sum('ledger_entries.amount');
     }
 
@@ -336,7 +396,7 @@ final class MonthlyAccountingSummaryService
     private function failedOrderCreditIssued(Carbon $from, Carbon $toExclusive): int
     {
         return (int) Voucher::query()
-            ->whereNotNull('order_id')
+            ->whereHas('sourceOrder', fn ($o) => $o->where('is_test', false))
             ->where('created_at', '>=', $from)
             ->where('created_at', '<', $toExclusive)
             ->sum('amount');

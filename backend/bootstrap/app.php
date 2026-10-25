@@ -6,6 +6,8 @@ use App\Http\Middleware\AllowActiveCustomDomainCors;
 use App\Http\Middleware\AllowAdminCorsCredentials;
 use App\Http\Middleware\EnsureAccountType;
 use App\Http\Middleware\EnsureAdminRole;
+use App\Http\Middleware\EnsureBrandJokiEnabled;
+use App\Http\Middleware\EnsureNotJokiCatalog;
 use App\Http\Middleware\EnsureAdminSessionFresh;
 use App\Http\Middleware\EnsureBrandMembershipEnabled;
 use App\Http\Middleware\EnsureResellerApiKey;
@@ -130,6 +132,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'admin.role' => EnsureAdminRole::class,
+            // ADR-126 F1: no Games & Packages write route touches a joki package.
+            'not.joki' => EnsureNotJokiCatalog::class,
+            // ADR-126 addendum decision 1: the `/joki` page's endpoints.
+            'brand.joki' => EnsureBrandJokiEnabled::class,
             // ADR-121: the 7-day cap on an admin cookie login, and the
             // step-up gate on the five dangerous actions.
             'admin.session' => EnsureAdminSessionFresh::class,
@@ -162,6 +168,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prependToPriorityList(
             before: ThrottleRequests::class,
             prepend: EnsureBrandMembershipEnabled::class,
+        );
+        // The gate judges the brand the request came from, so the brand
+        // resolver must run first. Pinning the gate above put it ahead of
+        // ResolveStorefrontBrand, which judged an affiliate's domain by the
+        // platform brand (found by ADR-127 PR E's scenario).
+        $middleware->prependToPriorityList(
+            before: EnsureBrandMembershipEnabled::class,
+            prepend: ResolveStorefrontBrand::class,
         );
         // Same trap for the Reseller API (ADR-074 2026-10-13 addendum): its
         // limiters key on the Reseller that EnsureResellerApiKey resolves,

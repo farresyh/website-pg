@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Voucher;
 
+use App\Http\Requests\Joki\JokiSelectionRules;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -28,6 +29,8 @@ class PreviewVoucherRequest extends FormRequest
             'voucher_code' => ['required', 'string', 'max:32'],
             'customer_email' => ['required', 'email', 'max:255'],
             'customer_phone' => ['nullable', 'string', 'max:32'],
+            // ADR-126: the climb, priced like checkout for the joki game.
+            ...JokiSelectionRules::rules(),
         ];
     }
 }

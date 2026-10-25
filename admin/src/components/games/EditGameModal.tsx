@@ -83,6 +83,7 @@ function EditGameFields({
   const [deliveryMode, setDeliveryMode] = useState<"instant" | "manual">(game.delivery_mode ?? "instant");
   const [deliverySubtext, setDeliverySubtext] = useState(game.delivery_subtext ?? "");
   const [memberPricing, setMemberPricing] = useState(game.member_pricing_enabled ?? true);
+  const [credentialMaxDays, setCredentialMaxDays] = useState(game.credential_max_days != null ? String(game.credential_max_days) : "");
   // ADR-125 decision 5: a login game has no reseller code, no validator and is always manual.
   const loginGame = isLoginGame(game);
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +109,7 @@ function EditGameFields({
         delivery_mode: loginGame ? "manual" : deliveryMode,
         delivery_subtext: deliverySubtext.trim() || null,
         member_pricing_enabled: memberPricing,
+        ...(loginGame ? { credential_max_days: credentialMaxDays.trim() ? Number(credentialMaxDays) : null } : {}),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -212,6 +214,27 @@ function EditGameFields({
                   <input type="checkbox" checked={memberPricing} onChange={(e) => setMemberPricing(e.target.checked)} />
                   Member pricing (members get their discount and use quota on this game)
                 </label>
+
+                {loginGame && (
+                <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
+                  <Label htmlFor="game_credential_max_days">Keep customer login at most (days, optional)</Label>
+                  <Input
+                    id="game_credential_max_days"
+                    type="number"
+                    min={1}
+                    max={90}
+                    step={1}
+                    value={credentialMaxDays}
+                    onChange={(e) => setCredentialMaxDays(e.target.value)}
+                    placeholder="Blank = Customer Login Policy"
+                  />
+                  <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    1 to 90. An open order&apos;s login is wiped after this many days, counted from when it was stored or
+                    last replaced. Leave blank to use the Customer Login Policy&apos;s limit. A change also applies to
+                    logins already held.
+                  </p>
+                </div>
+                )}
 
                 {!loginGame && (
                 <div className="border-t border-gray-100 pt-4 dark:border-gray-800">

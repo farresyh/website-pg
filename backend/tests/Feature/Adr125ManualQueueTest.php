@@ -76,7 +76,7 @@ class Adr125ManualQueueTest extends TestCase
     {
         $order = $this->pendingManualOrder();
 
-        $this->postJson("/api/orders/{$order->id}/manual/delivered")->assertOk()->assertJsonPath('delivery_status', 'delivered');
+        $this->postJson("/api/orders/{$order->id}/manual/delivered", ['supplier_id' => $order->supplier_id, 'supplier_id' => $order->supplier_id])->assertOk()->assertJsonPath('delivery_status', 'delivered');
 
         $order->refresh();
         $this->assertSame(900, $order->real_cost_price_sen);
@@ -92,13 +92,12 @@ class Adr125ManualQueueTest extends TestCase
 
     public function test_a_different_real_cost_needs_a_reason_and_reconciles_profit(): void
     {
-        config(['services.real_cost_reconciliation.enabled' => true]);
         $order = $this->pendingManualOrder();
 
-        $this->postJson("/api/orders/{$order->id}/manual/delivered", ['real_cost_sen' => 950])->assertJsonValidationErrors('reason');
+        $this->postJson("/api/orders/{$order->id}/manual/delivered", ['supplier_id' => $order->supplier_id, 'real_cost_sen' => 950])->assertJsonValidationErrors('reason');
         $this->assertSame(DeliveryStatus::Pending, $order->fresh()->delivery_status);
 
-        $this->postJson("/api/orders/{$order->id}/manual/delivered", ['real_cost_sen' => 950, 'reason' => 'Supplier raised the price'])->assertOk();
+        $this->postJson("/api/orders/{$order->id}/manual/delivered", ['supplier_id' => $order->supplier_id, 'real_cost_sen' => 950, 'reason' => 'Supplier raised the price'])->assertOk();
 
         $order->refresh();
         $this->assertSame(950, $order->real_cost_price_sen);
@@ -109,10 +108,10 @@ class Adr125ManualQueueTest extends TestCase
     public function test_a_second_confirmation_is_already_finished(): void
     {
         $order = $this->pendingManualOrder();
-        $this->postJson("/api/orders/{$order->id}/manual/delivered")->assertOk();
+        $this->postJson("/api/orders/{$order->id}/manual/delivered", ['supplier_id' => $order->supplier_id, 'supplier_id' => $order->supplier_id])->assertOk();
 
-        $this->postJson("/api/orders/{$order->id}/manual/delivered")->assertJsonValidationErrors('order');
-        $this->postJson("/api/orders/{$order->id}/manual/failed", ['reason' => 'x'])->assertJsonValidationErrors('order');
+        $this->postJson("/api/orders/{$order->id}/manual/delivered", ['supplier_id' => $order->supplier_id, 'supplier_id' => $order->supplier_id])->assertJsonValidationErrors('order');
+        $this->postJson("/api/orders/{$order->id}/manual/failed", ['supplier_id' => $order->supplier_id, 'reason' => 'x'])->assertJsonValidationErrors('order');
 
         $this->assertSame(100, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
         $this->assertCount(1, $this->drawdowns($order));
@@ -122,30 +121,30 @@ class Adr125ManualQueueTest extends TestCase
     {
         $order = $this->pendingManualOrder();
 
-        $this->postJson("/api/orders/{$order->id}/manual/failed", ['reason' => 'Wrong password'])->assertOk()->assertJsonPath('delivery_status', 'failed');
+        $this->postJson("/api/orders/{$order->id}/manual/failed", ['supplier_id' => $order->supplier_id, 'reason' => 'Wrong password'])->assertOk()->assertJsonPath('delivery_status', 'failed');
         $this->assertSame(0, LedgerEntry::query()->count());
         $this->assertSame([], $this->drawdowns($order));
 
-        $this->postJson("/api/orders/{$order->id}/manual/correct-to-delivered")->assertJsonValidationErrors('reason');
+        $this->postJson("/api/orders/{$order->id}/manual/correct-to-delivered", ['supplier_id' => $order->supplier_id, 'supplier_id' => $order->supplier_id])->assertJsonValidationErrors('reason');
 
-        $this->postJson("/api/orders/{$order->id}/manual/correct-to-delivered", ['reason' => 'Supplier did top up'])
+        $this->postJson("/api/orders/{$order->id}/manual/correct-to-delivered", ['supplier_id' => $order->supplier_id, 'reason' => 'Supplier did top up'])
             ->assertOk()->assertJsonPath('delivery_status', 'delivered');
 
         $this->assertSame(100, (int) LedgerEntry::query()->where('owner_type', 'platform')->sum('amount'));
         $this->assertSame([-9.0], $this->drawdowns($order));
         $this->assertSame('failed', $order->fresh()->supplier_response['corrected_from']);
 
-        $this->postJson("/api/orders/{$order->id}/manual/correct-to-delivered", ['reason' => 'again'])->assertJsonValidationErrors('order');
+        $this->postJson("/api/orders/{$order->id}/manual/correct-to-delivered", ['supplier_id' => $order->supplier_id, 'reason' => 'again'])->assertJsonValidationErrors('order');
         $this->assertCount(1, $this->drawdowns($order));
     }
 
     public function test_a_compensated_failed_order_cannot_be_corrected(): void
     {
         $order = $this->pendingManualOrder();
-        $this->postJson("/api/orders/{$order->id}/manual/failed", ['reason' => 'Wrong password'])->assertOk();
+        $this->postJson("/api/orders/{$order->id}/manual/failed", ['supplier_id' => $order->supplier_id, 'reason' => 'Wrong password'])->assertOk();
         $this->postJson("/api/orders/{$order->id}/voucher", ['reason' => 'Could not top up'])->assertCreated();
 
-        $this->postJson("/api/orders/{$order->id}/manual/correct-to-delivered", ['reason' => 'Supplier did top up'])
+        $this->postJson("/api/orders/{$order->id}/manual/correct-to-delivered", ['supplier_id' => $order->supplier_id, 'reason' => 'Supplier did top up'])
             ->assertJsonValidationErrors('order');
 
         $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
@@ -156,9 +155,9 @@ class Adr125ManualQueueTest extends TestCase
     {
         $order = $this->paidOrder(['supplier_id' => $this->manual->id, 'delivery_status' => DeliveryStatus::NeedsReview->value]);
 
-        $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'X'])->assertJsonValidationErrors('delivery_status');
+        $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'X', 'supplier_price' => 4.75])->assertJsonValidationErrors('delivery_status');
 
-        $this->postJson("/api/orders/{$order->id}/manual/delivered")->assertOk();
+        $this->postJson("/api/orders/{$order->id}/manual/delivered", ['supplier_id' => $order->supplier_id, 'supplier_id' => $order->supplier_id])->assertOk();
         $this->assertSame([-9.0], $this->drawdowns($order));
         $this->assertSame('Aina Admin', OrderResendAttempt::query()->where('order_id', $order->id)->sole()->triggered_by);
     }
@@ -167,15 +166,15 @@ class Adr125ManualQueueTest extends TestCase
     {
         $order = $this->paidOrder(['delivery_status' => DeliveryStatus::Pending->value]);
 
-        $this->postJson("/api/orders/{$order->id}/manual/delivered")->assertJsonValidationErrors('order');
-        $this->postJson("/api/orders/{$order->id}/manual/failed", ['reason' => 'x'])->assertJsonValidationErrors('order');
+        $this->postJson("/api/orders/{$order->id}/manual/delivered", ['supplier_id' => $order->supplier_id, 'supplier_id' => $order->supplier_id])->assertJsonValidationErrors('order');
+        $this->postJson("/api/orders/{$order->id}/manual/failed", ['supplier_id' => $order->supplier_id, 'reason' => 'x'])->assertJsonValidationErrors('order');
         $this->assertSame(DeliveryStatus::Pending, $order->fresh()->delivery_status);
     }
 
     public function test_a_wiped_login_blocks_retry_until_it_is_replaced(): void
     {
         $order = $this->pendingManualOrder();
-        $this->postJson("/api/orders/{$order->id}/manual/failed", ['reason' => 'Wrong password'])->assertOk();
+        $this->postJson("/api/orders/{$order->id}/manual/failed", ['supplier_id' => $order->supplier_id, 'reason' => 'Wrong password'])->assertOk();
         $this->credentialFor($order);
         OrderCredential::query()->where('order_id', $order->id)->update(['secrets' => null, 'purged_at' => now()]);
 

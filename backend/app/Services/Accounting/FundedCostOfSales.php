@@ -49,19 +49,16 @@ final class FundedCostOfSales
         }
 
         $drawdowns = $this->drawdownsFor(array_keys($units));
-        $rates = $this->rates($drawdowns->collapse()->pluck('supplier_id')->all(), $lastDay);
+        $valuer = $this->valuer($drawdowns->collapse(), $lastDay);
 
-        $funded = [];   // supplier_id => units drawn by funded units
+        $funded = collect();
         $fallbackSen = 0;
         $fallbackOrders = [];
         foreach ($units as $key => $unit) {
             $rows = $drawdowns->get($key, collect());
-            $valuable = $rows->isNotEmpty() && $rows->every(fn ($row) => $rates[$row->supplier_id] !== null);
 
-            if ($valuable) {
-                foreach ($rows as $row) {
-                    $funded[$row->supplier_id] = ($funded[$row->supplier_id] ?? 0.0) + abs((float) $row->amount);
-                }
+            if ($rows->isNotEmpty() && $rows->every(fn ($row) => $valuer->canValue($row))) {
+                $funded = $funded->concat($rows);
 
                 continue;
             }
@@ -72,7 +69,7 @@ final class FundedCostOfSales
             $fallbackOrders[$unit instanceof Order ? $unit->id : $unit->order_id] = true;
         }
 
-        $cogs = $this->value($funded, $rates) + $fallbackSen;
+        $cogs = -$valuer->value($funded) + $fallbackSen;
         $atOrderCost = (int) $orders->sum(fn (Order $o) => $o->effectiveCostPriceSen());
 
         return [
@@ -90,8 +87,10 @@ final class FundedCostOfSales
      * across every non-voided transfer for this supplier sent on or before
      * `$asOfDate` (a KL date). Also the month close's supplier prepaid
      * figure (2026-10-10 addendum, decision 13). Cumulative over all
-     * transfers, not IAS 2's opening-plus-purchases average: the
-     * 2026-10-17 addendum's known limit H1.
+     * transfers: the 2026-10-17 addendum's known limit H1, so from
+     * `MovingAveragePool::OPENS_ON` a foreign-currency supplier is costed by
+     * `MovingAveragePool` instead (2026-10-25 addendum), and this rate is
+     * used only up to the day before.
      *
      * An MYR supplier is always 1.0 (ADR-125 2026-10-18 addendum, decision
      * 30): its unit is a ringgit, with or without transfers, and whether a
@@ -135,14 +134,11 @@ final class FundedCostOfSales
             ->where('type', SupplierLedgerEntryType::OrderDrawdown->value)
             ->where('created_at', '>=', $from)
             ->where('created_at', '<', $toExclusive)
-            ->get(['supplier_id', 'amount', 'reference_type', 'reference_id'])
+            ->get(['id', 'supplier_id', 'amount', 'created_at', 'reference_type', 'reference_id'])
             ->reject(fn ($row) => in_array("{$row->reference_type}:{$row->reference_id}", $recognisedKeys, true));
 
-        $rates = $this->rates($outside->pluck('supplier_id')->all(), $lastDay);
-        $units = $outside->groupBy('supplier_id')->map(fn ($rows) => (float) $rows->sum(fn ($row) => abs((float) $row->amount)))->all();
-
         // ponytail: an IDR supplier with no transfer yet has no rate, so its rows here value at 0; its recognised orders still fall back to their own cost.
-        return $this->value($units, $rates);
+        return -$this->valuer($outside, $lastDay)->value($outside);
     }
 
     /**
@@ -162,34 +158,28 @@ final class FundedCostOfSales
             ->where(fn ($q) => $q
                 ->where(fn ($q) => $q->where('reference_type', 'order')->whereIn('reference_id', $ids('order')))
                 ->orWhere(fn ($q) => $q->where('reference_type', 'order_delivery_leg')->whereIn('reference_id', $ids('order_delivery_leg'))))
-            ->get(['supplier_id', 'amount', 'reference_type', 'reference_id'])
+            ->get(['id', 'supplier_id', 'amount', 'created_at', 'reference_type', 'reference_id'])
             ->groupBy(fn ($row) => "{$row->reference_type}:{$row->reference_id}");
     }
 
     /**
-     * MYR per supplier currency unit (weightedAverageRate()): 1 for an MYR
-     * supplier, the deposit's blended rate otherwise, null when there is no
-     * transfer to value it by.
+     * What supplier ledger rows cost in sen, signed like their amounts (a
+     * drawdown is negative). The month close's supplier corrections line
+     * values its rows here too, so every reader costs a row the same way.
      *
-     * @param  list<int|string>  $supplierIds
-     * @return array<int, float|null>
+     * @param  Collection<int, SupplierLedgerEntry>  $rows  with id, supplier_id, amount, created_at
      */
-    private function rates(array $supplierIds, string $lastDay): array
+    public function valuer(Collection $rows, string $lastDay): SupplierRowValuer
     {
-        return collect(array_values(array_unique(array_map('intval', $supplierIds))))
-            ->mapWithKeys(fn (int $id) => [$id => $this->weightedAverageRate($id, $lastDay)])
-            ->all();
-    }
+        $supplierIds = $rows->pluck('supplier_id')->map(fn ($id) => (int) $id)->unique()->values();
+        // Up to the day before the pool opens, the cumulative average; from it, the pool (2026-10-25 addendum).
+        $rateDay = min($lastDay, MovingAveragePool::OPENING_DAY);
+        $currencies = Supplier::query()->whereIn('id', $supplierIds)->pluck('currency', 'id');
 
-    /**
-     * Rounded once per supplier, never per order: per-order rounding would
-     * drift by a sen per order from the true total.
-     *
-     * @param  array<int, float>  $unitsBySupplier
-     * @param  array<int, float|null>  $rates
-     */
-    private function value(array $unitsBySupplier, array $rates): int
-    {
-        return (int) collect($unitsBySupplier)->sum(fn (float $units, int $supplierId) => (int) round($units * ($rates[$supplierId] ?? 0.0) * 100));
+        return new SupplierRowValuer(
+            rates: $supplierIds->mapWithKeys(fn (int $id) => [$id => $this->weightedAverageRate($id, $rateDay)])->all(),
+            pools: $supplierIds->reject(fn (int $id) => $currencies[$id] === 'MYR')
+                ->mapWithKeys(fn (int $id) => [$id => MovingAveragePool::replay($id, $this)])->all(),
+        );
     }
 }

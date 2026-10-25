@@ -14,6 +14,8 @@ use App\Http\Controllers\Admin\FaqController;
 use App\Http\Controllers\Admin\GalleryImageController;
 use App\Http\Controllers\Admin\GameSeoController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
+use App\Http\Controllers\Admin\JokiAdminController;
+use App\Http\Controllers\Admin\JokiAssignmentController;
 use App\Http\Controllers\Admin\ManualQueueController;
 use App\Http\Controllers\Admin\MembershipController as AdminMembershipController;
 use App\Http\Controllers\Admin\MembershipPlanController;
@@ -62,6 +64,7 @@ use App\Http\Controllers\ClientErrorController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\HeroSlideController;
+use App\Http\Controllers\JokiCatalogController;
 use App\Http\Controllers\MembershipController;
 use App\Http\Controllers\MembershipOtpController;
 use App\Http\Controllers\Middleware\BackupController;
@@ -180,6 +183,16 @@ Route::post('/vouchers/preview', [VoucherPreviewController::class, 'store'])->mi
 // ADR-060 PR-4c: `storefront.brand` — the summary total must match what
 // the real checkout charges for this brand (anti-divergence).
 Route::post('/checkout/preview-totals', [CheckoutController::class, 'previewTotal'])->middleware(['throttle:30,1,checkout-preview-totals', 'storefront.brand']);
+
+// ADR-126 decision 12: the `/joki` page — the rank model, routes and
+// public settings, and a live quote from the same JokiPricingService the
+// checkout uses. 403 unless this brand sells joki (`brand.joki`). The
+// quote's limit matches the review total's: the page re-quotes as ranks
+// change. Joki itself is bought through `/checkout` with a `joki` block.
+Route::middleware('storefront.brand')->prefix('joki')->group(function () {
+    Route::get('/catalog', [JokiCatalogController::class, 'show'])->middleware('brand.joki');
+    Route::post('/quote', [JokiCatalogController::class, 'quote'])->middleware(['brand.joki', 'throttle:30,1,joki-quote']);
+});
 
 // Public "Validate Player ID" lookup (ADR-011, same no-auth reasoning
 // as checkout above) — backend half of the Player-ID Validation
@@ -590,8 +603,26 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::post('/{order}/manual/delivered', [ManualQueueController::class, 'delivered']);
         Route::post('/{order}/manual/failed', [ManualQueueController::class, 'failed']);
         Route::post('/{order}/manual/correct-to-delivered', [ManualQueueController::class, 'correctToDelivered']);
+        // ADR-126 decision 16 — hand a joki order to a penjoki.
+        Route::post('/{order}/joki/assign', [JokiAssignmentController::class, 'store']);
+        // ADR-126 decision 10 — the admin's progress update.
+        Route::post('/{order}/joki/progress', [JokiAssignmentController::class, 'progress']);
     });
 
+    // ADR-126 decisions 23-24: Admin → Joki. Orders and Penjoki for every
+    // admin; settings, the rank model and route packages super admin only.
+    Route::middleware('admin.role:super_admin,admin')->prefix('joki-admin')->group(function () {
+        Route::get('/orders', [JokiAdminController::class, 'orders']);
+        Route::get('/summary', [JokiAdminController::class, 'summary']);
+        Route::get('/penjoki', [JokiAdminController::class, 'penjoki']);
+    });
+    Route::middleware('admin.role:super_admin')->prefix('joki-admin')->group(function () {
+        Route::get('/settings', [JokiAdminController::class, 'settings']);
+        Route::put('/settings', [JokiAdminController::class, 'updateSettings']);
+        Route::put('/tiers', [JokiAdminController::class, 'updateTiers']);
+        Route::post('/routes', [JokiAdminController::class, 'storeRoute']);
+        Route::put('/routes/{jokiRoute}', [JokiAdminController::class, 'updateRoute']);
+    });
     Route::middleware('admin.role:super_admin,admin')->get('/manual-queue', [ManualQueueController::class, 'index']);
     Route::middleware('admin.role:super_admin,admin')->get('/manual-suppliers', [ManualQueueController::class, 'suppliers']);
 
@@ -1056,18 +1087,22 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::put('/games/{game}', [GameController::class, 'update']);
         Route::delete('/games/{game}', [GameController::class, 'destroy']);
         Route::get('/games/{game}/packages', [GameController::class, 'packages']);
-        Route::post('/games/{game}/packages/combo', [PackageController::class, 'storeCombo']);
-        Route::post('/games/{game}/packages/manual', [PackageController::class, 'storeManual']);
-
-        Route::put('/packages/{package}', [PackageController::class, 'update']);
-        Route::patch('/packages/{package}/markup', [PackageController::class, 'updateMarkup']);
-        Route::patch('/packages/{package}/cost', [PackageController::class, 'updateCost']);
         Route::get('/packages/{package}/price-history', [PackageController::class, 'priceHistory']);
-        Route::patch('/packages/{package}/status', [PackageController::class, 'updateStatus']);
-        Route::patch('/packages/{package}/denomination', [PackageController::class, 'updateDenomination']);
-        Route::patch('/packages/{package}/catalog-code', [PackageController::class, 'updateCatalogCode']);
-        Route::patch('/packages/{package}/combo-override', [PackageController::class, 'updateComboOverride']);
-        Route::delete('/packages/{package}', [PackageController::class, 'destroy']);
+
+        // ADR-126 F1: joki keeps its own packages.
+        Route::middleware('not.joki')->group(function () {
+            Route::post('/games/{game}/packages/combo', [PackageController::class, 'storeCombo']);
+            Route::post('/games/{game}/packages/manual', [PackageController::class, 'storeManual']);
+
+            Route::put('/packages/{package}', [PackageController::class, 'update']);
+            Route::patch('/packages/{package}/markup', [PackageController::class, 'updateMarkup']);
+            Route::patch('/packages/{package}/cost', [PackageController::class, 'updateCost']);
+            Route::patch('/packages/{package}/status', [PackageController::class, 'updateStatus']);
+            Route::patch('/packages/{package}/denomination', [PackageController::class, 'updateDenomination']);
+            Route::patch('/packages/{package}/catalog-code', [PackageController::class, 'updateCatalogCode']);
+            Route::patch('/packages/{package}/combo-override', [PackageController::class, 'updateComboOverride']);
+            Route::delete('/packages/{package}', [PackageController::class, 'destroy']);
+        });
     });
 });
 

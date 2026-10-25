@@ -35,6 +35,7 @@ class Affiliate extends Model
         'is_owned',
         'is_primary',
         'membership_enabled',
+        'joki_enabled',
         'notes',
         'bank_name',
         'bank_account_no',
@@ -52,6 +53,7 @@ class Affiliate extends Model
         // `false`/`0` here or it collides with the real primary.
         'is_primary' => 'boolean',
         'membership_enabled' => 'boolean',
+        'joki_enabled' => 'boolean',
     ];
 
     public function orders(): HasMany
@@ -208,6 +210,16 @@ class Affiliate extends Model
      * true. Callers that already hold the settings row pass it in to avoid
      * a second lookup.
      */
+    /**
+     * ADR-126 addendum decision 1: the global Joki switch AND this brand's
+     * own `joki_enabled`, on an owned brand only (the admin forces it off
+     * elsewhere; checked again here so no stale row sells joki).
+     */
+    public function jokiEnabledEffective(?JokiSetting $settings = null): bool
+    {
+        return $this->is_owned && $this->joki_enabled && ($settings ?? JokiSetting::current())->is_enabled;
+    }
+
     public function membershipEnabledEffective(?PlatformSettings $settings = null): bool
     {
         $global = ($settings ?? PlatformSettings::current())->membership_enabled;

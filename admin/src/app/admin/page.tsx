@@ -36,6 +36,7 @@ import { HorizontalBarList } from "@/components/reports/HorizontalBarList";
 import { TrendChart } from "@/components/reports/TrendChart";
 import { formatRm, formatRmTick, formatRmValue, formatShortRange, toRm } from "@/components/reports/format";
 import { StatusStrip } from "@/components/dashboard/StatusStrip";
+import { JokiCard } from "@/components/dashboard/JokiCard";
 import { BusyHours } from "@/components/dashboard/BusyHours";
 import { Highlights } from "@/components/dashboard/Highlights";
 
@@ -229,6 +230,8 @@ function Briefing({
 
       {health ? <StatusStrip health={health} /> : <Pending error={null} />}
 
+      {health && <JokiCard counts={health.joki} />}
+
       <section aria-label="Key figures" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {s ? (
           <>
@@ -236,7 +239,7 @@ function Briefing({
               <KpiCard lead label="Sales" value={formatRm(s.total_sales)} change={s.compare?.changes.total_sales} previousLabel={prev} sub={s.orders_count === 0 ? emptyText : undefined} />
             </div>
             <div className="max-sm:col-span-2 [&>*]:h-full">
-              <KpiCard lead label="Owner profit" value={formatRm(s.platform_profit)} change={s.compare?.changes.platform_profit} previousLabel={prev} />
+              <KpiCard lead label="Owner profit (market rate)" value={formatRm(s.platform_profit)} change={s.compare?.changes.platform_profit} previousLabel={prev} />
             </div>
             <KpiCard label="Orders" value={s.orders_count.toLocaleString()} change={s.compare?.changes.orders_count} previousLabel={prev} />
             <KpiCard

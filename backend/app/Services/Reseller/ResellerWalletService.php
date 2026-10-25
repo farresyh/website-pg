@@ -194,13 +194,14 @@ final class ResellerWalletService
      * transaction for the common already-processed case); the actual
      * guard is the re-read under lockForUpdate() inside the transaction.
      */
-    public function completeTopup(WalletTopupAttempt $attempt): void
+    /** @param  int|null  $gatewayFeeSen  the fee CHIP reported (ADR-127 F2) */
+    public function completeTopup(WalletTopupAttempt $attempt, ?int $gatewayFeeSen = null): void
     {
         if ($attempt->status === WalletTopupAttemptStatus::Paid) {
             return;
         }
 
-        $credited = DB::transaction(function () use ($attempt) {
+        $credited = DB::transaction(function () use ($attempt, $gatewayFeeSen) {
             $locked = WalletTopupAttempt::query()->lockForUpdate()->findOrFail($attempt->id);
 
             if ($locked->status === WalletTopupAttemptStatus::Paid) {
@@ -216,7 +217,7 @@ final class ResellerWalletService
                 referenceId: $locked->id,
             );
 
-            $locked->update(['status' => WalletTopupAttemptStatus::Paid->value]);
+            $locked->update(['status' => WalletTopupAttemptStatus::Paid->value, 'gateway_fee_sen' => $gatewayFeeSen]);
 
             return true;
         });

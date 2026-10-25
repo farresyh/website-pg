@@ -77,13 +77,13 @@ class OrderDeliveryLeg extends Model
 
     /**
      * ADR-107 decision 2 / ADR-111 decision 3: the cost this leg counts
-     * at — its real per-transaction cost when real-cost reconciliation
-     * is on and it was captured, else its component's live catalog cost.
+     * at — its real per-transaction cost when it was captured, else its
+     * component's live catalog cost (ADR-127 removed the flag).
      * The one place both full delivery and partial settlement read it.
      */
     public function costSen(): int
     {
-        if (config('services.real_cost_reconciliation.enabled', false) && $this->real_cost_price_sen !== null) {
+        if ($this->real_cost_price_sen !== null) {
             return $this->real_cost_price_sen;
         }
 

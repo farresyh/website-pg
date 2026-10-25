@@ -68,7 +68,11 @@ export default defineConfig({
     {
       // Item 27: same Turbopack font crash hit storefront's Inter
       // (PR #379, 2026-10-08) — same fix as admin above.
-      command: "npx next build && npx next start --port 3001",
+      // The Data Cache (fetch-cache) survives a rebuild, but the e2e DB is
+      // rebuilt every run: a cached catalog from an earlier run names
+      // packages that no longer exist ("selected package id is invalid",
+      // found with the joki spec). Start every run with an empty one.
+      command: "rm -rf .next/cache/fetch-cache && npx next build && npx next start --port 3001",
       cwd: path.join(ROOT_DIR, "storefront"),
       url: STOREFRONT_URL,
       reuseExistingServer: false,

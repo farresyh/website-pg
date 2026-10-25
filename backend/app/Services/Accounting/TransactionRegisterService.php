@@ -13,7 +13,6 @@ use App\Models\Voucher;
 use App\Models\WalletTopupAttempt;
 use App\Models\Withdrawal;
 use App\Services\Ledger\LedgerOwnerType;
-use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
@@ -57,6 +56,7 @@ final class TransactionRegisterService
     {
         $rows = [
             ...$this->orderRows($from, $toExclusive),
+            ...$this->orderRecognitionRows($from, $toExclusive),
             ...$this->orderProfitCorrectionRows($from, $toExclusive),
             ...$this->supplierTransferRows($from, $toExclusive),
             ...$this->supplierAdjustmentRows($from, $toExclusive),
@@ -143,6 +143,9 @@ final class TransactionRegisterService
         return $orders
             ->map(fn (Order $order) => [
                 'date' => $order->paid_at?->toIso8601String() ?? $order->created_at->toIso8601String(),
+                // ADR-127 P1: cost and net appear here only when the order was
+                // recognised in its paid month; otherwise they are their own
+                // `order_recognised` row, so this month's export never changes later.
                 'type' => 'order',
                 'reference' => $order->order_number,
                 'description' => 'Order '.$order->order_number,
@@ -162,10 +165,8 @@ final class TransactionRegisterService
                 // `MonthlyAccountingSummaryService::cogs()` already uses.
                 // ADR-094 decision 41: a partial delivery drew down only its delivered legs.
                 // §16 item 115: the cost its profit used (ADR-111), never the checkout estimate.
-                'cost_sen' => in_array($order->delivery_status, [DeliveryStatus::Delivered, DeliveryStatus::PartiallyDelivered], true)
-                    ? $order->effectiveCostPriceSen()
-                    : null,
-                'net_sen' => (int) ($realizedProfitByOrderId[$order->id] ?? 0),
+                'cost_sen' => self::recognisedInPaidMonth($order) ? $order->effectiveCostPriceSen() : null,
+                'net_sen' => self::recognisedInPaidMonth($order) ? (int) ($realizedProfitByOrderId[$order->id] ?? 0) : 0,
                 'amount_foreign' => null,
                 'status' => 'active',
                 // 2026-09-30 audit fix: a reseller wallet-paid order's
@@ -179,6 +180,62 @@ final class TransactionRegisterService
                 'funding_source' => $order->wallet_reseller_id !== null ? 'reseller_wallet' : 'chip',
             ])
             ->all();
+    }
+
+    /**
+     * ADR-127 P1: an order recognised in a later month than it was paid
+     * (a joki, a manual or late delivery, a late settlement) gets its cost
+     * and net here, dated when it was recognised; its `order` row keeps
+     * only the money received.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function orderRecognitionRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
+    {
+        $orders = Order::query()
+            ->with(['supplier', 'deliveryLegs.componentPackage:id,cost_price', 'voucher', 'voucherRedemption'])
+            ->where('is_test', false)
+            ->where('payment_status', PaymentStatus::Paid->value)
+            ->whereNotNull('recognised_at')
+            ->when($from, fn ($q) => $q->where('recognised_at', '>=', $from))
+            ->when($toExclusive, fn ($q) => $q->where('recognised_at', '<', $toExclusive))
+            ->get()
+            ->reject(fn (Order $order) => self::recognisedInPaidMonth($order));
+
+        $realizedProfitByOrderId = LedgerEntry::query()
+            ->where('type', 'order_profit')
+            ->where('owner_type', LedgerOwnerType::Platform->value)
+            ->where('reference_type', 'order')
+            ->whereNull('reason')
+            ->whereIn('reference_id', $orders->pluck('id'))
+            ->selectRaw('reference_id, SUM(amount) as total')
+            ->groupBy('reference_id')
+            ->pluck('total', 'reference_id');
+
+        return $orders
+            ->map(fn (Order $order) => [
+                'date' => $order->recognised_at->toIso8601String(),
+                'type' => 'order_recognised',
+                'reference' => $order->order_number,
+                'description' => 'Order '.$order->order_number.' recognised (paid '.$order->paid_at->copy()->setTimezone(MalaysiaTime::TIMEZONE)->format('j M Y').')',
+                'supplier' => $order->supplier?->name,
+                'currency' => 'MYR',
+                'gross_sen' => null,
+                'fee_sen' => null,
+                'cost_sen' => $order->effectiveCostPriceSen(),
+                'net_sen' => (int) ($realizedProfitByOrderId[$order->id] ?? 0),
+                'amount_foreign' => null,
+                'status' => 'active',
+                'funding_source' => $order->wallet_reseller_id !== null ? 'reseller_wallet' : 'chip',
+            ])
+            ->values()
+            ->all();
+    }
+
+    private static function recognisedInPaidMonth(Order $order): bool
+    {
+        return $order->recognised_at !== null && $order->paid_at !== null
+            && $order->recognised_at->copy()->setTimezone(MalaysiaTime::TIMEZONE)->format('Y-m') === $order->paid_at->copy()->setTimezone(MalaysiaTime::TIMEZONE)->format('Y-m');
     }
 
     /**
@@ -349,6 +406,7 @@ final class TransactionRegisterService
             // (Path A) voucher is a business decision, not a
             // checkout-generated one.
             ->compensation()
+            ->whereHas('sourceOrder', fn ($o) => $o->where('is_test', false))
             ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
             ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
             ->get()
@@ -446,14 +504,17 @@ final class TransactionRegisterService
      */
     private function walletTopupRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
     {
+        // Dated by the wallet credit, the same fact the wallet balance and
+        // the CHIP-unsettled asset read (ADR-127 F5), not the attempt's start.
         return WalletTopupAttempt::query()
-            ->with('reseller')
+            ->with(['reseller', 'ledgerCredit'])
             ->where('status', WalletTopupAttemptStatus::Paid->value)
-            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
-            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
+            ->whereHas('ledgerCredit', fn ($q) => $q
+                ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+                ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive)))
             ->get()
             ->map(fn (WalletTopupAttempt $topup) => [
-                'date' => $topup->created_at->toIso8601String(),
+                'date' => $topup->ledgerCredit->created_at->toIso8601String(),
                 'type' => 'reseller_wallet_topup',
                 'reference' => $topup->reference,
                 'description' => 'Reseller wallet top-up — '.($topup->reseller?->business_name ?? 'unknown reseller'),

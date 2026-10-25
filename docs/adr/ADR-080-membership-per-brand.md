@@ -1,6 +1,6 @@
 # ADR-080: Membership × per-brand — close the `/membership` surface consistently on a membership-disabled brand
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-25):** In force; the gate now runs after the brand is resolved (2026-10-25 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** BUILT + LIVE IN PRODUCTION 2026-09-09 (PR #148 → `staging`, release PR #149 → `main` `d18838f`; deploy green, prod probes 200). Original: Accepted (design) — 2026-09-09, grilled with the founder over eleven decisions via `/mattpocock-skills:grilling`, then a stress-test pass before this entry was written. This is ADR-061's lineage — the per-brand Membership opt-in (ADR-061 decision 4/5) whose gate turned out to be applied inconsistently once a real membership-disabled brand went live — not new Membership scope. Same "gaps found after a feature went live in production, fixed as a follow-up ADR" shape as ADR-078 (to ADR-060) and ADR-077's own post-live addenda. Implemented in one PR on the same branch (`feature/adr-080-membership-per-brand-gate`).
 
@@ -77,3 +77,10 @@ Two triage claims from the 2026-09-08 memo turned out **already resolved** and a
 - **Global kill-switch behaviour is now asymmetric** — flipping `PlatformSettings.membership_enabled` off stops all sales surfaces everywhere but leaves every member's `me()` readable. That is intended (decision 1/6); a future operator expecting "off means fully dark" should find this decision.
 
 **Delivery:** one PR, `feature/adr-080-membership-per-brand-gate` off `staging` — backend + storefront + admin together (tightly coupled, small). Backend feature tests: the four gated endpoints 403 on a disabled brand, `me()` still 200s, the middleware ordering vs `throttle`, `completePaidAttempt` logs on a disabled brand, `active_membership_count` present. No new E2E (a disabled-brand E2E needs a multi-brand seed for one assertion; the feature tests cover the gate). `fixfastapp` cleanup is a manual post-merge step, recorded here as a build addendum.
+
+### 2026-10-25 addendum — the gate runs after the brand is resolved (found by ADR-127 PR E)
+
+- **What happened.** Pinning `EnsureBrandMembershipEnabled` ahead of `ThrottleRequests` in the middleware priority list also put it ahead of `ResolveStorefrontBrand`, which is not on that list. So the gate judged the platform brand on every domain. An affiliate with membership off still had OTP, subscribe-options and subscribe open while PekanGame had it on, and the reverse returned 403.
+- **The fix.** `ResolveStorefrontBrand` is pinned ahead of the gate in `bootstrap/app.php`. `MembershipSubscriptionControllerTest` proves both directions.
+- **Production, read-only (2026-10-25):** "FixFast Demo" has membership off while PekanGame has it on. All 3 subscription attempts were on PekanGame, so no data is wrong.
+

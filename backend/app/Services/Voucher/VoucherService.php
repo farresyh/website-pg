@@ -14,6 +14,7 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 /**
  * ADR-024. issue() books an admin-issued voucher's full cost once, at
@@ -248,6 +249,27 @@ final class VoucherService
     }
 
     /**
+     * An admin cancels an active voucher. ADR-127 P1: `revoked_at` is the
+     * dated fact — Cash Position stops owing the balance from then, and the
+     * Monthly Summary books the unspent balance as income of that month.
+     * Locked like redeem(), so a revoke and a redemption cannot interleave.
+     */
+    public function revoke(Voucher $voucher): Voucher
+    {
+        return DB::transaction(function () use ($voucher) {
+            $locked = Voucher::query()->lockForUpdate()->findOrFail($voucher->id);
+
+            if ($locked->status !== 'active') {
+                throw ValidationException::withMessages(['status' => ['Only an active voucher can be revoked.']]);
+            }
+
+            $locked->update(['status' => 'revoked', 'revoked_at' => now()]);
+
+            return $locked;
+        });
+    }
+
+    /**
      * The real, locked spend (ADR-024 decision #1/#2). Idempotent by
      * design — safe to call more than once for the same order (a
      * belt-and-suspenders match for CheckoutService::requestPayment()
@@ -367,7 +389,7 @@ final class VoucherService
 
             $voucher->save();
 
-            $redemption->update(['status' => 'restored', 'restored_amount' => $restoredAmount]);
+            $redemption->update(['status' => 'restored', 'restored_amount' => $restoredAmount, 'restored_at' => now()]);
         });
     }
 

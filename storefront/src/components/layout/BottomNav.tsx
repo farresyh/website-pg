@@ -47,7 +47,7 @@ const INFO_LINKS: DrawerLink[] = [
 
 export default function BottomNav() {
   const pathname = usePathname();
-  const { membershipEnabled, whatsappHref, priceListEnabled, checkIdEnabled } = useSiteConfig();
+  const { membershipEnabled, whatsappHref, priceListEnabled, checkIdEnabled, jokiEnabled } = useSiteConfig();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
 
@@ -59,7 +59,8 @@ export default function BottomNav() {
   // ADR-071 PR3 — a game order page (`/order/<slug>`, not the status
   // page) is a focused checkout task; its own sticky "Review & Pay" bar
   // takes this slot instead.
-  const onCheckout = pathname.startsWith("/order/") && !pathname.startsWith("/order/status");
+  // `/joki` is a checkout too (ADR-126 PR 5), with the same sticky bar.
+  const onCheckout = (pathname.startsWith("/order/") && !pathname.startsWith("/order/status")) || pathname === "/joki";
   if (onCheckout) return null;
 
   const leftItems: NavItem[] = membershipEnabled
@@ -70,6 +71,7 @@ export default function BottomNav() {
     : [TRACK_ORDER_ITEM];
 
   const menuLinks: DrawerLink[] = [
+    ...(jokiEnabled ? [{ href: "/joki", label: "Joki Rank" }] : []),
     ...(checkIdEnabled ? [{ href: "/check-id", label: "Game ID Checker" }] : []),
     ...(priceListEnabled ? [{ href: "/price-list", label: "Price List" }] : []),
   ];

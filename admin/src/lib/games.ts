@@ -116,6 +116,8 @@ export interface Game {
   delivery_subtext?: string | null;
   /** ADR-125 decision 7: off = no member price and no quota debit for this game. */
   member_pricing_enabled?: boolean;
+  /** ADR-126 decision 22: a login game's own wipe ceiling in days; null = the Customer Login Policy's D. */
+  credential_max_days?: number | null;
 }
 
 /** ADR-094 decision 1: one of a combo Package's own components — this game's own package list, projected down for the composition/edit UI. */
@@ -177,6 +179,7 @@ export interface UpdateGameValues {
   delivery_mode: "instant" | "manual";
   delivery_subtext?: string | null;
   member_pricing_enabled?: boolean;
+  credential_max_days?: number | null;
 }
 
 export interface UpdatePackageValues {

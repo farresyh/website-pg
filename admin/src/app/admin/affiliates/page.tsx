@@ -143,6 +143,7 @@ export default function AffiliatesPage() {
       notes: values.notes,
       is_owned: values.is_owned,
       membership_enabled: values.membership_enabled,
+      joki_enabled: values.joki_enabled,
     });
     setFormOpen(false);
     setEditing(null);
@@ -210,6 +211,7 @@ export default function AffiliatesPage() {
                           {r.is_primary && <span className="ml-2 text-theme-xs text-ink-subtle">(primary)</span>}
                           {r.is_owned && !r.is_primary && <span className="ml-2 text-theme-xs text-ink-subtle">(our brand)</span>}
                           {r.membership_enabled && <span className="ml-2 text-theme-xs text-brand-500">membership</span>}
+                          {r.joki_enabled && <span className="ml-2 text-theme-xs text-brand-500">joki</span>}
                           {r.contact_name && <p className="text-theme-xs font-normal text-gray-500 dark:text-gray-400">{r.contact_name}</p>}
                         </DataTableCell>
                         <DataTableCell className={TD}>

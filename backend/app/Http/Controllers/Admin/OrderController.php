@@ -9,6 +9,9 @@ use App\Http\Requests\ResendOrderDeliveryRequest;
 use App\Jobs\FulfillOrderJob;
 use App\Jobs\ResendOrderDeliveryJob;
 use App\Models\CredentialReveal;
+use App\Models\JokiAssignment;
+use App\Models\JokiProgressUpdate;
+use App\Models\JokiTier;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\OrderCredential;
@@ -143,7 +146,8 @@ class OrderController extends Controller
             // ADR-108 decision 1 — shares Order::scopeNeedsAction() with
             // summary() below, so an already-compensated order (voucher/
             // wallet-refund/restore) never shows up asking for one.
-            'need_action' => $query->needsAction(),
+            // ADR-126 F4: a joki is on the Joki board's "needs voucher".
+            'need_action' => $query->needsAction()->notJoki(),
             // ADR-108 addendum 2026-10-09 — every failed delivery, compensated
             // or not; Reports' "View failed orders" opens this.
             'failed' => $query->where('delivery_status', DeliveryStatus::Failed->value),
@@ -178,6 +182,15 @@ class OrderController extends Controller
                     $q->whereNull('affiliate_id')
                         ->orWhereHas('affiliate', fn ($aq) => $aq->where('is_primary', true));
                 }),
+            default => null,
+        };
+
+        // ADR-126 decision 25: a login order has a credential row; joki is Fixed.
+        $hasLogin = fn ($q) => $q->selectRaw('1')->from('order_credentials')->whereColumn('order_credentials.order_id', 'orders.id');
+        match ($request->query('type')) {
+            'joki' => $query->joki(),
+            'login' => $query->notJoki()->whereExists($hasLogin),
+            'topup' => $query->notJoki()->whereNotExists($hasLogin),
             default => null,
         };
 
@@ -241,6 +254,7 @@ class OrderController extends Controller
         $parts = array_filter([
             $request->query('status') ? 'tab: '.$request->query('status') : null,
             $request->query('source') ? 'source: '.$request->query('source') : null,
+            in_array($request->query('type'), ['joki', 'login', 'topup'], true) ? 'type: '.$request->query('type') : null,
             $request->query('game_id') ? 'game #'.$request->query('game_id') : null,
             $request->query('search') ? 'search: "'.$request->query('search').'"' : null,
             $this->validDate($request->query('date_from')) ? 'created from '.$request->query('date_from') : null,
@@ -270,7 +284,7 @@ class OrderController extends Controller
      */
     public function summary(): JsonResponse
     {
-        $needAction = Order::query()->where('is_test', false)->needsAction()->count();
+        $needAction = Order::query()->where('is_test', false)->needsAction()->notJoki()->count();
 
         $row = Order::query()
             ->where('is_test', false)
@@ -682,6 +696,7 @@ class OrderController extends Controller
         $result = $fulfillment->markDeliveredManually(
             $order,
             $request->validated('supplier_ref'),
+            (float) $request->validated('supplier_price'),
             $request->validated('note'),
             $request->user()->name,
         );
@@ -941,6 +956,42 @@ class OrderController extends Controller
             // equals Platform Profit.
             'effective_cost_price' => $order->effectiveCostPriceSen(),
             'cost_basis' => $order->costBasis(),
+            // ADR-126 decisions 10, 16: the Joki card — what was bought, who
+            // has it, every Assign and progress update, and the rank model
+            // for the progress picker.
+            'joki' => $order->isJoki() ? $this->jokiDetail($order) : null,
         ]);
+    }
+
+    /** @return array<string, mixed> */
+    private function jokiDetail(Order $order): array
+    {
+        $joki = $order->jokiOrder;
+
+        return [
+            'from_rank' => $joki?->from_rank,
+            'to_rank' => $joki?->to_rank,
+            'current_rank' => $joki?->current_rank,
+            'current_rank_at' => $joki?->current_rank_at?->toISOString(),
+            'is_express' => (bool) $joki?->is_express,
+            'role' => $joki?->role,
+            'hero_request' => $joki?->hero_request,
+            'play_window' => $joki?->play_window,
+            'payout_share_pct' => $joki?->payout_share_pct,
+            'is_with_penjoki' => (bool) $order->supplier?->isPenjoki(),
+            'assignments' => $order->jokiAssignments()->with(['fromSupplier:id,name', 'toSupplier:id,name'])->get()->map(fn (JokiAssignment $a) => [
+                'from' => $a->fromSupplier?->name,
+                'to' => $a->toSupplier?->name,
+                'by' => $a->assigned_by,
+                'at' => $a->created_at?->toISOString(),
+            ]),
+            'progress' => JokiProgressUpdate::query()->where('order_id', $order->id)->oldest('id')->get()->map(fn (JokiProgressUpdate $u) => [
+                'rank' => $u->rank['label'] ?? null,
+                'by' => $u->actor,
+                'channel' => $u->channel,
+                'at' => $u->created_at?->toISOString(),
+            ]),
+            'tiers' => JokiTier::query()->orderBy('sort_order')->get(['id', 'name', 'kind', 'divisions', 'stars_per_division', 'mythic_from_stars']),
+        ];
     }
 }

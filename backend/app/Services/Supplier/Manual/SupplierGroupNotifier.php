@@ -14,10 +14,13 @@ use App\Services\WhatsApp\WhatsAppGroupService;
  * ADR-125 decisions 13/15/48-54/59: what a manual supplier's WhatsApp group
  * is told, and when it is no longer worth telling.
  *
- * One post per attempt, keyed on (order, reference): a retry or resend from
- * Failed mints a new reference and posts again, labelled RETRY; a resend
- * from NeedsReview keeps the reference but was never posted (decision 48).
- * One SLA reminder per attempt. Rows go through the persisted queue on the
+ * One post per attempt and supplier, keyed on (order, reference, supplier):
+ * a retry or resend from Failed mints a new reference and posts again,
+ * labelled RETRY; a resend from NeedsReview keeps the reference but was
+ * never posted (decision 48); a reassigned order posts to its new
+ * supplier's group, and the old supplier's queued post is dropped
+ * (ADR-126 2026-10-23 addendum, decision 17). One SLA reminder per
+ * attempt and supplier. Rows go through the persisted queue on the
  * bot session; `prepare()` finishes them at send time.
  */
 final class SupplierGroupNotifier
@@ -41,12 +44,14 @@ final class SupplierGroupNotifier
             return;
         }
 
-        // An earlier attempt's post, not this attempt's own skipped row.
+        // An earlier attempt's post (another reference), not this
+        // attempt's own skipped row nor its post to a previous supplier.
+        $attemptPrefix = self::attemptPrefix(self::EVENT_ORDER_POST, $order);
         $isRetry = CustomerNotification::query()
             ->where('order_id', $order->id)
             ->where('event', self::EVENT_ORDER_POST)
-            ->where('dedupe_key', '!=', self::dedupeKey(self::EVENT_ORDER_POST, $order))
-            ->exists();
+            ->pluck('dedupe_key')
+            ->contains(fn (string $key) => ! str_starts_with($key, $attemptPrefix));
 
         $this->queue($order, self::EVENT_ORDER_POST, $this->postMessage($order, $isRetry));
     }
@@ -76,8 +81,8 @@ final class SupplierGroupNotifier
         $orders = Order::query()
             ->where('delivery_status', DeliveryStatus::Pending->value)
             ->where('is_test', false)
-            ->whereHas('supplier', fn ($q) => $q->where('driver', Supplier::DRIVER_MANUAL))
-            ->get(['id', 'reference_number']);
+            ->whereHas('supplier', fn ($q) => $q->where('driver', Supplier::DRIVER_MANUAL)->exceptAssignmentPool())
+            ->get(['id', 'reference_number', 'supplier_id']);
 
         $reached = CustomerNotification::query()
             ->whereIn('order_id', $orders->pluck('id'))
@@ -98,7 +103,7 @@ final class SupplierGroupNotifier
             return;
         }
 
-        $minutes = (int) $order->updated_at->diffInMinutes(now());
+        $minutes = (int) $order->pendingClock()->diffInMinutes(now());
 
         $this->queue($order, self::EVENT_SLA_REMINDER, implode("\n", [
             "⏰ *PERINGATAN* {$order->order_number}",
@@ -120,6 +125,11 @@ final class SupplierGroupNotifier
         if ($order === null || ! $this->isWaitingOnManualSupplier($order)
             || $notification->dedupe_key !== self::dedupeKey($notification->event, $order)) {
             return null;
+        }
+
+        // Decision 20: the supplier's wait starts when the post reaches them.
+        if ($notification->event === self::EVENT_ORDER_POST) {
+            $order->forceFill(['manual_activity_at' => now()])->save();
         }
 
         if (! str_contains($notification->message, SupplierLoginLinkService::PLACEHOLDER)) {
@@ -180,16 +190,30 @@ final class SupplierGroupNotifier
         return implode("\n", $lines);
     }
 
+    /** ADR-126 decision 15: an order waiting in the joki pool has no group to tell. */
     private function isWaitingOnManualSupplier(Order $order): bool
     {
         return $order->delivery_status === DeliveryStatus::Pending
             && ! $order->is_test
             && $order->supplier !== null
-            && ! $order->supplier->isApiBacked();
+            && ! $order->supplier->isApiBacked()
+            && ! $order->supplier->isAssignmentPool();
     }
 
+    /**
+     * ADR-126 2026-10-23 addendum, decision 17: one row per (attempt,
+     * supplier), and for a joki order per assignment too, so A → B → A
+     * still posts to A again.
+     */
     private static function dedupeKey(string $event, Order $order): string
     {
-        return "{$event}:order:{$order->id}:ref:{$order->reference_number}";
+        $assignmentId = $order->currentJokiAssignmentId();
+
+        return self::attemptPrefix($event, $order)."supplier:{$order->supplier_id}".($assignmentId !== null ? ":assign:{$assignmentId}" : '');
+    }
+
+    private static function attemptPrefix(string $event, Order $order): string
+    {
+        return "{$event}:order:{$order->id}:ref:{$order->reference_number}:";
     }
 }

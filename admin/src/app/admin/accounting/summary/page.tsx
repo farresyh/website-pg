@@ -33,7 +33,7 @@ function rm(sen: number): string {
  * profit is decided in MonthlyAccountingSummaryService::operatingProfit().
  */
 const LINES: { key: keyof MonthlyAccountingSummary; label: string; definition: string }[] = [
-  { key: "sales_revenue_sen", label: "Sales revenue", definition: "Total selling price of every order delivered this month — gross income, before subtracting what we paid suppliers. Not profit on its own." },
+  { key: "sales_revenue_sen", label: "Revenue (recognised)", definition: "Total selling price of every order delivered (recognised) this month, whenever it was paid — gross income, before subtracting what we paid suppliers. Not profit on its own. Money paid for an order not yet delivered is owed to the customer, not revenue (ADR-127)." },
   { key: "membership_revenue_sen", label: "Membership revenue", definition: "Total membership subscription fees collected this month." },
   { key: "cogs_sen", label: "COGS (at funded cost)", definition: "Cost of Goods Sold for this month's recognised orders, at what we actually paid for the supplier deposit: each order's drawdown from the deposit × the MYR we paid per unit (blended over every top-up up to the month's last day). A supplier paid in MYR counts at face value. This is the accounting cost; it is subtracted from operating profit." },
   { key: "cogs_at_order_cost_sen", label: "↳ COGS at per-order cost", definition: "The same orders at the cost shown on each order (Transaction Register, Customer Detail): the supplier's price at the market rate on the day it was delivered. Information only. This line plus the next one equals COGS." },
@@ -41,14 +41,15 @@ const LINES: { key: keyof MonthlyAccountingSummary; label: string; definition: s
   { key: "drawdowns_not_in_cogs_sen", label: "Supplier drawdowns not in this month's COGS", definition: "Deposit used this month for orders whose sale is not recognised this month: a combo partly delivered and not yet settled, or an order paid in another month. Information only. It joins COGS in the month the sale is recognised. Normally 0." },
   { key: "payment_processing_gain_loss_sen", label: "Payment processing net gain/(loss)", definition: "The gap between the transaction fee charged to customers and the real fee CHIP actually deducted — a small gain if we charged more than CHIP's real cut, a loss if less." },
   { key: "supplier_prepaid_topup_sen", label: "Supplier prepaid — top-up", definition: "Capital sent this month to top up a supplier's prepaid balance (e.g. Digiflazz), excluding our own bank/transfer fee (see the line below). A capital movement — not revenue, not an expense." },
-  { key: "bank_transfer_fees_sen", label: "Bank / transfer fees", definition: "Our own Wise/Airwallex fee for sending the top-up above to the supplier — a real expense, separate from the capital movement itself. Add this to the top-up line above to get the full amount that left the bank." },
+  { key: "pay_after_supplier_payments_sen", label: "Supplier payments — pay-after", definition: "Paid this month to pay-after suppliers (a penjoki, a manual supplier) for orders they already delivered, excluding our own bank/transfer fee. It settles what we owe them; the cost itself is already in COGS when the order is delivered. Not revenue, not an expense, and not a prepaid balance." },
+  { key: "bank_transfer_fees_sen", label: "Bank / transfer fees", definition: "Our own Wise/Airwallex/bank fee for sending the two supplier lines above — a real expense, separate from the money sent itself. Add this to both lines above to get the full amount that left the bank for suppliers." },
   { key: "affiliate_commission_expense_sen", label: "Affiliate commission expense", definition: "Commission owed to affiliates from this month's sales, whether or not it has actually been paid out yet — a real expense against profit." },
   { key: "affiliate_tier_fees_sen", label: "Affiliate tier fees (from earnings, no cash)", definition: "Wholesale-tier fees deducted from affiliates' earnings this month. No money moved, so the bank statement never shows it: it lowers what we owe affiliates and adds to profit. Whether it is revenue or a reduction of commission expense is the accountant's call." },
   { key: "voucher_breakage_sen", label: "Voucher breakage", definition: "What was left unspent on vouchers that expired this month. We no longer owe it, so it becomes income." },
   { key: "admin_issued_vouchers_sen", label: "Admin-issued vouchers (no order)", definition: "Vouchers an admin gave away this month that were not for a failed order. A real cost: the customer never paid us for them. It lowers operating profit, and the same credit is spendable by the customer, so do not add it to the line below. A Campaign promo code is a different thing, costed per order." },
   { key: "supplier_manual_adjustments_sen", label: "Supplier balance corrections", definition: "Manual corrections to a supplier's prepaid balance this month (e.g. a deposit fee missed at entry), in MYR at the month-end rate. Corrections on a voided transfer are left out." },
   { key: "failed_order_credit_issued_sen", label: "Failed-order store credit issued", definition: "Store credit issued this month for a failed or partly delivered order. The customer already paid, so we owe it back: a liability, not an expense, and operating profit leaves it out. A voucher made by merging others is not new credit and is not counted. What customers can still spend overall is on the month close's cash equation." },
-  { key: "reseller_wallet_balance_sen", label: "Reseller wallet balance", definition: "Money resellers have prepaid into their wallets, which isn't ours — a liability, not revenue. Always the CURRENT balance (see the \"as of\" timestamp next to it), never this period's own month-end figure. The month close's equation has the month-end figure." },
+  { key: "reseller_wallet_balance_sen", label: "Reseller wallet balance", definition: "Money resellers have prepaid into their wallets, which isn't ours — a liability, not revenue. The balance at this month's end (today's balance for the current month)." },
   { key: "envelope_manual_expenses_sen", label: "Manual expenses (Envelope)", definition: "Expenses recorded in the Envelope Ledger this month, including ones a director paid. Information only: they already came out of their envelopes, so operating profit does not subtract them again." },
 ];
 
@@ -61,10 +62,6 @@ export default function MonthlyAccountingSummaryPage() {
   const [summary, setSummary] = useState<MonthlyAccountingSummary | null>(null);
   const [monthClose, setMonthClose] = useState<MonthClose | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // reseller_wallet_balance_sen is always the CURRENT balance, never scoped
-  // to the viewed period — this timestamps exactly when that snapshot was
-  // taken, so it's never mistaken for a real month-end figure.
-  const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
 
   function load(y: number, m: number) {
     return Promise.all([getMonthlyAccountingSummary(y, m), getMonthClose(y, m)])
@@ -72,7 +69,6 @@ export default function MonthlyAccountingSummaryPage() {
         setError(null);
         setSummary(s);
         setMonthClose(c);
-        setFetchedAt(new Date());
       })
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load the summary."));
   }
@@ -154,11 +150,6 @@ export default function MonthlyAccountingSummaryPage() {
                       {line.key === "cogs_sen" && summary.cogs_fallback_order_count > 0 && (
                         <span className="text-theme-xs text-warning-600 dark:text-warning-400">
                           ({summary.cogs_fallback_order_count} order{summary.cogs_fallback_order_count === 1 ? "" : "s"} at their own cost: no deposit drawdown or rate recorded)
-                        </span>
-                      )}
-                      {line.key === "reseller_wallet_balance_sen" && fetchedAt && (
-                        <span className="text-theme-xs text-ink-subtle">
-                          (as of {fetchedAt.toLocaleString("en-MY", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })})
                         </span>
                       )}
                     </span>

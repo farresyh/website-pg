@@ -39,6 +39,8 @@ interface MarkDeliveredModalProps {
 /**
  * ADR-026 decision 4a — the one needs_review exit that isn't a retry.
  * Requires the real Gamevion invoice number, not just a confirm click —
+ * and (ADR-127 PR D) the price the supplier charged for it, which becomes
+ * the order's real cost and its supplier drawdown —
  * the admin finds it by cross-referencing Gamevion's dashboard (date
  * range + player ID + game, since there's no reference-number search
  * there, confirmed live). Entering it here closes the exact data gap
@@ -48,7 +50,11 @@ interface MarkDeliveredModalProps {
  */
 function MarkDeliveredFields({ onClose, onConfirmed, order, sandbox }: Omit<MarkDeliveredModalProps, "isOpen">) {
   const [supplierRef, setSupplierRef] = useState("");
+  const [supplierPrice, setSupplierPrice] = useState("");
   const [note, setNote] = useState("");
+  const currency = order.supplier?.currency ?? "MYR";
+  const price = Number(supplierPrice);
+  const priceValid = supplierPrice.trim() !== "" && Number.isFinite(price) && price > 0;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,7 +63,7 @@ function MarkDeliveredFields({ onClose, onConfirmed, order, sandbox }: Omit<Mark
     setSubmitting(true);
     setError(null);
     try {
-      const values = { supplier_ref: supplierRef.trim(), note: note.trim() || undefined };
+      const values = { supplier_ref: supplierRef.trim(), supplier_price: price, note: note.trim() || undefined };
       const updated = sandbox
         ? await markSandboxOrderDelivered(order.id, values)
         : await markOrderDelivered(order.id, values);
@@ -104,6 +110,24 @@ function MarkDeliveredFields({ onClose, onConfirmed, order, sandbox }: Omit<Mark
           />
         </div>
         <div>
+          <Label htmlFor="mark_delivered_supplier_price">Price Charged by Supplier ({currency})</Label>
+          <Input
+            id="mark_delivered_supplier_price"
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="any"
+            placeholder={currency === "IDR" ? "e.g. 15200" : "e.g. 4.75"}
+            value={supplierPrice}
+            onChange={(e) => setSupplierPrice(e.target.value)}
+            required
+          />
+          <p className="mt-1 text-xs text-ink-muted">
+            From the same transaction on the supplier&apos;s dashboard. Recorded as this order&apos;s real cost and its
+            supplier balance drawdown.
+          </p>
+        </div>
+        <div>
           <Label htmlFor="mark_delivered_note">Note (Optional)</Label>
           <Input
             id="mark_delivered_note"
@@ -117,7 +141,7 @@ function MarkDeliveredFields({ onClose, onConfirmed, order, sandbox }: Omit<Mark
           <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button type="submit" disabled={submitting || !supplierRef.trim()}>
+          <Button type="submit" disabled={submitting || !supplierRef.trim() || !priceValid}>
             {submitting ? "Confirming…" : "Mark as Delivered"}
           </Button>
         </div>

@@ -6,6 +6,7 @@ use App\Models\Concerns\LeavesPendingOnce;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * ADR-073 decision 3(a) / PR-G — one self-serve CHIP wallet top-up
@@ -23,6 +24,7 @@ class WalletTopupAttempt extends Model
         'total_charged_sen',
         'channel_code',
         'status',
+        'gateway_fee_sen',
         'chip_payment_ref',
         'checkout_url',
         'expires_at',
@@ -38,5 +40,13 @@ class WalletTopupAttempt extends Model
     public function reseller(): BelongsTo
     {
         return $this->belongsTo(Reseller::class);
+    }
+
+    /** The wallet credit a paid top-up wrote, once: its accounting date (ADR-127 F5). */
+    public function ledgerCredit(): HasOne
+    {
+        return $this->hasOne(LedgerEntry::class, 'reference_id')
+            ->where('reference_type', 'wallet_topup_attempt')
+            ->where('type', 'wallet_topup');
     }
 }

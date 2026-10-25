@@ -1,3 +1,4 @@
+import { getJokiCatalog } from "@/lib/joki";
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import Script from "next/script";
@@ -71,16 +72,19 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [branding, settings, plans, priceList, playerCheck] = await Promise.all([
+  const [branding, settings, plans, priceList, playerCheck, jokiCatalog] = await Promise.all([
     getBranding(),
     getSeoSettings(),
     listPlans(),
     getResellerPriceList(),
     listPlayerCheckFamilies(),
+    getJokiCatalog(),
   ]);
   const membershipEnabled = plans.length > 0;
   const priceListEnabled = priceList.tiers.length > 0;
   const checkIdEnabled = playerCheck.families.length > 0;
+  // ADR-126 decision 2: the "Joki Rank" menu item, only where /joki answers.
+  const jokiEnabled = jokiCatalog !== null;
 
   const themePreset = getThemePreset(branding.themePreset);
   const themeCss = generateThemeCss(themePreset, branding.themeMode);
@@ -153,7 +157,7 @@ export default async function RootLayout({
           * client components with no server fetch, so they add no
           * Suspense point to the layout. SiteFooter (async) stays
           * per-page — it is below the fold during any navigation. */}
-        <SiteConfigProvider value={{ membershipEnabled, priceListEnabled, checkIdEnabled, branding }}>
+        <SiteConfigProvider value={{ membershipEnabled, priceListEnabled, checkIdEnabled, jokiEnabled, branding }}>
           <SearchProvider>
             <SiteHeader />
             {children}

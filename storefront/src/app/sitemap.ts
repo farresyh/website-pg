@@ -1,3 +1,4 @@
+import { getJokiCatalog } from "@/lib/joki";
 import type { MetadataRoute } from "next";
 import { listGames } from "@/lib/catalog";
 import { getResellerPriceList } from "@/lib/reseller-price-list";
@@ -20,11 +21,12 @@ export const dynamic = "force-dynamic";
  * brand's own canonical origin, never the platform's.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [branding, games, resellerPriceList, playerCheck] = await Promise.all([
+  const [branding, games, resellerPriceList, playerCheck, jokiCatalog] = await Promise.all([
     getBranding(),
     listGames(),
     getResellerPriceList(),
     listPlayerCheckFamilies(),
+    getJokiCatalog(),
   ]);
   const origin = branding.canonicalOrigin;
 
@@ -55,6 +57,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     for (const family of playerCheck.families) {
       staticRoutes.push({ url: `${origin}/check-id/${family.slug}`, lastModified: new Date() });
     }
+  }
+
+  // ADR-126 decision 2: only where /joki renders on this brand.
+  if (jokiCatalog !== null) {
+    staticRoutes.push({ url: `${origin}/joki`, lastModified: new Date() });
   }
 
   return [...staticRoutes, ...gameRoutes];

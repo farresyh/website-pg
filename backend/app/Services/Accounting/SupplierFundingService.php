@@ -11,7 +11,9 @@ use App\Models\SupplierTransferCorrection;
 use App\Support\MalaysiaTime;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -61,6 +63,8 @@ final class SupplierFundingService
         int $adminUserId,
         ?PaidFrom $paidBy = null,
     ): SupplierTransfer {
+        AccountingPeriod::assertOpen($transferredOn, 'transferred_on');
+
         return AccountingFileStore::storeThen($receipt, config('filesystems.accounting_disk'), 'accounting/supplier-transfers', $transferredOn, fn (?string $receiptPath) => DB::transaction(function () use (
             $supplier,
             $transferredOn,
@@ -160,6 +164,9 @@ final class SupplierFundingService
      */
     public function voidTransfer(SupplierTransfer $transfer, string $reason, int $adminUserId): SupplierLedgerEntry
     {
+        // Voiding drops the transfer from its own month's funding lines (ADR-127 decision 4).
+        AccountingPeriod::assertOpen($transfer->transferred_on->toDateString(), 'transfer');
+
         return DB::transaction(function () use ($transfer, $reason, $adminUserId) {
             $locked = $this->lockNotVoided($transfer);
 
@@ -246,6 +253,9 @@ final class SupplierFundingService
         $changes = array_intersect_key($changes, array_flip($allowed));
 
         $accountingDate = $changes['transferred_on'] ?? $transfer->transferred_on;
+        // A correction rewrites the transfer's own month and, if it moves the date, the new one.
+        AccountingPeriod::assertOpen($transfer->transferred_on->toDateString(), 'transferred_on');
+        AccountingPeriod::assertOpen(Carbon::parse($accountingDate)->toDateString(), 'transferred_on');
 
         return AccountingFileStore::storeThen($receipt, config('filesystems.accounting_disk'), 'accounting/supplier-transfers', $accountingDate,
             fn (?string $newReceiptPath) => DB::transaction(function () use ($transfer, $changes, $reason, $adminUserId, $newReceiptPath) {
@@ -381,6 +391,9 @@ final class SupplierFundingService
                 'reference_type' => $referenceType,
                 'reference_id' => $referenceId,
             ]);
+        } catch (UniqueConstraintViolationException) {
+            // ADR-127 decision 11: a concurrent writer recorded it first.
+            return;
         } catch (\Throwable $e) {
             Log::error('Failed to record supplier ledger drawdown — order delivery stands, drift check will catch the gap', [
                 'order_id' => $order->id,

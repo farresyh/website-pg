@@ -22,6 +22,8 @@ use App\Services\Checkout\DuplicateCheckoutAttemptException;
 use App\Services\Checkout\LoginCredentials;
 use App\Services\Fraud\BlacklistService;
 use App\Services\Fraud\CheckoutVelocityGuard;
+use App\Services\Joki\JokiCheckoutService;
+use App\Services\Joki\JokiPurchase;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\MembershipStatus;
 use App\Services\Order\PaymentStatus;
@@ -66,6 +68,7 @@ class CheckoutController extends Controller
         private readonly MembershipSessionTokenService $membershipSessionTokens,
         private readonly StorefrontBrand $storefrontBrand,
         private readonly CheckoutInputValidator $checkoutInputValidator,
+        private readonly JokiCheckoutService $jokiCheckout,
     ) {}
 
     public function store(CreateCheckoutRequest $request): JsonResponse
@@ -86,20 +89,7 @@ class CheckoutController extends Controller
 
         $data = $request->validated();
 
-        $game = Game::query()->findOrFail($data['game_id']);
-        $package = Package::query()->findOrFail($data['package_id']);
-
-        if ($package->game_id !== $game->id) {
-            throw ValidationException::withMessages([
-                'package_id' => ['This package does not belong to the selected game.'],
-            ]);
-        }
-
-        if (! $game->is_active || ! $package->is_active || $this->isHiddenOnThisBrand($game)) {
-            throw ValidationException::withMessages([
-                'package_id' => ['This package is not currently available.'],
-            ]);
-        }
+        [$game, $package, $joki] = $this->sellableHere($data);
 
         // ADR-125 decision 32: a login game's player_id is set here from
         // its identifier field, before validation and the blacklist, so a
@@ -137,7 +127,7 @@ class CheckoutController extends Controller
         // worst. This is a retry (double-click, client timeout retry)
         // of an attempt already in flight or already finished, not a
         // new checkout to re-vet.
-        $payloadHash = self::payloadHash($data, $credentials);
+        $payloadHash = self::payloadHash($data, $credentials, $joki);
 
         $existing = Order::query()->where('checkout_idempotency_key', $data['idempotency_key'])->first();
         if ($existing !== null) {
@@ -193,6 +183,7 @@ class CheckoutController extends Controller
                 membershipId: $membershipId,
                 credentials: $credentials,
                 memberPricingApplies: $game->memberPricingApplies(),
+                joki: $joki,
             ), $gateway);
         } catch (DuplicateCheckoutAttemptException) {
             // Lost a genuine race — a concurrent request with the same
@@ -246,20 +237,7 @@ class CheckoutController extends Controller
     {
         $data = $request->validated();
 
-        $game = Game::query()->findOrFail($data['game_id']);
-        $package = Package::query()->findOrFail($data['package_id']);
-
-        if ($package->game_id !== $game->id) {
-            throw ValidationException::withMessages([
-                'package_id' => ['This package does not belong to the selected game.'],
-            ]);
-        }
-
-        if (! $game->is_active || ! $package->is_active || $this->isHiddenOnThisBrand($game)) {
-            throw ValidationException::withMessages([
-                'package_id' => ['This package is not currently available.'],
-            ]);
-        }
+        [$game, $package, $joki] = $this->sellableHere($data);
 
         $affiliate = $this->storefrontBrand->get();
         $platformSettings = PlatformSettings::current();
@@ -278,6 +256,7 @@ class CheckoutController extends Controller
                 voucherCode: $data['voucher_code'] ?? null,
                 customerEmail: $data['customer_email'] ?? '',
                 customerPhone: $data['customer_phone'] ?? null,
+                pricing: $joki?->pricing,
             );
         } catch (InvalidVoucherException) {
             // Same generic message as store()'s own catch — a voucher
@@ -358,7 +337,7 @@ class CheckoutController extends Controller
      *
      * @param  array<string, mixed>  $data
      */
-    private static function payloadHash(array $data, ?LoginCredentials $credentials = null): string
+    private static function payloadHash(array $data, ?LoginCredentials $credentials = null, ?JokiPurchase $joki = null): string
     {
         $payload = [
             'game_id' => (int) $data['game_id'],
@@ -373,6 +352,11 @@ class CheckoutController extends Controller
         // is stored unsalted, so a password must never be in it.
         if ($credentials !== null) {
             $payload['credential_fields'] = $credentials->fields;
+        }
+
+        // ADR-126 addendum decision 8: the climb bought is part of the order.
+        if ($joki !== null) {
+            $payload['joki'] = [$joki->quote->from, $joki->quote->to, $joki->quote->isExpress];
         }
 
         return hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR));
@@ -558,6 +542,43 @@ class CheckoutController extends Controller
     private function isHiddenOnThisBrand(Game $game): bool
     {
         return in_array($game->id, AffiliateGame::hiddenGameIdsFor($this->storefrontBrand->get()->id), true);
+    }
+
+    /**
+     * The game and package a checkout or its review total may sell on this
+     * brand. A joki game is in no catalog (ADR-126 decision 2), so instead
+     * of the hidden-game rule it is gated, and priced, by
+     * JokiCheckoutService; a `joki` block on any other game is refused.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{0: Game, 1: Package, 2: ?JokiPurchase}
+     */
+    private function sellableHere(array $data): array
+    {
+        $game = Game::query()->findOrFail($data['game_id']);
+        $package = Package::query()->findOrFail($data['package_id']);
+
+        if ($package->game_id !== $game->id) {
+            throw ValidationException::withMessages([
+                'package_id' => ['This package does not belong to the selected game.'],
+            ]);
+        }
+
+        if (! $game->is_active || ! $package->is_active || (! $game->is_joki && $this->isHiddenOnThisBrand($game))) {
+            throw ValidationException::withMessages([
+                'package_id' => ['This package is not currently available.'],
+            ]);
+        }
+
+        if (! $game->is_joki) {
+            if (filled($data['joki'] ?? null)) {
+                throw ValidationException::withMessages(['joki' => ['Only a joki order takes a joki selection.']]);
+            }
+
+            return [$game, $package, null];
+        }
+
+        return [$game, $package, $this->jokiCheckout->resolve($package, (array) ($data['joki'] ?? []), $this->storefrontBrand->get())];
     }
 
     private function assertNotBlacklisted(string $playerId, string $email, ?string $phone, ?string $ip): void

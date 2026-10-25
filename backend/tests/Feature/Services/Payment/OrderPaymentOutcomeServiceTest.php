@@ -3,6 +3,8 @@
 namespace Tests\Feature\Services\Payment;
 
 use App\Jobs\FulfillOrderJob;
+use App\Models\AccountingPeriodClose;
+use App\Models\AdminUser;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\MembershipQuotaDebit;
@@ -195,5 +197,43 @@ class OrderPaymentOutcomeServiceTest extends TestCase
         $this->assertSame(OrderPaymentOutcome::FlaggedForReview, $this->service()->applyPaid($stale, 1100));
 
         Queue::assertNotPushed(FulfillOrderJob::class);
+    }
+
+    /** ADR-127 F1/F2: the paid time is CHIP's, not when our server got round to it, and its fee is kept. */
+    public function test_paid_records_chips_own_paid_time_and_fee(): void
+    {
+        $this->travelTo('2026-09-30 15:50:00');
+        $order = $this->order();
+        $this->travelTo('2026-10-01 00:01:00');
+
+        $this->service()->applyPaid($order, 1100, paidOn: strtotime('2026-09-30 15:58:00 UTC'), feeSen: 87);
+
+        $this->assertSame('2026-09-30 15:58:00', $order->fresh()->paid_at->toDateTimeString());
+        $this->assertSame(87, $order->fresh()->gateway_fee_sen);
+    }
+
+    /** A paid time CHIP did not send, or one outside the order's life, falls back to now. */
+    public function test_an_implausible_or_missing_paid_time_falls_back_to_now(): void
+    {
+        foreach ([null, strtotime('2026-10-06 00:00:00 UTC'), strtotime('2026-09-01 00:00:00 UTC')] as $paidOn) {
+            $this->travelTo('2026-10-05 11:00:00');
+            $order = $this->order();
+            $this->travelTo('2026-10-05 12:00:00');
+            $this->service()->applyPaid($order, 1100, paidOn: $paidOn);
+            $this->assertSame('2026-10-05 12:00:00', $order->fresh()->paid_at->toDateTimeString());
+        }
+    }
+
+    /** ADR-127 decision 3: a late webhook never dates a payment into a closed month. */
+    public function test_a_paid_time_in_a_closed_month_falls_back_to_now(): void
+    {
+        $this->travelTo('2026-09-30 15:50:00');
+        $order = $this->order();
+        $this->travelTo('2026-10-12 12:00:00');
+        AccountingPeriodClose::query()->forceCreate(['period_month' => '2026-09-01', 'operating_profit_sen' => 0, 'prior_adjustment_sen' => 0, 'allocated_sen' => 0, 'profit_lines' => [], 'cash_balances' => [], 'equation' => [], 'gap_sen' => 0, 'closed_by' => AdminUser::factory()->create()->id]);
+
+        $this->service()->applyPaid($order, 1100, paidOn: strtotime('2026-09-30 15:58:00 UTC'));
+
+        $this->assertSame('2026-10-12 12:00:00', $order->fresh()->paid_at->toDateTimeString());
     }
 }

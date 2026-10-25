@@ -111,7 +111,7 @@ class ChipWebhookController extends Controller
         // shared with reconciliation. A non-terminal status is
         // acknowledged and never written.
         $outcome = match ($event->status) {
-            PaymentStatus::Paid => $this->paymentOutcomes->applyPaid($order, $event->amountSen),
+            PaymentStatus::Paid => $this->paymentOutcomes->applyPaid($order, $event->amountSen, $event->paidOn, $event->feeSen),
             PaymentStatus::Failed => $this->paymentOutcomes->applyFailed($order),
             default => null,
         };
@@ -161,7 +161,7 @@ class ChipWebhookController extends Controller
             return response()->json(['message' => 'amount mismatch'], 409);
         }
 
-        $this->subscriptions->completePaidAttempt($attempt);
+        $this->subscriptions->completePaidAttempt($attempt, $event->feeSen);
 
         return response()->json(['message' => 'ok']);
     }
@@ -204,7 +204,7 @@ class ChipWebhookController extends Controller
             return response()->json(['message' => 'amount mismatch'], 409);
         }
 
-        $this->wallets->completeTopup($attempt);
+        $this->wallets->completeTopup($attempt, $event->feeSen);
 
         return response()->json(['message' => 'ok']);
     }

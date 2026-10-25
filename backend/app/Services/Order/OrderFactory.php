@@ -2,6 +2,7 @@
 
 namespace App\Services\Order;
 
+use App\Models\JokiOrder;
 use App\Models\Order;
 use App\Models\OrderCredential;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -40,23 +41,35 @@ final class OrderFactory
      */
     public function create(OrderDraft $draft): Order
     {
-        if ($draft->credentials === null) {
+        if ($draft->credentials === null && $draft->joki === null) {
             return $this->insert($draft);
         }
 
         // ADR-125 decision 41: a login order never exists without its
         // login, even for a full-voucher order that turns Paid and
-        // dispatches fulfilment straight after this returns.
+        // dispatches fulfilment straight after this returns. ADR-126
+        // decision 1: nor a joki order without what it bought.
         return DB::transaction(function () use ($draft) {
             $order = $this->insert($draft);
+
+            if ($draft->joki !== null) {
+                JokiOrder::query()->create($draft->joki->orderRow($order->id));
+            }
+
             $credentials = $draft->credentials;
+            if ($credentials === null) {
+                return $order;
+            }
+
+            $now = now();
 
             OrderCredential::query()->create([
                 'order_id' => $order->id,
                 'fields' => $credentials->fields,
                 'secret_fields' => $credentials->secretFields,
                 'secrets' => $credentials->secrets,
-                'secrets_set_at' => now(),
+                'secrets_set_at' => $now,
+                'secrets_expire_at' => OrderCredential::expiryFor($order, $now),
                 'consented_at' => now(),
                 'consent_text' => $credentials->consentText,
             ]);

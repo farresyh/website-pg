@@ -278,6 +278,7 @@ class SandboxOrderControllerTest extends TestCase
 
         $response = $this->postJson("/api/middleware/sandbox/{$orderId}/mark-delivered", [
             'supplier_ref' => 'GV-SANDBOX-MANUAL1',
+            'supplier_price' => 4.75,
         ]);
 
         $response->assertOk();
@@ -294,6 +295,7 @@ class SandboxOrderControllerTest extends TestCase
 
         $response = $this->postJson("/api/middleware/sandbox/{$orderId}/mark-delivered", [
             'supplier_ref' => 'GV-1',
+            'supplier_price' => 4.75,
         ]);
 
         $response->assertUnprocessable();
@@ -317,7 +319,7 @@ class SandboxOrderControllerTest extends TestCase
         ]);
         $this->actingAsAdmin();
 
-        $this->postJson("/api/middleware/sandbox/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1'])
+        $this->postJson("/api/middleware/sandbox/{$order->id}/mark-delivered", ['supplier_ref' => 'GV-1', 'supplier_price' => 4.75])
             ->assertNotFound();
     }
 

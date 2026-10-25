@@ -26,6 +26,7 @@ interface ManualOrder {
   id: number;
   order_number: string;
   delivery_status: string;
+  supplier_id: number | null;
   cost_price: number;
   /** Order Detail only: a Failed order may be corrected while it is still compensable (no voucher yet). */
   compensable?: boolean;
@@ -61,13 +62,18 @@ function ActionForm({ order, action, onClose, onDone }: { order: ManualOrder; ac
       setError("Enter a real cost above RM 0.");
       return;
     }
+    if (order.supplier_id == null) {
+      setError("This order has no supplier.");
+      return;
+    }
+    const supplierId = order.supplier_id;
     setError(null);
     setSubmitting(true);
     try {
       const realCostSen = costChanged ? Math.round(amount * 100) : null;
-      if (action === "delivered") await confirmManualDelivered(order.id, { real_cost_sen: realCostSen, reason: reason.trim() || null });
-      if (action === "failed") await confirmManualFailed(order.id, reason.trim());
-      if (action === "correct") await correctManualToDelivered(order.id, { real_cost_sen: realCostSen, reason: reason.trim() });
+      if (action === "delivered") await confirmManualDelivered(order.id, { supplier_id: supplierId, real_cost_sen: realCostSen, reason: reason.trim() || null });
+      if (action === "failed") await confirmManualFailed(order.id, supplierId, reason.trim());
+      if (action === "correct") await correctManualToDelivered(order.id, { supplier_id: supplierId, real_cost_sen: realCostSen, reason: reason.trim() });
       onDone();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong.");

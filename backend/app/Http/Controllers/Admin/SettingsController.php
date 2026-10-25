@@ -15,6 +15,7 @@ use App\Http\Requests\Settings\UpdatePlatformSettingsRequest;
 use App\Models\Affiliate;
 use App\Models\AffiliateBranding;
 use App\Models\AffiliateFooterSettings;
+use App\Models\OrderCredential;
 use App\Models\Package;
 use App\Models\PlatformSettings;
 use App\Models\PriceChangeLog;
@@ -160,6 +161,9 @@ class SettingsController extends Controller
     {
         $settings = PlatformSettings::current();
         $settings->update($request->validated());
+        if ($settings->wasChanged('credential_max_days')) {
+            OrderCredential::refreshExpiry();
+        }
 
         return response()->json($settings);
     }
@@ -191,7 +195,8 @@ class SettingsController extends Controller
         $gameIds = [];
 
         DB::transaction(function () use ($markupPercent, &$changed, &$gameIds) {
-            Package::query()->where('is_combo', false)->chunkById(100, function ($packages) use ($markupPercent, &$changed, &$gameIds) {
+            // ADR-126 F1: joki prices live only in joki's own tables.
+            Package::query()->where('is_combo', false)->whereDoesntHave('game', fn ($q) => $q->joki())->chunkById(100, function ($packages) use ($markupPercent, &$changed, &$gameIds) {
                 foreach ($packages as $package) {
                     $newStandardSellingPrice = $this->markup->calculateStandardSellingPrice($package->cost_price, $markupPercent);
 

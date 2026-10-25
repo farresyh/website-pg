@@ -1,3 +1,4 @@
+import type { JokiOrderDetail } from "@/lib/joki";
 import { apiFetch, apiDownload } from "@/lib/api-client";
 import { todayInKL } from "@/lib/date-range";
 import type { Game } from "@/lib/games";
@@ -29,6 +30,7 @@ export interface OrderListItem {
   delivered_at?: string | null;
   game: { id: number; name: string } | null;
   package: { id: number; name: string; supplier_package_ref?: string; catalog_code?: string | null } | null;
+  supplier_id: number | null;
   supplier_product_ref?: string | null;
   // Which brand's storefront this order belongs to (always set — every
   // order has an affiliate, ADR-061) and, for a wallet order placed via
@@ -134,7 +136,7 @@ export interface OrderDetail extends OrderListItem {
   wholesale_markup_pct?: string | null;
   voucher_discount: number | null;
   affiliate_profit: number;
-  pricing_basis: "standard" | "member" | "reseller-wallet" | "affiliate";
+  pricing_basis: "standard" | "member" | "reseller-wallet" | "affiliate" | "fixed";
   member_discount_percent: string | null;
   // ADR-105 decision 3 — the package's own markup_percent at checkout
   // time, frozen for a Member-basis order only (null for every other
@@ -149,7 +151,7 @@ export interface OrderDetail extends OrderListItem {
   // Full Game shape (not the list endpoint's {id,name} projection) —
   // ADR-017's resend gate needs player_validator_enabled/profile_id.
   game: Game | null;
-  supplier: { id: number; name: string } | null;
+  supplier: { id: number; name: string; currency?: string } | null;
   // affiliate/wallet_reseller inherited from OrderListItem — non-null
   // wallet_reseller here is also the signal the order detail screen
   // uses to swap "Issue Voucher" for "Refund to Wallet" (ADR-073
@@ -213,6 +215,8 @@ export interface OrderDetail extends OrderListItem {
   // ADR-125 decisions 8/42: a manual supplier's order — confirmed through
   // the Manual Queue actions, never Mark Delivered or Check from Supplier.
   is_manual_supplier?: boolean;
+  /** ADR-126: the Joki card; null for every non-joki order. */
+  joki?: JokiOrderDetail | null;
   // ADR-107 decision 3, generalized by ADR-111 decision 7 — true once ANY
   // order (not just combo) delivered with a reconciled negative
   // platform_profit, or a material drift from the pre-reconciliation
@@ -254,11 +258,15 @@ export type OrderStatusFilter =
 /** ADR-108 decision 5 — single-select, mirrors the Source column's own 3 states. */
 export type OrderSourceFilter = "reseller" | "affiliate" | "direct";
 
+/** ADR-126 decision 25: login = has a customer login; joki = the Fixed basis; top-up = neither. */
+export type OrderTypeFilter = "topup" | "login" | "joki";
+
 export interface OrderListFilters {
   status?: OrderStatusFilter;
   search?: string;
   page?: number;
   source?: OrderSourceFilter;
+  type?: OrderTypeFilter;
   gameId?: number;
   dateFrom?: string;
   dateTo?: string;
@@ -270,6 +278,7 @@ function buildOrderFilterQuery(params: OrderListFilters): URLSearchParams {
   if (params.search) query.set("search", params.search);
   if (params.page) query.set("page", String(params.page));
   if (params.source) query.set("source", params.source);
+  if (params.type) query.set("type", params.type);
   if (params.gameId) query.set("game_id", String(params.gameId));
   if (params.dateFrom) query.set("date_from", params.dateFrom);
   if (params.dateTo) query.set("date_to", params.dateTo);
@@ -458,7 +467,14 @@ export function refundOrderToWallet(id: number) {
  * paste back the real invoice number they find there. Backend rejects
  * (422) unless delivery_status is already "needs_review".
  */
-export function markOrderDelivered(id: number, values: { supplier_ref: string; note?: string }) {
+export interface MarkOrderDeliveredValues {
+  supplier_ref: string;
+  /** ADR-127 PR D: what the supplier charged, in its own currency; the real cost and the drawdown. */
+  supplier_price: number;
+  note?: string;
+}
+
+export function markOrderDelivered(id: number, values: MarkOrderDeliveredValues) {
   return apiFetch<OrderDetail>(`/api/orders/${id}/mark-delivered`, { method: "POST", body: values });
 }
 
@@ -538,6 +554,7 @@ export interface ManualQueueItem {
   supplier: string | null;
   player_id: string;
   delivery_status: "pending" | "needs_review";
+  supplier_id: number;
   paid_at: string | null;
   is_stale: boolean;
   login_wiped: boolean;
@@ -550,15 +567,16 @@ export function listManualQueue() {
 }
 
 /** ADR-125 decision 36: realCostSen null = the agreed cost; any other value needs a reason. */
-export function confirmManualDelivered(id: number, values: { real_cost_sen?: number | null; reason?: string | null }) {
+export function confirmManualDelivered(id: number, values: { supplier_id: number; real_cost_sen?: number | null; reason?: string | null }) {
   return apiFetch<{ order_number: string; delivery_status: string }>(`/api/orders/${id}/manual/delivered`, { method: "POST", body: values });
 }
 
-export function confirmManualFailed(id: number, reason: string) {
-  return apiFetch<{ order_number: string; delivery_status: string }>(`/api/orders/${id}/manual/failed`, { method: "POST", body: { reason } });
+/** ADR-126 decision 18: `supplierId` is the supplier on screen; the backend refuses if the order has moved. */
+export function confirmManualFailed(id: number, supplierId: number, reason: string) {
+  return apiFetch<{ order_number: string; delivery_status: string }>(`/api/orders/${id}/manual/failed`, { method: "POST", body: { supplier_id: supplierId, reason } });
 }
 
 /** ADR-125 decision 42: before any compensation only; the reason is required. */
-export function correctManualToDelivered(id: number, values: { real_cost_sen?: number | null; reason: string }) {
+export function correctManualToDelivered(id: number, values: { supplier_id: number; real_cost_sen?: number | null; reason: string }) {
   return apiFetch<{ order_number: string; delivery_status: string }>(`/api/orders/${id}/manual/correct-to-delivered`, { method: "POST", body: values });
 }

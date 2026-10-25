@@ -10,6 +10,10 @@ use Illuminate\Foundation\Http\FormRequest;
  * Gamevion invoice number) that made the order ambiguous in the first
  * place, so an admin confirming "delivered" without it would just
  * repeat the same problem this feature exists to fix.
+ *
+ * ADR-127 PR D: `supplier_price` is what the supplier charged, read off
+ * its dashboard with the invoice, in the supplier's own currency (IDR for
+ * Digiflazz). It becomes the real cost and the drawdown.
  */
 class MarkOrderDeliveredRequest extends FormRequest
 {
@@ -25,6 +29,7 @@ class MarkOrderDeliveredRequest extends FormRequest
     {
         return [
             'supplier_ref' => ['required', 'string', 'max:255'],
+            'supplier_price' => ['required', 'numeric', 'gt:0', 'max:1000000000'],
             'note' => ['nullable', 'string', 'max:255'],
         ];
     }

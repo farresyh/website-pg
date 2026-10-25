@@ -176,6 +176,7 @@ final class SettlementReconciliationService
                     'local_fee_sen' => $match['fee'] ?? null,
                     'amount_sen' => $transaction->amountSen,
                     'fee_sen' => $transaction->feeSen,
+                    'reported_fee_sen' => $match['reported_fee'] ?? null,
                     'net_amount_sen' => $transaction->netAmountSen,
                     'acquirer' => $transaction->acquirer,
                     'settled_on' => $transaction->settledOn->toDateString(),
@@ -261,30 +262,33 @@ final class SettlementReconciliationService
 
     private function resolveMatch(string $transactionId): ?array
     {
-        if ($order = Order::query()->where('payment_ref', $transactionId)->where('is_test', false)->first(['id', 'final_amount', 'transaction_fee'])) {
+        if ($order = Order::query()->where('payment_ref', $transactionId)->where('is_test', false)->first(['id', 'final_amount', 'transaction_fee', 'gateway_fee_sen'])) {
             return [
                 'type' => ChipTransactionMatchType::Order,
                 'id' => $order->id,
                 'gross' => $order->final_amount,
                 'fee' => $order->transaction_fee,
+                'reported_fee' => $order->gateway_fee_sen,
             ];
         }
 
-        if ($attempt = MembershipCheckoutAttempt::query()->where('payment_ref', $transactionId)->first(['id', 'total_charged_sen', 'fee_sen'])) {
+        if ($attempt = MembershipCheckoutAttempt::query()->where('payment_ref', $transactionId)->first(['id', 'total_charged_sen', 'fee_sen', 'gateway_fee_sen'])) {
             return [
                 'type' => ChipTransactionMatchType::MembershipCheckoutAttempt,
                 'id' => $attempt->id,
                 'gross' => $attempt->total_charged_sen,
                 'fee' => $attempt->total_charged_sen - $attempt->fee_sen,
+                'reported_fee' => $attempt->gateway_fee_sen,
             ];
         }
 
-        if ($topup = WalletTopupAttempt::query()->where('chip_payment_ref', $transactionId)->first(['id', 'total_charged_sen', 'amount_sen'])) {
+        if ($topup = WalletTopupAttempt::query()->where('chip_payment_ref', $transactionId)->first(['id', 'total_charged_sen', 'amount_sen', 'gateway_fee_sen'])) {
             return [
                 'type' => ChipTransactionMatchType::WalletTopupAttempt,
                 'id' => $topup->id,
                 'gross' => $topup->total_charged_sen,
                 'fee' => $topup->total_charged_sen - $topup->amount_sen,
+                'reported_fee' => $topup->gateway_fee_sen,
             ];
         }
 
@@ -349,14 +353,14 @@ final class SettlementReconciliationService
 
         $memberships = MembershipCheckoutAttempt::query()
             ->where('status', MembershipCheckoutAttemptStatus::Paid->value)
-            ->when($from, fn ($q) => $q->where('updated_at', '>=', $from))->where('updated_at', '<', $toExclusive)
+            ->whereHas('feeRecord', fn ($q) => $q->when($from, fn ($q) => $q->where('created_at', '>=', $from))->where('created_at', '<', $toExclusive))
             ->whereNotIn('payment_ref', $settledRefs)
             ->get(['subscription_number', 'total_charged_sen'])
             ->map(fn (MembershipCheckoutAttempt $m) => ['reference' => $m->subscription_number, 'amount_sen' => $m->total_charged_sen]);
 
         $walletTopups = WalletTopupAttempt::query()
             ->where('status', WalletTopupAttemptStatus::Paid->value)
-            ->when($from, fn ($q) => $q->where('updated_at', '>=', $from))->where('updated_at', '<', $toExclusive)
+            ->whereHas('ledgerCredit', fn ($q) => $q->when($from, fn ($q) => $q->where('created_at', '>=', $from))->where('created_at', '<', $toExclusive))
             ->whereNotIn('chip_payment_ref', $settledRefs)
             ->get(['reference', 'total_charged_sen'])
             ->map(fn (WalletTopupAttempt $w) => ['reference' => $w->reference, 'amount_sen' => $w->total_charged_sen]);

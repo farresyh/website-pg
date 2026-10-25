@@ -45,4 +45,15 @@ class LedgerEntry extends Model
             throw new \LogicException('LedgerEntry rows are append-only — cannot delete a persisted row.');
         });
     }
+
+    /**
+     * ADR-127 P1: the date an `order_profit` row belongs to, for a query
+     * that joins `orders`. The automatic credit (`reason` null) is earned
+     * when its order is recognised; a manual correction (`reason` set) when
+     * it is made — so a correction never moves an earlier month.
+     */
+    public static function orderProfitDateSql(): string
+    {
+        return '(CASE WHEN ledger_entries.reason IS NULL THEN orders.recognised_at ELSE ledger_entries.created_at END)';
+    }
 }

@@ -1,6 +1,6 @@
 # ADR-083: Internal Accounting & Financial Reconciliation — Supplier Funding Ledger, CHIP Settlement Reconciliation, and a Monthly Accounting Summary for an external SaaS
 
-> **Standing (2026-10-17):** In force; the 2026-10-10 addendum reshapes the Envelope Ledger (postings, director loans, month close) and retires [ADR-061](./ADR-061-every-storefront-is-a-reseller.md) decision 7's platform-owner withdrawal; the 2026-10-11 addendum splits the two voucher-issued lines. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-25):** In force; a foreign-currency deposit is costed at a moving weighted average from 1 October 2026 (2026-10-25 addendum, resolves H1); revenue month, the role of drift and the reseller wallet line revised by [ADR-127](./ADR-127-financial-truth-dated-facts.md) (2026-10-24 addendum), and its PR E build notes split pay-after supplier payments from the prepaid top-up line; the 2026-10-10 addendum reshapes the Envelope Ledger (postings, director loans, month close) and retires [ADR-061](./ADR-061-every-storefront-is-a-reseller.md) decision 7's platform-owner withdrawal; the 2026-10-11 addendum splits the two voucher-issued lines. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (build status as dated below; current status: [`prd.md` §15](../prd.md)), **PR-1 built 2026-09-11** (`feature/adr-083-supplier-funding-ledger`, PR to `staging` — see `docs/build-log.md`), **supplier-fee + correction-mechanism addendum built 2026-09-15**; PR-2 built 2026-09-19 ([ADR-110](./ADR-110-chip-integration-hardening.md) PR-B). **UI/correction-scope addendum grilled + built 2026-09-28** (`feature/2026-09-28-adr083-accounting-ui`, off `staging`, not yet merged) — see that entry below. **Envelope Ledger + Transaction Register/System Health completeness addendum, re-grilling decision 11, grilled + built 2026-09-28** (`feature/2026-09-28-adr083-envelope-ledger-and-register-gaps`, merged `staging`→`main` same day) — **plus a same-day follow-up round** (rename/archive an envelope, a Money In/Out badge per category, an Allocate-over-estimate soft warning, a Transaction Register frontend type-label gap, a CSV void-status column, Monthly Summary tooltips + an `InfoTooltip` left-edge-clipping fix — `fix/2026-09-28-envelope-ledger-clarity-fixes`, off `staging`, not yet merged) — see the second 2026-09-28 entry below. **External accounting review addendum, built 2026-09-30** (`fix/2026-09-30-accounting-audit-fixes`, off `staging`) — a second LLM (trained specifically on accounting) audited the live `/admin/accounting` screens at the founder's request; findings verified line-by-line against this codebase + real production data before any code changed — see that entry below. **External accounting review, Bucket C addendum, grilled + built 2026-09-30** (`feature/2026-09-30-adr083-envelope-ledger-paidby-wallet-line`, off `staging`) — the 4 real-trade-off items from the same review, grilled before building; a 5th item (a test/internal order flag) was grilled and deliberately **parked**, not built — see that entry below. First drafted with the founder 2026-09-09; **fully re-grilled and materially reshaped 2026-09-10** (`/mattpocock-skills:grilling`, 6 rounds / 26 questions) after a stress-test against the codebase and the live CHIP / supplier APIs. The first draft (a self-contained corporate accounting system: per-order FIFO COGS, a polled "CHIP Settlement/Payout API", `expenses` / `marketing_budgets` / `capital_injections` / `capital_repayments` tables, a Malaysian-bank-statement reconciliation engine, Gemini-Vision receipt parsing, a bespoke Investor Dashboard, a 4-PR build) was found to be **over-scoped for a solo-run pre-launch business and built on two facts that do not hold** — see Context §1–2. This entry is the reshaped design. Scheduled for 2 PRs. **This fills in ADR-070 (RESERVED).**
 
@@ -434,3 +434,57 @@ A second row only happens through a manual correction. The `dedupe_key` backstop
 - ~~Founder: confirm the R2 bucket `pekangame-accounting` has no lifecycle rule that deletes objects.~~ **Confirmed 2026-10-18 by the founder in the Cloudflare dashboard:** the only rule is R2's default "abort incomplete multipart uploads", which never deletes a stored object. The app's scoped token can't read lifecycle rules (`AccessDenied`), so re-check in the dashboard if this ever matters.
 - ~~Founder, after release: attach the originals of settlements #1–#4.~~ **Done 2026-10-18:** all four are attached (each file exists on `r2_accounting`, its SHA-256 matches the row, no hash appears twice, and status and figures are unchanged).
 - Never add a lifecycle rule that deletes files younger than seven years.
+
+### 2026-10-24 addendum — revenue month and closed-month drift revised by ADR-127
+
+- Revenue, COGS and affiliate commission are filed by `orders.recognised_at` (Malaysia month), not by `paid_at`. Money received before recognition is a contract liability. Detail and rationale: [ADR-127](./ADR-127-financial-truth-dated-facts.md) decisions 1–2.
+- A closed month cannot change: every past-period figure is computed from dated, immutable facts (ADR-127 P1), and later events land in the month they occur. The drift carry-forward (`MonthCloseService::priorAdjustment`) stays as a safety net; non-zero drift is an alert, not a normal state (ADR-127 decision 3).
+- User-entered accounting dates in a closed month are refused by one guard, except a CHIP settlement file, whose effect lands in the current month (ADR-127 decision 4).
+
+### 2026-10-24 addendum — the reseller wallet line is the month-end balance (ADR-127)
+
+The 2026-09-30 addendum's decision 9 showed today's wallet balance on every month's Summary. The ledger is append-only and dated, so the line is now the balance at the month end, and a closed month's figure no longer moves. ADR-127 invariant 2 caught it.
+
+### 2026-10-25 addendum — a foreign-currency deposit is costed at a moving weighted average (§16 item 132; resolves H1)
+
+**Context.** ADR-127 PR E modelled the company's bank in `FinancialScenario`, which made the month-close cash equation a test. On four months of dev data, September's gap held exactly July–August's unallocated profit plus RM4.01. The RM4.01 is H1 from the 2026-10-17 addendum.
+- `weightedAverageRate()` averages every deposit since inception.
+- A month's COGS is costed at its month-end average and never revisited, while the remaining balance is valued at the latest average.
+- So once deposit rates differ between months, COGS plus the remaining balance no longer equals the ringgit actually sent. The difference leaves the books through no line.
+
+Production, read-only (2026-10-25):
+- Digiflazz is the only foreign-currency supplier, with three live deposits, all in September (19,219 / 19,359 / 33,613 sen), and none since.
+- So nothing has leaked yet. It would start at the next deposit.
+- The running IDR balance never went negative (41 ledger rows).
+
+**Decision** (grilled with the founder in Malay, Q1–Q12, then stress-tested against the code; below).
+1. **A moving (perpetual) weighted average per foreign-currency supplier.** A pool holds the remaining deposit units and their ringgit cost in sen.
+   - A deposit adds its net units (after the supplier's fee) and its `amount_myr_sent`.
+   - A drawdown takes `round(pool_sen × units ÷ pool_units)`, and the pool keeps the remainder.
+   - So Σ costs taken + the pool = Σ ringgit sent, exactly, for every month (Q8).
+   - IAS 2 and MPERS section 13 allow a weighted average "as each additional shipment is received". The cumulative average since inception was neither that nor the periodic form.
+2. **From 1 October 2026, a fixed date in code (Q1, Q11).** The pool opens with the supplier's units at 30 September (the cash position's own cut: deposits by `transferred_on`, other rows by `created_at`) valued at `weightedAverageRate(…, '2026-09-30')`. That is the value September's close already used, so the closed month and the opening balance agree to the sen, and September never moves. Anything before the date keeps the cumulative average.
+3. **A drawdown's cost is fixed when it is drawn (Q2).** It enters COGS when its order is recognised (unchanged), or waits in "drawdowns not in this month's COGS". A September drawdown of an order recognised in October keeps September's cost; it left the pool before the opening.
+4. **Replayed, not stored (Q3).** Each read replays the pool from the opening: deposits at the start of their `transferred_on` day, then the ledger rows by time. No column is added.
+   - A transfer recorded late, corrected or voided in an open month re-costs only open months.
+   - A closed month can't move: `AccountingPeriod::assertOpen` already refuses a transfer, correction or void dated in it.
+5. **What the pool reads (stress test).**
+   - A voided transfer and **every ledger row that references it** are left out. In production, the two voids of 15 September are `MANUAL_ADJUSTMENT` rows (−1,224,819 IDR), written before `VOID_REVERSAL` existed. Counting them would understate the opening by Rp1.2 million.
+   - Any other `MANUAL_ADJUSTMENT` takes or adds units at the pool's current average (Q6). That value is the Summary's "Supplier balance corrections" line, so the average itself doesn't move.
+6. **If the pool is empty or negative** (a deposit recorded after the orders that used it), a drawdown takes the last known average (Q7). Production has never had this.
+7. **Unchanged:** MYR suppliers at 1.0 (Q4); Wise/bank fees as their own expense line, not unit cost, pending the accountant (Q5, §16 item 81); the ledger; COGS's per-supplier scope; the bridge lines. No new screen (Q12).
+
+**Rationale.** Every ringgit sent to a supplier is either a cost in some month or still in the prepaid balance, so the month-close gap can only be something real. The opening keeps every closed figure as it was. Replaying, rather than storing a cost on each row, keeps a late-entered or corrected transfer right without a second writer.
+
+**Stress test (2026-10-25, before writing).**
+- Q1: September's close valued Digiflazz's balance at `weightedAverageRate(…, 2026-09-30)` (`CashPositionService::supplierBalances`). The opening uses the same rule, so it agrees to the sen.
+- Q3: `voidTransfer` and `recordCorrection` call `assertOpen` on the transfer's month (both old and new dates). `recordManualAdjustment` is dated by `created_at`, which is always in an open month.
+- Q5: in production the two voided transfers' adjustments sum exactly to their units. Excluding the transfer without its rows would leave −Rp1,224,819 in the pool.
+- Same-day order: transfer #3 (15 September) was recorded at 08:53, the first drawdown at 09:15, so deposit-first matches what happened.
+
+**Consequences to track.**
+- **Production October** (open) will move by at most a few sen. With no new deposit, the average is unchanged, and each drawdown is now rounded in the pool instead of once per supplier. Check it read-only after release.
+- **Readers changed:** `FundedCostOfSales` (COGS, drawdowns not in COGS), the Summary's supplier corrections line, and `CashPositionService` (prepaid and payable).
+- **The proof:** `FinancialScenarioTest` gets an IDR supplier with deposits at different rates in two months after the opening. Each month, ringgit sent = COGS + drawdowns not in COGS + corrections + the pool, and the second close's gap is 0. It must fail on the cumulative average first.
+- **The dev seeder's data** before October keeps the old method, so its September close still shows its RM4.01 (expected).
+

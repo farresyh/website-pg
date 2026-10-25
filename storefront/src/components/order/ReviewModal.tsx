@@ -1,5 +1,6 @@
 "use client";
 
+import type { JokiSelection } from "@/lib/joki";
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -44,6 +45,8 @@ interface ReviewModalProps {
   isMember?: boolean;
   /** The member's remaining monthly quota, RM — used to warn before "Confirm & Pay" when this package will fall back to standard price. */
   quotaRemainingRm?: number | null;
+  /** ADR-126: a joki order's climb — the voucher preview prices it like checkout. */
+  joki?: JokiSelection;
 }
 
 const inputClass =
@@ -91,6 +94,7 @@ export default function ReviewModal({
   topTierMemberPriceRm = null,
   isMember = false,
   quotaRemainingRm = null,
+  joki,
 }: ReviewModalProps) {
   const [tcChecked, setTcChecked] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
@@ -201,7 +205,7 @@ export default function ReviewModal({
     setApplying(true);
     setVoucherError(null);
     try {
-      const result = await previewVoucher(game.id, pkg.id, voucherCode.trim(), customerEmail, customerPhone);
+      const result = await previewVoucher(game.id, pkg.id, voucherCode.trim(), customerEmail, customerPhone, joki);
       setAppliedVoucher({ code: voucherCode.trim(), result });
       onVoucherChange(voucherCode.trim());
     } catch (err) {
