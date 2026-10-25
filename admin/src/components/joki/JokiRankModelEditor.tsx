@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ImageUrlInput } from "@/components/gallery/ImageUrlInput";
 import { ApiError } from "@/lib/api-client";
 import { updateJokiTiers, type JokiTier } from "@/lib/joki";
+import { tierUpdate } from "@/lib/joki-tiers";
 import { JOKI_CARD, JOKI_CARD_HINT, JOKI_CARD_TITLE, JOKI_ERROR, JOKI_TD, JOKI_TH } from "@/components/joki/jokiStyles";
 
 /**
@@ -27,9 +28,7 @@ export function JokiRankModelEditor({ tiers, onSaved }: { tiers: JokiTier[]; onS
     setSaving(true);
     setError(null);
     try {
-      await updateJokiTiers(rows.map(({ id, name, divisions, stars_per_division, mythic_from_stars, rate_rm, express_rate_rm, icon_url }) => ({
-        id, name, divisions, stars_per_division, mythic_from_stars, rate_rm, express_rate_rm, icon_url: icon_url || null,
-      })));
+      await updateJokiTiers(rows.map(tierUpdate));
       await onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not save the rank model.");

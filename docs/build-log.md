@@ -2124,6 +2124,27 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - Local screenshot of the panel with the suppliers tooltip open and a late task.
   - Locally, `supplier-balance-refresh`'s heartbeat was set late on purpose to show the error line.
 
+## 2026-10-25 — Affiliate vs Reseller, one place per order; Joki rank model save; clear upload errors
+
+- **Founder findings:**
+  - Reports → Partners showed PekanGame at RM563.72 / 37 orders. Its storefront sold only RM110.60 / 22; the rest were reseller-wallet orders (Naeem RM421.71), also listed under Resellers.
+  - Customer Analytics' Affiliate filter had the same fault.
+- **Fix (ADR-086 2026-10-25 addendum):** `Order::scopeSoldByAffiliate()` and `affiliateKeySql()` hold the rule. It now applies to:
+  - Reports (`scopedOrders`, `profitTotals`, `profitByGroup`, `affiliateBreakdown`);
+  - Customer Analytics' filter;
+  - the Affiliates list count;
+  - the portal sales aggregate;
+  - the `llm_report_orders` view (migration `2026_10_25_110000`) and the Report Assistant's column note.
+- **Accounting is not affected** (read-only on prod): wallet orders have `affiliate_profit` 0, and their 11 affiliate ledger rows are RM0.
+- **Joki rank model would not save** ("tiers.2.divisions must be an integer"). The admin sent every shape field for every tier, so Mythic went with `divisions: null`. The new `tierUpdate()` (in `admin/src/lib/joki-tiers.ts`, unit-tested) sends only a tier's own kind's shape. A backend test saves all six tiers as the page sends them. The bug had been there since PR 4b.
+- **Gallery "Upload failed":**
+  - nginx's default 1 MB body limit refused 2 MB and 12 MB images with a 413, before Laravel. That response has no CORS headers, so the admin saw only a network error.
+  - The founder set Forge's Max File Upload Size to 12 MB. Verified on the box: `upload_max_filesize`/`post_max_size` 12M, and `/etc/nginx/conf.d/uploads.conf` sets `client_max_body_size 12M`.
+  - `apiUpload` now refuses a file over 12 MB by name and explains a refused upload. The gallery names a file over its own 5 MB before uploading.
+- **Verified:**
+  - `php artisan test` 3079/3079, and the invariant test was red first.
+  - admin `npm test`, `tsc` and lint.
+  - Local browser: the rank model `PUT` returns 200; a 6 MB file shows "big-photo.png is 6.0 MB. Each image can be up to 5 MB."; Partners shows PekanGame at 1,046 storefront orders (243 wallet orders no longer counted).
 ## 2026-10-25 — Release #554 live (`staging`→`main`, #529–#553)
 
 - **Before release:**

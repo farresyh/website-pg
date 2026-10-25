@@ -158,7 +158,8 @@ export function updateJokiSettings(values: Partial<JokiSettings>) {
   return apiFetch<JokiSettings>("/api/joki-admin/settings", { method: "PUT", body: values });
 }
 
-export function updateJokiTiers(tiers: Pick<JokiTier, "id" | "name" | "divisions" | "stars_per_division" | "mythic_from_stars" | "rate_rm" | "express_rate_rm" | "icon_url">[]) {
+/** A tier sends only the shape fields of its own kind (divisions + stars, or the Mythic start). */
+export function updateJokiTiers(tiers: (Pick<JokiTier, "id" | "name" | "rate_rm" | "express_rate_rm" | "icon_url"> & Partial<Pick<JokiTier, "divisions" | "stars_per_division" | "mythic_from_stars">>)[]) {
   return apiFetch<JokiTier[]>("/api/joki-admin/tiers", { method: "PUT", body: { tiers } });
 }
 

@@ -232,7 +232,8 @@ final class CustomerAnalyticsService
         foreach ([
             ['paid_at >= ?', $filters->from !== null ? $this->sqlTime($filters->from) : null],
             ['paid_at < ?', $filters->toExclusive !== null ? $this->sqlTime($filters->toExclusive) : null],
-            ['affiliate_id = ?', $filters->affiliateId],
+            // A reseller-wallet order is its Reseller's, never its brand's (Order::scopeSoldByAffiliate()).
+            ['affiliate_id = ? AND wallet_reseller_id IS NULL', $filters->affiliateId],
             ['wallet_reseller_id = ?', $filters->resellerId],
         ] as [$sql, $value]) {
             if ($value !== null) {
@@ -409,7 +410,7 @@ final class CustomerAnalyticsService
      */
     private function topSources(string $customerEmail, int $totalSpent): array
     {
-        $affiliateKey = 'CASE WHEN wallet_reseller_id IS NULL THEN affiliate_id END';
+        $affiliateKey = Order::affiliateKeySql();
 
         $rows = $this->paidOrders()->toBase()
             ->where('customer_email', $customerEmail)

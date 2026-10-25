@@ -90,7 +90,7 @@ export function PartnersTab(props: ReportTabProps) {
         <Pending error={channels.error} />
       )}
 
-      <ReportCard flush title="Affiliate performance" subtitle="Grouped by the brand on each order. Reseller wallet orders also appear here, under the primary brand.">
+      <ReportCard flush title="Affiliate performance" subtitle="Storefront orders, by the brand they were sold on. Reseller wallet orders are counted under Resellers only.">
         {affiliates.data ? (
           <ReportTable
             rows={affiliates.data.affiliates}

@@ -65,7 +65,9 @@ final class ReportAssistantService
             'reseller-wallet' = a prepaid-wallet Reseller order, 'fixed' = a joki
             (rank-boosting) order, whose cost is the penjoki's agreed payout)
           - delivery_status, one of: {delivery_status_values}
-          - affiliate_id, affiliate_name (the whitelabel storefront brand; null = primary brand)
+          - affiliate_id, affiliate_name (the storefront brand the order was sold on, the primary brand
+            included; null for a reseller-wallet order, which belongs to its reseller only, so
+            per-affiliate and per-reseller figures never overlap)
           - wallet_reseller_id, reseller_name (a prepaid-wallet Reseller order; null = not one)
           - supplier_id, supplier_name (which supplier fulfilled this order)
           - cost_price (the supplier cost as a checkout ESTIMATE, sen, frozen when the order was
