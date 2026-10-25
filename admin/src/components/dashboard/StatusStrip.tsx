@@ -44,6 +44,17 @@ function when(iso: string): string {
   return `${new Date(iso).toLocaleDateString("en-MY", { day: "numeric", month: "short", timeZone: "Asia/Kuala_Lumpur" })}, ${clock(iso)}`;
 }
 
+/** "supplier-balance-refresh" → "Supplier balance refresh"; the raw name stays in the hover text. */
+function taskLabel(name: string): string {
+  const words = name.replace(/-/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** The scheduler's own failure line names the artisan command and exit code; the cause is in the server log. */
+function taskError(error: string): string {
+  return /failed with exit code/.test(error) ? "stopped with an error on its last run (details in the server log)" : error.slice(0, 80);
+}
+
 function Row({ label, value, sub }: { label: ReactNode; value: ReactNode; sub?: ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-3 border-t border-border py-2.5 first:border-t-0 first:pt-0">
@@ -180,9 +191,9 @@ export function StatusStrip({ health }: { health: DashboardHealth }) {
             {stale.length > 0 && (
               <ul className="mt-1 space-y-1 border-t border-border pt-2.5 text-theme-xs text-ink-muted">
                 {stale.map((t) => (
-                  <li key={t.name} title={t.last_error ?? undefined}>
-                    <span className="text-ink">{t.name}</span> ({t.tier}) · last OK {t.last_ok_at ? when(t.last_ok_at) : "never"}
-                    {t.last_error && <span className="text-danger-ink"> · {t.last_error.slice(0, 80)}</span>}
+                  <li key={t.name} title={t.last_error ? `${t.name}: ${t.last_error}` : t.name}>
+                    <span className="text-ink">{taskLabel(t.name)}</span> ({t.tier}) · last OK {t.last_ok_at ? when(t.last_ok_at) : "never"}
+                    {t.last_error && <span className="text-danger-ink"> · {taskError(t.last_error)}</span>}
                   </li>
                 ))}
               </ul>

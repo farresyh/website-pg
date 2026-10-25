@@ -2099,3 +2099,15 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - `SupplierRowValuer` costs a row the same way for every reader: COGS, drawdowns not in COGS, and the Summary's supplier corrections line. `CashPositionService` reads the pool's month-end value. An MYR supplier and any row before the opening keep the old rate.
 - **Test first:** `FinancialScenarioTest` gained IDR deposits at RM1/3,500 IDR (October) and RM1/3,900 IDR (November), plus a November balance correction. On the old method the October close had a gap of −33 sen. It is now 0 for both months. `MovingAveragePoolTest` checks the arithmetic by hand: conservation to the sen, the empty pool, the opening and month-end cut, the voided transfer, and a correction at the average.
 - **Not done yet:** merge, release, then a read-only check that prod October moves only a few sen.
+
+## 2026-10-25 — Dashboard System details in plain words
+
+- **Founder:** the (i) tooltips on System details showed developer text (column names, class names), which an admin can't act on. Rewrite them for an admin.
+- **Built** on `fix/dashboard-plain-tooltips`:
+  - The seven definitions now live in `DashboardService::DEFINITIONS` as plain English. Each says what the figure is and what to do about it; the exact rule stays in the code that computes it.
+  - A late scheduled task now shows "Supplier balance refresh", not `supplier-balance-refresh`.
+  - The scheduler's raw "failed with exit code [1]" line becomes "stopped with an error on its last run (details in the server log)". The raw text is kept in the hover title.
+- **Verified:**
+  - Dashboard tests pass (40), along with admin `tsc` and lint.
+  - Local screenshot of the panel with the suppliers tooltip open and a late task.
+  - Locally, `supplier-balance-refresh`'s heartbeat was set late on purpose to show the error line.
