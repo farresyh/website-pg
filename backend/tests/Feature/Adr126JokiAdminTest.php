@@ -280,6 +280,23 @@ class Adr126JokiAdminTest extends TestCase
         $this->assertSame(25, $honor->fresh()->mythic_from_stars);
     }
 
+    /** The rank model saves whole, as the admin page sends it: each tier with only its own kind's shape (2026-10-25 bug: every field for every tier, nulls refused). */
+    public function test_the_whole_rank_model_saves_as_the_admin_page_sends_it(): void
+    {
+        $this->actAs();
+        $tiers = JokiTier::query()->orderBy('sort_order')->get()->map(fn (JokiTier $t) => [
+            'id' => $t->id, 'name' => $t->name, 'rate_rm' => $t->rate_rm + 1, 'express_rate_rm' => $t->express_rate_rm + 1, 'icon_url' => null,
+            ...($t->isDivisional() ? ['divisions' => $t->divisions, 'stars_per_division' => $t->stars_per_division] : ['mythic_from_stars' => $t->mythic_from_stars]),
+        ])->all();
+
+        $this->putJson('/api/joki-admin/tiers', ['tiers' => $tiers])->assertOk()->assertJsonCount(6);
+        $this->assertSame(3, JokiTier::query()->where('name', 'Epic')->value('rate_rm'));
+
+        // A null shape field is still refused, never written.
+        $this->putJson('/api/joki-admin/tiers', ['tiers' => [[...$tiers[0], 'divisions' => null]]])->assertJsonValidationErrors('tiers.0.divisions');
+        $this->assertSame(5, JokiTier::query()->where('name', 'Epic')->value('divisions'));
+    }
+
     public function test_order_detail_carries_the_joki_card_and_a_top_up_does_not(): void
     {
         $this->actAs('admin');
