@@ -2304,3 +2304,34 @@ About Us HTML, prod has 2 Resellers and 1 test Affiliate. PRD §16 item 133.
 - The portal colour test now also blocks TailAdmin colour classes and `dark:` colour overrides.
 - Verified: `tsc`, `eslint`, `npm test` and `build` pass. Playwright with mocked data covered Login (light, dark, 390), Profile (both roles), Subscription, Domains (light and dark), API keys (desktop and 390) and Storefront (desktop and 390): no overflow, no console errors.
 - Layer 1 of ADR-128 is fully built. The founder reviews and tests it page by page before release.
+
+## 2026-10-26 — Shared component kit decided; docs synced for the session
+
+- #565 (PR 4) merged, so layer 1 of ADR-128 is on `staging` (#562–#565) and
+  not released.
+- Audit, at the founder's question (does the portal still carry legacy
+  libraries, and does it follow the admin's library?):
+  - TailAdmin is gone from the portal: icons, rail, `menu-item`, and the
+    colour classes, which a test now blocks.
+  - The portal uses no PrimeReact component. `primereact`, the provider
+    and the PrimeUI licence check do nothing, and the screens run on a
+    portal-only Tailwind kit. This departs from ADR-038 and was not raised
+    before building.
+  - The admin has no unused dependency (`react-is` is recharts' peer). It
+    still carries 3,346 TailAdmin colour-class uses in 131 files (kept on
+    purpose by ADR-104 decision 7) and the `menu-item` utility in
+    `PanelSidebar`.
+  - Its `components/ui` kit is mostly still TailAdmin-styled, and its
+    primary `Button` measures 4.23:1 (white on `brand-500`).
+- Founder decision: one shared kit, recorded in the ADR-128 2026-10-26
+  addendum (admin kit onto the tokens first, then generated into the
+  portal).
+- Docs synced:
+  - root and `reseller/` AGENTS.md: the token source, the sync script, the
+    current kit gap;
+  - PRD §14: what `staging` holds beyond prod;
+  - PRD §15: a new "Partner portal UI" row, and the Gallery row's #560
+    marked staging-only;
+  - PRD §16: item 133 next steps, and new item 134 (the storefront's "BNM
+    Compliant" line);
+  - ADR-038 and ADR-128 Standing.

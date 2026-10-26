@@ -1,6 +1,6 @@
 # ADR-128: Partner portal visual system — the PekanGame Admin design system, as a "PekanGame Partner" variant, frontend only
 
-> **Standing (2026-10-26):** Accepted (design). Extends [ADR-104](./ADR-104-admin-panel-visual-redesign.md)'s design system from `admin/` to `reseller/`; keeps [ADR-112](./ADR-112-affiliate-reseller-portal-mobile-first-redesign.md)'s navigation model and mobile acceptance criteria. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-26):** Accepted; one shared component kit with the admin (2026-10-26 addendum). Extends [ADR-104](./ADR-104-admin-panel-visual-redesign.md)'s design system from `admin/` to `reseller/`; keeps [ADR-112](./ADR-112-affiliate-reseller-portal-mobile-first-redesign.md)'s navigation model and mobile acceptance criteria. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-26. Grilled with the founder (`/mattpocock-skills:grilling`, Q1–Q15, three rounds). Mockups come first, in the founder's design-system artifact ("PekanGame Admin", `https://claude.ai/artifact/Jr2dGDUAFasPMedVayHPHe`), and are approved there before any code (PRD §16 item 133).
 
@@ -75,3 +75,15 @@
 - Login and Set password share `AuthLayout`, from the mockup: the nude panel (who runs the portal and what partners get) and the form, with the support WhatsApp from the primary brand's branding. Set password keeps its Malay copy.
 - Subscription charges are ordinary spend, so they show in `ink`, not red. API key status is a badge.
 - The portal colour test now also fails on any TailAdmin colour class or `dark:` colour override, so the old palette cannot come back.
+
+### 2026-10-26 addendum — one shared component kit (decided, not built)
+
+**Found after PR 4:** the portal's screens use their own small Tailwind kit (`reseller/src/components/ui.tsx`: `buttonClass`, `inputClass`, `Badge`, tables, `Pager` …) and no PrimeReact component at all. `primereact`, `@primereact/core`, `tailwindcss-primeui`, the `PrimeProvider` and the `NEXT_PUBLIC_PRIMEUI_LICENSE_KEY` check remain installed but do nothing. This departs from ADR-038 and the root AGENTS.md rule ("Admin/reseller UI is PrimeReact"). It was not raised before building; the screens work, but two kits would drift.
+
+**Decision (founder, 2026-10-26):** one shared kit. The admin's `admin/src/components/ui` (the PrimeReact wrappers: Button, Input, Label, Tag, Select, OptionSelect, Switch, Tabs, Dialog, Popover, DataTable) and `admin/src/lib/utils.ts` are the source, and `scripts/sync-shared-files.mjs` generates the portal's copy, as with the tokens. The portal's own composites that the admin has no equivalent for (balance hero, facts, copyable ID, pager, ledger table, order table) stay portal-only, built on the shared kit.
+
+**Why the admin kit goes first:** most of the kit still carries TailAdmin styling. `gray-*`/`brand-*` classes have `dark:` twins (only `Tag` is on the semantic tokens), inputs are 12px-radius with `focus:outline-hidden`, and the primary `Button` fills with PrimeReact's `--p-primary-color` (= `brand-500`, `#17879a`). White on that measures 4.23:1, below AA, where the design system's `cyan-600` is 5.6:1. A straight copy would take the portal back to the old look and fail its colour test.
+
+**Build order (next session):**
+1. Move the admin kit onto the semantic tokens, using the same one-to-one class mapping as PR 4. Point the PrimeReact bridge's primary colour at `cyan-600` / `cyan-700` / `on-cyan` in `tokens.css`. Every admin screen's buttons, inputs, selects, tables and dialogs change slightly; this needs a browser check of the admin.
+2. Generate the kit into `reseller/src/components/ui/` and move the portal's composites to their own file. Replace `buttonClass`, `inputClass`, `Badge` and the hand-made tabs and tables with the kit. Keep `PrimeProvider`. Touch targets stay 44px on phones (ADR-112).
