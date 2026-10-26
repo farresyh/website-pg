@@ -40,8 +40,8 @@ function PopoverPopup({ className, ...props }: PopoverPopupProps) {
     return (
         <PRPopover.Popup
             className={cn(
-                `relative flex flex-col pointer-events-auto rounded-xl border border-surface-200 dark:border-surface-700
-        bg-surface-0 dark:bg-surface-900 text-surface-700 dark:text-surface-0 shadow-lg
+                `relative flex flex-col pointer-events-auto rounded-lg border border-border
+        bg-surface text-ink shadow-md
         opacity-100 scale-100
         data-enter-from:opacity-0 data-enter-from:scale-[0.93]
         data-leave-to:opacity-0 data-leave-to:scale-[0.93]

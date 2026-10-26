@@ -68,10 +68,15 @@
   --p-surface-900: var(--color-gray-900);
   --p-surface-950: var(--color-gray-950);
   --p-content-border-radius: 6px;
-  --p-primary-color: var(--p-primary-500);
-  --p-primary-contrast-color: var(--p-surface-0);
-  --p-primary-hover-color: var(--p-primary-600);
-  --p-primary-active-color: var(--p-primary-700);
+  /*
+   * ADR-128 (2026-10-26 addendum): the bridge's primary is repointed from
+   * brand-500 (#17879a, white text 4.23:1, below AA) to the design system's
+   * cyan-600/700/on-cyan (#0b7285, white text 5.6:1).
+   */
+  --p-primary-color: var(--color-cyan-600);
+  --p-primary-contrast-color: var(--color-on-cyan);
+  --p-primary-hover-color: var(--color-cyan-700);
+  --p-primary-active-color: var(--color-cyan-700);
   --p-content-border-color: var(--p-surface-200);
   --p-content-hover-background: var(--p-surface-100);
   --p-content-hover-color: var(--p-surface-800);
@@ -86,10 +91,10 @@
 }
 
 .dark {
-  --p-primary-color: var(--p-primary-400);
-  --p-primary-contrast-color: var(--p-surface-900);
-  --p-primary-hover-color: var(--p-primary-300);
-  --p-primary-active-color: var(--p-primary-200);
+  --p-primary-color: var(--color-cyan-600);
+  --p-primary-contrast-color: var(--color-on-cyan);
+  --p-primary-hover-color: var(--color-cyan-700);
+  --p-primary-active-color: var(--color-cyan-700);
   --p-content-border-color: var(--p-surface-700);
   --p-content-hover-background: var(--p-surface-800);
   --p-content-hover-color: var(--p-surface-0);
