@@ -37,6 +37,8 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   // Everything except Next internals, the API route handlers, and static
-  // files — the portal has no public pages.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/).*)"],
+  // files — the portal has no public pages. `images/` holds public artwork
+  // (the payment marks, ADR-128); the image optimizer fetches it without
+  // the session cookie, so it must not be sent to /login.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|images/|api/).*)"],
 };

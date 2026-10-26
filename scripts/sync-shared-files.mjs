@@ -4,11 +4,13 @@
 //    must stay byte-for-byte identical (see the header inside that file,
 //    ADR-081/090);
 //  - the ADR-104 design tokens and the font files they declare
-//    (admin → reseller), ADR-128 decision 7.
+//    (admin → reseller), ADR-128 decision 7;
+//  - the official payment marks and the CHIP badge (storefront → reseller),
+//    so the portal's top-up shows the same artwork as checkout.
 // A copy lives inside reseller/ so Vercel's per-app ignoreCommand rebuilds
 // the portal whenever its copy changes. CI's `theme-preset-drift` job runs
 // this and fails on any diff — run it locally after editing a source.
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -26,9 +28,15 @@ const copies = [
     target: `reseller/src/app/fonts/${font}`,
     banner: null,
   })),
+  ...["payments/fpx.png", "payments/duitnow-qr.svg", "payments/cards.svg", "payments/ewallets.svg", "chip/powered-by-chip-long.svg"].map((image) => ({
+    source: `storefront/public/images/${image}`,
+    target: `reseller/public/images/${image}`,
+    banner: null,
+  })),
 ];
 
 for (const { source, target, banner } of copies) {
+  mkdirSync(dirname(join(repoRoot, target)), { recursive: true });
   const content = readFileSync(join(repoRoot, source));
   // A banner goes only on text; binary files (fonts) are copied byte for byte.
   writeFileSync(join(repoRoot, target), banner === null ? content : banner + content.toString("utf8"));
