@@ -271,6 +271,10 @@ export function Pager({
   );
 }
 
+/** Text inputs, selects and textareas: a visible focus ring, 44px touch height on phones. */
+export const inputClass =
+  "min-h-11 w-full rounded-md border border-border-control bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-transparent focus:outline-2 focus:outline-offset-[-1px] focus:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-9";
+
 /** A loading placeholder the size of the content it stands for. */
 export function Skeleton({ className }: { className: string }) {
   return <span aria-hidden="true" className={`block animate-pulse rounded-md bg-subtle ${className}`} />;
