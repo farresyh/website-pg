@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { OrderListItem } from "@/lib/portal";
 import { compensationNote, dateAndTime, deliveryBadge, formatRm, paymentBadge } from "@/lib/format";
-import { Badge, CopyId, GameCell, buttonClass } from "@/components/ui";
+import { Badge, CopyId, GameCell, buttonClass } from "@/components/composites";
 
 /**
  * Orders for either role: a table from `md`, tappable cards below it, with

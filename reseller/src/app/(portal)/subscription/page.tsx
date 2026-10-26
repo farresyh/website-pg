@@ -16,7 +16,7 @@ import {
   StatusTag,
   ErrorNote,
   EmptyRow,
-} from "@/components/ui";
+} from "@/components/composites";
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (

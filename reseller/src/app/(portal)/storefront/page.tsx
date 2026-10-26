@@ -10,7 +10,7 @@
  */
 
 import { useState } from "react";
-import { PageHeader } from "@/components/ui";
+import { PageHeader } from "@/components/composites";
 import BrandingTab from "@/components/storefront/BrandingTab";
 import ThemeTab from "@/components/storefront/ThemeTab";
 import HeroTab from "@/components/storefront/HeroTab";

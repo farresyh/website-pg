@@ -12,7 +12,8 @@ import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
 import { getWallet, listPaymentChannels, topupWallet, type PaymentChannel, type WalletResponse } from "@/lib/reseller-portal";
 import { dateAndTime, formatRm, toSen } from "@/lib/format";
-import { BalanceHero, CardHead, ErrorNote, Facts, PageHeader, Panel, Skeleton, buttonClass } from "@/components/ui";
+import { BalanceHero, CardHead, ErrorNote, Facts, PageHeader, Panel, Skeleton } from "@/components/composites";
+import { Button } from "@/components/ui/button";
 import { PortalIcon } from "@/components/shell/PortalIcon";
 import { PaymentMark, PoweredByChip } from "@/components/shell/PaymentMark";
 import { AmountField, StepsCard } from "@/components/money/MoneyForm";
@@ -160,10 +161,10 @@ export default function WalletPage() {
               </span>
             </div>
 
-            <button type="submit" disabled={submitting || !channelCode} className={`${buttonClass("primary")} h-11 w-full text-sm`}>
+            <Button type="submit" disabled={submitting || !channelCode} className="h-11 w-full text-sm">
               <PortalIcon name="shield" className="h-4 w-4" />
               {submitting ? "Opening secure payment…" : "Continue to secure payment"}
-            </button>
+            </Button>
             <p className="flex flex-wrap items-center justify-center gap-2 text-center text-xs text-ink-subtle">
               Payments processed by <PoweredByChip />
             </p>

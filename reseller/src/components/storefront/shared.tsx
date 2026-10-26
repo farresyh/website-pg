@@ -1,10 +1,9 @@
 "use client";
 
-import { buttonClass } from "@/components/ui";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 
 /** ADR-060 PR-6 — form primitives shared across the four Storefront tabs. */
-
-export { inputClass } from "@/components/ui";
 
 export function Field({
   label,
@@ -37,18 +36,15 @@ export function SaveButton({
 }) {
   return (
     <div className="flex items-center gap-3">
-      <button
-        type="submit"
-        disabled={saving || disabled}
-        className={buttonClass("primary")}
-      >
+      <Button type="submit" disabled={saving || disabled}>
         {saving ? "Saving…" : label}
-      </button>
+      </Button>
       {saved && <span className="text-theme-sm text-success-ink">Saved.</span>}
     </div>
   );
 }
 
+/** The on/off toggle, from the shared kit's Switch (ADR-128). */
 export function Toggle({
   checked,
   onChange,
@@ -58,24 +54,7 @@ export function Toggle({
   onChange: (next: boolean) => void;
   disabled?: boolean;
 }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-40 ${
-        checked ? "bg-cyan-600" : "bg-border-strong"
-      }`}
-    >
-      <span
-        className={`absolute top-0.5 h-5 w-5 rounded-full bg-surface transition-transform ${
-          checked ? "translate-x-[22px]" : "translate-x-0.5"
-        }`}
-      />
-    </button>
-  );
+  return <Switch checked={checked} onChange={onChange} disabled={disabled} />;
 }
 
 export function InactiveNotice() {

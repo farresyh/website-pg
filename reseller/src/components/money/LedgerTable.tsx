@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { LedgerEntry, Paginated } from "@/lib/portal";
 import { dateAndTime, ledgerRow, signedRm } from "@/lib/format";
-import { Badge, Pager, Skeleton } from "@/components/ui";
+import { Badge, Pager, Skeleton } from "@/components/composites";
 
 type Entry = LedgerEntry & { receipt_name?: string | null };
 

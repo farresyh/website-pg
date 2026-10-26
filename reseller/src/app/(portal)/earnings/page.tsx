@@ -6,7 +6,7 @@ import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
 import { getEarnings, type EarningsResponse } from "@/lib/portal";
 import { formatRm } from "@/lib/format";
-import { BalanceHero, CardHead, ErrorNote, PageHeader, Panel, Skeleton, buttonClass } from "@/components/ui";
+import { BalanceHero, CardHead, ErrorNote, PageHeader, Panel, Skeleton, buttonClass } from "@/components/composites";
 import { PortalIcon } from "@/components/shell/PortalIcon";
 import { StepsCard } from "@/components/money/MoneyForm";
 import LedgerTable from "@/components/money/LedgerTable";
