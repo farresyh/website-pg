@@ -867,7 +867,12 @@ moved to group D). Re-verify before building.
 - None open.
 
 **B. Needs a short grill / ADR addendum first**
-- None open.
+- **135** Map the Button severities `info`/`success`/`warn`/`danger`/`help`
+  off Tailwind's stock `blue`/`green`/`amber`/`red`/`violet` onto the design
+  system's status tokens. Needs a founder decision first (solid fill vs the
+  `-surface`/`-ink` badge style), because `-ink` flips to light in dark mode
+  so a solid `bg-*-ink text-white` fails dark contrast. Deferred from the
+  shared-kit PR 1.
 
 **C. Founder actions (no code)**
 - **134** The storefront checkout still says "BNM Compliant • 256-bit SSL"
@@ -1309,6 +1314,18 @@ moved to group D). Re-verify before building.
     but an order paid while the refund wording was published may still be
     owed a refund under it. If the policy stays, build this before payments
     go live for real customers. The switch-over steps above apply either way.
+
+135. **Button severity colours are still Tailwind stock — deferred from the
+    shared-kit PR 1 (2026-10-26).** The kit's `info`/`success`/`warn`/
+    `danger`/`help` severities use `bg-blue/green/amber/red/violet-500`
+    (solid) and `text-{colour}-500` (outlined/text), not the design system.
+    The design system defines status only as `-surface`/`-ink` badge pairs;
+    a solid `bg-*-ink text-white` fails dark-mode contrast because `-ink`
+    flips to a light value in `.dark`. Founder decision needed: (a) the
+    `-surface`/`-ink` badge style for these buttons, (b) new solid status
+    tokens, or (c) keep the stock colours. 51 `danger` uses (destructive),
+    15 `warn`, 7 `success`, 4 `info` at 2026-10-26. A code comment marks the
+    deferred block in `admin/src/components/ui/button.tsx`.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 

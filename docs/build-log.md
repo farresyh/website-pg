@@ -2335,3 +2335,56 @@ About Us HTML, prod has 2 Resellers and 1 test Affiliate. PRD §16 item 133.
   - PRD §16: item 133 next steps, and new item 134 (the storefront's "BNM
     Compliant" line);
   - ADR-038 and ADR-128 Standing.
+
+## 2026-10-26 — Shared component kit, PR 1: the admin kit onto the semantic tokens
+
+**Why.** ADR-128 2026-10-26 addendum, step 1. The admin `components/ui` kit
+(the PrimeReact wrappers) still carried TailAdmin/stock colours while the
+portal's screens ran on the semantic tokens — two kits would drift. This PR
+moves the admin kit onto the ADR-104 tokens so it can become the shared
+source for PR 2.
+
+**Shipped (branch `feature/adr-128-shared-kit-pr1`).**
+- **Bridge repoint (`tokens.css`).** `--p-primary-color`/`-contrast`/`-hover`/
+  `-active` now point at `cyan-600`/`on-cyan`/`cyan-700` (both `:root` and
+  `.dark`) instead of the `brand-*` ramp. White on the primary button goes
+  4.23:1 → 5.6:1 (dark: 8.1:1). `reseller/src/app/tokens.generated.css`
+  regenerated via `scripts/sync-shared-files.mjs`.
+- **Kit migration (10 files), one-to-one class swap, `dark:` twins removed:**
+  - `button.tsx` — default/secondary/contrast + outlined/text variants onto
+    `cyan-600`/`on-cyan`, `subtle`/`border`/`border-strong`,
+    `ink`/`ink-muted`; the focus outline is now one `focus-ring` in the base.
+  - `input.tsx` — `rounded-lg`→`rounded-md` (8px), `border-border-control`,
+    `bg-surface`, `placeholder:text-ink-subtle`, the outline-based
+    `focus-ring` (was `outline-hidden` + ring).
+  - `select.tsx` / `switch.tsx` / `tabs.tsx` / `label.tsx` / `dialog.tsx` /
+    `popover.tsx` — grey/brand/surface classes onto `ink`/`surface`/`subtle`/
+    `border`/`cyan-*`.
+  - `datatable.tsx` — `surface-*` → `surface`/`ink`/`subtle`, `bg-primary` →
+    `bg-cyan-600`, sort badge `cyan-600`/`on-cyan`, and the frozen-edge
+    shadows' hardcoded `rgba(226,232,240,1)`/`rgba(39,39,42,1)` →
+    `var(--color-border)`.
+  - `tag.tsx` — the last `contrast` severity (`surface-950`/`surface-0`) →
+    `bg-ink text-surface`.
+
+**Deferred, not built (PRD §16 item 135).** The button severities
+`info`/`success`/`warn`/`danger`/`help` still use Tailwind's stock
+`blue`/`green`/`amber`/`red`/`violet`. The design system defines status only
+as `-surface`/`-ink` badge pairs, and those `-ink` tokens flip to a light
+value in dark mode — a solid `bg-*-ink text-white` fails dark contrast. Needs
+a founder decision (solid vs badge) before mapping. Left as-is with a code
+comment in `button.tsx`.
+
+**Verified.**
+- `npm test` 19/19 (incl. `color-tokens.test.ts`), `npm run lint` clean,
+  `npm run build` compiles 51/51 pages.
+- Live browser (`getComputedStyle` on `/login`): primary button light
+  `rgb(11,114,133)` = `#0b7285` with white (5.6:1); dark `rgb(76,195,212)`
+  with `rgb(11,31,36)` (8.1:1). No console errors (the two 401s are
+  `resumeSession()` on a fresh browser).
+- `RichTextEditor` (the one hand-rolled primitive, ADR-038) is untouched —
+  it is not part of the shared-kit source and its `gray-*`/`brand-*` classes
+  are already retinted.
+
+**Not live.** Ships with PR 2 (the kit generated into the portal) as item 133,
+before the founder's page-by-page review.
