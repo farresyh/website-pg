@@ -2297,3 +2297,10 @@ About Us HTML, prod has 2 Resellers and 1 test Affiliate. PRD §16 item 133.
 - Fixed: the portal's `proxy.ts` redirected `public/` files to `/login`, which broke the image optimizer.
 - Found, not changed: the storefront checkout still says "BNM Compliant • 256-bit SSL" (`storefront/src/components/order/PaymentChannelPicker.tsx`). This is although #527 (2026-10-22) removed the storefront's Bank Negara Malaysia lines for CHIP's review. Raised with the founder.
 - Verified: `tsc`, `eslint`, `npm test` and `build` all pass. Playwright with mocked data at 1440 (light and dark), 768 and 390: no overflow, no console errors, and the marks load.
+
+## 2026-10-26 — ADR-128 PR 4: settings pages, Login and Set password
+
+- Every remaining portal screen is moved to the semantic tokens. The ~700 legacy colour classes were mapped with a scripted one-to-one table, and the diff was confirmed class-only. A shared accessible `inputClass` replaces five copies that had `outline-none` and no focus style. Login and Set password share the mockup's `AuthLayout` (details in the ADR-128 PR 4 build note).
+- The portal colour test now also blocks TailAdmin colour classes and `dark:` colour overrides.
+- Verified: `tsc`, `eslint`, `npm test` and `build` pass. Playwright with mocked data covered Login (light, dark, 390), Profile (both roles), Subscription, Domains (light and dark), API keys (desktop and 390) and Storefront (desktop and 390): no overflow, no console errors.
+- Layer 1 of ADR-128 is fully built. The founder reviews and tests it page by page before release.

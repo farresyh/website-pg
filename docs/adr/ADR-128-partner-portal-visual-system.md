@@ -67,3 +67,11 @@
 - Withdrawal copy follows the code. `Admin\WithdrawalController::approve` writes the ledger debit, `complete` stamps `processed_at`, and `reject` only applies to Pending, with no debit. One request can be open at a time, and it always pays the Profile bank account (masked to its last 4 digits here). "Earnings are added when an order is delivered" is true because every path into Delivered calls `creditProfit`.
 - Found while verifying: `proxy.ts` sent every request without the session cookie to `/login`, including `public/` files. The image optimizer fetches those without the cookie, so the payment marks returned 400. `images/` is now excluded from the matcher, and protected pages still redirect.
 - Typed ringgit is converted to sen in one place, `toSen`: digits with at most 2 decimals and more than zero. Tested.
+
+### 2026-10-26 build note — PR 4 (settings pages, Login, Set password)
+
+- Profile, Storefront (all five tabs), Domains, API keys with the webhook panel, Subscription, Impersonate, Login and Set password are on the semantic tokens. About 700 TailAdmin colour classes (`gray-*`, `brand-*`, `error-*` …, each with a `dark:` twin) were mapped one to one onto `ink` / `ink-muted` / `ink-subtle`, `surface` / `subtle`, `border` / `border-control`, `cyan-*` and the status tokens. Only class strings changed; the diff was checked line by line for any other change. The `dark:` twins were dropped because the tokens carry their own dark values.
+- One `inputClass` (in `components/ui.tsx`) replaces five copies. The old ones set `outline-none` with no focus style, so a keyboard user could not see where focus was; the new one shows the 2px `focus-ring` and is 44px tall on phones. Primary buttons use `buttonClass`, and controls use the 8px radius.
+- Login and Set password share `AuthLayout`, from the mockup: the nude panel (who runs the portal and what partners get) and the form, with the support WhatsApp from the primary brand's branding. Set password keeps its Malay copy.
+- Subscription charges are ordinary spend, so they show in `ink`, not red. API key status is a badge.
+- The portal colour test now also fails on any TailAdmin colour class or `dark:` colour override, so the old palette cannot come back.
