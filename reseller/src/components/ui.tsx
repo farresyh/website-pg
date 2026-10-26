@@ -1,8 +1,13 @@
 "use client";
 
-import { Tag as PrimeTag } from "primereact/tag";
+import { useState } from "react";
+import { PortalIcon, type PortalIconName } from "@/components/shell/PortalIcon";
 
-/** Small presentational helpers shared across the portal's read screens. */
+/**
+ * The portal's shared presentational pieces, on the ADR-104 tokens in the
+ * ADR-128 "PekanGame Partner" variant. Names match the design system's
+ * classes (pg-badge, pg-card, pg-kv …) so a page reads like its mockup.
+ */
 
 export function PageHeader({
   title,
@@ -10,108 +15,263 @@ export function PageHeader({
   action,
 }: {
   title: string;
-  subtitle?: string;
+  subtitle?: React.ReactNode;
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">
-          {title}
-        </h1>
-        {subtitle && (
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {subtitle}
-          </p>
-        )}
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+      <div className="min-w-0">
+        <h1 className="text-[26px] font-[650] leading-8 tracking-[-0.02em] text-ink">{title}</h1>
+        {subtitle && <p className="mt-1 text-sm text-ink-muted">{subtitle}</p>}
+      </div>
+      {action && <div className="flex flex-wrap items-center gap-2">{action}</div>}
+    </div>
+  );
+}
+
+export function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-surface px-5 py-4 shadow-xs">
+      <p className="text-[13px] font-medium text-ink-muted">{label}</p>
+      <p className="mt-1.5 text-2xl font-[650] leading-8 tracking-[-0.02em] text-ink">{value}</p>
+      {hint && <p className="mt-1 text-xs text-ink-subtle">{hint}</p>}
+    </div>
+  );
+}
+
+/** A card. `title` gives the classic header row; use `CardHead` for a title with a description and actions. */
+export function Panel({ title, children, className = "" }: { title?: string; children: React.ReactNode; className?: string }) {
+  return (
+    <section className={`overflow-hidden rounded-lg border border-border bg-surface shadow-xs ${className}`}>
+      {title && <div className="border-b border-border px-5 py-3.5 text-[15px] font-semibold leading-[22px] text-ink">{title}</div>}
+      {children}
+    </section>
+  );
+}
+
+export function CardHead({
+  title,
+  description,
+  action,
+  divided = false,
+}: {
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+  divided?: boolean;
+}) {
+  return (
+    <div className={`flex items-center justify-between gap-3 px-5 pt-4 ${divided ? "border-b border-border pb-4" : "pb-4"}`}>
+      <div className="min-w-0">
+        <h2 className="text-[15px] font-semibold leading-[22px] text-ink">{title}</h2>
+        {description && <p className="mt-0.5 text-xs text-ink-subtle">{description}</p>}
       </div>
       {action}
     </div>
   );
 }
 
-export function StatCard({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-      <p className="text-theme-xs text-gray-500 dark:text-gray-400">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">
-        {value}
-      </p>
-      {hint && (
-        <p className="text-theme-xs text-gray-500 dark:text-gray-400">{hint}</p>
-      )}
-    </div>
-  );
-}
+export type BadgeTone = "success" | "warning" | "danger" | "review" | "neutral" | "info";
 
-export function Panel({
-  title,
-  children,
-}: {
-  title?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
-      {title && (
-        <div className="border-b border-gray-100 px-5 py-3 text-theme-sm font-medium text-gray-700 dark:border-gray-800 dark:text-gray-300">
-          {title}
-        </div>
-      )}
-      {children}
-    </div>
-  );
-}
-
-const SEVERITY: Record<string, string> = {
-  success:
-    "bg-success-50 text-success-600 dark:bg-success-500/15 dark:text-success-500",
-  warn:
-    "bg-warning-50 text-warning-600 dark:bg-warning-500/15 dark:text-warning-500",
-  danger:
-    "bg-error-50 text-error-600 dark:bg-error-500/15 dark:text-error-500",
-  info: "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400",
-  muted: "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-300",
+const TONE: Record<BadgeTone, string> = {
+  success: "bg-success-surface text-success-ink",
+  warning: "bg-warning-surface text-warning-ink",
+  danger: "bg-danger-surface text-danger-ink",
+  review: "bg-review-surface text-review-ink",
+  neutral: "bg-neutral-surface text-neutral-ink",
+  info: "bg-info-surface text-info-ink",
 };
 
-export function StatusTag({
-  children,
-  severity = "muted",
-}: {
-  children: React.ReactNode;
-  severity?: keyof typeof SEVERITY | string;
-}) {
+/** Every status is a word with a dot; colour never carries the meaning alone. */
+export function Badge({ tone, children, large = false }: { tone: BadgeTone; children: React.ReactNode; large?: boolean }) {
   return (
-    <PrimeTag
-      severity={severity === "muted" ? undefined : (severity as "success" | "warn" | "danger" | "info")}
-      rounded
-      className={`text-theme-xs font-medium capitalize ${SEVERITY[severity] ?? SEVERITY.muted}`}
+    <span
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-sm font-semibold before:h-1.5 before:w-1.5 before:rounded-full before:bg-current ${
+        large ? "h-[26px] px-2.5 text-[13px]" : "h-[22px] px-2 text-xs"
+      } ${TONE[tone]}`}
     >
       {children}
-    </PrimeTag>
+    </span>
+  );
+}
+
+const SEVERITY_TONE: Record<string, BadgeTone> = { success: "success", warn: "warning", danger: "danger", info: "info", muted: "neutral" };
+
+/** The older severity names, kept for the screens PRs 3–4 haven't moved yet. */
+export function StatusTag({ children, severity = "muted" }: { children: React.ReactNode; severity?: string }) {
+  return (
+    <span className="capitalize">
+      <Badge tone={SEVERITY_TONE[severity] ?? "neutral"}>{children}</Badge>
+    </span>
   );
 }
 
 export function ErrorNote({ message }: { message: string }) {
   return (
-    <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+    <p role="alert" className="mb-4 rounded-lg border border-danger-ink/25 bg-danger-surface px-4 py-3 text-sm text-danger-ink">
       {message}
     </p>
   );
 }
 
 export function EmptyRow({ children }: { children: React.ReactNode }) {
+  return <p className="p-6 text-center text-sm text-ink-subtle">{children}</p>;
+}
+
+/** Order numbers, codes and IDs: mono, never wrapped, one click to copy. */
+export function CopyId({ value, label = "Copy", large = false }: { value: string; label?: string; large?: boolean }) {
+  const [copied, setCopied] = useState(false);
   return (
-    <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
-      {children}
-    </p>
+    <span className={`inline-flex min-w-0 items-center gap-1 font-mono font-medium tracking-[-0.01em] text-ink ${large ? "text-2xl leading-8" : "text-[13px] leading-[18px]"}`}>
+      <span className="truncate">{value}</span>
+      <button
+        type="button"
+        aria-label={`${label} ${value}`}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void navigator.clipboard?.writeText(value).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          });
+        }}
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-sm text-ink-subtle hover:bg-subtle hover:text-ink"
+      >
+        <PortalIcon name={copied ? "check" : "copy"} className="h-3.5 w-3.5" />
+      </button>
+    </span>
   );
+}
+
+/** Two letters for a game until the real icon is wired. */
+export function GameThumb({ name }: { name: string }) {
+  const letters = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("");
+  return (
+    <span aria-hidden="true" className="grid h-8 w-8 shrink-0 place-items-center rounded-sm border border-border bg-subtle text-[11px] font-bold tracking-[0.02em] text-ink-muted">
+      {letters || "—"}
+    </span>
+  );
+}
+
+export function GameCell({ game, pkg }: { game: string | null | undefined; pkg: string | null | undefined }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2.5">
+      <GameThumb name={game ?? ""} />
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate text-sm font-semibold text-ink">{game ?? "—"}</span>
+        <span className="truncate text-xs text-ink-subtle">{pkg ?? "—"}</span>
+      </span>
+    </span>
+  );
+}
+
+/** A labelled figure under a balance or in a card: label, value, quiet sub-line. */
+export function Facts({ items, columns = 3 }: { items: { label: string; value: React.ReactNode; sub?: React.ReactNode }[]; columns?: 2 | 3 }) {
+  return (
+    <dl className={`mt-4 grid gap-4 border-t border-border pt-4 ${columns === 2 ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3"}`}>
+      {items.map((item) => (
+        <div key={item.label} className="min-w-0">
+          <dt className="text-xs text-ink-subtle">{item.label}</dt>
+          <dd className="mt-0.5 truncate text-sm font-semibold text-ink">{item.value}</dd>
+          {item.sub && <dd className="truncate text-xs text-ink-subtle">{item.sub}</dd>}
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** The one big figure a money page leads with (ADR-128: balance hero). */
+export function BalanceHero({
+  icon,
+  label,
+  amount,
+  note,
+  actions,
+  children,
+}: {
+  icon: PortalIconName;
+  label: string;
+  /** Pre-formatted by `formatRm`; the "RM" prefix is set quieter here. */
+  amount: string;
+  note: string;
+  actions?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
+  const [currency, ...rest] = amount.startsWith("-") ? ["-RM", amount.slice(4)] : amount.split(" ");
+  return (
+    <section className="rounded-lg border border-border bg-surface px-5 py-5 shadow-xs sm:px-6">
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-ink-muted">
+          <PortalIcon name={icon} className="h-4 w-4" />
+          {label}
+        </span>
+        <span className="rounded-sm border border-border-strong px-1.5 text-[11px] font-semibold leading-[18px] text-ink-muted">MYR</span>
+      </div>
+      <p className="mt-1.5 text-[36px] font-[650] leading-[44px] tracking-[-0.03em] text-ink sm:text-[44px] sm:leading-[52px]">
+        <span className="mr-1.5 align-[10px] text-lg font-semibold tracking-normal text-ink-subtle sm:text-xl">{currency}</span>
+        {rest.join(" ")}
+      </p>
+      <p className="mt-1 text-[13px] text-ink-muted">{note}</p>
+      {actions && <div className="mt-4 flex flex-wrap gap-2">{actions}</div>}
+      {children}
+    </section>
+  );
+}
+
+const BUTTON = {
+  primary: "bg-cyan-600 text-on-cyan hover:bg-cyan-700",
+  secondary: "border border-border-strong bg-surface text-ink shadow-xs hover:bg-subtle",
+  ghost: "text-ink-muted hover:bg-overlay hover:text-ink",
+};
+
+/** Class names for a link or button styled as the design system's pg-btn. */
+export function buttonClass(variant: keyof typeof BUTTON = "secondary", small = false): string {
+  return `inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-semibold disabled:cursor-not-allowed disabled:opacity-45 ${
+    small ? "h-[30px] px-2.5 text-xs" : "min-h-11 px-3.5 text-[13px] sm:min-h-9"
+  } ${BUTTON[variant]}`;
+}
+
+export function Pager({
+  page,
+  lastPage,
+  total,
+  perPage,
+  onPage,
+}: {
+  page: number;
+  lastPage: number;
+  total: number;
+  perPage: number;
+  onPage: (page: number) => void;
+}) {
+  if (total === 0) return null;
+  const from = (page - 1) * perPage + 1;
+  const to = Math.min(page * perPage, total);
+  return (
+    <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-3 text-xs text-ink-subtle">
+      <span>
+        Showing {from}–{to} of {total}
+      </span>
+      {lastPage > 1 && (
+        <div className="flex gap-1.5">
+          <button type="button" disabled={page <= 1} onClick={() => onPage(page - 1)} className={buttonClass("secondary", true)}>
+            Previous
+          </button>
+          <button type="button" disabled={page >= lastPage} onClick={() => onPage(page + 1)} className={buttonClass("secondary", true)}>
+            Next
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A loading placeholder the size of the content it stands for. */
+export function Skeleton({ className }: { className: string }) {
+  return <span aria-hidden="true" className={`block animate-pulse rounded-md bg-subtle ${className}`} />;
 }
