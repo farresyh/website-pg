@@ -162,11 +162,19 @@ banner). This file covers the whole repo.
   platform's margin — only the tier name and their own fee/markup.
 - **Supplier-integration config lives under `/middleware`, not `/admin`**,
   even when it sits on a model the admin panel also edits.
-- **Admin/reseller UI is PrimeReact (Tailwind mode), ADR-038** — build new
-  screens with the PrimeReact-Tailwind components and the shared `globals.css`
-  design tokens. `RichTextEditor` is the one hand-rolled primitive kept.
-  Tailwind v4 silently drops a colour class whose `--color-*` token doesn't
-  exist; in `admin/`, `color-tokens.test.ts` catches it (PRD §16 item 100).
+- **Admin/reseller UI is PrimeReact (Tailwind mode), ADR-038**, on the
+  ADR-104 design tokens. Build new screens with the `components/ui` kit
+  (PrimeReact wrappers). `RichTextEditor` is the one hand-rolled primitive
+  kept. The tokens' one source is `admin/src/app/tokens.css`; the partner
+  portal imports a generated copy, so after editing run
+  `node scripts/sync-shared-files.mjs` (CI's `theme-preset-drift` job fails
+  on a stale copy, ADR-128). Open gap: the portal's screens still use a
+  portal-only Tailwind kit (`reseller/src/components/ui.tsx`). The decided
+  fix is the admin kit, moved onto the tokens and generated into the portal
+  (ADR-128 2026-10-26 addendum, PRD §16 item 133). Tailwind v4 silently
+  drops a colour class whose `--color-*` token doesn't exist; each app's
+  `color-tokens.test.ts` catches it (PRD §16 item 100). The portal's test
+  also blocks TailAdmin colour classes.
 - **Before calling storefront copy "hardcoded", grep for it** — much of it is
   admin-configured content.
 - Do what has been asked; nothing more, nothing less. If a more robust fix

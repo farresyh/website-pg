@@ -1,6 +1,6 @@
 # ADR-038: Admin UI component library — adopt PrimeReact (Tailwind mode), opportunistic migration off hand-rolled TailAdmin primitives (design only, 2026-08-26; testbed built 2026-08-26)
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-26):** In force; the partner portal is to share this kit by generation ([ADR-128](./ADR-128-partner-portal-visual-system.md) 2026-10-26 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — grilled 2026-08-26. Decision 3's testbed (the Backups screen, ADR-039) built same-day.
 
