@@ -8,9 +8,9 @@ import { LEGAL_LINKS } from "@/components/shell/TrustFooter";
  */
 const LINKS = [...LEGAL_LINKS, { label: "API docs", href: "https://docs.pekangame.space" }];
 const POINTS: { icon: PortalIconName; lead: string; text: string }[] = [
-  { icon: "wallet", lead: "Resellers", text: "order by API or WhatsApp bot from a prepaid wallet." },
+  { icon: "wallet", lead: "Resellers", text: "order via automated messaging or API integration directly from a prepaid balance." },
   { icon: "store", lead: "Affiliates", text: "run their own branded store and withdraw their margin." },
-  { icon: "shield", lead: "", text: "Payments through CHIP. Every movement of your money is listed." },
+  { icon: "shield", lead: "", text: "Secure payment processing. Full transaction tracking and transparent audit logs for every movement of your money." },
 ];
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
@@ -26,7 +26,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
         <div className="hidden max-w-[460px] lg:block">
           <h1 className="text-[34px] font-[650] leading-10 tracking-[-0.02em] text-ink">Your partner account with PekanGame</h1>
-          <p className="mt-3 mb-6 text-[15px] leading-[22px] text-ink-muted">For resellers and storefront affiliates selling game top-ups in Malaysia.</p>
+          <p className="mt-3 mb-6 text-[15px] leading-[22px] text-ink-muted">For resellers and storefront affiliates selling game top-ups.</p>
           <ul className="flex flex-col gap-3.5">
             {POINTS.map((point) => (
               <li key={point.text} className="flex gap-2.5 text-sm text-ink-muted">
@@ -41,7 +41,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             ))}
           </ul>
         </div>
-        <p className="hidden text-xs text-nude-ink lg:block">Operated by LWF Group Sdn. Bhd. (202601038896), Klang, Selangor.</p>
+        <p className="hidden text-xs text-nude-ink lg:block">Operated by LWF Group Sdn. Bhd. (202601038896), Malaysia.</p>
       </section>
 
       <section className="flex flex-col items-center justify-center gap-5 px-4 py-10 sm:px-8">
