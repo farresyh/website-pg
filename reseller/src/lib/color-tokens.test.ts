@@ -49,3 +49,18 @@ test("every project colour shade used in a class has a token", () => {
     "Define the token in admin/src/app/tokens.css (then sync) or use a shade that exists.",
   );
 });
+
+/**
+ * ADR-128 PR 4 (as the admin's PRD §16 item 101 check): the TailAdmin greys
+ * and brand blue are gone from the portal's screens. Text and surfaces use
+ * the semantic tokens (`ink`, `ink-muted`, `ink-subtle`, `surface`,
+ * `danger-ink` …), which carry their own dark values, so a `dark:` colour
+ * override is never needed either.
+ */
+test("no TailAdmin colour classes or dark: colour overrides on portal screens", () => {
+  const LEGACY = /(?<![\w-])(?:[a-z-]+:)*(?:text|bg|border|ring|outline|divide|placeholder)-(?:gray|brand|error|blue-light)-\d{2,3}(?:\/[\w.[\]]+)?(?![\w-])|(?<![\w-])dark:(?:text|bg|border|ring|outline|divide|placeholder)-[\w/[\].-]+/g;
+  const hits = sourceFiles(SRC).flatMap((file) =>
+    [...readFileSync(file, "utf8").matchAll(LEGACY)].map((m) => `${m[0]} (${file.slice(SRC.length + 1)})`),
+  );
+  assert.deepEqual(hits, [], "Use the semantic tokens (ink, ink-muted, ink-subtle, surface, subtle, border, danger-ink …).");
+});

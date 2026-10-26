@@ -6,10 +6,7 @@ import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { getProfile, updateProfile, type AffiliateProfile } from "@/lib/portal";
 import { getResellerProfile, type ResellerProfile } from "@/lib/reseller-portal";
-import { PageHeader, Panel, ErrorNote, StatusTag } from "@/components/ui";
-
-const inputClass =
-  "w-full rounded-lg border border-gray-300 px-3 py-2 text-theme-sm text-gray-800 outline-none focus:border-brand-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
+import { PageHeader, Panel, ErrorNote, StatusTag, buttonClass, inputClass } from "@/components/ui";
 
 export default function ProfilePage() {
   const session = useClientSession();
@@ -57,12 +54,12 @@ function ResellerProfileView() {
 
       {error && <ErrorNote message={error} />}
       {!profile && !error && (
-        <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <p className="text-sm text-ink-subtle">Loading…</p>
       )}
 
       {profile && (
         <Panel title="Account">
-          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+          <div className="divide-y divide-border">
             <Row label="Business name" value={profile.business_name} />
             <Row label="Contact name" value={profile.contact_name ?? "—"} />
             <Row label="Email" value={profile.email ?? "—"} />
@@ -160,13 +157,13 @@ function AffiliateProfileView() {
 
       {error && <ErrorNote message={error} />}
       {!profile && !error && (
-        <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <p className="text-sm text-ink-subtle">Loading…</p>
       )}
 
       {profile && (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid items-start gap-6 lg:grid-cols-2">
           <Panel title="Company">
-            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            <div className="divide-y divide-border">
               <Row label="Business name" value={profile.business_name} />
               <Row label="Login email" value={profile.email ?? "—"} />
             </div>
@@ -214,12 +211,12 @@ function AffiliateProfileView() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="rounded-lg bg-brand-500 px-4 py-2 text-theme-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+                  className={buttonClass("primary")}
                 >
                   {saving ? "Saving…" : "Save changes"}
                 </button>
                 {saved && (
-                  <span className="text-theme-sm text-success-600 dark:text-success-500">
+                  <span className="text-theme-sm text-success-ink">
                     Saved.
                   </span>
                 )}
@@ -235,8 +232,8 @@ function AffiliateProfileView() {
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-6 px-5 py-3 text-theme-sm">
-      <span className="text-gray-500 dark:text-gray-400">{label}</span>
-      <span className="text-right font-medium text-gray-800 dark:text-white/90">
+      <span className="text-ink-subtle">{label}</span>
+      <span className="text-right font-medium text-ink">
         {value}
       </span>
     </div>
@@ -252,7 +249,7 @@ function Field({
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+      <span className="text-theme-sm font-medium text-ink-muted">
         {label}
       </span>
       {children}

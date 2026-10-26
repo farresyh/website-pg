@@ -111,7 +111,7 @@ export default function PricingTab() {
           </Field>
 
           {clamped && (
-            <p className="rounded-lg bg-warning-surface px-3 py-2 text-theme-xs text-warning-ink">
+            <p className="rounded-md bg-warning-surface px-3 py-2 text-theme-xs text-warning-ink">
               Your saved markup is {pricing.markup_pct}%, but the platform ceiling is now{" "}
               {pricing.max_markup_pct}% — your storefront currently prices at {pricing.effective_markup_pct}%. Save
               a value at or below the ceiling to clear this.
@@ -119,7 +119,7 @@ export default function PricingTab() {
           )}
 
           {!pricing.wholesale_rate_active && (
-            <p className="rounded-lg bg-gray-100 px-3 py-2 text-theme-xs text-gray-600 dark:bg-white/5 dark:text-gray-300">
+            <p className="rounded-md bg-subtle px-3 py-2 text-theme-xs text-ink-muted">
               Your wholesale rate is paused while your subscription is lapsed — margins below are shown at
               standard pricing.
             </p>
@@ -131,28 +131,28 @@ export default function PricingTab() {
 
       <Panel title="Preview">
         {preview === null ? (
-          <p className="p-5 text-theme-sm text-gray-500 dark:text-gray-400">
+          <p className="p-5 text-theme-sm text-ink-subtle">
             Enter a markup to preview customer prices.
           </p>
         ) : preview.rows.length === 0 ? (
-          <p className="p-5 text-theme-sm text-gray-500 dark:text-gray-400">
+          <p className="p-5 text-theme-sm text-ink-subtle">
             No packages in your visible catalog yet.
           </p>
         ) : (
-          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+          <div className="divide-y divide-border">
             {preview.rows.map((row, i) => (
               <div key={i} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-theme-sm">
                 <div className="min-w-0">
-                  <p className="truncate font-medium text-gray-800 dark:text-white/90">{row.package_name}</p>
+                  <p className="truncate font-medium text-ink">{row.package_name}</p>
                   {row.game_name && (
-                    <p className="text-theme-xs text-gray-500 dark:text-gray-400">{row.game_name}</p>
+                    <p className="text-theme-xs text-ink-subtle">{row.game_name}</p>
                   )}
                 </div>
                 <div className="text-right">
-                  <p className="text-gray-800 dark:text-white/90">
+                  <p className="text-ink">
                     Customer pays <span className="font-medium">{formatRm(row.customer_price_sen)}</span>
                   </p>
-                  <p className="text-theme-xs text-success-600 dark:text-success-500">
+                  <p className="text-theme-xs text-success-ink">
                     You earn {formatRm(row.your_margin_sen)}
                   </p>
                 </div>

@@ -190,12 +190,12 @@ export default function BrandingTab() {
 
       <Panel title="Logo">
         <div className="flex flex-wrap items-center gap-4 p-5">
-          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900">
+          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border border-border bg-subtle">
             {data.branding.logo_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={data.branding.logo_url} alt="" className="h-full w-full object-contain" />
             ) : (
-              <span className="text-theme-xs text-gray-400">None</span>
+              <span className="text-theme-xs text-ink-subtle">None</span>
             )}
           </div>
           <div className="space-y-1.5">
@@ -205,9 +205,9 @@ export default function BrandingTab() {
               accept="image/jpeg,image/png,image/webp"
               disabled={!writable || logoBusy}
               onChange={(e) => e.target.files?.[0] && handleLogo(e.target.files[0])}
-              className="block text-theme-xs text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-theme-xs file:font-medium file:text-brand-600 disabled:opacity-50 dark:text-gray-400 dark:file:bg-brand-500/15 dark:file:text-brand-400"
+              className="block text-theme-xs text-ink-muted file:mr-3 file:rounded-md file:border-0 file:bg-cyan-50 file:px-3 file:py-1.5 file:text-theme-xs file:font-medium file:text-cyan-ink disabled:opacity-50"
             />
-            <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+            <p className="text-theme-xs text-ink-subtle">
               PNG, JPG or WebP, up to 2&nbsp;MB. Shown in your header + footer — a wide logo/wordmark works fine, it&apos;s not cropped to a square.
             </p>
             {data.branding.logo_url && writable && (
@@ -215,7 +215,7 @@ export default function BrandingTab() {
                 type="button"
                 onClick={removeLogo}
                 disabled={logoBusy}
-                className="text-theme-xs text-error-600 hover:underline disabled:opacity-50 dark:text-error-400"
+                className="text-theme-xs text-danger-ink hover:underline disabled:opacity-50"
               >
                 Remove logo
               </button>
@@ -226,12 +226,12 @@ export default function BrandingTab() {
 
       <Panel title="Favicon">
         <div className="flex flex-wrap items-center gap-4 p-5">
-          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900">
+          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border border-border bg-subtle">
             {data.branding.favicon_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={data.branding.favicon_url} alt="" className="h-full w-full object-contain" />
             ) : (
-              <span className="text-theme-xs text-gray-400">None</span>
+              <span className="text-theme-xs text-ink-subtle">None</span>
             )}
           </div>
           <div className="space-y-1.5">
@@ -241,9 +241,9 @@ export default function BrandingTab() {
               accept="image/jpeg,image/png,image/webp"
               disabled={!writable || faviconBusy}
               onChange={(e) => e.target.files?.[0] && handleFavicon(e.target.files[0])}
-              className="block text-theme-xs text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-theme-xs file:font-medium file:text-brand-600 disabled:opacity-50 dark:text-gray-400 dark:file:bg-brand-500/15 dark:file:text-brand-400"
+              className="block text-theme-xs text-ink-muted file:mr-3 file:rounded-md file:border-0 file:bg-cyan-50 file:px-3 file:py-1.5 file:text-theme-xs file:font-medium file:text-cyan-ink disabled:opacity-50"
             />
-            <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+            <p className="text-theme-xs text-ink-subtle">
               Recommended: 512×512px square, PNG, transparent background — this becomes your browser tab icon. A separate asset from the logo above.
             </p>
             {data.branding.favicon_url && writable && (
@@ -251,7 +251,7 @@ export default function BrandingTab() {
                 type="button"
                 onClick={removeFavicon}
                 disabled={faviconBusy}
-                className="text-theme-xs text-error-600 hover:underline disabled:opacity-50 dark:text-error-400"
+                className="text-theme-xs text-danger-ink hover:underline disabled:opacity-50"
               >
                 Remove favicon
               </button>
@@ -330,7 +330,7 @@ export default function BrandingTab() {
 
         <Panel title="Tracking pixels">
           <div className="space-y-4 p-5">
-            <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+            <p className="text-theme-xs text-ink-subtle">
               Only the pixel IDs are yours to set — meta tags and structured data stay platform-managed.
             </p>
             <Field label="Google Analytics measurement ID" hint="Looks like G-XXXXXXXXXX">

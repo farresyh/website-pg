@@ -168,12 +168,12 @@ const T = {
 };
 
 function Shot({ src, alt, caption, tone, narrow }: { src: StaticImageData; alt: string; caption?: string; tone?: "good" | "bad"; narrow?: boolean }) {
-  const ring = tone === "bad" ? "ring-2 ring-error-500" : tone === "good" ? "ring-2 ring-success-500" : "ring-1 ring-gray-200 dark:ring-gray-700";
+  const ring = tone === "bad" ? "ring-2 ring-danger-ink" : tone === "good" ? "ring-2 ring-success-ink" : "ring-1 ring-border";
   return (
     <figure className={`space-y-1.5 ${narrow ? "max-w-xl" : ""}`}>
       <Image src={src} alt={alt} className={`h-auto w-full rounded-lg ${ring}`} sizes="(min-width: 1024px) 640px, 100vw" />
       {caption && (
-        <figcaption className={`text-theme-xs font-medium ${tone === "bad" ? "text-error-600 dark:text-error-500" : tone === "good" ? "text-success-600 dark:text-success-500" : "text-gray-500 dark:text-gray-400"}`}>
+        <figcaption className={`text-theme-xs font-medium ${tone === "bad" ? "text-danger-ink" : tone === "good" ? "text-success-ink" : "text-ink-subtle"}`}>
           {caption}
         </figcaption>
       )}
@@ -197,7 +197,7 @@ export function DomainSetupGuide({ cnameTarget, apexARecord }: { cnameTarget: st
   const t = T[lang];
 
   return (
-    <div className="space-y-5 p-5 text-theme-sm text-gray-600 dark:text-gray-300">
+    <div className="space-y-5 p-5 text-theme-sm text-ink-muted">
       <div className="flex justify-end gap-1">
         {(["en", "ms"] as const).map((l) => (
           <button
@@ -205,7 +205,7 @@ export function DomainSetupGuide({ cnameTarget, apexARecord }: { cnameTarget: st
             type="button"
             onClick={() => setLang(l)}
             className={`rounded-md px-2.5 py-1 text-theme-xs font-medium ${
-              lang === l ? "bg-brand-500 text-white" : "border border-gray-200 text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+              lang === l ? "bg-cyan-600 text-on-cyan" : "border border-border text-ink-muted hover:bg-subtle"
             }`}
           >
             {l === "en" ? "English" : "Bahasa Melayu"}
@@ -214,9 +214,9 @@ export function DomainSetupGuide({ cnameTarget, apexARecord }: { cnameTarget: st
       </div>
 
       <div>
-        <p className="mb-1.5 text-theme-xs font-medium text-gray-500 dark:text-gray-400">{t.target}</p>
+        <p className="mb-1.5 text-theme-xs font-medium text-ink-subtle">{t.target}</p>
         <div className="flex items-center gap-3">
-          <code className="rounded-md bg-gray-100 px-3 py-2 text-gray-800 dark:bg-gray-900 dark:text-white/90">{cnameTarget}</code>
+          <code className="rounded-md bg-subtle px-3 py-2 text-ink">{cnameTarget}</code>
           <button
             type="button"
             onClick={() => {
@@ -224,7 +224,7 @@ export function DomainSetupGuide({ cnameTarget, apexARecord }: { cnameTarget: st
               setCopied(true);
               setTimeout(() => setCopied(false), 1500);
             }}
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-theme-xs text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+            className="rounded-md border border-border px-3 py-1.5 text-theme-xs text-ink-muted hover:bg-subtle"
           >
             {copied ? t.copied : t.copy}
           </button>
@@ -234,11 +234,11 @@ export function DomainSetupGuide({ cnameTarget, apexARecord }: { cnameTarget: st
       <ol className="space-y-3">
         {t.steps.map((s, i) => (
           <li key={s.title} className="flex gap-3">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-theme-xs font-semibold text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-cyan-50 text-theme-xs font-semibold text-cyan-ink">
               {i + 1}
             </span>
             <div>
-              <p className="font-medium text-gray-800 dark:text-white/90">{s.title}</p>
+              <p className="font-medium text-ink">{s.title}</p>
               <p className="mt-0.5">{s.body}</p>
             </div>
           </li>
@@ -246,20 +246,20 @@ export function DomainSetupGuide({ cnameTarget, apexARecord }: { cnameTarget: st
       </ol>
 
       <div>
-        <p className="mb-2 font-medium text-gray-800 dark:text-white/90">{t.table.title}</p>
-        <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
+        <p className="mb-2 font-medium text-ink">{t.table.title}</p>
+        <div className="overflow-x-auto rounded-lg border border-border">
           <table className="min-w-full text-theme-xs">
-            <thead className="bg-gray-50 text-left text-gray-500 dark:bg-white/5 dark:text-gray-400">
+            <thead className="bg-subtle text-left text-ink-subtle">
               <tr>
                 <th className="px-3 py-2 font-medium">{t.table.address}</th>
                 <th className="px-3 py-2 font-medium">{t.table.record}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            <tbody className="divide-y divide-border">
               {t.table.rows(cnameTarget, apexARecord).map((r) => (
                 <tr key={r.address}>
-                  <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{r.address}</td>
-                  <td className="px-3 py-2 font-mono text-gray-800 dark:text-white/90">{r.record}</td>
+                  <td className="px-3 py-2 text-ink-muted">{r.address}</td>
+                  <td className="px-3 py-2 font-mono text-ink">{r.record}</td>
                 </tr>
               ))}
             </tbody>
@@ -268,14 +268,14 @@ export function DomainSetupGuide({ cnameTarget, apexARecord }: { cnameTarget: st
       </div>
 
       <div className="space-y-2">
-        <p className="font-medium text-gray-800 dark:text-white/90">{t.tipsTitle}</p>
+        <p className="font-medium text-ink">{t.tipsTitle}</p>
 
-        <details className="rounded-lg border border-gray-200 dark:border-gray-800">
-          <summary className="cursor-pointer px-4 py-2.5 font-medium text-gray-700 dark:text-gray-200">{t.cloudflare.name}</summary>
+        <details className="rounded-lg border border-border">
+          <summary className="cursor-pointer px-4 py-2.5 font-medium text-ink-muted">{t.cloudflare.name}</summary>
           <div className="space-y-4 px-4 pb-4">
             <Bullets items={t.cloudflare.steps} />
             <Shot src={cfAddRecord} alt="Cloudflare DNS records toolbar with the Add record button" />
-            <p className="text-theme-xs text-gray-500 dark:text-gray-400">{t.cloudflare.example}</p>
+            <p className="text-theme-xs text-ink-subtle">{t.cloudflare.example}</p>
             <div className="grid gap-4 md:grid-cols-2">
               <Shot src={cfWrongProxied} alt="Cloudflare Add record form with Proxy status set to Proxied" caption={t.cloudflare.wrong} tone="bad" />
               <Shot src={cfCorrectDnsOnly} alt="Cloudflare Add record form with Proxy status set to DNS only" caption={t.cloudflare.right} tone="good" />
@@ -283,8 +283,8 @@ export function DomainSetupGuide({ cnameTarget, apexARecord }: { cnameTarget: st
           </div>
         </details>
 
-        <details className="rounded-lg border border-gray-200 dark:border-gray-800">
-          <summary className="cursor-pointer px-4 py-2.5 font-medium text-gray-700 dark:text-gray-200">{t.godaddy.name}</summary>
+        <details className="rounded-lg border border-border">
+          <summary className="cursor-pointer px-4 py-2.5 font-medium text-ink-muted">{t.godaddy.name}</summary>
           <div className="space-y-4 px-4 pb-4">
             <Bullets items={t.godaddy.steps} />
             <Shot src={gdRecords} alt="GoDaddy DNS records with an A record @ Parked and a CNAME record www" caption={t.godaddy.recordsCaption} narrow />
@@ -293,8 +293,8 @@ export function DomainSetupGuide({ cnameTarget, apexARecord }: { cnameTarget: st
           </div>
         </details>
 
-        <details className="rounded-lg border border-gray-200 dark:border-gray-800">
-          <summary className="cursor-pointer px-4 py-2.5 font-medium text-gray-700 dark:text-gray-200">{t.other.name}</summary>
+        <details className="rounded-lg border border-border">
+          <summary className="cursor-pointer px-4 py-2.5 font-medium text-ink-muted">{t.other.name}</summary>
           <div className="px-4 pb-4">
             <Bullets items={t.other.steps} />
           </div>
