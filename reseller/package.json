@@ -6,7 +6,8 @@
     "dev": "NODE_OPTIONS=--use-system-ca next dev -p 3002",
     "build": "next build",
     "start": "next start -p 3002",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --experimental-strip-types --test 'src/**/*.test.ts'"
   },
   "dependencies": {
     "next": "^16.3.8",

@@ -79,7 +79,7 @@ export function Toggle({
 
 export function InactiveNotice() {
   return (
-    <p className="mb-4 rounded-lg bg-warning-50 px-4 py-3 text-theme-sm text-warning-700 dark:bg-warning-500/15 dark:text-warning-500">
+    <p className="mb-4 rounded-lg bg-warning-surface px-4 py-3 text-theme-sm text-warning-ink">
       Your account is inactive, so these settings are read-only. Contact support.
     </p>
   );

@@ -61,3 +61,11 @@ export function subscriptionSeverity(status: string): string {
 export function humanize(value: string): string {
   return value.replace(/_/g, " ");
 }
+
+/** "+601143013150" → "+60 11-4301 3150"; anything not a Malaysian mobile number is returned as given. */
+export function formatMalaysianPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  const rest = digits.startsWith("60") ? digits.slice(2) : digits.startsWith("0") ? digits.slice(1) : null;
+  if (!rest || !/^1\d{8,9}$/.test(rest)) return raw;
+  return `+60 ${rest.slice(0, 2)}-${rest.slice(2, -4)} ${rest.slice(-4)}`;
+}

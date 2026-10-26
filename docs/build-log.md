@@ -2243,3 +2243,29 @@ mockups in the design-system artifact first, then four PRs. Facts checked
 for it: Reseller has no dashboard endpoint, a pending top-up is not
 readable after creation (stays item 24), the SSM number exists only in the
 About Us HTML, prod has 2 Resellers and 1 test Affiliate. PRD §16 item 133.
+
+## 2026-10-26 — ADR-128 PR 1: shared tokens and the PekanGame Partner shell
+
+- Mockups: 10 Partner Portal pages published in the design-system artifact
+  (`pp-*` styles, a Partner Portal section). Writing them against the real
+  API shapes removed what layer 1 can't show: the Reseller order list has
+  no search and no client reference (`reference_number` is the platform's
+  ORD-8 reference), no `paid_at` / `placed_via` on order detail, and wallet
+  ledger rows carry no game or payment method. A draft line saying a
+  withdrawal is "held" while pending was wrong: the ledger debit happens at
+  admin approval (`Admin\WithdrawalController`), so the copy says earnings
+  drop only on approval. No support hours, payout time or licence claim.
+- Tokens: `admin/src/app/tokens.css` is the source, the portal imports a
+  generated copy (`scripts/sync-shared-files.mjs`, CI drift check). Admin
+  CSS output checked byte-for-byte against `staging`'s build: same bytes,
+  one rule moved.
+- Shell: grouped sidebar per role, nude account block, support box from the
+  primary brand's public branding, top bar with breadcrumb and sign out,
+  trust footer, restyled phone bar and More drawer, Figtree. Removed the
+  TailAdmin rail, header, toggle and icon set.
+- Verified: portal and admin `tsc`, `eslint`, `npm test`, `build` green;
+  Playwright against the dev server with a mocked API at 1440 (both roles,
+  light and dark), 768 and 390 (bar, More drawer): computed colours match
+  the tokens, no horizontal overflow, no console errors.
+- Found by the new portal colour-token test: `warning-300`, `warning-700`,
+  `error-200` never had tokens, so those colours never rendered; fixed.

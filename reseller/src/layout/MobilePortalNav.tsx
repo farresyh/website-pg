@@ -2,37 +2,39 @@
 
 import Link from "next/link";
 import { useSidebar } from "@/context/SidebarContext";
-import { HorizontaLDots } from "@/icons";
-import type { PanelNavLink } from "@/layout/PanelSidebar";
+import { PortalIcon } from "@/components/shell/PortalIcon";
+import { isActivePath, type PortalNavItem } from "@/lib/portal-nav";
 
+/** ADR-112's four-slot phone bar: Dashboard, Orders, the role's money page, More. */
 export default function MobilePortalNav({
   primaryItems,
-  moreActive,
-  isActive,
+  moreItems,
+  pathname,
 }: {
-  primaryItems: PanelNavLink[];
-  moreActive: boolean;
-  isActive: (href: string) => boolean;
+  primaryItems: PortalNavItem[];
+  moreItems: PortalNavItem[];
+  pathname: string;
 }) {
   const { isMobileOpen, toggleMobileSidebar } = useSidebar();
+  const moreActive = isMobileOpen || moreItems.some((item) => isActivePath(pathname, item.href));
+  const tab = (active: boolean) =>
+    `flex min-h-16 w-full flex-col items-center justify-center gap-0.5 text-[11px] ${
+      active ? "font-semibold text-cyan-ink shadow-[inset_0_2px_0_var(--color-cyan-600)]" : "font-medium text-ink-subtle hover:text-ink"
+    }`;
 
   return (
     <nav
       aria-label="Primary mobile navigation"
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_rgba(16,24,40,0.06)] backdrop-blur-lg lg:hidden dark:border-gray-800 dark:bg-gray-900/95"
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
-      <ul className="mx-auto grid max-w-lg grid-cols-4 px-2">
+      <ul className="mx-auto grid max-w-lg grid-cols-4">
         {primaryItems.map((item) => {
-          const active = isActive(item.href);
+          const active = isActivePath(pathname, item.href);
           return (
             <li key={item.href}>
-              <Link
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg px-1 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-brand-500 ${active ? "text-brand-600 dark:text-brand-400" : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"}`}
-              >
-                <span aria-hidden="true" className="h-5 w-5 [&>svg]:h-5 [&>svg]:w-5">{item.icon}</span>
-                <span>{item.name}</span>
+              <Link href={item.href} aria-current={active ? "page" : undefined} className={tab(active)}>
+                <PortalIcon name={item.icon} className="h-5 w-5" />
+                {item.name}
               </Link>
             </li>
           );
@@ -44,10 +46,10 @@ export default function MobilePortalNav({
             aria-controls="portal-more-panel"
             aria-expanded={isMobileOpen}
             onClick={toggleMobileSidebar}
-            className={`flex min-h-16 w-full flex-col items-center justify-center gap-1 rounded-lg px-1 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-brand-500 ${isMobileOpen || moreActive ? "text-brand-600 dark:text-brand-400" : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"}`}
+            className={tab(moreActive)}
           >
-            <span aria-hidden="true" className="h-5 w-5"><HorizontaLDots className="h-5 w-5" /></span>
-            <span>More</span>
+            <PortalIcon name="more" className="h-5 w-5" />
+            More
           </button>
         </li>
       </ul>

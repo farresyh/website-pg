@@ -41,3 +41,12 @@
 - A visual claim needs a live screenshot compared side by side with the approved mockup (the ADR-104 2026-09-17 audit found two dark-mode token bugs that code reading missed).
 - If the company registration ever changes, the footer line is a code change; a panel field for it is a layer 2 candidate.
 - Removing the portal's `brand-*` scale must leave no orphaned class: Tailwind v4 drops a colour class whose token doesn't exist without an error, so the portal needs the same guard as the admin's `color-tokens.test.ts`.
+
+### 2026-10-26 build note — PR 1 (tokens, sync, CI guard, shell)
+
+- `admin/src/app/tokens.css` now holds ADR-104's tokens (PrimeReact bridge, `.dark` values, both `@theme` blocks); `admin/src/app/globals.css` imports it. The admin's built CSS is the same bytes as before except one rule's position (`.dark input[type=date]` now follows the `.dark` block; the two selectors never compete).
+- `scripts/sync-theme-presets.mjs` became `scripts/sync-shared-files.mjs`, writing both generated portal copies (theme presets, and `reseller/src/app/tokens.generated.css` with a do-not-edit banner). CI's `theme-preset-drift` job checks both and keeps its name.
+- Decision 7's "variant in its own small file" proved unnecessary: the variant is the shell's use of `nude-100` / `nude-ink`, which are ADR-104 tokens, so the portal adds no token and no variant stylesheet.
+- The portal gained the admin's colour-token test (`npm test` in CI). Its first run found three shades that had never existed in the portal's old token set either (`warning-300`, `warning-700`, `error-200` on the API keys, webhook, domains and storefront screens), so those colours had silently not rendered; they now use `warning-surface` / `warning-ink` / `danger-ink`. The admin's low-contrast-text check joins when PRs 2–4 move the pages.
+- Support contacts come from `GET /api/catalog/branding` with no `X-Storefront-Host` header, which resolves to the primary brand (`ResolveStorefrontBrand`); CORS already allows the portal origin. No new env var.
+- Found, not changed: neither app loads a JetBrains Mono file, so `font-mono` falls back to the system monospace in both. The artifact ships the files; adding them is a PR 2 item, when order numbers move to `code-id`.

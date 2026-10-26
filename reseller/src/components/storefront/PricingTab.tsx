@@ -111,7 +111,7 @@ export default function PricingTab() {
           </Field>
 
           {clamped && (
-            <p className="rounded-lg bg-warning-50 px-3 py-2 text-theme-xs text-warning-700 dark:bg-warning-500/15 dark:text-warning-500">
+            <p className="rounded-lg bg-warning-surface px-3 py-2 text-theme-xs text-warning-ink">
               Your saved markup is {pricing.markup_pct}%, but the platform ceiling is now{" "}
               {pricing.max_markup_pct}% — your storefront currently prices at {pricing.effective_markup_pct}%. Save
               a value at or below the ceiling to clear this.
