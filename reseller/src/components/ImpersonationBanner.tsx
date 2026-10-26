@@ -34,7 +34,7 @@ export default function ImpersonationBanner() {
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 bg-warning-500 px-4 py-2 text-theme-sm font-medium text-black">
+    <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-b border-warning-ink/30 bg-warning-surface px-4 py-2 text-sm font-medium text-warning-ink lg:px-8">
       <span>
         Impersonating <strong>{session.business_name}</strong>
         {session.admin_name ? (
@@ -48,7 +48,7 @@ export default function ImpersonationBanner() {
         type="button"
         onClick={handleExit}
         disabled={exiting}
-        className="rounded-md bg-black/15 px-3 py-1 text-theme-xs hover:bg-black/25 disabled:opacity-50"
+        className="min-h-9 rounded-md border border-warning-ink/40 bg-surface px-3 text-xs font-semibold text-ink hover:bg-subtle disabled:opacity-45"
       >
         {exiting ? "Exiting…" : "Exit impersonation"}
       </button>
