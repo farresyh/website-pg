@@ -119,3 +119,41 @@ export function dateAndTime(iso: string | null): { date: string; time: string } 
     time: d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kuala_Lumpur" }),
   };
 }
+
+/**
+ * One ledger row in words: its type badge and a short line about where the
+ * money came from or went, from the row's own fields (ADR-073 reference
+ * types). An admin's reason, when present, wins.
+ */
+export function ledgerRow(entry: { type: string; amount: number; reference_type: string | null; reason: string | null }): {
+  badge: StatusBadge;
+  detail: string;
+} {
+  const label = ledgerTypeLabel(entry.type);
+  const credit = entry.amount > 0;
+  const map: Record<string, { tone: StatusBadge["tone"]; detail: string }> = {
+    wallet_topup: entry.reference_type === "wallet_topup_attempt"
+      ? { tone: "info", detail: "Paid online through CHIP" }
+      : { tone: "info", detail: "Credited by PekanGame" },
+    wallet_debit: { tone: "neutral", detail: "Paid from wallet" },
+    wallet_refund: { tone: "success", detail: "Order not delivered, amount returned" },
+    order_profit: credit ? { tone: "success", detail: "Your margin on a delivered order" } : { tone: "review", detail: "Correction to an order's margin" },
+    withdrawal: { tone: "neutral", detail: "Sent to your bank" },
+    reseller_tier_fee: { tone: "neutral", detail: "Monthly wholesale-tier fee" },
+    adjustment: { tone: "review", detail: "Adjustment by PekanGame" },
+  };
+  const known = map[entry.type] ?? { tone: "neutral" as const, detail: "" };
+  return { badge: { tone: known.tone, label }, detail: entry.reason?.trim() || known.detail };
+}
+
+/** A signed amount for a ledger: "+ RM 500.00" or "− RM 6.21". */
+export function signedRm(sen: number): string {
+  return `${sen < 0 ? "−" : "+"} ${formatRm(Math.abs(sen))}`;
+}
+
+/** Ringgit typed by a person → sen, or null when it isn't a positive amount with at most 2 decimals. */
+export function toSen(value: string): number | null {
+  if (!/^\d+(\.\d{1,2})?$/.test(value.trim())) return null;
+  const sen = Math.round(Number(value) * 100);
+  return sen > 0 ? sen : null;
+}

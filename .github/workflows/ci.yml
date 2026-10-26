@@ -213,8 +213,8 @@ jobs:
       - run: node scripts/sync-shared-files.mjs
       - name: Fail if a reseller copy is stale
         run: |
-          if ! git diff --exit-code -- reseller/src/lib/theme-presets.ts reseller/src/app/tokens.generated.css reseller/src/app/fonts; then
-            echo "::error::A generated reseller copy is stale (theme presets or ADR-104 tokens). Run: node scripts/sync-shared-files.mjs"
+          if ! git diff --exit-code -- reseller/src/lib/theme-presets.ts reseller/src/app/tokens.generated.css reseller/src/app/fonts reseller/public/images; then
+            echo "::error::A generated reseller copy is stale (theme presets, ADR-104 tokens and fonts, or payment marks). Run: node scripts/sync-shared-files.mjs"
             exit 1
           fi
 
