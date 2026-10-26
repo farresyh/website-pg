@@ -8,7 +8,7 @@ import { join } from "node:path";
  * `--color-*` token doesn't exist. `dark:text-error-400` (~190 uses) did
  * exactly that for months. This fails when a class names a shade of a
  * project colour (error, success, warning, brand, …) that neither
- * globals.css nor the tailwindcss-primeui plugin defines. Tailwind's own
+ * globals.css, tokens.css nor the tailwindcss-primeui plugin defines. Tailwind's own
  * palettes are always defined (no `--color-*: initial` reset in globals.css).
  */
 const TAILWIND_PALETTES = new Set([
@@ -17,9 +17,10 @@ const TAILWIND_PALETTES = new Set([
 ]);
 
 const SRC = join(import.meta.dirname, "..");
-// globals.css plus the tailwindcss-primeui plugin it imports (primary-*, surface-*).
+// globals.css, the tokens.css it imports (ADR-128), and the tailwindcss-primeui plugin (primary-*, surface-*).
 const css = [
   join(SRC, "app/globals.css"),
+  join(SRC, "app/tokens.css"),
   join(SRC, "../node_modules/tailwindcss-primeui/v4/theme/colors.css"),
 ].map((path) => readFileSync(path, "utf8")).join("\n");
 const defined = new Set([...css.matchAll(/--color-([a-z0-9-]+):/g)].map((m) => m[1]));
@@ -34,7 +35,7 @@ function sourceFiles(dir: string): string[] {
 
 const UTILITY = /(?<![\w-])(?:[a-z-]+:)*(?:text|bg|border|ring|fill|stroke|from|via|to|divide|outline|placeholder|decoration|accent|caret|shadow)-([a-z]+(?:-[a-z]+)*)-(\d{2,3})(?:\/\d+)?(?![\w-])/g;
 
-test("every project colour shade used in a class has a token in globals.css", () => {
+test("every project colour shade used in a class has a token in tokens.css or globals.css", () => {
   const missing = new Map<string, string>();
 
   for (const file of sourceFiles(SRC)) {
@@ -48,7 +49,7 @@ test("every project colour shade used in a class has a token in globals.css", ()
   assert.deepEqual(
     [...missing].map(([token, file]) => `${token} (e.g. ${file})`),
     [],
-    "Define the token in globals.css or use a shade that exists.",
+    "Define the token in tokens.css or use a shade that exists.",
   );
 });
 

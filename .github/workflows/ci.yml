@@ -138,6 +138,7 @@ jobs:
           cache-dependency-path: reseller/package-lock.json
       - run: npm ci
       - run: npx tsc --noEmit
+      - run: npm test
       - run: npm run build
       - run: npx eslint .
 
@@ -208,11 +209,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: node scripts/sync-theme-presets.mjs
-      - name: Fail if reseller's copy is stale
+      # Job name kept: it is a required check in the branch ruleset (ADR-037).
+      - run: node scripts/sync-shared-files.mjs
+      - name: Fail if a reseller copy is stale
         run: |
-          if ! git diff --exit-code -- reseller/src/lib/theme-presets.ts; then
-            echo "::error::reseller/src/lib/theme-presets.ts is stale. Run: node scripts/sync-theme-presets.mjs"
+          if ! git diff --exit-code -- reseller/src/lib/theme-presets.ts reseller/src/app/tokens.generated.css; then
+            echo "::error::A generated reseller copy is stale (theme presets or ADR-104 tokens). Run: node scripts/sync-shared-files.mjs"
             exit 1
           fi
 
