@@ -50,3 +50,12 @@
 - The portal gained the admin's colour-token test (`npm test` in CI). Its first run found three shades that had never existed in the portal's old token set either (`warning-300`, `warning-700`, `error-200` on the API keys, webhook, domains and storefront screens), so those colours had silently not rendered; they now use `warning-surface` / `warning-ink` / `danger-ink`. The admin's low-contrast-text check joins when PRs 2–4 move the pages.
 - Support contacts come from `GET /api/catalog/branding` with no `X-Storefront-Host` header, which resolves to the primary brand (`ResolveStorefrontBrand`); CORS already allows the portal origin. No new env var.
 - Found, not changed: neither app loads a JetBrains Mono file, so `font-mono` falls back to the system monospace in both. The artifact ships the files; adding them is a PR 2 item, when order numbers move to `code-id`.
+
+### 2026-10-26 build note — PR 2 (dashboards, orders, order detail)
+
+- Both dashboards, Orders and Order detail follow the mockups, using only existing API data. The Reseller dashboard reads wallet, profile (tier), API keys, webhook and the 5 newest orders; nothing is summed in the browser. Orders tabs show the server's `total` per delivery filter (`per_page=1` requests).
+- Delivery words: `pending` (waiting on the supplier) reads "Pending", so a badge always matches the tab that lists it; "Processing" is `processing` only. Not started and partly delivered stay under All.
+- Order detail never shows a supplier, supplier message, cost or platform margin. A failed or under-review order gets a plain-words alert and, when compensated, a resolution card (wallet refund, store voucher or restored voucher).
+- Shared tokens: the admin's `.dark` block lacked `on-cyan` and `focus-ring`, which the artifact defines (its comment said they "inherit light"). White on the dark cyan-600 measured 2.09:1 on every admin primary button in dark mode; the artifact's dark label is 8.1:1 and its dark ring 8.4:1 on surface. Both now follow the artifact, in both apps.
+- JetBrains Mono (the artifact's files) is declared in `tokens.css` and copied with it by the sync script, so `font-mono` is the real face in both apps.
+- A phone-width table's screen-reader-only header label is absolutely positioned; with `body` as its containing block it escaped the table's scroll box and widened the page at 768px. The scroll box is `relative` now.
