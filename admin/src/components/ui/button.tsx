@@ -5,7 +5,7 @@ import { Button as PRButton } from 'primereact/button';
 import * as React from 'react';
 
 const buttonVariants = cva(
-    'inline-flex gap-2 cursor-pointer select-none items-center justify-center overflow-hidden relative rounded-md font-medium disabled:pointer-events-none disabled:opacity-60 transition-[background-color,color] duration-200 focus-visible:outline-1 focus-visible:outline-offset-2',
+    'inline-flex gap-2 cursor-pointer select-none items-center justify-center overflow-hidden relative rounded-md font-medium disabled:pointer-events-none disabled:opacity-60 transition-[background-color,color] duration-200 focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
     {
         variants: {
             variant: {
@@ -15,14 +15,14 @@ const buttonVariants = cva(
                 outlined: ''
             },
             severity: {
-                default: 'focus-visible:outline-primary',
-                secondary: 'focus-visible:outline-surface-600 dark:focus-visible:outline-surface-300',
-                info: ' focus-visible:outline-blue-500',
-                success: 'focus-visible:outline-green-500',
-                warn: 'focus-visible:outline-amber-500',
-                danger: 'focus-visible:outline-red-500',
-                contrast: 'focus-visible:outline-surface-950 dark:focus-visible:outline-surface-0',
-                help: 'focus-visible:outline-violet-500'
+                default: '',
+                secondary: '',
+                info: '',
+                success: '',
+                warn: '',
+                danger: '',
+                contrast: '',
+                help: ''
             },
             raised: {
                 true: 'shadow-sm'
@@ -50,54 +50,61 @@ const buttonVariants = cva(
             {
                 variant: 'default',
                 severity: 'default',
-                className: 'bg-primary hover:bg-primary-emphasis active:bg-primary-emphasis-alt text-primary-contrast'
+                className: 'bg-cyan-600 hover:bg-cyan-700 active:bg-cyan-700 text-on-cyan'
             },
             {
                 variant: 'default',
                 severity: 'secondary',
-                className:
-                    'bg-surface-100 hover:bg-surface-200 active:bg-surface-300 text-surface-600 hover:text-surface-700 active:text-surface-800 dark:bg-surface-800 dark:hover:bg-surface-700 dark:active:bg-surface-600 dark:text-surface-300 dark:hover:text-surface-200 dark:active:text-surface-100'
+                className: 'bg-subtle hover:bg-border active:bg-border-strong text-ink-muted hover:text-ink active:text-ink'
             },
+            // Deferred (PRD §16): the info/success/warn/danger/help severities
+            // still use Tailwind's stock blue/green/amber/red/violet, not the
+            // design system's status tokens. The `-ink` tokens flip to a light
+            // value in dark mode, so a solid `bg-*-ink text-white` fails dark
+            // contrast; the design system defines status only as a
+            // `-surface`/`-ink` badge pair. Mapping them needs a founder
+            // decision (solid vs badge) — ADR-104 decision 7 (visual change).
             {
                 variant: 'default',
                 severity: 'info',
-                className: 'bg-blue-500 text-surface-0 hover:bg-blue-600 active:bg-blue-700'
+                className: 'bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700'
             },
             {
                 variant: 'default',
                 severity: 'success',
-                className: 'bg-green-500 text-surface-0 hover:bg-green-600 active:bg-green-700'
+                className: 'bg-green-500 text-white hover:bg-green-600 active:bg-green-700'
             },
             {
                 variant: 'default',
                 severity: 'warn',
-                className: 'bg-amber-500 text-surface-0 hover:bg-amber-600 active:bg-amber-700'
+                className: 'bg-amber-500 text-white hover:bg-amber-600 active:bg-amber-700'
             },
             {
                 variant: 'default',
                 severity: 'danger',
-                className: 'bg-red-500 text-surface-0 hover:bg-red-600 active:bg-red-700'
+                className: 'bg-red-500 text-white hover:bg-red-600 active:bg-red-700'
             },
             {
                 variant: 'default',
                 severity: 'help',
-                className: 'bg-violet-500 text-surface-0 hover:bg-violet-600 active:bg-violet-700'
+                className: 'bg-violet-500 text-white hover:bg-violet-600 active:bg-violet-700'
             },
             {
                 variant: 'default',
                 severity: 'contrast',
-                className: 'bg-surface-950 hover:bg-surface-900 active:bg-surface-800 text-white dark:bg-surface-0 dark:hover:bg-surface-100 dark:active:bg-surface-200 dark:text-surface-950'
+                className: 'bg-ink hover:bg-ink/90 active:bg-ink/80 text-surface'
             },
             {
                 variant: 'outlined',
                 severity: 'default',
-                className: 'border border-primary-200 dark:border-primary-700 hover:bg-primary-50 active:bg-primary-100 dark:hover:bg-primary/5 dark:active:bg-primary/15 text-primary'
+                className: 'border border-cyan-600/40 hover:bg-cyan-50 active:bg-cyan-50 text-cyan-ink'
             },
             {
                 variant: 'outlined',
                 severity: 'secondary',
-                className: 'border border-surface-200 dark:border-surface-700 hover:bg-surface-50 active:bg-surface-100 dark:hover:bg-white/5 dark:active:bg-white/15 text-surface-500 dark:text-surface-400'
+                className: 'border border-border hover:bg-subtle active:bg-border text-ink-muted'
             },
+            // Deferred — see the note above.
             {
                 variant: 'outlined',
                 severity: 'info',
@@ -126,18 +133,19 @@ const buttonVariants = cva(
             {
                 variant: 'outlined',
                 severity: 'contrast',
-                className: 'border border-surface-700 dark:border-surface-500 hover:bg-surface-50 active:bg-surface-100 text-surface-950 dark:text-surface-0 dark:hover:bg-surface-800 dark:active:bg-surface-700'
+                className: 'border border-border-strong hover:bg-subtle active:bg-border text-ink'
             },
             {
                 variant: 'text',
                 severity: 'default',
-                className: 'hover:bg-primary-50 active:bg-primary-100 dark:hover:bg-primary/5 dark:active:bg-primary/15 text-primary'
+                className: 'hover:bg-cyan-50 active:bg-cyan-50 text-cyan-ink'
             },
             {
                 variant: 'text',
                 severity: 'secondary',
-                className: 'hover:bg-surface-50 active:bg-surface-100 dark:hover:bg-surface-800 dark:active:bg-surface-700 text-surface-500 dark:text-surface-400'
+                className: 'hover:bg-subtle active:bg-border text-ink-muted'
             },
+            // Deferred — see the note above.
             {
                 variant: 'text',
                 severity: 'info',
@@ -166,7 +174,7 @@ const buttonVariants = cva(
             {
                 variant: 'text',
                 severity: 'contrast',
-                className: 'hover:bg-surface-50 active:bg-surface-100 dark:hover:bg-surface-800 dark:active:bg-surface-700 text-surface-950 dark:text-surface-0'
+                className: 'hover:bg-subtle active:bg-border text-ink'
             }
         ]
     }

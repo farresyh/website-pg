@@ -37,11 +37,11 @@ function DataTable({ className, ...props }: DataTableRootProps) {
 }
 
 function DataTableHeader({ className, ...props }: DataTableHeaderProps) {
-    return <PRDataTable.Header className={cn('py-2 px-3.5 border-b border-surface-200 dark:border-surface-700', 'bg-surface-0 dark:bg-surface-900', 'text-surface-700 dark:text-surface-0', className)} {...props} />;
+    return <PRDataTable.Header className={cn('py-2 px-3.5 border-b border-border', 'bg-surface', 'text-ink', className)} {...props} />;
 }
 
 function DataTableFooter({ className, ...props }: DataTableFooterProps) {
-    return <PRDataTable.Footer className={cn('py-2 px-3.5 border-b border-surface-200 dark:border-surface-700', 'bg-surface-0 dark:bg-surface-900', 'text-surface-700 dark:text-surface-0', className)} {...props} />;
+    return <PRDataTable.Footer className={cn('py-2 px-3.5 border-b border-border', 'bg-surface', 'text-ink', className)} {...props} />;
 }
 
 function DataTableTableContainer({ className, ...props }: DataTableTableContainerProps) {
@@ -68,25 +68,24 @@ function DataTableTHeadCell({ className, frozen, ...props }: DataTableTHeadCellP
             frozen={frozen}
             className={cn(
                 'group/th relative py-2 px-3.5 font-semibold text-start transition-colors duration-200',
-                'border-b border-surface-200 dark:border-surface-700',
-                'bg-surface-0 dark:bg-surface-900',
-                'text-surface-700 dark:text-surface-0',
+                'border-b border-border',
+                'bg-surface',
+                'text-ink',
                 // sortable (has Sort child)
                 'has-data-[part=sort]:cursor-pointer has-data-[part=sort]:select-none',
                 'has-data-[part=sort]:focus-visible:outline',
-                'has-data-[part=sort]:focus-visible:-outline-offset-1 has-data-[part=sort]:focus-visible:outline-primary',
+                'has-data-[part=sort]:focus-visible:-outline-offset-1 has-data-[part=sort]:focus-visible:outline-focus-ring',
                 // hover when sortable & not currently sorted
-                'has-data-[part=sort]:not-has-data-sorted:hover:bg-surface-100 has-data-[part=sort]:not-has-data-sorted:hover:text-surface-800',
-                'dark:has-data-[part=sort]:not-has-data-sorted:hover:bg-surface-800 dark:has-data-[part=sort]:not-has-data-sorted:hover:text-surface-0',
+                'has-data-[part=sort]:not-has-data-sorted:hover:bg-subtle has-data-[part=sort]:not-has-data-sorted:hover:text-ink',
                 // sorted
                 'has-data-sorted:bg-highlight',
-                'group-data-[show-gridlines]/datatable:border-e group-data-[show-gridlines]/datatable:border-surface-200 dark:group-data-[show-gridlines]/datatable:border-surface-700 last:border-e-0',
+                'group-data-[show-gridlines]/datatable:border-e group-data-[show-gridlines]/datatable:border-border last:border-e-0',
                 'group-data-resizable-columns/datatable:box-border group-data-resizable-columns/datatable:overflow-hidden group-data-resizable-columns/datatable:whitespace-nowrap',
                 frozen &&
                     cn(
                         'sticky z-[1]',
-                        'data-[frozen-edge=left]:shadow-[inset_-1px_0_0_0_rgba(226,232,240,1)] dark:data-[frozen-edge=left]:shadow-[inset_-1px_0_0_0_rgba(39,39,42,1)]',
-                        'data-[frozen-edge=right]:shadow-[inset_1px_0_0_0_rgba(226,232,240,1)] dark:data-[frozen-edge=right]:shadow-[inset_1px_0_0_0_rgba(39,39,42,1)]'
+                        'data-[frozen-edge=left]:shadow-[inset_-1px_0_0_0_var(--color-border)]',
+                        'data-[frozen-edge=right]:shadow-[inset_1px_0_0_0_var(--color-border)]'
                     ),
                 // size variants
                 'group-data-[size=small]/datatable:py-0.5 group-data-[size=small]/datatable:px-1.5',
@@ -106,17 +105,15 @@ function DataTableRow({ className, ...props }: DataTableRowProps) {
     return (
         <PRDataTable.Row
             className={cn(
-                'bg-surface-0 dark:bg-surface-900',
-                'text-surface-700 dark:text-surface-0',
+                'bg-surface',
+                'text-ink',
                 // striped
-                'group-data-striped-rows/datatable:even:bg-surface-50 dark:group-data-striped-rows/datatable:even:bg-surface-950',
+                'group-data-striped-rows/datatable:even:bg-subtle',
                 // selectable cursor
                 'group-data-selection-mode/datatable:cursor-pointer',
                 // hover
-                'group-data-row-hover/datatable:hover:bg-surface-100 group-data-row-hover/datatable:hover:text-surface-800',
-                'dark:group-data-row-hover/datatable:hover:bg-surface-800 dark:group-data-row-hover/datatable:hover:text-surface-0',
-                'group-data-selection-mode/datatable:hover:bg-surface-100 group-data-selection-mode/datatable:hover:text-surface-800',
-                'dark:group-data-selection-mode/datatable:hover:bg-surface-800 dark:group-data-selection-mode/datatable:hover:text-surface-0',
+                'group-data-row-hover/datatable:hover:bg-subtle group-data-row-hover/datatable:hover:text-ink',
+                'group-data-selection-mode/datatable:hover:bg-subtle group-data-selection-mode/datatable:hover:text-ink',
                 // selected (highest priority)
                 'data-selected:bg-highlight!',
                 // row-reorder drop point
@@ -134,14 +131,14 @@ function DataTableCell({ className, frozen, ...props }: DataTableCellProps) {
         <PRDataTable.Cell
             frozen={frozen}
             className={cn(
-                'text-start py-2 px-3.5 border-b border-surface-200 dark:border-surface-800',
-                'group-data-[show-gridlines]/datatable:border-e group-data-[show-gridlines]/datatable:border-surface-200 dark:group-data-[show-gridlines]/datatable:border-surface-800 last:border-e-0',
+                'text-start py-2 px-3.5 border-b border-border',
+                'group-data-[show-gridlines]/datatable:border-e group-data-[show-gridlines]/datatable:border-border last:border-e-0',
                 'group-data-resizable-columns/datatable:box-border group-data-resizable-columns/datatable:overflow-hidden group-data-resizable-columns/datatable:whitespace-nowrap',
                 frozen &&
                     cn(
                         'sticky z-[1] bg-inherit',
-                        'data-[frozen-edge=left]:shadow-[inset_-1px_0_0_0_rgba(226,232,240,1)] dark:data-[frozen-edge=left]:shadow-[inset_-1px_0_0_0_rgba(39,39,42,1)]',
-                        'data-[frozen-edge=right]:shadow-[inset_1px_0_0_0_rgba(226,232,240,1)] dark:data-[frozen-edge=right]:shadow-[inset_1px_0_0_0_rgba(39,39,42,1)]'
+                        'data-[frozen-edge=left]:shadow-[inset_-1px_0_0_0_var(--color-border)]',
+                        'data-[frozen-edge=right]:shadow-[inset_1px_0_0_0_var(--color-border)]'
                     ),
                 // size variants
                 'group-data-[size=small]/datatable:py-0.5 group-data-[size=small]/datatable:px-1.5',
@@ -166,7 +163,7 @@ function DataTableTFootRow({ className, ...props }: DataTableTFootRowProps) {
 }
 
 function DataTableTFootCell({ className, ...props }: DataTableTFootCellProps) {
-    return <PRDataTable.TFootCell className={cn('text-start py-2 px-3.5 font-semibold border-b border-surface-200 dark:border-surface-800', 'bg-surface-0 dark:bg-surface-900', 'text-surface-700 dark:text-surface-0', className)} {...props} />;
+    return <PRDataTable.TFootCell className={cn('text-start py-2 px-3.5 font-semibold border-b border-border', 'bg-surface', 'text-ink', className)} {...props} />;
 }
 
 function DataTableSort({ className, ...props }: DataTableSortProps) {
@@ -178,8 +175,8 @@ function DataTableSortIndicator({ className, match, ...props }: DataTableSortInd
         <PRDataTable.SortIndicator
             match={match}
             className={cn(
-                'text-xs text-surface-500 dark:text-surface-400 transition-colors duration-200',
-                match === 'unsorted' && 'group-has-[[data-part=sort]]/th:not-has-[[data-sorted]]/th:group-hover/th:text-surface-600 dark:group-has-[[data-part=sort]]/th:not-has-[[data-sorted]]/th:group-hover/th:text-surface-300',
+                'text-xs text-ink-subtle transition-colors duration-200',
+                match === 'unsorted' && 'group-has-[[data-part=sort]]/th:not-has-[[data-sorted]]/th:group-hover/th:text-ink-muted',
                 className
             )}
             {...props}
@@ -188,12 +185,12 @@ function DataTableSortIndicator({ className, match, ...props }: DataTableSortInd
 }
 
 function DataTableSortOrder({ className, ...props }: DataTableSortOrderProps) {
-    return <PRDataTable.SortOrder className={cn('bg-primary text-primary-contrast rounded-full min-w-5 h-5 inline-flex items-center justify-center text-[10px] font-bold', className)} {...props} />;
+    return <PRDataTable.SortOrder className={cn('bg-cyan-600 text-on-cyan rounded-full min-w-5 h-5 inline-flex items-center justify-center text-[10px] font-bold', className)} {...props} />;
 }
 
 function DataTableLoading({ className, children, ...props }: DataTableLoadingProps) {
     return (
-        <PRDataTable.Loading className={cn('bg-white/50 dark:bg-black/30 text-surface-200 absolute inset-0 z-10 flex items-center justify-center transition-colors duration-300', className)} {...props}>
+        <PRDataTable.Loading className={cn('bg-surface/50 text-ink-subtle absolute inset-0 z-10 flex items-center justify-center transition-colors duration-300', className)} {...props}>
             {children ?? <Spinner className="animate-spin w-7 h-7" />}
         </PRDataTable.Loading>
     );
@@ -202,7 +199,7 @@ function DataTableLoading({ className, children, ...props }: DataTableLoadingPro
 function DataTablePagination({ className, ...props }: DataTablePaginationProps) {
     return (
         <PRDataTable.Pagination
-            className={cn('flex items-center justify-center flex-wrap py-3 px-3.5 gap-1', 'border-t border-surface-200 dark:border-surface-700', 'bg-surface-0 dark:bg-surface-900 text-surface-700 dark:text-surface-0', className)}
+            className={cn('flex items-center justify-center flex-wrap py-3 px-3.5 gap-1', 'border-t border-border', 'bg-surface text-ink', className)}
             {...props}
         />
     );
@@ -215,11 +212,11 @@ const DataTableCellEditorContent = PRDataTable.CellEditorContent;
 const DataTableColumnReorder = PRDataTable.ColumnReorder;
 
 function DataTableColumnReorderIndicatorUp({ className, ...props }: DataTableColumnReorderIndicatorUpProps) {
-    return <PRDataTable.ColumnReorderIndicatorUp className={cn('absolute hidden text-primary', className)} {...props} />;
+    return <PRDataTable.ColumnReorderIndicatorUp className={cn('absolute hidden text-cyan-600', className)} {...props} />;
 }
 
 function DataTableColumnReorderIndicatorDown({ className, ...props }: DataTableColumnReorderIndicatorDownProps) {
-    return <PRDataTable.ColumnReorderIndicatorDown className={cn('absolute hidden text-primary', className)} {...props} />;
+    return <PRDataTable.ColumnReorderIndicatorDown className={cn('absolute hidden text-cyan-600', className)} {...props} />;
 }
 
 function DataTableColumnReorderTarget({ className, ...props }: DataTableColumnReorderTargetProps) {
@@ -227,7 +224,7 @@ function DataTableColumnReorderTarget({ className, ...props }: DataTableColumnRe
         <PRDataTable.ColumnReorderTarget
             className={cn(
                 'relative flex items-center gap-2 w-full min-h-full box-border',
-                'data-[drop-active]:bg-primary/10',
+                'data-[drop-active]:bg-cyan-600/10',
                 'data-[drop-active]:data-[drop-side=start]:shadow-[inset_2px_0_0_0_var(--p-primary-color)]',
                 'data-[drop-active]:data-[drop-side=end]:shadow-[inset_-2px_0_0_0_var(--p-primary-color)]',
                 className
@@ -242,7 +239,7 @@ function DataTableColumnResizer({ className, ...props }: DataTableColumnResizerP
 }
 
 function DataTableColumnResizeIndicator({ className, ...props }: DataTableColumnResizeIndicatorProps) {
-    return <PRDataTable.ColumnResizeIndicator className={cn('absolute top-0 w-px z-10 bg-primary', className)} {...props} />;
+    return <PRDataTable.ColumnResizeIndicator className={cn('absolute top-0 w-px z-10 bg-cyan-600', className)} {...props} />;
 }
 
 const DataTableColumnToggle = PRDataTable.ColumnToggle;

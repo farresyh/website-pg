@@ -24,7 +24,7 @@ const tagVariants = cva('inline-flex items-center justify-center gap-1 font-bold
             warn: 'bg-warning-surface text-warning-ink',
             danger: 'bg-danger-surface text-danger-ink',
             review: 'bg-review-surface text-review-ink',
-            contrast: 'bg-surface-950 dark:bg-surface-0 text-surface-0 dark:text-surface-950'
+            contrast: 'bg-ink text-surface'
         },
         rounded: {
             true: 'rounded-full'
