@@ -63,7 +63,7 @@ export default function CatalogTab() {
 
       {data && (
         <>
-          <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+          <p className="text-theme-sm text-ink-subtle">
             Every game is shown on your storefront by default. Turn one off to hide it. At least one game must
             stay visible.
           </p>
@@ -75,17 +75,17 @@ export default function CatalogTab() {
           />
 
           <Panel>
-            <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+            <ul className="divide-y divide-border">
               {filtered.map((game) => {
                 const lastVisible = game.is_visible && visibleCount <= 1;
                 return (
                   <li key={game.id} className="flex items-center gap-4 px-5 py-3">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-theme-sm font-medium text-gray-800 dark:text-white/90">
+                      <p className="truncate text-theme-sm font-medium text-ink">
                         {game.name}
                       </p>
                       {game.category && (
-                        <p className="text-theme-xs text-gray-500 dark:text-gray-400">{game.category}</p>
+                        <p className="text-theme-xs text-ink-subtle">{game.category}</p>
                       )}
                     </div>
                     <span

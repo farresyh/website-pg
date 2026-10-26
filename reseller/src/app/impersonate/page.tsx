@@ -63,19 +63,19 @@ export default function ImpersonatePage() {
   }, [router]);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 p-8 dark:bg-gray-900">
-      <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-8 text-center dark:border-gray-800 dark:bg-white/[0.03]">
+    <main className="flex min-h-screen items-center justify-center bg-subtle p-8">
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-surface p-8 text-center">
         {error ? (
           <>
-            <p className="text-sm font-medium text-error-600 dark:text-error-400">
+            <p className="text-sm font-medium text-danger-ink">
               {error}
             </p>
-            <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
+            <p className="mt-2 text-theme-xs text-ink-subtle">
               You can close this tab.
             </p>
           </>
         ) : (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm text-ink-subtle">
             Starting impersonation session…
           </p>
         )}

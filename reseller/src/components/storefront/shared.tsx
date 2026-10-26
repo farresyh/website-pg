@@ -1,9 +1,10 @@
 "use client";
 
+import { buttonClass } from "@/components/ui";
+
 /** ADR-060 PR-6 — form primitives shared across the four Storefront tabs. */
 
-export const inputClass =
-  "w-full rounded-lg border border-gray-300 px-3 py-2 text-theme-sm text-gray-800 outline-none focus:border-brand-400 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
+export { inputClass } from "@/components/ui";
 
 export function Field({
   label,
@@ -16,9 +17,9 @@ export function Field({
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-theme-sm font-medium text-gray-700 dark:text-gray-300">{label}</span>
+      <span className="text-theme-sm font-medium text-ink-muted">{label}</span>
       {children}
-      {hint && <span className="block text-theme-xs text-gray-500 dark:text-gray-400">{hint}</span>}
+      {hint && <span className="block text-theme-xs text-ink-subtle">{hint}</span>}
     </label>
   );
 }
@@ -39,11 +40,11 @@ export function SaveButton({
       <button
         type="submit"
         disabled={saving || disabled}
-        className="rounded-lg bg-brand-500 px-4 py-2 text-theme-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+        className={buttonClass("primary")}
       >
         {saving ? "Saving…" : label}
       </button>
-      {saved && <span className="text-theme-sm text-success-600 dark:text-success-500">Saved.</span>}
+      {saved && <span className="text-theme-sm text-success-ink">Saved.</span>}
     </div>
   );
 }
@@ -65,11 +66,11 @@ export function Toggle({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-40 ${
-        checked ? "bg-brand-500" : "bg-gray-300 dark:bg-gray-700"
+        checked ? "bg-cyan-600" : "bg-border-strong"
       }`}
     >
       <span
-        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+        className={`absolute top-0.5 h-5 w-5 rounded-full bg-surface transition-transform ${
           checked ? "translate-x-[22px]" : "translate-x-0.5"
         }`}
       />
@@ -86,5 +87,5 @@ export function InactiveNotice() {
 }
 
 export function TabLoading() {
-  return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
+  return <p className="text-sm text-ink-subtle">Loading…</p>;
 }
