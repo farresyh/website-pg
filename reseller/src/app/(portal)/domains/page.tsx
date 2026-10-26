@@ -214,7 +214,7 @@ export default function DomainsPage() {
                             type="button"
                             disabled={busyId === d.id}
                             onClick={() => run(d.id, removeDomain)}
-                            className="rounded-lg border border-error-200 px-3 py-1.5 text-theme-xs text-error-600 hover:bg-error-50 disabled:opacity-50 dark:border-error-500/30 dark:text-error-400 dark:hover:bg-error-500/10"
+                            className="rounded-lg border border-danger-ink/30 px-3 py-1.5 text-theme-xs text-danger-ink hover:bg-danger-surface disabled:opacity-50"
                           >
                             Remove
                           </button>
