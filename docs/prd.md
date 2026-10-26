@@ -911,7 +911,9 @@ moved to group D). Re-verify before building.
   2026-10-26): the PekanGame Admin design system on `reseller/` as a
   "PekanGame Partner" variant, frontend only. Mockups published in the
   design-system artifact (Partner Portal group). PR 1 (tokens, sync, CI
-  guard, shell) built 2026-10-26; PRs 2–4 (pages) next.
+  guard, shell) and PR 2 (both dashboards, Orders, Order detail) built
+  2026-10-26; PR 3 (Wallet, Earnings, Withdrawal) and PR 4 (settings
+  pages, Login) next.
   Layer 2 (charts, needs-attention, pending top-up) is items 25 and 24
   plus a new ADR.
 - **13** Self-serve reseller signup.

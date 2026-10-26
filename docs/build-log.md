@@ -2269,3 +2269,23 @@ About Us HTML, prod has 2 Resellers and 1 test Affiliate. PRD §16 item 133.
   the tokens, no horizontal overflow, no console errors.
 - Found by the new portal colour-token test: `warning-300`, `warning-700`,
   `error-200` never had tokens, so those colours never rendered; fixed.
+
+## 2026-10-26 — ADR-128 PR 2: dashboards, Orders and Order detail
+
+- Built to the mockups on existing API data only (ADR-128 build note).
+  Shared pieces in `components/ui.tsx` (badge, card head, copyable ID,
+  balance hero, facts, pager, skeleton) and `components/orders/OrderTable`;
+  the older `PageHeader`/`Panel`/`StatusTag` keep their API with the new
+  look, so PR 3–4 screens already read better.
+- Fixed in the shared tokens (affects the admin too): dark-mode
+  `on-cyan` and `focus-ring` were missing, so every admin primary button in
+  dark mode had white text on light cyan at 2.09:1. Now the artifact's
+  values (8.1:1, ring 8.4:1).
+- JetBrains Mono files added (from the design-system artifact), declared in
+  `tokens.css`; both apps now render IDs in it (verified bundled in the
+  admin build and loaded in the portal).
+- Found while verifying at 768px: an `sr-only` table header escaped the
+  scroll box and widened the page. Fixed with `relative` on the box.
+- Verified: portal and admin `tsc`, `eslint`, `npm test`, `build`; Playwright
+  with mocked API data at 1440 (both roles, light and dark), 768 and 390:
+  no horizontal overflow, no console errors, mono font loaded.
