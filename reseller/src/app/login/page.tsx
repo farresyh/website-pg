@@ -11,6 +11,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { setClientSession } from "@/lib/session";
+import { useSupportContacts, whatsAppLink } from "@/hooks/useSupportContacts";
+import { formatMalaysianPhone } from "@/lib/format";
+import AuthLayout from "@/components/shell/AuthLayout";
+import { buttonClass, inputClass } from "@/components/ui";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,6 +23,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const support = useSupportContacts();
 
   useEffect(() => {
     // e.g. after `/set-password` redirects here on success (ADR-058
@@ -74,48 +79,28 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 p-8 dark:bg-gray-900">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-sm space-y-5 rounded-2xl border border-gray-200 bg-white p-8 shadow-theme-sm dark:border-gray-800 dark:bg-white/[0.03]"
-      >
+    <AuthLayout>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">
-            Partner Portal
-          </h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Sign in to your partner account.
-          </p>
+          <h2 className="text-[22px] font-[650] leading-7 text-ink">Sign in</h2>
+          <p className="mt-1 text-[13px] text-ink-muted">Use the email your PekanGame invite was sent to.</p>
         </div>
 
-        {notice && (
-          <p className="rounded-lg bg-success-50 px-3 py-2 text-sm text-success-600 dark:bg-success-500/15 dark:text-success-400">
-            {notice}
-          </p>
-        )}
-
+        {notice && <p className="rounded-md bg-success-surface px-3 py-2 text-sm text-success-ink">{notice}</p>}
         {error && (
-          <p className="rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+          <p role="alert" className="rounded-md bg-danger-surface px-3 py-2 text-sm text-danger-ink">
             {error}
           </p>
         )}
 
-        <div className="space-y-1.5">
-          <label htmlFor="email" className="text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="email" className="text-[13px] font-semibold text-ink">
             Email
           </label>
-          <input
-            id="email"
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-theme-sm text-gray-800 outline-none focus:border-brand-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-          />
+          <input id="email" type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} className={`${inputClass} sm:min-h-11`} />
         </div>
-        <div className="space-y-1.5">
-          <label htmlFor="password" className="text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="password" className="text-[13px] font-semibold text-ink">
             Password
           </label>
           <input
@@ -125,17 +110,21 @@ export default function LoginPage() {
             autoComplete="current-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-theme-sm text-gray-800 outline-none focus:border-brand-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+            className={`${inputClass} sm:min-h-11`}
           />
         </div>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full rounded-lg bg-brand-500 py-2.5 text-theme-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
-        >
+        <button type="submit" disabled={submitting} className={`${buttonClass("primary")} h-11 w-full text-sm`}>
           {submitting ? "Signing in…" : "Sign in"}
         </button>
+        {support?.phone && (
+          <p className="text-center text-xs leading-[18px] text-ink-subtle">
+            Forgot your password, or no invite yet?{" "}
+            <a href={whatsAppLink(support.phone)} target="_blank" rel="noreferrer" className="whitespace-nowrap font-semibold text-cyan-ink hover:underline">
+              WhatsApp {formatMalaysianPhone(support.phone)}
+            </a>
+          </p>
+        )}
       </form>
-    </main>
+    </AuthLayout>
   );
 }

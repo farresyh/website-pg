@@ -6,7 +6,7 @@ import { PortalIcon } from "@/components/shell/PortalIcon";
  * in the admin panel and served by the primary storefront.
  */
 const STOREFRONT = "https://pekangame.com";
-const LINKS = [
+export const LEGAL_LINKS = [
   { label: "Terms", href: `${STOREFRONT}/terms` },
   { label: "Refund policy", href: `${STOREFRONT}/refund-policy` },
   { label: "About us", href: `${STOREFRONT}/about-us` },
@@ -20,7 +20,7 @@ export default function TrustFooter() {
         PekanGame Partner is operated by <b className="font-semibold text-ink-muted">LWF Group Sdn. Bhd.</b> (202601038896)
       </span>
       <span className="flex-1" />
-      {LINKS.map((link) => (
+      {LEGAL_LINKS.map((link) => (
         <a key={link.href} href={link.href} target="_blank" rel="noreferrer" className="text-ink-muted underline underline-offset-2 hover:text-ink">
           {link.label}
         </a>
