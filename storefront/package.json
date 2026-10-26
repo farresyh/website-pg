@@ -13,11 +13,11 @@
     "@phosphor-icons/react": "^2.1.10",
     "@vercel/speed-insights": "^2.0.0",
     "laravel-echo": "^2.4.0",
-    "next": "^16.3.8",
+    "next": "^16.4.3",
     "pusher-js": "^8.6.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
