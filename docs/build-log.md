@@ -2434,3 +2434,39 @@ its hand-rolled `ui.tsx`, so the two apps can't drift.
 
 **Not live.** Ships with the rest of item 133 (the founder's page-by-page
 review of layer 1, then a release).
+
+## 2026-10-27 — Dependency advisories: targeted upgrades (next, zod, livewire, docs-site)
+
+**Why.** The weekly `dependency-audit` (2026-10-17) went red on newly
+published advisories. The one that matters is a **critical `next` RCE**
+(unauthenticated, via the Image Optimization API with SVG — plus a DoS in
+Server Actions and an RCE in `use cache`), affecting all three Next.js apps.
+
+**Shipped (branch `fix/dependency-advisories`), targeted, no `--force`/`--with-dependencies`:**
+- `next` `^16.3.8` → `^16.4.3` (admin, storefront, reseller). Patch bump
+  within 16.x; 16.4.0 was the vulnerable floor.
+- `zod` `^4.4.3` → `^4.6.7` (storefront, direct runtime dep per ADR-044).
+- `livewire/livewire` v4.4.2 → v4.4.8 (backend; transitive via
+  `laravel/pulse`, the Pulse dashboard). Medium: `#[Authorize]` authorization
+  bypass. No Livewire use in `app/`/`routes/` — Pulse's own UI only.
+- `zod` dev-only (admin, reseller, docs-site, via the `eslint-config-next`
+  → `eslint-plugin-react-hooks` → `zod-validation-error` chain): bumped
+  transitively by `npm audit fix` (non-force). Not shipped; the CI's
+  `--omit=dev` never flagged it.
+- docs-site (build-time only, static SSG): `undici` 8.10.2→8.12.3,
+  `vite` 8.3.0→8.3.5, `fast-uri` 3.1.8→3.1.9,
+  `postcss-selector-parser` 6.1.4→6.1.5, `zod` 4.6.1→4.6.7 via `npm audit fix`
+  (non-force). `astro` stays: the one remaining advisory is **low** (CSS
+  injection in View Transitions) and needs `--force` to reach 7.4.2, which is
+  outside the stated range — the same `--force` the policy says not to use.
+
+**Verified.**
+- `composer audit` clean; `npm audit` = 0 in admin/storefront/reseller;
+  docs-site `npm audit --omit=dev --audit-level=high` passes (only the `low`
+  astro advisory remains, below the CI threshold).
+- admin build 51/51 + test 19/19; storefront build 14/14; reseller build
+  21/21 + test 8/8; docs-site build complete; backend `php artisan test`
+  3080/3080.
+
+**Not live.** Ships with the portal redesign + shared kit in the next
+`staging`→`main` release (one regression window, see item 133).
