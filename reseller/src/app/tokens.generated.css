@@ -7,6 +7,21 @@
  * run `node scripts/sync-shared-files.mjs`; CI's `theme-preset-drift` job
  * fails while the copy is stale. Keep app-specific CSS out of this file.
  */
+
+/* ADR-104 `code-id`: order numbers, codes and IDs. The files sit beside this
+   file (fonts/), and the sync script copies them with it. */
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./fonts/jetbrains-mono-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./fonts/jetbrains-mono-500.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
 /*
  * ADR-038 / ADR-104: PrimeReact-Tailwind design tokens — the Backups
  * screen (BAK-1..5, ADR-039) is the first screen built with these
@@ -92,13 +107,12 @@
    * ADR-104: the app's own semantic tokens below (bg/ink/accent/status)
    * that the artifact specifies as genuinely DIFFERENT hex per mode
    * (not just a different stop of the same ramp, unlike brand/gray/
-   * surface above) get their dark values here. Anything not listed —
-   * on-cyan, focus-ring — is documented in the artifact
-   * as "inherits light", i.e. deliberately the same hex in both modes,
-   * so it has no entry here by design, not by omission. `info-*` USED
-   * to be filed under that same "inherits light" bucket — a founder
-   * live-browser audit (D2) found that reading wrong, see its own entry
-   * below.
+   * surface above) get their dark values here. `info-*` USED to be filed
+   * under an "inherits light" bucket — a founder live-browser audit (D2)
+   * found that reading wrong, see its own entry below. ADR-128
+   * (2026-10-26): so were on-cyan and focus-ring. The artifact gives both
+   * a dark value; white on the dark cyan-600 measured 2.09:1, the dark
+   * label 8.1:1, and the dark ring 8.4:1 on surface (was 3.2:1).
    */
   --color-canvas: #121110;
   --color-surface: #1a1917;
@@ -145,6 +159,8 @@
      hardcode — same derivation the light values already use. */
   --color-info-surface: #12303a;
   --color-info-ink: #7dd5e1;
+  --color-on-cyan: #0b1f24;
+  --color-focus-ring: #4cc3d4;
 
   --shadow-xs: 0px 1px 2px 0px rgb(0 0 0 / 40%);
   --shadow-md:
@@ -279,9 +295,8 @@
    * across all 9 of its sections before this ADR was grilled). Light
    * values here; dark overrides live in the `.dark{}` block above for
    * every token the artifact defines a genuinely different dark hex for
-   * — the rest (on-cyan, info-*, focus-ring) are
-   * deliberately "inherits light" per the artifact, so they have no
-   * `.dark` entry. "surface"/"ink" suffixes (not "bg") avoid a
+   * (since 2026-10-26 that includes on-cyan, info-* and focus-ring; see
+   * the `.dark` block). "surface"/"ink" suffixes (not "bg") avoid a
    * bg-x-bg-style stutter in the generated Tailwind utility names.
    */
   --color-canvas: #f6f4f0;
