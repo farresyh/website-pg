@@ -13,8 +13,11 @@ import {
   type StorefrontHeroSlidesResponse,
   type HeroSlideInput,
 } from "@/lib/portal";
-import { Panel, ErrorNote, EmptyRow } from "@/components/ui";
-import { Field, inputClass, SaveButton, Toggle, InactiveNotice, TabLoading } from "./shared";
+import { Panel, ErrorNote, EmptyRow } from "@/components/composites";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Field, SaveButton, Toggle, InactiveNotice, TabLoading } from "./shared";
 
 type Draft = HeroSlideInput & { id: number | null };
 
@@ -109,7 +112,7 @@ export default function HeroTab() {
 
       {data && (
         <>
-          <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+          <p className="text-theme-sm text-ink-subtle">
             {slides.length} of {data.max_slides} slides. When no slide is active, your storefront shows the
             default PekanGame hero.
           </p>
@@ -118,17 +121,17 @@ export default function HeroTab() {
             {slides.map((slide) => (
               <Panel key={slide.id}>
                 <div className="flex flex-wrap items-center gap-4 p-4">
-                  <div className="h-14 w-24 shrink-0 overflow-hidden rounded-md border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900">
+                  <div className="h-14 w-24 shrink-0 overflow-hidden rounded-md border border-border bg-subtle">
                     {slide.image_url && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={slide.image_url} alt="" className="h-full w-full object-cover" />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-gray-800 dark:text-white/90">
-                      {slide.title || <span className="italic text-gray-400">Asset-only banner</span>}
+                    <p className="truncate font-medium text-ink">
+                      {slide.title || <span className="italic text-ink-subtle">Asset-only banner</span>}
                     </p>
-                    <p className="text-theme-xs text-gray-500 dark:text-gray-400">Order {slide.sort_order}</p>
+                    <p className="text-theme-xs text-ink-subtle">Order {slide.sort_order}</p>
                   </div>
                   <Toggle
                     checked={slide.is_active}
@@ -140,7 +143,7 @@ export default function HeroTab() {
                       <button
                         type="button"
                         onClick={() => setEditing(toDraft(slide))}
-                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-theme-xs text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+                        className="rounded-md border border-border px-3 py-1.5 text-theme-xs text-ink-muted hover:bg-subtle"
                       >
                         Edit
                       </button>
@@ -148,7 +151,7 @@ export default function HeroTab() {
                         type="button"
                         disabled={busyId === slide.id}
                         onClick={() => remove(slide)}
-                        className="rounded-lg border border-error-200 px-3 py-1.5 text-theme-xs text-error-600 hover:bg-error-50 disabled:opacity-50 dark:border-error-500/30 dark:text-error-400 dark:hover:bg-error-500/10"
+                        className="rounded-md border border-danger-ink/30 px-3 py-1.5 text-theme-xs text-danger-ink hover:bg-danger-surface disabled:opacity-50"
                       >
                         Delete
                       </button>
@@ -161,14 +164,13 @@ export default function HeroTab() {
           </div>
 
           {writable && !editing && (
-            <button
+            <Button
               type="button"
               disabled={atCap}
               onClick={() => setEditing({ ...BLANK, sort_order: slides.length })}
-              className="rounded-lg bg-brand-500 px-4 py-2 text-theme-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
             >
               {atCap ? `Maximum ${data.max_slides} slides` : "Add a slide"}
-            </button>
+            </Button>
           )}
 
           {editing && (
@@ -242,59 +244,55 @@ function SlideForm({
             type="file"
             accept="image/jpeg,image/png,image/webp"
             onChange={(e) => setImage(e.target.files?.[0] ?? null)}
-            className="block text-theme-xs text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-theme-xs file:font-medium file:text-brand-600 dark:text-gray-400 dark:file:bg-brand-500/15 dark:file:text-brand-400"
+            className="block text-theme-xs text-ink-muted file:mr-3 file:rounded-md file:border-0 file:bg-cyan-50 file:px-3 file:py-1.5 file:text-theme-xs file:font-medium file:text-cyan-ink"
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Eyebrow">
-            <input value={form.eyebrow} onChange={(e) => set("eyebrow", e.target.value)} className={inputClass} />
+            <Input value={form.eyebrow} onChange={(e) => set("eyebrow", e.target.value)} />
           </Field>
           <Field label="Sort order">
-            <input
+            <Input
               type="number"
               min={0}
               max={99}
               value={form.sort_order}
               onChange={(e) => set("sort_order", Number(e.target.value))}
-              className={inputClass}
             />
           </Field>
         </div>
         <Field label="Title" hint="Leave blank for an asset-only banner (all copy baked into the image).">
-          <input value={form.title} onChange={(e) => set("title", e.target.value)} className={inputClass} />
+          <Input value={form.title} onChange={(e) => set("title", e.target.value)} />
         </Field>
         <Field label="Description">
-          <textarea
+          <Textarea
             value={form.description}
             onChange={(e) => set("description", e.target.value)}
             rows={2}
-            className={inputClass}
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Button label" hint="Optional, but fill both label and link or neither.">
-            <input
+            <Input
               value={form.primary_cta_label}
               onChange={(e) => set("primary_cta_label", e.target.value)}
-              className={inputClass}
             />
           </Field>
           <Field label="Button link">
-            <input
+            <Input
               value={form.primary_cta_href}
               onChange={(e) => set("primary_cta_href", e.target.value)}
               placeholder="/order/mobile-legends"
-              className={inputClass}
             />
           </Field>
         </div>
         <label className="flex items-center gap-3">
           <Toggle checked={form.is_active} onChange={(v) => set("is_active", v)} />
-          <span className="text-theme-sm text-gray-700 dark:text-gray-300">Active</span>
+          <span className="text-theme-sm text-ink-muted">Active</span>
         </label>
         <div className="flex items-center gap-3">
           <SaveButton saving={saving} saved={false} label={isNew ? "Add slide" : "Save slide"} />
-          <button type="button" onClick={onCancel} className="text-theme-sm text-gray-500 hover:underline dark:text-gray-400">
+          <button type="button" onClick={onCancel} className="text-theme-sm text-ink-subtle hover:underline">
             Cancel
           </button>
         </div>

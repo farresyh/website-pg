@@ -18,7 +18,10 @@ import {
   type ResellerApiKeyRow,
 } from "@/lib/reseller-portal";
 import { formatDateTime } from "@/lib/format";
-import { PageHeader, Panel, ErrorNote, EmptyRow } from "@/components/ui";
+import { PageHeader, Panel, ErrorNote, EmptyRow, Badge } from "@/components/composites";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import WebhookPanel from "./WebhookPanel";
 
 export default function ApiKeysPage() {
@@ -122,17 +125,17 @@ export default function ApiKeysPage() {
       {error && <ErrorNote message={error} />}
 
       {freshPlainTextKey && (
-        <div className="mb-6 space-y-2 rounded-lg border border-warning-300 bg-warning-50 p-4 dark:border-warning-500/30 dark:bg-warning-500/10">
-          <p className="text-theme-xs font-medium text-warning-700 dark:text-warning-400">
+        <div className="mb-6 space-y-2 rounded-lg border border-warning-ink/30 bg-warning-surface p-4">
+          <p className="text-theme-xs font-medium text-warning-ink">
             Copy this key now — it will never be shown again.
           </p>
-          <code className="block break-all rounded-md bg-white px-3 py-2 text-theme-sm text-gray-800 dark:bg-gray-900 dark:text-white/90">
+          <code className="block break-all rounded-md bg-surface px-3 py-2 text-theme-sm text-ink">
             {freshPlainTextKey}
           </code>
           <button
             type="button"
             onClick={() => navigator.clipboard.writeText(freshPlainTextKey)}
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-theme-xs text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+            className="rounded-md border border-border px-3 py-1.5 text-theme-xs text-ink-muted hover:bg-subtle"
           >
             Copy
           </button>
@@ -142,24 +145,22 @@ export default function ApiKeysPage() {
       <Panel title={`Issue a new key (${activeCount}/5 active)`}>
         <form onSubmit={handleIssue} className="flex items-end gap-3 p-5">
           <label className="flex-1 space-y-1.5">
-            <span className="text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+            <span className="text-theme-sm font-medium text-ink-muted">
               Label
             </span>
-            <input
+            <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Production key"
               required
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-theme-sm text-gray-800 outline-none focus:border-brand-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
             />
           </label>
-          <button
+          <Button
             type="submit"
             disabled={issuing || activeCount >= 5}
-            className="rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
           >
             {issuing ? "Issuing…" : "Issue key"}
-          </button>
+          </Button>
         </form>
       </Panel>
 
@@ -167,8 +168,8 @@ export default function ApiKeysPage() {
         <Panel>
           <div className="max-w-full overflow-x-auto">
             <table className="min-w-full text-theme-sm">
-              <thead className="border-b border-gray-100 dark:border-gray-800">
-                <tr className="text-left text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+              <thead className="border-b border-border">
+                <tr className="text-left text-theme-xs font-medium text-ink-subtle">
                   <th className="px-5 py-3">Label</th>
                   <th className="px-5 py-3">Last used</th>
                   <th className="px-5 py-3">IP allowlist</th>
@@ -176,25 +177,25 @@ export default function ApiKeysPage() {
                   <th className="px-5 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody className="divide-y divide-border">
                 {(keys ?? []).map((key) => (
                   <Fragment key={key.id}>
-                    <tr className="text-gray-600 dark:text-gray-300">
+                    <tr className="text-ink-muted">
                       <td className="px-5 py-4">{key.name}</td>
-                      <td className="px-5 py-4 text-gray-500 dark:text-gray-400">
+                      <td className="px-5 py-4 text-ink-subtle">
                         {key.last_used_at ? formatDateTime(key.last_used_at) : "Never"}
                         {key.last_used_ip && (
-                          <span className="block text-theme-xs text-gray-400">from {key.last_used_ip}</span>
+                          <span className="block text-theme-xs text-ink-subtle">from {key.last_used_ip}</span>
                         )}
                       </td>
-                      <td className="px-5 py-4 text-gray-500 dark:text-gray-400">
+                      <td className="px-5 py-4 text-ink-subtle">
                         {key.revoked_at ? (
                           "—"
                         ) : key.allowed_ips.length === 0 ? (
                           <button
                             type="button"
                             onClick={() => openIpEditor(key)}
-                            className="text-theme-xs text-gray-400 underline decoration-dotted hover:text-gray-600 dark:hover:text-gray-300"
+                            className="text-theme-xs text-ink-subtle underline decoration-dotted hover:text-ink-muted"
                           >
                             Any IP — restrict
                           </button>
@@ -202,7 +203,7 @@ export default function ApiKeysPage() {
                           <button
                             type="button"
                             onClick={() => openIpEditor(key)}
-                            className="text-theme-xs text-brand-500 hover:underline"
+                            className="text-theme-xs text-cyan-ink hover:underline"
                           >
                             {key.allowed_ips.length} IP{key.allowed_ips.length > 1 ? "s" : ""} — edit
                           </button>
@@ -210,11 +211,12 @@ export default function ApiKeysPage() {
                       </td>
                       <td className="px-5 py-4">
                         {key.revoked_at ? (
-                          <span className="text-error-600 dark:text-error-400">
-                            Revoked {formatDateTime(key.revoked_at)}
+                          <span className="flex flex-col items-start gap-0.5">
+                            <Badge tone="neutral">Revoked</Badge>
+                            <span className="text-xs text-ink-subtle">{formatDateTime(key.revoked_at)}</span>
                           </span>
                         ) : (
-                          <span className="text-success-600 dark:text-success-400">Active</span>
+                          <Badge tone="success">Active</Badge>
                         )}
                       </td>
                       <td className="px-5 py-4 text-right">
@@ -223,7 +225,7 @@ export default function ApiKeysPage() {
                             type="button"
                             disabled={revokingId === key.id}
                             onClick={() => handleRevoke(key)}
-                            className="rounded-lg border border-error-200 px-3 py-1.5 text-theme-xs text-error-600 hover:bg-error-50 disabled:opacity-50 dark:border-error-500/30 dark:text-error-400 dark:hover:bg-error-500/10"
+                            className="rounded-md border border-danger-ink/30 px-3 py-1.5 text-theme-xs text-danger-ink hover:bg-danger-surface disabled:opacity-50"
                           >
                             {revokingId === key.id ? "…" : "Revoke"}
                           </button>
@@ -231,33 +233,33 @@ export default function ApiKeysPage() {
                       </td>
                     </tr>
                     {ipEditId === key.id && (
-                      <tr className="bg-gray-50 dark:bg-white/[0.02]">
+                      <tr className="bg-subtle">
                         <td colSpan={5} className="px-5 py-4">
                           <div className="space-y-2">
-                            <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+                            <p className="text-theme-xs text-ink-subtle">
                               One IPv4/IPv6 address per line (or comma-separated). Leave empty to allow any IP.
                               Exact match only — no ranges.
                             </p>
-                            <textarea
+                            <Textarea
                               value={ipDraft}
                               onChange={(e) => setIpDraft(e.target.value)}
                               rows={4}
                               placeholder="203.0.113.7&#10;198.51.100.24"
-                              className="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-theme-xs text-gray-800 outline-none focus:border-brand-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                              className="font-mono text-xs"
                             />
                             <div className="flex gap-2">
-                              <button
+                              <Button
                                 type="button"
                                 onClick={() => handleSaveIps(key)}
                                 disabled={savingIps}
-                                className="rounded-lg bg-brand-500 px-3 py-1.5 text-theme-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+                                size="small"
                               >
                                 {savingIps ? "Saving…" : "Save"}
-                              </button>
+                              </Button>
                               <button
                                 type="button"
                                 onClick={() => setIpEditId(null)}
-                                className="rounded-lg border border-gray-200 px-3 py-1.5 text-theme-xs text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+                                className="rounded-md border border-border px-3 py-1.5 text-theme-xs text-ink-muted hover:bg-subtle"
                               >
                                 Cancel
                               </button>

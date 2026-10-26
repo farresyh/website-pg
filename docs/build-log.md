@@ -2124,6 +2124,23 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - Local screenshot of the panel with the suppliers tooltip open and a late task.
   - Locally, `supplier-balance-refresh`'s heartbeat was set late on purpose to show the error line.
 
+## 2026-10-25 — Release #554 live (`staging`→`main`, #529–#553)
+
+- **Before release:**
+  - Prod `/api/health` had been 503 since 25 Oct 00:00 UTC. `supplier-balance-refresh` failed on a Gamevion `check-balance` SSL timeout (cURL 28), which aborted the sweep before Digiflazz. This is item 130's failure; its fix (#531) was on `staging` only.
+  - Read-only checks: 0 duplicate drawdowns, so the unique `drawdown_key` index was safe. October snapshot: COGS 38,506 sen, Digiflazz prepaid 18,549 sen.
+- **Merged** with the founder's go-ahead:
+  - #551 (item 132);
+  - #552 (joki from Epic up), after a docs conflict with #551 was resolved by keeping both;
+  - #553 (plain tooltips), same kind of conflict;
+  - then release #554 as `0d6b8ad`. CI and `deploy` were green.
+- **Box, read-only:**
+  - release `81129239` is live, and all 14 migrations ran;
+  - Horizon is running;
+  - `joki_tiers` = Epic, Legend and the four Mythic tiers; joki is off;
+  - October COGS and prepaid are unchanged. The pool matches the old method to the sen, at 797,643 IDR = 18,549 sen, because there has been no deposit since September.
+- **Still red:** `/api/health` stays `scheduler: false` until `supplier-balance-refresh` succeeds. `schedule:test` would not clear it, because it runs the event without firing `ScheduledTaskFinished`, so no heartbeat is written. It clears at the next daily run (00:00 UTC), now with the fix live.
+
 ## 2026-10-25 — Affiliate vs Reseller, one place per order; Joki rank model save; clear upload errors
 
 - **Founder findings:**
@@ -2145,3 +2162,311 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - `php artisan test` 3079/3079, and the invariant test was red first.
   - admin `npm test`, `tsc` and lint.
   - Local browser: the rank model `PUT` returns 200; a 6 MB file shows "big-photo.png is 6.0 MB. Each image can be up to 5 MB."; Partners shows PekanGame at 1,046 storefront orders (243 wallet orders no longer counted).
+
+## 2026-10-25 — Release #557 live (#556); the day in one place
+
+- **Release #557** (`staging`→`main`, founder's go-ahead), merged as `369fbbb`. CI and `deploy` were green.
+- **Box, read-only:**
+  - release `81131278` is live; migration `2026_10_25_110000` ran; Horizon is running;
+  - the `llm_report_orders` view has 0 rows with both an affiliate and a reseller;
+  - all-time Partners, before → after: PekanGame RM563.72 / 37 → RM110.60 / 22. FixFast Demo is RM8.19 / 4; Naeem RM446.56 / 11 and FixFast RM6.56 / 4 stay under Resellers.
+  - Brands plus resellers = RM571.91 = total sales. Before, they added up to RM1,025.03.
+- **The day, in order:**
+  1. Item 132 (IDR moving average) built test-first, #551.
+  2. Joki offered from Epic up, #552.
+  3. Plain Dashboard tooltips, #553.
+  4. Release #554, which also carried Joki (off), ADR-127 and the item 130 fix.
+  5. The founder found the Joki rank model wouldn't save, gallery uploads failed, and wallet orders were counted under PekanGame. All three were fixed in #556 and released as #557.
+- **Founder actions done:** Forge Max File Upload Size set to 12 MB.
+- **Open:**
+  - `/api/health` is 503 until `supplier-balance-refresh` runs at 00:00 UTC on 2026-10-26, now with the item 130 fix live.
+  - The Joki launch gates (§16 item 114): CHIP approval, item 129, rank icons, and the rates with the Grading Express price.
+- **Lesson:** a figure that "groups by brand" must say which orders a brand owns. The wallet order's primary-brand `affiliate_id` (ADR-073) had been handled correctly in three views and wrongly in five. The rule now lives in one place: `Order::scopeSoldByAffiliate()`.
+
+## 2026-10-25 — Items 71 and 96: GSC recheck, OpenWA cleanup and retention
+
+- **Item 71, closed (GSC, property `pekangame.com`, data to 16/10).** ADR-120's duplicate and canonical reasons are gone. 2 pages indexed. 3 "Page with redirect" are `http://pekangame.com/`, `http://www.` and `https://www.` → apex (intended). 42 "Discovered – currently not indexed", all never crawled. `robots.txt` allows them, the pages answer 200 with a self canonical, and the sitemap (50 URLs) was read 25/10 with Success, so this is crawl priority on a new domain, not a site fault. Requested indexing for `/order/mobile-legends-malaysia`, `pubg-mobile-global`, `free-fire-malaysia`, `mobile-legends-indonesia` (top games by orders) and `/price-list`. `call-of-duty-mobile` was rejected: it serves `noindex` because the game is `is_active=0` since 2026-10-18 — correct.
+- **Item 96, prod writes (founder go-ahead in session).** Evidence first: `backup_runs` shows "Backup Now → OpenWA" ran 2026-10-22 (run #55) and the nightly OpenWA runs #56/#58/#60 passed their restore tests. R2's zip headers showed 10 plaintext database archives (2026-09-20 … 2026-10-22) and every archive from 2026-10-23 (database) and all `openwa/` ones encrypted.
+  - Deleted via tinker on `r2_backups`: only archives whose zip encryption flag is unset. Second run deleted 0. Remaining: `PekanGame/2026-10-23..25` and the 4 `openwa/` archives.
+  - `rm -rf ~/OpenWA-v0.23.7 ~/openwa-backups` (1012 MB + 26 MB; disk 9.9G → 9.0G used). No `.env.bak*` left in `~/OpenWA`.
+  - Appended `MESSAGE_RETENTION_DAYS=90` to `~/OpenWA/.env`; `resolveMessageRetentionDays()` reads 90 through dotenv. Oldest stored message is 2026-09-25, so the first prune deletes nothing until late December.
+- **Item 96, closed.** The founder restarted OpenWA in Forge (08:13 UTC); both sessions came back `ready` and the log no longer says retention is disabled. Restore drill: the 2026-10-25 database archive (3,024,314 bytes, same as R2) was copied to the scratchpad and the founder ran `bsdtar -xOf … | tail` in their own terminal with the password from the password manager; it decrypted to a complete dump (the normal closing `SET` lines). The local copy was deleted afterwards.
+
+## 2026-10-26 — Docs sync after releases #554 and #557
+
+Docs only, no code. Checked against git and production (read-only) before
+editing: `origin/main..origin/staging` is docs-only, no open PRs,
+`/api/health` 200 with `scheduler: true` (the 25 Oct heartbeat cleared at
+the 26 Oct 00:00 UTC run), `fpx` active since 2026-10-22 09:52 UTC,
+`fpx_b2b1` and `duitnow_qr` off, no Sentry package or `SENTRY_*` env.
+
+- PRD §16: items 131 and 132 closed (released via #554); group A now
+  empty; item 114 moved to group D (built and released, waits on its launch
+  gates); item 131's detail removed, item 81 and 114 details no longer
+  name 131 as open; Epic-up is released, not on a feature branch.
+- PRD §15: the Orders, Reports, Vouchers, Customer Analytics, Customer
+  Login and Joki rows said "on `staging`" / "not released" for work that
+  shipped in #554.
+- PRD §14 and §11: health and payment state as of today; Joki points at
+  group D.
+- ADR-126 and ADR-127 Standing: "Accepted (design)" → "In force" (both are
+  built), and ADR-127 no longer says IDR averaging is pending.
+
+## 2026-10-26 — Gallery delete warning covers every image field; Joki rank icons
+
+- **Found:** prod's Joki tier "Epic" pointed at a Gallery URL that 404s and
+  has no `gallery_images` row: the image was deleted after it was set, with
+  no warning. `GalleryImageController::references()` checked only Game,
+  Hero Slide and Affiliate Branding. Three `ImageUrlInput` fields were
+  missing: `joki_tiers.icon_url`, `affiliate_seo_settings.default_og_image`
+  and `player_validator_profiles.public_image_url`. No customer impact (joki
+  is off), but a brand's OG image or a checker image could break the same way.
+- **Fix:** `references()` lists all three; test red first. Full suite green
+  (3080).
+- **Rank icons:** the founder's four PNGs (Epic, Mythic, Mythical Honor,
+  Mythical Glory) were cut out (Mythic was a JPEG on black; Glory carried a
+  leftover black patch), trimmed and centred on a 256×256 transparent
+  canvas at one height, for the stepper's 84 px (64 px phone) and 44 px
+  faded sizes. A local round-trip through `ImageIngestService` kept the
+  alpha in the WebP. Legend has no icon yet; Epic needs re-uploading.
+
+## 2026-10-26 — ADR-128: partner portal visual system (design)
+
+Design only. The founder wants the partner portal (`reseller/`) redesigned:
+next to the admin it looks plain, and its money pages (Wallet) read as
+untrustworthy. Grilled Q1–Q15 in three rounds. Layer 1 is a frontend-only
+reskin onto ADR-104's design system as a "PekanGame Partner" variant (nude
+shell accent), with trust signals (company line, panel-configured support
+contacts from `/api/catalog/branding`, "processed by CHIP"), tokens shared
+by generation with a drift check (the `sync-theme-presets.mjs` pattern),
+mockups in the design-system artifact first, then four PRs. Facts checked
+for it: Reseller has no dashboard endpoint, a pending top-up is not
+readable after creation (stays item 24), the SSM number exists only in the
+About Us HTML, prod has 2 Resellers and 1 test Affiliate. PRD §16 item 133.
+
+## 2026-10-26 — ADR-128 PR 1: shared tokens and the PekanGame Partner shell
+
+- Mockups: 10 Partner Portal pages published in the design-system artifact
+  (`pp-*` styles, a Partner Portal section). Writing them against the real
+  API shapes removed what layer 1 can't show: the Reseller order list has
+  no search and no client reference (`reference_number` is the platform's
+  ORD-8 reference), no `paid_at` / `placed_via` on order detail, and wallet
+  ledger rows carry no game or payment method. A draft line saying a
+  withdrawal is "held" while pending was wrong: the ledger debit happens at
+  admin approval (`Admin\WithdrawalController`), so the copy says earnings
+  drop only on approval. No support hours, payout time or licence claim.
+- Tokens: `admin/src/app/tokens.css` is the source, the portal imports a
+  generated copy (`scripts/sync-shared-files.mjs`, CI drift check). Admin
+  CSS output checked byte-for-byte against `staging`'s build: same bytes,
+  one rule moved.
+- Shell: grouped sidebar per role, nude account block, support box from the
+  primary brand's public branding, top bar with breadcrumb and sign out,
+  trust footer, restyled phone bar and More drawer, Figtree. Removed the
+  TailAdmin rail, header, toggle and icon set.
+- Verified: portal and admin `tsc`, `eslint`, `npm test`, `build` green;
+  Playwright against the dev server with a mocked API at 1440 (both roles,
+  light and dark), 768 and 390 (bar, More drawer): computed colours match
+  the tokens, no horizontal overflow, no console errors.
+- Found by the new portal colour-token test: `warning-300`, `warning-700`,
+  `error-200` never had tokens, so those colours never rendered; fixed.
+
+## 2026-10-26 — ADR-128 PR 2: dashboards, Orders and Order detail
+
+- Built to the mockups on existing API data only (ADR-128 build note).
+  Shared pieces in `components/ui.tsx` (badge, card head, copyable ID,
+  balance hero, facts, pager, skeleton) and `components/orders/OrderTable`;
+  the older `PageHeader`/`Panel`/`StatusTag` keep their API with the new
+  look, so PR 3–4 screens already read better.
+- Fixed in the shared tokens (affects the admin too): dark-mode
+  `on-cyan` and `focus-ring` were missing, so every admin primary button in
+  dark mode had white text on light cyan at 2.09:1. Now the artifact's
+  values (8.1:1, ring 8.4:1).
+- JetBrains Mono files added (from the design-system artifact), declared in
+  `tokens.css`; both apps now render IDs in it (verified bundled in the
+  admin build and loaded in the portal).
+- Found while verifying at 768px: an `sr-only` table header escaped the
+  scroll box and widened the page. Fixed with `relative` on the box.
+- Verified: portal and admin `tsc`, `eslint`, `npm test`, `build`; Playwright
+  with mocked API data at 1440 (both roles, light and dark), 768 and 390:
+  no horizontal overflow, no console errors, mono font loaded.
+
+## 2026-10-26 — ADR-128 PR 3: Wallet, Earnings and Withdrawal
+
+- Built to the mockups. Shared pieces were added: `components/money/LedgerTable`, `MoneyForm` (amount field with quick amounts, steps card) and `shell/PaymentMark`. Every line of copy about money flow was checked against the code before it was written (ADR-128 PR 3 build note).
+- The payment marks and the CHIP badge are now generated copies from the storefront, and CI checks them.
+- Fixed: the portal's `proxy.ts` redirected `public/` files to `/login`, which broke the image optimizer.
+- Found, not changed: the storefront checkout still says "BNM Compliant • 256-bit SSL" (`storefront/src/components/order/PaymentChannelPicker.tsx`). This is although #527 (2026-10-22) removed the storefront's Bank Negara Malaysia lines for CHIP's review. Raised with the founder.
+- Verified: `tsc`, `eslint`, `npm test` and `build` all pass. Playwright with mocked data at 1440 (light and dark), 768 and 390: no overflow, no console errors, and the marks load.
+
+## 2026-10-26 — ADR-128 PR 4: settings pages, Login and Set password
+
+- Every remaining portal screen is moved to the semantic tokens. The ~700 legacy colour classes were mapped with a scripted one-to-one table, and the diff was confirmed class-only. A shared accessible `inputClass` replaces five copies that had `outline-none` and no focus style. Login and Set password share the mockup's `AuthLayout` (details in the ADR-128 PR 4 build note).
+- The portal colour test now also blocks TailAdmin colour classes and `dark:` colour overrides.
+- Verified: `tsc`, `eslint`, `npm test` and `build` pass. Playwright with mocked data covered Login (light, dark, 390), Profile (both roles), Subscription, Domains (light and dark), API keys (desktop and 390) and Storefront (desktop and 390): no overflow, no console errors.
+- Layer 1 of ADR-128 is fully built. The founder reviews and tests it page by page before release.
+
+## 2026-10-26 — Shared component kit decided; docs synced for the session
+
+- #565 (PR 4) merged, so layer 1 of ADR-128 is on `staging` (#562–#565) and
+  not released.
+- Audit, at the founder's question (does the portal still carry legacy
+  libraries, and does it follow the admin's library?):
+  - TailAdmin is gone from the portal: icons, rail, `menu-item`, and the
+    colour classes, which a test now blocks.
+  - The portal uses no PrimeReact component. `primereact`, the provider
+    and the PrimeUI licence check do nothing, and the screens run on a
+    portal-only Tailwind kit. This departs from ADR-038 and was not raised
+    before building.
+  - The admin has no unused dependency (`react-is` is recharts' peer). It
+    still carries 3,346 TailAdmin colour-class uses in 131 files (kept on
+    purpose by ADR-104 decision 7) and the `menu-item` utility in
+    `PanelSidebar`.
+  - Its `components/ui` kit is mostly still TailAdmin-styled, and its
+    primary `Button` measures 4.23:1 (white on `brand-500`).
+- Founder decision: one shared kit, recorded in the ADR-128 2026-10-26
+  addendum (admin kit onto the tokens first, then generated into the
+  portal).
+- Docs synced:
+  - root and `reseller/` AGENTS.md: the token source, the sync script, the
+    current kit gap;
+  - PRD §14: what `staging` holds beyond prod;
+  - PRD §15: a new "Partner portal UI" row, and the Gallery row's #560
+    marked staging-only;
+  - PRD §16: item 133 next steps, and new item 134 (the storefront's "BNM
+    Compliant" line);
+  - ADR-038 and ADR-128 Standing.
+
+## 2026-10-26 — Shared component kit, PR 1: the admin kit onto the semantic tokens
+
+**Why.** ADR-128 2026-10-26 addendum, step 1. The admin `components/ui` kit
+(the PrimeReact wrappers) still carried TailAdmin/stock colours while the
+portal's screens ran on the semantic tokens — two kits would drift. This PR
+moves the admin kit onto the ADR-104 tokens so it can become the shared
+source for PR 2.
+
+**Shipped (branch `feature/adr-128-shared-kit-pr1`).**
+- **Bridge repoint (`tokens.css`).** `--p-primary-color`/`-contrast`/`-hover`/
+  `-active` now point at `cyan-600`/`on-cyan`/`cyan-700` (both `:root` and
+  `.dark`) instead of the `brand-*` ramp. White on the primary button goes
+  4.23:1 → 5.6:1 (dark: 8.1:1). `reseller/src/app/tokens.generated.css`
+  regenerated via `scripts/sync-shared-files.mjs`.
+- **Kit migration (10 files), one-to-one class swap, `dark:` twins removed:**
+  - `button.tsx` — default/secondary/contrast + outlined/text variants onto
+    `cyan-600`/`on-cyan`, `subtle`/`border`/`border-strong`,
+    `ink`/`ink-muted`; the focus outline is now one `focus-ring` in the base.
+  - `input.tsx` — `rounded-lg`→`rounded-md` (8px), `border-border-control`,
+    `bg-surface`, `placeholder:text-ink-subtle`, the outline-based
+    `focus-ring` (was `outline-hidden` + ring).
+  - `select.tsx` / `switch.tsx` / `tabs.tsx` / `label.tsx` / `dialog.tsx` /
+    `popover.tsx` — grey/brand/surface classes onto `ink`/`surface`/`subtle`/
+    `border`/`cyan-*`.
+  - `datatable.tsx` — `surface-*` → `surface`/`ink`/`subtle`, `bg-primary` →
+    `bg-cyan-600`, sort badge `cyan-600`/`on-cyan`, and the frozen-edge
+    shadows' hardcoded `rgba(226,232,240,1)`/`rgba(39,39,42,1)` →
+    `var(--color-border)`.
+  - `tag.tsx` — the last `contrast` severity (`surface-950`/`surface-0`) →
+    `bg-ink text-surface`.
+
+**Deferred, not built (PRD §16 item 135).** The button severities
+`info`/`success`/`warn`/`danger`/`help` still use Tailwind's stock
+`blue`/`green`/`amber`/`red`/`violet`. The design system defines status only
+as `-surface`/`-ink` badge pairs, and those `-ink` tokens flip to a light
+value in dark mode — a solid `bg-*-ink text-white` fails dark contrast. Needs
+a founder decision (solid vs badge) before mapping. Left as-is with a code
+comment in `button.tsx`.
+
+**Verified.**
+- `npm test` 19/19 (incl. `color-tokens.test.ts`), `npm run lint` clean,
+  `npm run build` compiles 51/51 pages.
+- Live browser (`getComputedStyle` on `/login`): primary button light
+  `rgb(11,114,133)` = `#0b7285` with white (5.6:1); dark `rgb(76,195,212)`
+  with `rgb(11,31,36)` (8.1:1). No console errors (the two 401s are
+  `resumeSession()` on a fresh browser).
+- `RichTextEditor` (the one hand-rolled primitive, ADR-038) is untouched —
+  it is not part of the shared-kit source and its `gray-*`/`brand-*` classes
+  are already retinted.
+
+**Not live.** Ships with PR 2 (the kit generated into the portal) as item 133,
+before the founder's page-by-page review.
+
+## 2026-10-26 — Shared component kit, PR 2: the kit generated into the portal, hand-rolled kit deleted
+
+**Why.** ADR-128 2026-10-26 addendum, step 2. With the admin kit on the
+semantic tokens (PR 1), this makes the portal use the same kit instead of
+its hand-rolled `ui.tsx`, so the two apps can't drift.
+
+**Shipped (branch `feature/adr-128-shared-kit-pr2`).**
+- **Severity colours resolved** (PRD §16 item 135, was deferred in PR 1):
+  the Button severities `info`/`success`/`warn`/`danger`/`help` now use the
+  design system's `-surface`/`-ink` badge pairs (soft fill + a border that
+  intensifies on hover), never a solid `bg-*-ink` (which fails dark contrast)
+  and never a `dark:` colour override. This unblocked generation, because the
+  portal's `color-tokens.test.ts` rejects `dark:` colour overrides.
+- **Touch targets** (ADR-112): Button `small`/`normal` and Input height are
+  now `min-h-11 sm:min-h-9` (44px phone / 36px desktop), and the Input gained
+  `focus:border-transparent`. A new `Textarea` (native `<textarea>` on
+  `inputVariants`) completes the form primitives.
+- **Generation.** `scripts/sync-shared-files.mjs` now also copies the 11
+  PrimeReact wrappers plus `lib/utils.ts` (and `textarea.tsx`) into
+  `reseller/src/components/ui/`; the portal gained the kit's deps
+  (`@primeicons/react`, `class-variance-authority`, `tailwind-merge`).
+- **Portal swap.** The hand-rolled `reseller/src/components/ui.tsx` is
+  deleted. Its composites moved to `reseller/src/components/composites.tsx`
+  (`PageHeader`, `Panel`, `BalanceHero`, `Facts`, `CopyId`, `Pager` …), with
+  `Badge`/`StatusTag` as thin wrappers on the shared `Tag` (keeping the
+  portal's `tone` vocabulary and its always-on dot) and `Pager` on the shared
+  `Button`. 21 files migrated: `<button className={buttonClass(…)}>` →
+  `<Button>`, `<input/textarea className={inputClass}>` → `<Input>`/`<Textarea>`.
+  `buttonClass` stays only for `<Link>`/`<a>` (a navigation link must keep its
+  `<a>` semantics), imported from `composites.tsx`. `Toggle` in the storefront
+  `shared.tsx` is now the shared `Switch`.
+
+**Verified.**
+- Portal: `npm test` 8/8, lint clean, `npm run build` 21/21. The generated
+  kit passes the portal's stricter `color-tokens.test.ts` (no `dark:` colour
+  override, no TailAdmin class).
+- Admin: `npm test` 19/19, `npm run build` 51/51 (the severity/sizing changes
+  re-verified).
+- Live browser (`getComputedStyle`): portal `/login` "Sign in" button
+  `rgb(11,114,133)` = `#0b7285` cyan-600, inputs white 8px radius, no console
+  errors. The admin's severity buttons (soft fill) and the portal's full
+  page-by-page look are the founder's review (next step in item 133).
+
+**Not live.** Ships with the rest of item 133 (the founder's page-by-page
+review of layer 1, then a release).
+
+## 2026-10-27 — Dependency advisories: targeted upgrades (next, zod, livewire, docs-site)
+
+**Why.** The weekly `dependency-audit` (2026-10-17) went red on newly
+published advisories. The one that matters is a **critical `next` RCE**
+(unauthenticated, via the Image Optimization API with SVG — plus a DoS in
+Server Actions and an RCE in `use cache`), affecting all three Next.js apps.
+
+**Shipped (branch `fix/dependency-advisories`), targeted, no `--force`/`--with-dependencies`:**
+- `next` `^16.3.8` → `^16.4.3` (admin, storefront, reseller). Patch bump
+  within 16.x; 16.4.0 was the vulnerable floor.
+- `zod` `^4.4.3` → `^4.6.7` (storefront, direct runtime dep per ADR-044).
+- `livewire/livewire` v4.4.2 → v4.4.8 (backend; transitive via
+  `laravel/pulse`, the Pulse dashboard). Medium: `#[Authorize]` authorization
+  bypass. No Livewire use in `app/`/`routes/` — Pulse's own UI only.
+- `zod` dev-only (admin, reseller, docs-site, via the `eslint-config-next`
+  → `eslint-plugin-react-hooks` → `zod-validation-error` chain): bumped
+  transitively by `npm audit fix` (non-force). Not shipped; the CI's
+  `--omit=dev` never flagged it.
+- docs-site (build-time only, static SSG): `undici` 8.10.2→8.12.3,
+  `vite` 8.3.0→8.3.5, `fast-uri` 3.1.8→3.1.9,
+  `postcss-selector-parser` 6.1.4→6.1.5, `zod` 4.6.1→4.6.7 via `npm audit fix`
+  (non-force). `astro` stays: the one remaining advisory is **low** (CSS
+  injection in View Transitions) and needs `--force` to reach 7.4.2, which is
+  outside the stated range — the same `--force` the policy says not to use.
+
+**Verified.**
+- `composer audit` clean; `npm audit` = 0 in admin/storefront/reseller;
+  docs-site `npm audit --omit=dev --audit-level=high` passes (only the `low`
+  astro advisory remains, below the CI threshold).
+- admin build 51/51 + test 19/19; storefront build 14/14; reseller build
+  21/21 + test 8/8; docs-site build complete; backend `php artisan test`
+  3080/3080.
+
+**Not live.** Ships with the portal redesign + shared kit in the next
+`staging`→`main` release (one regression window, see item 133).

@@ -3,7 +3,7 @@
 // affiliate's preview in reseller/ won't match what customers see live.
 // Canonical source: THIS file (storefront/src/lib/theme-presets.ts).
 // `reseller/src/lib/theme-presets.ts` is a byte-for-byte generated copy —
-// edit only here, then run `node scripts/sync-theme-presets.mjs`. CI's
+// edit only here, then run `node scripts/sync-shared-files.mjs`. CI's
 // `theme-preset-drift` job fails the build if the two ever diverge.
 // The backend's own copy of the preset-ID list
 // (`backend/app/Http/Requests/Affiliate/Storefront/UpdateBrandingRequest.php`)

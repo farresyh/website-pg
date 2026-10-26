@@ -16,13 +16,13 @@ import {
   StatusTag,
   ErrorNote,
   EmptyRow,
-} from "@/components/ui";
+} from "@/components/composites";
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-6 px-5 py-3 text-theme-sm">
-      <span className="text-gray-500 dark:text-gray-400">{label}</span>
-      <span className="text-right font-medium text-gray-800 dark:text-white/90">
+      <span className="text-ink-subtle">{label}</span>
+      <span className="text-right font-medium text-ink">
         {value}
       </span>
     </div>
@@ -57,7 +57,7 @@ export default function SubscriptionPage() {
 
       {error && <ErrorNote message={error} />}
       {!data && !error && (
-        <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <p className="text-sm text-ink-subtle">Loading…</p>
       )}
 
       {data && !sub && (
@@ -70,9 +70,9 @@ export default function SubscriptionPage() {
       )}
 
       {sub && (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid items-start gap-6 lg:grid-cols-2">
           <Panel title="Current plan">
-            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            <div className="divide-y divide-border">
               <Row label="Tier" value={sub.tier_name} />
               <Row
                 label="Status"
@@ -92,7 +92,7 @@ export default function SubscriptionPage() {
                 <Row
                   label="Grace ends"
                   value={
-                    <span className="text-warning-600 dark:text-warning-500">
+                    <span className="text-warning-ink">
                       {formatDate(sub.grace_until)}
                     </span>
                   }
@@ -102,7 +102,7 @@ export default function SubscriptionPage() {
           </Panel>
 
           <Panel title="Charge history">
-            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            <div className="divide-y divide-border">
               {data.charge_history.length === 0 && (
                 <EmptyRow>No fees charged yet.</EmptyRow>
               )}
@@ -111,10 +111,10 @@ export default function SubscriptionPage() {
                   key={row.id}
                   className="flex justify-between px-5 py-3 text-theme-sm"
                 >
-                  <span className="text-gray-500 dark:text-gray-400">
+                  <span className="text-ink-subtle">
                     {formatDateTime(row.charged_at)}
                   </span>
-                  <span className="font-medium text-error-600 dark:text-error-500">
+                  <span className="font-semibold text-ink">
                     {formatRm(row.amount)}
                   </span>
                 </div>

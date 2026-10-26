@@ -7,16 +7,16 @@ import { InputText as PRInputText } from 'primereact/inputtext';
 import * as React from 'react';
 
 const inputVariants = cva(
-    'h-11 w-full rounded-lg border appearance-none px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:outline-hidden focus:ring-3 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800',
+    'min-h-11 w-full rounded-md border appearance-none px-4 py-2.5 text-sm placeholder:text-ink-subtle focus:border-transparent focus:outline-2 focus:outline-offset-[-1px] focus:outline-focus-ring sm:min-h-9',
     {
         variants: {
             disabled: { true: '', false: '' },
             error: { true: '', false: '' }
         },
         compoundVariants: [
-            { disabled: true, className: 'text-gray-500 border-gray-300 cursor-not-allowed dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700' },
-            { disabled: false, error: true, className: 'text-error-600 border-error-500 focus:ring-error-500/10 dark:text-error-400 dark:border-error-500' },
-            { disabled: false, error: false, className: 'bg-transparent text-gray-800 border-gray-300 focus:border-brand-300 focus:ring-brand-500/10 dark:border-gray-700' }
+            { disabled: true, className: 'text-ink-subtle border-border cursor-not-allowed opacity-45' },
+            { disabled: false, error: true, className: 'text-danger-ink border-danger-ink' },
+            { disabled: false, error: false, className: 'bg-surface text-ink border-border-control' }
         ],
         defaultVariants: { disabled: false, error: false }
     }
@@ -43,7 +43,7 @@ function Input({ className, disabled, error, hint, ...props }: InputProps) {
                 className={cn(inputVariants({ disabled: Boolean(disabled), error: Boolean(error) }), className)}
                 {...props}
             />
-            {hint && <p className={cn('mt-1.5 text-xs', error ? 'text-danger-ink' : 'text-gray-500')}>{hint}</p>}
+            {hint && <p className={cn('mt-1.5 text-xs', error ? 'text-danger-ink' : 'text-ink-subtle')}>{hint}</p>}
         </div>
     );
 }

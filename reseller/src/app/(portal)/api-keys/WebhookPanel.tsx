@@ -22,7 +22,9 @@ import {
   type ResellerWebhookDelivery,
 } from "@/lib/reseller-portal";
 import { formatDateTime } from "@/lib/format";
-import { Panel, ErrorNote, EmptyRow, StatusTag } from "@/components/ui";
+import { Panel, ErrorNote, EmptyRow, StatusTag } from "@/components/composites";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 const DELIVERY_SEVERITY: Record<ResellerWebhookDelivery["status"], string> = {
   pending: "info",
@@ -100,8 +102,8 @@ export default function WebhookPanel() {
 
   return (
     <div className="mt-10">
-      <h2 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Delivery webhook</h2>
-      <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+      <h2 className="mb-1 text-lg font-semibold text-ink">Delivery webhook</h2>
+      <p className="mb-4 text-sm text-ink-subtle">
         We POST <code>order.delivered</code> / <code>order.failed</code> / <code>order.refunded</code> to your endpoint,
         signed with <code>X-Hub-Signature-256</code>. Polling the order stays available as a fallback.
       </p>
@@ -109,17 +111,17 @@ export default function WebhookPanel() {
       {error && <ErrorNote message={error} />}
 
       {freshSecret && (
-        <div className="mb-6 space-y-2 rounded-lg border border-warning-300 bg-warning-50 p-4 dark:border-warning-500/30 dark:bg-warning-500/10">
-          <p className="text-theme-xs font-medium text-warning-700 dark:text-warning-400">
+        <div className="mb-6 space-y-2 rounded-lg border border-warning-ink/30 bg-warning-surface p-4">
+          <p className="text-theme-xs font-medium text-warning-ink">
             Copy this signing secret now — it will never be shown again.
           </p>
-          <code className="block break-all rounded-md bg-white px-3 py-2 text-theme-sm text-gray-800 dark:bg-gray-900 dark:text-white/90">
+          <code className="block break-all rounded-md bg-surface px-3 py-2 text-theme-sm text-ink">
             {freshSecret}
           </code>
           <button
             type="button"
             onClick={() => navigator.clipboard.writeText(freshSecret)}
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-theme-xs text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+            className="rounded-md border border-border px-3 py-1.5 text-theme-xs text-ink-muted hover:bg-subtle"
           >
             Copy
           </button>
@@ -129,24 +131,22 @@ export default function WebhookPanel() {
       <Panel title={webhook ? "Endpoint" : "Add an endpoint"}>
         <div className="space-y-4 p-5">
           <label className="block space-y-1.5">
-            <span className="text-theme-sm font-medium text-gray-700 dark:text-gray-300">Endpoint URL (HTTPS)</span>
-            <input
+            <span className="text-theme-sm font-medium text-ink-muted">Endpoint URL (HTTPS)</span>
+            <Input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://your-system.example/webhooks/pekangame"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-theme-sm text-gray-800 outline-none focus:border-brand-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
             />
           </label>
 
           <div className="flex flex-wrap items-center gap-3">
-            <button
+            <Button
               type="button"
               onClick={save}
               disabled={busy || url.trim() === "" || url.trim() === (webhook?.url ?? "")}
-              className="rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
             >
               {webhook ? "Update URL" : "Save endpoint"}
-            </button>
+            </Button>
 
             {webhook && (
               <>
@@ -154,7 +154,7 @@ export default function WebhookPanel() {
                   type="button"
                   onClick={rotate}
                   disabled={busy}
-                  className="rounded-lg border border-gray-200 px-3 py-2 text-theme-sm text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+                  className="rounded-md border border-border px-3 py-2 text-theme-sm text-ink-muted hover:bg-subtle disabled:opacity-50"
                 >
                   Rotate secret
                 </button>
@@ -162,7 +162,7 @@ export default function WebhookPanel() {
                   type="button"
                   onClick={toggle}
                   disabled={busy}
-                  className="rounded-lg border border-gray-200 px-3 py-2 text-theme-sm text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+                  className="rounded-md border border-border px-3 py-2 text-theme-sm text-ink-muted hover:bg-subtle disabled:opacity-50"
                 >
                   {webhook.is_active ? "Pause" : "Resume"}
                 </button>
@@ -170,7 +170,7 @@ export default function WebhookPanel() {
                   type="button"
                   onClick={remove}
                   disabled={busy}
-                  className="rounded-lg border border-error-200 px-3 py-2 text-theme-sm text-error-600 hover:bg-error-50 disabled:opacity-50 dark:border-error-500/30 dark:text-error-400 dark:hover:bg-error-500/10"
+                  className="rounded-md border border-danger-ink/30 px-3 py-2 text-theme-sm text-danger-ink hover:bg-danger-surface disabled:opacity-50"
                 >
                   Remove
                 </button>
@@ -187,8 +187,8 @@ export default function WebhookPanel() {
         <Panel title="Recent deliveries">
           <div className="max-w-full overflow-x-auto">
             <table className="min-w-full text-theme-sm">
-              <thead className="border-b border-gray-100 dark:border-gray-800">
-                <tr className="text-left text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+              <thead className="border-b border-border">
+                <tr className="text-left text-theme-xs font-medium text-ink-subtle">
                   <th className="px-5 py-3">Event</th>
                   <th className="px-5 py-3">Order</th>
                   <th className="px-5 py-3">Status</th>
@@ -197,9 +197,9 @@ export default function WebhookPanel() {
                   <th className="px-5 py-3">When</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody className="divide-y divide-border">
                 {deliveries.map((d) => (
-                  <tr key={d.id} className="text-gray-600 dark:text-gray-300">
+                  <tr key={d.id} className="text-ink-muted">
                     <td className="px-5 py-4 font-mono text-theme-xs">{d.event}</td>
                     <td className="px-5 py-4">{d.order_number ?? "—"}</td>
                     <td className="px-5 py-4">
@@ -207,7 +207,7 @@ export default function WebhookPanel() {
                     </td>
                     <td className="px-5 py-4">{d.attempts}</td>
                     <td className="px-5 py-4">{d.last_response_code ?? "—"}</td>
-                    <td className="px-5 py-4 text-gray-500 dark:text-gray-400">{formatDateTime(d.created_at)}</td>
+                    <td className="px-5 py-4 text-ink-subtle">{formatDateTime(d.created_at)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -18,7 +18,7 @@ function Tabs({ ...props }: TabsRootProps) {
 function TabsList({ className, ...props }: TabsListProps) {
     return (
         <PRTabs.List
-            className={cn('flex items-center gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-800', className)}
+            className={cn('flex items-center gap-1 overflow-x-auto border-b border-border', className)}
             {...props}
         />
     );
@@ -28,7 +28,7 @@ function TabsTab({ className, ...props }: TabsTabProps) {
     return (
         <PRTabs.Tab
             className={cn(
-                'relative shrink-0 whitespace-nowrap px-3 py-2.5 text-theme-sm font-medium text-gray-500 transition-colors hover:text-gray-800 data-active:text-brand-600 dark:text-gray-400 dark:hover:text-white/90 dark:data-active:text-brand-400',
+                'relative shrink-0 whitespace-nowrap px-3 py-2.5 text-theme-sm font-medium text-ink-muted transition-colors hover:text-ink data-active:text-cyan-ink',
                 className
             )}
             {...props}
@@ -41,7 +41,7 @@ function TabsIndicator({ className }: { className?: string }) {
     return (
         <PRTabs.Indicator
             className={cn(
-                '-mb-px h-0.5 rounded-full bg-brand-500 transition-[width,transform] duration-200 dark:bg-brand-400',
+                '-mb-px h-0.5 rounded-full bg-cyan-600 transition-[width,transform] duration-200',
                 className
             )}
         />

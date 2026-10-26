@@ -1,61 +1,51 @@
 "use client";
 
 /**
- * ADR-072 decision 5 / PR-G: the Reseller (wallet) portal's Wallet
- * screen — balance tile, ledger history, and the self-serve CHIP
- * top-up trigger (ADR-073 decision 3(a)). Mirrors
- * `admin/src/components/resellers/ResellerWalletModal.tsx`'s shape
- * (balance tile + manual-credit form + ledger table), adapted to this
- * app's own read-screen design system (`components/ui.tsx`) rather than
- * PrimeReact — the reseller portal never adopted PrimeReact for its
- * read screens (ADR-038's migration rule targets `admin/`'s own
- * hand-rolled TailAdmin primitives specifically).
+ * The Reseller wallet (ADR-073): balance, a self-serve CHIP top-up
+ * (decision 3(a)) and every movement. ADR-128 makes it the portal's trust
+ * benchmark: it says who processes the payment and what happens after the
+ * click, and never estimates the fee — CHIP shows it before payment.
  */
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
-import {
-  getWallet,
-  topupWallet,
-  listPaymentChannels,
-  type WalletResponse,
-  type PaymentChannel,
-} from "@/lib/reseller-portal";
-import { formatRm, formatDateTime, ledgerTypeLabel } from "@/lib/format";
-import { PageHeader, Panel, StatCard, ErrorNote, EmptyRow } from "@/components/ui";
+import { getWallet, listPaymentChannels, topupWallet, type PaymentChannel, type WalletResponse } from "@/lib/reseller-portal";
+import { dateAndTime, formatRm, toSen } from "@/lib/format";
+import { BalanceHero, CardHead, ErrorNote, Facts, PageHeader, Panel, Skeleton } from "@/components/composites";
+import { Button } from "@/components/ui/button";
+import { PortalIcon } from "@/components/shell/PortalIcon";
+import { PaymentMark, PoweredByChip } from "@/components/shell/PaymentMark";
+import { AmountField, StepsCard } from "@/components/money/MoneyForm";
+import LedgerTable from "@/components/money/LedgerTable";
 
-const inputClass =
-  "w-full rounded-lg border border-gray-300 px-3 py-2 text-theme-sm text-gray-800 outline-none focus:border-brand-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
+const MIN_TOPUP_SEN = 1000;
+const QUICK = ["50", "100", "200", "500", "1000"].map((v) => ({ label: `RM ${Number(v).toLocaleString("en-MY")}`, value: v }));
 
 export default function WalletPage() {
   const [wallet, setWallet] = useState<WalletResponse | null>(null);
   const [channels, setChannels] = useState<PaymentChannel[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [topupError, setTopupError] = useState<string | null>(null);
-  const [amountRm, setAmountRm] = useState("50");
+  const [amount, setAmount] = useState("100");
   const [channelCode, setChannelCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [page, setPage] = useState(1);
 
-  function refresh(p: number = page) {
+  useEffect(() => {
     const session = getClientSession();
     if (!session) return;
-
-    return getWallet(session.token, p)
+    let cancelled = false;
+    getWallet(session.token, page)
       .then((result) => {
+        if (cancelled) return;
         setWallet(result);
         setError(null);
       })
-      .catch((err: unknown) =>
-        setError(err instanceof ApiError ? err.message : "Could not load your wallet."),
-      );
-  }
-
-  useEffect(() => {
-    refresh(page);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      .catch((err: unknown) => !cancelled && setError(err instanceof ApiError ? err.message : "Could not load your wallet."));
+    return () => {
+      cancelled = true;
+    };
   }, [page]);
 
   useEffect(() => {
@@ -70,13 +60,12 @@ export default function WalletPage() {
   async function handleTopup(event: React.FormEvent) {
     event.preventDefault();
     setTopupError(null);
-
     const session = getClientSession();
     if (!session || !channelCode) return;
 
-    const amountSen = Math.round(parseFloat(amountRm || "0") * 100);
-    if (!amountSen || amountSen < 1000) {
-      setTopupError("Minimum top-up is RM 10.00.");
+    const amountSen = toSen(amount);
+    if (amountSen === null || amountSen < MIN_TOPUP_SEN) {
+      setTopupError("Enter an amount of RM 10.00 or more, with at most 2 decimals.");
       return;
     }
 
@@ -95,152 +84,111 @@ export default function WalletPage() {
     }
   }
 
+  // The latest top-up and order are read from the newest page of history only.
+  const newest = page === 1 ? (wallet?.entries.data ?? []) : [];
+  const lastTopup = newest.find((e) => e.type === "wallet_topup");
+  const lastOrder = newest.find((e) => e.type === "wallet_debit");
+  const amountSen = toSen(amount);
+  const noMethods = channels !== null && channels.length === 0;
+
   return (
     <div>
-      <PageHeader title="Wallet" subtitle="Your prepaid balance, top-ups, and spend history." />
-
+      <PageHeader title="Wallet" subtitle="Your prepaid balance. Every API and bot order is paid from it, and every refund comes back to it." />
       {error && <ErrorNote message={error} />}
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <StatCard label="Wallet balance" value={wallet ? formatRm(wallet.balance) : "—"} />
-      </div>
-
-      <div className="mb-6 grid gap-6 lg:grid-cols-2">
-        <Panel title="Top up">
-          <form onSubmit={handleTopup} className="space-y-4 p-5">
+      {/* Phone order: balance, top-up, then how it works. From xl the top-up sits beside both. */}
+      <div className="mb-4 grid items-start gap-4 xl:grid-cols-2">
+        <div className="xl:col-start-1">
+          {wallet ? (
+            <BalanceHero icon="wallet" label="Available balance" amount={formatRm(wallet.balance)} note="Updated as soon as a payment or order settles.">
+              {(lastTopup || lastOrder) && (
+                <Facts
+                  columns={2}
+                  items={[
+                    ...(lastTopup ? [{ label: "Last top-up", value: formatRm(lastTopup.amount), sub: dateAndTime(lastTopup.created_at).date }] : []),
+                    ...(lastOrder ? [{ label: "Last order", value: formatRm(Math.abs(lastOrder.amount)), sub: dateAndTime(lastOrder.created_at).date }] : []),
+                  ]}
+                />
+              )}
+            </BalanceHero>
+          ) : (
+            <Skeleton className="h-[220px]" />
+          )}
+        </div>
+        <Panel className="xl:col-start-2 xl:row-span-2 xl:row-start-1">
+          <CardHead title="Top up wallet" description="Minimum RM 10.00. Your bank's own limit is the only maximum." divided />
+          <form onSubmit={handleTopup} className="flex flex-col gap-4 p-5">
             {topupError && <ErrorNote message={topupError} />}
-            <p className="text-theme-xs text-gray-500 dark:text-gray-400">
-              Minimum RM 10.00, no maximum — the payment provider&apos;s own limit is the only
-              ceiling. A card/bank fee may be added on top by your chosen payment method.
+            <AmountField id="topup-amount" value={amount} onChange={setAmount} quick={QUICK} />
+
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-2 text-[13px] font-semibold text-ink">Pay with</legend>
+              {channels === null ? (
+                <Skeleton className="h-16" />
+              ) : noMethods ? (
+                <p className="rounded-md border border-warning-ink/30 bg-warning-surface px-3.5 py-3 text-[13px] text-warning-ink">
+                  Online top-up is paused right now. Contact support to top up by bank transfer.
+                </p>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {channels.map((c) => {
+                    const checked = channelCode === c.channel_code;
+                    return (
+                      <label
+                        key={c.channel_code}
+                        className={`flex min-h-14 cursor-pointer items-center gap-2.5 rounded-md border bg-surface px-3 py-2.5 ${
+                          checked ? "border-cyan-600 shadow-[inset_0_0_0_1px_var(--color-cyan-600)]" : "border-border-control hover:bg-subtle"
+                        }`}
+                      >
+                        <input type="radio" name="channel" value={c.channel_code} checked={checked} onChange={() => setChannelCode(c.channel_code)} className="h-4 w-4 accent-cyan-600" />
+                        <PaymentMark channelCode={c.channel_code} category={c.category} />
+                        <span className="min-w-0 text-[13px] font-semibold text-ink">{c.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </fieldset>
+
+            <div className="flex flex-col gap-1.5 rounded-md bg-subtle px-3.5 py-3 text-[13px]">
+              <span className="flex justify-between gap-3">
+                <span className="text-ink-muted">Added to your wallet</span>
+                <b className="text-[15px] text-ink">{amountSen ? formatRm(amountSen) : "—"}</b>
+              </span>
+              <span className="flex justify-between gap-3 text-xs text-ink-subtle">
+                <span>Payment fee</span>
+                <span className="text-right">Shown on CHIP&apos;s page before you pay</span>
+              </span>
+            </div>
+
+            <Button type="submit" disabled={submitting || !channelCode} className="h-11 w-full text-sm">
+              <PortalIcon name="shield" className="h-4 w-4" />
+              {submitting ? "Opening secure payment…" : "Continue to secure payment"}
+            </Button>
+            <p className="flex flex-wrap items-center justify-center gap-2 text-center text-xs text-ink-subtle">
+              Payments processed by <PoweredByChip />
             </p>
-            <label className="block space-y-1.5">
-              <span className="text-theme-sm font-medium text-gray-700 dark:text-gray-300">
-                Amount (RM)
-              </span>
-              <input
-                type="number"
-                min={10}
-                step="0.01"
-                value={amountRm}
-                onChange={(e) => setAmountRm(e.target.value)}
-                className={inputClass}
-              />
-            </label>
-            <label className="block space-y-1.5">
-              <span className="text-theme-sm font-medium text-gray-700 dark:text-gray-300">
-                Payment method
-              </span>
-              <select
-                value={channelCode}
-                onChange={(e) => setChannelCode(e.target.value)}
-                className={inputClass}
-              >
-                {(channels ?? []).map((c) => (
-                  <option key={c.channel_code} value={c.channel_code}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="submit"
-              disabled={submitting || !channelCode}
-              className="w-full rounded-lg bg-brand-500 py-2.5 text-theme-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
-            >
-              {submitting ? "Starting checkout…" : "Top up now"}
-            </button>
           </form>
         </Panel>
-
-        <Panel title="How it works">
-          <div className="space-y-3 p-5 text-theme-sm text-gray-600 dark:text-gray-300">
-            <p>You&apos;ll be redirected to a secure payment page to complete your top-up.</p>
-            <p>Only one top-up can be in progress at a time — it expires after 30 minutes.</p>
-            <p>Your balance updates automatically once payment is confirmed.</p>
-          </div>
-        </Panel>
-      </div>
-
-      <Panel title="Ledger history">
-        <div className="max-w-full overflow-x-auto">
-          <table className="min-w-full text-theme-sm">
-            <thead className="border-b border-gray-100 dark:border-gray-800">
-              <tr className="text-left text-theme-xs font-medium text-gray-500 dark:text-gray-400">
-                <th className="px-5 py-3">Type</th>
-                <th className="px-5 py-3">Amount</th>
-                <th className="px-5 py-3">Reason</th>
-                <th className="px-5 py-3">Reference</th>
-                <th className="px-5 py-3">Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {wallet?.entries.data.map((entry) => (
-                <tr key={entry.id} className="text-gray-600 dark:text-gray-300">
-                  <td className="px-5 py-4">{ledgerTypeLabel(entry.type)}</td>
-                  <td
-                    className={`px-5 py-4 font-medium ${
-                      entry.amount < 0
-                        ? "text-error-600 dark:text-error-400"
-                        : "text-success-600 dark:text-success-400"
-                    }`}
-                  >
-                    {entry.amount < 0 ? "-" : "+"}
-                    {formatRm(Math.abs(entry.amount))}
-                  </td>
-                  <td className="px-5 py-4 text-gray-500 dark:text-gray-400">
-                    {entry.reason ?? "—"}
-                  </td>
-                  <td className="px-5 py-4">
-                    {entry.order_number ? (
-                      <Link
-                        href={`/orders/${entry.order_number}`}
-                        className="font-medium text-brand-500 hover:underline"
-                      >
-                        {entry.order_number}
-                      </Link>
-                    ) : (
-                      <span className="text-gray-400">—</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-4 text-theme-xs text-gray-400">
-                    {formatDateTime(entry.created_at)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {wallet && wallet.entries.data.length === 0 && (
-            <EmptyRow>No wallet activity yet.</EmptyRow>
-          )}
-          {!wallet && !error && <EmptyRow>Loading…</EmptyRow>}
+        <div className="xl:col-start-1">
+          <StepsCard
+            title="How a top-up works"
+            steps={[
+              { title: "Pay on CHIP's secure page", body: "You leave PekanGame to pay with your bank. PekanGame never sees your banking login." },
+              { title: "Your balance updates by itself", body: "As soon as CHIP confirms the payment. No receipt to send." },
+              { title: "One top-up at a time", body: "An unpaid top-up closes after 30 minutes, then you can start another." },
+            ]}
+          />
         </div>
 
-        {wallet && wallet.entries.last_page > 1 && (
-          <div className="flex items-center justify-between border-t border-gray-100 px-5 py-3 text-theme-sm text-gray-500 dark:border-gray-800 dark:text-gray-400">
-            <span>
-              Page {wallet.entries.current_page} of {wallet.entries.last_page}
-            </span>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={wallet.entries.current_page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="rounded-lg border border-gray-200 px-3 py-1.5 text-theme-xs disabled:opacity-40 dark:border-gray-700"
-              >
-                Previous
-              </button>
-              <button
-                type="button"
-                disabled={wallet.entries.current_page >= wallet.entries.last_page}
-                onClick={() => setPage((p) => p + 1)}
-                className="rounded-lg border border-gray-200 px-3 py-1.5 text-theme-xs disabled:opacity-40 dark:border-gray-700"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
-      </Panel>
+      </div>
+
+      <section id="history">
+        <Panel>
+          <CardHead title="Wallet history" description="Every movement in and out of your balance, newest first." divided />
+          <LedgerTable entries={wallet?.entries ?? null} onPage={setPage} empty="No wallet activity yet." />
+        </Panel>
+      </section>
     </div>
   );
 }

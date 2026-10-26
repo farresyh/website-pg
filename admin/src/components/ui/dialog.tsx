@@ -69,8 +69,8 @@ function DialogPopup({ className, ...props }: DialogPopupProps) {
     return (
         <PRDialog.Popup
             className={cn(
-                `relative flex flex-col max-h-full pointer-events-auto rounded-xl border border-surface-200 dark:border-surface-700
-        bg-surface-0 dark:bg-surface-900 text-surface-700 dark:text-surface-0 shadow-lg
+                `relative flex flex-col max-h-full pointer-events-auto rounded-lg border border-border
+        bg-surface text-ink shadow-md
         [translate:var(--px-drag-x)_var(--px-drag-y)]
         data-maximized:w-screen! data-maximized:h-screen data-maximized:max-h-full data-maximized:rounded-none data-maximized:translate-none
         opacity-100 scale-100

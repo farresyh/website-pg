@@ -24,7 +24,7 @@ function SelectTrigger({ className, type, ...props }: SelectTriggerProps) {
         <PRSelect.Trigger
             type={type ?? 'button'}
             className={cn(
-                'flex w-full items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-theme-sm text-gray-800 shadow-theme-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 data-disabled:cursor-not-allowed data-disabled:opacity-50 dark:border-gray-800 dark:bg-white/[0.03] dark:text-white/90',
+                'flex w-full items-center justify-between gap-2 rounded-md border border-border bg-surface px-3 py-2 text-left text-theme-sm text-ink shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/40 data-disabled:cursor-not-allowed data-disabled:opacity-50',
                 className
             )}
             {...props}
@@ -58,7 +58,7 @@ function SelectPopup({ className, ...props }: SelectPopupProps) {
     return (
         <PRSelect.Popup
             className={cn(
-                'max-h-60 overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-theme-lg dark:border-gray-800 dark:bg-gray-900',
+                'max-h-60 overflow-auto rounded-lg border border-border bg-surface py-1 shadow-md',
                 className
             )}
             {...props}
@@ -74,7 +74,7 @@ function SelectOption({ className, ...props }: SelectOptionProps) {
     return (
         <PRSelect.Option
             className={cn(
-                'mx-1 cursor-pointer rounded-md px-3 py-2 text-gray-700 data-focused:bg-gray-100 data-selected:font-medium data-selected:text-brand-600 dark:text-gray-300 dark:data-focused:bg-white/[0.05] dark:data-selected:text-brand-400',
+                'mx-1 cursor-pointer rounded-md px-3 py-2 text-ink data-focused:bg-subtle data-selected:font-medium data-selected:text-cyan-ink',
                 className
             )}
             {...props}

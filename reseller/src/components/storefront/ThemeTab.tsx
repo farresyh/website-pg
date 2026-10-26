@@ -9,7 +9,7 @@ import {
   type StorefrontBrandingResponse,
 } from "@/lib/portal";
 import { THEME_PRESETS, getThemePreset } from "@/lib/theme-presets";
-import { Panel, ErrorNote } from "@/components/ui";
+import { Panel, ErrorNote } from "@/components/composites";
 import { SaveButton, InactiveNotice, TabLoading } from "./shared";
 
 // `default` (Digital Architect) is PekanGame's own primary-brand identity,
@@ -101,7 +101,7 @@ export default function ThemeTab() {
         <div className="lg:col-span-7 space-y-4">
           <Panel title="Site Mode">
             <div className="p-5">
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              <p className="text-xs text-ink-subtle mb-4">
                 Light or dark background for your whole storefront — a fixed choice for every visitor, not a toggle they switch themselves.
               </p>
               <div className="flex gap-3">
@@ -117,10 +117,10 @@ export default function ThemeTab() {
                         setSaved(false);
                       }}
                       title={disabled ? "This preset doesn't have a dark palette yet" : undefined}
-                      className={`rounded-lg border-2 px-4 py-2 text-sm font-semibold capitalize transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
+                      className={`rounded-md border-2 px-4 py-2 text-sm font-semibold capitalize transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
                         selectedMode === mode
-                          ? "border-brand-500 bg-brand-50/50 text-brand-700 dark:border-brand-400 dark:bg-brand-950/20 dark:text-brand-300"
-                          : "border-gray-200 text-gray-600 hover:border-gray-300 dark:border-gray-800 dark:text-gray-400 dark:hover:border-gray-700"
+                          ? "border-cyan-600 bg-cyan-50 text-cyan-ink"
+                          : "border-border text-ink-muted hover:border-border-control"
                       }`}
                     >
                       {mode}
@@ -129,14 +129,14 @@ export default function ThemeTab() {
                 })}
               </div>
               {!darkAvailable && (
-                <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">This preset doesn&apos;t have a dark palette yet — more presets are getting one over time.</p>
+                <p className="mt-3 text-xs text-ink-subtle">This preset doesn&apos;t have a dark palette yet — more presets are getting one over time.</p>
               )}
             </div>
           </Panel>
 
           <Panel title="Theme Presets">
             <div className="p-5">
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              <p className="text-xs text-ink-subtle mb-4">
                 Choose a curated Neubrutalist color palette for your customer storefront. Click a preset to preview.
               </p>
               <div className="space-y-3">
@@ -155,31 +155,31 @@ export default function ThemeTab() {
                     }}
                     className={`cursor-pointer rounded-xl border-2 p-4 transition-all ${
                       isSelected
-                        ? "border-brand-500 bg-brand-50/50 shadow-sm dark:border-brand-400 dark:bg-brand-950/20"
-                        : "border-gray-200 hover:border-gray-300 dark:border-gray-800 dark:hover:border-gray-700 bg-white dark:bg-gray-900"
+                        ? "border-cyan-600 bg-cyan-50 shadow-sm"
+                        : "border-border hover:border-border-control bg-surface"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-2">
-                          <h4 className="font-semibold text-gray-900 dark:text-white">
+                          <h4 className="font-semibold text-ink">
                             {preset.name}
                           </h4>
                           {isSavedActive && (
-                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
+                            <span className="rounded-sm bg-success-surface px-2 py-0.5 text-[10.5px] font-bold text-success-ink">
                               Active in Storefront
                             </span>
                           )}
                           {isSelected && !isSavedActive && (
-                            <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10.5px] font-bold text-brand-700 dark:bg-brand-950/50 dark:text-brand-300">
+                            <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-[10.5px] font-bold text-cyan-ink">
                               Selected for Preview
                             </span>
                           )}
                         </div>
-                        <p className="mt-0.5 text-xs font-medium text-gray-500 dark:text-gray-400">
+                        <p className="mt-0.5 text-xs font-medium text-ink-subtle">
                           {preset.tagline}
                         </p>
-                        <p className="mt-1.5 text-xs text-gray-600 dark:text-gray-400">
+                        <p className="mt-1.5 text-xs text-ink-muted">
                           {preset.description}
                         </p>
                       </div>
@@ -208,7 +208,7 @@ export default function ThemeTab() {
               })}
               </div>
 
-              <div className="mt-6 border-t border-gray-100 dark:border-gray-800 pt-4">
+              <div className="mt-6 border-t border-border pt-4">
                 <SaveButton
                   saving={saving}
                   saved={saved}
@@ -225,7 +225,7 @@ export default function ThemeTab() {
           <div className="sticky top-6">
             <Panel title="Live Storefront Preview">
               <div className="p-5">
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                <p className="text-xs text-ink-subtle mb-3">
                   See how your theme colors look on actual storefront components.
                 </p>
                 {/* Mockup Frame — inline-styled from the preset's live tokens (light or dark), not the portal's own static `bg-surface`/`border-ink`, so the preview actually shows the background swap the preset now makes. */}
@@ -340,9 +340,9 @@ export default function ThemeTab() {
                 </div>
               </div>
 
-              <div className="mt-3 flex items-center justify-center gap-1.5 text-center text-xs text-gray-500">
+              <div className="mt-3 flex items-center justify-center gap-1.5 text-center text-xs text-ink-subtle">
                 <span>Theme:</span>
-                <strong className="text-gray-800 dark:text-gray-200">{activePresetConfig.name}</strong>
+                <strong className="text-ink">{activePresetConfig.name}</strong>
               </div>
             </div>
           </Panel>

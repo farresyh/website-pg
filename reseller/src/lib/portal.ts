@@ -113,6 +113,7 @@ export interface OrderFilters {
   delivery_status?: DeliveryStatus;
   search?: string;
   page?: number;
+  per_page?: number;
 }
 
 export function getDashboard(token: string) {
@@ -136,11 +137,28 @@ export function listOrders(
   if (filters.delivery_status) params.set("delivery_status", filters.delivery_status);
   if (filters.search && ownerType === "affiliate") params.set("search", filters.search);
   if (filters.page) params.set("page", String(filters.page));
+  if (filters.per_page) params.set("per_page", String(filters.per_page));
   const query = params.toString();
 
   const base = ownerType === "affiliate" ? "/api/affiliate/orders" : "/api/reseller-portal/orders";
 
   return apiFetch<Paginated<OrderListItem>>(`${base}${query ? `?${query}` : ""}`, { token });
+}
+
+/**
+ * How many orders each delivery tab holds: the server's `total` for that
+ * filter (one row per request), never a count of loaded rows.
+ */
+export async function countOrdersByDelivery(
+  token: string,
+  ownerType: "affiliate" | "reseller",
+  statuses: DeliveryStatus[],
+): Promise<Record<DeliveryStatus | "all", number>> {
+  const keys: (DeliveryStatus | undefined)[] = [undefined, ...statuses];
+  const totals = await Promise.all(
+    keys.map((status) => listOrders(token, ownerType, { delivery_status: status, per_page: 1 }).then((r) => r.total)),
+  );
+  return Object.fromEntries(keys.map((status, i) => [status ?? "all", totals[i]])) as Record<DeliveryStatus | "all", number>;
 }
 
 export function getOrder(token: string, ownerType: "affiliate" | "reseller", orderNumber: string) {

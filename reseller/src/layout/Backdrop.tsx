@@ -15,7 +15,7 @@ const Backdrop: React.FC = () => {
     <button
       type="button"
       aria-label="Close more navigation"
-      className="fixed inset-0 z-40 cursor-default bg-gray-900/50 lg:hidden"
+      className="fixed inset-0 z-40 cursor-default bg-ink/40 lg:hidden"
       onClick={closeAndRestoreFocus}
     />
   );

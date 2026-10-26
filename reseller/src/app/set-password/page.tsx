@@ -1,5 +1,9 @@
 "use client";
 
+import AuthLayout from "@/components/shell/AuthLayout";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
 /**
  * ADR-058 decision 2 (set-password addendum, grilled 2026-09-05): the
  * acceptance page for the emailed invite link
@@ -118,19 +122,19 @@ export default function SetPasswordPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 p-8 dark:bg-gray-900">
-      <div className="w-full max-w-sm space-y-5 rounded-2xl border border-gray-200 bg-white p-8 shadow-theme-sm dark:border-gray-800 dark:bg-white/[0.03]">
+    <AuthLayout>
+      <div className="flex flex-col gap-5">
         <div>
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">
+          <h2 className="text-[22px] font-[650] leading-7 text-ink">
             Tetapkan Kata Laluan
-          </h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          </h2>
+          <p className="mt-1 text-[13px] text-ink-muted">
             Pilih kata laluan untuk akaun partner anda.
           </p>
         </div>
 
         {link === "invalid" && (
-          <p className="rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+          <p className="rounded-md bg-danger-surface px-3 py-2 text-sm text-danger-ink">
             {INVALID_LINK_MESSAGE}
           </p>
         )}
@@ -138,7 +142,7 @@ export default function SetPasswordPage() {
         {credentials && (
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <p className="rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+              <p className="rounded-md bg-danger-surface px-3 py-2 text-sm text-danger-ink">
                 {error}
               </p>
             )}
@@ -148,11 +152,11 @@ export default function SetPasswordPage() {
                 <div className="space-y-1.5">
                   <label
                     htmlFor="password"
-                    className="text-theme-sm font-medium text-gray-700 dark:text-gray-300"
+                    className="text-theme-sm font-medium text-ink-muted"
                   >
                     Kata Laluan Baharu
                   </label>
-                  <input
+                  <Input
                     id="password"
                     type="password"
                     required
@@ -160,17 +164,16 @@ export default function SetPasswordPage() {
                     autoComplete="new-password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-theme-sm text-gray-800 outline-none focus:border-brand-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
                   />
                 </div>
                 <div className="space-y-1.5">
                   <label
                     htmlFor="password_confirmation"
-                    className="text-theme-sm font-medium text-gray-700 dark:text-gray-300"
+                    className="text-theme-sm font-medium text-ink-muted"
                   >
                     Sahkan Kata Laluan
                   </label>
-                  <input
+                  <Input
                     id="password_confirmation"
                     type="password"
                     required
@@ -178,21 +181,20 @@ export default function SetPasswordPage() {
                     autoComplete="new-password"
                     value={passwordConfirmation}
                     onChange={(event) => setPasswordConfirmation(event.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-theme-sm text-gray-800 outline-none focus:border-brand-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
                   />
                 </div>
               </>
             )}
-            <button
+            <Button
               type="submit"
               disabled={submitting}
-              className="w-full rounded-lg bg-brand-500 py-2.5 text-theme-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+              className="h-11 w-full text-sm"
             >
               {submitting ? "Sila tunggu…" : passwordSaved ? "Terus ke Login" : "Tetapkan Kata Laluan"}
-            </button>
+            </Button>
           </form>
         )}
       </div>
-    </main>
+    </AuthLayout>
   );
 }

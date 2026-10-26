@@ -4,9 +4,12 @@ namespace Tests\Feature\Http\Controllers\Admin;
 
 use App\Models\AdminUser;
 use App\Models\AffiliateBranding;
+use App\Models\AffiliateSeoSettings;
 use App\Models\GalleryImage;
 use App\Models\Game;
 use App\Models\HeroSlide;
+use App\Models\JokiTier;
+use App\Models\PlayerValidatorProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -202,6 +205,40 @@ class GalleryImageControllerTest extends TestCase
                 'Game — Mobile Legends (image_url)',
                 'Hero Slide — Top Up Sekejap',
                 'Affiliate Branding — PekanGame (logo)',
+            ],
+            $response->json('references'),
+        );
+    }
+
+    public function test_references_lists_the_joki_rank_icon_brand_og_image_and_checker_image(): void
+    {
+        // Every ImageUrlInput consumer must be listed, or deleting the image
+        // breaks a live page with no warning (a Joki tier icon 404'd on prod, 2026-10-26).
+        Storage::fake('public');
+        $this->actingAsAdmin();
+        $this->postJson('/api/gallery/images', ['image' => UploadedFile::fake()->image('rank.png')])->assertCreated();
+        $image = GalleryImage::query()->firstOrFail();
+
+        JokiTier::query()->create([
+            'name' => 'Epic', 'sort_order' => 1, 'kind' => 'divisional', 'divisions' => 5,
+            'stars_per_division' => 5, 'rate_rm' => 2, 'express_rate_rm' => 3, 'icon_url' => $image->url,
+        ]);
+        AffiliateSeoSettings::query()->create([
+            'affiliate_id' => $this->primaryAffiliate()->id,
+            'default_og_image' => $image->url,
+        ]);
+        PlayerValidatorProfile::query()->create([
+            'name' => 'MLBB', 'key' => 'mlbb', 'public_name' => 'Mobile Legends', 'public_image_url' => $image->url,
+        ]);
+
+        $response = $this->getJson("/api/gallery/images/{$image->id}/references");
+
+        $response->assertOk();
+        $this->assertSame(
+            [
+                'Joki rank — Epic (icon)',
+                'SEO Settings — Platform Owner (default OG image)',
+                'Game ID Checker — Mobile Legends (image)',
             ],
             $response->json('references'),
         );
