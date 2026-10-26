@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gallery\UploadGalleryImageRequest;
 use App\Models\AffiliateBranding;
+use App\Models\AffiliateSeoSettings;
 use App\Models\GalleryImage;
 use App\Models\Game;
 use App\Models\HeroSlide;
+use App\Models\JokiTier;
+use App\Models\PlayerValidatorProfile;
 use App\Services\Media\ImageIngestService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -123,6 +126,18 @@ class GalleryImageController extends Controller
             if ($branding->favicon_path === $galleryImage->path) {
                 $references[] = "Affiliate Branding — {$branding->store_name} (favicon)";
             }
+        }
+
+        foreach (JokiTier::query()->where('icon_url', $url)->orderBy('sort_order')->get() as $tier) {
+            $references[] = "Joki rank — {$tier->name} (icon)";
+        }
+
+        foreach (AffiliateSeoSettings::query()->with('affiliate')->where('default_og_image', $url)->get() as $seo) {
+            $references[] = "SEO Settings — {$seo->affiliate?->business_name} (default OG image)";
+        }
+
+        foreach (PlayerValidatorProfile::query()->where('public_image_url', $url)->get() as $profile) {
+            $references[] = 'Game ID Checker — '.($profile->public_name ?? $profile->name).' (image)';
         }
 
         return response()->json(['references' => $references]);
