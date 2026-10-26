@@ -2289,3 +2289,11 @@ About Us HTML, prod has 2 Resellers and 1 test Affiliate. PRD §16 item 133.
 - Verified: portal and admin `tsc`, `eslint`, `npm test`, `build`; Playwright
   with mocked API data at 1440 (both roles, light and dark), 768 and 390:
   no horizontal overflow, no console errors, mono font loaded.
+
+## 2026-10-26 — ADR-128 PR 3: Wallet, Earnings and Withdrawal
+
+- Built to the mockups. Shared pieces were added: `components/money/LedgerTable`, `MoneyForm` (amount field with quick amounts, steps card) and `shell/PaymentMark`. Every line of copy about money flow was checked against the code before it was written (ADR-128 PR 3 build note).
+- The payment marks and the CHIP badge are now generated copies from the storefront, and CI checks them.
+- Fixed: the portal's `proxy.ts` redirected `public/` files to `/login`, which broke the image optimizer.
+- Found, not changed: the storefront checkout still says "BNM Compliant • 256-bit SSL" (`storefront/src/components/order/PaymentChannelPicker.tsx`). This is although #527 (2026-10-22) removed the storefront's Bank Negara Malaysia lines for CHIP's review. Raised with the founder.
+- Verified: `tsc`, `eslint`, `npm test` and `build` all pass. Playwright with mocked data at 1440 (light and dark), 768 and 390: no overflow, no console errors, and the marks load.

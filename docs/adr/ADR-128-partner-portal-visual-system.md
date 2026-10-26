@@ -59,3 +59,11 @@
 - Shared tokens: the admin's `.dark` block lacked `on-cyan` and `focus-ring`, which the artifact defines (its comment said they "inherit light"). White on the dark cyan-600 measured 2.09:1 on every admin primary button in dark mode; the artifact's dark label is 8.1:1 and its dark ring 8.4:1 on surface. Both now follow the artifact, in both apps.
 - JetBrains Mono (the artifact's files) is declared in `tokens.css` and copied with it by the sync script, so `font-mono` is the real face in both apps.
 - A phone-width table's screen-reader-only header label is absolutely positioned; with `body` as its containing block it escaped the table's scroll box and widened the page at 768px. The scroll box is `relative` now.
+
+### 2026-10-26 build note — PR 3 (Wallet, Earnings, Withdrawal)
+
+- Wallet follows the mockup. The payment methods are the API's active ones, each shown with the storefront's official mark. The marks and CHIP's "Powered by CHIP" lockup are synced from `storefront/public/images` by `scripts/sync-shared-files.mjs` and checked by CI. The fee is never estimated, and an empty method list says that online top-up is paused and to contact support (admin manual credit exists, ADR-073 PR-C). On phones the top-up form comes right after the balance.
+- Ledger rows say where money came from from the row's own `reference_type`: `wallet_topup_attempt` is "Paid online through CHIP"; a receipt or no reference is "Credited by PekanGame". Credits are `success-ink` with a plus; debits are `ink` with a minus.
+- Withdrawal copy follows the code. `Admin\WithdrawalController::approve` writes the ledger debit, `complete` stamps `processed_at`, and `reject` only applies to Pending, with no debit. One request can be open at a time, and it always pays the Profile bank account (masked to its last 4 digits here). "Earnings are added when an order is delivered" is true because every path into Delivered calls `creditProfit`.
+- Found while verifying: `proxy.ts` sent every request without the session cookie to `/login`, including `public/` files. The image optimizer fetches those without the cookie, so the payment marks returned 400. `images/` is now excluded from the matcher, and protected pages still redirect.
+- Typed ringgit is converted to sen in one place, `toSen`: digits with at most 2 decimals and more than zero. Tested.
