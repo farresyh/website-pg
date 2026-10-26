@@ -5,6 +5,10 @@
 //    ADR-081/090);
 //  - the ADR-104 design tokens and the font files they declare
 //    (admin → reseller), ADR-128 decision 7;
+//  - the shared component kit: the admin's `components/ui` PrimeReact
+//    wrappers and its `lib/utils` `cn` helper (admin → reseller), ADR-128
+//    2026-10-26 addendum. `RichTextEditor` (the one hand-rolled primitive)
+//    is deliberately NOT shared;
 //  - the official payment marks and the CHIP badge (storefront → reseller),
 //    so the portal's top-up shows the same artwork as checkout.
 // A copy lives inside reseller/ so Vercel's per-app ignoreCommand rebuilds
@@ -16,6 +20,18 @@ import { dirname, join } from "node:path";
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
+// The shared kit: the admin's PrimeReact wrappers plus its `cn` helper.
+// Verbatim copy (no banner) — they carry `'use client'` as the first line
+// and `@/` imports that resolve identically in the portal.
+const KIT = [
+  "button", "datatable", "dialog", "input", "label", "option-select",
+  "popover", "select", "switch", "tabs", "tag", "textarea",
+].map((name) => ({
+  source: `admin/src/components/ui/${name}.tsx`,
+  target: `reseller/src/components/ui/${name}.tsx`,
+  banner: "",
+}));
+
 const copies = [
   { source: "storefront/src/lib/theme-presets.ts", target: "reseller/src/lib/theme-presets.ts", banner: "" },
   {
@@ -23,6 +39,8 @@ const copies = [
     target: "reseller/src/app/tokens.generated.css",
     banner: "/* GENERATED from admin/src/app/tokens.css by scripts/sync-shared-files.mjs. Do not edit. */\n",
   },
+  { source: "admin/src/lib/utils.ts", target: "reseller/src/lib/utils.ts", banner: "" },
+  ...KIT,
   ...["jetbrains-mono-400.woff2", "jetbrains-mono-500.woff2"].map((font) => ({
     source: `admin/src/app/fonts/${font}`,
     target: `reseller/src/app/fonts/${font}`,

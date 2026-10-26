@@ -6,7 +6,8 @@ import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
 import { createWithdrawal, getWithdrawals, type WithdrawalRow, type WithdrawalsResponse } from "@/lib/portal";
 import { dateAndTime, formatRm, toSen, type StatusBadge } from "@/lib/format";
-import { Badge, CardHead, ErrorNote, PageHeader, Panel, Skeleton, buttonClass } from "@/components/ui";
+import { Badge, CardHead, ErrorNote, PageHeader, Panel, Skeleton } from "@/components/composites";
+import { Button } from "@/components/ui/button";
 import { PortalIcon } from "@/components/shell/PortalIcon";
 import { AmountField, StepsCard } from "@/components/money/MoneyForm";
 
@@ -131,9 +132,9 @@ export default function WithdrawalPage() {
                   </p>
                 )}
               </div>
-              <button type="submit" disabled={submitting || !bank} className={`${buttonClass("primary")} h-11 w-full text-sm`}>
+              <Button type="submit" disabled={submitting || !bank} className="h-11 w-full text-sm">
                 {submitting ? "Sending request…" : "Request withdrawal"}
-              </button>
+              </Button>
               <p className="flex items-center justify-center gap-1.5 text-center text-xs text-ink-subtle">
                 <PortalIcon name="info" className="h-4 w-4" />
                 Your earnings go down only when PekanGame approves the request.

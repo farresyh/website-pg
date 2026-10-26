@@ -17,7 +17,7 @@ import {
   type WalletResponse,
 } from "@/lib/reseller-portal";
 import { dateAndTime, formatRm, greeting } from "@/lib/format";
-import { Badge, BalanceHero, CardHead, ErrorNote, Facts, PageHeader, Panel, Skeleton, buttonClass } from "@/components/ui";
+import { Badge, BalanceHero, CardHead, ErrorNote, Facts, PageHeader, Panel, Skeleton, buttonClass } from "@/components/composites";
 import { PortalIcon, type PortalIconName } from "@/components/shell/PortalIcon";
 import OrderTable from "@/components/orders/OrderTable";
 

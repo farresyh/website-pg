@@ -9,7 +9,7 @@ import {
   type StorefrontBrandingResponse,
 } from "@/lib/portal";
 import { THEME_PRESETS, getThemePreset } from "@/lib/theme-presets";
-import { Panel, ErrorNote } from "@/components/ui";
+import { Panel, ErrorNote } from "@/components/composites";
 import { SaveButton, InactiveNotice, TabLoading } from "./shared";
 
 // `default` (Digital Architect) is PekanGame's own primary-brand identity,

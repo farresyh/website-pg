@@ -8,8 +8,9 @@ import {
   setStorefrontGameVisibility,
   type StorefrontGamesResponse,
 } from "@/lib/portal";
-import { Panel, ErrorNote, EmptyRow } from "@/components/ui";
-import { Toggle, inputClass, InactiveNotice, TabLoading } from "./shared";
+import { Panel, ErrorNote, EmptyRow } from "@/components/composites";
+import { Input } from "@/components/ui/input";
+import { Toggle, InactiveNotice, TabLoading } from "./shared";
 
 export default function CatalogTab() {
   const [data, setData] = useState<StorefrontGamesResponse | null>(null);
@@ -67,11 +68,11 @@ export default function CatalogTab() {
             Every game is shown on your storefront by default. Turn one off to hide it. At least one game must
             stay visible.
           </p>
-          <input
+          <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search games…"
-            className={`${inputClass} max-w-xs`}
+            className="max-w-xs"
           />
 
           <Panel>

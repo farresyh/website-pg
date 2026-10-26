@@ -13,8 +13,11 @@ import {
   type StorefrontHeroSlidesResponse,
   type HeroSlideInput,
 } from "@/lib/portal";
-import { Panel, ErrorNote, EmptyRow, buttonClass } from "@/components/ui";
-import { Field, inputClass, SaveButton, Toggle, InactiveNotice, TabLoading } from "./shared";
+import { Panel, ErrorNote, EmptyRow } from "@/components/composites";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Field, SaveButton, Toggle, InactiveNotice, TabLoading } from "./shared";
 
 type Draft = HeroSlideInput & { id: number | null };
 
@@ -161,14 +164,13 @@ export default function HeroTab() {
           </div>
 
           {writable && !editing && (
-            <button
+            <Button
               type="button"
               disabled={atCap}
               onClick={() => setEditing({ ...BLANK, sort_order: slides.length })}
-              className={buttonClass("primary")}
             >
               {atCap ? `Maximum ${data.max_slides} slides` : "Add a slide"}
-            </button>
+            </Button>
           )}
 
           {editing && (
@@ -247,44 +249,40 @@ function SlideForm({
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Eyebrow">
-            <input value={form.eyebrow} onChange={(e) => set("eyebrow", e.target.value)} className={inputClass} />
+            <Input value={form.eyebrow} onChange={(e) => set("eyebrow", e.target.value)} />
           </Field>
           <Field label="Sort order">
-            <input
+            <Input
               type="number"
               min={0}
               max={99}
               value={form.sort_order}
               onChange={(e) => set("sort_order", Number(e.target.value))}
-              className={inputClass}
             />
           </Field>
         </div>
         <Field label="Title" hint="Leave blank for an asset-only banner (all copy baked into the image).">
-          <input value={form.title} onChange={(e) => set("title", e.target.value)} className={inputClass} />
+          <Input value={form.title} onChange={(e) => set("title", e.target.value)} />
         </Field>
         <Field label="Description">
-          <textarea
+          <Textarea
             value={form.description}
             onChange={(e) => set("description", e.target.value)}
             rows={2}
-            className={inputClass}
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Button label" hint="Optional, but fill both label and link or neither.">
-            <input
+            <Input
               value={form.primary_cta_label}
               onChange={(e) => set("primary_cta_label", e.target.value)}
-              className={inputClass}
             />
           </Field>
           <Field label="Button link">
-            <input
+            <Input
               value={form.primary_cta_href}
               onChange={(e) => set("primary_cta_href", e.target.value)}
               placeholder="/order/mobile-legends"
-              className={inputClass}
             />
           </Field>
         </div>

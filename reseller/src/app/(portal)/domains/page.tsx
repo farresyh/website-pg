@@ -23,7 +23,9 @@ import {
   type DomainsResponse,
 } from "@/lib/portal";
 import { formatDateTime } from "@/lib/format";
-import { PageHeader, Panel, ErrorNote, EmptyRow, StatusTag, inputClass, buttonClass } from "@/components/ui";
+import { PageHeader, Panel, ErrorNote, EmptyRow, StatusTag } from "@/components/composites";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { DomainSetupGuide } from "@/components/domains/DomainSetupGuide";
 
 const STATUS_SEVERITY: Record<AffiliateDomainRow["status"], string> = {
@@ -120,22 +122,20 @@ export default function DomainsPage() {
           <form onSubmit={handleAdd} className="flex flex-wrap items-end gap-3 p-5">
             <label className="flex-1 space-y-1.5">
               <span className="text-theme-sm font-medium text-ink-muted">Domain</span>
-              <input
+              <Input
                 value={hostname}
                 onChange={(e) => setHostname(e.target.value)}
                 placeholder="yourbrand.com"
                 required
                 disabled={!canWrite || atCap}
-                className={inputClass}
               />
             </label>
-            <button
+            <Button
               type="submit"
               disabled={adding || !canWrite || atCap}
-              className={buttonClass("primary")}
             >
               {adding ? "Adding…" : "Add domain"}
-            </button>
+            </Button>
             {!canWrite && (
               <p className="w-full text-theme-xs text-warning-ink">
                 Your account is inactive — domains are read-only. Contact support.

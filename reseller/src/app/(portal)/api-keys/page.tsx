@@ -18,7 +18,10 @@ import {
   type ResellerApiKeyRow,
 } from "@/lib/reseller-portal";
 import { formatDateTime } from "@/lib/format";
-import { PageHeader, Panel, ErrorNote, EmptyRow, inputClass, buttonClass, Badge } from "@/components/ui";
+import { PageHeader, Panel, ErrorNote, EmptyRow, Badge } from "@/components/composites";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import WebhookPanel from "./WebhookPanel";
 
 export default function ApiKeysPage() {
@@ -145,21 +148,19 @@ export default function ApiKeysPage() {
             <span className="text-theme-sm font-medium text-ink-muted">
               Label
             </span>
-            <input
+            <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Production key"
               required
-              className={inputClass}
             />
           </label>
-          <button
+          <Button
             type="submit"
             disabled={issuing || activeCount >= 5}
-            className={buttonClass("primary")}
           >
             {issuing ? "Issuing…" : "Issue key"}
-          </button>
+          </Button>
         </form>
       </Panel>
 
@@ -239,22 +240,22 @@ export default function ApiKeysPage() {
                               One IPv4/IPv6 address per line (or comma-separated). Leave empty to allow any IP.
                               Exact match only — no ranges.
                             </p>
-                            <textarea
+                            <Textarea
                               value={ipDraft}
                               onChange={(e) => setIpDraft(e.target.value)}
                               rows={4}
                               placeholder="203.0.113.7&#10;198.51.100.24"
-                              className={`${inputClass} font-mono text-xs`}
+                              className="font-mono text-xs"
                             />
                             <div className="flex gap-2">
-                              <button
+                              <Button
                                 type="button"
                                 onClick={() => handleSaveIps(key)}
                                 disabled={savingIps}
-                                className={buttonClass("primary", true)}
+                                size="small"
                               >
                                 {savingIps ? "Saving…" : "Save"}
-                              </button>
+                              </Button>
                               <button
                                 type="button"
                                 onClick={() => setIpEditId(null)}

@@ -11,8 +11,9 @@ import {
   type MarkupPreview,
 } from "@/lib/portal";
 import { formatRm } from "@/lib/format";
-import { Panel, ErrorNote } from "@/components/ui";
-import { Field, inputClass, SaveButton, InactiveNotice, TabLoading } from "./shared";
+import { Panel, ErrorNote } from "@/components/composites";
+import { Input } from "@/components/ui/input";
+import { Field, SaveButton, InactiveNotice, TabLoading } from "./shared";
 
 export default function PricingTab() {
   const [pricing, setPricing] = useState<StorefrontPricing | null>(null);
@@ -98,7 +99,7 @@ export default function PricingTab() {
             label="Markup over wholesale (%)"
             hint={`The platform allows up to ${pricing.max_markup_pct}%. Set 0 to sell at wholesale.`}
           >
-            <input
+            <Input
               type="number"
               min={0}
               max={pricing.max_markup_pct}
@@ -106,7 +107,7 @@ export default function PricingTab() {
               value={value}
               onChange={(e) => onChange(e.target.value)}
               disabled={!writable}
-              className={`${inputClass} max-w-[160px]`}
+              className="max-w-[160px]"
             />
           </Field>
 

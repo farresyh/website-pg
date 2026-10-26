@@ -6,7 +6,9 @@ import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { getProfile, updateProfile, type AffiliateProfile } from "@/lib/portal";
 import { getResellerProfile, type ResellerProfile } from "@/lib/reseller-portal";
-import { PageHeader, Panel, ErrorNote, StatusTag, buttonClass, inputClass } from "@/components/ui";
+import { PageHeader, Panel, ErrorNote, StatusTag } from "@/components/composites";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export default function ProfilePage() {
   const session = useClientSession();
@@ -172,49 +174,43 @@ function AffiliateProfileView() {
           <Panel title="Contact & payout">
             <form onSubmit={handleSubmit} className="space-y-4 p-5">
               <Field label="Contact name">
-                <input
+                <Input
                   value={form.contact_name}
                   onChange={(e) => set("contact_name", e.target.value)}
-                  className={inputClass}
                 />
               </Field>
               <Field label="Contact phone">
-                <input
+                <Input
                   value={form.phone}
                   onChange={(e) => set("phone", e.target.value)}
-                  className={inputClass}
                 />
               </Field>
               <Field label="Bank name">
-                <input
+                <Input
                   value={form.bank_name}
                   onChange={(e) => set("bank_name", e.target.value)}
-                  className={inputClass}
                 />
               </Field>
               <Field label="Account number">
-                <input
+                <Input
                   value={form.bank_account_no}
                   onChange={(e) => set("bank_account_no", e.target.value)}
-                  className={inputClass}
                 />
               </Field>
               <Field label="Account holder">
-                <input
+                <Input
                   value={form.bank_account_holder}
                   onChange={(e) => set("bank_account_holder", e.target.value)}
-                  className={inputClass}
                 />
               </Field>
 
               <div className="flex items-center gap-3">
-                <button
+                <Button
                   type="submit"
                   disabled={saving}
-                  className={buttonClass("primary")}
                 >
                   {saving ? "Saving…" : "Save changes"}
-                </button>
+                </Button>
                 {saved && (
                   <span className="text-theme-sm text-success-ink">
                     Saved.

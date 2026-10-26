@@ -9,7 +9,7 @@ import { ApiError } from "@/lib/api-client";
 import { getOrder, type OrderDetail } from "@/lib/portal";
 import { dateAndTime, deliveryBadge, formatRm, paymentBadge } from "@/lib/format";
 import { useSupportContacts, whatsAppLink } from "@/hooks/useSupportContacts";
-import { Badge, CopyId, ErrorNote, GameThumb, Skeleton, buttonClass } from "@/components/ui";
+import { Badge, CopyId, ErrorNote, GameThumb, Skeleton, buttonClass } from "@/components/composites";
 import { PortalIcon, type PortalIconName } from "@/components/shell/PortalIcon";
 
 /**

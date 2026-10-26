@@ -22,7 +22,9 @@ import {
   type ResellerWebhookDelivery,
 } from "@/lib/reseller-portal";
 import { formatDateTime } from "@/lib/format";
-import { Panel, ErrorNote, EmptyRow, StatusTag, inputClass, buttonClass } from "@/components/ui";
+import { Panel, ErrorNote, EmptyRow, StatusTag } from "@/components/composites";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 const DELIVERY_SEVERITY: Record<ResellerWebhookDelivery["status"], string> = {
   pending: "info",
@@ -130,23 +132,21 @@ export default function WebhookPanel() {
         <div className="space-y-4 p-5">
           <label className="block space-y-1.5">
             <span className="text-theme-sm font-medium text-ink-muted">Endpoint URL (HTTPS)</span>
-            <input
+            <Input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://your-system.example/webhooks/pekangame"
-              className={inputClass}
             />
           </label>
 
           <div className="flex flex-wrap items-center gap-3">
-            <button
+            <Button
               type="button"
               onClick={save}
               disabled={busy || url.trim() === "" || url.trim() === (webhook?.url ?? "")}
-              className={buttonClass("primary")}
             >
               {webhook ? "Update URL" : "Save endpoint"}
-            </button>
+            </Button>
 
             {webhook && (
               <>

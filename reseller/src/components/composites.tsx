@@ -2,11 +2,16 @@
 
 import { useState } from "react";
 import { PortalIcon, type PortalIconName } from "@/components/shell/PortalIcon";
+import { Button } from "@/components/ui/button";
+import { Tag } from "@/components/ui/tag";
 
 /**
- * The portal's shared presentational pieces, on the ADR-104 tokens in the
- * ADR-128 "PekanGame Partner" variant. Names match the design system's
- * classes (pg-badge, pg-card, pg-kv …) so a page reads like its mockup.
+ * The portal's own composites — presentational pieces the admin has no
+ * equivalent for (page header, cards, balance hero, copy-id, pager …).
+ * Built on the ADR-104 tokens in the ADR-128 "PekanGame Partner" variant,
+ * and on the shared kit (`components/ui`) for primitives. Primitives that
+ * the admin kit already provides (Button, Input, Tag, Switch, Tabs, Select,
+ * Dialog …) are NOT defined here — import them from `components/ui/*`.
  */
 
 export function PageHeader({
@@ -73,37 +78,33 @@ export function CardHead({
 
 export type BadgeTone = "success" | "warning" | "danger" | "review" | "neutral" | "info";
 
-const TONE: Record<BadgeTone, string> = {
-  success: "bg-success-surface text-success-ink",
-  warning: "bg-warning-surface text-warning-ink",
-  danger: "bg-danger-surface text-danger-ink",
-  review: "bg-review-surface text-review-ink",
-  neutral: "bg-neutral-surface text-neutral-ink",
-  info: "bg-info-surface text-info-ink",
+const TONE_TO_SEVERITY: Record<BadgeTone, "success" | "warn" | "danger" | "review" | "secondary" | "info"> = {
+  success: "success",
+  warning: "warn",
+  danger: "danger",
+  review: "review",
+  neutral: "secondary",
+  info: "info",
 };
 
-/** Every status is a word with a dot; colour never carries the meaning alone. */
+/**
+ * The portal's status badge — a thin wrapper on the shared kit's `Tag`
+ * (ADR-128), keeping the portal's `tone` vocabulary and its always-on dot.
+ * Colour never carries the meaning alone: every status is a word with a dot.
+ */
 export function Badge({ tone, children, large = false }: { tone: BadgeTone; children: React.ReactNode; large?: boolean }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-sm font-semibold before:h-1.5 before:w-1.5 before:rounded-full before:bg-current ${
-        large ? "h-[26px] px-2.5 text-[13px]" : "h-[22px] px-2 text-xs"
-      } ${TONE[tone]}`}
-    >
+    <Tag severity={TONE_TO_SEVERITY[tone]} dot className={large ? "h-[26px] px-2.5 text-[13px]" : ""}>
       {children}
-    </span>
+    </Tag>
   );
 }
 
-const SEVERITY_TONE: Record<string, BadgeTone> = { success: "success", warn: "warning", danger: "danger", info: "info", muted: "neutral" };
+const SEVERITY_TO_TONE: Record<string, BadgeTone> = { success: "success", warn: "warning", danger: "danger", muted: "neutral" };
 
 /** The older severity names, kept for the screens PRs 3–4 haven't moved yet. */
 export function StatusTag({ children, severity = "muted" }: { children: React.ReactNode; severity?: string }) {
-  return (
-    <span className="capitalize">
-      <Badge tone={SEVERITY_TONE[severity] ?? "neutral"}>{children}</Badge>
-    </span>
-  );
+  return <Badge tone={SEVERITY_TO_TONE[severity] ?? "neutral"}>{children}</Badge>;
 }
 
 export function ErrorNote({ message }: { message: string }) {
@@ -112,6 +113,24 @@ export function ErrorNote({ message }: { message: string }) {
       {message}
     </p>
   );
+}
+
+const BUTTON = {
+  primary: "bg-cyan-600 text-on-cyan hover:bg-cyan-700",
+  secondary: "border border-border-strong bg-surface text-ink shadow-xs hover:bg-subtle",
+  ghost: "text-ink-muted hover:bg-overlay hover:text-ink",
+};
+
+/**
+ * Class names for a **link** (`<Link>` / `<a>`) styled as the design
+ * system's pg-btn. Real `<button>` elements use the shared kit's `Button`
+ * instead (ADR-128); this stays only because a navigation link must keep
+ * its `<a>` semantics (right-click, middle-click) that `Button` cannot.
+ */
+export function buttonClass(variant: keyof typeof BUTTON = "secondary", small = false): string {
+  return `inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-semibold disabled:cursor-not-allowed disabled:opacity-45 ${
+    small ? "h-[30px] px-2.5 text-xs" : "min-h-11 px-3.5 text-[13px] sm:min-h-9"
+  } ${BUTTON[variant]}`;
 }
 
 export function EmptyRow({ children }: { children: React.ReactNode }) {
@@ -223,19 +242,6 @@ export function BalanceHero({
   );
 }
 
-const BUTTON = {
-  primary: "bg-cyan-600 text-on-cyan hover:bg-cyan-700",
-  secondary: "border border-border-strong bg-surface text-ink shadow-xs hover:bg-subtle",
-  ghost: "text-ink-muted hover:bg-overlay hover:text-ink",
-};
-
-/** Class names for a link or button styled as the design system's pg-btn. */
-export function buttonClass(variant: keyof typeof BUTTON = "secondary", small = false): string {
-  return `inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-semibold disabled:cursor-not-allowed disabled:opacity-45 ${
-    small ? "h-[30px] px-2.5 text-xs" : "min-h-11 px-3.5 text-[13px] sm:min-h-9"
-  } ${BUTTON[variant]}`;
-}
-
 export function Pager({
   page,
   lastPage,
@@ -259,21 +265,17 @@ export function Pager({
       </span>
       {lastPage > 1 && (
         <div className="flex gap-1.5">
-          <button type="button" disabled={page <= 1} onClick={() => onPage(page - 1)} className={buttonClass("secondary", true)}>
+          <Button variant="outlined" severity="secondary" size="small" disabled={page <= 1} onClick={() => onPage(page - 1)}>
             Previous
-          </button>
-          <button type="button" disabled={page >= lastPage} onClick={() => onPage(page + 1)} className={buttonClass("secondary", true)}>
+          </Button>
+          <Button variant="outlined" severity="secondary" size="small" disabled={page >= lastPage} onClick={() => onPage(page + 1)}>
             Next
-          </button>
+          </Button>
         </div>
       )}
     </div>
   );
 }
-
-/** Text inputs, selects and textareas: a visible focus ring, 44px touch height on phones. */
-export const inputClass =
-  "min-h-11 w-full rounded-md border border-border-control bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-transparent focus:outline-2 focus:outline-offset-[-1px] focus:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-9";
 
 /** A loading placeholder the size of the content it stands for. */
 export function Skeleton({ className }: { className: string }) {

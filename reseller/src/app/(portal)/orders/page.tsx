@@ -13,7 +13,8 @@ import {
   type Paginated,
   type PaymentStatus,
 } from "@/lib/portal";
-import { ErrorNote, PageHeader, Pager, Panel, Skeleton, buttonClass } from "@/components/ui";
+import { ErrorNote, PageHeader, Pager, Panel, Skeleton } from "@/components/composites";
+import { Button } from "@/components/ui/button";
 import { PortalIcon } from "@/components/shell/PortalIcon";
 import OrderTable from "@/components/orders/OrderTable";
 
@@ -99,17 +100,18 @@ export default function OrdersPage() {
             : "Every order placed through your API keys and WhatsApp bot. Payment and delivery are shown separately."
         }
         action={
-          <button
+          <Button
             type="button"
             onClick={() => {
               setLoading(true);
               setRefreshKey((k) => k + 1);
             }}
-            className={buttonClass("secondary")}
+            variant="outlined"
+            severity="secondary"
           >
             <PortalIcon name="refresh" className="h-4 w-4" />
             Refresh
-          </button>
+          </Button>
         }
       />
       {error && <ErrorNote message={error} />}
@@ -183,9 +185,9 @@ export default function OrdersPage() {
                   className="min-h-11 w-full rounded-md border border-border-control bg-surface pr-3 pl-9 text-[13px] text-ink placeholder:text-ink-subtle sm:min-h-9"
                 />
               </span>
-              <button type="submit" className={buttonClass("secondary")}>
+              <Button type="submit" variant="outlined" severity="secondary">
                 Search
-              </button>
+              </Button>
             </form>
           )}
           <span className="ml-auto hidden text-xs text-ink-subtle sm:inline">Malaysia time (GMT+8)</span>

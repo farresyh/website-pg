@@ -2388,3 +2388,49 @@ comment in `button.tsx`.
 
 **Not live.** Ships with PR 2 (the kit generated into the portal) as item 133,
 before the founder's page-by-page review.
+
+## 2026-10-26 — Shared component kit, PR 2: the kit generated into the portal, hand-rolled kit deleted
+
+**Why.** ADR-128 2026-10-26 addendum, step 2. With the admin kit on the
+semantic tokens (PR 1), this makes the portal use the same kit instead of
+its hand-rolled `ui.tsx`, so the two apps can't drift.
+
+**Shipped (branch `feature/adr-128-shared-kit-pr2`).**
+- **Severity colours resolved** (PRD §16 item 135, was deferred in PR 1):
+  the Button severities `info`/`success`/`warn`/`danger`/`help` now use the
+  design system's `-surface`/`-ink` badge pairs (soft fill + a border that
+  intensifies on hover), never a solid `bg-*-ink` (which fails dark contrast)
+  and never a `dark:` colour override. This unblocked generation, because the
+  portal's `color-tokens.test.ts` rejects `dark:` colour overrides.
+- **Touch targets** (ADR-112): Button `small`/`normal` and Input height are
+  now `min-h-11 sm:min-h-9` (44px phone / 36px desktop), and the Input gained
+  `focus:border-transparent`. A new `Textarea` (native `<textarea>` on
+  `inputVariants`) completes the form primitives.
+- **Generation.** `scripts/sync-shared-files.mjs` now also copies the 11
+  PrimeReact wrappers plus `lib/utils.ts` (and `textarea.tsx`) into
+  `reseller/src/components/ui/`; the portal gained the kit's deps
+  (`@primeicons/react`, `class-variance-authority`, `tailwind-merge`).
+- **Portal swap.** The hand-rolled `reseller/src/components/ui.tsx` is
+  deleted. Its composites moved to `reseller/src/components/composites.tsx`
+  (`PageHeader`, `Panel`, `BalanceHero`, `Facts`, `CopyId`, `Pager` …), with
+  `Badge`/`StatusTag` as thin wrappers on the shared `Tag` (keeping the
+  portal's `tone` vocabulary and its always-on dot) and `Pager` on the shared
+  `Button`. 21 files migrated: `<button className={buttonClass(…)}>` →
+  `<Button>`, `<input/textarea className={inputClass}>` → `<Input>`/`<Textarea>`.
+  `buttonClass` stays only for `<Link>`/`<a>` (a navigation link must keep its
+  `<a>` semantics), imported from `composites.tsx`. `Toggle` in the storefront
+  `shared.tsx` is now the shared `Switch`.
+
+**Verified.**
+- Portal: `npm test` 8/8, lint clean, `npm run build` 21/21. The generated
+  kit passes the portal's stricter `color-tokens.test.ts` (no `dark:` colour
+  override, no TailAdmin class).
+- Admin: `npm test` 19/19, `npm run build` 51/51 (the severity/sizing changes
+  re-verified).
+- Live browser (`getComputedStyle`): portal `/login` "Sign in" button
+  `rgb(11,114,133)` = `#0b7285` cyan-600, inputs white 8px radius, no console
+  errors. The admin's severity buttons (soft fill) and the portal's full
+  page-by-page look are the founder's review (next step in item 133).
+
+**Not live.** Ships with the rest of item 133 (the founder's page-by-page
+review of layer 1, then a release).

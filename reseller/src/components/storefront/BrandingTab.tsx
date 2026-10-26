@@ -13,8 +13,10 @@ import {
   deleteStorefrontFavicon,
   type StorefrontBrandingResponse,
 } from "@/lib/portal";
-import { Panel, ErrorNote } from "@/components/ui";
-import { Field, inputClass, SaveButton, InactiveNotice, TabLoading } from "./shared";
+import { Panel, ErrorNote } from "@/components/composites";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Field, SaveButton, InactiveNotice, TabLoading } from "./shared";
 
 const SOCIAL_KEYS = ["facebook", "instagram", "tiktok", "youtube", "whatsapp"] as const;
 
@@ -264,49 +266,44 @@ export default function BrandingTab() {
         <Panel title="Store identity">
           <div className="space-y-4 p-5">
             <Field label="Store name">
-              <input
+              <Input
                 value={form.store_name}
                 onChange={(e) => set("store_name", e.target.value)}
                 required
                 disabled={!writable}
-                className={inputClass}
               />
             </Field>
             <Field label="Description" hint="Shown in your storefront footer.">
-              <textarea
+              <Textarea
                 value={form.description}
                 onChange={(e) => set("description", e.target.value)}
                 rows={3}
                 disabled={!writable}
-                className={inputClass}
               />
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Support email">
-                <input
+                <Input
                   type="email"
                   value={form.support_email}
                   onChange={(e) => set("support_email", e.target.value)}
                   disabled={!writable}
-                  className={inputClass}
                 />
               </Field>
               <Field label="Support phone">
-                <input
+                <Input
                   value={form.support_phone}
                   onChange={(e) => set("support_phone", e.target.value)}
                   disabled={!writable}
-                  className={inputClass}
                 />
               </Field>
             </div>
             <Field label="Telegram contact link">
-              <input
+              <Input
                 value={form.telegram_contact_link}
                 onChange={(e) => set("telegram_contact_link", e.target.value)}
                 placeholder="https://t.me/yourbrand"
                 disabled={!writable}
-                className={inputClass}
               />
             </Field>
           </div>
@@ -316,12 +313,11 @@ export default function BrandingTab() {
           <div className="grid gap-4 p-5 sm:grid-cols-2">
             {SOCIAL_KEYS.map((key) => (
               <Field key={key} label={key[0].toUpperCase() + key.slice(1)}>
-                <input
+                <Input
                   value={form.social[key]}
                   onChange={(e) => setSocial(key, e.target.value)}
                   placeholder="https://…"
                   disabled={!writable}
-                  className={inputClass}
                 />
               </Field>
             ))}
@@ -334,27 +330,24 @@ export default function BrandingTab() {
               Only the pixel IDs are yours to set — meta tags and structured data stay platform-managed.
             </p>
             <Field label="Google Analytics measurement ID" hint="Looks like G-XXXXXXXXXX">
-              <input
+              <Input
                 value={form.ga_measurement_id}
                 onChange={(e) => set("ga_measurement_id", e.target.value)}
                 disabled={!writable}
-                className={inputClass}
               />
             </Field>
             <Field label="Meta (Facebook) pixel ID" hint="A 15–16 digit number">
-              <input
+              <Input
                 value={form.fb_pixel_id}
                 onChange={(e) => set("fb_pixel_id", e.target.value)}
                 disabled={!writable}
-                className={inputClass}
               />
             </Field>
             <Field label="TikTok pixel ID">
-              <input
+              <Input
                 value={form.tiktok_pixel_id}
                 onChange={(e) => set("tiktok_pixel_id", e.target.value)}
                 disabled={!writable}
-                className={inputClass}
               />
             </Field>
           </div>

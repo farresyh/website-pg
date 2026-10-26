@@ -1,7 +1,8 @@
 "use client";
 
 import AuthLayout from "@/components/shell/AuthLayout";
-import { inputClass, buttonClass } from "@/components/ui";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 /**
  * ADR-058 decision 2 (set-password addendum, grilled 2026-09-05): the
@@ -155,7 +156,7 @@ export default function SetPasswordPage() {
                   >
                     Kata Laluan Baharu
                   </label>
-                  <input
+                  <Input
                     id="password"
                     type="password"
                     required
@@ -163,7 +164,6 @@ export default function SetPasswordPage() {
                     autoComplete="new-password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
-                    className={inputClass}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -173,7 +173,7 @@ export default function SetPasswordPage() {
                   >
                     Sahkan Kata Laluan
                   </label>
-                  <input
+                  <Input
                     id="password_confirmation"
                     type="password"
                     required
@@ -181,18 +181,17 @@ export default function SetPasswordPage() {
                     autoComplete="new-password"
                     value={passwordConfirmation}
                     onChange={(event) => setPasswordConfirmation(event.target.value)}
-                    className={inputClass}
                   />
                 </div>
               </>
             )}
-            <button
+            <Button
               type="submit"
               disabled={submitting}
-              className={`${buttonClass("primary")} h-11 w-full text-sm`}
+              className="h-11 w-full text-sm"
             >
               {submitting ? "Sila tunggu…" : passwordSaved ? "Terus ke Login" : "Tetapkan Kata Laluan"}
-            </button>
+            </Button>
           </form>
         )}
       </div>

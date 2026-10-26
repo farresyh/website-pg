@@ -14,7 +14,8 @@ import { setClientSession } from "@/lib/session";
 import { useSupportContacts, whatsAppLink } from "@/hooks/useSupportContacts";
 import { formatMalaysianPhone } from "@/lib/format";
 import AuthLayout from "@/components/shell/AuthLayout";
-import { buttonClass, inputClass } from "@/components/ui";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -97,25 +98,25 @@ export default function LoginPage() {
           <label htmlFor="email" className="text-[13px] font-semibold text-ink">
             Email
           </label>
-          <input id="email" type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} className={`${inputClass} sm:min-h-11`} />
+          <Input id="email" type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} className="sm:min-h-11" />
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="password" className="text-[13px] font-semibold text-ink">
             Password
           </label>
-          <input
+          <Input
             id="password"
             type="password"
             required
             autoComplete="current-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className={`${inputClass} sm:min-h-11`}
+            className="sm:min-h-11"
           />
         </div>
-        <button type="submit" disabled={submitting} className={`${buttonClass("primary")} h-11 w-full text-sm`}>
+        <Button type="submit" disabled={submitting} className="h-11 w-full text-sm">
           {submitting ? "Signing in…" : "Sign in"}
-        </button>
+        </Button>
         {support?.phone && (
           <p className="text-center text-xs leading-[18px] text-ink-subtle">
             Forgot your password, or no invite yet?{" "}
