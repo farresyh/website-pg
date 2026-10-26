@@ -7,7 +7,7 @@ import { InputText as PRInputText } from 'primereact/inputtext';
 import * as React from 'react';
 
 const inputVariants = cva(
-    'h-11 w-full rounded-md border appearance-none px-4 py-2.5 text-sm placeholder:text-ink-subtle focus:outline-2 focus:outline-offset-[-1px] focus:outline-focus-ring',
+    'min-h-11 w-full rounded-md border appearance-none px-4 py-2.5 text-sm placeholder:text-ink-subtle focus:border-transparent focus:outline-2 focus:outline-offset-[-1px] focus:outline-focus-ring sm:min-h-9',
     {
         variants: {
             disabled: { true: '', false: '' },

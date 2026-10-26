@@ -34,8 +34,8 @@ const buttonVariants = cva(
                 true: 'aspect-square px-0'
             },
             size: {
-                small: "py-1 px-2 text-xs [&_svg:not([class*='size-'])]:size-3",
-                normal: "py-1.5 px-2.5 text-sm [&_svg:not([class*='size-'])]:size-3.5",
+                small: "h-[30px] px-2.5 text-xs [&_svg:not([class*='size-'])]:size-3",
+                normal: "min-h-11 px-3.5 text-[13px] sm:min-h-9 [&_svg:not([class*='size-'])]:size-3.5",
                 large: "py-2 px-3 [&_svg:not([class*='size-'])]:size-4"
             }
         },
@@ -57,37 +57,35 @@ const buttonVariants = cva(
                 severity: 'secondary',
                 className: 'bg-subtle hover:bg-border active:bg-border-strong text-ink-muted hover:text-ink active:text-ink'
             },
-            // Deferred (PRD §16): the info/success/warn/danger/help severities
-            // still use Tailwind's stock blue/green/amber/red/violet, not the
-            // design system's status tokens. The `-ink` tokens flip to a light
-            // value in dark mode, so a solid `bg-*-ink text-white` fails dark
-            // contrast; the design system defines status only as a
-            // `-surface`/`-ink` badge pair. Mapping them needs a founder
-            // decision (solid vs badge) — ADR-104 decision 7 (visual change).
+            // Status severities are the design system's `-surface`/`-ink` badge
+            // pairs (ADR-104 decision 3), not solid fills — the `-ink` token
+            // flips to a light value in dark mode, so a solid `bg-*-ink` would
+            // fail dark contrast. A border gives the soft fill a button edge,
+            // and it intensifies on hover.
             {
                 variant: 'default',
                 severity: 'info',
-                className: 'bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700'
+                className: 'border border-info-ink/20 bg-info-surface text-info-ink hover:border-info-ink/50'
             },
             {
                 variant: 'default',
                 severity: 'success',
-                className: 'bg-green-500 text-white hover:bg-green-600 active:bg-green-700'
+                className: 'border border-success-ink/20 bg-success-surface text-success-ink hover:border-success-ink/50'
             },
             {
                 variant: 'default',
                 severity: 'warn',
-                className: 'bg-amber-500 text-white hover:bg-amber-600 active:bg-amber-700'
+                className: 'border border-warning-ink/20 bg-warning-surface text-warning-ink hover:border-warning-ink/50'
             },
             {
                 variant: 'default',
                 severity: 'danger',
-                className: 'bg-red-500 text-white hover:bg-red-600 active:bg-red-700'
+                className: 'border border-danger-ink/20 bg-danger-surface text-danger-ink hover:border-danger-ink/50'
             },
             {
                 variant: 'default',
                 severity: 'help',
-                className: 'bg-violet-500 text-white hover:bg-violet-600 active:bg-violet-700'
+                className: 'border border-purple-600/20 bg-purple-50 text-purple-ink hover:border-purple-600/50'
             },
             {
                 variant: 'default',
@@ -104,31 +102,30 @@ const buttonVariants = cva(
                 severity: 'secondary',
                 className: 'border border-border hover:bg-subtle active:bg-border text-ink-muted'
             },
-            // Deferred — see the note above.
             {
                 variant: 'outlined',
                 severity: 'info',
-                className: 'border border-blue-200 dark:border-blue-700 hover:bg-blue-500/10 active:bg-blue-500/20 text-blue-500'
+                className: 'border border-info-ink/30 hover:bg-info-surface active:bg-info-surface text-info-ink'
             },
             {
                 variant: 'outlined',
                 severity: 'success',
-                className: 'border border-green-200 dark:border-green-700 hover:bg-green-500/10 active:bg-green-500/20 text-green-500'
+                className: 'border border-success-ink/30 hover:bg-success-surface active:bg-success-surface text-success-ink'
             },
             {
                 variant: 'outlined',
                 severity: 'warn',
-                className: 'border border-amber-200 dark:border-amber-700 hover:bg-amber-500/10 active:bg-amber-500/20 text-amber-500'
+                className: 'border border-warning-ink/30 hover:bg-warning-surface active:bg-warning-surface text-warning-ink'
             },
             {
                 variant: 'outlined',
                 severity: 'danger',
-                className: 'border border-red-200 dark:border-red-700 hover:bg-red-500/10 active:bg-red-500/20 text-red-500'
+                className: 'border border-danger-ink/30 hover:bg-danger-surface active:bg-danger-surface text-danger-ink'
             },
             {
                 variant: 'outlined',
                 severity: 'help',
-                className: 'border border-violet-200 dark:border-violet-700 hover:bg-violet-500/10 active:bg-violet-500/20 text-violet-500'
+                className: 'border border-purple-600/30 hover:bg-purple-50 active:bg-purple-50 text-purple-ink'
             },
             {
                 variant: 'outlined',
@@ -145,31 +142,30 @@ const buttonVariants = cva(
                 severity: 'secondary',
                 className: 'hover:bg-subtle active:bg-border text-ink-muted'
             },
-            // Deferred — see the note above.
             {
                 variant: 'text',
                 severity: 'info',
-                className: 'text-blue-500 hover:bg-blue-500/10 active:bg-blue-500/20'
+                className: 'text-info-ink hover:bg-info-surface active:bg-info-surface'
             },
             {
                 variant: 'text',
                 severity: 'success',
-                className: 'text-green-500 hover:bg-green-500/10 active:bg-green-500/20'
+                className: 'text-success-ink hover:bg-success-surface active:bg-success-surface'
             },
             {
                 variant: 'text',
                 severity: 'warn',
-                className: 'text-amber-500 hover:bg-amber-500/10 active:bg-amber-500/20'
+                className: 'text-warning-ink hover:bg-warning-surface active:bg-warning-surface'
             },
             {
                 variant: 'text',
                 severity: 'danger',
-                className: 'text-red-500 hover:bg-red-500/10 active:bg-red-500/20'
+                className: 'text-danger-ink hover:bg-danger-surface active:bg-danger-surface'
             },
             {
                 variant: 'text',
                 severity: 'help',
-                className: 'text-violet-500 hover:bg-violet-500/10 active:bg-violet-500/20'
+                className: 'text-purple-ink hover:bg-purple-50 active:bg-purple-50'
             },
             {
                 variant: 'text',
