@@ -2191,3 +2191,23 @@ The founder found the first Joki screens untidy and unlike `/orders`, and asked 
   - `rm -rf ~/OpenWA-v0.23.7 ~/openwa-backups` (1012 MB + 26 MB; disk 9.9G → 9.0G used). No `.env.bak*` left in `~/OpenWA`.
   - Appended `MESSAGE_RETENTION_DAYS=90` to `~/OpenWA/.env`; `resolveMessageRetentionDays()` reads 90 through dotenv. Oldest stored message is 2026-09-25, so the first prune deletes nothing until late December.
 - **Item 96, closed.** The founder restarted OpenWA in Forge (08:13 UTC); both sessions came back `ready` and the log no longer says retention is disabled. Restore drill: the 2026-10-25 database archive (3,024,314 bytes, same as R2) was copied to the scratchpad and the founder ran `bsdtar -xOf … | tail` in their own terminal with the password from the password manager; it decrypted to a complete dump (the normal closing `SET` lines). The local copy was deleted afterwards.
+
+## 2026-10-26 — Docs sync after releases #554 and #557
+
+Docs only, no code. Checked against git and production (read-only) before
+editing: `origin/main..origin/staging` is docs-only, no open PRs,
+`/api/health` 200 with `scheduler: true` (the 25 Oct heartbeat cleared at
+the 26 Oct 00:00 UTC run), `fpx` active since 2026-10-22 09:52 UTC,
+`fpx_b2b1` and `duitnow_qr` off, no Sentry package or `SENTRY_*` env.
+
+- PRD §16: items 131 and 132 closed (released via #554); group A now
+  empty; item 114 moved to group D (built and released, waits on its launch
+  gates); item 131's detail removed, item 81 and 114 details no longer
+  name 131 as open; Epic-up is released, not on a feature branch.
+- PRD §15: the Orders, Reports, Vouchers, Customer Analytics, Customer
+  Login and Joki rows said "on `staging`" / "not released" for work that
+  shipped in #554.
+- PRD §14 and §11: health and payment state as of today; Joki points at
+  group D.
+- ADR-126 and ADR-127 Standing: "Accepted (design)" → "In force" (both are
+  built), and ADR-127 no longer says IDR averaging is pending.
