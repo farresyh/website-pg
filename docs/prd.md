@@ -907,6 +907,12 @@ moved to group D). Re-verify before building.
   Customer Detail page is slow for a big reseller (Pulse > 500 ms).
 
 **E. New features: after the backlog** (each needs its own ADR + grill)
+- **133** Partner portal visual redesign, layer 1 (ADR-128, grilled
+  2026-10-26): the PekanGame Admin design system on `reseller/` as a
+  "PekanGame Partner" variant, frontend only. Next: mockups in the
+  design-system artifact for the founder's approval, then four PRs.
+  Layer 2 (charts, needs-attention, pending top-up) is items 25 and 24
+  plus a new ADR.
 - **13** Self-serve reseller signup.
 - **14** Assistant chat history.
 - **24** Wallet pending top-up resume/cancel.
