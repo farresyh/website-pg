@@ -1,6 +1,6 @@
 # ADR-112: Affiliate/Reseller portal mobile-first redesign — role-aware shell, dashboards, and Orders
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-26):** In force; the portal's visual system is set by [ADR-128](./ADR-128-partner-portal-visual-system.md), navigation and mobile criteria here unchanged. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — design and staging implementation complete (as of 2026-09-24; current build status: [`prd.md` §15](../prd.md)). Grilled with the founder over multiple rounds after a live desktop/390px audit of both production portal roles; text wireframes for Reseller Dashboard, Affiliate Dashboard, and mobile Orders were reviewed and approved before this entry. PR1 shell/navigation and PR2 dashboard/Orders presentation are merged to `staging` in PRs #275 and #276. No production release is implied; a `staging`→`main` release remains a separate founder decision.
 

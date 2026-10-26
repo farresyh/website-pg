@@ -2229,3 +2229,17 @@ the 26 Oct 00:00 UTC run), `fpx` active since 2026-10-22 09:52 UTC,
   canvas at one height, for the stepper's 84 px (64 px phone) and 44 px
   faded sizes. A local round-trip through `ImageIngestService` kept the
   alpha in the WebP. Legend has no icon yet; Epic needs re-uploading.
+
+## 2026-10-26 — ADR-128: partner portal visual system (design)
+
+Design only. The founder wants the partner portal (`reseller/`) redesigned:
+next to the admin it looks plain, and its money pages (Wallet) read as
+untrustworthy. Grilled Q1–Q15 in three rounds. Layer 1 is a frontend-only
+reskin onto ADR-104's design system as a "PekanGame Partner" variant (nude
+shell accent), with trust signals (company line, panel-configured support
+contacts from `/api/catalog/branding`, "processed by CHIP"), tokens shared
+by generation with a drift check (the `sync-theme-presets.mjs` pattern),
+mockups in the design-system artifact first, then four PRs. Facts checked
+for it: Reseller has no dashboard endpoint, a pending top-up is not
+readable after creation (stays item 24), the SSM number exists only in the
+About Us HTML, prod has 2 Resellers and 1 test Affiliate. PRD §16 item 133.
