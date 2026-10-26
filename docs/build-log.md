@@ -2470,3 +2470,54 @@ Server Actions and an RCE in `use cache`), affecting all three Next.js apps.
 
 **Not live.** Ships with the portal redesign + shared kit in the next
 `staging`→`main` release (one regression window, see item 133).
+
+## 2026-10-27 — Pre-release review of the portal redesign + shared kit; release #571 live
+
+**Context.** The shared-kit PRs (#567, #568) and the dependency fix (#570)
+were built in OpenCode, not Claude Code, as the founder's test of another
+agent. Claude reviewed them, merged #570, then took over the page-by-page
+review and the release at the founder's request.
+
+**Review of the OpenCode PRs.** The process matched AGENTS.md: branches off
+`staging`, stacked PRs, granular commits, docs updated, tests and builds run,
+and the founder was asked before the status-button colour was chosen. Two
+gaps, closed in this session's docs PR:
+- The founder's choice of soft over solid status buttons was recorded as
+  "forced by" the colour test, with no ADR addendum. Now ADR-128 2026-10-27
+  addendum; PRD item 135 reworded.
+- No admin screenshot of the restyled status buttons or the 30px `small`
+  size before "done". Covered by the review below.
+
+**Pre-release review (local dev, real dev-DB data, Playwright).**
+- The founder's `./scripts/dev.sh` was still running Next 16.3.8 from
+  2026-10-25 after `npm install` had moved `node_modules` to 16.4.3, so every
+  admin and portal page answered 500. Restarted with the founder's go-ahead.
+  Gotcha: Next 16.4.3's dev server rewrites the banner heading in
+  `admin/`, `storefront/` and `reseller/` `AGENTS.md` (`#` → `##`);
+  committed so the tree stays clean.
+- Portal: Reseller (Dashboard, Orders, Wallet, API keys, Subscription,
+  Profile) and Affiliate (Dashboard, Orders, Earnings, Withdrawal,
+  Storefront, Domains, Profile), light and dark, 1440px and 390px, plus
+  Login and Set password: 58 screenshots. No horizontal overflow, no error
+  state, no console error except a 403 the Reseller gets on the
+  Affiliate-only `/subscription`.
+- Admin: 12 pages (Dashboard, Orders, Withdrawals, Vouchers, Games,
+  Resellers, Affiliates, Gallery, Accounting Summary, Users, Middleware
+  Suppliers, Price Sync), light and dark. Console errors were local-only
+  (CSP for the Herd image host and Reverb's `ws://localhost:8080`).
+- Measured (`getComputedStyle`, Vouchers page): primary button 5.59:1 light,
+  8.14:1 dark; danger "Revoke" 5.70:1 light, 7.66:1 dark.
+- A full-page screenshot draws the portal's fixed phone bottom bar
+  mid-page and cuts the sidebar at the viewport height. That is how the
+  screenshot works, not a layout bug.
+
+**Release #571 (`staging`→`main`, requested by the founder).** Merged as
+`f4177bc` at 2026-10-26 17:06 UTC; ships #560–#570. CI and `deploy` green.
+Verified read-only:
+- the box runs release `81251053` at `f4177bc`;
+- `livewire/livewire` v4.4.8 in the deployed lock;
+- Horizon running, `/api/health` 200;
+- all four Vercel production builds succeeded;
+- `reseller.pekangame.space/login` serves the "PekanGame Partner" shell.
+
+No migrations, no env changes. PRD item 133 closed.

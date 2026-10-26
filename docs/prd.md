@@ -642,7 +642,7 @@ Unscheduled ideas, not on the backlog:
 
 # 14. Build Status
 
-**Where things stand (2026-10-26).** The platform is feature-complete and live
+**Where things stand (2026-10-27).** The platform is feature-complete and live
 in production: storefront (plus every Affiliate whitelabel brand), admin panel,
 Affiliate/Reseller portal, and the developer-docs site. CHIP FPX payments and
 the CHIP + Digiflazz webhooks are proven end-to-end with real money.
@@ -669,15 +669,23 @@ on purpose, only while CHIP reviews the site for LWF Group's merchant
 account; the founder will switch it off again. FPX Business and DuitNow QR
 stay off (checked 2026-10-26).
 
-**On `staging`, not released (2026-10-26):** the Gallery delete warning
-covers every image field (#560), and the partner portal redesign, layer 1
-(#562–#565, ADR-128; §15 "Partner portal UI") plus the shared component kit
-(#567 + #568: the admin kit moved onto the semantic tokens and generated
-into the portal, which now uses it instead of its hand-rolled kit). Its
-shared-token fixes also change the admin's dark-mode primary buttons and its
-mono font.
+**On `staging`, not released (2026-10-27):** nothing; `staging` = `main`
+after release #571.
 
-**Latest release 2026-10-25 (`staging`→`main`, PR #557).** Merged as
+**Latest release 2026-10-27 (`staging`→`main`, PR #571).** Merged as
+`f4177bc` (2026-10-26 17:06 UTC). CI and `deploy` were green; the box runs
+release `81251053` at `f4177bc`, Horizon is running, `/api/health` 200, and
+all four Vercel production builds succeeded. No migrations, no env changes.
+It ships #560–#570:
+- **Dependency advisories (#570).** `next` 16.4.3 in admin, storefront and
+  portal (closes a critical RCE advisory), `zod` 4.6.7, `livewire` v4.4.8.
+- **Partner portal redesign, layer 1, and the shared component kit
+  (ADR-128, #562–#565, #567, #568).** §15 "Partner portal UI". Live on
+  `reseller.pekangame.space`. The kit change also restyles the admin's
+  buttons and inputs (status buttons soft, ADR-128 2026-10-27 addendum).
+- **Gallery delete warning (#560)** covers every image field.
+
+**Previous release 2026-10-25 (`staging`→`main`, PR #557).** Merged as
 `369fbbb`. CI and `deploy` were green, and the box was verified the same day:
 release `81131278`, migration `2026_10_25_110000` ran, Horizon is running.
 It ships #556:
@@ -822,7 +830,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Game ID Checker (ADR-123) | ✅ Live 2026-10-16 via #472 — `/check-id` + `/check-id/<slug>` for the five families (Mobile Legends, Free Fire, Genshin Impact, Honkai Star Rail, Zenless Zone Zero), Turnstile (widget "PekanGame Game ID Checker"), 5/min + 30/hour per IP, 200/hour provider budget, RedxGame only, `public_player_checks`; in the sitemap and `llms.txt` on the primary brand, `noindex` on affiliates. Mobile More drawer; header highlight follows the page. A new affiliate custom domain must be added to the widget by hand until §16 item 108 | ADR-123 |
 | Customer Login (ADR-124) | 🟢 Live, verified on prod 2026-10-23 with the first real Login Top-up order (FPX-paid Roblox, `.done` in the supplier group; build-log 2026-10-23). Built 2026-10-18 (§16 item 112), released via #514 — `order_credentials` (encrypted secrets, out of DB dumps), `app:wipe-order-credentials` every 15 min (critical heartbeat), super_admin reveal/replace behind MFA step-up with a per-admin hourly limit and a `credential_reveals` audit (pruned after a year), Settings → Customer Login Policy (G, H, D, reveal limit, consent text), Order Detail "Customer Login" card. **2026-10-18 (ADR-125 PR 1b-i, §16 item 113), backend only, released via #514:** checkout writes the login with the order; the identifier is masked on every customer and affiliate surface; a resend's identifier correction is audited (`identifier`). **1b-ii:** the storefront login form with the consent box (the text the order snapshots); an admin-replaced password is no longer trimmed **2026-10-19 (ADR-125 PR 2a, released via #514):** the second reader is the supplier's short link `/s/<token>` (hash-only `supplier_login_links`, Pending attempt only, each reveal a `credential_reveals` row with actor supplier) **2026-10-23 (ADR-126 PR 1, item 114), released 2026-10-25 via #554:** each login stores its ceiling (`secrets_expire_at`): the game's own "keep login at most" days (Edit Game, login games), else D. Changing either moves the unwiped logins; the supplier link expires with the login | ADR-124, ADR-125 |
 | Joki MLBB (ADR-126) | 🟡 Released 2026-10-25 (#554), switched off and not sellable yet. PR 1 (#533): shared manual-order seams (post key per supplier, supplier re-check, explicit stale clock, per-login wipe ceiling). PR 2a (#534): `Fixed` basis, assignment pool, Assign under lock with audit, payout locks, joki game hidden, `not.joki` gate. PR 2b (#535): rank model and draft rates, pricing rule (Grading guarantees Mythic 15★), joki through the one checkout, `joki_orders` snapshot, `/api/joki/catalog` + `/quote`, `JokiCatalog::ensure()`. PR 3 (#536): `.progress` and the admin progress update, Track Order climb and current rank, paced WhatsApp progress. PR 4a: admin backend (`JokiBoard`, `/api/joki-admin/*`, F4 with "needs voucher" on the Joki card, `/orders` type filter, penjoki creation). PR 4b: Admin → Joki (Orders, Penjoki, Settings), Order Detail Joki card, Dashboard card, `/orders` type select, brand "Sell Joki", penjoki on supplier create. PR 4a/4b merged (#538, #539). PR 5 (#540): `/joki` page with the rank calculator, Joki Rank menu, sitemap, voucher preview priced like checkout, e2e golden path. Offered from Epic up (#552, 2026-10-25, ADR-126 addendum). All released 2026-10-25 via #554. Launch gates: §16 item 114 | ADR-126 |
-| Partner portal UI (ADR-128) | 🟡 On `staging` (#562–#565), not released. Layer 1 is built: the ADR-104 tokens generated into `reseller/` (`scripts/sync-shared-files.mjs`, CI drift check), the "PekanGame Partner" shell (grouped navigation, nude account block, support contacts from the primary brand's branding, trust footer), both Dashboards, Orders, Order detail, Wallet, Earnings, Withdrawal, the settings pages, Login and Set password. Shared-token fixes that also reach the admin: dark `on-cyan` and `focus-ring` follow the artifact (admin primary buttons in dark mode were 2.09:1), and JetBrains Mono is now loaded in both apps. **The one shared component kit is built (ADR-128 2026-10-26 addendum, PRs #567 + #568, merged to `staging`, not released):** the admin kit moved onto the semantic tokens (Button severities resolved to the `-surface`/`-ink` badge pairs, touch targets `min-h-11 sm:min-h-9`), then generated into `reseller/src/components/ui/` and the portal's hand-rolled `ui.tsx` deleted in favour of it. Next: the founder's page-by-page review | ADR-128, ADR-104, ADR-112 |
+| Partner portal UI (ADR-128) | 🟢 Live — released 2026-10-27 (#571). Layer 1: the ADR-104 tokens generated into `reseller/` (`scripts/sync-shared-files.mjs`, CI drift check), the "PekanGame Partner" shell (grouped navigation, nude account block, support contacts from the primary brand's branding, trust footer), both Dashboards, Orders, Order detail, Wallet, Earnings, Withdrawal, the settings pages, Login and Set password. Shared-token fixes that also reach the admin: dark `on-cyan` and `focus-ring` follow the artifact (admin primary buttons in dark mode were 2.09:1), and JetBrains Mono is now loaded in both apps. **The one shared component kit (ADR-128 2026-10-26 addendum, #567 + #568, live via #571):** the admin kit moved onto the semantic tokens (Button severities resolved to the `-surface`/`-ink` badge pairs, touch targets `min-h-11 sm:min-h-9`), then generated into `reseller/src/components/ui/` and the portal's hand-rolled `ui.tsx` deleted in favour of it; status buttons are soft `-surface`/`-ink` pairs (2026-10-27 addendum). Reviewed page by page before release (build-log 2026-10-27). Layer 2 is items 24 and 25 | ADR-128, ADR-104, ADR-112 |
 | Internal Accounting (supplier funding ledger + CHIP settlement recon) | 🟢 Live — PR-1 built 2026-09-11: `supplier_transfers`/`supplier_ledger_entries` (append-only, foreign-currency), Record Supplier Transfer UI (`/admin/accounting`), `ORDER_DRAWDOWN` capture (Digiflazz webhook + Gamevion sync response — a `Gagal` after `Pending` writes no `REFUND`, grilled), drift check + amber chip on Dashboard Health (watches only a supplier with `api_config.drift_threshold` set; DigiFlazz has none as of 2026-10-17, so its chip is off until the founder sets one in Middleware), Transaction Register + CSV export. **2026-09-15 addendum built:** `supplier_fee` field (the supplier's own deposit-side cut, e.g. Digiflazz's flat IDR fee — ledger now credits net, not gross) + Adjust/Void correction actions (never edits/deletes the append-only ledger, always a new `MANUAL_ADJUSTMENT` entry). **PR-2 built 2026-09-19 (ADR-110 PR-B)** — CHIP `.xlsx` settlement reconciliation (`payment_settlements` + `chip_settled_transactions` dedup guard) + Monthly Accounting Summary screen, verified against a real PekanGame CHIP settlement file. **2026-10-08 (ADR-083 addendum, live via #376):** neutral "Affiliate tier fees (from earnings, no cash)" line, also in the Envelope Ledger's rough P&L. **2026-10-10 (ADR-083 addendum, §16 item 78) PR-1 (#390), live via #393:** Envelope Ledger postings with typed lines (funding loan/share capital, transfer, expense, director-paid expense, repayment, distribution), per-director loan balances, whole-posting void, zero-balance archive; `supplier_transfers.transferred_on`; `LedgerEntry` append-only guard. **PR-2 (#391), live via #393:** month close on the Monthly Summary (exact operating-profit allocation per KL month from September 2026, prior-month drift carried forward, reopen of the latest close only), "where is the money" cash equation with a cash-account snapshot and gap note, operating profit + new lines (voucher breakage, admin-issued vouchers, supplier corrections, envelope expenses), FX rate as of month end; the manual "Allocate Monthly Profit" and the platform "Request Withdrawal" are gone. **2026-10-11 (ADR-083 addendum, item 75), live via #406 (2026-10-12):** the Monthly Summary's issued-voucher lines are split into "Admin-issued vouchers (no order)" (a profit cost) and "Failed-order store credit issued" (information only); a merge result is in neither. **2026-10-17 (ADR-083 addendum, items 115 and 121), live via #495:** COGS at funded cost with a bridge to the per-order cost and a drawdowns-not-in-COGS line; operating profit unchanged. **2026-10-18 (ADR-083 addendum, item 123), live via #500:** a manual order-profit correction is its own Transaction Register row (`order_profit_correction`, dated when made); the order row keeps the original credit. **2026-10-18 (ADR-083 addendum, item 120), live via #500:** the original CHIP settlement file is kept and downloadable, a file with nothing new is refused, old settlements can attach their original, and receipts are filed by accounting month and never orphaned or deleted. **2026-10-18 (ADR-125 PR 1a, §16 item 113), released via #514:** an MYR supplier's rate is 1.0 everywhere (COGS, supplier corrections, month-end position); the cash position splits each supplier's balance into the prepaid asset and a new `supplier_payable_sen` (owed to a pay-after supplier; the gap is unchanged); a sandbox order never writes a supplier drawdown **2026-10-24 (ADR-127, #543–#546, released 2026-10-25 via #554):** revenue/COGS/commission by `recognised_at`; Cash Position, wallet line, breakage and the Register read dated facts only, so a closed month cannot move (`FinancialScenarioTest` invariant 2); `AccountingPeriod::assertOpen` refuses dated writes into a closed month; CHIP `paid_on`/fee recorded and the fee shown on Settlements; membership revenue from the ledger. **ADR-127 PR E (#549, released 2026-10-25):** the Monthly Summary splits "Supplier payments — pay-after" (paying a penjoki or manual supplier what is owed) from "Supplier prepaid — top-up". **§16 item 132 (released 2026-10-25, #554):** from 1 October 2026 a foreign-currency supplier is costed at a moving weighted average (`MovingAveragePool`), so every ringgit sent is a cost in some month or still in the prepaid balance. | ADR-083, ADR-110 |
 | Balance / Wallet Visibility | 🟢 Part A live (released 2026-09-29, #320) — standalone `/admin/balance` (deliberately not nested under Accounting — a Commerce-level item, since Part B grows it into operational monitoring, not bookkeeping): live-refreshable supplier balance per supplier + every Reseller's prepaid wallet balance (total + per-row), zero new backend, reuses ADR-046/073. Part B (learned "comfortable buffer" forecast) is grilled and designed as ADR-115, with the build parked (§16 item 28). **2026-10-18 (ADR-125 PR 1a), released via #514:** a manual supplier shows its funding-ledger balance ("Owed: MYR …" when pay-after) with no Refresh, and the reseller-wallet coverage total counts API suppliers only | ADR-046, ADR-073, ADR-115 |
 
@@ -846,7 +854,7 @@ for the 2026-09-17 audit that found two dark-mode token bugs).
 production on 2026-10-15 after release #449; items 98, 99, 106 and 107
 checked again on 2026-10-16, after release #469; 107 closed after release #472;
 106, 11, 96 and the payment state re-checked 2026-10-17 after release #476;
-every open item re-checked 2026-10-26 after release #557.** This list holds only **open** items. "Next up"
+every open item re-checked 2026-10-26 after release #557; item 133 closed 2026-10-27 after release #571.** This list holds only **open** items. "Next up"
 is the one place they are sorted, one line each; "Details" holds each item's
 full text once, by number. Everything closed is one line under "Recently
 closed", pointing to where the full story lives (`docs/build-log.md` /
@@ -921,19 +929,6 @@ moved to group D). Re-verify before building.
   Customer Detail page is slow for a big reseller (Pulse > 500 ms).
 
 **E. New features: after the backlog** (each needs its own ADR + grill)
-- **133** Partner portal visual redesign, layer 1 (ADR-128, grilled
-  2026-10-26): the PekanGame Admin design system on `reseller/` as a
-  "PekanGame Partner" variant, frontend only. Mockups published in the
-  design-system artifact (Partner Portal group). PR 1 (tokens, sync, CI
-  guard, shell), PR 2 (both dashboards, Orders, Order detail), PR 3
-  (Wallet, Earnings, Withdrawal) and PR 4 (settings pages, Login, Set
-  password) built 2026-10-26 and merged to `staging` (#562–#565), not
-  released. The shared component kit (ADR-128 2026-10-26 addendum: the
-  admin kit moved onto the tokens, then generated into the portal) is built
-  as PRs #567 and #568 (merged to `staging`, not released). Next: the founder
-  reviews and tests each page, then a release.
-  Layer 2 (charts, needs-attention, pending top-up) is items 25 and 24
-  plus a new ADR.
 - **13** Self-serve reseller signup.
 - **14** Assistant chat history.
 - **24** Wallet pending top-up resume/cancel.
@@ -1315,7 +1310,8 @@ moved to group D). Re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
-- **135** 2026-10-26: the Button severities `info`/`success`/`warn`/`danger`/`help` were mapped off Tailwind's stock colours onto the design system's `-surface`/`-ink` status pairs (soft fill + a border that intensifies on hover). This was forced by PR 2 of the shared kit: the portal's `color-tokens.test.ts` rejects `dark:` colour overrides, which the deferred solid/outlined severity variants still carried. Details: build-log 2026-10-26.
+- **133** 2026-10-27: partner portal visual redesign, layer 1 (ADR-128) plus the shared component kit: #562–#565, #567, #568, reviewed page by page (Reseller + Affiliate, light/dark, desktop/phone; 12 admin pages), released via #571. Layer 2 stays as items 24 and 25 plus a new ADR. Details: build-log 2026-10-27.
+- **135** 2026-10-26: the Button severities `info`/`success`/`warn`/`danger`/`help` were mapped off Tailwind's stock colours onto the design system's `-surface`/`-ink` status pairs (soft fill + a border that intensifies on hover). The founder chose soft over solid when asked during shared-kit PR 2; the portal's `color-tokens.test.ts` (no `dark:` colour overrides) ruled out keeping the stock solid fills. ADR-128 2026-10-27 addendum; build-log 2026-10-26.
 
 - **132** 2026-10-25: IDR supplier COGS at a moving (perpetual) weighted average from 1 October 2026 (`MovingAveragePool`, `SupplierRowValuer`; `CashPositionService` reads the pool's month-end value). The two-month invariant was red first (October gap −33 sen). Prod October did not move (no deposit since September). ADR-083 2026-10-25 addendum; #551, released 2026-10-25 (#554).
 - **131** 2026-10-25: financial truth from dated facts (ADR-127). Revenue, COGS and commission at `recognised_at`, closed months that cannot move (`AccountingPeriod::assertOpen`), CHIP `paid_on`/fee recorded, dated voucher restores and revokes, one store credit, profit by recognition on Reports and the Report Assistant, and `FinancialScenario` with 11 cross-page invariants. PRs A–E (#543–#546, #548, #549), released 2026-10-25 (#554).
