@@ -25,7 +25,7 @@ const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 // and `@/` imports that resolve identically in the portal.
 const KIT = [
   "button", "datatable", "dialog", "input", "label", "option-select",
-  "popover", "select", "switch", "tabs", "tag",
+  "popover", "select", "switch", "tabs", "tag", "textarea",
 ].map((name) => ({
   source: `admin/src/components/ui/${name}.tsx`,
   target: `reseller/src/components/ui/${name}.tsx`,
