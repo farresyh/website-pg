@@ -54,12 +54,15 @@ reseller-guard endpoint, not just a hidden nav tab.
   and its navigation lives in `lib/portal-nav.ts`. Money pages never
   compute money in the browser: `toSen` converts typed ringgit once, on
   submit.
-- **Components today:** a portal-only Tailwind kit in
-  `src/components/ui.tsx`, plus `components/orders`, `components/money` and
-  `components/shell`. No PrimeReact component is in use, although
-  `PrimeProvider` is still mounted. Decided: the admin's `components/ui` kit
-  becomes the shared source (ADR-128 2026-10-26 addendum). Don't grow the
-  portal-only kit further; new primitives belong in the admin kit.
+- **Components:** the shared kit in `src/components/ui/` (generated from the
+  admin's `components/ui` by `scripts/sync-shared-files.mjs` — Button, Input,
+  Textarea, Tag, Select, Switch, Tabs, Dialog, DataTable …; never edit here,
+  edit the admin source and re-run the script). Portal-only composites
+  (PageHeader, Panel, BalanceHero, Facts, CopyId, Pager, Badge, StatusTag,
+  `buttonClass` for `<Link>`/`<a>`) live in `src/components/composites.tsx`,
+  built on the shared kit. `PrimeProvider` is mounted. New primitives belong
+  in the admin kit; new portal composites go in `composites.tsx` (ADR-128
+  2026-10-26 addendum).
 
 ## Env
 
