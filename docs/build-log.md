@@ -2211,3 +2211,21 @@ the 26 Oct 00:00 UTC run), `fpx` active since 2026-10-22 09:52 UTC,
   group D.
 - ADR-126 and ADR-127 Standing: "Accepted (design)" → "In force" (both are
   built), and ADR-127 no longer says IDR averaging is pending.
+
+## 2026-10-26 — Gallery delete warning covers every image field; Joki rank icons
+
+- **Found:** prod's Joki tier "Epic" pointed at a Gallery URL that 404s and
+  has no `gallery_images` row: the image was deleted after it was set, with
+  no warning. `GalleryImageController::references()` checked only Game,
+  Hero Slide and Affiliate Branding. Three `ImageUrlInput` fields were
+  missing: `joki_tiers.icon_url`, `affiliate_seo_settings.default_og_image`
+  and `player_validator_profiles.public_image_url`. No customer impact (joki
+  is off), but a brand's OG image or a checker image could break the same way.
+- **Fix:** `references()` lists all three; test red first. Full suite green
+  (3080).
+- **Rank icons:** the founder's four PNGs (Epic, Mythic, Mythical Honor,
+  Mythical Glory) were cut out (Mythic was a JPEG on black; Glory carried a
+  leftover black patch), trimmed and centred on a 256×256 transparent
+  canvas at one height, for the stepper's 84 px (64 px phone) and 44 px
+  faded sizes. A local round-trip through `ImageIngestService` kept the
+  alpha in the WebP. Legend has no icon yet; Epic needs re-uploading.
