@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { updateCustomerLoginPolicy, type PlatformSettings } from "@/lib/settings";
 
 const NUMBER_FIELDS = [
@@ -51,7 +52,6 @@ export default function CustomerLoginPolicySection({
   const [consentText, setConsentText] = useState(platform.credential_consent_text ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
 
   async function handleSave() {
     const parsed = Object.fromEntries(NUMBER_FIELDS.map((f) => [f.key, Number(numbers[f.key])])) as Record<NumberKey, number>;
@@ -61,14 +61,12 @@ export default function CustomerLoginPolicySection({
     }
 
     setSaving(true);
-    setError(null);
-    setSaved(false);
     try {
       await updateCustomerLoginPolicy({ ...parsed, credential_consent_text: consentText });
-      setSaved(true);
+      notify.success("Customer login policy saved");
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save the customer login policy.");
+      notify.error("Could not save the customer login policy", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setSaving(false);
     }
@@ -118,7 +116,6 @@ export default function CustomerLoginPolicySection({
       </div>
 
       <div className="flex items-center justify-end gap-3">
-        {saved && <p className="text-theme-xs text-success-600">Saved.</p>}
         <Button type="button" onClick={handleSave} disabled={saving}>
           {saving ? "Saving…" : "Save Customer Login Policy"}
         </Button>

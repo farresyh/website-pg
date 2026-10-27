@@ -7,10 +7,11 @@ import { Label } from "@/components/ui/label";
 import RichTextEditor from "@/components/ui/RichTextEditor";
 import { StatusText } from "@/components/orders/StatusText";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { getJokiSettings, updateJokiSettings, type JokiSettings, type JokiSettingsResponse } from "@/lib/joki";
 import { JokiRankModelEditor } from "@/components/joki/JokiRankModelEditor";
 import { JokiRoutesEditor } from "@/components/joki/JokiRoutesEditor";
-import { JOKI_CARD, JOKI_CARD_HINT, JOKI_CARD_TITLE, JOKI_ERROR, JOKI_NOTICE } from "@/components/joki/jokiStyles";
+import { JOKI_CARD, JOKI_CARD_HINT, JOKI_CARD_TITLE, JOKI_ERROR } from "@/components/joki/jokiStyles";
 
 type NumberKey = "payout_share_pct" | "min_stars" | "grading_price_rm" | "grading_express_price_rm" | "grading_lands_at_stars" | "max_mythic_stars" | "progress_message_interval_minutes";
 
@@ -36,7 +37,6 @@ export function JokiSettingsTab() {
   const [form, setForm] = useState<JokiSettings | null>(null);
   const [roles, setRoles] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   function load() {
@@ -56,14 +56,12 @@ export function JokiSettingsTab() {
 
   async function save(values: Partial<JokiSettings>, done: string) {
     setSaving(true);
-    setError(null);
-    setNotice(null);
     try {
       await updateJokiSettings(values);
       await load();
-      setNotice(done);
+      notify.success(done);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save.");
+      notify.stickyError("Could not save", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setSaving(false);
     }
@@ -78,7 +76,6 @@ export function JokiSettingsTab() {
   return (
     <div className="space-y-6">
       {error && <p className={JOKI_ERROR}>{error}</p>}
-      {notice && <p className={JOKI_NOTICE}>{notice}</p>}
 
       <section className={JOKI_CARD}>
         <div className="flex flex-wrap items-start justify-between gap-3">

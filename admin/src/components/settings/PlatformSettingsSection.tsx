@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { applyBulkMarkup, updatePlatformSettings, type PlatformSettings } from "@/lib/settings";
 import { Switch } from "@/components/ui/switch";
 
@@ -34,7 +35,6 @@ export default function PlatformSettingsSection({
     }
 
     setSaving(true);
-    setError(null);
     try {
       await updatePlatformSettings({
         maintenance_mode: maintenanceMode,
@@ -42,9 +42,10 @@ export default function PlatformSettingsSection({
         vip_spend_threshold_sen: vipThresholdSen,
         whatsapp_notifications_enabled: whatsappEnabled,
       });
+      notify.success("Platform settings saved");
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save platform settings.");
+      notify.error("Could not save platform settings", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setSaving(false);
     }
@@ -61,13 +62,13 @@ export default function PlatformSettingsSection({
     }
 
     setApplyingMarkup(true);
-    setError(null);
     setMarkupResult(null);
     try {
       const result = await applyBulkMarkup(percent);
       setMarkupResult(`${result.packages_updated} package${result.packages_updated === 1 ? "" : "s"} updated.`);
+      notify.success("Bulk markup applied", `${result.packages_updated} package${result.packages_updated === 1 ? "" : "s"} updated.`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not apply bulk markup.");
+      notify.error("Could not apply bulk markup", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setApplyingMarkup(false);
     }
