@@ -88,17 +88,18 @@ export default function WithdrawalsPage() {
     if (!session) return;
     setActingOnId(withdrawal.id);
 
-    let ok = false;
     try {
       await action(withdrawal.id);
       notify.success(messages.success);
-      ok = true;
     } catch (err) {
       notify.stickyError(messages.error, err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setActingOnId(null);
     }
-    if (ok) await refresh();
+    // Refresh after a failed action too — the list must always reflect the
+    // server's true state, not a stale row the admin just tried (and failed)
+    // to change.
+    await refresh();
   }
 
   const statusSeverity: Record<Withdrawal["status"], "warn" | "info" | "success" | "danger"> = {

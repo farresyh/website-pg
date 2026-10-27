@@ -39,3 +39,25 @@
 - The portal's `toast.tsx` must stay generated; the drift check guards it. Editing it by hand and re-running the script is a diff the reviewer rejects.
 - Any existing Playwright assertion on inline success text is audited in the same PR that removes that text (only one delivery-outcome text was found in `e2e/`, but this stays a per-PR check).
 - The wrapper adds no dependency; `@primereact/headless/toaster` is already shipped with PrimeReact 11.1.0.
+
+### 2026-10-27 addendum — PR 1 build notes (match the code to the ADR)
+
+The first build (PR #574) and its follow-up corrections land a few points
+the original Consequence wording had said "the headless hook provides" but the
+wrapper actually does itself:
+
+- **Focus on dismiss** is done by the wrapper: a toast's close button returns
+  focus to the region when focus was inside the toast being closed; the
+  auto-dismiss timer never moves focus (decision 7's "the headless hook
+  provides it" is corrected — the wrapper owns it).
+- **Reduced motion** — the wrapper has no entrance animation at all, so there
+  is nothing to reduce and `prefers-reduced-motion` is satisfied by
+  construction. A mount-flip animation was dropped rather than built: it
+  would set state inside an effect, which this repo's
+  `react-hooks/set-state-in-effect` lint forbids.
+- **`limit`** is honoured by slicing `toasts` to `MAX_VISIBLE` in the
+  provider; the `useToaster` `limit` prop and the dead `data-enter-from`
+  classes were removed rather than left inert.
+- **`@primereact/headless` is now a declared dependency** in both apps'
+  `package.json` (it was transitive via `primereact`); "no dependency added"
+  above reads as "no *third-party* dependency added".
