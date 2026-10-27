@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { getWallet, listPaymentChannels, topupWallet, type PaymentChannel, type WalletResponse } from "@/lib/reseller-portal";
 import { dateAndTime, formatRm, toSen } from "@/lib/format";
 import { BalanceHero, CardHead, ErrorNote, Facts, PageHeader, Panel, Skeleton } from "@/components/composites";
@@ -76,9 +77,9 @@ export default function WalletPage() {
         window.location.href = attempt.checkout_url;
         return;
       }
-      setTopupError("The payment provider did not return a checkout link. Please try again.");
+      notify.stickyError("Top-up failed", "The payment provider did not return a checkout link. Please try again.");
     } catch (err) {
-      setTopupError(err instanceof ApiError ? err.message : "Could not start the top-up.");
+      notify.stickyError("Top-up failed", err instanceof ApiError ? err.message : "Could not start the top-up.");
     } finally {
       setSubmitting(false);
     }
