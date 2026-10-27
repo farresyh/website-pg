@@ -19,6 +19,7 @@ import { Tag } from "@/components/ui/tag";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { listSuppliers, type Supplier } from "@/lib/suppliers";
 import { todayInKL } from "@/lib/date-range";
 import {
@@ -201,10 +202,11 @@ export default function SupplierFundingHistoryPage() {
 
         await correctSupplierTransfer(transfer.id, values);
       }
+      notify.success("Transfer corrected");
       setCorrectingId(null);
       await refresh(page);
     } catch (err) {
-      setCorrectionError(err instanceof ApiError ? err.message : "Something went wrong.");
+      notify.stickyError("Correction failed", err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {
       setCorrecting(false);
     }

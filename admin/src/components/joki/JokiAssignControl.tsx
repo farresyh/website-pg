@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { OptionSelect } from "@/components/ui/option-select";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { assignJokiOrder, listPenjoki, type Penjoki } from "@/lib/joki";
 
 /**
@@ -31,13 +32,13 @@ export function JokiAssignControl({ orderId, currentSupplierId, onDone }: {
   async function assign() {
     if (!choice) return;
     setBusy(true);
-    setError(null);
     try {
       await assignJokiOrder(orderId, Number(choice));
+      notify.success("Penjoki assigned");
       setChoice("");
       onDone();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not assign.");
+      notify.error("Could not assign", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setBusy(false);
     }

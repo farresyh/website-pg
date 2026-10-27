@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { todayInKL } from "@/lib/date-range";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   formatRm,
   recordPosting,
@@ -128,9 +129,10 @@ export function PostingForm({ index, defaultEnvelopeId, onRecorded }: Props) {
       setDescription("");
       setReferenceNo("");
       setReceipt(null);
+      notify.success("Posting recorded");
       await onRecorded();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong.");
+      notify.stickyError("Posting failed", err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {
       setSubmitting(false);
     }
