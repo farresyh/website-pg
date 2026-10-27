@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   getResellerWallet,
   creditResellerWallet,
@@ -93,6 +94,7 @@ function Content({ reseller, onCredited }: Omit<Props, "isOpen" | "onClose">) {
     setSubmitting(true);
     try {
       await creditResellerWallet(reseller.id, { amount_sen: amountSen, note: note || null, receipt, idempotency_key: idempotencyKey });
+      notify.success("Wallet credited", formatRm(amountSen));
       setIdempotencyKey(crypto.randomUUID());
       setAmountRm("");
       setNote("");
@@ -101,7 +103,7 @@ function Content({ reseller, onCredited }: Omit<Props, "isOpen" | "onClose">) {
       await refresh(1);
       onCredited();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong.");
+      notify.stickyError("Credit failed", err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {
       setSubmitting(false);
     }

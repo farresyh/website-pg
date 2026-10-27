@@ -28,6 +28,7 @@ import { Pencil as PencilIcon } from "@primeicons/react/pencil";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   type AdminUser,
   listAdminUsers,
@@ -99,8 +100,10 @@ export default function AdminUsersPage() {
 
     if (editingUser) {
       await updateAdminUser(editingUser.id, values);
+      notify.success("Admin user updated");
     } else {
       await createAdminUser(values);
+      notify.success("Admin user created");
     }
 
     setIsModalOpen(false);
@@ -108,13 +111,13 @@ export default function AdminUsersPage() {
   }
 
   async function handleRequireMfa(user: AdminUser) {
-    setError(null);
     setStatusUpdatingId(user.id);
     try {
       await requireAdminUserMfa(user.id);
+      notify.success("MFA required", `${user.email} must set up MFA on next login.`);
       await refreshUsers();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not require MFA.");
+      notify.error("Could not require MFA", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setStatusUpdatingId(null);
     }
@@ -122,14 +125,14 @@ export default function AdminUsersPage() {
 
   async function handleToggleStatus(user: AdminUser) {
     if (!session) return;
-    setError(null);
     setStatusUpdatingId(user.id);
 
     try {
       await updateAdminUserStatus(user.id, !user.is_active);
+      notify.success(user.is_active ? "Admin user deactivated" : "Admin user activated");
       await refreshUsers();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not update status.");
+      notify.error("Could not update status", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setStatusUpdatingId(null);
     }
