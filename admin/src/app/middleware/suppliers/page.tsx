@@ -106,18 +106,20 @@ export default function SuppliersPage() {
   async function handleEdit(values: Parameters<typeof updateSupplier>[1]) {
     if (!session || !editTarget) return;
     const updated = await updateSupplier(editTarget.id, values);
-    notify.success("Supplier saved");
     setEditTarget(null);
     refresh();
 
     // ADR-069 decision 11 — surface the post-save connection probe.
     // Stress-test Q3: a breaker-open result is not a credential problem.
     const probe = updated.connection_probe;
-    if (probe && !probe.connection_ok) {
-      const text = probe.breaker_open
-        ? `Saved, but the connection check failed: ${probe.error ?? "breaker open"}.`
-        : `Saved, but the connection check failed: ${probe.error ?? "unknown error"}.`;
-      notify.warn("Connection check failed", text);
+    if (!probe) {
+      notify.success("Supplier saved");
+    } else if (probe.connection_ok) {
+      notify.success("Credentials saved", `Connection OK${probe.balance != null ? `, balance ${probe.balance}` : ""}.`);
+    } else if (probe.breaker_open) {
+      notify.info("Credentials saved", probe.error ?? undefined);
+    } else {
+      notify.warn("Saved, but the connection check failed", probe.error ?? "unknown error");
     }
   }
 

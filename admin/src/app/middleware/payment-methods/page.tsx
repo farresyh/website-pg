@@ -157,7 +157,9 @@ export default function PaymentMethodsPage() {
     setTestingId(method.id);
     try {
       const updated = await testPaymentMethod(method.id);
-      notify.success("Test passed", method.label);
+      // A failed channel test still answers 200; the outcome is in last_test_result.
+      if (updated.last_test_result === "success") notify.success("Test passed", method.label);
+      else notify.warn("Test failed", updated.last_test_result ?? method.label);
       setMethods((prev) => prev?.map((m) => (m.id === method.id ? { ...m, ...updated } : m)) ?? null);
     } catch (err) {
       notify.error("Could not test channel", err instanceof ApiError ? err.message : "Action failed.");

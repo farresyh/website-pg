@@ -61,14 +61,12 @@ export default function PaymentGatewaysPage() {
   async function handleSave(apiConfig: Record<string, string>) {
     if (!session || !editTarget) return;
     const updated = await updatePaymentGateway(editTarget, apiConfig);
-    notify.success("Credentials saved");
     setEditTarget(null);
     refresh();
 
     const probe = updated.connection_probe;
-    if (!probe.connection_ok) {
-      notify.warn("Connection check failed", probe.error ?? "unknown error");
-    }
+    if (probe.connection_ok) notify.success("Credentials saved", "Connection OK.");
+    else notify.warn("Saved, but the connection check failed", probe.error ?? "unknown error");
   }
 
   const knownKeys = Object.keys(PAYMENT_GATEWAY_FIELD_DEFINITIONS);
