@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { formatRm } from "@/lib/budget-envelopes";
 import { closeMonth, createCashAccount, reopenMonthClose, updateCashAccount, type MonthClose } from "@/lib/accounting-summary";
 import { CashEquationTable, cashGapSen } from "@/components/accounting/CashEquationTable";
@@ -41,14 +42,14 @@ export function MonthClosePanel({ year, month, data, onChanged }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function run(action: () => Promise<unknown>) {
-    setError(null);
+  async function run(action: () => Promise<unknown>, success?: string) {
     setBusy(true);
     try {
       await action();
+      if (success) notify.success(success);
       await onChanged();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong.");
+      notify.stickyError("Action failed", err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {
       setBusy(false);
     }
@@ -70,7 +71,7 @@ export function MonthClosePanel({ year, month, data, onChanged }: Props) {
       setError("Enter every amount as RM, e.g. 120.50 (a loss allocation can be negative).");
       return;
     }
-    void run(() => closeMonth({ year, month, lines, cash_balances: cash, gap_note: gapNote.trim() || null }));
+    void run(() => closeMonth({ year, month, lines, cash_balances: cash, gap_note: gapNote.trim() || null }), "Month closed");
   }
 
   return (
@@ -118,7 +119,7 @@ export function MonthClosePanel({ year, month, data, onChanged }: Props) {
           {close.gap_note && <p className="mt-3 text-theme-sm text-gray-600 dark:text-gray-300">Gap note: {close.gap_note}</p>}
           {close.can_reopen && (
             <form
-              onSubmit={(e) => { e.preventDefault(); void run(() => reopenMonthClose(close.id, reopenReason.trim())); }}
+              onSubmit={(e) => { e.preventDefault(); void run(() => reopenMonthClose(close.id, reopenReason.trim()), "Month reopened"); }}
               className="mt-5 flex flex-wrap items-end gap-2 border-t border-gray-100 pt-4 dark:border-gray-800"
             >
               <div className="min-w-64 flex-1">

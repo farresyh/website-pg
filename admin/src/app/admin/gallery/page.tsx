@@ -16,6 +16,7 @@ import { useClientSession } from "@/hooks/useClientSession";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useLatestRequest } from "@/hooks/useLatestRequest";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   type GalleryImage,
   type GalleryImagePage,
@@ -102,10 +103,11 @@ export default function GalleryPage() {
       for (const file of Array.from(files)) {
         await uploadGalleryImage(file);
       }
+      notify.success(files.length === 1 ? "Image uploaded" : `${files.length} images uploaded`);
       setPageNumber(1);
       refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Upload failed.");
+      notify.error("Upload failed", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -131,11 +133,12 @@ export default function GalleryPage() {
     if (!session || !deletingImage) return;
     try {
       await deleteGalleryImage(deletingImage.id);
+      notify.success("Image deleted");
       setDeletingImage(null);
       setDeletingReferences(null);
       refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not delete this image.");
+      notify.error("Could not delete this image", err instanceof ApiError ? err.message : "Action failed.");
     }
   }
 

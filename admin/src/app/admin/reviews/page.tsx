@@ -38,6 +38,7 @@ import { Button } from "@/components/ui/button";
 import { useClientSession } from "@/hooks/useClientSession";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   type Review,
   type ReviewIndexResponse,
@@ -117,13 +118,13 @@ function ReviewsPageInner() {
 
   async function handleApprove(review: Review) {
     if (!session) return;
-    setError(null);
     setActingId(review.id);
     try {
       await approveReview(review.id);
+      notify.success("Review approved");
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not approve this review.");
+      notify.error("Could not approve this review", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setActingId(null);
     }
@@ -131,13 +132,13 @@ function ReviewsPageInner() {
 
   async function handleReject(review: Review) {
     if (!session) return;
-    setError(null);
     setActingId(review.id);
     try {
       await rejectReview(review.id);
+      notify.success("Review rejected");
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not reject this review.");
+      notify.error("Could not reject this review", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setActingId(null);
     }
@@ -146,13 +147,13 @@ function ReviewsPageInner() {
   async function handleBulkApprove() {
     if (!session) return;
     setConfirmingBulkApprove(false);
-    setError(null);
     setBulkApproving(true);
     try {
       await bulkApproveReviews();
+      notify.success("Reviews approved");
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not bulk-approve reviews.");
+      notify.error("Could not bulk-approve reviews", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setBulkApproving(false);
     }

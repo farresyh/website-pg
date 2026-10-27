@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tag } from "@/components/ui/tag";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { downloadPostingReceipt, formatRm, voidPosting, type BudgetEnvelopeEntry } from "@/lib/budget-envelopes";
 
 function formatDateTime(iso: string): string {
@@ -35,11 +36,12 @@ export function EntriesTable({ entries, onChanged, onError }: Props) {
     }
     try {
       await voidPosting(postingId, voidReason.trim());
+      notify.success("Entry voided");
       setVoidingId(null);
       setVoidReason("");
       await onChanged();
     } catch (err) {
-      onError(err instanceof ApiError ? err.message : "Could not void this entry.");
+      notify.stickyError("Could not void this entry", err instanceof ApiError ? err.message : "Action failed.");
     }
   }
 

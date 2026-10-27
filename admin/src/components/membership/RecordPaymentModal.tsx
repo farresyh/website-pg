@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { SimpleSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { notify } from "@/components/ui/toast";
 import type { MembershipBrand, MembershipPlan, RecordMembershipPaymentValues } from "@/lib/membership";
 
 interface RecordPaymentModalProps {
@@ -96,8 +97,9 @@ function RecordPaymentFields({ onClose, plans, brands, presetAffiliateId, preset
         reason: reason || null,
         idempotency_key: idempotencyKeyRef.current!,
       });
+      notify.success("Payment recorded");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      notify.stickyError("Payment failed", err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setSubmitting(false);
     }

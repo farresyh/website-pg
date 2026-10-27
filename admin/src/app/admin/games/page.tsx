@@ -35,6 +35,7 @@ import { useClientSession } from "@/hooks/useClientSession";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useLatestRequest } from "@/hooks/useLatestRequest";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   type Game,
   type GamePackage,
@@ -361,6 +362,7 @@ export default function GamesPage() {
   async function handleEditGameSubmit(values: UpdateGameValues) {
     if (!session || !editingGame) return;
     const updated = await updateGame(editingGame.id, values);
+    notify.success("Game updated");
     setEditingGame(null);
     await refreshGames();
     if (selected?.id === updated.id) setSelected(updated);
@@ -369,6 +371,7 @@ export default function GamesPage() {
   async function handleDeleteGame() {
     if (!session || !editingGame) return;
     await deleteGame(editingGame.id);
+    notify.success("Game deleted");
     setEditingGame(null);
     if (selected?.id === editingGame.id) setSelected(null);
     await refreshGames();
@@ -377,6 +380,7 @@ export default function GamesPage() {
   async function handleEditPackageSubmit(values: UpdatePackageValues) {
     if (!session || !editingPackage || !selected) return;
     await updatePackage(editingPackage.id, values);
+    notify.success("Package updated");
     setEditingPackage(null);
     await openGame(selected);
   }
@@ -384,6 +388,7 @@ export default function GamesPage() {
   async function handleDeletePackage() {
     if (!session || !editingPackage || !selected) return;
     await deletePackage(editingPackage.id);
+    notify.success("Package deleted");
     setEditingPackage(null);
     await openGame(selected);
     await refreshGames();
@@ -404,6 +409,7 @@ export default function GamesPage() {
   async function handleSaveOrder(orderedIds: number[]) {
     if (!session) return;
     await reorderGames(orderedIds);
+    notify.success("Game order saved");
     setReorderGamesList(null);
     await refreshGames();
   }
@@ -440,9 +446,10 @@ export default function GamesPage() {
 
     try {
       await updatePackageStatus(pkg.id, activating);
+      notify.success(activating ? "Package activated" : "Package deactivated");
       setPackages((prev) => prev?.map((p) => (p.id === pkg.id ? { ...p, is_active: activating } : p)) ?? null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not update status.");
+      notify.error("Could not update status", err instanceof ApiError ? err.message : "Action failed.");
     }
   }
 
@@ -451,10 +458,11 @@ export default function GamesPage() {
     if (!session || !deactivateCascadeTarget || !selected) return;
     try {
       await updatePackageStatus(deactivateCascadeTarget.id, false, true);
+      notify.success("Package deactivated");
       setDeactivateCascadeTarget(null);
       await openGame(selected);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not deactivate.");
+      notify.error("Could not deactivate", err instanceof ApiError ? err.message : "Action failed.");
       setDeactivateCascadeTarget(null);
     }
   }
@@ -462,6 +470,7 @@ export default function GamesPage() {
   async function handleCreateCombo(values: CreateComboPackageValues) {
     if (!session || !selected) return;
     await createComboPackage(selected.id, values);
+    notify.success("Combo created");
     setCreatingCombo(false);
     await openGame(selected);
     await refreshGames();
@@ -470,6 +479,7 @@ export default function GamesPage() {
   async function handleUpdateComboOverride(values: UpdateComboOverrideValues) {
     if (!session || !editingCombo || !selected) return;
     await updateComboOverride(editingCombo.id, values);
+    notify.success("Combo updated");
     setEditingCombo(null);
     await openGame(selected);
   }
@@ -477,6 +487,7 @@ export default function GamesPage() {
   async function handleDeleteCombo() {
     if (!session || !editingCombo || !selected) return;
     await deletePackage(editingCombo.id);
+    notify.success("Combo deleted");
     setEditingCombo(null);
     await openGame(selected);
     await refreshGames();
@@ -484,43 +495,44 @@ export default function GamesPage() {
 
   async function handleUpdateMarkup(pkg: GamePackage, markupPercent: number) {
     if (!session || !selected) return;
-    setError(null);
     try {
       await updatePackageMarkup(pkg.id, markupPercent);
+      notify.success("Markup updated");
       // Refetch, not merge: the combos using this package are repriced
       // server-side too, and only the list endpoint returns them.
       setPackages(await listGamePackages(selected.id));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not update markup.");
+      notify.error("Could not update markup", err instanceof ApiError ? err.message : "Action failed.");
     }
   }
 
   async function handleUpdateDenomination(pkg: GamePackage, denomination: number | null) {
     if (!session) return;
-    setError(null);
     try {
       // Merge, don't replace — same reasoning as handleUpdateMarkup.
       const updated = await updatePackageDenomination(pkg.id, denomination);
+      notify.success("Denomination updated");
       setPackages((prev) => prev?.map((p) => (p.id === pkg.id ? { ...p, ...updated } : p)) ?? null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not update denomination.");
+      notify.error("Could not update denomination", err instanceof ApiError ? err.message : "Action failed.");
     }
   }
 
   async function handleUpdateCatalogCode(pkg: GamePackage, catalogCode: string | null) {
     if (!session) return;
-    setError(null);
     try {
       // Merge, don't replace — same reasoning as handleUpdateMarkup.
       const updated = await updatePackageCatalogCode(pkg.id, catalogCode);
+      notify.success("Catalog code updated");
       setPackages((prev) => prev?.map((p) => (p.id === pkg.id ? { ...p, ...updated } : p)) ?? null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not update catalog code.");
+      notify.error("Could not update catalog code", err instanceof ApiError ? err.message : "Action failed.");
     }
   }
 
   async function handleCreateLoginGame(values: CreateLoginGameValues) {
     const game = await createLoginGame(values);
+    notify.success("Login game created");
     setLoginGameMode(null);
     await refreshGames();
     await openGame(game);
@@ -529,6 +541,7 @@ export default function GamesPage() {
   async function handleSaveSchema(fields: CredentialField[]) {
     if (!selected) return;
     const updated = await updateCredentialSchema(selected.id, fields);
+    notify.success("Login schema saved");
     setLoginGameMode(null);
     setSelected(updated);
   }
@@ -536,6 +549,7 @@ export default function GamesPage() {
   async function handleCreateManualPackage(values: CreateManualPackageValues) {
     if (!selected) return;
     await createManualPackage(selected.id, values);
+    notify.success("Manual package created");
     setAddingManualPackage(false);
     await openGame(selected);
     await refreshGames();
@@ -544,6 +558,7 @@ export default function GamesPage() {
   async function handleUpdateCost(costSen: number) {
     if (!selected || !editingCost) return;
     await updatePackageCost(editingCost.id, costSen);
+    notify.success("Cost updated");
     setEditingCost(null);
     setPackages(await listGamePackages(selected.id));
   }

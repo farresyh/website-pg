@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   type HeroSlide,
   type SaveHeroSlideValues,
@@ -73,6 +74,7 @@ export default function HeroSlidesPage() {
   async function handleCreateSubmit(values: SaveHeroSlideValues) {
     if (!session) return;
     await createHeroSlide(values);
+    notify.success("Hero slide created");
     setCreating(false);
     await refresh();
   }
@@ -80,6 +82,7 @@ export default function HeroSlidesPage() {
   async function handleEditSubmit(values: SaveHeroSlideValues) {
     if (!session || !editingSlide) return;
     await updateHeroSlide(editingSlide.id, values);
+    notify.success("Hero slide updated");
     setEditingSlide(null);
     await refresh();
   }
@@ -87,18 +90,19 @@ export default function HeroSlidesPage() {
   async function handleDelete() {
     if (!session || !editingSlide) return;
     await deleteHeroSlide(editingSlide.id);
+    notify.success("Hero slide deleted");
     setEditingSlide(null);
     await refresh();
   }
 
   async function handleToggleStatus(slide: HeroSlide) {
     if (!session) return;
-    setError(null);
     try {
       await updateHeroSlideStatus(slide.id, !slide.is_active);
+      notify.success(slide.is_active ? "Hero slide hidden" : "Hero slide shown");
       setSlides((prev) => prev?.map((s) => (s.id === slide.id ? { ...s, is_active: !s.is_active } : s)) ?? null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not update status.");
+      notify.error("Could not update status", err instanceof ApiError ? err.message : "Action failed.");
     }
   }
 
