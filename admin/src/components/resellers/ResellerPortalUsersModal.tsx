@@ -30,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tag } from "@/components/ui/tag";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   getResellerDetail,
   addResellerUser,
@@ -52,7 +53,6 @@ function formatDate(iso: string | null): string {
 function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
   const [users, setUsers] = useState<ResellerUserRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   const [newUserName, setNewUserName] = useState("");
@@ -69,14 +69,13 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reseller.id]);
 
-  async function run(key: string, fn: () => Promise<void>) {
+  async function run(key: string, fn: () => Promise<void>, success?: string) {
     setBusy(key);
-    setError(null);
-    setNotice(null);
     try {
       await fn();
+      if (success) notify.success(success);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong.");
+      notify.error(err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {
       setBusy(null);
     }
@@ -86,9 +85,6 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
     <div className="space-y-4">
       {error && (
         <p className="rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>
-      )}
-      {notice && (
-        <p className="rounded-lg bg-success-50 px-3 py-2 text-sm text-success-600 dark:bg-success-500/15 dark:text-success-400">{notice}</p>
       )}
 
       <p className="text-theme-xs text-gray-500 dark:text-gray-400">
@@ -116,8 +112,7 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
                   onClick={() =>
                     run(`resend-${u.id}`, async () => {
                       await resendResellerUserInvite(reseller.id, u.id);
-                      setNotice(`Invite re-sent to ${u.email}.`);
-                    })
+                    }, `Invite re-sent to ${u.email}`)
                   }
                 >
                   {busy === `resend-${u.id}` ? "…" : "Resend invite"}
@@ -155,8 +150,7 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
               setNewUserName("");
               setNewUserEmail("");
               setUsers(d.users);
-              setNotice("User added — set-password invite sent.");
-            })
+            }, "User added — set-password invite sent")
           }
         >
           {busy === "add-user" ? "Adding…" : "Add user"}

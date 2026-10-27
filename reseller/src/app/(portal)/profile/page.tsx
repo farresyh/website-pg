@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { getProfile, updateProfile, type AffiliateProfile } from "@/lib/portal";
 import { getResellerProfile, type ResellerProfile } from "@/lib/reseller-portal";
 import { PageHeader, Panel, ErrorNote, StatusTag } from "@/components/composites";
@@ -86,7 +87,6 @@ function AffiliateProfileView() {
   const [profile, setProfile] = useState<AffiliateProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
 
   const [form, setForm] = useState({
     contact_name: "",
@@ -126,13 +126,11 @@ function AffiliateProfileView() {
   }, []);
 
   function set(key: keyof typeof form, value: string) {
-    setSaved(false);
     setForm((f) => ({ ...f, [key]: value }));
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
     const session = getClientSession();
     if (!session) return;
 
@@ -140,11 +138,9 @@ function AffiliateProfileView() {
     try {
       const updated = await updateProfile(session.token, form);
       setProfile(updated);
-      setSaved(true);
+      notify.success("Profile saved");
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : "Could not save your profile.",
-      );
+      notify.error("Could not save your profile", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setSaving(false);
     }
@@ -211,11 +207,6 @@ function AffiliateProfileView() {
                 >
                   {saving ? "Saving…" : "Save changes"}
                 </Button>
-                {saved && (
-                  <span className="text-theme-sm text-success-ink">
-                    Saved.
-                  </span>
-                )}
               </div>
             </form>
           </Panel>

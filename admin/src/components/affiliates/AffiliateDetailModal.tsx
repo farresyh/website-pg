@@ -20,6 +20,7 @@ import { SimpleSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Tag } from "@/components/ui/tag";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   addAffiliateUser,
   assignAffiliateTier,
@@ -72,8 +73,6 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
   const sub = r.subscription;
 
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   const [tierId, setTierId] = useState<string>(sub ? String(sub.tier_id) : "");
   const [tierNote, setTierNote] = useState("");
@@ -83,14 +82,17 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
 
   const [impersonateReason, setImpersonateReason] = useState("");
 
-  async function run(key: string, fn: () => Promise<void>) {
+  async function run(key: string, fn: () => Promise<void>, opts?: { success?: string; sticky?: boolean }) {
     setBusy(key);
-    setError(null);
-    setNotice(null);
     try {
       await fn();
+      if (opts?.success) notify.success(opts.success);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong.");
+      if (opts?.sticky) {
+        notify.stickyError("Action failed", err instanceof ApiError ? err.message : "Something went wrong.");
+      } else {
+        notify.error(err instanceof ApiError ? err.message : "Something went wrong.");
+      }
     } finally {
       setBusy(null);
     }
@@ -102,13 +104,6 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
 
   return (
     <div className="space-y-6">
-      {error && (
-        <p className="rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>
-      )}
-      {notice && (
-        <p className="rounded-lg bg-success-50 px-3 py-2 text-sm text-success-600 dark:bg-success-500/15 dark:text-success-400">{notice}</p>
-      )}
-
       <div className="grid grid-cols-2 gap-3 text-theme-sm sm:grid-cols-4">
         <div>
           <p className="text-theme-xs text-gray-500 dark:text-gray-400">Status</p>
@@ -169,8 +164,7 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
                 const d = await assignAffiliateTier(r.id, Number(tierId), tierNote || null);
                 setTierNote("");
                 onChanged(d);
-                setNotice("Tier updated.");
-              })
+              }, { success: "Tier updated", sticky: true })
             }
           >
             {busy === "assign" ? "Saving…" : "Apply tier"}
@@ -188,8 +182,7 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
                 run("charge", async () => {
                   const d = await chargeAffiliateTierFee(r.id);
                   onChanged(d);
-                  setNotice("Charge attempted — see the tier status above.");
-                })
+                }, { success: "Tier fee charged", sticky: true })
               }
             >
               {busy === "charge" ? "Charging…" : "Charge fee now"}
@@ -204,8 +197,7 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
                   run("reactivate", async () => {
                     const d = await reactivateAffiliateSubscription(r.id);
                     onChanged(d);
-                    setNotice("Subscription reactivated with a fresh 30-day cycle.");
-                  })
+                  }, { success: "Subscription reactivated", sticky: true })
                 }
               >
                 {busy === "reactivate" ? "…" : "Reactivate"}
@@ -236,8 +228,7 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
                     onClick={() =>
                       run(`resend-${u.id}`, async () => {
                         await resendAffiliateInvite(r.id, u.id);
-                        setNotice(`Invite re-sent to ${u.email}.`);
-                      })
+                      }, { success: `Invite re-sent to ${u.email}` })
                     }
                   >
                     Resend invite
@@ -267,8 +258,7 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
                 setNewUserName("");
                 setNewUserEmail("");
                 onChanged(d);
-                setNotice("User added — set-password invite sent.");
-              })
+              }, { success: "User added — set-password invite sent" })
             }
           >
             {busy === "add-user" ? "Adding…" : "Add user"}
@@ -314,8 +304,7 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
                           run(`domain-recheck-${d.id}`, async () => {
                             const detail2 = await recheckAffiliateDomain(r.id, d.id);
                             onChanged(detail2);
-                            setNotice(`Re-checked ${d.hostname}.`);
-                          })
+                          }, { success: `Re-checked ${d.hostname}` })
                         }
                       >
                         {busy === `domain-recheck-${d.id}` ? "…" : "Force re-check"}
@@ -329,8 +318,7 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
                           run(`domain-remove-${d.id}`, async () => {
                             const detail2 = await removeAffiliateDomain(r.id, d.id);
                             onChanged(detail2);
-                            setNotice(`Removed ${d.hostname}.`);
-                          })
+                          }, { success: `Removed ${d.hostname}` })
                         }
                       >
                         {busy === `domain-remove-${d.id}` ? "…" : "Remove"}
@@ -374,9 +362,7 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
                   "_blank",
                   "noopener",
                 );
-                setNotice(
-                  `Session #${res.session_id} started as ${res.acting_as.email} — opened in a new tab (token expires ${formatDate(res.expires_at)}).`,
-                );
+                notify.success("Impersonation started", `Session #${res.session_id} as ${res.acting_as.email} (expires ${formatDate(res.expires_at)}).`);
                 onRefresh();
               })
             }

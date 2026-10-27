@@ -2563,3 +2563,49 @@ reduced-motion and focus-on-dismiss were promised but not yet done; the
 refreshed only on success; and there was no build-log entry. All five are
 addressed in the follow-up sweep PRs, which stay open together against
 `staging` for one review.
+
+## 2026-10-27 — ADR-129 action feedback (toasts): full rollout (#575–#580)
+
+**Why.** After the PR-1 wrapper (#574), the remaining screens still showed
+action outcomes as inline `setError`/`setNotice`/"Saved." state — not silent,
+but not toasts. This closes ADR-129 (§16 item 136): every action outcome is a
+toast; field validation, load/empty states, persistent warnings and the
+order-modals' confirmations stay inline on purpose.
+
+**What shipped (all on `staging`, not yet `main`).**
+- #575: the five review notes on #574 — `@primereact/headless` declared,
+  focus-on-dismiss returns to the region, entrance motion dropped
+  (a mount-flip sets state in an effect, which the lint forbids), the
+  visible `limit` honoured by slicing, Withdrawals refreshes after a failed
+  action too, and this file's first entry.
+- #576: Vouchers, Affiliates, Resellers, Admin users (the shared `guard()`
+  takes a success message).
+- #577: Middleware panel (suppliers, payment methods, gateways, product
+  manager, sandbox, validators). A follow-up fix read the response body, not
+  just the exception: a failed payment-method test answers 200 with the
+  failure in `last_test_result`, and a breaker-open supplier probe is not a
+  credential failure (ADR-069 stress-test Q3).
+- #578: Games/SEO/Gallery/Hero slides/Reviews/Blacklist — replaces the
+  inline "Saved." flag on the SEO save screens.
+- #579: the money-critical flows — manual-order finalize, membership payment,
+  supplier transfer, envelope posting/void/month close, transfer correction,
+  portal wallet top-up. Failures are sticky (`duration: Infinity`).
+- #580: the remaining money actions (AffiliateDetailModal tier charge/
+  reactivate/assign, Settlements update, TierCard price, Joki payout share)
+  and the non-money config (Joki rank model/routes/settings, admin Settings
+  sections, Reseller API-keys/webhook/portal-users, portal api-keys/webhook/
+  profile/domains).
+
+**Money-safety discipline.** A success toast fires only after the promise
+resolves (and, where the endpoint returns an outcome in its body, only when
+that outcome says so); money-action failures are sticky so they can't vanish.
+No backend, ledger or money-logic change anywhere in the rollout.
+
+**Gotchas.**
+- The `guard`/`run`/`save` helpers across screens were each extended with an
+  optional success message instead of a bespoke toast store, so the library
+  stays swappable in one file.
+- Removed several now-unused `error`/`notice`/`saved` states; lint caught the
+  leftover `JOKI_ERROR`/`JOKI_NOTICE` imports and `setError` assignments.
+- The portal copy is generated (`scripts/sync-shared-files.mjs`), never
+  hand-edited; CI's `theme-preset-drift` guards it.

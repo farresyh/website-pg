@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StatusText } from "@/components/orders/StatusText";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { createJokiRoute, updateJokiRoute, type JokiRank, type JokiRouteRow, type JokiTier } from "@/lib/joki";
 import { RankPicker } from "@/components/joki/RankPicker";
-import { JOKI_CARD, JOKI_CARD_HINT, JOKI_CARD_TITLE, JOKI_ERROR, JOKI_TD, JOKI_TH } from "@/components/joki/jokiStyles";
+import { JOKI_CARD, JOKI_CARD_HINT, JOKI_CARD_TITLE, JOKI_TD, JOKI_TH } from "@/components/joki/jokiStyles";
 
 /**
  * ADR-126 decision 5: route packages — a founder-set promo price for one
@@ -24,18 +25,17 @@ export function JokiRoutesEditor({ tiers, routes, onSaved }: { tiers: JokiTier[]
   const [price, setPrice] = useState("");
   const [isQuotation, setIsQuotation] = useState(false);
   const [prices, setPrices] = useState<Record<number, string>>({});
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
-    setError(null);
     try {
       await action();
+      notify.success("Route saved");
       await onSaved();
       return true;
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save the route.");
+      notify.error("Could not save the route", err instanceof ApiError ? err.message : "Action failed.");
       return false;
     } finally {
       setBusy(false);
@@ -130,7 +130,6 @@ export function JokiRoutesEditor({ tiers, routes, onSaved }: { tiers: JokiTier[]
             </label>
           </div>
         </div>
-        {error && <p className={`mt-4 ${JOKI_ERROR}`}>{error}</p>}
         <div className="mt-6 flex justify-end">
           <Button onClick={add} disabled={busy || !name.trim() || (!isQuotation && !price)}>Add route package</Button>
         </div>

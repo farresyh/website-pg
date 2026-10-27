@@ -13,6 +13,7 @@
 import { useEffect, useState } from "react";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   getDomains,
   addDomain,
@@ -73,26 +74,27 @@ export default function DomainsPage() {
     setAdding(true);
     try {
       await addDomain(session.token, hostname.trim());
+      notify.success("Domain added");
       setHostname("");
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not add that domain.");
+      notify.error("Could not add that domain", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setAdding(false);
     }
   }
 
-  async function run(id: number, action: (token: string, id: number) => Promise<unknown>) {
-    setError(null);
+  async function run(id: number, action: (token: string, id: number) => Promise<unknown>, success?: string) {
     const session = getClientSession();
     if (!session) return;
 
     setBusyId(id);
     try {
       await action(session.token, id);
+      if (success) notify.success(success);
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "That action could not be completed.");
+      notify.error("That action could not be completed", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setBusyId(null);
     }
@@ -194,7 +196,7 @@ export default function DomainsPage() {
                         <button
                           type="button"
                           disabled={busyId === d.id}
-                          onClick={() => run(d.id, recheckDomain)}
+                          onClick={() => run(d.id, recheckDomain, "Domain re-checked")}
                           className="rounded-md border border-border px-3 py-1.5 text-theme-xs text-ink-muted hover:bg-subtle disabled:opacity-50"
                         >
                           {busyId === d.id ? "…" : "Check now"}
@@ -203,7 +205,7 @@ export default function DomainsPage() {
                           <button
                             type="button"
                             disabled={busyId === d.id}
-                            onClick={() => run(d.id, setPrimaryDomain)}
+                            onClick={() => run(d.id, setPrimaryDomain, "Primary domain set")}
                             className="rounded-md border border-border px-3 py-1.5 text-theme-xs text-ink-muted hover:bg-subtle disabled:opacity-50"
                           >
                             Set primary
@@ -213,7 +215,7 @@ export default function DomainsPage() {
                           <button
                             type="button"
                             disabled={busyId === d.id}
-                            onClick={() => run(d.id, removeDomain)}
+                            onClick={() => run(d.id, removeDomain, "Domain removed")}
                             className="rounded-md border border-danger-ink/30 px-3 py-1.5 text-theme-xs text-danger-ink hover:bg-danger-surface disabled:opacity-50"
                           >
                             Remove
