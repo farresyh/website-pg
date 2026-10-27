@@ -16,6 +16,7 @@ import { Tag } from "@/components/ui/tag";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   type PaymentGateway,
   PAYMENT_GATEWAY_FIELD_DEFINITIONS,
@@ -34,7 +35,6 @@ export default function PaymentGatewaysPage() {
 
   const [gateways, setGateways] = useState<PaymentGateway[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [editTarget, setEditTarget] = useState<string | null>(null);
 
   useEffect(() => {
@@ -60,18 +60,15 @@ export default function PaymentGatewaysPage() {
 
   async function handleSave(apiConfig: Record<string, string>) {
     if (!session || !editTarget) return;
-    setNotice(null);
     const updated = await updatePaymentGateway(editTarget, apiConfig);
+    notify.success("Credentials saved");
     setEditTarget(null);
     refresh();
 
     const probe = updated.connection_probe;
-    setNotice({
-      tone: probe.connection_ok ? "ok" : "warn",
-      text: probe.connection_ok
-        ? "Credentials saved — connection OK."
-        : `Saved, but the connection check failed: ${probe.error ?? "unknown error"}.`,
-    });
+    if (!probe.connection_ok) {
+      notify.warn("Connection check failed", probe.error ?? "unknown error");
+    }
   }
 
   const knownKeys = Object.keys(PAYMENT_GATEWAY_FIELD_DEFINITIONS);
@@ -89,18 +86,6 @@ export default function PaymentGatewaysPage() {
       {error && (
         <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
           {error}
-        </p>
-      )}
-
-      {notice && (
-        <p
-          className={
-            notice.tone === "ok"
-              ? "mb-4 rounded-lg bg-success-50 px-4 py-3 text-sm text-success-600 dark:bg-success-500/15 dark:text-success-400"
-              : "mb-4 rounded-lg bg-warning-50 px-4 py-3 text-sm text-warning-600 dark:bg-warning-500/15 dark:text-warning-400"
-          }
-        >
-          {notice.text}
         </p>
       )}
 

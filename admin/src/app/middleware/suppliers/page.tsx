@@ -29,6 +29,7 @@ import {
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { listGames, type Game } from "@/lib/games";
 import {
   type Supplier,
@@ -60,7 +61,6 @@ export default function SuppliersPage() {
   const [availableDrivers, setAvailableDrivers] = useState<string[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [busySlug, setBusySlug] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -98,42 +98,38 @@ export default function SuppliersPage() {
   async function handleCreate(values: Parameters<typeof createSupplier>[0]) {
     if (!session) return;
     await createSupplier(values);
+    notify.success("Supplier created");
     setCreateOpen(false);
     refresh();
   }
 
   async function handleEdit(values: Parameters<typeof updateSupplier>[1]) {
     if (!session || !editTarget) return;
-    setNotice(null);
     const updated = await updateSupplier(editTarget.id, values);
+    notify.success("Supplier saved");
     setEditTarget(null);
     refresh();
 
     // ADR-069 decision 11 — surface the post-save connection probe.
     // Stress-test Q3: a breaker-open result is not a credential problem.
     const probe = updated.connection_probe;
-    if (probe) {
-      let text: string;
-      if (probe.connection_ok) {
-        text = `Credentials saved — connection OK${probe.balance != null ? `, balance ${probe.balance}` : ""}.`;
-      } else if (probe.breaker_open) {
-        text = `Credentials saved. ${probe.error ?? ""}`.trim();
-      } else {
-        text = `Saved, but the connection check failed: ${probe.error ?? "unknown error"}.`;
-      }
-      setNotice({ tone: probe.connection_ok ? "ok" : "warn", text });
+    if (probe && !probe.connection_ok) {
+      const text = probe.breaker_open
+        ? `Saved, but the connection check failed: ${probe.error ?? "breaker open"}.`
+        : `Saved, but the connection check failed: ${probe.error ?? "unknown error"}.`;
+      notify.warn("Connection check failed", text);
     }
   }
 
   async function handleToggleActive(supplier: Supplier) {
     if (!session) return;
-    setError(null);
     setBusySlug(supplier.slug);
     try {
       await updateSupplierStatus(supplier.id, !supplier.is_active);
+      notify.success(supplier.is_active ? "Supplier deactivated" : "Supplier activated");
       refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not update this supplier.");
+      notify.error("Could not update this supplier", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setBusySlug(null);
       setActivateConfirmTarget(null);
@@ -142,13 +138,13 @@ export default function SuppliersPage() {
 
   async function handleRefreshBalance(supplier: Supplier) {
     if (!session) return;
-    setError(null);
     setBusySlug(supplier.slug);
     try {
       await refreshSupplierBalance(supplier.id);
+      notify.success("Balance refreshed");
       refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not refresh balance.");
+      notify.error("Could not refresh balance", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setBusySlug(null);
     }
@@ -156,14 +152,14 @@ export default function SuppliersPage() {
 
   async function handleDelete() {
     if (!session || !deleteConfirmTarget) return;
-    setError(null);
     setBusySlug(deleteConfirmTarget.slug);
     try {
       await deleteSupplier(deleteConfirmTarget.id);
+      notify.success("Supplier deleted");
       setDeleteConfirmTarget(null);
       refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not delete this supplier.");
+      notify.error("Could not delete this supplier", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setBusySlug(null);
     }
@@ -172,6 +168,7 @@ export default function SuppliersPage() {
   async function handlePackagesSubmit(values: Parameters<typeof updateSupplierPackagesStatus>[1]) {
     if (!session || !packagesTarget) return;
     await updateSupplierPackagesStatus(packagesTarget.id, values);
+    notify.success("Packages updated");
     setPackagesTarget(null);
     refresh();
   }
@@ -192,18 +189,6 @@ export default function SuppliersPage() {
       {error && (
         <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
           {error}
-        </p>
-      )}
-
-      {notice && (
-        <p
-          className={
-            notice.tone === "ok"
-              ? "mb-4 rounded-lg bg-success-50 px-4 py-3 text-sm text-success-600 dark:bg-success-500/15 dark:text-success-400"
-              : "mb-4 rounded-lg bg-warning-50 px-4 py-3 text-sm text-warning-600 dark:bg-warning-500/15 dark:text-warning-400"
-          }
-        >
-          {notice.text}
         </p>
       )}
 

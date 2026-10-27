@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   type PaymentMethod,
   listPaymentMethods,
@@ -131,35 +132,35 @@ export default function PaymentMethodsPage() {
 
   async function handleToggleStatus(method: PaymentMethod) {
     if (!session) return;
-    setError(null);
     try {
       const updated = await updatePaymentMethodStatus(method.id, !method.is_active);
+      notify.success(method.is_active ? "Payment method deactivated" : "Payment method activated");
       setMethods((prev) => prev?.map((m) => (m.id === method.id ? { ...m, ...updated } : m)) ?? null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not update status.");
+      notify.error("Could not update status", err instanceof ApiError ? err.message : "Action failed.");
     }
   }
 
   async function handleUpdateFee(method: PaymentMethod, percentageRate: number, flatFeeSen: number) {
     if (!session) return;
-    setError(null);
     try {
       const updated = await updatePaymentMethodFee(method.id, percentageRate, flatFeeSen);
+      notify.success("Fee updated");
       setMethods((prev) => prev?.map((m) => (m.id === method.id ? { ...m, ...updated } : m)) ?? null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not update fee.");
+      notify.error("Could not update fee", err instanceof ApiError ? err.message : "Action failed.");
     }
   }
 
   async function handleTest(method: PaymentMethod) {
     if (!session) return;
-    setError(null);
     setTestingId(method.id);
     try {
       const updated = await testPaymentMethod(method.id);
+      notify.success("Test passed", method.label);
       setMethods((prev) => prev?.map((m) => (m.id === method.id ? { ...m, ...updated } : m)) ?? null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not test channel.");
+      notify.error("Could not test channel", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setTestingId(null);
     }

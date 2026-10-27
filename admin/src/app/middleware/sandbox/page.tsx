@@ -32,6 +32,7 @@ import { useClientSession } from "@/hooks/useClientSession";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useLatestRequest } from "@/hooks/useLatestRequest";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { type OrderListItem, type OrderPage, type OrderDetail } from "@/lib/orders";
 import {
   type SandboxOrderDetail,
@@ -141,6 +142,7 @@ export default function SandboxOrdersPage() {
   async function handleCreate(values: CreateSandboxOrderValues) {
     if (!session) return;
     await createSandboxOrder(values);
+    notify.success("Test order created");
     setCreateModalOpen(false);
     refreshList();
   }
@@ -148,6 +150,7 @@ export default function SandboxOrdersPage() {
   async function handleDelete(id: number) {
     if (!session) return;
     await deleteSandboxOrder(id);
+    notify.success("Test order deleted");
     setSelected(null);
     refreshList();
   }
@@ -156,6 +159,7 @@ export default function SandboxOrdersPage() {
     if (!session) return;
     if (!confirm("Delete every test order? This cannot be undone.")) return;
     await deleteAllSandboxOrders();
+    notify.success("Test orders cleared");
     setSelected(null);
     refreshList();
   }
