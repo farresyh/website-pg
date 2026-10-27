@@ -875,7 +875,10 @@ and the admin-loading investigation (#515, #516). Re-checked again
 moved to group D). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- None open.
+- **136** Action feedback (toasts) across admin, middleware and the partner
+  portal (ADR-129): one shared wrapper + `ToastProvider`, then an
+  incremental sweep of action outcomes. PR 1 = wrapper + provider +
+  Withdrawals / Orders / portal Withdrawal; later PRs sweep the rest.
 
 **B. Needs a short grill / ADR addendum first**
 - None open.
@@ -939,6 +942,22 @@ moved to group D). Re-verify before building.
   Malaysia. Long-term, not soon (founder, 2026-10-17).
 
 ## Details
+
+136. **Action feedback (toasts) across admin, middleware and the partner
+    portal (ADR-129, 2026-10-27).** Neither frontend gives consistent
+    feedback after an action — 112 admin files and 20 portal files show
+    success/error as inline page-top `<p>` state. ADR-129 decides one
+    PrimeReact headless toaster (`toast()` + `useToaster()`), one shared
+    `admin/src/components/ui/toast.tsx` (added to `KIT`, generated into the
+    portal), a `notify` facade with `notify.promise`, the semantic
+    `-surface`/`-ink` tokens only, and a toast-vs-inline policy (toast =
+    transient action outcome; inline = field validation, load/empty state,
+    persistent warnings, confirm dialogs). Money-action errors are sticky
+    (`duration: 0`). Success is promise-driven — never before the server
+    answers. Frontend-only; no backend or money-logic change. Build is
+    incremental: PR 1 = wrapper + provider + Withdrawals / Orders / portal
+    Withdrawal; later PRs sweep the rest (one action outcome per screen,
+    keeping inline validation).
 
 4. **Bot-host capacity (+$20/mo resize)** — resize only when capacity actually
    calls for it. It is also the moment to revisit the OpenWA engine (item 59:
