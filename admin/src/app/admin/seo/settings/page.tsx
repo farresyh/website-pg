@@ -11,6 +11,7 @@ import { ImageUrlInput } from "@/components/gallery/ImageUrlInput";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { getSeoSettings, updateSeoSettings, type SeoSettings } from "@/lib/seo";
 import { Switch } from "@/components/ui/switch";
 
@@ -22,7 +23,6 @@ export default function SeoGlobalSettingsPage() {
   const [settings, setSettings] = useState<SeoSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     const s = getClientSession();
@@ -39,8 +39,6 @@ export default function SeoGlobalSettingsPage() {
   async function handleSave() {
     if (!session || !settings) return;
     setSaving(true);
-    setError(null);
-    setSaved(false);
     try {
       const updated = await updateSeoSettings({
         default_meta_title: settings.default_meta_title || null,
@@ -54,9 +52,9 @@ export default function SeoGlobalSettingsPage() {
         schema_breadcrumb_enabled: settings.schema_breadcrumb_enabled,
       });
       setSettings(updated);
-      setSaved(true);
+      notify.success("SEO settings saved");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save SEO settings.");
+      notify.error("Could not save SEO settings", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setSaving(false);
     }
@@ -77,9 +75,6 @@ export default function SeoGlobalSettingsPage() {
 
       {error && (
         <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>
-      )}
-      {saved && !error && (
-        <p className="mb-4 rounded-lg bg-success-50 px-4 py-3 text-sm text-success-600 dark:bg-success-500/15 dark:text-success-400">Saved.</p>
       )}
 
       <div className="space-y-6">

@@ -21,6 +21,7 @@ import { Plus as PlusIcon } from "@primeicons/react/plus";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { listCrawlerRules, createCrawlerRule, updateCrawlerRule, deleteCrawlerRule, getSeoSettings, updateSeoSettings, type CrawlerRule } from "@/lib/seo";
 import SaveCrawlerRuleModal from "@/components/seo/SaveCrawlerRuleModal";
 
@@ -35,7 +36,6 @@ export default function CrawlerRulesPage() {
 
   const [defaultDisallow, setDefaultDisallow] = useState("");
   const [savingDefaults, setSavingDefaults] = useState(false);
-  const [defaultsSaved, setDefaultsSaved] = useState(false);
 
   function refresh() {
     return listCrawlerRules()
@@ -61,13 +61,12 @@ export default function CrawlerRulesPage() {
   async function handleSaveDefaults() {
     if (!session) return;
     setSavingDefaults(true);
-    setDefaultsSaved(false);
     try {
       const paths = defaultDisallow.split("\n").map((p) => p.trim()).filter(Boolean);
       await updateSeoSettings({ crawler_default_disallow_paths: paths });
-      setDefaultsSaved(true);
+      notify.success("Default disallow paths saved");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save default disallow paths.");
+      notify.error("Could not save default disallow paths", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setSavingDefaults(false);
     }
@@ -77,8 +76,10 @@ export default function CrawlerRulesPage() {
     if (!session) return;
     if (editing) {
       await updateCrawlerRule(editing.id, values);
+      notify.success("Crawler rule updated");
     } else {
       await createCrawlerRule(values);
+      notify.success("Crawler rule created");
     }
     setModalOpen(false);
     setEditing(null);
@@ -90,9 +91,10 @@ export default function CrawlerRulesPage() {
     setDeletingId(rule.id);
     try {
       await deleteCrawlerRule(rule.id);
+      notify.success("Crawler rule deleted");
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not delete rule.");
+      notify.error("Could not delete rule", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setDeletingId(null);
     }
@@ -132,7 +134,6 @@ export default function CrawlerRulesPage() {
           <Button size="small" onClick={handleSaveDefaults} disabled={savingDefaults}>
             {savingDefaults ? "Saving…" : "Save Defaults"}
           </Button>
-          {defaultsSaved && <span className="text-sm text-success-600 dark:text-success-400">Saved.</span>}
         </div>
       </div>
 

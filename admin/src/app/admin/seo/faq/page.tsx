@@ -20,6 +20,7 @@ import { Plus as PlusIcon } from "@primeicons/react/plus";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { listFaqs, createFaq, updateFaq, deleteFaq, type Faq } from "@/lib/seo";
 import SaveFaqModal from "@/components/seo/SaveFaqModal";
 
@@ -54,8 +55,10 @@ export default function FaqPage() {
     if (!session) return;
     if (editing) {
       await updateFaq(editing.id, values);
+      notify.success("FAQ updated");
     } else {
       await createFaq(values);
+      notify.success("FAQ created");
     }
     setModalOpen(false);
     setEditing(null);
@@ -67,9 +70,10 @@ export default function FaqPage() {
     setDeletingId(faq.id);
     try {
       await deleteFaq(faq.id);
+      notify.success("FAQ deleted");
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not delete the question.");
+      notify.error("Could not delete the question", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setDeletingId(null);
     }
