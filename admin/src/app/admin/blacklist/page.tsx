@@ -25,6 +25,7 @@ import { Plus as PlusIcon } from "@primeicons/react/plus";
 import { useClientSession } from "@/hooks/useClientSession";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   type BlacklistEntry,
   type BlacklistIndexResponse,
@@ -83,20 +84,21 @@ export default function BlacklistPage() {
   async function handleCreate(values: Parameters<typeof createBlacklistEntry>[0]) {
     if (!session) return;
     await createBlacklistEntry(values);
+    notify.success("Blacklist entry added");
     setIsModalOpen(false);
     await refresh();
   }
 
   async function handleDeactivate(entry: BlacklistEntry) {
     if (!session) return;
-    setError(null);
     setDeactivatingId(entry.id);
 
     try {
       await deactivateBlacklistEntry(entry.id);
+      notify.success("Entry deactivated");
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not deactivate entry.");
+      notify.error("Could not deactivate entry", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setDeactivatingId(null);
     }
