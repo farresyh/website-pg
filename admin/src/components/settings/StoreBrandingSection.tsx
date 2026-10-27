@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   deleteBrandingFavicon,
   deleteBrandingLogo,
@@ -19,16 +20,15 @@ function LogoAndFaviconPanel({ branding, onSaved }: { branding: Branding; onSave
   const logoRef = useRef<HTMLInputElement>(null);
   const faviconRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<"logo" | "favicon" | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   async function handleLogo(file: File) {
     setBusy("logo");
-    setError(null);
     try {
       await uploadBrandingLogo(file);
+      notify.success("Logo uploaded");
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not upload that logo.");
+      notify.error("Could not upload that logo", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setBusy(null);
       if (logoRef.current) logoRef.current.value = "";
@@ -37,12 +37,12 @@ function LogoAndFaviconPanel({ branding, onSaved }: { branding: Branding; onSave
 
   async function removeLogo() {
     setBusy("logo");
-    setError(null);
     try {
       await deleteBrandingLogo();
+      notify.success("Logo removed");
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not remove the logo.");
+      notify.error("Could not remove the logo", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setBusy(null);
     }
@@ -50,12 +50,12 @@ function LogoAndFaviconPanel({ branding, onSaved }: { branding: Branding; onSave
 
   async function handleFavicon(file: File) {
     setBusy("favicon");
-    setError(null);
     try {
       await uploadBrandingFavicon(file);
+      notify.success("Favicon uploaded");
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not upload that favicon.");
+      notify.error("Could not upload that favicon", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setBusy(null);
       if (faviconRef.current) faviconRef.current.value = "";
@@ -64,12 +64,12 @@ function LogoAndFaviconPanel({ branding, onSaved }: { branding: Branding; onSave
 
   async function removeFavicon() {
     setBusy("favicon");
-    setError(null);
     try {
       await deleteBrandingFavicon();
+      notify.success("Favicon removed");
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not remove the favicon.");
+      notify.error("Could not remove the favicon", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setBusy(null);
     }
@@ -77,9 +77,6 @@ function LogoAndFaviconPanel({ branding, onSaved }: { branding: Branding; onSave
 
   return (
     <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-      {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>
-      )}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900">
@@ -160,11 +157,9 @@ export default function StoreBrandingSection({
   const [youtube, setYoutube] = useState(branding.social_links?.youtube ?? "");
   const [whatsapp, setWhatsapp] = useState(branding.social_links?.whatsapp ?? "");
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
     setSaving(true);
-    setError(null);
     try {
       await updateBranding({
         store_name: storeName,
@@ -180,9 +175,10 @@ export default function StoreBrandingSection({
           whatsapp: whatsapp || undefined,
         },
       });
+      notify.success("Branding saved");
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save branding.");
+      notify.error("Could not save branding", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setSaving(false);
     }
@@ -193,10 +189,6 @@ export default function StoreBrandingSection({
       <LogoAndFaviconPanel branding={branding} onSaved={onSaved} />
 
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-      {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>
-      )}
-
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <Label htmlFor="store_name">Store name</Label>

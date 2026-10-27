@@ -1,6 +1,6 @@
 # ADR-128: Partner portal visual system — the PekanGame Admin design system, as a "PekanGame Partner" variant, frontend only
 
-> **Standing (2026-10-26):** Accepted; one shared component kit with the admin (2026-10-26 addendum). Extends [ADR-104](./ADR-104-admin-panel-visual-redesign.md)'s design system from `admin/` to `reseller/`; keeps [ADR-112](./ADR-112-affiliate-reseller-portal-mobile-first-redesign.md)'s navigation model and mobile acceptance criteria. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-27):** Accepted; one shared component kit with the admin (2026-10-26 addendum); status-severity buttons are soft `-surface`/`-ink` pairs (2026-10-27 addendum). Extends [ADR-104](./ADR-104-admin-panel-visual-redesign.md)'s design system from `admin/` to `reseller/`; keeps [ADR-112](./ADR-112-affiliate-reseller-portal-mobile-first-redesign.md)'s navigation model and mobile acceptance criteria. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-26. Grilled with the founder (`/mattpocock-skills:grilling`, Q1–Q15, three rounds). Mockups come first, in the founder's design-system artifact ("PekanGame Admin", `https://claude.ai/artifact/Jr2dGDUAFasPMedVayHPHe`), and are approved there before any code (PRD §16 item 133).
 
@@ -87,3 +87,13 @@
 **Build order (next session):**
 1. Move the admin kit onto the semantic tokens, using the same one-to-one class mapping as PR 4. Point the PrimeReact bridge's primary colour at `cyan-600` / `cyan-700` / `on-cyan` in `tokens.css`. Every admin screen's buttons, inputs, selects, tables and dialogs change slightly; this needs a browser check of the admin.
 2. Generate the kit into `reseller/src/components/ui/` and move the portal's composites to their own file. Replace `buttonClass`, `inputClass`, `Badge` and the hand-made tabs and tables with the kit. Keep `PrimeProvider`. Touch targets stay 44px on phones (ADR-112).
+
+### 2026-10-27 addendum — status-severity buttons are soft, not solid
+
+**Context.** Generating the shared kit into the portal hit the Button's status severities (`info`/`success`/`warn`/`danger`/`help`). They used Tailwind's stock solid fills (`bg-red-500 text-white` …) with `dark:` twins. The portal's `color-tokens.test.ts` rejects `dark:` colour overrides, and the design system defines status colour only as `-surface`/`-ink` pairs (ADR-104 decision 3). A solid `bg-*-ink` is not an option: the `-ink` tokens flip to a light value in dark mode, so white text on them fails contrast.
+
+**Decision (founder, 2026-10-26, asked during shared-kit PR 2):** status-severity buttons use the soft pair: `-surface` fill, `-ink` text, a faint `-ink` border that strengthens on hover. Outlined and text variants use the same tokens. `danger` is a soft red, not a solid red. The primary (`default`) button stays solid `cyan-600`/`on-cyan`; `contrast` is `ink` on `surface`.
+
+**Why.** One rule for both apps, no `dark:` overrides, and AA in both themes without per-theme tuning. Measured 2026-10-27 on the admin's Vouchers "Revoke" button: 5.70:1 light, 7.66:1 dark. A destructive action is still marked by its red and by its confirmation dialog; a solid fill was not needed for that.
+
+**Consequence to track.** A future screen that wants a louder destructive button must not add a solid `bg-red-*` back into the kit; raise it as a new addendum.

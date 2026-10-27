@@ -35,6 +35,7 @@ import { useClientSession } from "@/hooks/useClientSession";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useLatestRequest } from "@/hooks/useLatestRequest";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   type SupplierProduct,
   type SupplierProductCategory,
@@ -141,6 +142,7 @@ function CheckoutInputEditor({
         zone_options: isZoneId ? parsedZoneOptions() : null,
         player_id_format: playerIdFormat === "text" ? "text" : "numeric",
       });
+      notify.success("Checkout input updated");
     } finally {
       setSaving(false);
     }
@@ -285,6 +287,7 @@ export default function ProductManagerPage() {
   async function handleLinkSubmit(values: LinkCategoryValues) {
     if (!session || !linkingCategory) return;
     await linkSupplierProductCategory(values);
+    notify.success("Category linked");
     setLinkingCategory(null);
 
     // Re-open the category so it immediately shows as linked, instead
@@ -304,6 +307,7 @@ export default function ProductManagerPage() {
       validation_rules: rules,
     });
 
+    notify.success("Checkout input updated");
     const refreshed = await refreshCategories();
     const reopened = refreshed?.find((c) => sameGroup(c, selected));
     if (reopened) setSelected(reopened);
@@ -312,6 +316,7 @@ export default function ProductManagerPage() {
   async function handlePromoteSubmit(values: PromoteValues) {
     if (!session || !promoting || !selected) return;
     await promoteSupplierProduct(promoting.id, values);
+    notify.success("Product promoted");
     setPromoting(null);
     await openCategory(selected);
     await refreshCategories();

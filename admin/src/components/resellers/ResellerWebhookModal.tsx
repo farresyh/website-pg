@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tag } from "@/components/ui/tag";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   getResellerWebhook,
   setResellerWebhook,
@@ -81,12 +82,14 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reseller.id]);
 
-  function run(fn: () => Promise<unknown>, fallback: string) {
-    setError(null);
+  function run(fn: () => Promise<unknown>, fallback: string, success?: string) {
     setBusy(true);
     return Promise.resolve(fn())
-      .then(() => refresh())
-      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : fallback))
+      .then(() => {
+        if (success) notify.success(success);
+        return refresh();
+      })
+      .catch((err: unknown) => notify.error(err instanceof ApiError ? err.message : fallback))
       .finally(() => setBusy(false));
   }
 
@@ -94,21 +97,21 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
     run(async () => {
       const { secret } = await setResellerWebhook(reseller.id, url.trim());
       if (secret) setFreshSecret(secret);
-    }, "Could not save the endpoint.");
+    }, "Could not save the endpoint.", "Webhook saved");
 
   const rotate = () =>
     run(async () => {
       const { secret } = await rotateResellerWebhookSecret(reseller.id);
       setFreshSecret(secret);
-    }, "Could not rotate the secret.");
+    }, "Could not rotate the secret.", "Secret rotated");
 
-  const toggle = () => run(() => setResellerWebhookActive(reseller.id, !webhook!.is_active), "Could not update the endpoint.");
+  const toggle = () => run(() => setResellerWebhookActive(reseller.id, !webhook!.is_active), "Could not update the endpoint.", "Webhook updated");
 
   const remove = () =>
     run(async () => {
       await deleteResellerWebhook(reseller.id);
       setFreshSecret(null);
-    }, "Could not remove the endpoint.");
+    }, "Could not remove the endpoint.", "Webhook removed");
 
   if (!loaded) return <p className="text-sm text-ink-subtle">Loading…</p>;
 

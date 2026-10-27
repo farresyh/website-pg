@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { PrimeProvider } from "@/components/prime-provider";
+import { ToastProvider } from "@/components/ui/toast";
 
 // ADR-128: Figtree, as the admin (ADR-104). PRD §16 item 109: a committed
 // latin woff2 file, so no build fetches Google Fonts.
@@ -20,7 +21,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={figtree.className}>
         <PrimeProvider>
-          <ThemeProvider>{children}</ThemeProvider>
+          <ToastProvider>
+            <ThemeProvider>{children}</ThemeProvider>
+          </ToastProvider>
         </PrimeProvider>
       </body>
     </html>

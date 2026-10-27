@@ -37,6 +37,7 @@ import { Input } from "@/components/ui/input";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   type PaymentSettlement,
   type Paginated,
@@ -131,14 +132,14 @@ export default function PaymentSettlementsPage() {
     if (!file || !session) return;
 
     setUploading(true);
-    setError(null);
     setLastResult(null);
     try {
       const result = await uploadPaymentSettlement(file);
       setLastResult(result);
+      notify.success("Settlement uploaded");
       refresh(page);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Upload failed — is this a real CHIP settlement .xlsx?");
+      notify.stickyError("Upload failed", err instanceof ApiError ? err.message : "Upload failed — is this a real CHIP settlement .xlsx?");
     } finally {
       setUploading(false);
     }
@@ -160,13 +161,13 @@ export default function PaymentSettlementsPage() {
     if (Number.isNaN(sen)) return;
 
     setSavingId(settlement.id);
-    setError(null);
     try {
       await updatePaymentSettlement(settlement.id, { actual_bank_amount_sen: sen });
+      notify.success("Bank figure saved");
       setEditingBankFigure(null);
       refresh(page);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save the bank figure.");
+      notify.stickyError("Could not save the bank figure", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setSavingId(null);
     }

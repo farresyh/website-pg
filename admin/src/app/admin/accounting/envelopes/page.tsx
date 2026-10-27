@@ -18,6 +18,7 @@ import { Tag } from "@/components/ui/tag";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   createBudgetEnvelope,
   downloadEnvelopeExport,
@@ -87,14 +88,14 @@ export default function EnvelopeLedgerPage() {
   const envelopes = index?.envelopes ?? [];
   const selectedEnvelope = envelopes.find((e) => e.id === selectedId) ?? null;
 
-  async function run(action: () => Promise<unknown>, fallback: string) {
+  async function run(action: () => Promise<unknown>, fallback: string, success?: string) {
     if (!session) return;
-    setError(null);
     try {
       await action();
+      if (success) notify.success(success);
       await reload();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : fallback);
+      notify.error(err instanceof ApiError ? err.message : fallback);
     }
   }
 
@@ -105,7 +106,7 @@ export default function EnvelopeLedgerPage() {
       await createBudgetEnvelope(newEnvelopeName.trim());
       setNewEnvelopeName("");
       setShowNewEnvelope(false);
-    }, "Could not create envelope.");
+    }, "Could not create envelope.", "Envelope created");
   }
 
   async function handleRename(e: React.FormEvent) {
@@ -114,21 +115,22 @@ export default function EnvelopeLedgerPage() {
     await run(async () => {
       await updateBudgetEnvelope(selectedEnvelope.id, { name: renameValue.trim() });
       setRenaming(false);
-    }, "Could not rename this envelope.");
+    }, "Could not rename this envelope.", "Envelope renamed");
   }
 
   /** Never a hard delete. Archiving needs a zero balance; the backend explains if not. */
   function handleToggleArchive(envelope: BudgetEnvelope) {
     if (!session) return;
-    return run(() => updateBudgetEnvelope(envelope.id, { is_active: !envelope.is_active }), "Could not update this envelope.");
+    return run(() => updateBudgetEnvelope(envelope.id, { is_active: !envelope.is_active }), "Could not update this envelope.", envelope.is_active ? "Envelope archived" : "Envelope restored");
   }
 
   async function handleExport() {
     if (!session) return;
     try {
       await downloadEnvelopeExport();
+      notify.success("Envelope export downloaded");
     } catch {
-      setError("Export failed.");
+      notify.error("Export failed");
     }
   }
 

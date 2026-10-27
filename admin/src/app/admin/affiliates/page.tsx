@@ -37,6 +37,7 @@ import { Plus as PlusIcon } from "@primeicons/react/plus";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   listAffiliates,
   getAffiliate,
@@ -111,14 +112,14 @@ export default function AffiliatesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function guard(key: number, fn: () => Promise<void>) {
+  async function guard(key: number, fn: () => Promise<void>, success?: string) {
     if (!session) return;
     setBusy(key);
-    setError(null);
     try {
       await fn();
+      if (success) notify.success(success);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong.");
+      notify.error(err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {
       setBusy(null);
     }
@@ -127,6 +128,7 @@ export default function AffiliatesPage() {
   async function handleCreate(values: AffiliateFormSubmitValues) {
     if (!session) return;
     await createAffiliate(values);
+    notify.success("Affiliate created");
     setFormOpen(false);
     await refresh();
   }
@@ -145,6 +147,7 @@ export default function AffiliatesPage() {
       membership_enabled: values.membership_enabled,
       joki_enabled: values.joki_enabled,
     });
+    notify.success("Affiliate updated");
     setFormOpen(false);
     setEditing(null);
     await refresh();
@@ -249,7 +252,7 @@ export default function AffiliatesPage() {
                                       : guard(r.id, async () => {
                                           await updateAffiliateStatus(r.id, "active");
                                           await refresh();
-                                        })
+                                        }, "Affiliate activated")
                                   }
                                 >
                                   {r.status === "active" ? "Deactivate" : "Activate"}
@@ -379,7 +382,7 @@ export default function AffiliatesPage() {
                                   guard(s.id, async () => {
                                     await endImpersonationSession(s.id);
                                     await refresh();
-                                  })
+                                  }, "Impersonation ended")
                                 }
                               >
                                 End
@@ -427,8 +430,10 @@ export default function AffiliatesPage() {
         onSubmit={async (values) => {
           if (editingTier) {
             await updateAffiliateTier(editingTier.id, values);
+            notify.success("Tier updated");
           } else {
             await createAffiliateTier(values);
+            notify.success("Tier created");
           }
           setTierFormOpen(false);
           setEditingTier(null);
@@ -462,7 +467,7 @@ export default function AffiliatesPage() {
                       await updateAffiliateStatus(statusTarget.id, "inactive");
                       setStatusTarget(null);
                       await refresh();
-                    })
+                    }, "Affiliate deactivated")
                   }
                 >
                   Deactivate
@@ -499,7 +504,7 @@ export default function AffiliatesPage() {
                       await deleteAffiliate(deleteTarget.id);
                       setDeleteTarget(null);
                       await refresh();
-                    })
+                    }, "Affiliate deleted")
                   }
                 >
                   Delete
@@ -535,7 +540,7 @@ export default function AffiliatesPage() {
                       await deleteAffiliateTier(deleteTierTarget.id);
                       setDeleteTierTarget(null);
                       await refresh();
-                    })
+                    }, "Tier deleted")
                   }
                 >
                   Delete

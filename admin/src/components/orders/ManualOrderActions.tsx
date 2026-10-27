@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { confirmManualDelivered, confirmManualFailed, correctManualToDelivered } from "@/lib/orders";
 
 type Action = "delivered" | "failed" | "correct";
@@ -74,9 +75,10 @@ function ActionForm({ order, action, onClose, onDone }: { order: ManualOrder; ac
       if (action === "delivered") await confirmManualDelivered(order.id, { supplier_id: supplierId, real_cost_sen: realCostSen, reason: reason.trim() || null });
       if (action === "failed") await confirmManualFailed(order.id, supplierId, reason.trim());
       if (action === "correct") await correctManualToDelivered(order.id, { supplier_id: supplierId, real_cost_sen: realCostSen, reason: reason.trim() });
+      notify.success(action === "delivered" ? "Order marked delivered" : action === "failed" ? "Order marked failed" : "Order corrected to delivered");
       onDone();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong.");
+      notify.stickyError("Action failed", err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {
       setSubmitting(false);
     }

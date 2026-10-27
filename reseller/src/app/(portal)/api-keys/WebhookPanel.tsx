@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   getWebhook,
   setWebhook,
@@ -60,14 +61,16 @@ export default function WebhookPanel() {
     refresh();
   }, []);
 
-  function run(fn: () => Promise<unknown>, fallback: string) {
+  function run(fn: () => Promise<unknown>, fallback: string, success?: string) {
     const session = getClientSession();
     if (!session) return;
-    setError(null);
     setBusy(true);
     return Promise.resolve(fn())
-      .then(() => refresh())
-      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : fallback))
+      .then(() => {
+        if (success) notify.success(success);
+        return refresh();
+      })
+      .catch((err: unknown) => notify.error(err instanceof ApiError ? err.message : fallback))
       .finally(() => setBusy(false));
   }
 
@@ -76,27 +79,27 @@ export default function WebhookPanel() {
       const session = getClientSession()!;
       const { secret } = await setWebhook(session.token, url.trim());
       if (secret) setFreshSecret(secret);
-    }, "Could not save the endpoint.");
+    }, "Could not save the endpoint.", "Webhook saved");
 
   const rotate = () =>
     run(async () => {
       const session = getClientSession()!;
       const { secret } = await rotateWebhookSecret(session.token);
       setFreshSecret(secret);
-    }, "Could not rotate the secret.");
+    }, "Could not rotate the secret.", "Secret rotated");
 
   const toggle = () =>
     run(async () => {
       const session = getClientSession()!;
       await setWebhookActive(session.token, !webhook!.is_active);
-    }, "Could not update the endpoint.");
+    }, "Could not update the endpoint.", "Webhook updated");
 
   const remove = () =>
     run(async () => {
       const session = getClientSession()!;
       await deleteWebhook(session.token);
       setFreshSecret(null);
-    }, "Could not remove the endpoint.");
+    }, "Could not remove the endpoint.", "Webhook removed");
 
   if (!loaded) return null;
 

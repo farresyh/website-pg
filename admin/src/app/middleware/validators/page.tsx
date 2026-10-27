@@ -22,6 +22,7 @@ import ValidateByGamePanel from "@/components/middleware/ValidateByGamePanel";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   type PlayerRegionMapping,
   type PlayerValidatorProfile,
@@ -88,18 +89,19 @@ export default function ValidatorsPage() {
   async function handleCreate(values: { name: string; key: string }) {
     if (!session) return;
     const created = await createPlayerValidatorProfile(values);
+    notify.success("Validator created");
     setValidators((prev) => [...(prev ?? []), created]);
     setCreateOpen(false);
   }
 
   async function handleUpdate(validator: PlayerValidatorProfile, values: UpdatePlayerValidatorProfileValues) {
     if (!session) return;
-    setError(null);
     try {
       const updated = await updatePlayerValidatorProfile(validator.id, values);
+      notify.success("Validator updated");
       setValidators((prev) => prev?.map((v) => (v.id === validator.id ? updated : v)) ?? null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not update validator.");
+      notify.error("Could not update validator", err instanceof ApiError ? err.message : "Action failed.");
     }
   }
 

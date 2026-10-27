@@ -18,7 +18,7 @@ test("admin login -> failed order -> Issue Voucher", async ({ page }) => {
   // since the underlying page stays mounted behind the modal overlay.
   await page.getByRole("button", { name: "Issue Voucher", exact: true }).click();
 
-  await expect(page.getByText(/Voucher .* issued\./)).toBeVisible();
+  await expect(page.getByText(/Voucher .* issued/)).toBeVisible();
 
   // The button is hidden once a voucher exists for this order — the
   // real guard this test proves, not just the happy-path submission.

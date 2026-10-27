@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { getSeoSettings, updateSeoSettings, type SeoSettings } from "@/lib/seo";
 
 export default function SeoTemplatesPage() {
@@ -23,7 +24,6 @@ export default function SeoTemplatesPage() {
   const [settings, setSettings] = useState<SeoSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     const s = getClientSession();
@@ -40,17 +40,15 @@ export default function SeoTemplatesPage() {
   async function handleSave() {
     if (!session || !settings) return;
     setSaving(true);
-    setError(null);
-    setSaved(false);
     try {
       const updated = await updateSeoSettings({
         meta_title_template: settings.meta_title_template || null,
         meta_description_template: settings.meta_description_template || null,
       });
       setSettings(updated);
-      setSaved(true);
+      notify.success("Templates saved");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save templates.");
+      notify.error("Could not save templates", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setSaving(false);
     }
@@ -71,9 +69,6 @@ export default function SeoTemplatesPage() {
 
       {error && (
         <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>
-      )}
-      {saved && !error && (
-        <p className="mb-4 rounded-lg bg-success-50 px-4 py-3 text-sm text-success-600 dark:bg-success-500/15 dark:text-success-400">Saved.</p>
       )}
 
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">

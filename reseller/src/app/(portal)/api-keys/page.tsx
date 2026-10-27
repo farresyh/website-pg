@@ -10,6 +10,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   listApiKeys,
   issueApiKey,
@@ -61,9 +62,10 @@ export default function ApiKeysPage() {
       const issued = await issueApiKey(session.token, name);
       setFreshPlainTextKey(issued.plain_text_key);
       setName("");
+      notify.success("API key issued");
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not issue a new key.");
+      notify.error("Could not issue a new key", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setIssuing(false);
     }
@@ -85,13 +87,13 @@ export default function ApiKeysPage() {
       .filter(Boolean);
 
     setSavingIps(true);
-    setError(null);
     try {
       await updateApiKeyAllowedIps(session.token, key.id, ips);
+      notify.success("IP allowlist saved");
       setIpEditId(null);
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save the IP allowlist.");
+      notify.error("Could not save the IP allowlist", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setSavingIps(false);
     }
@@ -101,13 +103,13 @@ export default function ApiKeysPage() {
     const session = getClientSession();
     if (!session) return;
 
-    setError(null);
     setRevokingId(key.id);
     try {
       await revokeApiKey(session.token, key.id);
+      notify.success("API key revoked");
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not revoke this key.");
+      notify.error("Could not revoke this key", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setRevokingId(null);
     }

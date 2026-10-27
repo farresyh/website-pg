@@ -30,6 +30,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { getSupplierTransfers, recordSupplierTransfer, type SupplierFundingLedger } from "@/lib/supplier-transfers";
 import type { Supplier } from "@/lib/suppliers";
 import { todayInKL } from "@/lib/date-range";
@@ -109,9 +110,10 @@ function Content({ supplier }: Omit<Props, "isOpen" | "onClose">) {
       setReferenceNo("");
       setPaidBy("");
       setReceipt(null);
+      notify.success("Transfer recorded");
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong.");
+      notify.stickyError("Transfer failed", err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {
       setSubmitting(false);
     }

@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import RichTextEditor from "@/components/ui/RichTextEditor";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { updateFooterSettings, type FooterSettings } from "@/lib/settings";
 import { listGames, type Game } from "@/lib/games";
 
@@ -67,7 +68,6 @@ export default function FooterSettingsSection({
   const [gameIds, setGameIds] = useState<number[]>(footer.footer_game_ids ?? []);
   const [activeGames, setActiveGames] = useState<Game[]>([]);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     listGames({ status: "active" })
@@ -85,7 +85,6 @@ export default function FooterSettingsSection({
 
   async function handleSave() {
     setSaving(true);
-    setError(null);
     try {
       await updateFooterSettings({
         footer_text: footerText || null,
@@ -95,9 +94,10 @@ export default function FooterSettingsSection({
         refund_policy_content: refundPolicy || null,
         footer_game_ids: gameIds,
       });
+      notify.success("Footer settings saved");
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save footer settings.");
+      notify.error("Could not save footer settings", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setSaving(false);
     }
@@ -105,9 +105,6 @@ export default function FooterSettingsSection({
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-      {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>
-      )}
 
       <div className="mb-6">
         <Label htmlFor="footer_text">Footer text</Label>

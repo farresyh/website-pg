@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   listResellerApiKeys,
   issueResellerApiKey,
@@ -78,9 +79,10 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
       const issued = await issueResellerApiKey(reseller.id, name);
       setFreshPlainTextKey(issued.plain_text_key);
       setName("");
+      notify.success("API key issued");
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong.");
+      notify.error("Could not issue API key", err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {
       setIssuing(false);
     }
@@ -99,26 +101,26 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
       .filter(Boolean);
 
     setSavingIps(true);
-    setError(null);
     try {
       await updateResellerApiKeyAllowedIps(reseller.id, key.id, ips);
+      notify.success("IP allowlist saved");
       setIpEditId(null);
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save the IP allowlist.");
+      notify.error("Could not save the IP allowlist", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setSavingIps(false);
     }
   }
 
   async function handleRevoke(key: ResellerApiKey) {
-    setError(null);
     setRevokingId(key.id);
     try {
       await revokeResellerApiKey(reseller.id, key.id);
+      notify.success("API key revoked");
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not revoke key.");
+      notify.error("Could not revoke key", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setRevokingId(null);
     }

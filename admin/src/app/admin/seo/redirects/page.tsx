@@ -20,6 +20,7 @@ import { Plus as PlusIcon } from "@primeicons/react/plus";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { listRedirects, createRedirect, updateRedirect, deleteRedirect, type Redirect } from "@/lib/seo";
 import SaveRedirectModal from "@/components/seo/SaveRedirectModal";
 
@@ -54,8 +55,10 @@ export default function RedirectsPage() {
     if (!session) return;
     if (editing) {
       await updateRedirect(editing.id, values);
+      notify.success("Redirect updated");
     } else {
       await createRedirect(values);
+      notify.success("Redirect created");
     }
     setModalOpen(false);
     setEditing(null);
@@ -67,9 +70,10 @@ export default function RedirectsPage() {
     setDeletingId(redirect.id);
     try {
       await deleteRedirect(redirect.id);
+      notify.success("Redirect deleted");
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not delete redirect.");
+      notify.error("Could not delete redirect", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setDeletingId(null);
     }

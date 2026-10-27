@@ -48,6 +48,7 @@ import { Plus as PlusIcon } from "@primeicons/react/plus";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   listResellers,
   createReseller,
@@ -119,14 +120,14 @@ export default function ResellersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function guard(key: number, fn: () => Promise<void>) {
+  async function guard(key: number, fn: () => Promise<void>, success?: string) {
     if (!session) return;
     setBusy(key);
-    setError(null);
     try {
       await fn();
+      if (success) notify.success(success);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong.");
+      notify.error(err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {
       setBusy(null);
     }
@@ -135,6 +136,7 @@ export default function ResellersPage() {
   async function handleCreate(values: ResellerFormSubmitValues) {
     if (!session) return;
     await createReseller(values);
+    notify.success("Reseller created");
     setFormOpen(false);
     await refresh();
   }
@@ -148,6 +150,7 @@ export default function ResellersPage() {
       phone: values.phone,
       notes: values.notes,
     });
+    notify.success("Reseller updated");
     setFormOpen(false);
     setEditing(null);
     await refresh();
@@ -257,7 +260,7 @@ export default function ResellersPage() {
                                   : guard(r.id, async () => {
                                       await updateResellerStatus(r.id, true);
                                       await refresh();
-                                    })
+                                    }, "Reseller activated")
                               }
                             >
                               {r.is_active ? "Deactivate" : "Activate"}
@@ -401,8 +404,10 @@ export default function ResellersPage() {
         onSubmit={async (values) => {
           if (editingTier) {
             await updateResellerTier(editingTier.id, values);
+            notify.success("Tier updated");
           } else {
             await createResellerTier(values);
+            notify.success("Tier created");
           }
           setTierFormOpen(false);
           setEditingTier(null);
@@ -436,7 +441,7 @@ export default function ResellersPage() {
                       await updateResellerStatus(statusTarget.id, false);
                       setStatusTarget(null);
                       await refresh();
-                    })
+                    }, "Reseller deactivated")
                   }
                 >
                   Deactivate
@@ -482,7 +487,7 @@ export default function ResellersPage() {
                       await assignResellerTier(tierTarget.id, Number(tierSelectValue));
                       setTierTarget(null);
                       await refresh();
-                    })
+                    }, "Tier assigned")
                   }
                 >
                   Apply
@@ -518,7 +523,7 @@ export default function ResellersPage() {
                       await deleteReseller(deleteTarget.id);
                       setDeleteTarget(null);
                       await refresh();
-                    })
+                    }, "Reseller deleted")
                   }
                 >
                   Delete

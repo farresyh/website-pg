@@ -9,6 +9,7 @@
 
 import { useState } from "react";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -61,7 +62,6 @@ export default function TierCard({ plan, onSaved }: { plan: MembershipPlan; onSa
   const [discountPercent, setDiscountPercent] = useState(plan.discount_percent);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
 
   const [preview, setPreview] = useState<MembershipPricingPreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
@@ -128,8 +128,6 @@ export default function TierCard({ plan, onSaved }: { plan: MembershipPlan; onSa
     }
 
     setSaving(true);
-    setError(null);
-    setSaved(false);
     try {
       await updateMembershipPlan(plan.id, {
         name,
@@ -137,10 +135,10 @@ export default function TierCard({ plan, onSaved }: { plan: MembershipPlan; onSa
         quota_sen: quotaSen,
         discount_percent: discountPercent,
       });
-      setSaved(true);
+      notify.success("Tier saved");
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save this tier.");
+      notify.stickyError("Could not save this tier", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setSaving(false);
     }
@@ -179,7 +177,6 @@ export default function TierCard({ plan, onSaved }: { plan: MembershipPlan; onSa
           {previewing ? "Previewing…" : "Preview Pricing Impact"}
         </Button>
         <div className="flex items-center gap-3">
-          {saved && <span className="text-theme-xs text-success-600">Saved.</span>}
           <Button type="button" onClick={handleSave} disabled={saving}>
             {saving ? "Saving…" : "Save Tier"}
           </Button>

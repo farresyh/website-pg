@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ImageUrlInput } from "@/components/gallery/ImageUrlInput";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import { updateJokiTiers, type JokiTier } from "@/lib/joki";
 import { tierUpdate } from "@/lib/joki-tiers";
-import { JOKI_CARD, JOKI_CARD_HINT, JOKI_CARD_TITLE, JOKI_ERROR, JOKI_TD, JOKI_TH } from "@/components/joki/jokiStyles";
+import { JOKI_CARD, JOKI_CARD_HINT, JOKI_CARD_TITLE, JOKI_TD, JOKI_TH } from "@/components/joki/jokiStyles";
 
 /**
  * ADR-126 decisions 3-4: the rank model, bottom first. Rates are whole
@@ -18,7 +19,6 @@ import { JOKI_CARD, JOKI_CARD_HINT, JOKI_CARD_TITLE, JOKI_ERROR, JOKI_TD, JOKI_T
  */
 export function JokiRankModelEditor({ tiers, onSaved }: { tiers: JokiTier[]; onSaved: () => Promise<unknown> }) {
   const [rows, setRows] = useState(tiers);
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const set = (id: number, patch: Partial<JokiTier>) => setRows((all) => all.map((t) => (t.id === id ? { ...t, ...patch } : t)));
@@ -26,12 +26,12 @@ export function JokiRankModelEditor({ tiers, onSaved }: { tiers: JokiTier[]; onS
 
   async function save() {
     setSaving(true);
-    setError(null);
     try {
       await updateJokiTiers(rows.map(tierUpdate));
+      notify.success("Rank model saved");
       await onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save the rank model.");
+      notify.error("Could not save the rank model", err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setSaving(false);
     }
@@ -86,7 +86,6 @@ export function JokiRankModelEditor({ tiers, onSaved }: { tiers: JokiTier[]; onS
         </div>
       </div>
 
-      {error && <p className={`mt-4 ${JOKI_ERROR}`}>{error}</p>}
       <div className="mt-6 flex justify-end">
         <Button onClick={save} disabled={saving}>{saving ? "Saving…" : "Save rank model"}</Button>
       </div>

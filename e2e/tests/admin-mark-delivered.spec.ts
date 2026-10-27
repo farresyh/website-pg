@@ -40,6 +40,6 @@ test("admin login -> needs_review order -> Mark as Delivered", async ({ page }) 
   // since the underlying page stays mounted behind the modal overlay.
   await page.getByRole("button", { name: "Mark as Delivered", exact: true }).click();
 
-  await expect(page.getByText("Delivery confirmed manually — ledger profit credited.")).toBeVisible();
+  await expect(page.getByText("Delivery confirmed manually")).toBeVisible();
   await expect(page.getByText("delivery: delivered")).toBeVisible();
 });

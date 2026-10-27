@@ -29,6 +29,7 @@ import { Plus as PlusIcon } from "@primeicons/react/plus";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   type Voucher,
   type VoucherIndexResponse,
@@ -144,6 +145,7 @@ export default function VouchersPage() {
   async function handleCreate(values: Parameters<typeof createVoucher>[0]) {
     if (!session) return;
     await createVoucher(values);
+    notify.success("Voucher created");
     setIsModalOpen(false);
     await refresh();
   }
@@ -157,6 +159,7 @@ export default function VouchersPage() {
   async function handleMerge(values: Parameters<typeof mergeVouchers>[0]) {
     if (!session) return;
     await mergeVouchers(values);
+    notify.success("Vouchers merged");
     setIsMergeModalOpen(false);
     setSelectedIds([]);
     await refresh();
@@ -164,17 +167,17 @@ export default function VouchersPage() {
 
   async function handleRevoke(voucher: Voucher) {
     if (!session) return;
-    setError(null);
     setRevokingId(voucher.id);
 
     try {
       await revokeVoucher(voucher.id);
-      await refresh();
+      notify.success("Voucher revoked", voucher.code);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not revoke voucher.");
+      notify.stickyError("Failed to revoke voucher", err instanceof ApiError ? err.message : "Could not revoke voucher.");
     } finally {
       setRevokingId(null);
     }
+    await refresh();
   }
 
   async function openDetail(voucherId: number) {
