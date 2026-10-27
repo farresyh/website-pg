@@ -5,6 +5,7 @@ import Link from "next/link";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
 import { createWithdrawal, getWithdrawals, type WithdrawalRow, type WithdrawalsResponse } from "@/lib/portal";
+import { notify } from "@/components/ui/toast";
 import { dateAndTime, formatRm, toSen, type StatusBadge } from "@/lib/format";
 import { Badge, CardHead, ErrorNote, PageHeader, Panel, Skeleton } from "@/components/composites";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,7 @@ export default function WithdrawalPage() {
     setSubmitting(true);
     try {
       await createWithdrawal(session.token, { amount: amountSen });
+      notify.success("Withdrawal requested", "PekanGame will review it before paying.");
       setAmount("");
       setReloadKey((k) => k + 1);
     } catch (err) {

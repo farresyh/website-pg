@@ -27,6 +27,7 @@ import Link from "next/link";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   type Withdrawal,
   type WithdrawalIndexResponse,
@@ -79,19 +80,25 @@ export default function WithdrawalsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleAction(action: typeof approveWithdrawal, withdrawal: Withdrawal) {
+  async function handleAction(
+    action: typeof approveWithdrawal,
+    withdrawal: Withdrawal,
+    messages: { success: string; error: string },
+  ) {
     if (!session) return;
-    setError(null);
     setActingOnId(withdrawal.id);
 
+    let ok = false;
     try {
       await action(withdrawal.id);
-      await refresh();
+      notify.success(messages.success);
+      ok = true;
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Action failed.");
+      notify.stickyError(messages.error, err instanceof ApiError ? err.message : "Action failed.");
     } finally {
       setActingOnId(null);
     }
+    if (ok) await refresh();
   }
 
   const statusSeverity: Record<Withdrawal["status"], "warn" | "info" | "success" | "danger"> = {
@@ -179,16 +186,16 @@ export default function WithdrawalsPage() {
                           <div className="flex items-center gap-2">
                             {w.status === "pending" && (
                               <>
-                                <Button size="small" disabled={actingOnId === w.id} onClick={() => handleAction(approveWithdrawal, w)}>
+                                <Button size="small" disabled={actingOnId === w.id} onClick={() => handleAction(approveWithdrawal, w, { success: "Withdrawal approved", error: "Failed to approve withdrawal" })}>
                                   Approve
                                 </Button>
-                                <Button size="small" severity="danger" disabled={actingOnId === w.id} onClick={() => handleAction(rejectWithdrawal, w)}>
+                                <Button size="small" severity="danger" disabled={actingOnId === w.id} onClick={() => handleAction(rejectWithdrawal, w, { success: "Withdrawal rejected", error: "Failed to reject withdrawal" })}>
                                   Reject
                                 </Button>
                               </>
                             )}
                             {w.status === "approved" && (
-                              <Button size="small" variant="outlined" disabled={actingOnId === w.id} onClick={() => handleAction(completeWithdrawal, w)}>
+                              <Button size="small" variant="outlined" disabled={actingOnId === w.id} onClick={() => handleAction(completeWithdrawal, w, { success: "Withdrawal marked complete", error: "Failed to complete withdrawal" })}>
                                 Mark Complete
                               </Button>
                             )}

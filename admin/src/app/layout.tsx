@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { SidebarProvider } from "@/context/SidebarContext";
 import { PrimeProvider } from "@/components/prime-provider";
+import { ToastProvider } from "@/components/ui/toast";
 
 // ADR-104: Outfit -> Figtree
 // PRD §16 item 109: committed latin woff2 files, so no build fetches Google Fonts.
@@ -23,9 +24,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${figtree.className} dark:bg-gray-900`}>
         <PrimeProvider>
-          <ThemeProvider>
-            <SidebarProvider>{children}</SidebarProvider>
-          </ThemeProvider>
+          <ToastProvider>
+            <ThemeProvider>
+              <SidebarProvider>{children}</SidebarProvider>
+            </ThemeProvider>
+          </ToastProvider>
         </PrimeProvider>
       </body>
     </html>
