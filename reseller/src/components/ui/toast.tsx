@@ -33,6 +33,9 @@ import { cn } from '@/lib/utils';
 const DEFAULT_SUCCESS_MS = 5000;
 const DEFAULT_ERROR_MS = 8000;
 
+/** At most this many toasts render at once; the rest wait their turn. */
+const MAX_VISIBLE = 4;
+
 type Severity = 'success' | 'info' | 'warn' | 'error';
 
 /**
@@ -111,10 +114,19 @@ function SeverityIcon({ severity }: { severity: Severity }) {
   }
 }
 
-function ToastItem({ toast: t, onDismiss }: { toast: ToastType; onDismiss: (id: ToastId) => void }) {
+function ToastItem({
+  toast: t,
+  onDismiss,
+  regionRef,
+}: {
+  toast: ToastType;
+  onDismiss: (id: ToastId) => void;
+  regionRef: React.RefObject<HTMLDivElement | null>;
+}) {
   const [paused, setPaused] = React.useState(false);
   const duration = t.duration ?? DEFAULT_SUCCESS_MS;
   const severity = severityOf(t);
+  const rootRef = React.useRef<HTMLDivElement>(null);
   // The manager always assigns an id on add (see `S()` in the headless
   // toaster); the type marks it optional only because a caller may pass
   // `id` explicitly before that assignment.
@@ -131,8 +143,21 @@ function ToastItem({ toast: t, onDismiss }: { toast: ToastType; onDismiss: (id: 
 
   const dismissible = t.dismissible !== false && !t.loading;
 
+  /**
+   * Explicit dismissal (close button / keyboard) returns focus to the
+   * region when it was inside the toast being closed, so a keyboard user
+   * is never left on a removed element. The auto-dismiss timer above does
+   * not move focus — it should never steal focus mid-typing.
+   */
+  function handleExplicitDismiss() {
+    const focusedInside = rootRef.current?.contains(document.activeElement) ?? false;
+    onDismiss(id);
+    if (focusedInside) regionRef.current?.focus();
+  }
+
   return (
     <div
+      ref={rootRef}
       role={severity === 'error' ? 'alert' : 'status'}
       aria-live={severity === 'error' ? 'assertive' : 'polite'}
       aria-atomic="true"
@@ -140,8 +165,6 @@ function ToastItem({ toast: t, onDismiss }: { toast: ToastType; onDismiss: (id: 
       onMouseLeave={() => setPaused(false)}
       className={cn(
         'pointer-events-auto flex w-full items-start gap-3 rounded-lg border p-3.5 shadow-md',
-        'data-enter-from:opacity-0 data-enter-from:translate-y-1',
-        'transition-[opacity,transform] duration-150 ease-out',
         SEVERITY_STYLES[severity].shell,
       )}
     >
@@ -153,7 +176,7 @@ function ToastItem({ toast: t, onDismiss }: { toast: ToastType; onDismiss: (id: 
       {dismissible && (
         <button
           type="button"
-          onClick={() => onDismiss(id)}
+          onClick={handleExplicitDismiss}
           aria-label="Dismiss notification"
           className="ml-1 -mr-1 -mt-1 rounded p-1 text-sm leading-none opacity-60 hover:opacity-100 focus-visible:outline-2 focus-visible:outline-focus-ring"
         >
@@ -171,15 +194,21 @@ function ToastItem({ toast: t, onDismiss }: { toast: ToastType; onDismiss: (id: 
  * after a dialog closes.
  */
 export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const { toasts, removeFromQueue } = useToaster({ position: 'top-right', limit: 4, gap: 12 });
+  const { toasts, removeFromQueue } = useToaster({ position: 'top-right', gap: 12 });
+  const regionRef = React.useRef<HTMLDivElement>(null);
 
   return (
     <>
       {children}
       <div className="pointer-events-none fixed inset-0 z-[100600] flex items-start justify-end p-4">
-        <div className="flex w-full max-w-sm flex-col gap-3">
-          {toasts.map((t) => (
-            <ToastItem key={t.id} toast={t} onDismiss={removeFromQueue} />
+        <div
+          ref={regionRef}
+          tabIndex={-1}
+          aria-label="Notifications"
+          className="flex w-full max-w-sm flex-col gap-3 outline-none"
+        >
+          {toasts.slice(0, MAX_VISIBLE).map((t) => (
+            <ToastItem key={t.id as ToastId} toast={t} onDismiss={removeFromQueue} regionRef={regionRef} />
           ))}
         </div>
       </div>

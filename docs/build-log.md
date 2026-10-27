@@ -2521,3 +2521,45 @@ Verified read-only:
 - `reseller.pekangame.space/login` serves the "PekanGame Partner" shell.
 
 No migrations, no env changes. PRD item 133 closed.
+
+## 2026-10-27 — ADR-129: action feedback (toasts) — PR 1 (wrapper + provider + three screens)
+
+**Why.** Neither frontend gave consistent feedback after an action — success
+and error were inline page-top `<p>` state (`setError` / `setNotice` /
+"Saved.") inside each modal or page (112 admin files, 20 portal files). An
+admin couldn't tell whether an action ran, was running, or failed. ADR-129
+(design, PR #573) decides: one PrimeReact headless toaster, one shared
+wrapper, a toast-vs-inline policy, promise-driven success, sticky money
+errors.
+
+**What shipped (PR #574, merged to `staging` 2026-10-27; not yet on `main`).**
+- `admin/src/components/ui/toast.tsx`: `ToastProvider` + `notify`
+  (`success` / `info` / `warn` / `error` / `stickyError` / `promise`) +
+  `useToast()`, on the semantic `-surface` / `-ink` tokens only (no `dark:`
+  overrides — passes both `color-tokens.test.ts`). Built on
+  `@primereact/headless/toaster` (`toast()` manager + `useToaster()`), which
+  share one manager — no bespoke store.
+- Added `"toast"` to the `KIT` list in `scripts/sync-shared-files.mjs`, so the
+  portal's copy is generated, never hand-edited.
+- Mounted `ToastProvider` in both root layouts.
+- Three screens: admin Withdrawals (approve/reject/complete → success toast +
+  `stickyError`), admin Orders (refund-to-wallet, mark-delivered,
+  confirm-failed, voucher-issued, export, retry-queue error → toast; the async
+  resend/retry "waiting for outcome" line stays inline), portal Withdrawal
+  (success toast; form errors stay inline).
+- E2E `admin-mark-delivered` and `admin-issue-voucher` now assert the split
+  toast title.
+
+**Gotchas.**
+- Playwright caught two specs still asserting the old inline strings
+  (mark-delivered "— ledger profit credited.", issue-voucher trailing period);
+  both updated in the same work.
+- `@primereact/headless` was a phantom dependency (transitive via
+  `primereact`); declared it explicitly in both `package.json` + lockfiles.
+
+**Follow-up (review notes, separate PR).** The #574 review raised five notes —
+reduced-motion and focus-on-dismiss were promised but not yet done; the
+`limit: 4` prop and `data-enter-from` classes had no effect; Withdrawals
+refreshed only on success; and there was no build-log entry. All five are
+addressed in the follow-up sweep PRs, which stay open together against
+`staging` for one review.
