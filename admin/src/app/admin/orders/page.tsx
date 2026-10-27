@@ -56,6 +56,7 @@ import { useLatestRequest } from "@/hooks/useLatestRequest";
 import { getEcho } from "@/lib/echo";
 import { useReconcileOnResume } from "@/lib/useReconcileOnResume";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   type OrderListItem,
   type OrderDetail,
@@ -277,13 +278,9 @@ function OrdersPageInner() {
   const [resendModalOpen, setResendModalOpen] = useState(false);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
   const [voucherModalOpen, setVoucherModalOpen] = useState(false);
-  const [voucherMessage, setVoucherMessage] = useState<string | null>(null);
   const [markDeliveredModalOpen, setMarkDeliveredModalOpen] = useState(false);
-  const [markDeliveredMessage, setMarkDeliveredMessage] = useState<string | null>(null);
   const [confirmFailedModalOpen, setConfirmFailedModalOpen] = useState(false);
-  const [confirmFailedMessage, setConfirmFailedMessage] = useState<string | null>(null);
   const [refundingToWallet, setRefundingToWallet] = useState(false);
-  const [refundMessage, setRefundMessage] = useState<string | null>(null);
   // ADR-094 decision 10: a combo order's only working recovery path —
   // resendOrderDelivery() (package-swap) always 422s for a combo
   // (found live, 2026-09-15 smoke test), so combo orders get this
@@ -298,9 +295,6 @@ function OrdersPageInner() {
   async function openOrder(id: number) {
     setSelected(null);
     setResendMessage(null);
-    setVoucherMessage(null);
-    setMarkDeliveredMessage(null);
-    setRefundMessage(null);
     try {
       setSelected(await getOrder(id));
     } catch (err) {
@@ -348,10 +342,11 @@ function OrdersPageInner() {
    * what hides the button on this same render, not `voucher`.
    */
   function handleVoucherIssued({ restored_only, voucher }: IssueVoucherResult) {
-    setVoucherMessage(
+    notify.success(
       restored_only
-        ? "Voucher restored — order fully covered by voucher, no new voucher issued."
-        : `Voucher ${voucher?.code} issued.`,
+        ? "Voucher restored"
+        : `Voucher ${voucher?.code} issued`,
+      restored_only ? "Order fully covered by voucher — no new voucher issued." : undefined,
     );
     setSelected((current) =>
       current
@@ -364,15 +359,18 @@ function OrdersPageInner() {
   }
 
   function handleMarkedDelivered(updated: OrderDetail) {
-    setMarkDeliveredMessage("Delivery confirmed manually — ledger profit credited.");
+    notify.success("Delivery confirmed manually", "Ledger profit credited.");
     setSelected(updated);
   }
 
   function handleConfirmedFailed(updated: OrderDetail) {
-    setConfirmFailedMessage(
+    notify.warn(
       updated.delivery_status === "partially_delivered"
-        ? "Confirmed — part of this order was delivered. Compensate the undelivered part below."
-        : "Delivery confirmed genuinely failed — compensation is now available.",
+        ? "Partially delivered"
+        : "Delivery confirmed failed",
+      updated.delivery_status === "partially_delivered"
+        ? "Compensate the undelivered part below."
+        : "Compensation is now available.",
     );
     setSelected(updated);
   }
@@ -383,10 +381,13 @@ function OrdersPageInner() {
     setRefundingToWallet(true);
     try {
       const updated = await refundOrderToWallet(selected.id);
-      setRefundMessage(`Refunded ${formatRm(updated.wallet_refund?.amount ?? 0)} to ${updated.wallet_reseller?.business_name}'s wallet.`);
+      notify.success(
+        `Refunded ${formatRm(updated.wallet_refund?.amount ?? 0)}`,
+        `To ${updated.wallet_reseller?.business_name}'s wallet.`,
+      );
       setSelected(updated);
     } catch (err) {
-      setRefundMessage(err instanceof ApiError ? err.message : "Refund failed.");
+      notify.stickyError("Refund failed", err instanceof ApiError ? err.message : "Could not refund to wallet.");
     } finally {
       setRefundingToWallet(false);
     }
@@ -406,7 +407,7 @@ function OrdersPageInner() {
       setRetryMessage("Delivery retry queued — waiting for outcome...");
       setPendingStatusWatch({ orderId: selected.id, action: "retry" });
     } catch (err) {
-      setRetryMessage(err instanceof ApiError ? err.message : "Could not queue the retry.");
+      notify.error("Could not queue the retry", err instanceof ApiError ? err.message : "Retry failed.");
     } finally {
       setRetryingDelivery(false);
     }
@@ -421,11 +422,11 @@ function OrdersPageInner() {
     const s = getClientSession();
     if (!s) return;
     setExporting(true);
-    setError(null);
     try {
       await exportOrders(orderFilters);
+      notify.success("Orders exported");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not export orders.");
+      notify.error("Export failed", err instanceof ApiError ? err.message : "Could not export orders.");
     } finally {
       setExporting(false);
     }
@@ -769,29 +770,11 @@ function OrdersPageInner() {
             </p>
           )}
 
-          {(resendMessage || voucherMessage || refundMessage || retryMessage) && (
+          {(resendMessage || retryMessage) && (
             <div className="mt-3 flex flex-wrap items-center gap-3">
               {resendMessage && <span className="text-sm text-ink-muted">{resendMessage}</span>}
-              {voucherMessage && <span className="text-sm text-ink-muted">{voucherMessage}</span>}
-              {refundMessage && <span className="text-sm text-ink-muted">{refundMessage}</span>}
               {retryMessage && <span className="text-sm text-ink-muted">{retryMessage}</span>}
             </div>
-          )}
-          {/* Rendered outside the failed/needs_review-gated block above,
-              deliberately — unlike resend/voucher, a successful Mark as
-              Delivered moves delivery_status to "delivered" in the same
-              render that sets this message, which would otherwise
-              unmount it before an admin ever saw it (found live via the
-              ADR-023 admin-mark-delivered E2E spec). */}
-          {markDeliveredMessage && (
-            <p className="mt-3 text-sm text-ink-muted">{markDeliveredMessage}</p>
-          )}
-          {/* Rendered outside the failed/needs_review-gated block above,
-              deliberately — same reasoning as markDeliveredMessage above:
-              a successful Confirm Failed moves delivery_status to
-              "failed" in the same render that sets this message. */}
-          {confirmFailedMessage && (
-            <p className="mt-3 text-sm text-ink-muted">{confirmFailedMessage}</p>
           )}
           {/* ADR-102 decision 11 — three independent cards (Voucher Used to Pay / Compensation Voucher Issued / Wallet Refund), replacing the old single-line mentions. */}
           <RefundInformationCards order={selected} />
