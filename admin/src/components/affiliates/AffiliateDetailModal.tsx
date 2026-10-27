@@ -182,7 +182,14 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
                 run("charge", async () => {
                   const d = await chargeAffiliateTierFee(r.id);
                   onChanged(d);
-                }, { success: "Tier fee charged", sticky: true })
+                  // Short earnings still answer 200: no debit, the cycle goes to grace.
+                  // Only an advanced next_charge_at means the fee was debited.
+                  if (d.affiliate.subscription?.next_charge_at !== sub.next_charge_at) {
+                    notify.success("Tier fee charged");
+                  } else {
+                    notify.warn("Fee not charged", `Earnings too low or already charged this cycle. Status: ${d.affiliate.subscription?.status ?? "none"}.`);
+                  }
+                }, { sticky: true })
               }
             >
               {busy === "charge" ? "Charging…" : "Charge fee now"}
