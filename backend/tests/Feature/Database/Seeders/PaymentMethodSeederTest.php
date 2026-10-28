@@ -47,7 +47,7 @@ class PaymentMethodSeederTest extends TestCase
     {
         (new PaymentMethodSeeder)->run();
 
-        $duitnow = PaymentMethod::query()->where('channel_code', 'duitnow_qr')->firstOrFail();
+        $duitnow = PaymentMethod::query()->where('channel_code', 'dnqr')->firstOrFail();
         $this->assertSame('chip', $duitnow->gateway);
         $this->assertSame('duitnow_qr_chip', $duitnow->method_key);
         $this->assertFalse($duitnow->is_active);

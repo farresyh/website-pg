@@ -93,6 +93,10 @@ final class ChipGateway implements PaymentGateway
 
     public function createPayment(PaymentRequest $request): PaymentResponse
     {
+        if ($request->verifyChannel && $failure = $this->unlistedChannelFailure($request)) {
+            return $failure;
+        }
+
         $response = $this->client()->post('/purchases/', array_filter([
             'client' => $this->clientPayload($request->customer),
             'purchase' => array_filter([
@@ -126,7 +130,7 @@ final class ChipGateway implements PaymentGateway
             'success_callback' => $this->callbackUrl,
             'success_redirect' => $request->channelProperties['success_return_url'] ?? null,
             'failure_redirect' => $request->channelProperties['failure_return_url'] ?? null,
-            // CHIP's own channel enum ('fpx', 'fpx_b2b1', 'duitnow_qr',
+            // CHIP's own channel enum ('fpx', 'fpx_b2b1', 'dnqr',
             // ...) is stored directly as payment_methods.channel_code and
             // passed straight through — no translation table. Supporting
             // a new CHIP method is a PaymentMethodSeeder row plus admin
@@ -142,6 +146,37 @@ final class ChipGateway implements PaymentGateway
         $normalized = $this->normalizePurchase($response->json());
 
         return PaymentResponse::success($normalized, status: $this->mapPurchaseStatus($normalized['status'] ?? ''));
+    }
+
+    /**
+     * CHIP stores any `payment_method_whitelist` value as-is and, for one
+     * it doesn't know, falls back to its card form with no error (2026-10-28:
+     * `duitnow_qr` sent where CHIP's code is `dnqr`). So the channel is
+     * checked against `GET /payment_methods/`, which lists only the codes
+     * this account can use. `amount` matters: CHIP hides FPX without it.
+     */
+    private function unlistedChannelFailure(PaymentRequest $request): ?PaymentResponse
+    {
+        $response = $this->client()->get('/payment_methods/', [
+            'brand_id' => $this->brandId,
+            'currency' => $request->currency,
+            'amount' => $request->amountSen,
+        ]);
+
+        if ($failure = $this->failureFrom($response)) {
+            return $failure;
+        }
+
+        $available = $response->json('available_payment_methods') ?? [];
+
+        if (in_array($request->channelCode, $available, true)) {
+            return null;
+        }
+
+        return PaymentResponse::failure(
+            'unlisted_channel',
+            "CHIP does not list '{$request->channelCode}' for this account (available: ".implode(', ', $available).')',
+        );
     }
 
     public function getPayment(string $paymentRequestId): PaymentResponse
@@ -315,12 +350,32 @@ final class ChipGateway implements PaymentGateway
         if ($response->failed()) {
             $body = $response->json() ?? [];
 
-            $message = $body['detail'] ?? $body['message'] ?? "CHIP request failed with HTTP {$response->status()}";
+            $message = $body['detail'] ?? $body['message'] ?? $this->fieldErrors($body)
+                ?? "CHIP request failed with HTTP {$response->status()}";
 
             return PaymentResponse::failure((string) $response->status(), (string) $message);
         }
 
         return null;
+    }
+
+    /**
+     * CHIP's validation errors look like `{"__all__": [{"code", "message"}]}`
+     * or `{"client.email": [{...}]}`: one entry per field.
+     */
+    private function fieldErrors(array $body): ?string
+    {
+        $parts = [];
+
+        foreach ($body as $field => $errors) {
+            foreach (is_array($errors) ? $errors : [] as $error) {
+                if (is_array($error) && isset($error['message'])) {
+                    $parts[] = ($field === '__all__' ? '' : "{$field}: ").$error['message'];
+                }
+            }
+        }
+
+        return $parts === [] ? null : implode('; ', $parts);
     }
 
     private function normalizePurchase(array $body): array
