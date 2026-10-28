@@ -2616,6 +2616,14 @@ No backend, ledger or money-logic change anywhere in the rollout.
 - The portal copy is generated (`scripts/sync-shared-files.mjs`), never
   hand-edited; CI's `theme-preset-drift` guards it.
 
+## 2026-10-28 — DuitNow QR was sent to CHIP under the wrong code; Test action fixed (ADR-022 addendum)
+
+**Found (read-only prod + CHIP portal).** The founder's DuitNow test order ended `Cancelled`, "No matching terminal", Visa. Cause: our code `duitnow_qr` vs CHIP's `dnqr` (`GET /payment_methods/` with the live credentials: `fpx`, `fpx_b2b1`, `dnqr`). CHIP kept `["duitnow_qr"]` as the whitelist (the purchase JSON echoes it), so no error. The Test button's HTTP 400 on every channel was a separate bug: no `client.email`. Prod had 28 real FPX orders while Test said FPX "failed".
+
+**Built** on `fix/chip-dnqr-channel-code`: seeder + rename migration, `verifyChannel` in the Test probe, email in the probe, CHIP field errors in `failureFrom`. `php artisan test`: 3084 passed.
+
+**Gotchas.** (1) Live CHIP credentials come from the `payment_gateways` row (`ChipCredentialResolver`), not `.env`: reading `config('services.chip')` in tinker used a different key (a purchase GET returned 404). (2) An unknown whitelist value is not rejected by CHIP, so checking the purchase response for an empty whitelist would not have caught this. **Not yet verified:** a paid DuitNow QR payment; after release, run Test on `dnqr`, then pay RM1 for real. Until released, DuitNow QR should be switched off in Payment Methods.
+
 ## 2026-10-28 — MLBB validator: Redx → UniPlay replaces Redx → MooGold (ADR-005 addendum)
 
 **Found (read-only).** Redx's `POST /tools/check` answered 503 "temporarily unavailable" for `mobile-legends` three times in a row, while `free-fire` and `genshin-impact` returned 200 with the identical session/CSRF handshake. So our `RedxGameValidator` was fine; Redx had turned its MLBB checker off. Our code already treats a non-check response as unavailable and falls back. The public `/check-id` MLBB page was Redx-only, so it showed "busy".

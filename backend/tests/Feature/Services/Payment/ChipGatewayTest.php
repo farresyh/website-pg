@@ -34,6 +34,69 @@ class ChipGatewayTest extends TestCase
         );
     }
 
+    private function probe(string $channelCode, bool $verifyChannel = true): PaymentRequest
+    {
+        return new PaymentRequest(
+            referenceId: 'channel-test-1',
+            amountSen: 100,
+            currency: 'MYR',
+            country: 'MY',
+            channelCode: $channelCode,
+            customer: new PaymentCustomer(referenceId: 'c-1', givenNames: 'Test', email: 'a@b.test'),
+            verifyChannel: $verifyChannel,
+        );
+    }
+
+    /**
+     * 2026-10-28: CHIP's code for DuitNow QR is `dnqr`; we sent a guessed
+     * `duitnow_qr`, which CHIP stored as-is, ignored, and fell back to the
+     * card form. The Test probe now checks the code against CHIP's own list.
+     */
+    public function test_a_verified_probe_rejects_a_channel_code_chip_does_not_list(): void
+    {
+        Http::fake([
+            'gate.chip-in.asia/api/v1/payment_methods/*' => Http::response(['available_payment_methods' => ['fpx', 'fpx_b2b1', 'dnqr']]),
+            'gate.chip-in.asia/api/v1/purchases/' => Http::response(['id' => 'p-1', 'status' => 'created'], 201),
+        ]);
+
+        $response = $this->gateway()->createPayment($this->probe('duitnow_qr'));
+
+        $this->assertFalse($response->success);
+        $this->assertStringContainsString('dnqr', $response->errorMessage);
+        Http::assertNotSent(fn ($request) => str_ends_with($request->url(), '/purchases/'));
+    }
+
+    public function test_a_verified_probe_creates_the_purchase_for_a_listed_channel(): void
+    {
+        Http::fake([
+            'gate.chip-in.asia/api/v1/payment_methods/*' => Http::response(['available_payment_methods' => ['fpx', 'dnqr']]),
+            'gate.chip-in.asia/api/v1/purchases/' => Http::response(['id' => 'p-1', 'status' => 'created'], 201),
+        ]);
+
+        $this->assertTrue($this->gateway()->createPayment($this->probe('dnqr'))->success);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/payment_methods/')
+            && $request['brand_id'] === 'brand-uuid-123' && $request['amount'] == 100);
+    }
+
+    public function test_a_normal_checkout_makes_no_extra_payment_methods_call(): void
+    {
+        Http::fake(['gate.chip-in.asia/api/v1/purchases/' => Http::response(['id' => 'p-1', 'status' => 'created'], 201)]);
+
+        $this->gateway()->createPayment($this->probe('fpx', verifyChannel: false));
+
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/payment_methods/'));
+    }
+
+    public function test_a_chip_error_body_surfaces_its_real_message(): void
+    {
+        Http::fake(['gate.chip-in.asia/*' => Http::response(['client.email' => [['code' => 'required', 'message' => 'This field is required.']]], 400)]);
+
+        $response = $this->gateway()->createPayment($this->probe('fpx', verifyChannel: false));
+
+        $this->assertStringContainsString('client.email', $response->errorMessage);
+        $this->assertStringContainsString('This field is required.', $response->errorMessage);
+    }
+
     public function test_create_payment_sends_bearer_auth_and_the_expected_request_shape(): void
     {
         Http::fake([

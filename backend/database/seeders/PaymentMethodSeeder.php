@@ -60,12 +60,12 @@ class PaymentMethodSeeder extends Seeder
         ],
         [
             // ADR-022 2026-09-01 addendum decision 4 — one of the two
-            // launch channels. CHIP's exact channel-code string for
-            // DuitNow QR is best-guess (`duitnow_qr`) until confirmed
-            // against a real `GET /payment_methods/` response via
-            // app:chip-smoke-test; correct it here if the smoke test
-            // shows a different value before this row is ever activated.
-            'channel_code' => 'duitnow_qr',
+            // launch channels. CHIP's code for it is `dnqr`, confirmed
+            // 2026-10-28 from `GET /payment_methods/` (the earlier
+            // `duitnow_qr` guess was ignored by CHIP and sent customers to
+            // its card form). The Test action now checks every code
+            // against that list.
+            'channel_code' => 'dnqr',
             'label' => 'DuitNow QR',
             'category' => 'duitnow_qr',
             'method_key' => 'duitnow_qr_chip',
