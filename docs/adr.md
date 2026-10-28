@@ -27,7 +27,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-002](./adr/ADR-002-ledger-based-balance-not-a-mutable-column.md) | Ledger-based balance, not a mutable column | In force | 2026-09-29 |
 | [ADR-003](./adr/ADR-003-tenant-aware-schema-platform-owner-only-mvp.md) | Tenant-aware schema, platform-owner-only MVP features | Partly superseded by ADR-057 (tenant scoping) |  |
 | [ADR-004](./adr/ADR-004-no-cash-refunds-ever.md) | No cash refunds, ever | In force; being revised (refund to the original payment method, founder 2026-10-22, PRD §16 item 129) | 2026-10-22 |
-| [ADR-005](./adr/ADR-005-player-id-pre-payment-validation-is-not.md) | Player-ID pre-payment validation is not universal | In force | 2026-10-16 |
+| [ADR-005](./adr/ADR-005-player-id-pre-payment-validation-is-not.md) | Player-ID pre-payment validation is not universal | In force | 2026-10-28 |
 | [ADR-006](./adr/ADR-006-supplier-adapter-normalizer-layer-is-mvp-not.md) | Supplier Adapter/Normalizer layer is MVP, not Phase 2 | In force | 2026-07-25 |
 | [ADR-007](./adr/ADR-007-internal-fraud-blacklist-is-first-class-mvp.md) | Internal fraud blacklist is first-class MVP | In force | 2026-07-29 |
 | [ADR-008](./adr/ADR-008-split-frontend-stack.md) | Split frontend stack — Vue for Admin, Next.js for Storefront | Superseded by ADR-009 |  |
@@ -145,7 +145,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-120](./adr/ADR-120-seo-geo-overhaul.md) | SEO/GEO overhaul — brand-correct meta, per-brand canonical origin, machine-readable catalog | In force |  |
 | [ADR-121](./adr/ADR-121-admin-mfa-and-session-login.md) | Admin MFA (TOTP), opt-in per account, step-up on dangerous actions; admin login moves to a cookie session | In force | 2026-10-19 |
 | [ADR-122](./adr/ADR-122-scheduler-liveness.md) | Scheduler liveness — per-task heartbeat; a stale critical task fails `/api/health` | In force |  |
-| [ADR-123](./adr/ADR-123-public-game-id-checker.md) | Public Game ID Checker — own endpoint, Turnstile, per-IP + global budget, Redx-only, own table | In force |  |
+| [ADR-123](./adr/ADR-123-public-game-id-checker.md) | Public Game ID Checker — own endpoint, Turnstile, per-IP + global budget, Redx-only (MLBB: Redx → UniPlay), own table | In force | 2026-10-28 |
 | [ADR-124](./adr/ADR-124-customer-account-credentials.md) | Customer account credentials — own encrypted table, super-admin reveal with MFA step-up + audit row, wiped by one sweep once the order closes | In force; supplier link is a short hashed token (ADR-125, 2026-10-19); per-row wipe ceiling (ADR-126, 2026-10-23) | 2026-10-23 |
 | [ADR-125](./adr/ADR-125-login-top-up-manual-supplier.md) | Login Top-up (Roblox, eFootball) — manual suppliers as a `driver`, one finalize seam, a supplier WhatsApp group per supplier, agreed-cost manual packages | In force; post key, supplier re-check, stale clock revised (ADR-126, 2026-10-23) | 2026-10-23 |
 | [ADR-126](./adr/ADR-126-joki-mlbb.md) | Joki MLBB — owned-brand `/joki` page, `Fixed` pricing basis, each penjoki a pay-after manual supplier with its own group, payout booked as cost | In force; re-grilled, PR 2 split and pricing rule pinned (2026-10-23 addenda); F4 "needs voucher" on the Joki card, admin and `/joki` build notes (2026-10-24); no partial or extra penjoki pay (2026-10-24); offered from Epic up (2026-10-25) | 2026-10-25 |

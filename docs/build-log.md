@@ -2609,3 +2609,12 @@ No backend, ledger or money-logic change anywhere in the rollout.
   leftover `JOKI_ERROR`/`JOKI_NOTICE` imports and `setError` assignments.
 - The portal copy is generated (`scripts/sync-shared-files.mjs`), never
   hand-edited; CI's `theme-preset-drift` guards it.
+
+## 2026-10-28 — MLBB validator: Redx → UniPlay replaces Redx → MooGold (ADR-005 addendum)
+
+**Found (read-only).** Redx's `POST /tools/check` answered 503 "temporarily unavailable" for `mobile-legends` three times in a row, while `free-fire` and `genshin-impact` returned 200 with the identical session/CSRF handshake. So our `RedxGameValidator` was fine; Redx had turned its MLBB checker off. Our code already treats a non-check response as unavailable and falls back. The public `/check-id` MLBB page was Redx-only, so it showed "busy".
+
+**Built** on `feature/uniplay-validator-replace-moogold`: `UniplayValidator` (token read from the page and cached, renewed once on 401/403; `status:false` = invalid), chain Redx → UniPlay for checkout and the public checker (ADR-123 addendum), MooGold validator/test/config deleted. `php artisan test`: 3080 passed.
+
+**Gotcha.** The UniPlay token regex first rejected the test token `tok-1` because base64 has no `-`. **Not verified from our server:** the live UniPlay call (this session's automation was blocked from using their page token); the founder confirmed the response shape in a browser. After release, check `player_validations.provider` for an `uniplay` row.
+

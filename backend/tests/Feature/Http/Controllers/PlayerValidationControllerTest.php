@@ -122,7 +122,7 @@ class PlayerValidationControllerTest extends TestCase
     {
         $profile = $this->profile();
         $game = $this->game(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
-        $this->bindFakeValidator(PlayerValidationResult::valid('MooGold', 'TestNickname', null));
+        $this->bindFakeValidator(PlayerValidationResult::valid('UniPlay', 'TestNickname', null));
 
         $response = $this->postJson("/api/games/{$game->id}/validate-player", ['player_id' => '51049607']);
 

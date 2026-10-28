@@ -44,3 +44,8 @@ Facts from the stress test:
 - Redx can still block our IP for reasons outside this page. If it does, checkout for FF and the zone games stops (ADR-005's open risk, unchanged by this ADR).
 - Production setup the founder does: create a Turnstile widget in Cloudflare for the storefront hostnames (every affiliate custom domain too), set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` on the storefront Vercel project and `TURNSTILE_SECRET_KEY` in the Forge `.env`, and fill `public_name`/`public_slug`/image on each validator profile.
 - An affiliate custom domain added later must be added to the Turnstile widget's hostnames, or its checker shows the challenge error.
+
+### 2026-10-28 addendum — MLBB's public check falls back to UniPlay
+
+Decision 6 ("RedxGame only") changes for MLBB: `player-validator.public.mlbb` is the same Redx → UniPlay chain as checkout ([ADR-005](./ADR-005-player-id-pre-payment-validation-is-not.md) 2026-10-28 addendum). Why: Redx's MLBB checker was down (503), so the public page showed "busy" for MLBB. The reason for "never a supplier" was MooGold, which is our supplier; UniPlay is not, so an abuse flag there can't hurt fulfilment. The other four families stay Redx-only. The cooldown and budget are unchanged and now count the chain as one call.
+
