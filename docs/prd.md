@@ -889,7 +889,7 @@ moved to group D). Re-verify before building.
   unavailable; the same for membership and wallet top-up (check the
   membership layout first); then e-wallet and card, built dormant until CHIP
   approves them. Every new channel code is first checked with the Test action
-  against CHIP's `GET /payment_methods/` (item 138 shipped the check). Test a
+  against CHIP's `GET /payment_methods/` (PR #584 shipped the check). Test a
   real `?preferred=` purchase before building.
 
 **C. Founder actions (no code)**
