@@ -2572,7 +2572,7 @@ but not toasts. This closes ADR-129 (§16 item 136): every action outcome is a
 toast; field validation, load/empty states, persistent warnings and the
 order-modals' confirmations stay inline on purpose.
 
-**What shipped (all on `staging`, not yet `main`).**
+**What shipped (#575–#580, released to `main` via #581).**
 - #575: the five review notes on #574 — `@primereact/headless` declared,
   focus-on-dismiss returns to the region, entrance motion dropped
   (a mount-flip sets state in an effect, which the lint forbids), the
@@ -2602,6 +2602,12 @@ that outcome says so); money-action failures are sticky so they can't vanish.
 No backend, ledger or money-logic change anywhere in the rollout.
 
 **Gotchas.**
+- The review caught one more "200 with a failure in the body": the affiliate
+  tier-fee charge answers 200 when earnings are short (no debit, the cycle
+  goes to grace) or the cycle is already paid, so "Tier fee charged" could
+  show for a charge that never happened. The success toast now requires an
+  advanced `next_charge_at`; otherwise it warns "Fee not charged". The
+  payment-method test (#577) is the same class of fix.
 - The `guard`/`run`/`save` helpers across screens were each extended with an
   optional success message instead of a bespoke toast store, so the library
   stays swappable in one file.
