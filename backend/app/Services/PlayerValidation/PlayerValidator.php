@@ -4,7 +4,7 @@ namespace App\Services\PlayerValidation;
 
 /**
  * Common interface every player-ID validation source implements —
- * both the individual third-party providers (RedxGame, MooGold) and the fallback-chain orchestrator (MlbbPlayerValidator)
+ * both the individual third-party providers (RedxGame, UniPlay) and the fallback-chain orchestrator (MlbbPlayerValidator)
  * that sits in front of them, since the chain is itself resolved by
  * PlayerValidatorRegistry the same way a single provider would be.
  */

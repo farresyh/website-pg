@@ -2572,7 +2572,7 @@ but not toasts. This closes ADR-129 (§16 item 136): every action outcome is a
 toast; field validation, load/empty states, persistent warnings and the
 order-modals' confirmations stay inline on purpose.
 
-**What shipped (all on `staging`, not yet `main`).**
+**What shipped (#575–#580, released to `main` via #581).**
 - #575: the five review notes on #574 — `@primereact/headless` declared,
   focus-on-dismiss returns to the region, entrance motion dropped
   (a mount-flip sets state in an effect, which the lint forbids), the
@@ -2602,6 +2602,12 @@ that outcome says so); money-action failures are sticky so they can't vanish.
 No backend, ledger or money-logic change anywhere in the rollout.
 
 **Gotchas.**
+- The review caught one more "200 with a failure in the body": the affiliate
+  tier-fee charge answers 200 when earnings are short (no debit, the cycle
+  goes to grace) or the cycle is already paid, so "Tier fee charged" could
+  show for a charge that never happened. The success toast now requires an
+  advanced `next_charge_at`; otherwise it warns "Fee not charged". The
+  payment-method test (#577) is the same class of fix.
 - The `guard`/`run`/`save` helpers across screens were each extended with an
   optional success message instead of a bespoke toast store, so the library
   stays swappable in one file.
@@ -2617,4 +2623,12 @@ No backend, ledger or money-logic change anywhere in the rollout.
 **Built** on `fix/chip-dnqr-channel-code`: seeder + rename migration, `verifyChannel` in the Test probe, email in the probe, CHIP field errors in `failureFrom`. `php artisan test`: 3084 passed.
 
 **Gotchas.** (1) Live CHIP credentials come from the `payment_gateways` row (`ChipCredentialResolver`), not `.env`: reading `config('services.chip')` in tinker used a different key (a purchase GET returned 404). (2) An unknown whitelist value is not rejected by CHIP, so checking the purchase response for an empty whitelist would not have caught this. **Not yet verified:** a paid DuitNow QR payment; after release, run Test on `dnqr`, then pay RM1 for real. Until released, DuitNow QR should be switched off in Payment Methods.
+
+## 2026-10-28 — MLBB validator: Redx → UniPlay replaces Redx → MooGold (ADR-005 addendum)
+
+**Found (read-only).** Redx's `POST /tools/check` answered 503 "temporarily unavailable" for `mobile-legends` three times in a row, while `free-fire` and `genshin-impact` returned 200 with the identical session/CSRF handshake. So our `RedxGameValidator` was fine; Redx had turned its MLBB checker off. Our code already treats a non-check response as unavailable and falls back. The public `/check-id` MLBB page was Redx-only, so it showed "busy".
+
+**Built** on `feature/uniplay-validator-replace-moogold`: `UniplayValidator` (token read from the page and cached, renewed once on 401/403; `status:false` = invalid), chain Redx → UniPlay for checkout and the public checker (ADR-123 addendum), MooGold validator/test/config deleted. `php artisan test`: 3080 passed.
+
+**Gotcha.** The UniPlay token regex first rejected the test token `tok-1` because base64 has no `-`. **Not verified from our server:** the live UniPlay call (this session's automation was blocked from using their page token); the founder confirmed the response shape in a browser. After release, check `player_validations.provider` for an `uniplay` row.
 

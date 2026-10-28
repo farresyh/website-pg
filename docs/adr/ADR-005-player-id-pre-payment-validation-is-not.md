@@ -87,3 +87,15 @@ The same check surfaced a related, previously-undocumented gap: `POST /api/order
 **Consequence to track:**
 - If Redx renames a server, every customer on it gets "doesn't sell" (blocked, never a wrong-zone order); the log line `RedxGame server not sold` shows the new label for `SERVER_ZONES`.
 - Valorant is not built: Redx answered "Malaysia" for MY accounts, and its other-region behaviour is unknown without a non-MY Riot ID.
+
+### 2026-10-28 addendum — MLBB chain is now RedxGame → UniPlay; MooGold removed
+
+**Context:** On 2026-10-28 Redx answered HTTP 503 ("This checker is temporarily unavailable") for Mobile Legends only (Free Fire and Genshin still worked, same session handshake), so MLBB checkout leaned on MooGold alone. The founder chose to drop MooGold (a free-text `message` parse, shape not consistent even for one account) and use UniPlay's checker (`uniplay.id/cek-region`) as the fallback. The founder checked it in a browser: `{status: true, nickname, region: 'MY', user_id, server}`.
+
+**Decision:**
+1. `MlbbPlayerValidator` chain = `RedxGameValidator` → `UniplayValidator`. `MoogoldValidator`, its test and the `moogold` config are deleted. Old `player_validations` rows with `provider = moogold` are history and stay.
+2. `UniplayValidator` posts `user_id` + `server_id` (form) to `/ajax/check-region.php`. The endpoint needs a Basic `Authorization` header that UniPlay's page embeds for every visitor; the validator reads it from the page, caches it 1 hour (`player-validator:uniplay:token`) and re-reads it once on 401/403. Nothing goes in `.env`.
+3. It is last in the chain, so `status: false` = an invalid ID (`PlayerValidationResult::invalid('uniplay')`); transport error, 5xx, or a page without a token = `ProviderUnavailableException`. `region` is already an ISO alpha-2 code and feeds `player_region_mappings` as before.
+
+**Consequence to track:** Unofficial like Redx; UniPlay can change the page or token scheme (then the chain is Redx alone and MLBB checkout fails when Redx does). The code was verified against fakes only; the live call was checked by the founder in a browser, not from our server (the first post-deploy MLBB validation is the real test; check `player_validations.provider`).
+

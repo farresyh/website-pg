@@ -36,8 +36,8 @@ use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\PlayerValidation\MlbbPlayerValidator;
 use App\Services\PlayerValidation\PlayerValidatorRegistry;
-use App\Services\PlayerValidation\Providers\MoogoldValidator;
 use App\Services\PlayerValidation\Providers\RedxGameValidator;
+use App\Services\PlayerValidation\Providers\UniplayValidator;
 use App\Services\ReportAssistant\Gemini\FakeGeminiClient;
 use App\Services\ReportAssistant\Gemini\GeminiApiClient;
 use App\Services\ReportAssistant\Gemini\GeminiClient;
@@ -335,11 +335,11 @@ class AppServiceProvider extends ServiceProvider
             );
         });
 
-        // MLBB's validator chain — RedxGame -> MooGold (ADR-005 2026-10-16
-        // addendum: AcidGameShop and Nexone stopped working 2026-10-10).
-        // Bound under 'player-validator.mlbb' so PlayerValidatorRegistry
-        // resolves it the same way it would any future validator key.
-        $this->app->bind('player-validator.mlbb', function () {
+        // MLBB's validator chain — RedxGame -> UniPlay (ADR-005 2026-10-28
+        // addendum, replacing MooGold). Bound under 'player-validator.mlbb'
+        // so PlayerValidatorRegistry resolves it like any validator key; the
+        // public Game ID Checker reuses it (ADR-123 addendum, same date).
+        $mlbbChain = function () {
             $config = config('services.player_validators');
 
             return new MlbbPlayerValidator([
@@ -347,12 +347,13 @@ class AppServiceProvider extends ServiceProvider
                     baseUrl: $config['redxgame']['base_url'],
                     timeoutSeconds: $config['redxgame']['timeout'],
                 ),
-                new MoogoldValidator(
-                    baseUrl: $config['moogold']['base_url'],
-                    timeoutSeconds: $config['moogold']['timeout'],
+                new UniplayValidator(
+                    baseUrl: $config['uniplay']['base_url'],
+                    timeoutSeconds: $config['uniplay']['timeout'],
                 ),
             ]);
-        });
+        };
+        $this->app->bind('player-validator.mlbb', $mlbbChain);
 
         // A standalone RedxGame check: its "couldn't verify" is an invalid
         // ID the customer can correct, since no second provider decides.
@@ -368,7 +369,7 @@ class AppServiceProvider extends ServiceProvider
             );
         };
 
-        // Free Fire: RedxGame alone (MooGold's checker is MLBB-only)
+        // Free Fire: RedxGame alone (UniPlay's checker is MLBB-only)
         // (ADR-005 2026-10-16 second addendum). Redx reports the Garena
         // server: Malaysian accounts come back "Singapore".
         // Genshin, HSR, ZZZ: Redx reports the UID's server, checked against
@@ -387,10 +388,13 @@ class AppServiceProvider extends ServiceProvider
             }
 
             // ADR-123 decision 6: the public Game ID Checker calls RedxGame
-            // alone for every family, MLBB included (never its MooGold
-            // fallback: MooGold is our supplier). Bound explicitly per key;
-            // a key with no public binding has no public family.
-            $this->app->bind("player-validator.public.{$key}", fn () => $standaloneRedx($redxGame, $regionIsServer));
+            // alone, except MLBB, which shares the Redx -> UniPlay chain
+            // (addendum 2026-10-28). Bound explicitly per key; a key with
+            // no public binding has no public family.
+            $this->app->bind(
+                "player-validator.public.{$key}",
+                $key === 'mlbb' ? $mlbbChain : fn () => $standaloneRedx($redxGame, $regionIsServer),
+            );
         }
 
         $this->app->singleton(PlayerValidatorRegistry::class);

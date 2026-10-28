@@ -29,7 +29,7 @@ use Throwable;
  *
  * `status: false` is the same "Couldn't verify that ID" for a wrong ID and
  * for a failure on Redx's own side. Where a second provider exists (MLBB:
- * MooGold) it is thrown as unavailable so that provider decides; where
+ * UniPlay) it is thrown as unavailable so that provider decides; where
  * none does (Free Fire) it is an invalid ID the customer can correct
  * (founder's calls, 2026-10-16).
  */
