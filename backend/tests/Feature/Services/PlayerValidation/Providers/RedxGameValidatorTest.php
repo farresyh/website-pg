@@ -150,7 +150,7 @@ class RedxGameValidatorTest extends TestCase
     /**
      * Founder's call 2026-10-16: Redx's "Couldn't verify that ID" is the
      * same message for a wrong ID and for a problem on Redx's own side,
-     * so it is never trusted as "invalid" — MooGold, next in the chain,
+     * so it is never trusted as "invalid" — UniPlay, next in the chain,
      * decides.
      */
     public function test_status_false_is_unavailable_not_invalid(): void
