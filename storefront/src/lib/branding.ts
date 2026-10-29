@@ -50,6 +50,9 @@ const BrandingWireSchema = z.object({
     .nullable(),
   footer_text: z.string().nullable(),
   footer_games: z.array(BrandingFooterGameWireSchema),
+  // ADR-131 decision 20: per domain, false only on a branded domain not yet approved for payments.
+  // Optional so an older backend parses, and absent means payments are open.
+  payments_enabled: z.boolean().optional(),
 });
 
 export interface Branding {
@@ -67,6 +70,8 @@ export interface Branding {
   socialLinks: { facebook?: string; instagram?: string; tiktok?: string; youtube?: string; whatsapp?: string };
   footerText: string | null;
   footerGames: { id: number; name: string; slug: string }[];
+  /** ADR-131: false hides nothing but the pay buttons; the server refuses the payment too. */
+  paymentsEnabled: boolean;
 }
 
 const BRANDING_FALLBACK: Branding = {
@@ -83,6 +88,7 @@ const BRANDING_FALLBACK: Branding = {
   socialLinks: {},
   footerText: null,
   footerGames: [],
+  paymentsEnabled: true,
 };
 
 /**
@@ -112,6 +118,7 @@ export async function getBranding(): Promise<Branding> {
         socialLinks: wire.social_links ?? {},
         footerText: wire.footer_text,
         footerGames: wire.footer_games,
+        paymentsEnabled: wire.payments_enabled ?? true,
       };
     },
     BRANDING_FALLBACK,

@@ -27,6 +27,7 @@ import OrderSummarySidebar from "@/components/order/OrderSummarySidebar";
 import MembershipPromoCard from "@/components/order/MembershipPromoCard";
 import ReviewModal from "@/components/order/ReviewModal";
 import PaymentChannelPicker from "@/components/order/PaymentChannelPicker";
+import PaymentsUnavailableNotice from "@/components/order/PaymentsUnavailableNotice";
 
 interface OrderFormProps {
   /** ADR-097 decision 9 — needs GameDetail (not the narrower Game), for zoneOptions. */
@@ -46,6 +47,8 @@ interface OrderFormProps {
   memberPackages?: GamePackage[] | null;
   memberSession?: { tierName: string | null; email: string | null; quotaRemainingRm: number | null } | null;
   ssrMembershipToken?: string | null;
+  /** ADR-131 decision 20: false on a branded domain not yet approved for payments. */
+  paymentsEnabled?: boolean;
 }
 
 /**
@@ -66,6 +69,7 @@ export default function OrderForm({
   memberPackages = null,
   memberSession: ssrMemberSession = null,
   ssrMembershipToken = null,
+  paymentsEnabled = true,
 }: OrderFormProps) {
   const router = useRouter();
   const membershipToken = useMembershipToken();
@@ -397,6 +401,8 @@ export default function OrderForm({
   const step2Complete = selectedPackage !== null;
   const step3Complete = channelCode !== null;
   const readyForReview = step1Continued && step2Complete && step3Complete;
+  // ADR-131: the steps can all be done and the store still cannot take the payment.
+  const canPay = readyForReview && paymentsEnabled;
 
   const steps: StepInfo[] = [
     { label: loginGame ? "Enter Login" : "Enter ID", state: step1Continued ? "done" : "active" },
@@ -480,6 +486,7 @@ export default function OrderForm({
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_360px] lg:items-start">
       <div className="flex flex-col gap-5">
+        {!paymentsEnabled && <PaymentsUnavailableNotice />}
         <Stepper steps={steps} />
 
         <StepCard number={1} title="Enter Your Account Info" locked={false}>
@@ -538,7 +545,7 @@ export default function OrderForm({
             playerId={accountValue}
             playerLabel={accountLabel}
             serverId={game.extraField ? serverId : ""}
-            ready={readyForReview}
+            ready={canPay}
             onReview={openReview}
           />
         </div>
@@ -564,8 +571,8 @@ export default function OrderForm({
               RM{(preview ? preview.final_amount_sen / 100 : selectedPackage?.priceRm ?? 0).toFixed(2)}
             </p>
           </div>
-          <Button onClick={openReview} disabled={!readyForReview} size="sm" className="shrink-0">
-            {readyForReview ? "Review & Pay" : "Complete steps"}
+          <Button onClick={openReview} disabled={!canPay} size="sm" className="shrink-0">
+            {!paymentsEnabled ? "Unavailable" : readyForReview ? "Review & Pay" : "Complete steps"}
           </Button>
         </div>
       </div>

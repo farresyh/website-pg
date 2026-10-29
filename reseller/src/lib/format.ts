@@ -160,3 +160,16 @@ export function toSen(value: string): number | null {
   const sen = Math.round(Number(value) * 100);
   return sen > 0 ? sen : null;
 }
+
+/** ADR-131: the payments state of an Active domain; other domains have none to show. */
+export function domainPaymentsBadge(domain: { status: string; payments_approved: boolean }): { severity: "warn" | "success"; label: string; hint: string | null } | null {
+  if (domain.status !== "active") return null;
+  return domain.payments_approved
+    ? { severity: "success", label: "Payments on", hint: null }
+    : {
+        severity: "warn",
+        label: "Payments awaiting approval",
+        hint: "Your store is live at this address. Payments are switched on once PekanGame approves the domain; we will let you know.",
+      };
+}
+

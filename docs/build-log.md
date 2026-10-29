@@ -2755,3 +2755,17 @@ Correction to this session's earlier count: prod has 23 *paid* FPX orders, not 2
 
 **Owed.** PR C (the affiliate-domain payment gate); the glossary note for "closed" accounts is not needed (no new term); production screenshots from a test reseller after the one release; the founder's recording of the first real closure's bank reference in the build-log if one ever happens.
 
+## 2026-10-29 — ADR-131 PR C built: a branded domain takes no CHIP payment until approved (on `feature/affiliate-domain-payment-gate`, not released)
+
+**Built.**
+- Migration `2026_10_29_170000_add_payments_approval_to_affiliate_domains`: `payments_approved_at` (null = not approved) and `payments_approved_by`. It approves the rows of the `is_primary` affiliate and nothing else (an `is_owned` brand's rows stay unapproved). Run for real on the dev DB with a seeded primary-affiliate row: rolled back and re-applied, the primary row is approved, the scenario affiliate's row stays null.
+- `StorefrontBrand::assertPaymentsEnabled()` / `paymentsEnabled()`, fed by `ResolveStorefrontBrand` from the domain row it already loads (no second query). Only a resolved custom hostname can say no: the primary host and every non-storefront caller carry no hostname and are never gated. Called at the top of `CheckoutService::initiate()` (before the Order exists; skipped when a voucher covers the whole order), in the no-link branch of `CheckoutService::resume()`, and at the top of `MembershipSubscriptionService::initiate()`. `PaymentsNotEnabledException` renders itself as `403 { code: payments_not_enabled }`.
+- `GET /catalog/branding` returns `payments_enabled`, computed per request outside the per-brand cache (two domains of one brand share that payload but not their approval).
+- Admin: `PUT /affiliates/{id}/domains/{id}/payments-approval` (super_admin + `mfa.stepup`, listed in `AdminMfaStepUpTest`, 404 for another affiliate's domain), the affiliate detail shows it, and an Approve / Revoke action with a confirm. The affiliate's own portal shows "Payments awaiting approval" on a live domain. The storefront shows a notice and disables pay on a domain that is not approved.
+
+**Verified.** `php artisan test` 3204 passed. `AffiliateDomainPaymentGateTest` (11): refused with no Order created; approved works; the primary host and a header-less request are never gated; revoke then a no-link replay waits for approval and resumes after; a replay of an order that already has a link still returns it (accepted, decision 21); membership refused with no attempt; branding per domain without cache bleed between two domains of one brand; approve/revoke stored with the admin. Removing the three `assertPaymentsEnabled()` calls fails exactly the three gate tests. e2e is unaffected (it runs on the primary host `localhost`, which has no domain row).
+
+**Gotchas hit.** Existing tests that pay on a brand domain (`AffiliateStorefrontCheckoutTest`, one membership test, and the `FinancialScenario` brand domain) needed `payments_approved_at` on their domain fixture; the fixture was the thing that changed, not the code. The branding route is `/api/catalog/branding`.
+
+**Owed before the one release.** Re-check prod's `affiliate_domains` read-only (any `Active` row besides the primary affiliate's would stop taking payments on deploy); the browser check of the three screens; then, after CHIP's written approval of `ohahastore.com` (not in prod yet), approve it in the admin. `fixfastapp.com` stays unapproved (to be deactivated, item 129's switch-over steps).
+

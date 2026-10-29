@@ -37,10 +37,14 @@ class StorefrontBrand
 
     private ?string $hostname = null;
 
-    public function set(Affiliate $brand, ?string $hostname = null): void
+    private bool $paymentsApproved = true;
+
+    /** @param  bool  $paymentsApproved  ADR-131: only meaningful with a hostname (a custom domain row) */
+    public function set(Affiliate $brand, ?string $hostname = null, bool $paymentsApproved = true): void
     {
         $this->brand = $brand;
         $this->hostname = $hostname;
+        $this->paymentsApproved = $paymentsApproved;
     }
 
     /**
@@ -54,6 +58,25 @@ class StorefrontBrand
     {
         $this->brand = null;
         $this->hostname = null;
+        $this->paymentsApproved = true;
+    }
+
+    /**
+     * ADR-131 decision 19: may this request start a CHIP payment? Only a resolved custom domain
+     * can say no. The primary host resolves with no hostname, and so does every non-storefront
+     * caller (console, queue, the API and bot order channels): they are never gated.
+     */
+    public function paymentsEnabled(): bool
+    {
+        return $this->hostname === null || $this->paymentsApproved;
+    }
+
+    /** @throws PaymentsNotEnabledException */
+    public function assertPaymentsEnabled(): void
+    {
+        if (! $this->paymentsEnabled()) {
+            throw new PaymentsNotEnabledException;
+        }
     }
 
     public function isResolved(): bool

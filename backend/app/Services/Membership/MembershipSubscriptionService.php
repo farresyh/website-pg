@@ -50,6 +50,9 @@ final class MembershipSubscriptionService
         array $channelProperties,
         string $clientIdempotencyKey,
     ): MembershipCheckoutAttempt {
+        // ADR-131 decision 20: the top of initiate(), so its replay, dedup and fresh paths are all covered.
+        $this->storefrontBrand->assertPaymentsEnabled();
+
         // S9 — HTTP retry of the same request: return the row the first
         // call created (with its checkout_url if the gateway leg got
         // that far; the resume path below fills it in otherwise).

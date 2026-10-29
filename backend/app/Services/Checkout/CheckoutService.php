@@ -95,6 +95,12 @@ final class CheckoutService
             $request->affiliateId,
         );
 
+        // ADR-131 decision 20: before the Order row exists (no orphan Pending order), and
+        // only when a CHIP payment will follow (a voucher that covers it all calls no gateway).
+        if (! $fullyCoveredByVoucher) {
+            $this->storefrontBrand->assertPaymentsEnabled();
+        }
+
         // ADR-019 idempotency finding: the checkout path never relies on
         // a gateway-side idempotency-key header. A retried gateway call
         // *within* this one initiate() reuses the same order_number as
@@ -189,6 +195,10 @@ final class CheckoutService
         }
 
         if ($order->payment_ref === null) {
+            // ADR-131 decision 20: this branch asks CHIP for a new purchase; one that already has a
+            // link below is just handed back (and stays payable until CHIP's own expiry).
+            $this->storefrontBrand->assertPaymentsEnabled();
+
             return $this->requestPayment($order, $gateway, $channelCode, $channelProperties);
         }
 

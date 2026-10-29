@@ -28,6 +28,8 @@ import {
   impersonateAffiliate,
   reactivateAffiliateSubscription,
   recheckAffiliateDomain,
+  type AffiliateDomainRow,
+  approveAffiliateDomainPayments,
   removeAffiliateDomain,
   resendAffiliateInvite,
   type AffiliateDetail,
@@ -73,6 +75,7 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
   const sub = r.subscription;
 
   const [busy, setBusy] = useState<string | null>(null);
+  const [approval, setApproval] = useState<{ domain: AffiliateDomainRow; approved: boolean } | null>(null);
 
   const [tierId, setTierId] = useState<string>(sub ? String(sub.tier_id) : "");
   const [tierNote, setTierNote] = useState("");
@@ -300,6 +303,18 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
                 </div>
                 <div className="flex items-center gap-2">
                   <Tag severity={domainStatusSeverity[d.status]}>{d.status}</Tag>
+                  <Tag severity={d.payments_approved ? "success" : "warn"}>
+                    {d.payments_approved ? "Payments approved" : "Payments not approved"}
+                  </Tag>
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="outlined"
+                    disabled={busy !== null}
+                    onClick={() => setApproval({ domain: d, approved: !d.payments_approved })}
+                  >
+                    {d.payments_approved ? "Revoke payments" : "Approve payments"}
+                  </Button>
                   {d.provider_managed && (
                     <>
                       <Button
@@ -400,6 +415,52 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
           Close
         </Button>
       </div>
+
+      {/* ADR-131 decision 21: approving takes CHIP's written approval first; revoking stops new payments. */}
+      <Dialog open={approval !== null} onOpenChange={(e) => { if (!e.value) setApproval(null); }}>
+        <DialogPortal>
+          <DialogBackdrop />
+          <DialogPositioner>
+            <DialogPopup className="w-full max-w-md">
+              <DialogHeader>
+                <DialogTitle>{approval?.approved ? "Approve payments?" : "Revoke payments?"}</DialogTitle>
+                <DialogHeaderActions>
+                  <DialogClose aria-label="Close">
+                    <CloseIcon className="h-5 w-5" />
+                  </DialogClose>
+                </DialogHeaderActions>
+              </DialogHeader>
+              <DialogContent>
+                <p className="mb-4 text-theme-sm text-gray-600 dark:text-gray-400">
+                  {approval?.approved
+                    ? `Only approve after CHIP has approved this domain in writing. Customers on ${approval.domain.hostname} can then pay.`
+                    : `Customers on ${approval?.domain.hostname} will no longer be able to start a payment (a link already created stays payable until it expires).`}
+                </p>
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outlined" onClick={() => setApproval(null)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={approval?.approved ? undefined : "outlined"}
+                    disabled={busy !== null}
+                    onClick={() => {
+                      if (!approval) return;
+                      const { domain, approved } = approval;
+                      void run(`domain-approval-${domain.id}`, async () => {
+                        onChanged(await approveAffiliateDomainPayments(r.id, domain.id, approved));
+                        setApproval(null);
+                      }, { success: approved ? `Payments approved for ${domain.hostname}` : `Payments revoked for ${domain.hostname}`, sticky: true });
+                    }}
+                  >
+                    {busy?.startsWith("domain-approval-") ? "…" : approval?.approved ? "Approve payments" : "Revoke payments"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </DialogPopup>
+          </DialogPositioner>
+        </DialogPortal>
+      </Dialog>
     </div>
   );
 }

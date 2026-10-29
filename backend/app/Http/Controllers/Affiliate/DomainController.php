@@ -128,6 +128,8 @@ class DomainController extends Controller
             'hostname' => $domain->hostname,
             'status' => $domain->status->value,
             'is_primary' => $domain->is_primary,
+            // ADR-131: the domain serves the store at once, but takes payments once PekanGame approves it.
+            'payments_approved' => $domain->payments_approved_at !== null,
             // The extra ownership-TXT records, only present in the rare
             // "already registered elsewhere" case. Already provider-
             // neutral in shape (type/name/value).

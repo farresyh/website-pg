@@ -68,7 +68,7 @@ export default async function JokiPage() {
             </div>
           </div>
 
-          <JokiOrderForm catalog={catalog} paymentChannels={paymentChannels} whatsappHref={resolveWhatsappHref(branding)} />
+          <JokiOrderForm catalog={catalog} paymentChannels={paymentChannels} whatsappHref={resolveWhatsappHref(branding)} paymentsEnabled={branding.paymentsEnabled} />
 
           {settings.terms_html && (
             <section className="mt-8 rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo">

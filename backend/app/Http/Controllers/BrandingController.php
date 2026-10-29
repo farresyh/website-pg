@@ -96,6 +96,10 @@ class BrandingController extends Controller
             },
         );
 
+        // ADR-131 decision 20: per domain, so it stays out of the per-brand cache above (two
+        // domains of one brand share that payload but not their approval).
+        $payload['payments_enabled'] = $this->brand->paymentsEnabled();
+
         return response()->json($payload);
     }
 

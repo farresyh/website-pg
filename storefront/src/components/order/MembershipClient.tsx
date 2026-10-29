@@ -33,7 +33,7 @@ const POST_PAYMENT_POLL_MAX = 10; // ~30s before we tell them to check their ema
  * useMembershipToken() (useSyncExternalStore, same shape as admin's
  * useClientSession()) is what makes `token` SSR-safe in the first place.
  */
-export default function MembershipClient() {
+export default function MembershipClient({ paymentsEnabled = true }: { paymentsEnabled?: boolean }) {
   const token = useMembershipToken();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -264,7 +264,7 @@ export default function MembershipClient() {
       )}
 
       {/* Subscribe / renew / upgrade (ADR-068 decision 13) */}
-      {!awaitingActivation && <MembershipSubscribe token={token} />}
+      {!awaitingActivation && <MembershipSubscribe token={token} paymentsEnabled={paymentsEnabled} />}
 
       {/* Order history */}
       <section className="flex flex-col gap-4">
