@@ -219,6 +219,7 @@ Route::post('/player-check/{slug}', [PlayerCheckController::class, 'check'])->mi
 // storefront the request came in on — an order number is only valid on
 // the storefront it was placed on (see Order::scopeForStorefrontBrand).
 Route::get('/track-order/{orderNumber}', [TrackOrderController::class, 'show'])->middleware(['throttle:20,1,track-order', 'storefront.brand']);
+Route::post('/track-order/{orderNumber}/check-payment', [TrackOrderController::class, 'checkPayment'])->middleware(['throttle:10,1,check-payment', 'storefront.brand']);
 
 // ADR-053 (REV-1..5) — public guest review submission, same
 // order_number-as-proof-of-ownership trust model as track-order above.

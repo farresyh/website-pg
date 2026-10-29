@@ -4,9 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Models\PlatformSettings;
+use App\Services\Order\PaymentStatus;
+use App\Services\Payment\PaymentReconciliationService;
 use App\Support\ContactMask;
 use App\Support\StorefrontBrand;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Public "Track Order" lookup (ADR-011 — no Customer auth exists).
@@ -33,6 +38,8 @@ use Illuminate\Http\JsonResponse;
  */
 class TrackOrderController extends Controller
 {
+    private const CHECK_WINDOW_SECONDS = 10;
+
     public function show(string $orderNumber, StorefrontBrand $brand): JsonResponse
     {
         $order = Order::query()
@@ -58,6 +65,40 @@ class TrackOrderController extends Controller
      *
      * @return array<string, mixed>
      */
+    /**
+     * ADR-110 2026-10-29 addendum: the customer is back on the status page
+     * (CHIP's `failure_redirect` lands here). Ask CHIP once about a Pending
+     * order so a cancelled attempt fails now (voucher and quota given back)
+     * instead of at the next sweep. Never worse than `show()`: a CHIP lookup
+     * that fails or is skipped just returns the order as it is.
+     */
+    public function checkPayment(string $orderNumber, StorefrontBrand $brand, PaymentReconciliationService $reconciliation): JsonResponse
+    {
+        $order = Order::query()
+            ->forStorefrontBrand($brand->get())
+            ->with(['game:id,name,slug,validation_rules', 'package:id,name', 'review:id,order_id'])
+            ->where('order_number', $orderNumber)
+            ->first();
+
+        if ($order === null) {
+            return response()->json(['message' => 'No order found with that order number.'], 404);
+        }
+
+        // One CHIP call per order per window, however often the page asks.
+        if ($order->payment_status === PaymentStatus::Pending
+            && $order->payment_ref !== null
+            && Cache::add("check-payment:{$order->id}", 1, self::CHECK_WINDOW_SECONDS)) {
+            try {
+                $reconciliation->reconcileOrder($order, earlyCheck: true);
+                $order->refresh();
+            } catch (Throwable $e) {
+                Log::warning('Status-page payment check failed', ['order_number' => $order->order_number, 'error' => $e->getMessage()]);
+            }
+        }
+
+        return response()->json(self::customerSafePayload($order));
+    }
+
     public static function customerSafePayload(Order $order): array
     {
         return [

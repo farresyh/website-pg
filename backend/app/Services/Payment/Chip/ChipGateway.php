@@ -110,6 +110,10 @@ final class ChipGateway implements PaymentGateway
                 // ("payment still possible") forever; `due` below is
                 // what actually closes it.
                 'due_strict' => true,
+                // ADR-110 2026-10-29 addendum — one failed attempt ends the
+                // purchase: CHIP cancels it itself (verified in test mode),
+                // so a cancelled bank login is never paid on the same link.
+                'single_attempt' => true,
             ], fn ($value) => $value !== null),
             'brand_id' => $this->brandId,
             'reference' => $request->referenceId,
@@ -402,6 +406,12 @@ final class ChipGateway implements PaymentGateway
             // keep comparing it as a plain int against its own stored
             // `*_sen` column with strict `!==` without re-deriving this.
             'amount_sen' => isset($body['purchase']['total']) ? (int) $body['purchase']['total'] : null,
+            // ADR-110 2026-10-29 addendum — the one definition of "this failure
+            // cannot be retried": cancelled/expired/overdue/blocked always; `error`
+            // only on a single-attempt purchase (a plain one can still be paid
+            // after an `error`, and later turns `expired`).
+            'failure_is_final' => in_array($body['status'] ?? '', ['cancelled', 'expired', 'overdue', 'blocked'], true)
+                || (($body['status'] ?? '') === 'error' && ($body['purchase']['single_attempt'] ?? false) === true),
             // ADR-127 F1/F2: when CHIP accepted the payment (Unix time) and
             // the fee it charged; `payment` is null until the purchase is paid.
             'paid_on' => isset($body['payment']['paid_on']) ? (int) $body['payment']['paid_on'] : null,

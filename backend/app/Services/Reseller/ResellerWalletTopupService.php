@@ -72,6 +72,12 @@ final class ResellerWalletTopupService
         $feeConfig = $this->fees->resolve($channelCode);
         $totalChargedSen = $this->totals->calculate($amountSen, 0, $feeConfig)->finalAmount;
 
+        // ADR-110 2026-10-29 addendum: before the lock below says "already pending",
+        // fail a pending attempt whose purchase CHIP has ended for good (the reseller
+        // cancelled at the bank). Done here, not inside the transaction, so no CHIP
+        // call is made while the wallet account is locked.
+        $this->failPendingIfFinal($reseller);
+
         $attempt = DB::transaction(function () use ($reseller, $amountSen, $totalChargedSen, $channelCode) {
             // Lock this reseller's own wallet ledger_accounts row as a
             // pure mutex (it holds no balance itself) — serializes the
@@ -108,6 +114,26 @@ final class ResellerWalletTopupService
         });
 
         return $this->requestPayment($attempt, $paymentMethod->gateway, $channelProperties);
+    }
+
+    private function failPendingIfFinal(Reseller $reseller): void
+    {
+        $pending = WalletTopupAttempt::query()
+            ->where('reseller_id', $reseller->id)
+            ->where('status', WalletTopupAttemptStatus::Pending->value)
+            ->where('expires_at', '>', now())
+            ->whereNotNull('chip_payment_ref')
+            ->first();
+
+        if ($pending === null) {
+            return;
+        }
+
+        $gatewayName = PaymentMethod::query()->where('channel_code', $pending->channel_code)->value('gateway');
+
+        if ($gatewayName !== null && $this->gateways->make($gatewayName)->getPayment($pending->chip_payment_ref)->isFinalFailure()) {
+            $pending->leavePending(WalletTopupAttemptStatus::Failed);
+        }
     }
 
     /**

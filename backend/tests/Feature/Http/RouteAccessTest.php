@@ -95,6 +95,7 @@ class RouteAccessTest extends TestCase
             'POST api/membership/subscribe',
             'POST api/orders/{orderNumber}/review',
             'POST api/player-check/{slug}',
+            'POST api/track-order/{orderNumber}/check-payment',
             'POST api/vouchers/preview',
             'POST api/webhooks/chip',
             'POST api/webhooks/digiflazz',

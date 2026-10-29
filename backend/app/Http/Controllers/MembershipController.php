@@ -6,6 +6,7 @@ use App\Http\Requests\Membership\SubscribeRequest;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Order;
+use App\Services\Membership\MembershipAttemptClosedException;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\MembershipStatus;
@@ -197,6 +198,9 @@ class MembershipController extends Controller
                 $request->validated('channel_properties') ?? [],
                 $request->validated('idempotency_key'),
             );
+        } catch (MembershipAttemptClosedException $e) {
+            // ADR-110 2026-10-29: same code the order checkout answers, so the storefront starts afresh.
+            return response()->json(['code' => 'checkout_closed', 'message' => $e->getMessage()], 422);
         } catch (MembershipSubscriptionException $e) {
             return response()->json(['message' => $e->getMessage()], 502);
         }
