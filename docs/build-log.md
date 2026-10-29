@@ -2735,3 +2735,23 @@ Correction to this session's earlier count: prod has 23 *paid* FPX orders, not 2
 **Not done / owed.**
 - PR B and PR C; the docs for them (`foundation-security.md` closure wording, ADR-060 domain gate line); production screenshots from a test reseller after the release.
 - `TrustFooter.tsx` hard-codes "LWF Group Sdn. Bhd. (202601038896)": the receipt reads its seller details from the new settings instead, so the two can drift; the founder decides whether to seed the settings from it and point the footer at them.
+
+## 2026-10-29 — ADR-131 PR B built: reseller account closure and the two Register rows (on `feature/reseller-account-closure`, not released)
+
+**Prod check first (read-only, SELECT).** `wallet_topup` ledger rows: 3, all CHIP (`wallet_topup_attempt`), 0 manual; 2 resellers, both active, none deleted. So the new manual-credit Register rows change no existing figure. (The `accounting_periods` table I guessed does not exist; the real one is `accounting_period_closes`.)
+
+**Built.**
+- `ResellerClosureService::close()` (one transaction): locks the wallet `ledger_accounts` row, then the reseller row; refuses while a wallet order is not `closed()` or an Add Balance attempt is `Pending` (whatever its expiry); debits the whole balance as `wallet_closure_refund` (none for a zero balance; the transfer date and bank reference go in `reason`); revokes API keys, portal logins and tokens, unlinks WhatsApp groups, disables the webhook; deactivates and soft-deletes. `POST /resellers/{id}/close` (super_admin + `mfa.stepup`, listed in `AdminMfaStepUpTest`), read-only `GET /resellers/{id}/close-check`; the bare `DELETE` is gone (405).
+- The transfer date must be a day of this Kuala Lumpur month, not in the future, in an open month (a ledger row is always dated now, so this is what keeps the debit and the cash in the same month). A repeat on a closed reseller is a 404 from the route; the service has its own 422 for a race.
+- `OrderSettlementService::settle()` refuses a closed reseller's order (the one seam `refundToWallet`, the voucher-from-order action and the test command all use); `completeTopup` still credits and logs `critical`.
+- Transaction Register: `reseller_wallet_manual_credit` (cash in by bank transfer, the pre-existing gap) and `reseller_wallet_closure` (cash out); `WalletTopupAttempt::reseller()` is `withTrashed()` so a closed reseller keeps its name.
+- Admin: "Close account" replaces "Delete" on the Resellers page, with a modal that runs the preflight, lists blockers, and asks for the transfer date and bank reference; the two new Register types and the closure ledger label; the portal's ledger label.
+
+**Verified.** `php artisan test` 3193 passed. New: 23 closure tests (each blocker, the date rules, a closed accounting month, revocations, the settlement guard, a late payment); Register row tests; `FinancialScenarioTest` closes the scenario reseller and the cash-equation gap is unchanged (it **fails** if the bank movement is left out), and a Failed unrefunded wallet order blocks it until refunded. Real MySQL, two processes: a closure racing an order placement conserves money, and two closures refund once, 3/3 each; the double-closure test **fails 3/3 with both row locks removed**. admin 19/19 and reseller 8/8, lint and `tsc` clean. Browser (local, Playwright): the modal shows the balance, the instructions and the date/reference fields; with a pending Add Balance attempt it lists the blocker and hides the form.
+
+**Gotchas hit.** Two old controller tests exercised the removed `DELETE`; replaced by tests on the close route (which needs a stepped-up admin). `AccountingPeriodClose` has many NOT NULL columns, so the closed-month test fills them all. Pint flagged style on my own edits only (baseline was clean), fixed.
+
+**Not verified in a browser.** The final submit: the test admin has no MFA, so the existing step-up refusal applies; the route is covered by backend tests.
+
+**Owed.** PR C (the affiliate-domain payment gate); the glossary note for "closed" accounts is not needed (no new term); production screenshots from a test reseller after the one release; the founder's recording of the first real closure's bank reference in the build-log if one ever happens.
+

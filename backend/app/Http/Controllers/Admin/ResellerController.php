@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AssignResellerTierRequest;
+use App\Http\Requests\Admin\CloseResellerRequest;
 use App\Http\Requests\Admin\StoreResellerRequest;
 use App\Http\Requests\Admin\UpdateResellerBalanceCapRequest;
 use App\Http\Requests\Admin\StoreResellerUserRequest;
@@ -16,6 +17,7 @@ use App\Services\Affiliate\AffiliateInviteService;
 use App\Services\Auth\AccountOwnerType;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Services\Reseller\ResellerClosureService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -38,6 +40,7 @@ class ResellerController extends Controller
     public function __construct(
         private readonly LedgerService $ledger,
         private readonly AffiliateInviteService $invites,
+        private readonly ResellerClosureService $closures,
     ) {}
 
     /** ADR-131 decision 4: the platform default cap, read once per request, not once per row. */
@@ -142,27 +145,32 @@ class ResellerController extends Controller
         return response()->json($this->rowShape($reseller->fresh(), $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id)));
     }
 
-    /**
-     * Soft-delete only, and only when the wallet balance is exactly
-     * zero — a reseller holding real deposited money can't be deleted
-     * out from under that balance. Mirrors `AffiliateController::
-     * destroy()`'s own zero-balance guard.
-     */
-    public function destroy(Reseller $reseller): JsonResponse
+    /** ADR-131 decision 12: what would stop a closure, and what it would refund, without changing anything. */
+    public function closeCheck(Reseller $reseller): JsonResponse
     {
-        $balance = $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id);
-        if ($balance !== 0) {
-            throw ValidationException::withMessages([
-                'reseller' => ["This reseller has a non-zero wallet balance ({$balance} sen). Refund it before deleting."],
-            ]);
-        }
+        $blockers = $this->closures->blockers($reseller);
 
-        $reseller->update(['is_active' => false]);
-        $reseller->delete();
+        return response()->json([
+            'balance_sen' => $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id),
+            'blockers' => $blockers,
+            'can_close' => $blockers === [],
+        ]);
+    }
 
-        Log::info('Reseller soft-deleted', ['reseller_id' => $reseller->id]);
+    /**
+     * ADR-131 decisions 12-16: the only way to remove a Reseller. The refund was sent by bank
+     * transfer first; this records it and closes the account. Behind step-up.
+     */
+    public function close(CloseResellerRequest $request, Reseller $reseller): JsonResponse
+    {
+        $refunded = $this->closures->close(
+            $reseller,
+            $request->user()->id,
+            $request->validated('transferred_on'),
+            $request->validated('bank_reference'),
+        );
 
-        return response()->json(['message' => 'Reseller deleted.']);
+        return response()->json(['message' => 'Account closed.', 'refunded_sen' => $refunded]);
     }
 
     /**

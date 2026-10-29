@@ -98,3 +98,14 @@ CHIP's conditions are narrow and mostly cheap: a display name, two numbers, a do
 - **Prod migrations:** `platform_settings` (five columns), `resellers.balance_cap_sen`, `affiliate_domains.payments_approved_at/by`. The backfill approves the primary affiliate's rows only; verify with `SHOW INDEX` as the migration rules require.
 - **Item 129 stays on hold.** If it is built, closure and the refund-to-original-method path should share one refund record.
 - **The gate protects payments, not browsing.** If CHIP later asks that an unapproved brand not be reachable at all, the resolver is the single place to change.
+
+### 2026-10-29 addendum — what the closure build settled (PR B)
+
+- **Transfer date (decision 14).** A ledger row is always dated now, so "debit the day the cash left" is enforced by the form instead: `transferred_on` must be a day of the current Kuala Lumpur month and not in the future, and both that day and today must be in an open accounting month. A refund sent on the last day of a month cannot be recorded in the next; close it before midnight (`ponytail:` in `ResellerClosureService`; add a dated ledger write if it ever bites). The transfer date and the bank reference are kept in the debit's `reason`, and the Register row prints it.
+- **A repeat closure (decision 16).** The route no longer resolves a soft-deleted reseller, so a second call is a **404**, not a 422. The service keeps its own 422 ("already closed") for a repeat that races past the route. Either way there is no second debit (proved with two real processes).
+- **The bare `DELETE /resellers/{id}` is removed** (a request now gets 405), so closure is the only way. A new read-only `GET /resellers/{id}/close-check` returns the balance and the blockers for the modal.
+- **What blocks, as built (decision 13).** One query: a wallet order that is not `closed()` (delivered, or already compensated). That covers the four unfinished statuses and Failed or PartiallyDelivered with no refund yet. Any `Pending` Add Balance attempt, whatever its `expires_at`.
+- **The one seam (decision 15).** `OrderSettlementService::settle()` refuses a closed reseller's order; `completeTopup` stays unconditional and logs `critical` if it credits a closed account.
+- **The Register (decision 17)** gained `reseller_wallet_manual_credit` and `reseller_wallet_closure`. Production check before the build (read-only, 2026-10-29): 3 `wallet_topup` rows, all CHIP, 0 manual, so the new manual-credit rows change no existing figure.
+- **Proofs.** `FinancialScenarioTest` closes the scenario reseller: the cash-equation gap is unchanged, and it **fails** if the bank movement is left out. Two real-process tests: a closure racing an order placement conserves money, and two closures refund once; both **fail with the two row locks removed**.
+

@@ -912,7 +912,9 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
             Route::patch('/{reseller}/status', [ResellerController::class, 'updateStatus']);
             Route::put('/{reseller}/balance-cap', [ResellerController::class, 'updateBalanceCap'])->middleware('mfa.stepup');
             Route::post('/{reseller}/tier', [ResellerController::class, 'assignTier']);
-            Route::delete('/{reseller}', [ResellerController::class, 'destroy']);
+            // ADR-131 decision 12 — the only way to remove a Reseller (no bare DELETE).
+            Route::get('/{reseller}/close-check', [ResellerController::class, 'closeCheck']);
+            Route::post('/{reseller}/close', [ResellerController::class, 'close'])->middleware('mfa.stepup');
 
             // PR-G — this account's portal login (ADR-072 decision 5),
             // mirrors AffiliateController's own staff-login actions.

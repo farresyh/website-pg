@@ -55,7 +55,6 @@ import {
   updateReseller,
   updateResellerStatus,
   assignResellerTier,
-  deleteReseller,
   listResellerTiers,
   createResellerTier,
   updateResellerTier,
@@ -66,6 +65,7 @@ import {
 import ResellerFormModal, { type ResellerFormSubmitValues } from "@/components/resellers/ResellerFormModal";
 import ResellerTierFormModal from "@/components/resellers/ResellerTierFormModal";
 import ResellerWalletModal from "@/components/resellers/ResellerWalletModal";
+import ResellerCloseModal from "@/components/resellers/ResellerCloseModal";
 import ResellerApiKeysModal from "@/components/resellers/ResellerApiKeysModal";
 import ResellerWebhookModal from "@/components/resellers/ResellerWebhookModal";
 import ResellerWhatsAppGroupsModal from "@/components/resellers/ResellerWhatsAppGroupsModal";
@@ -91,7 +91,7 @@ export default function ResellersPage() {
   const [tierFormOpen, setTierFormOpen] = useState(false);
   const [editingTier, setEditingTier] = useState<ResellerTier | null>(null);
   const [statusTarget, setStatusTarget] = useState<ResellerRow | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<ResellerRow | null>(null);
+  const [closeTarget, setCloseTarget] = useState<ResellerRow | null>(null);
   const [deleteTierTarget, setDeleteTierTarget] = useState<ResellerTier | null>(null);
   const [tierTarget, setTierTarget] = useState<ResellerRow | null>(null);
   const [tierSelectValue, setTierSelectValue] = useState<string>("");
@@ -265,8 +265,8 @@ export default function ResellersPage() {
                             >
                               {r.is_active ? "Deactivate" : "Activate"}
                             </Button>
-                            <Button size="small" variant="outlined" severity="danger" onClick={() => setDeleteTarget(r)}>
-                              Delete
+                            <Button size="small" variant="outlined" severity="danger" onClick={() => setCloseTarget(r)}>
+                              Close account
                             </Button>
                           </div>
                         </DataTableCell>
@@ -498,41 +498,17 @@ export default function ResellersPage() {
         </DialogPortal>
       </Dialog>
 
-      {/* Delete confirm */}
-      <Dialog open={deleteTarget !== null} onOpenChange={(e) => !e.value && setDeleteTarget(null)}>
-        <DialogPortal>
-          <DialogBackdrop />
-          <DialogPositioner>
-            <DialogPopup>
-              <DialogHeader>
-                <DialogTitle>Delete {deleteTarget?.business_name}?</DialogTitle>
-              </DialogHeader>
-              <DialogContent>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  Soft-delete — only allowed when the wallet balance is exactly zero.
-                </p>
-              </DialogContent>
-              <DialogFooter>
-                <Button variant="outlined" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-                <Button
-                  severity="danger"
-                  disabled={busy === deleteTarget?.id}
-                  onClick={() =>
-                    deleteTarget &&
-                    guard(deleteTarget.id, async () => {
-                      await deleteReseller(deleteTarget.id);
-                      setDeleteTarget(null);
-                      await refresh();
-                    }, "Reseller deleted")
-                  }
-                >
-                  Delete
-                </Button>
-              </DialogFooter>
-            </DialogPopup>
-          </DialogPositioner>
-        </DialogPortal>
-      </Dialog>
+      {closeTarget && (
+        <ResellerCloseModal
+          isOpen={closeTarget !== null}
+          onClose={() => setCloseTarget(null)}
+          reseller={closeTarget}
+          onClosed={() => {
+            setCloseTarget(null);
+            refresh();
+          }}
+        />
+      )}
 
       {/* Delete tier confirm */}
       <Dialog open={deleteTierTarget !== null} onOpenChange={(e) => !e.value && setDeleteTierTarget(null)}>

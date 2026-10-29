@@ -34,6 +34,7 @@ test("a ledger row says where the money came from or went", () => {
   assert.deepEqual(ledgerRow({ type: "wallet_refund", amount: 386, reference_type: "order", reason: null }).badge, { tone: "success", label: "Refund" });
   assert.deepEqual(ledgerRow({ type: "wallet_topup", amount: 50000, reference_type: "wallet_topup_attempt", reason: null }).badge, { tone: "info", label: "Balance added" });
   assert.equal(ledgerRow({ type: "wallet_debit", amount: -621, reference_type: "order", reason: null }).detail, "Paid from Purchase Balance");
+  assert.deepEqual(ledgerRow({ type: "wallet_closure_refund", amount: -150000, reference_type: "reseller", reason: null }).badge, { tone: "neutral", label: "Closed account refund" });
   assert.equal(signedRm(-621), "− RM 6.21");
   assert.equal(signedRm(50000), "+ RM 500.00");
 });

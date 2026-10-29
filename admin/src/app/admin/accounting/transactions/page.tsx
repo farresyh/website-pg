@@ -56,6 +56,8 @@ const typeSeverity: Record<TransactionRegisterRow["type"], "info" | "success" | 
   membership_payment: "info",
   reseller_wallet_topup: "success",
   reseller_wallet_refund: "warn",
+  reseller_wallet_manual_credit: "success",
+  reseller_wallet_closure: "warn",
   withdrawal_payout: "warn",
 };
 
@@ -70,6 +72,8 @@ const typeLabel: Record<TransactionRegisterRow["type"], string> = {
   membership_payment: "Membership payment",
   reseller_wallet_topup: "Reseller wallet top-up",
   reseller_wallet_refund: "Reseller wallet refund",
+  reseller_wallet_manual_credit: "Reseller balance credited by hand",
+  reseller_wallet_closure: "Reseller account closed (refund)",
   withdrawal_payout: "Withdrawal payout",
 };
 

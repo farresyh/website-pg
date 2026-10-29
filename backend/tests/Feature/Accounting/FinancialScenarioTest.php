@@ -380,6 +380,59 @@ class FinancialScenarioTest extends TestCase
         $this->assertSame($earnings, $position['claims']['affiliate_earnings_sen']);
     }
 
+    /**
+     * ADR-131 decisions 12-18: the refund leaves the bank on the day the closure is recorded, so
+     * the wallet claim and the cash fall together and the gap is unchanged; the Register shows the
+     * cash that left; and a Failed wallet order nobody has refunded still blocks the closure.
+     */
+    public function test_closing_a_reseller_account_leaves_the_cash_equation_gap_unchanged(): void
+    {
+        $s = $this->scenario;
+        $position = fn (): array => app(CashPositionService::class)->asOf(2026, 10);
+        $gap = fn (): int => CashPositionService::gapSen($position(), $s->bankAsOf('2026-10-31'));
+
+        $wallet = app(ResellerWalletService::class)->balance($s->reseller);
+        $this->assertGreaterThan(0, $wallet);
+        $gapBefore = $gap();
+
+        $refunded = $s->at('2026-10-08 10:00')->closeResellerAccount();
+
+        $this->assertSame($wallet, $refunded);
+        $this->assertSame(0, app(ResellerWalletService::class)->balance($s->reseller));
+        $this->assertSame(0, $position()['claims']['reseller_wallets_sen']);
+        $this->assertSame($gapBefore, $gap(), 'the claim and the cash both fell by the refund');
+
+        $closureRows = array_values(array_filter(
+            app(TransactionRegisterService::class)->rows(CarbonImmutable::parse('2026-10-01', 'Asia/Kuala_Lumpur'), CarbonImmutable::parse('2026-11-01', 'Asia/Kuala_Lumpur')),
+            fn (array $row) => $row['type'] === 'reseller_wallet_closure',
+        ));
+        $this->assertCount(1, $closureRows);
+        $this->assertSame(-$refunded, $closureRows[0]['net_sen']);
+        $this->assertSame(-$refunded, $s->bankAsOf('2026-10-08') - $s->bankAsOf('2026-10-07'));
+    }
+
+    public function test_a_failed_wallet_order_nobody_has_refunded_blocks_the_closure(): void
+    {
+        $s = $this->scenario;
+        $s->supplierAdapter->failNext();
+        $failed = $s->at('2026-10-07 09:00')->resellerApiOrder($s->packages[0]);
+        $this->assertSame(DeliveryStatus::Failed, $failed->fresh()->delivery_status);
+        $balance = app(ResellerWalletService::class)->balance($s->reseller);
+
+        try {
+            $s->closeResellerAccount();
+            $this->fail('expected the closure to be refused');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertArrayHasKey('reseller', $e->errors());
+        }
+
+        $this->assertSame($balance, app(ResellerWalletService::class)->balance($s->reseller));
+
+        // Once the admin refunds it to the balance, the closure goes through.
+        $s->compensate($failed);
+        $this->assertGreaterThan(0, $s->closeResellerAccount());
+    }
+
     /** ADR-127 decision 1: revenue, cost and affiliate commission belong to the month the order was delivered. */
     public function test_an_order_paid_in_one_month_and_delivered_in_the_next_is_october_revenue(): void
     {
