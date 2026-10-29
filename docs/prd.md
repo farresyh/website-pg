@@ -969,9 +969,14 @@ moved to group D). Re-verify before building.
   and a `FinancialScenario` step, and a `payments_approved_at` gate on affiliate
   domains. Three PRs (a rename, limits, receipt; b closure and Register; c
   domain gate), **one release**, one reply to CHIP after it, with production
-  screenshots from a test reseller. **PR A (#596) merged to `staging`, not released; PR B (account
-  closure, the two Register rows, the scenario proofs) built 2026-10-29 on
-  `feature/reseller-account-closure`** (build-log 2026-10-29); PR C is next. Browser-checked locally (the step-up save path
+  screenshots from a test reseller. **PR A (#596) and PR B (#597: account closure, the two
+  Register rows, the scenario proofs) merged to `staging`, not released; PR C
+  (the domain payment gate) built 2026-10-29 on
+  `feature/affiliate-domain-payment-gate`** (build-log 2026-10-29). Before the
+  one release: re-check prod's `affiliate_domains` read-only (the migration
+  approves only the primary affiliate's rows); then approve the first real
+  domain (`ohahastore.com`, not in prod yet) only after CHIP has approved it in
+  writing. Browser-checked locally (the step-up save path
   with an MFA admin still to re-check).
   Outside the repo (public): the onboarding procedure and the written
   confirmations. Extends item 24 and 104's naming; item 129 stays on hold.
