@@ -5,6 +5,7 @@ namespace Tests\Feature\Http\Controllers\ResellerPortal;
 use App\Models\AffiliateUser;
 use App\Models\PaymentMethod;
 use App\Models\Reseller;
+use App\Models\WalletTopupAttempt;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Payment\PaymentGateway;
@@ -137,5 +138,42 @@ class WalletControllerTest extends TestCase
         $this->withToken($token)->postJson('/api/reseller-portal/wallet/topup', [
             'amount_sen' => 5000, 'channel_code' => 'fpx',
         ])->assertUnprocessable();
+    }
+
+    // --- ADR-130: the bank picked on the portal ---
+
+    public function test_topup_with_a_bank_goes_straight_to_it_and_stores_the_plain_url(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $token = $this->tokenFor($this->reseller());
+
+        $response = $this->withToken($token)->postJson('/api/reseller-portal/wallet/topup', [
+            'amount_sen' => 5000, 'channel_code' => 'fpx', 'fpx_bank_code' => 'MB2U0227',
+        ]);
+
+        $stored = WalletTopupAttempt::query()->firstOrFail()->checkout_url;
+        $response->assertCreated();
+        $this->assertSame($stored.'?preferred=fpx&fpx_bank_code=MB2U0227', $response->json('checkout_url'));
+        $this->assertStringNotContainsString('fpx_bank_code', $stored);
+    }
+
+    public function test_topup_refuses_an_unlisted_bank_and_a_bank_on_another_channel(): void
+    {
+        $this->activeFpx();
+        PaymentMethod::query()->create([
+            'channel_code' => 'dnqr', 'label' => 'DuitNow QR', 'category' => 'duitnow_qr', 'gateway' => 'chip',
+            'is_active' => true, 'percentage_rate' => 0.0, 'flat_fee_sen' => 100,
+        ]);
+        $this->bindGateway();
+        $token = $this->tokenFor($this->reseller());
+
+        $this->withToken($token)->postJson('/api/reseller-portal/wallet/topup', [
+            'amount_sen' => 5000, 'channel_code' => 'fpx', 'fpx_bank_code' => 'XXX9999',
+        ])->assertUnprocessable()->assertJsonValidationErrors('fpx_bank_code');
+        $this->withToken($token)->postJson('/api/reseller-portal/wallet/topup', [
+            'amount_sen' => 5000, 'channel_code' => 'dnqr', 'fpx_bank_code' => 'MB2U0227',
+        ])->assertUnprocessable()->assertJsonValidationErrors('fpx_bank_code');
+        $this->assertDatabaseCount('wallet_topup_attempts', 0);
     }
 }

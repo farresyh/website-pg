@@ -6,10 +6,12 @@ use App\Http\Requests\Membership\SubscribeRequest;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Order;
+use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\MembershipStatus;
 use App\Services\Membership\MembershipSubscriptionException;
 use App\Services\Membership\MembershipSubscriptionService;
+use App\Services\Payment\Chip\FpxBankRedirect;
 use App\Services\Pricing\MembershipPricingService;
 use App\Support\StorefrontBrand;
 use Illuminate\Http\JsonResponse;
@@ -201,7 +203,10 @@ class MembershipController extends Controller
 
         return response()->json([
             'subscription_number' => $attempt->subscription_number,
-            'checkout_url' => $attempt->checkout_url,
+            // ADR-130: the bank applies to this response only; the stored URL stays plain.
+            'checkout_url' => $attempt->status === MembershipCheckoutAttemptStatus::Pending
+                ? FpxBankRedirect::applyToUrl($attempt->checkout_url, $request->validated('fpx_bank_code'))
+                : $attempt->checkout_url,
             'fee_sen' => $attempt->fee_sen,
             'total_charged_sen' => $attempt->total_charged_sen,
         ], 201);

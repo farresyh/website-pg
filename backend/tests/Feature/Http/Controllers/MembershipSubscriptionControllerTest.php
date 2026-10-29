@@ -433,4 +433,50 @@ class MembershipSubscriptionControllerTest extends TestCase
             $this->assertSame('subscribe', $plan['relation']);
         }
     }
+
+    // --- ADR-130: the bank picked on our page ---
+
+    private function subscribeWithBank(string $token, ?string $bank, string $key = 'idem-bank', string $channel = 'fpx')
+    {
+        return $this->postJson('/api/membership/subscribe', array_filter([
+            'membership_plan_id' => $this->tier('Tier 2')->id,
+            'payment_method' => $channel,
+            'idempotency_key' => $key,
+            'fpx_bank_code' => $bank,
+        ]), ['Authorization' => "Bearer {$token}"]);
+    }
+
+    public function test_subscribe_with_a_bank_goes_straight_to_it_and_stores_the_plain_url(): void
+    {
+        $response = $this->subscribeWithBank($this->tokenFor('member@example.com'), 'MB2U0227');
+
+        $attempt = MembershipCheckoutAttempt::query()->firstOrFail();
+        $response->assertCreated();
+        $this->assertSame($attempt->checkout_url.'?preferred=fpx&fpx_bank_code=MB2U0227', $response->json('checkout_url'));
+        $this->assertStringNotContainsString('fpx_bank_code', $attempt->checkout_url);
+    }
+
+    public function test_a_replayed_subscribe_with_another_bank_gets_that_banks_url(): void
+    {
+        $token = $this->tokenFor('member@example.com');
+        $this->subscribeWithBank($token, 'MB2U0227')->assertCreated();
+
+        $replay = $this->subscribeWithBank($token, 'BCBB0235');
+
+        $this->assertStringEndsWith('?preferred=fpx&fpx_bank_code=BCBB0235', $replay->json('checkout_url'));
+        $this->assertSame(1, MembershipCheckoutAttempt::query()->count());
+    }
+
+    public function test_subscribe_refuses_an_unlisted_bank_and_a_bank_on_another_channel(): void
+    {
+        $token = $this->tokenFor('member@example.com');
+        PaymentMethod::query()->create([
+            'channel_code' => 'dnqr', 'label' => 'DuitNow QR', 'category' => 'duitnow_qr', 'gateway' => 'chip',
+            'is_active' => true, 'percentage_rate' => 0.0, 'flat_fee_sen' => 100,
+        ]);
+
+        $this->subscribeWithBank($token, 'XXX9999')->assertUnprocessable()->assertJsonValidationErrors('fpx_bank_code');
+        $this->subscribeWithBank($token, 'MB2U0227', 'idem-dnqr', 'dnqr')->assertUnprocessable()->assertJsonValidationErrors('fpx_bank_code');
+        $this->assertDatabaseCount('membership_checkout_attempts', 0);
+    }
 }

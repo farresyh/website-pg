@@ -57,4 +57,19 @@ class FpxBankRedirectTest extends TestCase
         $this->assertSame($flat, FpxBankRedirect::apply($flat, 'MB2U0227'));
         $this->assertSame([], FpxBankRedirect::apply([], 'MB2U0227'));
     }
+
+    public function test_a_single_url_gets_the_bank_and_keeps_an_existing_query(): void
+    {
+        $this->assertSame(self::URL.'?preferred=fpx&fpx_bank_code=BCBB0235', FpxBankRedirect::applyToUrl(self::URL, 'BCBB0235'));
+        $this->assertSame(self::URL.'?x=1&preferred=fpx&fpx_bank_code=BCBB0235', FpxBankRedirect::applyToUrl(self::URL.'?x=1', 'BCBB0235'));
+        $this->assertNull(FpxBankRedirect::applyToUrl(null, 'BCBB0235'));
+        $this->assertSame(self::URL, FpxBankRedirect::applyToUrl(self::URL, 'XXX9999'));
+        $this->assertSame('https://gate.chip-in.asia/p/abc/invoice/', FpxBankRedirect::applyToUrl('https://gate.chip-in.asia/p/abc/invoice/', 'BCBB0235'));
+    }
+
+    public function test_the_rule_names_the_channel_field_it_depends_on(): void
+    {
+        $this->assertContains('prohibited_unless:payment_method,fpx', FpxBankRedirect::rules('payment_method'));
+        $this->assertContains('prohibited_unless:channel_code,fpx', FpxBankRedirect::rules());
+    }
 }

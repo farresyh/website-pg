@@ -95,7 +95,7 @@ class CreateCheckoutRequest extends FormRequest
             ],
             // ADR-130: the bank picked on our page; only FPX has banks, and a
             // code off the list is refused (CHIP would accept it silently).
-            'fpx_bank_code' => ['nullable', 'string', 'prohibited_unless:channel_code,fpx', Rule::in(FpxBankRedirect::codes())],
+            'fpx_bank_code' => FpxBankRedirect::rules(),
             'channel_properties' => [
                 'nullable',
                 'array',
