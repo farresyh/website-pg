@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Checkout;
 
 use App\Http\Requests\Joki\JokiSelectionRules;
+use App\Services\Payment\Chip\FpxBankRedirect;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -92,6 +93,9 @@ class CreateCheckoutRequest extends FormRequest
                 'max:64',
                 Rule::exists('payment_methods', 'channel_code')->where('is_active', true),
             ],
+            // ADR-130: the bank picked on our page; only FPX has banks, and a
+            // code off the list is refused (CHIP would accept it silently).
+            'fpx_bank_code' => ['nullable', 'string', 'prohibited_unless:channel_code,fpx', Rule::in(FpxBankRedirect::codes())],
             'channel_properties' => [
                 'nullable',
                 'array',
