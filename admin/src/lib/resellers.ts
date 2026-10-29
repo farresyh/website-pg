@@ -25,6 +25,9 @@ export interface ResellerRow {
   notes: string | null;
   deleted_at: string | null;
   wallet_balance_sen: number;
+  /** ADR-131 decision 4: this reseller's own cap, or null to use the platform default. */
+  balance_cap_sen: number | null;
+  effective_balance_cap_sen: number;
 }
 
 export interface ResellerTier {
@@ -73,6 +76,11 @@ export function assignResellerTier(id: number, resellerTierId: number) {
     method: "POST",
     body: { reseller_tier_id: resellerTierId },
   });
+}
+
+/** ADR-131 decision 4 — behind MFA step-up; api-client shows the prompt. `null` = platform default. */
+export function setResellerBalanceCap(id: number, balanceCapSen: number | null) {
+  return apiFetch<ResellerRow>(`/api/resellers/${id}/balance-cap`, { method: "PUT", body: { balance_cap_sen: balanceCapSen } });
 }
 
 export function deleteReseller(id: number) {

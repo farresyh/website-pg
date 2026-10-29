@@ -78,6 +78,19 @@ export async function apiFetch<T>(
   return payload as T;
 }
 
+/** A binary GET (a receipt PDF) with the bearer token; errors surface as `ApiError` like `apiFetch`. */
+export async function apiBlob(path: string, { token }: { token?: string } = {}): Promise<Blob> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: { Accept: "application/pdf", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  if (!response.ok) {
+    handleUnauthenticated(response.status);
+    const payload = await response.json().catch(() => null);
+    throw new ApiError(response.status, payload?.code, payload?.message ?? `Request to ${path} failed (${response.status})`, payload?.errors);
+  }
+  return response.blob();
+}
+
 /**
  * Multipart upload variant of apiFetch — a `FormData` body must never
  * be JSON.stringify'd or sent with an explicit `Content-Type` (the

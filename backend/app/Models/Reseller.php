@@ -34,10 +34,12 @@ class Reseller extends Model
         'reseller_tier_id',
         'is_active',
         'notes',
+        'balance_cap_sen',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'balance_cap_sen' => 'integer',
     ];
 
     public function tier(): BelongsTo

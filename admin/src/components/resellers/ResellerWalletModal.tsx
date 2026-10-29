@@ -30,6 +30,7 @@ import { notify } from "@/components/ui/toast";
 import {
   getResellerWallet,
   creditResellerWallet,
+  setResellerBalanceCap,
   downloadWalletTopupReceipt,
   type ResellerRow,
   type ResellerWallet,
@@ -66,6 +67,10 @@ function Content({ reseller, onCredited }: Omit<Props, "isOpen" | "onClose">) {
   const [submitting, setSubmitting] = useState(false);
   const [downloading, setDownloading] = useState<number | null>(null);
   const [page, setPage] = useState(1);
+  // ADR-131 decision 4: this reseller's own balance cap (null = platform default).
+  const [cap, setCap] = useState({ own: reseller.balance_cap_sen, effective: reseller.effective_balance_cap_sen });
+  const [capRm, setCapRm] = useState(reseller.balance_cap_sen === null ? "" : String(reseller.balance_cap_sen / 100));
+  const [savingCap, setSavingCap] = useState(false);
   // Reused across resubmits of one credit (double-click, retry after a
   // timeout); rotated only after a success, since the form stays open.
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
@@ -109,6 +114,31 @@ function Content({ reseller, onCredited }: Omit<Props, "isOpen" | "onClose">) {
     }
   }
 
+  async function saveCap(balanceCapSen: number | null) {
+    setSavingCap(true);
+    try {
+      const row = await setResellerBalanceCap(reseller.id, balanceCapSen);
+      setCap({ own: row.balance_cap_sen, effective: row.effective_balance_cap_sen });
+      setCapRm(row.balance_cap_sen === null ? "" : String(row.balance_cap_sen / 100));
+      notify.success("Balance cap saved", row.balance_cap_sen === null ? "Using the platform default" : formatRm(row.balance_cap_sen));
+      onCredited();
+    } catch (err) {
+      notify.stickyError("Could not save the balance cap", err instanceof ApiError ? err.message : "Something went wrong.");
+    } finally {
+      setSavingCap(false);
+    }
+  }
+
+  function handleSaveCap() {
+    const sen = Math.round(parseFloat(capRm) * 100);
+    if (!Number.isFinite(sen) || sen < 1) {
+      setError("Enter a valid balance cap, or use the platform default.");
+      return;
+    }
+    setError(null);
+    return saveCap(sen);
+  }
+
   async function handleDownload(entry: WalletLedgerEntry) {
     if (!entry.reference_id) return;
     setDownloading(entry.id);
@@ -135,6 +165,26 @@ function Content({ reseller, onCredited }: Omit<Props, "isOpen" | "onClose">) {
       {error && (
         <p className="rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>
       )}
+
+      <div className="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+        <p className="text-theme-xs font-medium text-gray-600 dark:text-gray-400">
+          Balance cap — a top-up or manual credit that would take the balance above it is blocked. Currently{" "}
+          <span className="font-semibold text-gray-800 dark:text-white/90">{formatRm(cap.effective)}</span>
+          {cap.own === null ? " (platform default)." : " (set for this reseller)."}
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-40 flex-1">
+            <Label htmlFor="wallet_cap">Cap for this reseller (RM)</Label>
+            <Input id="wallet_cap" inputMode="decimal" value={capRm} onChange={(e) => setCapRm(e.target.value)} placeholder="Platform default" />
+          </div>
+          <Button type="button" size="small" disabled={savingCap} onClick={handleSaveCap}>
+            {savingCap ? "Saving…" : "Set Cap"}
+          </Button>
+          <Button type="button" size="small" variant="outlined" disabled={savingCap || cap.own === null} onClick={() => saveCap(null)}>
+            Use platform default
+          </Button>
+        </div>
+      </div>
 
       <form onSubmit={handleCredit} className="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-gray-800">
         <p className="text-theme-xs font-medium text-gray-600 dark:text-gray-400">

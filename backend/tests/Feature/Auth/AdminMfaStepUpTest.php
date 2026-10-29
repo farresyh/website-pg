@@ -47,7 +47,9 @@ class AdminMfaStepUpTest extends TestCase
             'PUT api/middleware/payment-gateways/{gatewayKey} mfa.stepup',
             'PUT api/middleware/suppliers/{supplier} mfa.stepup:api_config',
             'PUT api/orders/{order}/credentials mfa.stepup',
+            'PUT api/resellers/{reseller}/balance-cap mfa.stepup',
             'PUT api/settings/customer-login-policy mfa.stepup',
+            'PUT api/settings/purchase-balance-policy mfa.stepup',
         ], $guarded);
     }
 

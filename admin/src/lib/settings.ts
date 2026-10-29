@@ -42,6 +42,13 @@ export interface PlatformSettings {
   credential_max_days: number;
   credential_reveal_limit_per_hour: number;
   credential_consent_text: string | null;
+  // ADR-131 decision 4 — Purchase Balance limits (sen).
+  topup_max_sen: number;
+  balance_cap_default_sen: number;
+  // ADR-131 decision 11 — seller details printed on top-up receipts.
+  company_legal_name: string | null;
+  company_reg_no: string | null;
+  company_address: string | null;
 }
 
 export interface SettingsIndexResponse {
@@ -66,7 +73,10 @@ export type UpdatePlatformValues = Pick<
   | "maintenance_message"
   | "vip_spend_threshold_sen"
   | "whatsapp_notifications_enabled"
->;
+> &
+  Partial<Pick<PlatformSettings, "company_legal_name" | "company_reg_no" | "company_address">>;
+
+export type UpdatePurchaseBalancePolicyValues = Pick<PlatformSettings, "topup_max_sen" | "balance_cap_default_sen">;
 
 export type UpdateCustomerLoginPolicyValues = Pick<
   PlatformSettings,
@@ -115,6 +125,11 @@ export function updatePlatformSettings(values: UpdatePlatformValues) {
 /** ADR-124 decision 10 — behind MFA step-up; api-client shows the prompt. */
 export function updateCustomerLoginPolicy(values: UpdateCustomerLoginPolicyValues) {
   return apiFetch<PlatformSettings>("/api/settings/customer-login-policy", { method: "PUT", body: values });
+}
+
+/** ADR-131 decision 4 — behind MFA step-up; api-client shows the prompt. */
+export function updatePurchaseBalancePolicy(values: UpdatePurchaseBalancePolicyValues) {
+  return apiFetch<PlatformSettings>("/api/settings/purchase-balance-policy", { method: "PUT", body: values });
 }
 
 export function applyBulkMarkup(markupPercent: number) {

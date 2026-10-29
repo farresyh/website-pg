@@ -12,6 +12,7 @@ use App\Http\Requests\Settings\UpdateBrandingRequest;
 use App\Http\Requests\Settings\UpdateCustomerLoginPolicyRequest;
 use App\Http\Requests\Settings\UpdateFooterSettingsRequest;
 use App\Http\Requests\Settings\UpdatePlatformSettingsRequest;
+use App\Http\Requests\Settings\UpdatePurchaseBalancePolicyRequest;
 use App\Models\Affiliate;
 use App\Models\AffiliateBranding;
 use App\Models\AffiliateFooterSettings;
@@ -149,6 +150,15 @@ class SettingsController extends Controller
     }
 
     public function updatePlatform(UpdatePlatformSettingsRequest $request): JsonResponse
+    {
+        $settings = PlatformSettings::current();
+        $settings->update($request->validated());
+
+        return response()->json($settings);
+    }
+
+    /** ADR-131 decision 4 — the per-top-up maximum and the default balance cap, behind step-up. */
+    public function updatePurchaseBalancePolicy(UpdatePurchaseBalancePolicyRequest $request): JsonResponse
     {
         $settings = PlatformSettings::current();
         $settings->update($request->validated());

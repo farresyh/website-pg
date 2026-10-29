@@ -17,7 +17,7 @@ test("status words follow the design system", () => {
 });
 
 test("a failed order says where the money went", () => {
-  assert.equal(compensationNote({ wallet_refunded: true }), "Refunded to wallet");
+  assert.equal(compensationNote({ wallet_refunded: true }), "Refunded to Purchase Balance");
   assert.equal(compensationNote({ has_compensation_voucher: true, has_voucher_restored: true }), "Customer's voucher restored");
   assert.equal(compensationNote({}), null);
 });
@@ -32,6 +32,8 @@ test("a ledger row says where the money came from or went", () => {
   assert.equal(ledgerRow({ type: "wallet_topup", amount: 100000, reference_type: "wallet_topup_receipt", reason: null }).detail, "Credited by PekanGame");
   assert.equal(ledgerRow({ type: "adjustment", amount: -100, reference_type: null, reason: "Duplicate credit" }).detail, "Duplicate credit");
   assert.deepEqual(ledgerRow({ type: "wallet_refund", amount: 386, reference_type: "order", reason: null }).badge, { tone: "success", label: "Refund" });
+  assert.deepEqual(ledgerRow({ type: "wallet_topup", amount: 50000, reference_type: "wallet_topup_attempt", reason: null }).badge, { tone: "info", label: "Balance added" });
+  assert.equal(ledgerRow({ type: "wallet_debit", amount: -621, reference_type: "order", reason: null }).detail, "Paid from Purchase Balance");
   assert.equal(signedRm(-621), "− RM 6.21");
   assert.equal(signedRm(50000), "+ RM 500.00");
 });

@@ -31,6 +31,11 @@ class PlatformSettings extends Model
         'credential_max_days',
         'credential_reveal_limit_per_hour',
         'credential_consent_text',
+        'topup_max_sen',
+        'balance_cap_default_sen',
+        'company_legal_name',
+        'company_reg_no',
+        'company_address',
     ];
 
     protected $casts = [
@@ -42,6 +47,8 @@ class PlatformSettings extends Model
         'credential_unpaid_hours' => 'integer',
         'credential_max_days' => 'integer',
         'credential_reveal_limit_per_hour' => 'integer',
+        'topup_max_sen' => 'integer',
+        'balance_cap_default_sen' => 'integer',
     ];
 
     public static function current(): self
@@ -62,6 +69,8 @@ class PlatformSettings extends Model
             'credential_max_days' => 14,
             'credential_reveal_limit_per_hour' => 20,
             'credential_consent_text' => self::DEFAULT_CREDENTIAL_CONSENT_TEXT,
+            'topup_max_sen' => 1_000_000,
+            'balance_cap_default_sen' => 10_000_000,
         ]);
     }
 }

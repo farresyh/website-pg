@@ -4,7 +4,7 @@ description: How idempotency_key prevents duplicate orders, and how to retry saf
 ---
 
 `POST /v1/orders` requires an `idempotency_key`. It is the mechanism that stops
-a network retry from charging your wallet twice.
+a network retry from charging your Purchase Balance twice.
 
 ## The rule
 
@@ -25,8 +25,8 @@ The key must be 8–100 characters. A UUID v4 is the recommended form.
 
 | You send | You get back |
 | --- | --- |
-| A **new** key | **HTTP 201** + the newly-created order. Wallet charged once. |
-| The **same** key **and the same** `product_code` / `player_id` / `server_id` | **HTTP 200** + the **original** order, plus a header `Idempotent-Replayed: true`. Wallet **not** charged again. |
+| A **new** key | **HTTP 201** + the newly-created order. Purchase Balance charged once. |
+| The **same** key **and the same** `product_code` / `player_id` / `server_id` | **HTTP 200** + the **original** order, plus a header `Idempotent-Replayed: true`. Purchase Balance **not** charged again. |
 | The **same** key but a **different** payload | **HTTP 409 `IDEMPOTENCY_KEY_CONFLICT`**. Nothing happens. Use a fresh key. |
 
 The 200-with-`Idempotent-Replayed` response is how a safe retry looks: you get

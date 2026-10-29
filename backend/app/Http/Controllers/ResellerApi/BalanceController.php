@@ -14,8 +14,8 @@ class BalanceController extends Controller
     public function __construct(private readonly ResellerWalletService $wallet) {}
 
     #[Endpoint(
-        title: 'Get wallet balance',
-        description: 'The calling reseller\'s current prepaid wallet balance, in sen.',
+        title: 'Get Purchase Balance',
+        description: 'The calling reseller\'s current Purchase Balance (prepaid credit), in sen.',
     )]
     #[Response(status: 200, description: 'The current balance.', examples: [['balance_sen' => 1_250_00]])]
     #[Response(status: 401, description: '`MISSING_API_KEY` or `INVALID_API_KEY`.', type: self::ERROR_SHAPE, examples: [self::ERROR_401])]

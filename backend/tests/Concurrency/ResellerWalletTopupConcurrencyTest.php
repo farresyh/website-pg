@@ -77,4 +77,52 @@ class ResellerWalletTopupConcurrencyTest extends TestCase
         $this->assertCount(1, $failures, 'Expected exactly one failure, got: '.json_encode($outcomes));
         $this->assertSame(1, WalletTopupAttempt::query()->where('reseller_id', $reseller->id)->count());
     }
+
+    /**
+     * ADR-131 decision 5: `credit()` takes no lock, so the limits check takes the reseller's mutex
+     * itself. Two credits that each fit under the cap but not together must not both pass.
+     * (A pending CHIP attempt is deliberately not counted, decision 6, so a top-up start racing a
+     * manual credit may legitimately let both through; only two credits are asserted here.)
+     *
+     * @return array{0: list<string>, 1: Reseller}
+     */
+    private function raceTwoManualCredits(): array
+    {
+        PaymentMethod::query()->create([
+            'channel_code' => 'fpx', 'label' => 'FPX', 'category' => 'fpx', 'gateway' => 'chip',
+            'is_active' => true, 'percentage_rate' => 0.0, 'flat_fee_sen' => 100,
+        ]);
+        $admin = \App\Models\AdminUser::factory()->superAdmin()->create();
+        $reseller = Reseller::query()->create(['business_name' => 'Cap Race', 'is_active' => true, 'balance_cap_sen' => 300_000]);
+        app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
+
+        $files = [tempnam(sys_get_temp_dir(), 'cap_race_'), tempnam(sys_get_temp_dir(), 'cap_race_')];
+        $env = [
+            'APP_ENV' => 'testing', 'DB_CONNECTION' => 'mysql', 'DB_HOST' => '127.0.0.1', 'DB_PORT' => '3306',
+            'DB_DATABASE' => 'kerox', 'DB_USERNAME' => 'kerox', 'DB_PASSWORD' => 'kerox', 'QUEUE_CONNECTION' => 'sync',
+        ];
+        $base = fn (string $file, array $extra) => array_merge(
+            [PHP_BINARY, 'artisan', 'app:reseller-wallet-topup-test-initiate', (string) $reseller->id, $file, '--amount=200000'],
+            $extra,
+        );
+
+        $a = Process::path(base_path())->env($env)->start($base($files[0], ['--manual-admin='.$admin->id]));
+        $b = Process::path(base_path())->env($env)->start($base($files[1], ['--manual-admin='.$admin->id]));
+        $a->wait();
+        $b->wait();
+
+        $outcomes = array_map('file_get_contents', $files);
+        array_map('unlink', $files);
+
+        return [$outcomes, $reseller];
+    }
+
+    public function test_two_simultaneous_manual_credits_cannot_both_pass_the_balance_cap(): void
+    {
+        [$outcomes, $reseller] = $this->raceTwoManualCredits();
+
+        $this->assertCount(1, array_filter($outcomes, fn ($r) => str_starts_with($r, 'success:')), json_encode($outcomes));
+        $this->assertCount(1, array_filter($outcomes, fn ($r) => str_starts_with($r, 'failed:')), json_encode($outcomes));
+        $this->assertSame(200_000, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
+    }
 }

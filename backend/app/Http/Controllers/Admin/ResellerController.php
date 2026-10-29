@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AssignResellerTierRequest;
 use App\Http\Requests\Admin\StoreResellerRequest;
+use App\Http\Requests\Admin\UpdateResellerBalanceCapRequest;
 use App\Http\Requests\Admin\StoreResellerUserRequest;
 use App\Http\Requests\Admin\UpdateResellerRequest;
 use App\Http\Requests\Admin\UpdateResellerStatusRequest;
 use App\Models\AffiliateUser;
+use App\Models\PlatformSettings;
 use App\Models\Reseller;
 use App\Services\Affiliate\AffiliateInviteService;
 use App\Services\Auth\AccountOwnerType;
@@ -37,6 +39,9 @@ class ResellerController extends Controller
         private readonly LedgerService $ledger,
         private readonly AffiliateInviteService $invites,
     ) {}
+
+    /** ADR-131 decision 4: the platform default cap, read once per request, not once per row. */
+    private ?int $defaultBalanceCapSen = null;
 
     public function index(): JsonResponse
     {
@@ -207,6 +212,20 @@ class ResellerController extends Controller
         return response()->json(['message' => 'Invite re-sent.']);
     }
 
+    /** ADR-131 decision 4: set (or clear, with null) one reseller's balance-cap override. Behind step-up. */
+    public function updateBalanceCap(UpdateResellerBalanceCapRequest $request, Reseller $reseller): JsonResponse
+    {
+        $reseller->update(['balance_cap_sen' => $request->validated('balance_cap_sen')]);
+
+        Log::info('Reseller balance cap changed', [
+            'reseller_id' => $reseller->id,
+            'balance_cap_sen' => $reseller->balance_cap_sen,
+            'admin_user_id' => $request->user()->id,
+        ]);
+
+        return response()->json($this->rowShape($reseller->fresh(), $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id)));
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -225,6 +244,9 @@ class ResellerController extends Controller
             'notes' => $reseller->notes,
             'deleted_at' => $reseller->deleted_at,
             'wallet_balance_sen' => $walletBalanceSen,
+            'balance_cap_sen' => $reseller->balance_cap_sen,
+            'effective_balance_cap_sen' => $reseller->balance_cap_sen
+                ?? ($this->defaultBalanceCapSen ??= (int) PlatformSettings::current()->balance_cap_default_sen),
             'users' => $reseller->relationLoaded('users')
                 ? $reseller->users->map(fn (AffiliateUser $u) => [
                     'id' => $u->id,

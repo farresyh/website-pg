@@ -2707,3 +2707,31 @@ Correction to this session's earlier count: prod has 23 *paid* FPX orders, not 2
 
 **Owed, in order:** release #590–#592; then item 138 (a completed RM1 FPX payment through a grid bank, a completed DuitNow QR payment, Test on `fpx` and `dnqr`) and item 140 (a real cancel at a bank).
 
+## 2026-10-29 — ADR-131 PR A built: Purchase Balance name, limits, receipts (on `feature/purchase-balance-limits-receipt`, not released)
+
+**Why.** CHIP's activation conditions for LWF Group's merchant account (ADR-131; PRs #594 design, #595 test fix). PR A covers the rename, the limits and the top-up receipt; PR B (account closure and the two Transaction Register rows) and PR C (the affiliate-domain payment gate) are next, and all three ship in one release before CHIP is answered.
+
+**Built.**
+- Migration `2026_10_29_150000_add_purchase_balance_limits`: `platform_settings.topup_max_sen` (RM10,000), `balance_cap_default_sen` (RM100,000), `company_legal_name`/`company_reg_no`/`company_address`; `resellers.balance_cap_sen` (null = the default).
+- `ResellerWalletService::limits()` and `assertWithinLimits()`: one check for the CHIP top-up start (portal and bot) and the admin manual credit. It takes the reseller's `ledger_accounts` mutex first, because `LedgerService::credit()` takes no lock. `completeTopup` and the order `wallet_refund` never call it. Two exception subclasses of `InvalidWalletTopupAmountException` (over the maximum; over the cap) so the portal answers 422 with the numbers and the bot answers in Malay instead of "minimum RM10".
+- `PUT /settings/purchase-balance-policy` and `PUT /resellers/{id}/balance-cap`, both `mfa.stepup` (`AdminMfaStepUpTest` list updated); the generic reseller update cannot touch the cap (a missing field is a 422, not a reset). Seller details through the existing platform settings (`sometimes`).
+- Payment Receipt: `ResellerWalletReceiptService` + `GET /reseller-portal/wallet/receipts/{number}` (dompdf, no new dependency), `PB-<attempt reference>` / `PB-M-<ledger entry id>`. The fee printed is `total_charged_sen - amount_sen`; CHIP's own `gateway_fee_sen` is never shown. Another reseller's number is a 404.
+- Rename of every Reseller-visible string: portal (route `/wallet` -> `/balance`, permanent redirect, so in-flight CHIP return URLs still land), Reseller API messages and descriptions (`openapi.json` regenerated), docs-site prose, bot replies, the description sent to CHIP. Kept on purpose: admin panel, code names, ledger types, JSON field names, error code `INSUFFICIENT_BALANCE`, the bot commands, the e-Wallet payment icon.
+- Admin: a "Purchase Balance" settings tab (limits with step-up, company details) and a "Balance cap" card in the reseller wallet modal.
+
+**Verified.** `php artisan test` 3164 passed; reseller 8/8, admin 19/19, lint and `astro check` clean; the `tsc` error left in `reseller/` is only the stale, gitignored `.next/types` and clears on the next dev or build. Concurrency (real MySQL): `test_two_simultaneous_manual_credits_cannot_both_pass_the_balance_cap` passes 3/3 with the lock and **fails 3/3 with the lock removed**. Dev DB migrated with plain `php artisan migrate`.
+
+**Gotchas hit.**
+- `backend-concurrency` failed on docs-only #594: the wallet top-up test helper's fake gateway threw from `getPayment()`, which #591 made `initiate()` call. A timing flake, fixed in #595 (proved by forcing the order).
+- A manual-credit-vs-top-up-start race test was dropped: a pending CHIP attempt is deliberately not counted against the cap (ADR-131 decision 6), so both may legitimately pass. Only the two-manual-credits race is asserted.
+- Existing admin wallet tests created a reseller with no ledger account; the limits check locks it, as `initiate()` always did. Real resellers get it at creation, so the test fixture was fixed, not the code.
+
+**Browser check (local, Playwright against the founder's `./scripts/dev.sh`).** Reseller portal `/balance` and dashboard: no "wallet" or "top-up" word left on either page; limits line, terms card, an amount of RM20,000 shows "The maximum per payment is RM 10,000.00." with the submit disabled; the Receipt button downloads a real PDF (200, `PB-WT-LOCALTEST01.pdf`); the longer "Purchase Balance" nav label fits the phone bottom bar at 390px. Admin: the new Purchase Balance settings tab renders; Company details save (`PUT /settings/platform` 200); the reseller wallet modal shows the Balance cap card ("Currently RM 100000.00 (platform default)", using the modal's own `toFixed` format like its balance). The receipt layout was checked by rendering the same Blade view to HTML (no poppler to render the PDF). Found and fixed here: step 2 of "How adding balance works" still said "No receipt to send", and the terms card touched the card above it.
+
+**Redirect verified after a restart.** The first check failed because the old dev servers (a leftover run that held ports 3000-3002, 8000, 8080) had not loaded `next.config.ts`; after stopping them and starting `./scripts/dev.sh` fresh, `GET /wallet?topup=success` answers `308` with `location: /balance?topup=success`, query kept (in-flight CHIP returns still land).
+
+**Not verified in a browser.** The step-up save path: the test admin has no MFA, so "Save Limits" got the existing 403 "require MFA on your account" toast (same as Customer Login Policy); the route is covered by `AdminMfaStepUpTest` and `PurchaseBalanceAdminTest`.
+
+**Not done / owed.**
+- PR B and PR C; the docs for them (`foundation-security.md` closure wording, ADR-060 domain gate line); production screenshots from a test reseller after the release.
+- `TrustFooter.tsx` hard-codes "LWF Group Sdn. Bhd. (202601038896)": the receipt reads its seller details from the new settings instead, so the two can drift; the founder decides whether to seed the settings from it and point the footer at them.

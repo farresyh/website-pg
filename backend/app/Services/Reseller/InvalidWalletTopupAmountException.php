@@ -5,7 +5,10 @@ namespace App\Services\Reseller;
 use RuntimeException;
 
 /**
- * PR-G planning addendum decision 3: minimum RM10 (1000 sen), no
- * platform-imposed maximum.
+ * An amount the Purchase Balance cannot take: below the minimum
+ * (PR-G planning addendum decision 3, RM10), above the per-top-up
+ * maximum, or over the balance cap (ADR-131 decisions 4-7). The two
+ * limit cases are subclasses so a caller can answer each with its own
+ * sentence; catching this base class still catches all three.
  */
-final class InvalidWalletTopupAmountException extends RuntimeException {}
+class InvalidWalletTopupAmountException extends RuntimeException {}
