@@ -1,6 +1,6 @@
 # ADR-130: FPX bank-direct — the customer picks the bank on our page, not on CHIP's
 
-> **Standing (2026-10-29):** Accepted (design). The bank grid replaces the single FPX button; the bank is a property of the click, applied where the checkout URL leaves the API, never stored. Extends [ADR-022](./ADR-022-multi-gateway-payment-strategy.md) (CHIP-only, `payment_method_whitelist` pass-through); changes nothing in its webhook or reconcile decisions. Build and live status: [`prd.md` §15](../prd.md); open work: §16 item 137. The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-29):** Accepted (design). The bank grid replaces the single FPX button; the bank is a property of the click, applied where the checkout URL leaves the API, never stored. Extends [ADR-022](./ADR-022-multi-gateway-payment-strategy.md) (CHIP-only, `payment_method_whitelist` pass-through); changes nothing in its webhook or reconcile decisions. Build and live status: [`prd.md` §15](../prd.md); open work: §16 items 138 and 139. The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-29. Grilled with the founder (two rounds, `/mattpocock-skills:grilling`), live-tested against CHIP in test mode, then code-traced against every reader and writer of `channel_code` / `checkout_url` before writing, because it sits on the checkout money path (AGENTS.md). The trace overturned the first plan; see "What the code trace changed".
 
@@ -47,6 +47,14 @@ The first plan appended the parameter inside `ChipGateway::createPayment` and ca
 
 - **Proof before "done".** One real RM1 payment through a real bank, with a bank code, on production after release, since test mode can't show it. If it lands on CHIP's normal page or an error, revert the helper call; nothing else changed.
 - **The 20 codes are pinned by a test against the CHIP doc's table**, and a second test asserts every bank has a logo file. The doc's own blog example (`MB2U0228`) disagrees with its table, so the doc table is the source.
-- **Bank-down handling** (decision 9) and the **wallet/membership** PR are open until built; see PRD §16 item 137.
+- **Bank-down handling** (decision 9) and the **wallet/membership** PR are open until built; see PRD §16 items 138 and 139.
 - **A new CHIP bank** is one JSON line plus a logo and a release; until then its customers use the "Other bank" link.
 - **Wording to fix at build:** the `ChipGateway` doc comment says "no bank code is ever sent by this adapter". It stays true (the helper lives outside the gateway adapter), but the comment should point here.
+
+### 2026-10-29 addendum — PR 2 built: what it settled
+
+- **Membership** moved onto the shared `PaymentChannelPicker`, as decision 11 said. Its two auto-select-when-one-channel lines were removed (with a bank grid they would show "Other bank" as chosen without a click); "Continue to Payment" waits for a bank or "Other bank". The wallet top-up behaves the same: its default channel skips the bank-grid channel.
+- **The validation rule takes the channel field's name.** Membership's request calls the channel `payment_method`, not `channel_code`; `FpxBankRedirect::rules($channelField)` is the one rule for all three requests, so `prohibited_unless` cannot silently check a field that does not exist.
+- **The portal has its own grid component** (`FpxBankGrid`, the portal's tokens, ADR-128) over generated copies of the one JSON and the logos; only the styling differs from the storefront's.
+- **The "BNM Compliant • 256-bit SSL" line was removed** from the shared picker (PRD item 134, founder's decision), and the two wallet lines that said the fee is shown on "CHIP's page" now say "payment page", since bank-direct skips CHIP's page.
+

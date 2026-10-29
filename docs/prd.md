@@ -829,7 +829,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Affiliates / whitelabel (RES-1..6) | 🟢 Live in prod — wholesale tiers + subscription state machine, tenant isolation, `affiliate` guard + portal, platform-owner special-case abolished (`is_owned`/`is_primary`), per-brand Membership, `Host`-resolved branded storefront + Vercel-native custom domains, per-brand pricing + ledger split, brand-scoped vouchers. Real affiliate domain verified end-to-end. PR #273's invite/session and compensation visibility fixes, plus ADR-112's role-aware shell, dashboard recent orders, and responsive Orders presentation, shipped in PRs #273, #275 and #276, released to `main` via #278 (2026-09-24) | ADR-056–061, 078, 112 |
 | Reseller (wallet) — Affiliate/API/Bot channels | 🟢 Live — prepaid wallet (admin manual credit + self-serve CHIP top-up, unpayable while payment methods are off, §14), one order-placement contract (`ResellerOrderPlacementService`), `reseller_code`/`catalog_code`, REST API v1.5.0 (keys, IP allowlist, delivery webhook, optional `max_price_sen`, per-account rate limits: orders 60/min and reads 120/min, ADR-074 2026-10-13 addendum, live via #425), WhatsApp Bot (OpenWA), shared role-aware portal (ADR-112), per-game player-input contract (ADR-097), own queue lane (ADR-048). Real customer orders run on this channel. Detail: build-log + ADRs **2026-10-19 (ADR-125 PR 2a, released via #514):** the group registry is `whatsapp_groups` (owner reseller or supplier; the reseller rows moved as-is); the reseller bot is unchanged, and the webhook now drops the bot's own messages | ADR-072–076, 084, 091, 093, 112, 048, 097 |
 | Supplier Adapter (ADAPT-1..4) | ✅ Digiflazz live (the only funded supplier). Gamevion is integrated but deliberately unfunded (2026-09-24). Per-supplier circuit breaker, `SupplierAdapterFactory` routing, async delivery state machine + poll backstop, inbound webhooks (HMAC). **ADR-097 PR-1 + PR-2 built 2026-09-16** — Digiflazz `customer_no` separator moves per-game (was wrongly supplier-wide); per-game Zone ID picklist replaces free text, with the same presence+value-validation now shared (`CheckoutInputValidator`) across storefront, Reseller API, and Bot. Both PRs live. **ADR-098 built 2026-09-16** — `SupplierResponse::$transactionAlreadyFormed` (supplier-agnostic) routes a non-retriable Digiflazz `rc` (Terbentuk Transaksi=Ya, 20 codes) or Gamevion `duplicate_reference` straight to `needs_review`, closing a real gap in the async webhook/poll finalize path a plain `Failed` resend could never resolve (later refined by ADR-102). **2026-09-29:** the breaker also counts `createOrder`/`checkStatus` timeouts (`listProducts` excluded). For a replay-safe supplier (Digiflazz), an ambiguous outcome now goes to Pending with a same-ref poll instead of NeedsReview (ADR-102 addendum). Live | ADR-006, 030–032, 067, 069, 097, 098, 102 |
-| Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). Methods `fpx`, `fpx_b2b1`, `dnqr` (DuitNow QR; was seeded as `duitnow_qr`, a wrong guess found 2026-10-28, fixed by #584 on `staging`, not yet released). FPX has been on since 2026-10-22 (§14); DuitNow QR is on since 2026-10-28 but cannot be paid until #584 is released, and has never completed a payment. Xendit deleted (archived). **FPX bank-direct (ADR-130) PR 1 built 2026-10-29** (checkout and `/joki` show a 20-bank grid; not released; §16 item 137). **ADR-110 PR-A built 2026-09-19** — `overdue`/`expired`/`blocked` now map to `Failed` (were silently stuck `Pending` forever); every purchase now sets `due`+`due_strict` so CHIP itself closes it after 30 min. **PR-C built 2026-09-19** — credentials moved to encrypted `payment_gateways` DB row + `/middleware/payment-gateways` admin screen, binding is DB-first; the founder completed the cutover 2026-09-24, and the `.env` fallback is kept deliberately (§16 Parked). **PR-B built 2026-09-19** — CHIP settlement `.xlsx` reconciliation + Monthly Accounting Summary, fills ADR-083 PR-2 (see §16 item 12). All three ADR-110 PRs now built | ADR-022, ADR-110, ADR-130 |
+| Payment Gateway (CHIP only, PAY-1..4) | 🟢 Live in prod — real RM FPX payment + webhook proven end-to-end (order `PG-PYAYMRYNUYV0`). Methods `fpx`, `fpx_b2b1`, `dnqr` (DuitNow QR; was seeded as `duitnow_qr`, a wrong guess found 2026-10-28, fixed by #584 on `staging`, not yet released). FPX has been on since 2026-10-22 (§14); DuitNow QR is on since 2026-10-28 but cannot be paid until #584 is released, and has never completed a payment. Xendit deleted (archived). **FPX bank-direct (ADR-130) built 2026-10-29** (PR 1 #587: checkout and `/joki`; PR 2 #588: membership and the portal's wallet top-up; all show a 20-bank grid and go straight to the bank; on `staging`, not released; needs one real RM1 payment through a bank after release, §16 item 138). **ADR-110 PR-A built 2026-09-19** — `overdue`/`expired`/`blocked` now map to `Failed` (were silently stuck `Pending` forever); every purchase now sets `due`+`due_strict` so CHIP itself closes it after 30 min. **PR-C built 2026-09-19** — credentials moved to encrypted `payment_gateways` DB row + `/middleware/payment-gateways` admin screen, binding is DB-first; the founder completed the cutover 2026-09-24, and the `.env` fallback is kept deliberately (§16 Parked). **PR-B built 2026-09-19** — CHIP settlement `.xlsx` reconciliation + Monthly Accounting Summary, fills ADR-083 PR-2 (see §16 item 12). All three ADR-110 PRs now built | ADR-022, ADR-110, ADR-130 |
 | Games & Packages (GAME-1..11) | 🟢 Live — GAME-1..11 all shipped (list/detail, markup %, activate/deactivate, delete, bulk markup via `/admin/settings`, SEO fields via `/admin/seo/games`, drag-drop reorder via `/admin/games`'s "Reorder Games", folded with the storefront's Quick Top-Up widget). GAME-12 dropped, 2026-09-13 (dead requirement, see §16). **2026-10-02:** package delete now blocks a package with order history or live combo-component usage instead of silently orphaning order history or crashing with a raw DB error (ADR-119). **2026-10-18 (ADR-125 PR 1b, §16 item 113), released via #514:** "New Login Game" with its login-form editor, manual packages at an agreed cost (audited edit, per-package price history with the admin), a per-game member-pricing switch; a login game can't take a reseller code, validator, supplier product or combo | ADR-029, ADR-119, ADR-125 |
 | Combo Package | 🟢 Live — several catalog Packages sold as one opaque SKU (one FPX fee), sum-of-components pricing with optional `combo_override_price` (never below cost), up to 5 legs, per-leg references and attempt rows, `partially_delivered` + `OrderSettlementService` settlement (voucher or wallet refund), real-cost profit residual (ADR-107/111), component cascade on/off, bulk markup routed through `ComboPricingService` (ADR-028), component SKU in the Edit Combo modal. Per-leg attempt history shown under each leg on Order Detail (live via #406, 2026-10-12, item 66). **2026-10-13 (ADR-094 addendum, item 93):** the stored price stays current while a combo is off and is recomputed before the reactivation cascade; a component markup reprices its combos; a markup on a combo itself is rejected; live since 2026-10-14 (#430). Edit-composition parked 2026-10-14 (§16 Parked) | ADR-094, ADR-100, ADR-046, ADR-106, ADR-107, ADR-028 |
 | Price Sync (SYNC-1..6) | ✅ Live — raw sync → promote-to-catalog, price propagation + deactivation detection, sanity guard (floor + swing), FX conversion, best-price dedup, per-supplier grouping, stuck-run hardening. **Live 2026-10-17 (#490, item 106):** `partial` run status with failed suppliers listed, stale-supplier email (default 90 min) | ADR-015/016, 025, 033, 034, 067 |
@@ -899,26 +899,17 @@ and the admin-loading investigation (#515, #516). Re-checked again
 moved to group D). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- **137** FPX bank-direct (ADR-130), **PR 1 built 2026-10-29, not released**
-  (branch `feature/fpx-bank-direct`): checkout and `/joki` show the 20-bank
-  grid plus an "Other bank" link; the bank is applied where the order's URL
-  leaves the API and never stored. **PR 2 still to build:** membership
-  (moved onto the shared `PaymentChannelPicker`) and the portal's wallet
-  top-up through the same `FpxBankRedirect` helper, with the portal's copy
-  of `fpx-banks.json` and the logos via `sync-shared-files.mjs`. Not built:
-  bank-down status (only if real payments show it is needed, ADR-130
-  decision 9). After release, prove it with one real RM1 payment through a
-  real bank (test mode accepts any code, so it can't).
+- None open.
 
 **B. Needs a short grill / ADR addendum first**
 - None open.
 
 **C. Founder actions (no code)**
-- **134** The storefront checkout still says "BNM Compliant • 256-bit SSL"
-  (`storefront/src/components/order/PaymentChannelPicker.tsx`). This is
-  although #527 (2026-10-22) removed the storefront's Bank Negara Malaysia
-  lines for CHIP's merchant review. Founder to decide: remove it to match,
-  or keep it with a source for the claim. Found 2026-10-26.
+- **138** After the next `staging`→`main` release, make one real RM1
+  payment through a real bank from the storefront bank grid (ADR-130). CHIP's
+  test mode accepts any `fpx_bank_code`, so only a real payment proves the
+  customer lands at the bank. If it lands on CHIP's normal page or an error,
+  revert the `FpxBankRedirect` calls (nothing else changed).
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
   `/api/health`, the OpenWA gateway and `/api/health/whatsapp` (third monitor
   added and alert-tested by the founder 2026-10-14).
@@ -932,6 +923,10 @@ moved to group D). Re-verify before building.
   (founder, 2026-10-23). The founder plans to go back to voucher-only once
   CHIP approves. Before payments go live for real customers, either the
   published policy is voucher-only again or this is built.
+- **139** FPX bank-down status on the bank grid (ADR-130 decision 9), only
+  if real payments show customers failing at a down bank. Advisory and
+  fail-open from `fpxstatus.chip-in.asia`'s JSON feed; never a hard
+  dependency of checkout.
 - **128** Shared admin loading skeleton (through the admin `DataTable`), only
   if "Loading…" still bothers the founder now that #516 is measured (item 124
   closed 2026-10-22).
@@ -1343,6 +1338,8 @@ moved to group D). Re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **137** 2026-10-29: FPX bank-direct (ADR-130), #587 (checkout, `/joki`) and #588 (membership, partner-portal wallet top-up). The customer picks the bank on our page; one helper applies it where the checkout URL leaves the API; nothing is stored. Bank-down status split out as item 139; the real-bank proof is item 138. Details: build-log 2026-10-29.
+- **134** 2026-10-29: the "BNM Compliant • 256-bit SSL" line removed from the shared payment picker (founder's decision), #588. Details: build-log 2026-10-29.
 - **136** 2026-10-27: action feedback (toasts) across admin, middleware and the partner portal (ADR-129), #575–#580, released via #581. One PrimeReact headless toaster, one shared `components/ui/toast.tsx` (generated into `reseller/`), a `notify` facade, and the toast-vs-inline policy swept across every action-outcome screen; money-action failures are sticky. Details: build-log 2026-10-27.
 - **133** 2026-10-27: partner portal visual redesign, layer 1 (ADR-128) plus the shared component kit: #562–#565, #567, #568, reviewed page by page (Reseller + Affiliate, light/dark, desktop/phone; 12 admin pages), released via #571. Layer 2 stays as items 24 and 25 plus a new ADR. Details: build-log 2026-10-27.
 - **135** 2026-10-26: the Button severities `info`/`success`/`warn`/`danger`/`help` were mapped off Tailwind's stock colours onto the design system's `-surface`/`-ink` status pairs (soft fill + a border that intensifies on hover). The founder chose soft over solid when asked during shared-kit PR 2; the portal's `color-tokens.test.ts` (no `dark:` colour overrides) ruled out keeping the stock solid fills. ADR-128 2026-10-27 addendum; build-log 2026-10-26.
