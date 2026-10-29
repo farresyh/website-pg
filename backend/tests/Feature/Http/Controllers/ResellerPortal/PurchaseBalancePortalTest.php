@@ -178,4 +178,18 @@ class PurchaseBalancePortalTest extends TestCase
         $this->assertSame('LWF Group Sdn. Bhd.', $data['seller']['name']);
         $this->assertSame('202501000001', $data['seller']['reg_no']);
     }
+
+    public function test_the_receipt_makes_no_claim_that_an_invoice_is_issued_per_order(): void
+    {
+        // The system issues no per-order invoice (ADR-083 decision 6: e-Invoicing is outside our code),
+        // so a document given to a payment provider must not say it does.
+        $reseller = $this->reseller();
+        $this->paidTopup($reseller);
+        $data = app(ResellerWalletReceiptService::class)->forNumber($reseller, 'PB-WT-ABC123DEF4');
+
+        $html = view('receipts.purchase-balance', $data)->render();
+
+        $this->assertStringContainsString('not an invoice', $html);
+        $this->assertStringNotContainsString('An invoice is issued', $html);
+    }
 }
