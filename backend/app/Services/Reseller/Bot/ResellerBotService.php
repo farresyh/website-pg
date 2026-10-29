@@ -30,6 +30,8 @@ use App\Services\Reseller\ResellerOrderPlacementRequest;
 use App\Services\Reseller\ResellerOrderPlacementService;
 use App\Services\Reseller\ResellerWalletService;
 use App\Services\Reseller\ResellerWalletTopupService;
+use App\Services\Reseller\WalletBalanceCapExceededException;
+use App\Services\Reseller\WalletTopupOverMaximumException;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use App\Services\Reseller\WalletTopupCheckoutFailedException;
 use App\Services\WhatsApp\WhatsAppGroupService;
@@ -137,7 +139,7 @@ final class ResellerBotService
         // checkid 10/min keys (distinct namespace).
         if ($command->type === ResellerBotCommandType::TopupBaki
             && ! RateLimiter::attempt("reseller-bot-topupbaki:{$reseller->id}", 5, fn () => true, 60)) {
-            $this->openWa->sendText($whatsappGroupId, 'Terlalu banyak permintaan top-up. Sila cuba sebentar lagi.');
+            $this->openWa->sendText($whatsappGroupId, 'Terlalu banyak permintaan tambah baki. Sila cuba sebentar lagi.');
 
             return;
         }
@@ -295,7 +297,7 @@ final class ResellerBotService
         } catch (InsufficientBalanceException) {
             $this->logFailure($reseller, $groupId, $command->raw, 'insufficient_balance');
 
-            return 'Baki wallet tidak mencukupi.';
+            return 'Baki Pembelian tidak mencukupi.';
         }
 
         // ADR-076 decision 4 — capture the exact originating group now,
@@ -594,6 +596,15 @@ final class ResellerBotService
 
         try {
             $attempt = $this->topups->initiate($reseller, $amountSen, $method->channel_code, []);
+        } catch (WalletTopupOverMaximumException $e) {
+            // ADR-131 decision 7: own sentence for each limit, never the "minimum" reply.
+            $this->logFailure($reseller, $groupId, $command->raw, 'topup_over_maximum');
+
+            return ResellerBotReplyFormatter::topupOverMaximum($e->maxSen);
+        } catch (WalletBalanceCapExceededException $e) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'topup_over_balance_cap');
+
+            return ResellerBotReplyFormatter::topupOverCap($e->capSen, $e->headroomSen);
         } catch (InvalidWalletTopupAmountException) {
             // Defensive — the pre-check above already covers this.
             return ResellerBotReplyFormatter::topupBelowMinimum();

@@ -36,7 +36,7 @@ abstract class Controller extends BaseController
     protected const ERROR_409 = ['error' => 'IDEMPOTENCY_KEY_CONFLICT', 'message' => 'This idempotency_key was already used for an order with a different payload. Use a fresh key per logical order.'];
 
     /** @var array{error: string, message: string} */
-    protected const ERROR_422 = ['error' => 'INSUFFICIENT_BALANCE', 'message' => 'Wallet balance is insufficient for this order.'];
+    protected const ERROR_422 = ['error' => 'INSUFFICIENT_BALANCE', 'message' => 'Purchase Balance is insufficient for this order.'];
 
     /** @var array{error: string, message: string} */
     protected const ERROR_429 = ['error' => 'RATE_LIMITED', 'message' => 'Too many requests. Retry after the period given in the Retry-After header.'];

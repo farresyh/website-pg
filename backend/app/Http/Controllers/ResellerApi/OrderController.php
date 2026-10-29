@@ -62,7 +62,7 @@ class OrderController extends Controller
 
     #[Endpoint(
         title: 'List orders',
-        description: "The caller's own orders, newest first, cursor-paginated. Pass `next_cursor` from the previous response back as `?cursor=` for the next page (`null` = no more). `?limit=` is capped at 100 (default 25); optional `?status=` filters on delivery status (not wallet refund) and `?created_after=` (ISO 8601) on creation time. `wallet_refunded` and `wallet_refund` report a later wallet credit independently of delivery status. A cursor, not a page number, so a new order landing mid-pagination never shifts the window.",
+        description: "The caller's own orders, newest first, cursor-paginated. Pass `next_cursor` from the previous response back as `?cursor=` for the next page (`null` = no more). `?limit=` is capped at 100 (default 25); optional `?status=` filters on delivery status (not refund to your Purchase Balance) and `?created_after=` (ISO 8601) on creation time. `wallet_refunded` and `wallet_refund` report a later credit to your Purchase Balance independently of delivery status. A cursor, not a page number, so a new order landing mid-pagination never shifts the window.",
     )]
     #[Response(status: 200, description: 'A page of orders.', examples: [[
         'items' => [self::ORDER_EXAMPLE],
@@ -103,7 +103,7 @@ class OrderController extends Controller
 
     #[Endpoint(
         title: 'Place an order',
-        description: 'Charges your wallet and submits the order for fulfilment. Send a fresh `idempotency_key` (UUID) per logical order: a replay with the **same** key and payload returns the original order with HTTP 200 and an `Idempotent-Replayed: true` header; the **same** key with a different payload is a 409 conflict. `player_id` and `server_id` must meet the game\'s `checkout_input` contract from the catalogue, or the order is refused with `VALIDATION_FAILED` and nothing is charged. Optional `max_price_sen` caps the charge: if your current price is above it, the order is refused with `PRICE_CHANGED` (`details.current_price_sen`) and nothing is charged; a lower current price is charged as is. Omit it to accept the current price. It is not part of the idempotency payload.',
+        description: 'Charges your Purchase Balance and submits the order for fulfilment. Send a fresh `idempotency_key` (UUID) per logical order: a replay with the **same** key and payload returns the original order with HTTP 200 and an `Idempotent-Replayed: true` header; the **same** key with a different payload is a 409 conflict. `player_id` and `server_id` must meet the game\'s `checkout_input` contract from the catalogue, or the order is refused with `VALIDATION_FAILED` and nothing is charged. Optional `max_price_sen` caps the charge: if your current price is above it, the order is refused with `PRICE_CHANGED` (`details.current_price_sen`) and nothing is charged; a lower current price is charged as is. Omit it to accept the current price. It is not part of the idempotency payload.',
     )]
     #[Response(status: 201, description: 'The order was placed.', examples: [self::ORDER_EXAMPLE])]
     #[Response(status: 200, description: 'Idempotent replay — the original order (also carries `Idempotent-Replayed: true`).', examples: [self::ORDER_EXAMPLE])]
@@ -174,7 +174,7 @@ class OrderController extends Controller
 
     #[Endpoint(
         title: 'Get an order',
-        description: "The current status of one of the caller's own orders, including any later wallet refund. Poll this as the fallback to the delivery webhook; a failed delivery does not itself guarantee a refund.",
+        description: "The current status of one of the caller's own orders, including any later refund to your Purchase Balance. Poll this as the fallback to the delivery webhook; a failed delivery does not itself guarantee a refund.",
     )]
     #[Response(status: 200, description: 'The order.', examples: [self::ORDER_EXAMPLE])]
     #[Response(status: 401, description: '`MISSING_API_KEY` or `INVALID_API_KEY`.', type: self::ERROR_SHAPE, examples: [self::ERROR_401])]

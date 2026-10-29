@@ -33,6 +33,8 @@ class WalletController extends Controller
         return response()->json([
             'balance' => $this->wallets->balance($reseller),
             'entries' => $this->wallets->ledgerEntries($reseller),
+            // ADR-131 decision 7: the portal shows these; it keeps no constant of its own.
+            'limits' => $this->wallets->limits($reseller),
         ]);
     }
 

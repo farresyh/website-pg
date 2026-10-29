@@ -95,6 +95,7 @@ use App\Http\Controllers\ResellerPortal\ApiKeyController as ResellerPortalApiKey
 use App\Http\Controllers\ResellerPortal\OrderController as ResellerPortalOrderController;
 use App\Http\Controllers\ResellerPortal\ProfileController as ResellerPortalProfileController;
 use App\Http\Controllers\ResellerPortal\WalletController as ResellerPortalWalletController;
+use App\Http\Controllers\ResellerPortal\WalletReceiptController as ResellerPortalWalletReceiptController;
 use App\Http\Controllers\ResellerPortal\WebhookController as ResellerPortalWebhookController;
 use App\Http\Controllers\ReviewCatalogController;
 use App\Http\Controllers\ReviewController;
@@ -433,6 +434,7 @@ Route::prefix('affiliate')->group(function () {
 Route::prefix('reseller-portal')->middleware(['auth:affiliate', 'account.type:reseller'])->group(function () {
     Route::get('/wallet', [ResellerPortalWalletController::class, 'show']);
     Route::post('/wallet/topup', [ResellerPortalWalletController::class, 'topup']);
+    Route::get('/wallet/receipts/{number}', [ResellerPortalWalletReceiptController::class, 'show']);
 
     Route::get('/orders', [ResellerPortalOrderController::class, 'index']);
     Route::get('/orders/{orderNumber}', [ResellerPortalOrderController::class, 'show']);
@@ -753,6 +755,8 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::put('/platform', [SettingsController::class, 'updatePlatform']);
         // ADR-124 decision 10 — Customer Login Policy, behind step-up.
         Route::put('/customer-login-policy', [SettingsController::class, 'updateCustomerLoginPolicy'])->middleware('mfa.stepup');
+        // ADR-131 decision 4 — the Purchase Balance limits.
+        Route::put('/purchase-balance-policy', [SettingsController::class, 'updatePurchaseBalancePolicy'])->middleware('mfa.stepup');
         Route::post('/platform/bulk-markup', [SettingsController::class, 'bulkMarkup']);
     });
 
@@ -906,6 +910,7 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
             Route::get('/{reseller}', [ResellerController::class, 'show']);
             Route::put('/{reseller}', [ResellerController::class, 'update']);
             Route::patch('/{reseller}/status', [ResellerController::class, 'updateStatus']);
+            Route::put('/{reseller}/balance-cap', [ResellerController::class, 'updateBalanceCap'])->middleware('mfa.stepup');
             Route::post('/{reseller}/tier', [ResellerController::class, 'assignTier']);
             Route::delete('/{reseller}', [ResellerController::class, 'destroy']);
 

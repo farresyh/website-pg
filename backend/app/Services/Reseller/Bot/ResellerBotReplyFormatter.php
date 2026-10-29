@@ -169,10 +169,10 @@ final class ResellerBotReplyFormatter
     public static function refundNotice(Order $order): string
     {
         return self::wrap(
-            "「 REFUND WALLET 」\n\n"
+            "「 REFUND BAKI PEMBELIAN 」\n\n"
             ."No. Order : {$order->order_number}\n"
             // What was actually credited — a partial delivery refunds only its undelivered share.
-            .'Jumlah    : RM'.self::formatSen($order->walletRefundLedgerEntry()->amount ?? $order->selling_price).' dikembalikan ke baki wallet anda.'
+            .'Jumlah    : RM'.self::formatSen($order->walletRefundLedgerEntry()->amount ?? $order->selling_price).' dikembalikan ke Baki Pembelian anda.'
         );
     }
 
@@ -253,7 +253,7 @@ final class ResellerBotReplyFormatter
 
     public static function balance(int $sen): string
     {
-        return 'Baki wallet anda: RM'.self::formatSen($sen);
+        return 'Baki Pembelian anda: RM'.self::formatSen($sen);
     }
 
     /**
@@ -264,7 +264,7 @@ final class ResellerBotReplyFormatter
     public static function topupInitiated(WalletTopupAttempt $attempt): string
     {
         return self::wrap(
-            "「 TOP-UP WALLET 」\n\n"
+            "「 TAMBAH BAKI PEMBELIAN 」\n\n"
             .'Jumlah    : RM'.self::formatSen($attempt->amount_sen)."\n"
             .'Caj       : RM'.self::formatSen($attempt->total_charged_sen)." (termasuk fi bank)\n"
             .'Ref       : '.$attempt->reference."\n\n"
@@ -281,8 +281,8 @@ final class ResellerBotReplyFormatter
     public static function topupAlreadyPending(WalletTopupAttempt $attempt): string
     {
         return self::wrap(
-            "「 TOP-UP WALLET 」\n\n"
-            ."Anda sudah ada satu top-up yang belum dibayar.\n"
+            "「 TAMBAH BAKI PEMBELIAN 」\n\n"
+            ."Anda sudah ada satu pembayaran tambah baki yang belum dibayar.\n"
             .'Jumlah    : RM'.self::formatSen($attempt->amount_sen)."\n"
             .'Ref       : '.$attempt->reference."\n\n"
             .$attempt->checkout_url."\n\n"
@@ -294,16 +294,29 @@ final class ResellerBotReplyFormatter
     public static function topupPaid(int $balanceSen): string
     {
         return self::wrap(
-            "「 TOP-UP BERJAYA 」\n\n"
-            .'Baki wallet anda sekarang: RM'.self::formatSen($balanceSen)
+            "「 BAKI DITAMBAH 」\n\n"
+            .'Baki Pembelian anda sekarang: RM'.self::formatSen($balanceSen)
         );
     }
 
     /** ADR-076 PR-H decision 5 — below-minimum amount, replied without a wasted CHIP call. */
     public static function topupBelowMinimum(): string
     {
-        return 'Jumlah minimum top-up ialah RM'.self::formatSen(ResellerWalletTopupService::MIN_AMOUNT_SEN)
+        return 'Jumlah minimum tambah baki ialah RM'.self::formatSen(ResellerWalletTopupService::MIN_AMOUNT_SEN)
             .'. Contoh: .topupbaki 50';
+    }
+
+    /** ADR-131 decision 7 — above the per-top-up maximum. */
+    public static function topupOverMaximum(int $maxSen): string
+    {
+        return 'Jumlah maksimum untuk sekali tambah baki ialah RM'.self::formatSen($maxSen).'.';
+    }
+
+    /** ADR-131 decision 7 — would take the balance above its limit. */
+    public static function topupOverCap(int $capSen, int $headroomSen): string
+    {
+        return 'Ini akan melebihi had Baki Pembelian anda (RM'.self::formatSen($capSen).'). '
+            .'Anda boleh tambah sehingga RM'.self::formatSen($headroomSen).' sekarang.';
     }
 
     public static function topupInvalidAmount(): string
@@ -313,12 +326,12 @@ final class ResellerBotReplyFormatter
 
     public static function topupUnavailable(): string
     {
-        return 'Top-up wallet tidak tersedia buat masa ini. Sila hubungi admin.';
+        return 'Tambah Baki Pembelian tidak tersedia buat masa ini. Sila hubungi admin.';
     }
 
     public static function topupCheckoutFailed(): string
     {
-        return 'Gagal memulakan top-up. Sila cuba sebentar lagi.';
+        return 'Gagal memulakan tambah baki. Sila cuba sebentar lagi.';
     }
 
     public static function commandList(): string
@@ -330,8 +343,8 @@ final class ResellerBotReplyFormatter
             .".order {kod} {userId} [{serverId}] — buat order\n"
             .".trackorder {no_order} — semak status order\n"
             .".checkid {kod} {userId} [{serverId}] — semak ID pemain\n"
-            .".baki — semak baki wallet\n"
-            .'.topupbaki {jumlah} — top-up baki wallet (RM)'
+            .".baki — semak Baki Pembelian\n"
+            .'.topupbaki {jumlah} — tambah Baki Pembelian (RM)'
         );
     }
 

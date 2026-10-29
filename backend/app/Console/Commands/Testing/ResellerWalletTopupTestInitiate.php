@@ -8,7 +8,9 @@ use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
+use App\Services\Reseller\InvalidWalletTopupAmountException;
 use App\Services\Reseller\PendingWalletTopupAlreadyExistsException;
+use App\Services\Reseller\ResellerWalletService;
 use App\Services\Reseller\ResellerWalletTopupService;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -27,7 +29,7 @@ use RuntimeException;
  * CHIP call) — the thing being proven is the "one pending attempt"
  * lock, not payment-gateway connectivity.
  */
-#[Signature('app:reseller-wallet-topup-test-initiate {resellerId} {resultFile}')]
+#[Signature('app:reseller-wallet-topup-test-initiate {resellerId} {resultFile} {--amount=5000} {--manual-admin= : credit by hand as this admin instead of starting a CHIP top-up}')]
 #[Description('Test-only: attempt a single wallet top-up initiation and write the outcome to a result file.')]
 class ResellerWalletTopupTestInitiate extends Command
 {
@@ -66,10 +68,20 @@ class ResellerWalletTopupTestInitiate extends Command
             }
         });
 
+        $amount = (int) $this->option('amount');
+
         try {
-            $attempt = $service->initiate($reseller, 5000, 'fpx', []);
-            file_put_contents($resultFile, 'success:'.$attempt->reference);
-        } catch (PendingWalletTopupAlreadyExistsException $e) {
+            if ($this->option('manual-admin') !== null) {
+                // ADR-131 decision 5: the admin manual credit shares the limits seam with the CHIP start.
+                $entry = app(ResellerWalletService::class)->manualCredit(
+                    $reseller, $amount, null, null, (int) $this->option('manual-admin'), 'race-'.bin2hex(random_bytes(6)),
+                );
+                file_put_contents($resultFile, 'success:manual-'.$entry->id);
+            } else {
+                $attempt = $service->initiate($reseller, $amount, 'fpx', []);
+                file_put_contents($resultFile, 'success:'.$attempt->reference);
+            }
+        } catch (PendingWalletTopupAlreadyExistsException|InvalidWalletTopupAmountException $e) {
             file_put_contents($resultFile, 'failed:'.$e->getMessage());
         }
 

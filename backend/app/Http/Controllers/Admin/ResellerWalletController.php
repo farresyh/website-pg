@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreResellerWalletCreditRequest;
 use App\Models\Reseller;
 use App\Models\WalletTopupReceipt;
+use App\Services\Reseller\InvalidWalletTopupAmountException;
 use App\Services\Reseller\ResellerWalletService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -34,14 +36,19 @@ class ResellerWalletController extends Controller
         $data = $request->validated();
 
         $receiptFile = $request->file('receipt');
-        $entry = $this->wallet->manualCredit(
-            $reseller,
-            $data['amount_sen'],
-            $data['note'] ?? null,
-            $receiptFile,
-            $request->user()->id,
-            $data['idempotency_key'],
-        );
+        try {
+            $entry = $this->wallet->manualCredit(
+                $reseller,
+                $data['amount_sen'],
+                $data['note'] ?? null,
+                $receiptFile,
+                $request->user()->id,
+                $data['idempotency_key'],
+            );
+        } catch (InvalidWalletTopupAmountException $e) {
+            // ADR-131 decision 2: a manual credit is held to the same limits as a top-up.
+            throw ValidationException::withMessages(['amount_sen' => [$e->getMessage()]]);
+        }
 
         Log::info('Reseller wallet manually credited', [
             'reseller_id' => $reseller->id,

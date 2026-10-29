@@ -99,16 +99,6 @@ class ResellerWalletTopupServiceTest extends TestCase
         app(ResellerWalletTopupService::class)->initiate($reseller, 999, 'fpx', []);
     }
 
-    public function test_initiate_has_no_maximum(): void
-    {
-        $this->bindGateway();
-        $reseller = $this->reseller();
-
-        $attempt = app(ResellerWalletTopupService::class)->initiate($reseller, 100_000_000, 'fpx', []);
-
-        $this->assertSame(100_000_000, $attempt->amount_sen);
-    }
-
     public function test_initiate_creates_a_pending_attempt_with_a_fee_inclusive_charge_total(): void
     {
         $this->bindGateway();
