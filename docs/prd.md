@@ -899,21 +899,22 @@ and the admin-loading investigation (#515, #516). Re-checked again
 moved to group D). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- None open.
+- **137** FPX bank-direct (ADR-130, designed 2026-10-29): the customer picks
+  the bank on our page and goes straight to it, instead of choosing on CHIP's
+  page. The bank is a property of the click: one helper appends
+  `?preferred=fpx&fpx_bank_code=<code>` where the checkout URL leaves the API
+  (order, membership and wallet responses), validated against
+  `backend/config/fpx-banks.json`, never stored. **PR 1:** the helper, the
+  `fpx_bank_code` field on checkout, the 20-bank grid plus an "Other bank"
+  link on checkout and `/joki`, the JSON and logo sync (logos from the
+  founder, `~/Downloads/Bank Logo`). **PR 2:** membership (moved onto the
+  shared picker) and the portal's wallet top-up. Not built: bank-down status
+  (only if real payments show it is needed, ADR-130 decision 9). After
+  release, prove it with one real RM1 payment through a real bank (test mode
+  accepts any code, so it can't).
 
 **B. Needs a short grill / ADR addendum first**
-- **137** Pick the FPX bank on our own storefront (found 2026-10-28; decisions
-  made with the founder, ADR + grill still to write). CHIP's `checkout_url`
-  takes `?preferred=fpx&fpx_bank_code=<code>` (21 B2C codes, CHIP's blog
-  "Direct Post & Skip Payment Page") and goes straight to the bank. Agreed:
-  bank buttons replace the FPX button (founder to supply each bank's official
-  logo; B2B1 stays off); a bank CHIP shows as down (check
-  `fpxstatus.chip-in.asia`, a bank-down window such as 12am–1am) is shown as
-  unavailable; the same for membership and wallet top-up (check the
-  membership layout first); then e-wallet and card, built dormant until CHIP
-  approves them. Every new channel code is first checked with the Test action
-  against CHIP's `GET /payment_methods/` (PR #584 shipped the check). Test a
-  real `?preferred=` purchase before building.
+- None open.
 
 **C. Founder actions (no code)**
 - **134** The storefront checkout still says "BNM Compliant • 256-bit SSL"
