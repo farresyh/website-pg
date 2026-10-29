@@ -2797,3 +2797,11 @@ Correction to this session's earlier count: prod has 23 *paid* FPX orders, not 2
 
 The legacy link was then checked on prod: `https://reseller.pekangame.space/wallet` answers `308` to `/balance`, and `/wallet?topup=success` to `/balance?topup=success` (query kept).
 
+
+## 2026-10-30 — Failed-payment status page labels (item 144), smaller FPX tiles, "Other bank" link removed
+
+**Item 144** (`OrderStatusTracker.tsx`): the amount box reads "Amount Due" until the order is paid; the delivery badge is hidden when the payment failed (it said "Waiting for Payment" next to "Payment Failed"); the Method row shows the channel label ("Online Banking (FPX)", "DuitNow QR") by reusing `CHANNEL_GROUPS`, now exported from `PaymentChannelPicker`.
+
+**FPX grid** (founder: the logos were too big): storefront 6 columns on desktop and 4 on mobile (was 4 and 3), tile `h-10`, logo `max-h-5`. The founder also decided the 20 banks are enough, so the "Other bank" link is removed from the storefront grid and the partner portal grid (ADR-130 2026-10-30 addendum).
+
+**Verified:** `tsc`/`lint` clean on the storefront and the portal. The grid was seen in the browser on `/order/arena-breakout` (desktop width, and 606 px, the smallest the window goes). The failed-payment status page was **not** seen: locally the browser's `track-order` preflight gets a 503 (curl gets 204), and the dev order is Pending, so check it on the PR's Vercel Preview with a real cancelled FPX order. Gotcha: after a `git checkout` the running storefront dev server kept serving the old classes until it was restarted.
