@@ -2793,3 +2793,5 @@ Correction to this session's earlier count: prod has 23 *paid* FPX orders, not 2
 
 **Not yet done.** Item 138 (a completed FPX and DuitNow payment; none has completed since #589), the affiliate portal's "awaiting approval" badge and the `/wallet` redirect on prod, step-up saves with an MFA admin, and approving a branded domain only after CHIP's written approval. `fixfastapp.com` stays active but unapproved (the FixFast Demo affiliate was not deactivated; the domain cannot take a payment either way).
 
+**Later the same evening.** The affiliate portal's "Payments awaiting approval" badge on `fixfastapp.com` was seen (through admin impersonation). An Add Balance was started and cancelled at the bank: the attempt ended `failed` straight away (not after its 30 minutes) and the browser came back to `/balance`, so the wallet top-up path of item 140 works too. The legacy `/wallet` link redirecting has still not been hit on prod (a new return URL goes straight to `/balance`); it was checked locally (`308` to `/balance?topup=success`).
+

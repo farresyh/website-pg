@@ -702,9 +702,11 @@ evening:** the storefront notice on `fixfastapp.com`, the admin "Payments not
 approved" tag and Approve button, the Purchase Balance portal, a receipt PDF
 with the company details filled, and a real cancel at a bank for FPX and
 DuitNow QR (item 140: both orders went Failed within 12 s and 20 s and the
-"Payment Not Completed / Try Again" page showed). **Not yet seen:** the
-affiliate portal's "awaiting approval" badge, the `/wallet`→`/balance`
-redirect on prod, and the step-up saves with an MFA admin. **Owed:** §16
+"Payment Not Completed / Try Again" page showed). The affiliate portal's
+"Payments awaiting approval" badge was seen too, and an Add Balance cancelled at
+the bank ended Failed and returned to `/balance`. **Not yet seen:** the legacy
+`/wallet` link redirecting on prod (new return URLs already point at `/balance`)
+and the step-up saves with an MFA admin. **Owed:** §16
 items 138 and 141; new items 142–144. §15 "Reseller
 (wallet)", "Affiliates / whitelabel", "Payment Gateway", "Settings".
 
@@ -974,10 +976,9 @@ moved to group D). Re-verify before building.
   them, read live; (b) deactivate the `fixfastapp.com`
   test affiliate (Affiliates → FixFast Demo → Deactivate; its domain already
   cannot take a payment, and item 129's switch-over lists it too); (c) the
-  browser checks not done: the affiliate portal's "awaiting approval" badge, the
-  `/wallet` redirect on prod, and the "Save Limits", "Close account" and
+  browser checks not done: the legacy `/wallet` link redirecting on prod, and the "Save Limits", "Close account" and
   domain-approval submits with an MFA admin (covered by backend tests; the
-  storefront notice and the admin Approve button were seen on prod); (d) one reply to CHIP with attachments (portal screenshots from
+  storefront notice, the admin Approve button and the affiliate portal badge were seen on prod); (d) one reply to CHIP with attachments (portal screenshots from
   the FixFast test reseller, a receipt, the onboarding procedure PDF). Agreed
   wording: no officially onboarded resellers and one in onboarding; a failed
   reseller order returns to the Purchase Balance (the balance is that order's
