@@ -58,6 +58,12 @@ final class MembershipSubscriptionService
             ->first();
 
         if ($existing !== null) {
+            $this->failIfFinal($existing);
+
+            if ($existing->status === MembershipCheckoutAttemptStatus::Failed) {
+                throw new MembershipAttemptClosedException('This payment was not completed. Please start again.');
+            }
+
             return $this->ensureCheckoutUrl($existing, $channelProperties);
         }
 
@@ -72,7 +78,13 @@ final class MembershipSubscriptionService
             ->latest('id')
             ->first();
 
+        // ADR-110 2026-10-29 addendum: a recent attempt whose purchase CHIP has ended
+        // is failed here and a new one is made below, never reused as a dead link.
         if ($recent !== null) {
+            $this->failIfFinal($recent);
+        }
+
+        if ($recent !== null && $recent->status === MembershipCheckoutAttemptStatus::Pending) {
             return $this->ensureCheckoutUrl($recent, $channelProperties);
         }
 
@@ -225,6 +237,30 @@ final class MembershipSubscriptionService
         }
 
         return $this->requestPayment($attempt, $paymentMethod->gateway, $channelProperties);
+    }
+
+    /**
+     * ADR-110 2026-10-29 addendum: a Pending attempt whose CHIP purchase has
+     * ended for good (a cancelled bank login, `single_attempt`) is failed now,
+     * through the same conditional write the sweep uses, instead of being
+     * handed out again as a dead link. A lookup that fails changes nothing.
+     */
+    private function failIfFinal(MembershipCheckoutAttempt $attempt): void
+    {
+        if ($attempt->status !== MembershipCheckoutAttemptStatus::Pending || $attempt->payment_ref === null) {
+            return;
+        }
+
+        $gatewayName = PaymentMethod::query()->where('channel_code', $attempt->channel_code)->value('gateway');
+
+        if ($gatewayName === null) {
+            return;
+        }
+
+        if ($this->gateways->make($gatewayName)->getPayment($attempt->payment_ref)->isFinalFailure()) {
+            $attempt->leavePending(MembershipCheckoutAttemptStatus::Failed);
+            $attempt->refresh();
+        }
     }
 
     /**

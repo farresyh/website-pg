@@ -2672,3 +2672,22 @@ Correction to this session's earlier count: prod has 23 *paid* FPX orders, not 2
 
 **Not done / owed:** the membership e2e and the full membership and wallet click-throughs run only in CI or need a verified member / reseller login; one real RM1 payment through a real bank after release (item 138); bank-down status (item 139, only if needed).
 
+## 2026-10-29 — A failed payment attempt is final, PR A backend (ADR-110 addendum, item 140)
+
+**Why.** The founder cancelled at a bank's login page after FPX bank-direct went live. Read-only prod: purchase `be09ba53-…` went `created` 04:33:24 → `error` 04:33:30 (CHIP attempt error `1C`) → `expired` 05:03:23; CHIP showed its payment form again (the customer could pay the same purchase) and our order stayed Pending until the sweep failed it at 05:15:05, 42 minutes later. The founder's rule: after a cancel the customer starts a new checkout.
+
+**Tested first, CHIP test mode (the founder ran the commands):** with `purchase.single_attempt: true` and the simulator's "Test Failure", CHIP moves the purchase `error` → `cancelled` one second later, sends the customer to `failure_redirect`, and opening the link again goes straight to `failure_redirect`. So no `cancel` call is needed.
+
+**Built (PR A, `feature/failed-attempt-final`, not yet released):**
+- `ChipGateway::createPayment` sends `purchase.single_attempt: true` (every purchase: orders, membership, wallet top-up and the bot's, the admin Test probe). `normalizePurchase` adds `failure_is_final` (cancelled/expired/overdue/blocked always; `error` only on a single-attempt purchase, so a purchase created before this ships is never failed early). `PaymentResponse::isFinalFailure()` is the one reader.
+- Orders: `PaymentReconciliationService::reconcileOrder($order, earlyCheck: true)` applies a failure only when final (paid answers still applied). Used by a new public `POST /api/track-order/{orderNumber}/check-payment` (brand-scoped, Pending orders with a `payment_ref` only, `throttle:10,1` plus a 10 s per-order cache lock so one CHIP call per window, a failed lookup returns the order unchanged) and by the checkout replay path in `CheckoutController::respondForExistingOrder` (a replay whose purchase ended now fails the order and answers `checkout_closed` instead of handing out the dead link). `RouteAccessTest`'s public-route list got the new route on purpose.
+- Membership: `initiate` fails a recent Pending attempt whose purchase ended and creates a new one; a replay on the same idempotency key of a failed attempt answers 422 `checkout_closed` (`MembershipAttemptClosedException`).
+- Wallet top-up: `failPendingIfFinal` runs before the transaction that holds the ledger-account lock (no CHIP call under the lock), so a reseller who cancelled at the bank is no longer blocked 30 minutes and the bot no longer re-sends a dead link. The lock's own check stays for races.
+- Every failure goes through the existing seams (`OrderPaymentOutcomeService::applyFailed`, `LeavesPendingOnce::leavePending`), so voucher and quota are given back as before.
+
+**Verified:** `php artisan test` 3129/3129; new `CheckoutControllerFailedAttemptTest` (10: cancelled fails the order, voucher given back, retryable error left pending, open purchase pending, a paid answer applied, one CHIP call per window, non-Pending not looked up, 404, replay closed, replay of an open purchase returns the link), `ChipGatewayTest` (+11: single_attempt sent, the `failure_is_final` matrix), membership (+3) and wallet (+2) cases; concurrency suite for wallet top-up and membership (3) on local MySQL; `scramble:export` shows no drift.
+
+**Gotchas hit:** the concurrency run first failed on leftover `llm_report_*` views (backend/AGENTS.md gotcha 8, dropped with the documented command). `RouteAccessTest` fails on any new public POST until it is listed.
+
+**Not done / owed:** PR B (storefront status page: one check on open, "Payment not completed" + "Try again"; membership clears its key on `checkout_closed`); one real RM1 cancel at a bank after release (item 138/140): CHIP error `1C`, our failed page, order Failed within seconds, a new checkout works.
+
