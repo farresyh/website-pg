@@ -971,8 +971,8 @@ moved to group D). Re-verify before building.
   domain gate), **one release**, one reply to CHIP after it, with production
   screenshots from a test reseller. **PR A built 2026-10-29 on
   `feature/purchase-balance-limits-receipt`, not released** (build-log
-  2026-10-29); PR B and PR C are next. Browser check of the portal and admin
-  screens is still owed.
+  2026-10-29); PR B and PR C are next. Browser-checked locally (redirect and the step-up
+  save path still to re-check).
   Outside the repo (public): the onboarding procedure and the written
   confirmations. Extends item 24 and 104's naming; item 129 stays on hold.
 - **139** FPX bank-down status on the bank grid (ADR-130 decision 9), only
