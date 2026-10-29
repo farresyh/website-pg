@@ -31,6 +31,8 @@ class AffiliateDomain extends Model
         'last_checked_at',
         'verified_at',
         'last_error',
+        'payments_approved_at',
+        'payments_approved_by',
     ];
 
     protected $casts = [
@@ -39,5 +41,6 @@ class AffiliateDomain extends Model
         'verification' => 'array',
         'last_checked_at' => 'datetime',
         'verified_at' => 'datetime',
+        'payments_approved_at' => 'datetime',
     ];
 }

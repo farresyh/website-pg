@@ -419,7 +419,7 @@ final class FinancialScenario
         );
         AffiliateDomain::query()->firstOrCreate(
             ['hostname' => $this->affiliateHost()],
-            ['affiliate_id' => $affiliate->id, 'status' => AffiliateDomainStatus::Active, 'is_primary' => true],
+            ['affiliate_id' => $affiliate->id, 'status' => AffiliateDomainStatus::Active, 'is_primary' => true, 'payments_approved_at' => now()], // ADR-131: CHIP-approved
         );
 
         return $affiliate;

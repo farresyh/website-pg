@@ -9,6 +9,7 @@ use App\Http\Requests\Admin\StoreAffiliateRequest;
 use App\Http\Requests\Admin\StoreAffiliateUserRequest;
 use App\Http\Requests\Admin\UpdateAffiliateRequest;
 use App\Http\Requests\Admin\UpdateAffiliateStatusRequest;
+use App\Http\Requests\Admin\UpdateDomainPaymentsApprovalRequest;
 use App\Models\Affiliate;
 use App\Models\AffiliateDomain;
 use App\Models\AffiliateImpersonationSession;
@@ -306,6 +307,31 @@ class AffiliateController extends Controller
     }
 
     /**
+     * ADR-131 decision 21: approve (or revoke) a domain for CHIP payments. CHIP approves a branded
+     * domain in writing first; this is where that is recorded. Behind step-up.
+     */
+    public function updateDomainPaymentsApproval(UpdateDomainPaymentsApprovalRequest $request, Affiliate $affiliate, AffiliateDomain $affiliateDomain): JsonResponse
+    {
+        abort_unless($affiliateDomain->affiliate_id === $affiliate->id, 404);
+
+        $approved = $request->validated('approved');
+        $affiliateDomain->update([
+            'payments_approved_at' => $approved ? now() : null,
+            'payments_approved_by' => $approved ? $request->user()->id : null,
+        ]);
+
+        Log::info('Affiliate domain payments approval changed', [
+            'affiliate_id' => $affiliate->id,
+            'domain_id' => $affiliateDomain->id,
+            'hostname' => $affiliateDomain->hostname,
+            'approved' => $approved,
+            'admin_user_id' => $request->user()->id,
+        ]);
+
+        return response()->json($this->detailShape($affiliate->fresh()));
+    }
+
+    /**
      * ADR-060 addendum section F: admin break-glass — remove one custom
      * domain (abuse, or an affiliate request). Detaches at the provider
      * and deletes the row; primary fails over if needed.
@@ -447,6 +473,8 @@ class AffiliateController extends Controller
                     'hostname' => $d->hostname,
                     'status' => $d->status->value,
                     'is_primary' => $d->is_primary,
+                    'payments_approved' => $d->payments_approved_at !== null,
+                    'payments_approved_at' => $d->payments_approved_at?->toIso8601String(),
                     'provider' => $d->provider,
                     'provider_managed' => $d->provider_ref !== null,
                     'last_checked_at' => $d->last_checked_at?->toIso8601String(),

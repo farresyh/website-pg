@@ -884,6 +884,7 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
             // self-serve (or the founder via RES-4 impersonation). No
             // add-domain form here (addendum section F).
             Route::post('/{affiliate}/domains/{affiliateDomain}/recheck', [AffiliateController::class, 'recheckDomain']);
+            Route::put('/{affiliate}/domains/{affiliateDomain}/payments-approval', [AffiliateController::class, 'updateDomainPaymentsApproval'])->middleware('mfa.stepup');
             Route::delete('/{affiliate}/domains/{affiliateDomain}', [AffiliateController::class, 'removeDomain']);
         });
 

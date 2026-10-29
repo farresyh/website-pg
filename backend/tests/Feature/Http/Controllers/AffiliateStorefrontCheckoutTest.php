@@ -139,6 +139,7 @@ class AffiliateStorefrontCheckoutTest extends TestCase
             'hostname' => 'shop.acme.com',
             'status' => AffiliateDomainStatus::Active,
             'is_primary' => true,
+            'payments_approved_at' => now(), // ADR-131: a domain CHIP has approved
         ]);
 
         return $affiliate;

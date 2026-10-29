@@ -211,6 +211,7 @@ class MembershipSubscriptionControllerTest extends TestCase
             'affiliate_id' => $affiliate->id,
             'hostname' => 'shop.acme.com',
             'status' => AffiliateDomainStatus::Active,
+            'payments_approved_at' => now(), // ADR-131: a domain CHIP has approved
             'is_primary' => true,
         ]);
 
