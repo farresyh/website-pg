@@ -17,6 +17,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -303,6 +304,16 @@ final class ResellerWalletService
         }
 
         $attempt->refresh();
+
+        // ADR-131 decision 6: paid money is never refused, but a payment that reaches a closed
+        // account is stranded money someone must send back, so it is loud.
+        if (Reseller::onlyTrashed()->whereKey($attempt->reseller_id)->exists()) {
+            Log::critical('A paid Add Balance payment was credited to a closed reseller account. Refund it to the payer.', [
+                'reseller_id' => $attempt->reseller_id,
+                'wallet_topup_attempt_id' => $attempt->id,
+                'amount_sen' => $attempt->amount_sen,
+            ]);
+        }
 
         // ADR-076 PR-H decision 2 — a paid top-up fires no event, so the
         // "top-up berjaya" WhatsApp reply is sent from here, the one seam

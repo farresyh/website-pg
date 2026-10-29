@@ -7,6 +7,7 @@ use App\Models\LedgerEntry;
 use App\Models\MembershipCheckoutAttempt;
 use App\Models\MembershipFeeRecord;
 use App\Models\Order;
+use App\Models\Reseller;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\Voucher;
@@ -64,6 +65,8 @@ final class TransactionRegisterService
             ...$this->voucherRows($from, $toExclusive),
             ...$this->membershipRows($from, $toExclusive),
             ...$this->walletTopupRows($from, $toExclusive),
+            ...$this->walletManualCreditRows($from, $toExclusive),
+            ...$this->walletClosureRows($from, $toExclusive),
             ...$this->walletRefundRows($from, $toExclusive),
             ...$this->withdrawalRows($from, $toExclusive),
         ];
@@ -531,6 +534,82 @@ final class TransactionRegisterService
                 // double-count risk) — this row's own `type` already
                 // says "reseller_wallet_topup" unambiguously, so it adds
                 // nothing here.
+                'funding_source' => null,
+            ])
+            ->all();
+    }
+
+    /**
+     * ADR-131 decision 17: an admin manual credit of a reseller's wallet is a bank transfer
+     * that came in, with no CHIP attempt behind it, so `walletTopupRows()` never saw it.
+     * A `wallet_topup` ledger row not tied to an attempt (no reference, or the proof file
+     * of the credit itself) is the cash-in; a CHIP credit is never listed twice.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function walletManualCreditRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
+    {
+        $entries = LedgerEntry::query()
+            ->where('owner_type', LedgerOwnerType::ResellerWallet->value)
+            ->where('type', 'wallet_topup')
+            ->where(fn ($q) => $q->whereNull('reference_type')->orWhere('reference_type', '!=', 'wallet_topup_attempt'))
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
+            ->get();
+
+        $names = Reseller::withTrashed()->whereIn('id', $entries->pluck('owner_id')->unique())->pluck('business_name', 'id');
+
+        return $entries
+            ->map(fn (LedgerEntry $entry) => [
+                'date' => $entry->created_at->toIso8601String(),
+                'type' => 'reseller_wallet_manual_credit',
+                'reference' => 'Ledger entry #'.$entry->id,
+                'description' => 'Reseller balance credited by hand (bank transfer) — '.($names[$entry->owner_id] ?? 'unknown reseller'),
+                'supplier' => null,
+                'currency' => 'MYR',
+                'gross_sen' => $entry->amount,
+                'fee_sen' => 0,
+                'cost_sen' => null,
+                'net_sen' => $entry->amount,
+                'amount_foreign' => null,
+                'status' => 'active',
+                'funding_source' => null,
+            ])
+            ->all();
+    }
+
+    /**
+     * ADR-131 decision 17: the refund sent to a reseller whose account was closed. Cash
+     * leaves, dated by the debit (written the day the transfer is recorded, decision 14);
+     * the bank reference is in the entry's reason.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function walletClosureRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
+    {
+        $entries = LedgerEntry::query()
+            ->where('owner_type', LedgerOwnerType::ResellerWallet->value)
+            ->where('type', 'wallet_closure_refund')
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
+            ->get();
+
+        $names = Reseller::withTrashed()->whereIn('id', $entries->pluck('owner_id')->unique())->pluck('business_name', 'id');
+
+        return $entries
+            ->map(fn (LedgerEntry $entry) => [
+                'date' => $entry->created_at->toIso8601String(),
+                'type' => 'reseller_wallet_closure',
+                'reference' => 'Ledger entry #'.$entry->id,
+                'description' => 'Reseller account closed, balance refunded — '.($names[$entry->owner_id] ?? 'unknown reseller').'. '.$entry->reason,
+                'supplier' => null,
+                'currency' => 'MYR',
+                'gross_sen' => null,
+                'fee_sen' => null,
+                'cost_sen' => null,
+                'net_sen' => $entry->amount,
+                'amount_foreign' => null,
+                'status' => 'active',
                 'funding_source' => null,
             ])
             ->all();

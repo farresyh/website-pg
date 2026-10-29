@@ -42,6 +42,7 @@ class AdminMfaStepUpTest extends TestCase
             'POST api/mfa/recovery-codes mfa.stepup',
             'POST api/middleware/suppliers mfa.stepup',
             'POST api/orders/{order}/credentials/reveal mfa.stepup',
+            'POST api/resellers/{reseller}/close mfa.stepup',
             'POST api/resellers/{reseller}/wallet/credit mfa.stepup',
             'PUT api/admin-users/{admin_user} mfa.stepup',
             'PUT api/middleware/payment-gateways/{gatewayKey} mfa.stepup',

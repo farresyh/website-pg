@@ -39,7 +39,8 @@ class WalletTopupAttempt extends Model
 
     public function reseller(): BelongsTo
     {
-        return $this->belongsTo(Reseller::class);
+        // ADR-131 decision 17: a closed reseller is soft-deleted and its history keeps its name.
+        return $this->belongsTo(Reseller::class)->withTrashed();
     }
 
     /** The wallet credit a paid top-up wrote, once: its accounting date (ADR-127 F5). */
