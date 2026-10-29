@@ -120,3 +120,7 @@ Decision 8 had the receipt end with "An invoice is issued for each order." The s
 - **Logo** is a fixed file, `backend/resources/img/lwf-logo.png` (the black transparent logo, 600 px wide), embedded in the PDF as a data URI. Not a setting: it changes rarely.
 - **No tax lines and no card or bank detail** (we state no tax and keep no bank choice, ADR-130). The payment method reads "Online Banking (FPX)", "DuitNow QR" or "Bank transfer".
 - **Still open in item 142:** a stored snapshot of the company details, an admin download of a closed reseller's receipts, an automatic email. Triggers: an accountant's request or a change of company details; the first closed real reseller; a reseller asking for it.
+
+### 2026-10-30 addendum (later) — what was dropped
+
+The three receipt parts left open above (a stored snapshot of the company details, an admin download of a closed reseller's receipts, an automatic email) are **not planned** (founder, 2026-10-30): none is needed now. Decision 11's `ponytail:` note stands as the rule if one is ever wanted: an old receipt reprints the current company details and reseller name. The same decision closed PRD item 143: the partner portal footer keeps its hard-coded company name and SSM number (it also shows on the login page, so reading it from the setting would need a public endpoint), to be changed by hand if the details change.
