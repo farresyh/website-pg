@@ -4,7 +4,7 @@ A guest-checkout storefront for topping up game credits (MLBB and others),
 with an admin panel for catalog/order/withdrawal management, a partner portal
 serving two account types — **Affiliates** (whitelabel storefront owners with
 their own branding, custom domain, and earnings ledger — ADR-060) and
-**Resellers** (prepaid-wallet accounts that order via portal, REST API, or a
+**Resellers** (Purchase Balance (prepaid credit) accounts that order via portal, REST API, or a
 WhatsApp bot — ADR-072–076) — and a middleware layer that syncs prices and
 validates player IDs against upstream suppliers.
 
