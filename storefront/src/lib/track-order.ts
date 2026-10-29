@@ -70,3 +70,14 @@ export async function trackOrder(orderNumber: string) {
   const raw = await apiFetch<unknown>(path);
   return parseResponse(TrackedOrderSchema, raw, "TrackedOrder", path);
 }
+
+/**
+ * ADR-110 2026-10-29 addendum: asks the backend to check an unpaid order with
+ * CHIP once, so a payment the customer cancelled at the bank shows as failed
+ * now (not at the next sweep). Returns the order exactly like `trackOrder`.
+ */
+export async function checkOrderPayment(orderNumber: string) {
+  const path = `/api/track-order/${encodeURIComponent(orderNumber)}/check-payment`;
+  const raw = await apiFetch<unknown>(path, { method: "POST" });
+  return parseResponse(TrackedOrderSchema, raw, "TrackedOrder", path);
+}

@@ -108,6 +108,13 @@ export default function MembershipSubscribe({ token }: { token: string }) {
       }
       setError("Could not start the payment. Please try again.");
     } catch (err) {
+      if (err instanceof ApiError && err.code === "checkout_closed") {
+        // ADR-110 2026-10-29 addendum: that payment was cancelled for good. A new
+        // key makes the next click a fresh attempt (an order does the same).
+        idemKey.current = crypto.randomUUID();
+        setError("That payment was not completed. Choose how to pay and continue to try again.");
+        return;
+      }
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
     } finally {
       setStarting(false);

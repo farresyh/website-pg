@@ -5,7 +5,7 @@ import { Check, Copy, WhatsappLogo, GameController, User, CreditCard } from "@ph
 import { ApiError } from "@/lib/api-client";
 import { getEcho } from "@/lib/echo";
 import { useReconcileOnResume } from "@/lib/useReconcileOnResume";
-import { trackOrder, TrackedOrderSchema, type TrackedOrder } from "@/lib/track-order";
+import { checkOrderPayment, trackOrder, TrackedOrderSchema, type TrackedOrder } from "@/lib/track-order";
 import { useSiteConfig } from "@/context/SiteConfigContext";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/order/StatusBadge";
@@ -121,6 +121,11 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
   const watchStartedAt = useRef(0);
   const [rateModalDismissed, setRateModalDismissed] = useState(false);
   const [copied, setCopied] = useState(false);
+  // ADR-110 2026-10-29 addendum: CHIP's failure_redirect lands here. An unpaid
+  // order is checked with CHIP once per page open; until the server answers we
+  // say "confirming", never "failed".
+  const [confirming, setConfirming] = useState(false);
+  const paymentChecked = useRef(false);
 
   function handleCopy() {
     if (!order?.order_number) return;
@@ -167,6 +172,18 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
       clearTimeout(timer);
     };
   }, [orderNumber]);
+
+  useEffect(() => {
+    if (!order || order.payment_status !== "pending" || paymentChecked.current) return;
+    paymentChecked.current = true;
+    setConfirming(true);
+    // No cleanup on purpose: `order` changes on every poll, which would cancel this
+    // answer; a state update after unmount is harmless.
+    checkOrderPayment(orderNumber)
+      .then(setOrder)
+      .catch(() => {}) // the poll above still shows the order as it is
+      .finally(() => setConfirming(false));
+  }, [order, orderNumber]);
 
   // ADR-047 decisions 1/2 — public channel keyed by the order's own
   // order_number (guest checkout, ADR-011, no auth possible or needed —
@@ -224,8 +241,12 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
   const canGetUpdates = isPaid && !hasFailure;
   // One filled button per state: the next useful move. Waiting means get
   // notified, done means buy again, a failure or no payment means talk to support.
-  const primaryAction: "support" | "updates" | "buy-again" =
-    !canGetUpdates ? "support" : isDelivered ? "buy-again" : "updates";
+  // ADR-110 2026-10-29 addendum: a payment that did not complete is final (the
+  // customer cancelled at the bank); the next move is a new order, not support.
+  const paymentFailed = order.payment_status === "failed";
+  const primaryAction: "support" | "updates" | "buy-again" | "try-again" = paymentFailed
+    ? "try-again"
+    : !canGetUpdates ? "support" : isDelivered ? "buy-again" : "updates";
   // ADR-125: a login order is topped up by hand through the customer's
   // own login, so it promises no minutes and asks for a password change.
   const isLoginOrder = order.fulfilment_kind === "login";
@@ -236,6 +257,8 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
         heading: "Part of Your Order Couldn't Be Completed",
         body: "The part that didn't go through is credited back to you as a voucher. Contact our Customer Support team on WhatsApp if you have any questions.",
       }
+    : paymentFailed
+    ? { heading: "Payment Not Completed", body: "Nothing was charged for this order. Start a new order to try again, or contact our Customer Support team on WhatsApp if you need a hand." }
     : hasFailure
     ? { heading: "Need Help With This Order?", body: "Contact our Customer Support team directly via WhatsApp for a manual check." }
     : !isPaid
@@ -337,6 +360,12 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
           </div>
 
           <hr className="border-ink/25" />
+
+          {confirming && (
+            <p role="status" className="text-[13px] text-on-surface-variant">
+              Confirming your payment…
+            </p>
+          )}
 
           {/* Vertical on mobile (each stage on its own row), horizontal
             * timeline from lg up — a 3-4 stage nowrap row does not fit a
@@ -443,11 +472,11 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
         })()}
         {order.game && (
           <Button
-            href={`/order/${order.game.slug}`}
-            variant={primaryAction === "buy-again" ? "primary" : "outline"}
+            href={paymentFailed && joki ? "/joki" : `/order/${order.game.slug}`}
+            variant={primaryAction === "buy-again" || primaryAction === "try-again" ? "primary" : "outline"}
             className="justify-center"
           >
-            Buy Again
+            {paymentFailed ? "Try Again" : "Buy Again"}
           </Button>
         )}
       </div>
