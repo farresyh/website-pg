@@ -19,6 +19,7 @@ import StepCard from "@/components/order/StepCard";
 import LoginAccountFields, { loginFormReady, loginIdentifier } from "@/components/order/LoginAccountFields";
 import PaymentChannelPicker from "@/components/order/PaymentChannelPicker";
 import OrderSummarySidebar from "@/components/order/OrderSummarySidebar";
+import PaymentsUnavailableNotice from "@/components/order/PaymentsUnavailableNotice";
 import ReviewModal from "@/components/order/ReviewModal";
 import { idInputClass, idLabelClass } from "@/components/order/idFields";
 import JokiRankStepper, { jokiStops, rankAt } from "@/components/joki/JokiRankStepper";
@@ -34,10 +35,12 @@ type Mode = "calculator" | "route";
  * (`/api/joki/quote`, then `/api/checkout/preview-totals` with the fee),
  * the same JokiPricingService checkout charges with — never here (ORD-9).
  */
-export default function JokiOrderForm({ catalog, paymentChannels, whatsappHref }: {
+export default function JokiOrderForm({ catalog, paymentChannels, whatsappHref, paymentsEnabled = true }: {
   catalog: JokiCatalog;
   paymentChannels: PaymentChannel[];
   whatsappHref: string | null;
+  /** ADR-131 decision 20: false on a branded domain not yet approved for payments. */
+  paymentsEnabled?: boolean;
 }) {
   const router = useRouter();
   const { tiers, routes, settings, credentialFields } = catalog;
@@ -153,6 +156,8 @@ export default function JokiOrderForm({ catalog, paymentChannels, whatsappHref }
   const step2Complete = loginFormReady(credentialFields, credentials, credentialConsent);
   const step3Complete = channelCode !== null;
   const readyForReview = step1Complete && step2Complete && step3Complete;
+  // ADR-131: the steps can all be done and the store still cannot take the payment.
+  const canPay = readyForReview && paymentsEnabled;
 
   const steps: StepInfo[] = [
     { label: "Choose Climb", state: step1Complete ? "done" : "active" },
@@ -275,6 +280,7 @@ export default function JokiOrderForm({ catalog, paymentChannels, whatsappHref }
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_360px] lg:items-start">
       <div className="flex flex-col gap-5">
+        {!paymentsEnabled && <PaymentsUnavailableNotice />}
         <Stepper steps={steps} />
 
         <StepCard number={1} title="Choose Your Climb" locked={false}>
@@ -443,7 +449,7 @@ export default function JokiOrderForm({ catalog, paymentChannels, whatsappHref }
             playerId={accountValue}
             playerLabel={accountLabel}
             serverId=""
-            ready={readyForReview}
+            ready={canPay}
             onReview={openReview}
           />
         </div>
@@ -455,8 +461,8 @@ export default function JokiOrderForm({ catalog, paymentChannels, whatsappHref }
             <p className="font-display text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">Total</p>
             <p className="font-mono text-lg font-bold text-primary-on-surface">RM{(preview ? preview.final_amount_sen / 100 : purchase?.priceRm ?? 0).toFixed(2)}</p>
           </div>
-          <Button onClick={openReview} disabled={!readyForReview} size="sm" className="shrink-0">
-            {readyForReview ? "Review & Pay" : "Complete steps"}
+          <Button onClick={openReview} disabled={!canPay} size="sm" className="shrink-0">
+            {!paymentsEnabled ? "Unavailable" : readyForReview ? "Review & Pay" : "Complete steps"}
           </Button>
         </div>
       </div>

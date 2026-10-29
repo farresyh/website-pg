@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compensationNote, dateAndTime, deliveryBadge, formatMalaysianPhone, ledgerRow, paymentBadge, signedRm, toSen } from "./format.ts";
+import { compensationNote, dateAndTime, deliveryBadge, domainPaymentsBadge, formatMalaysianPhone, ledgerRow, paymentBadge, signedRm, toSen } from "./format.ts";
 
 test("formats a Malaysian mobile number and leaves anything else alone", () => {
   assert.equal(formatMalaysianPhone("+601143013150"), "+60 11-4301 3150");
@@ -48,3 +48,15 @@ test("typed ringgit becomes sen, or nothing when it isn't a plain amount", () =>
   assert.equal(toSen(""), null);
   assert.equal(toSen("12."), null);
 });
+
+test("only an Active domain shows a payments state, and never names a provider", () => {
+  assert.equal(domainPaymentsBadge({ status: "pending", payments_approved: false }), null);
+  assert.equal(domainPaymentsBadge({ status: "failed", payments_approved: true }), null);
+  assert.equal(domainPaymentsBadge({ status: "suspended", payments_approved: false }), null);
+  assert.deepEqual(domainPaymentsBadge({ status: "active", payments_approved: true }), { severity: "success", label: "Payments on", hint: null });
+  const waiting = domainPaymentsBadge({ status: "active", payments_approved: false });
+  assert.equal(waiting?.severity, "warn");
+  assert.equal(waiting?.label, "Payments awaiting approval");
+  assert.doesNotMatch(`${waiting?.label} ${waiting?.hint}`, /chip|vercel/i);
+});
+
