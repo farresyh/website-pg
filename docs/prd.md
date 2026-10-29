@@ -969,9 +969,9 @@ moved to group D). Re-verify before building.
   and a `FinancialScenario` step, and a `payments_approved_at` gate on affiliate
   domains. Three PRs (a rename, limits, receipt; b closure and Register; c
   domain gate), **one release**, one reply to CHIP after it, with production
-  screenshots from a test reseller. **PR A built 2026-10-29 on
-  `feature/purchase-balance-limits-receipt`, not released** (build-log
-  2026-10-29); PR B and PR C are next. Browser-checked locally (the step-up save path
+  screenshots from a test reseller. **PR A (#596) merged to `staging`, not released; PR B (account
+  closure, the two Register rows, the scenario proofs) built 2026-10-29 on
+  `feature/reseller-account-closure`** (build-log 2026-10-29); PR C is next. Browser-checked locally (the step-up save path
   with an MFA admin still to re-check).
   Outside the repo (public): the onboarding procedure and the written
   confirmations. Extends item 24 and 104's naming; item 129 stays on hold.
