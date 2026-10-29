@@ -960,6 +960,17 @@ moved to group D). Re-verify before building.
   (founder, 2026-10-23). The founder plans to go back to voucher-only once
   CHIP approves. Before payments go live for real customers, either the
   published policy is voucher-only again or this is built.
+- **141** CHIP activation conditions (ADR-131, design only, 2026-10-29): rename the
+  reseller wallet to "Purchase Balance" (visible strings only), RM10,000 per
+  top-up and a RM100,000 default balance cap (per-reseller override) enforced
+  under the wallet mutex, a Payment Receipt per top-up, one "Close account"
+  action (transfer first, then the debit) with two Transaction Register rows
+  and a `FinancialScenario` step, and a `payments_approved_at` gate on affiliate
+  domains. Three PRs (a rename, limits, receipt; b closure and Register; c
+  domain gate), **one release**, one reply to CHIP after it, with production
+  screenshots from a test reseller. Trigger: the founder's go-ahead to build.
+  Outside the repo (public): the onboarding procedure and the written
+  confirmations. Extends item 24 and 104's naming; item 129 stays on hold.
 - **139** FPX bank-down status on the bank grid (ADR-130 decision 9), only
   if real payments show customers failing at a down bank. Advisory and
   fail-open from `fpxstatus.chip-in.asia`'s JSON feed; never a hard
