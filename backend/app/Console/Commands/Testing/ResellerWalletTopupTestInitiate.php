@@ -3,6 +3,7 @@
 namespace App\Console\Commands\Testing;
 
 use App\Models\Reseller;
+use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
@@ -45,9 +46,13 @@ class ResellerWalletTopupTestInitiate extends Command
                 ]);
             }
 
+            // ADR-110 2026-10-29: `initiate()` asks the gateway whether a still-pending
+            // attempt has ended for good. The second racing process reaches that check
+            // once the first has stored its purchase id; a purchase still open is the
+            // honest answer (a throw here left an empty result file, a timing flake).
             public function getPayment(string $paymentRequestId): PaymentResponse
             {
-                throw new RuntimeException('not used in this test');
+                return PaymentResponse::success([], PaymentStatus::Pending);
             }
 
             public function verifyWebhookSignature(Request $request): bool
