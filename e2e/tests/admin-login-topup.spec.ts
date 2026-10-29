@@ -49,7 +49,7 @@ test("login top-up: create game -> checkout with login -> Manual Queue -> delive
   await page.getByRole("button", { name: "Continue", exact: true }).click();
 
   await page.getByRole("button", { name: "800 Robux" }).click();
-  await page.getByRole("button", { name: "Online Banking (FPX)" }).click();
+  await page.getByRole("button", { name: "Maybank2u" }).click();
   await page.getByRole("button", { name: /Review & Pay/ }).click();
   // The review shows the identifier, never the password.
   await expect(page.getByText("Player@Example.com").first()).toBeVisible();

@@ -24,9 +24,9 @@ test("guest checkout -> payment -> order status", async ({ page, request }) => {
   await page.getByRole("button", { name: "Continue", exact: true }).click();
 
   await page.getByRole("button", { name: "E2E Test Package" }).click();
-  // The one CHIP FPX button (E2ESeeder activates channel_code 'fpx');
-  // bank selection happens on CHIP's own hosted page, not here.
-  await page.getByRole("button", { name: "Online Banking (FPX)" }).click();
+  // The FPX channel (E2ESeeder activates channel_code 'fpx') shows a grid of
+  // banks (ADR-130); picking one sends the customer straight to that bank.
+  await page.getByRole("button", { name: "Maybank2u" }).click();
 
   await page.getByRole("button", { name: /Review & Pay/ }).click();
 

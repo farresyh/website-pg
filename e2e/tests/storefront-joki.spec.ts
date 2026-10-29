@@ -61,7 +61,7 @@ test("joki: switch on -> price a climb on /joki -> pay -> waits for a penjoki", 
   await page.locator("#joki-role").selectOption("Jungler");
   await page.locator("#joki-hero").fill("Ling");
 
-  await page.getByRole("button", { name: "Online Banking (FPX)" }).click();
+  await page.getByRole("button", { name: "Maybank2u" }).click();
   await page.getByRole("button", { name: /Review & Pay/ }).first().click();
 
   await page.locator("#reviewEmail").fill("e2e-joki@example.com");
