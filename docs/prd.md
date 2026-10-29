@@ -899,7 +899,17 @@ and the admin-loading investigation (#515, #516). Re-checked again
 moved to group D). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- None open.
+- **140** A failed payment attempt is final (ADR-110 2026-10-29 addendum): after a
+  customer cancels at the bank (or any attempt fails) they start a new
+  checkout and cannot pay the same purchase again. Found 2026-10-29: the
+  founder's bank-login cancel left the order Pending for 42 minutes and CHIP's
+  page offered a retry. `single_attempt: true` on every purchase, one
+  `failure_is_final` definition, a check wherever a link would be handed out
+  again (order replay, membership attempt, wallet top-up lock and the bot) and
+  when the customer returns to the status page, a "Payment not completed /
+  Try again" status page. **Tested 2026-10-29** (CHIP test mode): `single_attempt` makes CHIP cancel
+  the purchase and send the customer to `failure_redirect`. **Still owed:** one
+  real RM1 cancel at a bank after release (extends item 138). **PR A** backend, **PR B** storefront status page.
 
 **B. Needs a short grill / ADR addendum first**
 - None open.
