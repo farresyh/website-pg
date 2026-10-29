@@ -56,6 +56,7 @@ const typeLabel: Record<string, string> = {
   wallet_topup: "Top-up",
   wallet_debit: "Order debit",
   wallet_refund: "Refund",
+  wallet_closure_refund: "Closure refund",
 };
 
 function Content({ reseller, onCredited }: Omit<Props, "isOpen" | "onClose">) {
