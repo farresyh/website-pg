@@ -2795,3 +2795,5 @@ Correction to this session's earlier count: prod has 23 *paid* FPX orders, not 2
 
 **Later the same evening.** The affiliate portal's "Payments awaiting approval" badge on `fixfastapp.com` was seen (through admin impersonation). An Add Balance was started and cancelled at the bank: the attempt ended `failed` straight away (not after its 30 minutes) and the browser came back to `/balance`, so the wallet top-up path of item 140 works too. The legacy `/wallet` link redirecting has still not been hit on prod (a new return URL goes straight to `/balance`); it was checked locally (`308` to `/balance?topup=success`).
 
+The legacy link was then checked on prod: `https://reseller.pekangame.space/wallet` answers `308` to `/balance`, and `/wallet?topup=success` to `/balance?topup=success` (query kept).
+
