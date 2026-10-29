@@ -47,7 +47,7 @@ The first plan appended the parameter inside `ChipGateway::createPayment` and ca
 
 - **Proof before "done".** One real RM1 payment through a real bank, with a bank code, on production after release, since test mode can't show it. If it lands on CHIP's normal page or an error, revert the helper call; nothing else changed.
 - **The 20 codes are pinned by a test against the CHIP doc's table**, and a second test asserts every bank has a logo file. The doc's own blog example (`MB2U0228`) disagrees with its table, so the doc table is the source.
-- **Bank-down handling** (decision 9) and the **wallet/membership** PR are open until built; see PRD §16 items 138 and 139.
+- **Bank-down handling** (decision 9) is built only if needed (PRD §16 item 139); the real-bank proof is item 138.
 - **A new CHIP bank** is one JSON line plus a logo and a release; until then its customers use the "Other bank" link.
 - **Wording to fix at build:** the `ChipGateway` doc comment says "no bank code is ever sent by this adapter". It stays true (the helper lives outside the gateway adapter), but the comment should point here.
 
