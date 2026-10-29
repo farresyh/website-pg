@@ -1,0 +1,22 @@
+[
+  {"code": "MB2U0227", "name": "Maybank2u"},
+  {"code": "BCBB0235", "name": "CIMB Bank"},
+  {"code": "PBB0233", "name": "Public Bank"},
+  {"code": "RHB0218", "name": "RHB Bank"},
+  {"code": "HLB0224", "name": "Hong Leong Bank"},
+  {"code": "AMBB0209", "name": "AmBank"},
+  {"code": "BIMB0340", "name": "Bank Islam"},
+  {"code": "ABB0233", "name": "Affin Bank"},
+  {"code": "AGRO01", "name": "Agrobank"},
+  {"code": "ABMB0212", "name": "Alliance Bank"},
+  {"code": "BMMB0341", "name": "Bank Muamalat"},
+  {"code": "BOCM01", "name": "Bank of China"},
+  {"code": "BKRM0602", "name": "Bank Rakyat"},
+  {"code": "BSN0601", "name": "BSN"},
+  {"code": "HSBC0223", "name": "HSBC Bank"},
+  {"code": "KFH0346", "name": "Kuwait Finance House"},
+  {"code": "MBSB001", "name": "MBSB Bank"},
+  {"code": "OCBC0229", "name": "OCBC Bank"},
+  {"code": "SCB0216", "name": "Standard Chartered"},
+  {"code": "UOB0226", "name": "UOB Bank"}
+]

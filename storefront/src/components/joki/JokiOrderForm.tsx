@@ -136,6 +136,7 @@ export default function JokiOrderForm({ catalog, paymentChannels, whatsappHref }
 
   // Step 3 and the review.
   const [channelCode, setChannelCode] = useState<string | null>(null);
+  const [bankCode, setBankCode] = useState<string | null>(null);
   const selectedChannel = paymentChannels.find((c) => c.channelCode === channelCode) ?? null;
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -238,6 +239,7 @@ export default function JokiOrderForm({ catalog, paymentChannels, whatsappHref }
         credential_consent: credentialConsent,
         joki: selection,
         channel_code: channelCode,
+        fpx_bank_code: bankCode ?? undefined,
         idempotency_key: idempotencyKeyRef.current ?? crypto.randomUUID(),
         voucher_code: voucherCode ?? undefined,
         // Overwritten server-side with the real order's status page (see OrderForm).
@@ -420,7 +422,15 @@ export default function JokiOrderForm({ catalog, paymentChannels, whatsappHref }
         </StepCard>
 
         <StepCard number={3} title="Choose Payment Method" locked={!(step1Complete && step2Complete)} lockHint="Fill in your account first">
-          <PaymentChannelPicker channels={paymentChannels} selected={channelCode} onSelect={setChannelCode} />
+          <PaymentChannelPicker
+            channels={paymentChannels}
+            selected={channelCode}
+            bankCode={bankCode}
+            onSelect={(code, bank) => {
+              setChannelCode(code);
+              setBankCode(bank ?? null);
+            }}
+          />
         </StepCard>
       </div>
 

@@ -1,6 +1,65 @@
 import Image from "next/image";
 import { PaymentChannelIcon } from "@/components/icons/PaymentIcons";
 import type { PaymentChannel } from "@/lib/payment-methods";
+import fpxBanks from "@/lib/fpx-banks.json";
+
+/** The one FPX channel whose bank the customer picks on our page (ADR-130); FPX Business stays on CHIP's page. */
+const FPX_CHANNEL = "fpx";
+
+const TILE = "border-2 transition-all";
+const tileState = (selected: boolean) =>
+  selected ? "border-primary bg-primary-fixed neo-sm" : "border-ink bg-surface-container-lowest hover:bg-surface-container-low";
+
+/**
+ * ADR-130: the banks as logo tiles, so the customer goes straight to their
+ * bank instead of choosing on CHIP's page. "Other bank" sends the same
+ * request with no bank, so a bank missing from our list is never locked out.
+ */
+function FpxBankGrid({
+  selected,
+  bankCode,
+  onSelect,
+}: {
+  selected: boolean;
+  bankCode: string | null;
+  onSelect: (bankCode: string | null) => void;
+}) {
+  return (
+    <>
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+        {fpxBanks.map((bank) => (
+          <button
+            key={bank.code}
+            type="button"
+            aria-label={bank.name}
+            aria-pressed={selected && bankCode === bank.code}
+            title={bank.name}
+            onClick={() => onSelect(bank.code)}
+            className={`${TILE} flex h-12 items-center justify-center rounded-md px-2 ${tileState(selected && bankCode === bank.code)}`}
+          >
+            <Image
+              src={`/images/banks/${bank.code.toLowerCase()}.png`}
+              alt=""
+              width={240}
+              height={96}
+              className="h-auto max-h-7 w-auto max-w-full object-contain"
+            />
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        aria-pressed={selected && bankCode === null}
+        onClick={() => onSelect(null)}
+        className={`mt-2 text-xs underline underline-offset-2 ${
+          selected && bankCode === null ? "font-semibold text-primary-on-surface" : "text-on-surface-variant"
+        }`}
+      >
+        Other bank? Choose it on the next page
+      </button>
+    </>
+  );
+}
 
 const CHANNEL_GROUPS: { key: string; label: string }[] = [
   { key: "fpx", label: "Online Banking (FPX)" },
@@ -17,11 +76,14 @@ const CHANNEL_GROUPS: { key: string; label: string }[] = [
 export default function PaymentChannelPicker({
   channels,
   selected,
+  bankCode,
   onSelect,
 }: {
   channels: PaymentChannel[];
   selected: string | null;
-  onSelect: (channelCode: string) => void;
+  /** FPX only: the bank picked on our page, null for "Other bank". */
+  bankCode: string | null;
+  onSelect: (channelCode: string, bankCode?: string | null) => void;
 }) {
   return (
     <>
@@ -39,13 +101,25 @@ export default function PaymentChannelPicker({
         // and the mark carries the wordmark). Several channels →
         // keep the text so they stay tellable apart.
         const soloChannel = groupChannels.length === 1;
+        // An empty list falls back to the plain FPX button.
+        const bankGrid = fpxBanks.length > 0 && groupChannels.some((c) => c.channelCode === FPX_CHANNEL);
+        const buttonChannels = bankGrid ? groupChannels.filter((c) => c.channelCode !== FPX_CHANNEL) : groupChannels;
         return (
           <div key={group.key} className="mb-3.5 last:mb-0">
             <p className="mb-2 font-display text-[11px] font-bold tracking-wide text-on-surface-variant uppercase">
               {group.label}
             </p>
+            {bankGrid && (
+              <div className={buttonChannels.length > 0 ? "mb-2" : undefined}>
+                <FpxBankGrid
+                  selected={selected === FPX_CHANNEL}
+                  bankCode={bankCode}
+                  onSelect={(code) => onSelect(FPX_CHANNEL, code)}
+                />
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
-              {groupChannels.map((channel) => (
+              {buttonChannels.map((channel) => (
                 <button
                   key={channel.channelCode}
                   type="button"
@@ -88,9 +162,6 @@ export default function PaymentChannelPicker({
             className="h-4 w-auto object-contain"
           />
         </div>
-        <span className="text-[11px] text-on-surface-variant">
-          BNM Compliant • 256-bit SSL
-        </span>
       </div>
     </>
   );

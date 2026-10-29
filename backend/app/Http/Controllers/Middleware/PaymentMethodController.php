@@ -157,7 +157,10 @@ class PaymentMethodController extends Controller
             customer: new PaymentCustomer(
                 referenceId: 'channel-test-customer-'.Str::ulid(),
                 givenNames: 'Test Customer',
+                // CHIP rejects a purchase without client.email (HTTP 400).
+                email: 'channel-test@pekangame.space',
             ),
+            verifyChannel: true,
         ));
 
         $paymentMethod->update([

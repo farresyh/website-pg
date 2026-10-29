@@ -2572,7 +2572,7 @@ but not toasts. This closes ADR-129 (§16 item 136): every action outcome is a
 toast; field validation, load/empty states, persistent warnings and the
 order-modals' confirmations stay inline on purpose.
 
-**What shipped (all on `staging`, not yet `main`).**
+**What shipped (#575–#580, released to `main` via #581).**
 - #575: the five review notes on #574 — `@primereact/headless` declared,
   focus-on-dismiss returns to the region, entrance motion dropped
   (a mount-flip sets state in an effect, which the lint forbids), the
@@ -2602,6 +2602,12 @@ that outcome says so); money-action failures are sticky so they can't vanish.
 No backend, ledger or money-logic change anywhere in the rollout.
 
 **Gotchas.**
+- The review caught one more "200 with a failure in the body": the affiliate
+  tier-fee charge answers 200 when earnings are short (no debit, the cycle
+  goes to grace) or the cycle is already paid, so "Tier fee charged" could
+  show for a charge that never happened. The success toast now requires an
+  advanced `next_charge_at`; otherwise it warns "Fee not charged". The
+  payment-method test (#577) is the same class of fix.
 - The `guard`/`run`/`save` helpers across screens were each extended with an
   optional success message instead of a bespoke toast store, so the library
   stays swappable in one file.
@@ -2609,3 +2615,60 @@ No backend, ledger or money-logic change anywhere in the rollout.
   leftover `JOKI_ERROR`/`JOKI_NOTICE` imports and `setError` assignments.
 - The portal copy is generated (`scripts/sync-shared-files.mjs`), never
   hand-edited; CI's `theme-preset-drift` guards it.
+
+## 2026-10-28 — DuitNow QR was sent to CHIP under the wrong code; Test action fixed (ADR-022 addendum)
+
+**Found (read-only prod + CHIP portal).** The founder's DuitNow test order ended `Cancelled`, "No matching terminal", Visa. Cause: our code `duitnow_qr` vs CHIP's `dnqr` (`GET /payment_methods/` with the live credentials: `fpx`, `fpx_b2b1`, `dnqr`). CHIP kept `["duitnow_qr"]` as the whitelist (the purchase JSON echoes it), so no error. The Test button's HTTP 400 on every channel was a separate bug: no `client.email`. Prod had 28 real FPX orders while Test said FPX "failed".
+
+**Built** on `fix/chip-dnqr-channel-code`: seeder + rename migration, `verifyChannel` in the Test probe, email in the probe, CHIP field errors in `failureFrom`. `php artisan test`: 3084 passed.
+
+**Gotchas.** (1) Live CHIP credentials come from the `payment_gateways` row (`ChipCredentialResolver`), not `.env`: reading `config('services.chip')` in tinker used a different key (a purchase GET returned 404). (2) An unknown whitelist value is not rejected by CHIP, so checking the purchase response for an empty whitelist would not have caught this. **Not yet verified:** a paid DuitNow QR payment; after release, run Test on `dnqr`, then pay RM1 for real. Until released, DuitNow QR should be switched off in Payment Methods.
+
+## 2026-10-28 — MLBB validator: Redx → UniPlay replaces Redx → MooGold (ADR-005 addendum)
+
+**Found (read-only).** Redx's `POST /tools/check` answered 503 "temporarily unavailable" for `mobile-legends` three times in a row, while `free-fire` and `genshin-impact` returned 200 with the identical session/CSRF handshake. So our `RedxGameValidator` was fine; Redx had turned its MLBB checker off. Our code already treats a non-check response as unavailable and falls back. The public `/check-id` MLBB page was Redx-only, so it showed "busy".
+
+**Built** on `feature/uniplay-validator-replace-moogold`: `UniplayValidator` (token read from the page and cached, renewed once on 401/403; `status:false` = invalid), chain Redx → UniPlay for checkout and the public checker (ADR-123 addendum), MooGold validator/test/config deleted. `php artisan test`: 3080 passed.
+
+**Gotcha.** The UniPlay token regex first rejected the test token `tok-1` because base64 has no `-`. **Not verified from our server:** the live UniPlay call (this session's automation was blocked from using their page token); the founder confirmed the response shape in a browser. After release, check `player_validations.provider` for an `uniplay` row.
+
+
+## 2026-10-29 — Docs sync after #582–#584 (merged to `staging`, not released)
+
+Merged #582, #583, #584 into `staging` (merge commits). #584 conflicted with #583 on `build-log.md` (both appended at the end); both entries kept. #584's first CI run failed `scramble-drift`: its migration called `Cache::forget`, and that job migrates with no Redis; the cache calls were removed (catalog caches expire in 60 s).
+
+Docs corrected against prod and git (read-only, 2026-10-28/29): PRD §14 said DuitNow QR "stays off (checked 2026-10-26)" and "staging = main"; prod showed DuitNow QR on since 2026-10-28 13:28 UTC (unpayable with the wrong code) and `staging` ahead of `main` by #582–#584. Also corrected: the Game ID Checker row and `foundation-security.md` ("Redx only, never MooGold"), ADR-076/093 notes ("only MooGold remains"), ADR banners and index dates. Prod runs #581 (`2db6d62`): MLBB checks go Redx (HTTP 503 since 2026-10-28) → MooGold; the three `player_validations` rows since then are `moogold`.
+
+Correction to this session's earlier count: prod has 23 *paid* FPX orders, not 28 (28 includes failed and pending).
+
+## 2026-10-29 — FPX bank-direct, PR 1 (ADR-130): the customer picks the bank on our page
+
+**Designed first, then built.** ADR-130 (#586) records the decision, the 2026-10-29 CHIP test-mode run and the code trace that overturned the first plan: appending the parameter in `ChipGateway::createPayment` would have done nothing for orders (they re-read the URL through `getPayment`) and would have pinned the first bank on membership/wallet (stored `checkout_url`).
+
+**Built (PR 1, branch `feature/fpx-bank-direct`, not yet released):**
+- `backend/config/fpx-banks.json` (20 B2C codes from CHIP's FPX doc table, popular first) read by `config/fpx-banks.php`; `FpxBankRedirect` appends `?preferred=fpx&fpx_bank_code=<code>` to the `WEB_URL` action only for a listed code and never to an `/invoice/` URL.
+- `CheckoutController::buildCheckoutResponse` applies it to a Pending order's response (create and every replay); `CreateCheckoutRequest` gets `fpx_bank_code` (`Rule::in` the list, `prohibited_unless:channel_code,fpx`). Nothing is stored; `payloadHash` is unchanged, so a replay with another bank is the same order.
+- Storefront `PaymentChannelPicker`: a 20-logo grid (3 columns on a phone, 4 from `sm`) replaces the FPX button, plus "Other bank? Choose it on the next page" (same request, no bank). `OrderForm` and `JokiOrderForm` keep `bankCode` separate from `channelCode` and send `fpx_bank_code`. `CheckoutPayloadSchema` needed the key too: Zod strips unknown keys, so without it the bank vanished before reaching the API.
+- Logos: the founder's 20 files, resized to 240 px wide, named by lower-cased CHIP code in `storefront/public/images/banks/`.
+- `scripts/sync-shared-files.mjs` copies the JSON to `storefront/src/lib/fpx-banks.json`; CI's `theme-preset-drift` now diffs that path too (it only covered `reseller/` before).
+- Four e2e specs clicked the removed "Online Banking (FPX)" button; they now pick Maybank2u.
+
+**Verified:** backend suite 3097/3097 (new: `FpxBankRedirectTest` pins the 20 codes, `CheckoutControllerFpxBankTest` 7 cases: bank applied, plain without, replay with another bank, replay via the other-bank link, nothing stored on the order, unlisted code 422, bank on another channel 422); storefront `tsc`, `lint`, `build`. In a real browser, on a temporary preview page (deleted): 20 tiles render, selecting a bank sets `fpx` + its code, "Other bank" sets no bank, DuitNow clears the bank; at a 358 px container the grid is 3 columns of 103x48 px with no horizontal overflow.
+
+**Gotchas hit:** the local backend's `/api/catalog/games` 500s on `CACHE_STORE=database` (backend/AGENTS.md gotcha 5), so the storefront showed no games and the full order flow could not be clicked through locally; the picker was checked on a throwaway page instead. Chrome blocks iframing a storefront page, so the phone width was simulated by narrowing the container.
+
+**Not done / owed:** PR 2 (membership onto the shared picker, wallet top-up, the portal's copy of the JSON and logos); one real RM1 payment through a real bank after release (test mode accepts any code, ADR-130); bank-down status stays unbuilt (ADR-130 decision 9). The review modal still shows "Online Banking (FPX)" without the bank name.
+
+## 2026-10-29 — FPX bank-direct, PR 2 (ADR-130): membership and wallet top-up
+
+**Built (PR #588, `feature/fpx-bank-direct-pr2`, not yet released):**
+- Backend: `FpxBankRedirect::rules($channelField)` is the one rule for `fpx_bank_code` (`SubscribeRequest` names the channel `payment_method`, so a hard-coded `channel_code` would have silently never fired there; `CreateCheckoutRequest` now uses it too) and `applyToUrl()` the one URL helper (`apply()` for the order's `actions` array uses it). `MembershipController::subscribe` and `WalletController::topup` apply the bank to the response `checkout_url` for a Pending attempt only; the stored `checkout_url` stays plain, so a retry with another bank gets the right URL.
+- Storefront: `MembershipSubscribe` drops its own radio list and "Secured via CHIP" strip for the shared `PaymentChannelPicker`. The two auto-select-when-one-channel lines are gone (they would have shown "Other bank" as chosen without a click), so "Continue to Payment" waits for a bank or "Other bank". `subscribe()` sends `fpx_bank_code`. The "BNM Compliant • 256-bit SSL" line is removed from the picker (item 134, founder's decision).
+- Partner portal: `components/money/FpxBankGrid.tsx` in the portal's own styling over generated copies of `fpx-banks.json` and the 20 logos (`sync-shared-files.mjs`; the CI drift diff now covers `reseller/src/lib/fpx-banks.json`). The wallet's default channel skips the bank-grid channel, so nothing is pre-selected on it. Two lines that said the fee/payment is on "CHIP's page" now say "payment page", since bank-direct skips CHIP's page.
+
+**Verified:** backend suite 3104/3104 (new: membership 3 and wallet 2 feature cases, `applyToUrl` and `rules` unit tests); storefront `tsc`/`lint`/`build`; reseller `tsc`/`lint`/8 tests (incl. the colour-token test)/`build`. In a real browser on a throwaway preview page (deleted, plus the test cookie): the portal grid renders 20 tiles, a click sets the bank and `aria-pressed`, "Other bank" clears it, `cyan-600` resolves, no horizontal overflow.
+
+**Gotchas hit:** the portal's `proxy.ts` redirects every unauthenticated path to `/login`, so the preview page needed the presence-only `kerox_reseller_session` cookie (not a credential). PR #587's CI failed once on `Adr126ManualOrderSeamsTest` (a 1 s flake: `credentialFor()` reads `now()` per call; fixed by freezing time in that test).
+
+**Not done / owed:** the membership e2e and the full membership and wallet click-throughs run only in CI or need a verified member / reseller login; one real RM1 payment through a real bank after release (item 138); bank-down status (item 139, only if needed).
+

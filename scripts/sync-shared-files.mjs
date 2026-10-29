@@ -10,7 +10,11 @@
 //    2026-10-26 addendum. `RichTextEditor` (the one hand-rolled primitive)
 //    is deliberately NOT shared;
 //  - the official payment marks and the CHIP badge (storefront → reseller),
-//    so the portal's top-up shows the same artwork as checkout.
+//    so the portal's top-up shows the same artwork as checkout;
+//  - the FPX bank list (backend → storefront and reseller), ADR-130: the backend
+//    validates against `backend/config/fpx-banks.json`, both frontends render
+//    the same file; the 20 bank logos (storefront → reseller) are named by its
+//    codes.
 // A copy lives inside reseller/ so Vercel's per-app ignoreCommand rebuilds
 // the portal whenever its copy changes. CI's `theme-preset-drift` job runs
 // this and fails on any diff — run it locally after editing a source.
@@ -52,6 +56,17 @@ const copies = [
     banner: null,
   })),
 ];
+
+const FPX_BANKS = "backend/config/fpx-banks.json";
+copies.push(
+  { source: FPX_BANKS, target: "storefront/src/lib/fpx-banks.json", banner: "" },
+  { source: FPX_BANKS, target: "reseller/src/lib/fpx-banks.json", banner: "" },
+  ...JSON.parse(readFileSync(join(repoRoot, FPX_BANKS), "utf8")).map(({ code }) => ({
+    source: `storefront/public/images/banks/${code.toLowerCase()}.png`,
+    target: `reseller/public/images/banks/${code.toLowerCase()}.png`,
+    banner: null,
+  })),
+);
 
 for (const { source, target, banner } of copies) {
   mkdirSync(dirname(join(repoRoot, target)), { recursive: true });

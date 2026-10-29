@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import { ArrowRight, Check } from "@phosphor-icons/react/dist/ssr";
 import { ApiError } from "@/lib/api-client";
 import { getSubscribeOptions, subscribe, type SubscribeOptions, type SubscribePlan } from "@/lib/membership";
 import { listPaymentChannels, type PaymentChannel } from "@/lib/payment-methods";
-import { PaymentChannelIcon } from "@/components/icons/PaymentIcons";
+import PaymentChannelPicker from "@/components/order/PaymentChannelPicker";
 import Button from "@/components/ui/Button";
 import MembershipTransitionModal from "@/components/order/MembershipTransitionModal";
 
@@ -41,6 +40,8 @@ export default function MembershipSubscribe({ token }: { token: string }) {
 
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [channelCode, setChannelCode] = useState<string | null>(null);
+  // ADR-130: the FPX bank picked on our page; null for "Other bank" or another channel.
+  const [bankCode, setBankCode] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Founder-requested guided note, 2026-09-24: renew/upgrade have
@@ -62,7 +63,6 @@ export default function MembershipSubscribe({ token }: { token: string }) {
         if (cancelled) return;
         setOptions(opts);
         setChannels(chans);
-        if (chans.length === 1) setChannelCode(chans[0].channelCode);
       })
       .catch(() => {
         if (!cancelled) setLoadError(true);
@@ -86,7 +86,6 @@ export default function MembershipSubscribe({ token }: { token: string }) {
     idemKey.current = crypto.randomUUID();
     setSelectedPlanId(plan.id);
     setError(null);
-    if (channels.length === 1) setChannelCode(channels[0].channelCode);
   }
 
   function handlePlanClick(plan: SubscribePlan) {
@@ -102,7 +101,7 @@ export default function MembershipSubscribe({ token }: { token: string }) {
     setStarting(true);
     setError(null);
     try {
-      const result = await subscribe(token, selectedPlanId, channelCode, idemKey.current);
+      const result = await subscribe(token, selectedPlanId, channelCode, idemKey.current, bankCode);
       if (result.checkoutUrl) {
         window.location.assign(result.checkoutUrl);
         return;
@@ -235,47 +234,16 @@ export default function MembershipSubscribe({ token }: { token: string }) {
           {channels.length === 0 ? (
             <p className="text-sm text-on-surface-variant">No payment methods are available right now.</p>
           ) : (
-            <div className="flex flex-col gap-2">
-              {channels.map((channel) => (
-                <label
-                  key={channel.channelCode}
-                  className={`flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-md border-2 border-ink px-3.5 ${
-                    channelCode === channel.channelCode ? "bg-primary-fixed" : "bg-surface-container-lowest"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="radio"
-                      name="membershipChannel"
-                      value={channel.channelCode}
-                      checked={channelCode === channel.channelCode}
-                      onChange={() => setChannelCode(channel.channelCode)}
-                      className="accent-ink"
-                    />
-                    <span className="text-sm font-medium">{channel.label}</span>
-                  </div>
-                  <PaymentChannelIcon
-                    channelCode={channel.channelCode}
-                    category={channel.category}
-                    className="h-4.5 w-auto shrink-0"
-                  />
-                </label>
-              ))}
-            </div>
+            <PaymentChannelPicker
+              channels={channels}
+              selected={channelCode}
+              bankCode={bankCode}
+              onSelect={(code, bank) => {
+                setChannelCode(code);
+                setBankCode(bank ?? null);
+              }}
+            />
           )}
-
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border-2 border-ink/15 bg-surface-container p-2.5 text-xs text-on-surface-variant">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-on-surface">Secured via</span>
-              <Image
-                src="/images/chip/powered-by-chip-long.svg"
-                alt="Powered by CHIP"
-                width={110}
-                height={16}
-                className="h-3.5 w-auto object-contain"
-              />
-            </div>
-          </div>
 
           <p className="text-xs text-outline">
             RM{selectedPlan.feeRm.toFixed(2)}/month, plus the payment provider&apos;s fee shown at checkout.

@@ -1,6 +1,6 @@
 # ADR-022: Multi-gateway payment strategy — CHIP for Malaysia-local, Xendit retained for international + split-payment (built 2026-08-04)
 
-> **Standing (2026-10-17):** In force as CHIP-only; Xendit decisions reversed by its own 2026-09-01 addendum; payout framing superseded by [ADR-059](./ADR-059-reseller-portal.md) decision 6. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-28):** In force as CHIP-only; Xendit decisions reversed by its own 2026-09-01 addendum; payout framing superseded by [ADR-059](./ADR-059-reseller-portal.md) decision 6. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — 2026-07-30 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, following primary-source research on CHIP and HitPay). **Superseded in part by this ADR's own 2026-09-01 addendum: decision 4 (retain Xendit) is reversed and decision 3 (CHIP scope) narrowed — the system is now CHIP-only, Xendit deleted. The seam and the rest of the 2026-08-03 addendum stand.** **Decision 2's "split-payment / payout API" framing is superseded by [ADR-059](./ADR-059-reseller-portal.md) decision 6:** reseller payout is a plain manual bank transfer (WTH-1..5), no CHIP Send / Disbursement integration.
 
@@ -112,3 +112,15 @@ This prompted researching two candidate gateways — **CHIP** (`chip-in.asia`) a
 - Chargeback exposure stays zero only while the active channels are FPX / DuitNow QR. Activating cards (its own ADR) must add a registered webhook for `payment.charged_back` at that point.
 
 **Executed — 2026-09-02→03.** Both go-live steps done. **(a)** `scripts/chip-webhook-tunnel-test.sh` (a `/wizard`-style runner around a new `app:chip-webhook-smoke-test` command) ran against the real CHIP API with a test key + `cloudflared` tunnel — a real signed `success_callback` verified against the live `GET /public_key/`, parsed, and flipped a real Order to `Paid`. **(b)** the founder made a **real RM1.94 FPX payment on production with the live CHIP key** (money genuinely debited from their bank; order `PG-PYAYMRYNUYV0`, a member checkout): CHIP hosted page → `success_callback` to `https://api.pekangame.space/api/webhooks/chip` → signature verified → `payment_status = Paid`. **(c)** the `fpx` `payment_methods` row is active in production (RM1.00 flat fee). Payment + webhook are proven end-to-end in production with real money. Delivery failed (both suppliers are Rp 0 — a supplier-funding matter, not CHIP); `/admin/reports` correctly shows Sales RM1.94 / Owner Profit RM0.00 (profit is ledger-sourced and only booked on a delivered order). One quirk found: `/middleware/payment-methods` "Test This Channel" for `fpx` returns a spurious HTTP 400 (the `PaymentMethodController::test()` probe payload; real checkout works) — a non-blocking follow-up. DuitNow QR / FPX B2B1 stay inactive.
+
+### 2026-10-28 addendum — DuitNow QR's CHIP code is `dnqr`; the Test action verifies the code
+
+**Found.** The DuitNow QR row was seeded with `channel_code = duitnow_qr`, a guess the seeder itself flagged as unconfirmed. CHIP's real list (`GET /payment_methods/`, live account, 2026-10-28) is `fpx`, `fpx_b2b1`, `dnqr`. CHIP stores an unknown `payment_method_whitelist` value as-is without an error, shows "Allowed Payment Methods" empty, and sends the customer to its card form; our account has no card terminal, so the first real DuitNow order (`PG-F2NXPXAEMQHX`) ended `Cancelled`, "No matching terminal". The Test action could not catch it: it sent no `client.email`, so CHIP answered HTTP 400 for every channel, FPX included.
+
+**Decision.**
+1. `channel_code` is `dnqr` (category and `method_key` unchanged, so the storefront grouping and fees are untouched). A migration renames the row and any wallet top-up / membership attempt rows; `orders.channel_code` stays as history.
+2. The Test probe sends an email and passes `verifyChannel`: `ChipGateway` checks the code against `GET /payment_methods/` (with `amount`, since CHIP hides FPX without it) before creating the probe purchase. It is not on customer checkout, which makes no extra call.
+3. `failureFrom` reads CHIP's `{"field": [{"message"}]}` error bodies instead of showing only "HTTP 400".
+
+**Consequence to track:** every future channel code (e-wallet, card) must pass Test before it is activated. A channel CHIP lists but whose account terminal is not approved (cards) still fails only at payment; its first real payment is the proof.
+

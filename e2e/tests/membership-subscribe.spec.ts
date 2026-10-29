@@ -34,13 +34,14 @@ test("verified member picks a tier -> pays -> membership active", async ({ page,
   await page.goto(`${STOREFRONT_URL}/membership`);
   await expect(page.getByRole("heading", { name: "Choose a Membership" })).toBeVisible({ timeout: 15_000 });
 
-  // 2. Pick the first tier; fpx is the only active channel so it
-  //    auto-selects, and continue to payment.
+  // 2. Pick the first tier and a bank (ADR-130: nothing is pre-selected),
+  //    then continue to payment.
   await page
     .locator("section", { hasText: "Choose a Membership" })
     .getByRole("button", { name: "Subscribe" })
     .first()
     .click();
+  await page.getByRole("button", { name: "Maybank2u" }).click();
 
   let subscribeJson: { subscription_number: string; total_charged_sen: number } | undefined;
   await page.route("**/api/membership/subscribe", async (route) => {

@@ -1,6 +1,6 @@
 # ADR-076: Reseller Bot v2 — two-stage order-completion messaging, `.trackorder`/`.checkid`/`.info`, reply styling
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-28):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-09-05, grilled `/mattpocock-skills:grilling` across two rounds (all frontier resolved, founder confirmed shared understanding before write-up). Depends on ADR-075 (PR-F, shipped) — this is a follow-up to that channel, not a new one.
 
@@ -180,3 +180,8 @@ No new grilling round needed — every branch opened this session resolved to a 
 ### 2026-10-17 addendum — cross-reference only
 
 Docs audit. Of the validators named above, only MooGold remains, with RedxGame added; AcidGameShop and Nexone were removed after they stopped working on 2026-10-10 ([ADR-005](./ADR-005-player-id-pre-payment-validation-is-not.md) 2026-10-16 addenda). No decision changes here.
+
+### 2026-10-28 note — validators
+
+Two statements above are dated. The MLBB chain is now RedxGame → UniPlay and MooGold is removed ([ADR-005](./ADR-005-player-id-pre-payment-validation-is-not.md) 2026-10-28 addendum). `.checkid` is bound for five families (MLBB, Free Fire, Genshin, HSR, ZZZ, ADR-005 2026-10-16 addenda), not only MLBB. No decision changes here.
+

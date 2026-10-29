@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\ResellerPortal;
 
+use App\Services\Payment\Chip\FpxBankRedirect;
 use App\Services\Reseller\ResellerWalletTopupService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -31,6 +32,8 @@ class TopupRequest extends FormRequest
                 'string',
                 Rule::exists('payment_methods', 'channel_code')->where('is_active', true),
             ],
+            // ADR-130: the bank picked on the portal.
+            'fpx_bank_code' => FpxBankRedirect::rules(),
             'channel_properties' => ['sometimes', 'array'],
         ];
     }

@@ -27,6 +27,7 @@ use App\Services\Joki\JokiPurchase;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Membership\MembershipStatus;
 use App\Services\Order\PaymentStatus;
+use App\Services\Payment\Chip\FpxBankRedirect;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Pricing\PaymentMethodFeeResolver;
@@ -131,7 +132,7 @@ class CheckoutController extends Controller
 
         $existing = Order::query()->where('checkout_idempotency_key', $data['idempotency_key'])->first();
         if ($existing !== null) {
-            return $this->respondForExistingOrder($existing, $payloadHash, $gateway, $data['channel_code'], $data['channel_properties'] ?? []);
+            return $this->respondForExistingOrder($existing, $payloadHash, $gateway, $data['channel_code'], $data['channel_properties'] ?? [], $data['fpx_bank_code'] ?? null);
         }
 
         if (! $game->isLoginGame() && $game->player_validator_enabled && $game->player_validator_profile_id !== null) {
@@ -191,7 +192,7 @@ class CheckoutController extends Controller
             // Treat it exactly like the lookup had found it.
             $winner = Order::query()->where('checkout_idempotency_key', $data['idempotency_key'])->firstOrFail();
 
-            return $this->respondForExistingOrder($winner, $payloadHash, $gateway, $data['channel_code'], $data['channel_properties'] ?? []);
+            return $this->respondForExistingOrder($winner, $payloadHash, $gateway, $data['channel_code'], $data['channel_properties'] ?? [], $data['fpx_bank_code'] ?? null);
         } catch (CheckoutAttemptClosedException $e) {
             return $this->checkoutClosedResponse($e);
         } catch (CheckoutFailedException $e) {
@@ -219,7 +220,7 @@ class CheckoutController extends Controller
             ]);
         }
 
-        return $this->buildCheckoutResponse($order, $gateway, 201);
+        return $this->buildCheckoutResponse($order, $gateway, 201, $data['fpx_bank_code'] ?? null);
     }
 
     /**
@@ -287,7 +288,7 @@ class CheckoutController extends Controller
      * leg via CheckoutService::resume() against this same Order, never
      * a new one.
      */
-    private function respondForExistingOrder(Order $order, string $payloadHash, PaymentGateway $gateway, string $channelCode, array $channelProperties): JsonResponse
+    private function respondForExistingOrder(Order $order, string $payloadHash, PaymentGateway $gateway, string $channelCode, array $channelProperties, ?string $bankCode): JsonResponse
     {
         // Item 63: a replay must be the same request — the Reseller API's
         // payload-hash rule (ADR-084 PR-1 decision 5). An order from before
@@ -306,7 +307,7 @@ class CheckoutController extends Controller
         // the same "never pending, never needs the gateway" signal
         // settleWithVoucher() itself relies on.
         if ($order->payment_ref === null && $order->payment_status === PaymentStatus::Paid) {
-            return $this->buildCheckoutResponse($order, $gateway, 200);
+            return $this->buildCheckoutResponse($order, $gateway, 200, $bankCode);
         }
 
         // ADR-024 2026-10-04 addendum decision 6: every other replay goes
@@ -327,7 +328,7 @@ class CheckoutController extends Controller
             ]);
         }
 
-        return $this->buildCheckoutResponse($order, $gateway, 200);
+        return $this->buildCheckoutResponse($order, $gateway, 200, $bankCode);
     }
 
     /**
@@ -427,13 +428,19 @@ class CheckoutController extends Controller
      * structurally never already Paid at this point, since that only
      * ever happens later via webhook/reconciliation.
      */
-    private function buildCheckoutResponse(Order $order, PaymentGateway $gateway, int $status): JsonResponse
+    private function buildCheckoutResponse(Order $order, PaymentGateway $gateway, int $status, ?string $bankCode = null): JsonResponse
     {
         $actions = [];
 
         if ($order->payment_ref !== null) {
             $payment = $gateway->getPayment($order->payment_ref);
             $actions = $payment->success ? ($payment->data['actions'] ?? []) : [];
+
+            // ADR-130: the bank the customer picked on our page, applied to
+            // this response only — never stored, so a replay can pick another.
+            if ($order->payment_status === PaymentStatus::Pending) {
+                $actions = FpxBankRedirect::apply($actions, $bankCode);
+            }
         }
 
         return response()->json([

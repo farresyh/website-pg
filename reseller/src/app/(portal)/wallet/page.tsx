@@ -19,8 +19,10 @@ import { PortalIcon } from "@/components/shell/PortalIcon";
 import { PaymentMark, PoweredByChip } from "@/components/shell/PaymentMark";
 import { AmountField, StepsCard } from "@/components/money/MoneyForm";
 import LedgerTable from "@/components/money/LedgerTable";
+import FpxBankGrid, { HAS_FPX_BANKS } from "@/components/money/FpxBankGrid";
 
 const MIN_TOPUP_SEN = 1000;
+const FPX_CHANNEL = "fpx";
 const QUICK = ["50", "100", "200", "500", "1000"].map((v) => ({ label: `RM ${Number(v).toLocaleString("en-MY")}`, value: v }));
 
 export default function WalletPage() {
@@ -30,6 +32,8 @@ export default function WalletPage() {
   const [topupError, setTopupError] = useState<string | null>(null);
   const [amount, setAmount] = useState("100");
   const [channelCode, setChannelCode] = useState("");
+  // ADR-130: the FPX bank picked on our page; null for "Other bank" or another channel.
+  const [bankCode, setBankCode] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [page, setPage] = useState(1);
 
@@ -53,7 +57,8 @@ export default function WalletPage() {
     listPaymentChannels()
       .then((result) => {
         setChannels(result);
-        if (result.length > 0) setChannelCode(result[0].channel_code);
+        // Nothing is pre-selected on the bank grid: the reseller picks a bank (or "Other bank").
+        setChannelCode(result.find((c) => !(c.channel_code === FPX_CHANNEL && HAS_FPX_BANKS))?.channel_code ?? "");
       })
       .catch(() => setChannels([]));
   }, []);
@@ -72,7 +77,7 @@ export default function WalletPage() {
 
     setSubmitting(true);
     try {
-      const attempt = await topupWallet(session.token, amountSen, channelCode);
+      const attempt = await topupWallet(session.token, amountSen, channelCode, bankCode);
       if (attempt.checkout_url) {
         window.location.href = attempt.checkout_url;
         return;
@@ -91,6 +96,7 @@ export default function WalletPage() {
   const lastOrder = newest.find((e) => e.type === "wallet_debit");
   const amountSen = toSen(amount);
   const noMethods = channels !== null && channels.length === 0;
+  const bankGrid = HAS_FPX_BANKS && (channels ?? []).some((c) => c.channel_code === FPX_CHANNEL);
 
   return (
     <div>
@@ -131,23 +137,50 @@ export default function WalletPage() {
                   Online top-up is paused right now. Contact support to top up by bank transfer.
                 </p>
               ) : (
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {channels.map((c) => {
-                    const checked = channelCode === c.channel_code;
-                    return (
-                      <label
-                        key={c.channel_code}
-                        className={`flex min-h-14 cursor-pointer items-center gap-2.5 rounded-md border bg-surface px-3 py-2.5 ${
-                          checked ? "border-cyan-600 shadow-[inset_0_0_0_1px_var(--color-cyan-600)]" : "border-border-control hover:bg-subtle"
-                        }`}
-                      >
-                        <input type="radio" name="channel" value={c.channel_code} checked={checked} onChange={() => setChannelCode(c.channel_code)} className="h-4 w-4 accent-cyan-600" />
-                        <PaymentMark channelCode={c.channel_code} category={c.category} />
-                        <span className="min-w-0 text-[13px] font-semibold text-ink">{c.label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
+                <>
+                  {bankGrid && (
+                    <div className="mb-1">
+                      <p className="mb-2 text-xs font-semibold text-ink-muted">Online Banking (FPX)</p>
+                      <FpxBankGrid
+                        selected={channelCode === FPX_CHANNEL}
+                        bankCode={bankCode}
+                        onSelect={(code) => {
+                          setChannelCode(FPX_CHANNEL);
+                          setBankCode(code);
+                        }}
+                      />
+                    </div>
+                  )}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {channels
+                      .filter((c) => !(bankGrid && c.channel_code === FPX_CHANNEL))
+                      .map((c) => {
+                        const checked = channelCode === c.channel_code;
+                        return (
+                          <label
+                            key={c.channel_code}
+                            className={`flex min-h-14 cursor-pointer items-center gap-2.5 rounded-md border bg-surface px-3 py-2.5 ${
+                              checked ? "border-cyan-600 shadow-[inset_0_0_0_1px_var(--color-cyan-600)]" : "border-border-control hover:bg-subtle"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="channel"
+                              value={c.channel_code}
+                              checked={checked}
+                              onChange={() => {
+                                setChannelCode(c.channel_code);
+                                setBankCode(null);
+                              }}
+                              className="h-4 w-4 accent-cyan-600"
+                            />
+                            <PaymentMark channelCode={c.channel_code} category={c.category} />
+                            <span className="min-w-0 text-[13px] font-semibold text-ink">{c.label}</span>
+                          </label>
+                        );
+                      })}
+                  </div>
+                </>
               )}
             </fieldset>
 
@@ -158,7 +191,7 @@ export default function WalletPage() {
               </span>
               <span className="flex justify-between gap-3 text-xs text-ink-subtle">
                 <span>Payment fee</span>
-                <span className="text-right">Shown on CHIP&apos;s page before you pay</span>
+                <span className="text-right">Shown on the payment page before you pay</span>
               </span>
             </div>
 
@@ -175,7 +208,7 @@ export default function WalletPage() {
           <StepsCard
             title="How a top-up works"
             steps={[
-              { title: "Pay on CHIP's secure page", body: "You leave PekanGame to pay with your bank. PekanGame never sees your banking login." },
+              { title: "Pay on a secure payment page", body: "You leave PekanGame to pay with your bank. PekanGame never sees your banking login." },
               { title: "Your balance updates by itself", body: "As soon as CHIP confirms the payment. No receipt to send." },
               { title: "One top-up at a time", body: "An unpaid top-up closes after 30 minutes, then you can start another." },
             ]}

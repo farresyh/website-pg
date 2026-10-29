@@ -20,6 +20,9 @@ final class PaymentRequest
         public readonly ?string $description = null,
         public readonly array $metadata = [],
         public readonly ?PaymentCustomer $customer = null,
+        // The admin Test probe only: check channelCode against the gateway's
+        // own list before creating anything (never on a customer's checkout).
+        public readonly bool $verifyChannel = false,
     ) {
     }
 }
