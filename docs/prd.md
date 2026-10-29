@@ -907,9 +907,9 @@ moved to group D). Re-verify before building.
   `failure_is_final` definition, a check wherever a link would be handed out
   again (order replay, membership attempt, wallet top-up lock and the bot) and
   when the customer returns to the status page, a "Payment not completed /
-  Try again" status page. **Gate:** a CHIP test-mode run first (single_attempt
-  plus "Test Failure"), and one real RM1 cancel at a bank after release
-  (extends item 138). **PR A** backend, **PR B** storefront status page.
+  Try again" status page. **Tested 2026-10-29** (CHIP test mode): `single_attempt` makes CHIP cancel
+  the purchase and send the customer to `failure_redirect`. **Still owed:** one
+  real RM1 cancel at a bank after release (extends item 138). **PR A** backend, **PR B** storefront status page.
 
 **B. Needs a short grill / ADR addendum first**
 - None open.
