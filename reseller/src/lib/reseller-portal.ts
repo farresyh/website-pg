@@ -27,11 +27,12 @@ export interface TopupResponse {
   expires_at: string;
 }
 
-export function topupWallet(token: string, amountSen: number, channelCode: string) {
+export function topupWallet(token: string, amountSen: number, channelCode: string, fpxBankCode: string | null = null) {
   return apiFetch<TopupResponse>("/api/reseller-portal/wallet/topup", {
     method: "POST",
     token,
-    body: { amount_sen: amountSen, channel_code: channelCode },
+    // ADR-130: the bank picked on our page; FPX only, the backend refuses it elsewhere.
+    body: { amount_sen: amountSen, channel_code: channelCode, fpx_bank_code: fpxBankCode ?? undefined },
   });
 }
 

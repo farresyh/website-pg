@@ -2659,3 +2659,16 @@ Correction to this session's earlier count: prod has 23 *paid* FPX orders, not 2
 
 **Not done / owed:** PR 2 (membership onto the shared picker, wallet top-up, the portal's copy of the JSON and logos); one real RM1 payment through a real bank after release (test mode accepts any code, ADR-130); bank-down status stays unbuilt (ADR-130 decision 9). The review modal still shows "Online Banking (FPX)" without the bank name.
 
+## 2026-10-29 — FPX bank-direct, PR 2 (ADR-130): membership and wallet top-up
+
+**Built (PR #588, `feature/fpx-bank-direct-pr2`, not yet released):**
+- Backend: `FpxBankRedirect::rules($channelField)` is the one rule for `fpx_bank_code` (`SubscribeRequest` names the channel `payment_method`, so a hard-coded `channel_code` would have silently never fired there; `CreateCheckoutRequest` now uses it too) and `applyToUrl()` the one URL helper (`apply()` for the order's `actions` array uses it). `MembershipController::subscribe` and `WalletController::topup` apply the bank to the response `checkout_url` for a Pending attempt only; the stored `checkout_url` stays plain, so a retry with another bank gets the right URL.
+- Storefront: `MembershipSubscribe` drops its own radio list and "Secured via CHIP" strip for the shared `PaymentChannelPicker`. The two auto-select-when-one-channel lines are gone (they would have shown "Other bank" as chosen without a click), so "Continue to Payment" waits for a bank or "Other bank". `subscribe()` sends `fpx_bank_code`. The "BNM Compliant • 256-bit SSL" line is removed from the picker (item 134, founder's decision).
+- Partner portal: `components/money/FpxBankGrid.tsx` in the portal's own styling over generated copies of `fpx-banks.json` and the 20 logos (`sync-shared-files.mjs`; the CI drift diff now covers `reseller/src/lib/fpx-banks.json`). The wallet's default channel skips the bank-grid channel, so nothing is pre-selected on it. Two lines that said the fee/payment is on "CHIP's page" now say "payment page", since bank-direct skips CHIP's page.
+
+**Verified:** backend suite 3104/3104 (new: membership 3 and wallet 2 feature cases, `applyToUrl` and `rules` unit tests); storefront `tsc`/`lint`/`build`; reseller `tsc`/`lint`/8 tests (incl. the colour-token test)/`build`. In a real browser on a throwaway preview page (deleted, plus the test cookie): the portal grid renders 20 tiles, a click sets the bank and `aria-pressed`, "Other bank" clears it, `cyan-600` resolves, no horizontal overflow.
+
+**Gotchas hit:** the portal's `proxy.ts` redirects every unauthenticated path to `/login`, so the preview page needed the presence-only `kerox_reseller_session` cookie (not a credential). PR #587's CI failed once on `Adr126ManualOrderSeamsTest` (a 1 s flake: `credentialFor()` reads `now()` per call; fixed by freezing time in that test).
+
+**Not done / owed:** the membership e2e and the full membership and wallet click-throughs run only in CI or need a verified member / reseller login; one real RM1 payment through a real bank after release (item 138); bank-down status (item 139, only if needed).
+

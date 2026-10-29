@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\ResellerPortal;
 
 use App\Http\Requests\ResellerPortal\TopupRequest;
+use App\Services\Payment\Chip\FpxBankRedirect;
 use App\Services\Reseller\InvalidWalletTopupAmountException;
 use App\Services\Reseller\PendingWalletTopupAlreadyExistsException;
 use App\Services\Reseller\ResellerWalletService;
 use App\Services\Reseller\ResellerWalletTopupService;
+use App\Services\Reseller\WalletTopupAttemptStatus;
 use App\Services\Reseller\WalletTopupCheckoutFailedException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -53,7 +55,10 @@ class WalletController extends Controller
 
         return response()->json([
             'reference' => $attempt->reference,
-            'checkout_url' => $attempt->checkout_url,
+            // ADR-130: the bank applies to this response only; the stored URL stays plain.
+            'checkout_url' => $attempt->status === WalletTopupAttemptStatus::Pending
+                ? FpxBankRedirect::applyToUrl($attempt->checkout_url, $request->validated('fpx_bank_code'))
+                : $attempt->checkout_url,
             'amount_sen' => $attempt->amount_sen,
             'total_charged_sen' => $attempt->total_charged_sen,
             'expires_at' => $attempt->expires_at?->toIso8601String(),

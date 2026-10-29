@@ -226,12 +226,19 @@ export async function subscribe(
   planId: number,
   paymentMethod: string,
   idempotencyKey: string,
+  fpxBankCode: string | null = null,
 ): Promise<SubscribeResult> {
   const path = "/api/membership/subscribe";
   const raw = await apiFetch<unknown>(path, {
     method: "POST",
     token,
-    body: { membership_plan_id: planId, payment_method: paymentMethod, idempotency_key: idempotencyKey },
+    body: {
+      membership_plan_id: planId,
+      payment_method: paymentMethod,
+      idempotency_key: idempotencyKey,
+      // ADR-130: sent for FPX only; the backend refuses it on any other channel.
+      fpx_bank_code: fpxBankCode ?? undefined,
+    },
   });
   const wire = parseResponse(SubscribeWireSchema, raw, "SubscribeWire", path);
   return {

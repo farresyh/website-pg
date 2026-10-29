@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Membership;
 
+use App\Services\Payment\Chip\FpxBankRedirect;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -42,6 +43,8 @@ class SubscribeRequest extends FormRequest
                 Rule::exists('payment_methods', 'channel_code')->where('is_active', true),
             ],
             'idempotency_key' => ['required', 'string', 'max:64'],
+            // ADR-130: the bank picked on our page (this request names the channel `payment_method`).
+            'fpx_bank_code' => FpxBankRedirect::rules('payment_method'),
             'channel_properties' => ['sometimes', 'array'],
         ];
     }

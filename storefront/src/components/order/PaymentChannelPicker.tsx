@@ -162,9 +162,6 @@ export default function PaymentChannelPicker({
             className="h-4 w-auto object-contain"
           />
         </div>
-        <span className="text-[11px] text-on-surface-variant">
-          BNM Compliant • 256-bit SSL
-        </span>
       </div>
     </>
   );
