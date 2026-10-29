@@ -2640,3 +2640,22 @@ Merged #582, #583, #584 into `staging` (merge commits). #584 conflicted with #58
 Docs corrected against prod and git (read-only, 2026-10-28/29): PRD §14 said DuitNow QR "stays off (checked 2026-10-26)" and "staging = main"; prod showed DuitNow QR on since 2026-10-28 13:28 UTC (unpayable with the wrong code) and `staging` ahead of `main` by #582–#584. Also corrected: the Game ID Checker row and `foundation-security.md` ("Redx only, never MooGold"), ADR-076/093 notes ("only MooGold remains"), ADR banners and index dates. Prod runs #581 (`2db6d62`): MLBB checks go Redx (HTTP 503 since 2026-10-28) → MooGold; the three `player_validations` rows since then are `moogold`.
 
 Correction to this session's earlier count: prod has 23 *paid* FPX orders, not 28 (28 includes failed and pending).
+
+## 2026-10-29 — FPX bank-direct, PR 1 (ADR-130): the customer picks the bank on our page
+
+**Designed first, then built.** ADR-130 (#586) records the decision, the 2026-10-29 CHIP test-mode run and the code trace that overturned the first plan: appending the parameter in `ChipGateway::createPayment` would have done nothing for orders (they re-read the URL through `getPayment`) and would have pinned the first bank on membership/wallet (stored `checkout_url`).
+
+**Built (PR 1, branch `feature/fpx-bank-direct`, not yet released):**
+- `backend/config/fpx-banks.json` (20 B2C codes from CHIP's FPX doc table, popular first) read by `config/fpx-banks.php`; `FpxBankRedirect` appends `?preferred=fpx&fpx_bank_code=<code>` to the `WEB_URL` action only for a listed code and never to an `/invoice/` URL.
+- `CheckoutController::buildCheckoutResponse` applies it to a Pending order's response (create and every replay); `CreateCheckoutRequest` gets `fpx_bank_code` (`Rule::in` the list, `prohibited_unless:channel_code,fpx`). Nothing is stored; `payloadHash` is unchanged, so a replay with another bank is the same order.
+- Storefront `PaymentChannelPicker`: a 20-logo grid (3 columns on a phone, 4 from `sm`) replaces the FPX button, plus "Other bank? Choose it on the next page" (same request, no bank). `OrderForm` and `JokiOrderForm` keep `bankCode` separate from `channelCode` and send `fpx_bank_code`. `CheckoutPayloadSchema` needed the key too: Zod strips unknown keys, so without it the bank vanished before reaching the API.
+- Logos: the founder's 20 files, resized to 240 px wide, named by lower-cased CHIP code in `storefront/public/images/banks/`.
+- `scripts/sync-shared-files.mjs` copies the JSON to `storefront/src/lib/fpx-banks.json`; CI's `theme-preset-drift` now diffs that path too (it only covered `reseller/` before).
+- Four e2e specs clicked the removed "Online Banking (FPX)" button; they now pick Maybank2u.
+
+**Verified:** backend suite 3097/3097 (new: `FpxBankRedirectTest` pins the 20 codes, `CheckoutControllerFpxBankTest` 7 cases: bank applied, plain without, replay with another bank, replay via the other-bank link, nothing stored on the order, unlisted code 422, bank on another channel 422); storefront `tsc`, `lint`, `build`. In a real browser, on a temporary preview page (deleted): 20 tiles render, selecting a bank sets `fpx` + its code, "Other bank" sets no bank, DuitNow clears the bank; at a 358 px container the grid is 3 columns of 103x48 px with no horizontal overflow.
+
+**Gotchas hit:** the local backend's `/api/catalog/games` 500s on `CACHE_STORE=database` (backend/AGENTS.md gotcha 5), so the storefront showed no games and the full order flow could not be clicked through locally; the picker was checked on a throwaway page instead. Chrome blocks iframing a storefront page, so the phone width was simulated by narrowing the container.
+
+**Not done / owed:** PR 2 (membership onto the shared picker, wallet top-up, the portal's copy of the JSON and logos); one real RM1 payment through a real bank after release (test mode accepts any code, ADR-130); bank-down status stays unbuilt (ADR-130 decision 9). The review modal still shows "Online Banking (FPX)" without the bank name.
+

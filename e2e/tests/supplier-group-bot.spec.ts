@@ -48,7 +48,7 @@ test("supplier group bot: link group -> login order posted -> .done delivers", a
   await page.getByRole("checkbox", { name: /I allow this store to use my game login/ }).check();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByRole("button", { name: "400 Robux" }).click();
-  await page.getByRole("button", { name: "Online Banking (FPX)" }).click();
+  await page.getByRole("button", { name: "Maybank2u" }).click();
   await page.getByRole("button", { name: /Review & Pay/ }).click();
   await page.locator("#reviewEmail").pressSequentially("e2e-bot@example.com");
   await page.locator("#reviewName").fill("E2E Bot Tester");
