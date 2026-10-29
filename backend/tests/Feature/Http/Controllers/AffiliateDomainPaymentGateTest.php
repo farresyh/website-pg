@@ -7,6 +7,7 @@ use App\Models\Affiliate;
 use App\Models\AffiliateDomain;
 use App\Models\AffiliateMembershipTier;
 use App\Models\AffiliateSubscription;
+use App\Models\AffiliateUser;
 use App\Models\Game;
 use App\Models\MembershipPlan;
 use App\Models\Order;
@@ -22,6 +23,7 @@ use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -145,7 +147,9 @@ class AffiliateDomainPaymentGateTest extends TestCase
     public function test_the_primary_host_and_a_header_less_request_are_never_gated(): void
     {
         $this->brand(approved: false);
-        $primary = (string) config('services.storefront.primary_hosts.0', 'localhost');
+        // Set here, not read from .env: CI has no STOREFRONT_PRIMARY_HOSTS, so the list is empty there.
+        config(['services.storefront.primary_hosts' => ['primary.ohaha.test']]);
+        $primary = 'primary.ohaha.test';
 
         $this->postJson('/api/checkout', $this->payload(), $this->host($primary))->assertCreated();
         $second = $this->payload();
@@ -259,9 +263,9 @@ class AffiliateDomainPaymentGateTest extends TestCase
     public function test_the_affiliates_own_portal_domain_list_says_payments_are_awaiting_approval(): void
     {
         [$affiliate] = $this->brand(approved: false);
-        $user = \App\Models\AffiliateUser::query()->create([
+        $user = AffiliateUser::query()->create([
             'owner_type' => 'affiliate', 'owner_id' => $affiliate->id, 'name' => 'Staff', 'email' => 'staff@ohaha.test',
-            'password' => \Illuminate\Support\Facades\Hash::make('secret-password'), 'is_active' => true,
+            'password' => Hash::make('secret-password'), 'is_active' => true,
         ]);
 
         $domains = $this->withToken($user->createToken('affiliate')->plainTextToken)->getJson('/api/affiliate/domains')->assertOk()->json('domains');
