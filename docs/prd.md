@@ -937,12 +937,6 @@ and the admin-loading investigation (#515, #516). Re-checked again
 moved to group D). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- **144** The order status page for a failed payment (seen on prod 2026-10-29, item
-  140): (1) it shows "AMOUNT PAID RM2.07" on an order the same page says was not
-  charged: the label should be the amount due, or hidden; (2) two badges at
-  once, "Payment Failed" and "Waiting for payment"; (3) the Method row prints the
-  raw code (`fpx`, `duitnow_qr`) instead of a label ("Online Banking (FPX)",
-  "DuitNow QR"). The customer is told the right thing; the labels contradict it.
 - **143** The partner portal footer (`reseller/src/components/shell/TrustFooter.tsx`)
   hard-codes "LWF Group Sdn. Bhd. (202601038896)" while receipts read the
   company details from the admin settings (ADR-131 decision 11): two homes for
@@ -1415,6 +1409,8 @@ moved to group D). Re-verify before building.
     go live for real customers. The switch-over steps above apply either way.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
+
+- **144** 2026-10-30: the failed-payment status page labels fixed (amount reads "Amount Due" until paid, one badge, the payment method as a label), in the same PR as the smaller FPX bank tiles and the removal of the "Other bank" link (ADR-130 2026-10-30 addendum). Details: build-log 2026-10-30. Not yet released.
 
 - **140** 2026-10-29: a failed payment attempt is final (ADR-110 2026-10-29 addendum), #591 and #592, released in #599. Seen on prod the same evening: the founder cancelled one FPX and one DuitNow QR payment at the bank; both orders were Failed within 12 s and 20 s (no voucher, none left Pending) and the "Payment Not Completed / Try Again" page showed. The page's own copy has defects, item 144. Details: build-log 2026-10-29.
 
