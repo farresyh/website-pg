@@ -192,4 +192,18 @@ class PurchaseBalancePortalTest extends TestCase
         $this->assertStringContainsString('not an invoice', $html);
         $this->assertStringNotContainsString('An invoice is issued', $html);
     }
+
+    public function test_the_receipt_bills_the_reseller_and_carries_the_company_logo(): void
+    {
+        $reseller = $this->reseller('Bill Reseller');
+        $reseller->update(['contact_name' => 'Ali Abu', 'email' => 'ali@example.test']);
+        $this->paidTopup($reseller);
+
+        $data = app(ResellerWalletReceiptService::class)->forNumber($reseller, 'PB-WT-ABC123DEF4');
+        $html = view('receipts.purchase-balance', $data)->render();
+
+        $this->assertSame(['name' => 'Bill Reseller', 'contact' => 'Ali Abu', 'email' => 'ali@example.test'], $data['bill_to']);
+        $this->assertStringContainsString('Ali Abu', $html);
+        $this->assertStringContainsString('data:image/png;base64,', $html);
+    }
 }

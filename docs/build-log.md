@@ -2797,3 +2797,9 @@ Correction to this session's earlier count: prod has 23 *paid* FPX orders, not 2
 
 The legacy link was then checked on prod: `https://reseller.pekangame.space/wallet` answers `308` to `/balance`, and `/wallet?topup=success` to `/balance?topup=success` (query kept).
 
+
+## 2026-10-30 — Payment Receipt redesign (item 142, layout only)
+
+The Purchase Balance receipt (`resources/views/receipts/purchase-balance.blade.php`) now follows a plain Stripe-style layout and carries the LWF logo (`backend/resources/img/lwf-logo.png`, black on transparent, embedded as a data URI). `ResellerWalletReceiptService` adds `bill_to` (business name, contact name, email). No money or ledger code changed. Decisions and what was left out (tax lines, card detail, address): ADR-131 2026-10-30 addendum.
+
+**Verified:** `PurchaseBalancePortalTest` and `PurchaseBalanceAdminTest` 20/20 (new: the receipt bills the reseller and embeds the logo); the PDF was rendered and read page by page (title, logo, meta block, parties, headline, items, totals, note). Not rendered from a real prod top-up: do that after release with the FixFast test reseller.
