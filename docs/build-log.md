@@ -2769,3 +2769,31 @@ Correction to this session's earlier count: prod has 23 *paid* FPX orders, not 2
 
 **Owed before the one release.** Re-check prod's `affiliate_domains` read-only (any `Active` row besides the primary affiliate's would stop taking payments on deploy); the browser check of the three screens; then, after CHIP's written approval of `ohahastore.com` (not in prod yet), approve it in the admin. `fixfastapp.com` stays unapproved (to be deactivated, item 129's switch-over steps).
 
+## 2026-10-29 — Release #599 live: ADR-131 (CHIP's activation conditions) and the failed-attempt work (#590–#598)
+
+**Release.** `staging`→`main`, PR #599, merged as `a6ae7f4a` at 12:01 UTC (merge commit, `staging` kept). Before it: draft PR first; `origin/main..origin/staging` was 34 commits, then 36 after #600 (the receipt note fix); a trial merge was clean (the main-only commits are earlier release merges). CI (nine jobs) and `deploy` green.
+
+**Read-only prod check before the release.** One custom domain, `fixfastapp.com` (FixFast Demo, active, not the primary affiliate): after the deploy it cannot pay (intended). No row for the primary affiliate (its hosts are config), so the migration's backfill touched none. `fpx` and `dnqr` on, `fpx_b2b1` off; 2 resellers, 3 paid top-ups.
+
+**Verified on prod after the deploy (read-only).** `current` → release `81561008` at `a6ae7f4`; both `2026_10_29_*` migrations in `migrations`; `topup_max_sen` 1000000, `balance_cap_default_sen` 10000000, company details empty, no reseller cap set; `ResellerClosureService` and `StorefrontBrand::assertPaymentsEnabled()` present; `/api/health` 200; the four Vercel production builds succeeded.
+
+**Found before sending CHIP the receipt.** The receipt note said "An invoice is issued for each order", which is false (the system issues no per-order invoice; e-Invoicing is outside our code, ADR-083 decision 6). Fixed in #600 before the release, with a test and an ADR-131 addendum.
+
+**Also settled while drafting the reply to CHIP.** A reseller's order is paid from the Purchase Balance, never through a payment method; a failed order returns to that balance (its payment source), so the offer "tell us if you want it back to the original payment method" was dropped as wrong for the reseller model. The reply and the onboarding procedure PDF live outside the repo (it is public). The FixFast reseller is a test account whose login CHIP already has; FixFast Demo / `fixfastapp.com` is the test affiliate.
+
+**Dev environment notes.** `lsof` and a `curl` port check were denied by the harness; Playwright against the founder's `./scripts/dev.sh` and read-only SSH worked. A second `dev.sh` fails with `EADDRINUSE` while the first runs; a Next config change (the `/wallet` redirect) needs the dev server restarted. The local storefront catalog answers 500 when the local `CACHE_STORE` does not support tags (backend/AGENTS.md gotcha 5), so storefront order pages cannot be viewed locally without a Redis cache.
+
+**Owed.** PRD §16 items 138 and 140 (real FPX and DuitNow payments, a real cancel at a bank) and 141 (company details, deactivate `fixfastapp.com`, the browser checks, the reply to CHIP, approving `ohahastore.com` only after CHIP's written approval); new items 142 (receipt redesign and its follow-ups) and 143 (the portal footer hard-codes the company details).
+
+## 2026-10-29 (evening) — Live checks after release #599
+
+**What was seen on prod.** The company details are filled (read-only check: name, SSM and address set), and a receipt PDF for the FixFast test reseller's earlier RM10 top-up prints them. The founder cancelled one FPX and one DuitNow QR payment at the bank. Read-only on prod: the FPX order (RM2.07) was created 12:44:50 UTC and Failed 12:45:02; the DuitNow order (RM1.08, channel `dnqr`) was created 12:45:51 and Failed 12:46:11; neither has a voucher and none was left Pending, and the "Payment Not Completed / Try Again" page showed for both (item 140 closed). Also seen: the storefront notice on `fixfastapp.com` ("Payments are not available on this store yet"), the admin "Payments not approved" tag with the Approve button, the Purchase Balance portal and dashboard (no "wallet" word, the limit line, the headroom "you can add up to RM 99,996.56 now", the receipt link in Balance history, a failed order shown as refunded to the Purchase Balance).
+
+**Defects seen on the failed-payment status page** (item 144, not blocking): "AMOUNT PAID RM2.07" on an order the page says was not charged; two badges at once ("Payment Failed" and "Waiting for payment"); the Method row prints raw codes (`fpx`, `duitnow_qr`).
+
+**Not yet done.** Item 138 (a completed FPX and DuitNow payment; none has completed since #589), the affiliate portal's "awaiting approval" badge and the `/wallet` redirect on prod, step-up saves with an MFA admin, and approving a branded domain only after CHIP's written approval. `fixfastapp.com` stays active but unapproved (the FixFast Demo affiliate was not deactivated; the domain cannot take a payment either way).
+
+**Later the same evening.** The affiliate portal's "Payments awaiting approval" badge on `fixfastapp.com` was seen (through admin impersonation). An Add Balance was started and cancelled at the bank: the attempt ended `failed` straight away (not after its 30 minutes) and the browser came back to `/balance`, so the wallet top-up path of item 140 works too. The legacy `/wallet` link redirecting has still not been hit on prod (a new return URL goes straight to `/balance`); it was checked locally (`308` to `/balance?topup=success`).
+
+The legacy link was then checked on prod: `https://reseller.pekangame.space/wallet` answers `308` to `/balance`, and `/wallet?topup=success` to `/balance?topup=success` (query kept).
+

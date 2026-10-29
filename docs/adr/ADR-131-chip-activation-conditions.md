@@ -2,7 +2,7 @@
 
 > **Standing (2026-10-29):** Accepted (design). Extends [ADR-073](./ADR-073-reseller-wallet.md) (the prepaid balance gets a display name, limits, receipts and a closure path) and adds an addendum-level change to [ADR-060](./ADR-060-multi-tenant-branded-storefront-custom-domain.md) decision D ("no admin gate" no longer holds for *payments*). Does not touch [ADR-004](./ADR-004-no-cash-refunds-ever.md) or PRD §16 item 129.
 
-**Status:** Accepted (design), 2026-10-29. Grilled with the founder (two rounds, `/mattpocock-skills:grilling`), then code-traced by three read-only reviewers, one per layer (limits and checkout; ledger and closure; downstream readers and public surface), per the money-critical rule in the root `AGENTS.md`. The reviewers' top findings were re-checked against code by the author (`LedgerService::credit()` takes no lock; `OrderSettlementService::settle()` has no reseller-state check; `ResellerController::destroy()` is a non-atomic read that revokes nothing). Nothing here is built.
+**Status:** Accepted (design), 2026-10-29. Grilled with the founder (two rounds, `/mattpocock-skills:grilling`), then code-traced by three read-only reviewers, one per layer (limits and checkout; ledger and closure; downstream readers and public surface), per the money-critical rule in the root `AGENTS.md`. The reviewers' top findings were re-checked against code by the author (`LedgerService::credit()` takes no lock; `OrderSettlementService::settle()` has no reseller-state check; `ResellerController::destroy()` is a non-atomic read that revokes nothing). Build and live status: PRD §15.
 
 ## Context
 
