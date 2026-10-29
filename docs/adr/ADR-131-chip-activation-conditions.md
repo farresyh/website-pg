@@ -113,3 +113,10 @@ CHIP's conditions are narrow and mostly cheap: a display name, two numbers, a do
 
 Decision 8 had the receipt end with "An invoice is issued for each order." The system issues no per-order invoice (e-Invoicing is outside our code, ADR-083 decision 6; found when drafting the reply to CHIP, which would have been given a sample receipt). The note now reads "This is a receipt for money received, not an invoice. Orders paid from this balance appear in your order history." The rest of decision 8 stands: it is a receipt, not an invoice. If the founder's accountant later decides orders need invoices, the note changes with that, not before.
 
+### 2026-10-30 addendum — the receipt layout (item 142, layout only)
+
+- **Layout** follows a plain Stripe-style receipt (founder's reference): title and the LWF logo on one line, a small meta block (receipt number, date paid, payment method), the seller and "Bill to" side by side, a "RM x paid on <date>" line, a one-table items list, then Total and Amount paid. The title stays "Payment Receipt" (decision 8) and the "not an invoice" note stays.
+- **"Bill to"** is the reseller's `business_name`, `contact_name` and `email` (the portal account holds no address or SSM number; none was added). Phone is not printed.
+- **Logo** is a fixed file, `backend/resources/img/lwf-logo.png` (the black transparent logo, 600 px wide), embedded in the PDF as a data URI. Not a setting: it changes rarely.
+- **No tax lines and no card or bank detail** (we state no tax and keep no bank choice, ADR-130). The payment method reads "Online Banking (FPX)", "DuitNow QR" or "Bank transfer".
+- **Still open in item 142:** a stored snapshot of the company details, an admin download of a closed reseller's receipts, an automatic email. Triggers: an accountant's request or a change of company details; the first closed real reseller; a reseller asking for it.

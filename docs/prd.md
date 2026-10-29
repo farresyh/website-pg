@@ -944,12 +944,12 @@ moved to group D). Re-verify before building.
   the company details never change.
 
 **B. Needs a short grill / ADR addendum first**
-- **142** Payment Receipt redesign (founder, 2026-10-29): the receipt works (ADR-131
-  decision 9) but its layout is to be redesigned. Also open, no design yet: an
+- **142** Payment Receipt redesign: the layout and the LWF logo are built (ADR-131
+  2026-10-30 addendum; PR open, not released). Still open, no design yet: an
   admin download of a closed reseller's receipts (the reseller can no longer log
   in; the data stays), a stored snapshot of the company details (today an old
   receipt reprints with the current ones), and an automatic email (today it is
-  on request in the portal).
+  on request in the portal). None is urgent: build each at its trigger.
 
 **C. Founder actions (no code)**
 - **138** Real-bank proof for release #589 (2026-10-29), partly done. Seen on
