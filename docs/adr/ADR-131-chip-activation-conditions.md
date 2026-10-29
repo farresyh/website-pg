@@ -109,3 +109,7 @@ CHIP's conditions are narrow and mostly cheap: a display name, two numbers, a do
 - **The Register (decision 17)** gained `reseller_wallet_manual_credit` and `reseller_wallet_closure`. Production check before the build (read-only, 2026-10-29): 3 `wallet_topup` rows, all CHIP, 0 manual, so the new manual-credit rows change no existing figure.
 - **Proofs.** `FinancialScenarioTest` closes the scenario reseller: the cash-equation gap is unchanged, and it **fails** if the bank movement is left out. Two real-process tests: a closure racing an order placement conserves money, and two closures refund once; both **fail with the two row locks removed**.
 
+### 2026-10-29 addendum — the receipt note (decision 8) said something untrue
+
+Decision 8 had the receipt end with "An invoice is issued for each order." The system issues no per-order invoice (e-Invoicing is outside our code, ADR-083 decision 6; found when drafting the reply to CHIP, which would have been given a sample receipt). The note now reads "This is a receipt for money received, not an invoice. Orders paid from this balance appear in your order history." The rest of decision 8 stands: it is a receipt, not an invoice. If the founder's accountant later decides orders need invoices, the note changes with that, not before.
+

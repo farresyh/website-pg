@@ -36,7 +36,7 @@
 
 <p class="note muted">
     Purchase Balance is prepaid credit for orders on PekanGame. It cannot be withdrawn, cashed out or transferred.
-    This is a receipt for money received, not an invoice. An invoice is issued for each order.
+    This is a receipt for money received, not an invoice. Orders paid from this balance appear in your order history.
 </p>
 </body>
 </html>
