@@ -1,6 +1,6 @@
 # ADR-123: Public Game ID Checker — a storefront page that checks a player ID per game family, on its own endpoint, budget and table so it can never cost checkout its provider
 
-> **Standing (2026-10-16):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-28):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted, 2026-10-16. Grilled with the founder in seven rounds (`/mattpocock-skills:grilling`), then stress-tested against the code and production (read-only) before the build (PRD §16 item 107).
 

@@ -1,6 +1,6 @@
 # ADR-093: Reseller Bot `.order` fat-finger safety net — auto player-ID/region validation before placing, player ID echoed in the confirmation reply, no mandatory 2-step confirm
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-28):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted & built — grilled 2026-09-12, built 2026-09-13 on `feature/adr-093-bot-order-safety-net`. `ResellerBotService::handleOrder()` gained a new `validatePlayerForOrder()` step (decision 2 — invalid ID or wrong-region both reject before any debit, `ProviderUnavailableException`/`UnsupportedPlayerValidatorException` both fail-open per decision 2's stated intent), reusing the same `reseller-bot-checkid` rate-limit bucket (decision 3) and `PlayerValidation` audit trail `handleCheckId()` already writes. `ResellerBotReplyFormatter::orderPlaced()` now echoes the player ID + server ID for every order (decision 4). Zero touch to `ResellerOrderPlacementService`/ledger/locking.
 
@@ -45,3 +45,8 @@ Founder set the direction up front: the Bot channel exists specifically for B2B 
 ### 2026-10-17 addendum — cross-reference only
 
 Docs audit. Of the validators named above, only MooGold remains, with RedxGame added; AcidGameShop and Nexone were removed after they stopped working on 2026-10-10 ([ADR-005](./ADR-005-player-id-pre-payment-validation-is-not.md) 2026-10-16 addenda). No decision changes here.
+
+### 2026-10-28 note — validators
+
+One statement above is dated. The MLBB chain is now RedxGame → UniPlay and MooGold is removed ([ADR-005](./ADR-005-player-id-pre-payment-validation-is-not.md) 2026-10-28 addendum). No decision changes here.
+
