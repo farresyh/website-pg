@@ -3,7 +3,7 @@
 /**
  * ADR-028 + its 2026-08-22 addendum. Split into one component per tab
  * (StoreBrandingSection/FooterSettingsSection/PlatformSettingsSection,
- * plus ADR-124's CustomerLoginPolicySection)
+ * plus ADR-124's CustomerLoginPolicySection and ADR-131's PurchaseBalanceSection)
  * rather than inlined here, same reasoning PendingPriceChangeSection
  * was already extracted for — keeps this file well under the
  * project's ~500-line guideline.
@@ -19,14 +19,16 @@ import StoreBrandingSection from "@/components/settings/StoreBrandingSection";
 import FooterSettingsSection from "@/components/settings/FooterSettingsSection";
 import PlatformSettingsSection from "@/components/settings/PlatformSettingsSection";
 import CustomerLoginPolicySection from "@/components/settings/CustomerLoginPolicySection";
+import PurchaseBalanceSection from "@/components/settings/PurchaseBalanceSection";
 
-type Tab = "branding" | "footer" | "platform" | "customer-login";
+type Tab = "branding" | "footer" | "platform" | "customer-login" | "purchase-balance";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "branding", label: "Store Branding" },
   { key: "footer", label: "Footer Settings" },
   { key: "platform", label: "Platform Settings" },
   { key: "customer-login", label: "Customer Login Policy" },
+  { key: "purchase-balance", label: "Purchase Balance" },
 ];
 
 export default function SettingsPage() {
@@ -103,6 +105,9 @@ export default function SettingsPage() {
       )}
       {tab === "customer-login" && (
         <CustomerLoginPolicySection platform={data.platform} onSaved={() => refresh()} />
+      )}
+      {tab === "purchase-balance" && (
+        <PurchaseBalanceSection platform={data.platform} onSaved={() => refresh()} />
       )}
     </div>
   );
