@@ -115,7 +115,7 @@ cd e2e && npm test   # Playwright golden paths (ADR-023, 8 specs) — boots its 
 
 ## Current status
 
-**Live in production with real money** (all payment methods switched off on purpose since 2026-10-07; see `docs/prd.md` §14). The backend runs on a Laravel
+**Live in production with real money** (FPX and DuitNow QR are on, FPX Business is off; the current payment state is in `docs/prd.md` §14). The backend runs on a Laravel
 Forge–managed DigitalOcean droplet at `api.pekangame.space`; the four
 frontends are on Vercel (storefront `pekangame.com`, `admin.pekangame.space`,
 `reseller.pekangame.space`, `docs.pekangame.space`) — see
