@@ -239,6 +239,10 @@ class Adr126ManualOrderSeamsTest extends TestCase
 
     public function test_changing_d_or_a_games_days_moves_the_unwiped_logins_it_governs(): void
     {
+        // Both logins are set "at the same time": credentialFor() reads now(),
+        // so unfrozen the second one could land a second later and the exact
+        // comparisons below flaked on CI.
+        $this->freezeTime();
         $this->actingAsSteppedUp(AdminUser::factory()->superAdmin()->create());
         $game = $this->loginGame();
         $plain = $this->credentialFor($this->paidOrder(['order_number' => 'PG-PLAIN']));
