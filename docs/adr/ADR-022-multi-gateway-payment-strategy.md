@@ -1,6 +1,6 @@
 # ADR-022: Multi-gateway payment strategy — CHIP for Malaysia-local, Xendit retained for international + split-payment (built 2026-08-04)
 
-> **Standing (2026-10-17):** In force as CHIP-only; Xendit decisions reversed by its own 2026-09-01 addendum; payout framing superseded by [ADR-059](./ADR-059-reseller-portal.md) decision 6. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-28):** In force as CHIP-only; Xendit decisions reversed by its own 2026-09-01 addendum; payout framing superseded by [ADR-059](./ADR-059-reseller-portal.md) decision 6. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — 2026-07-30 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, following primary-source research on CHIP and HitPay). **Superseded in part by this ADR's own 2026-09-01 addendum: decision 4 (retain Xendit) is reversed and decision 3 (CHIP scope) narrowed — the system is now CHIP-only, Xendit deleted. The seam and the rest of the 2026-08-03 addendum stand.** **Decision 2's "split-payment / payout API" framing is superseded by [ADR-059](./ADR-059-reseller-portal.md) decision 6:** reseller payout is a plain manual bank transfer (WTH-1..5), no CHIP Send / Disbursement integration.
 

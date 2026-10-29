@@ -2632,3 +2632,11 @@ No backend, ledger or money-logic change anywhere in the rollout.
 
 **Gotcha.** The UniPlay token regex first rejected the test token `tok-1` because base64 has no `-`. **Not verified from our server:** the live UniPlay call (this session's automation was blocked from using their page token); the founder confirmed the response shape in a browser. After release, check `player_validations.provider` for an `uniplay` row.
 
+
+## 2026-10-29 — Docs sync after #582–#584 (merged to `staging`, not released)
+
+Merged #582, #583, #584 into `staging` (merge commits). #584 conflicted with #583 on `build-log.md` (both appended at the end); both entries kept. #584's first CI run failed `scramble-drift`: its migration called `Cache::forget`, and that job migrates with no Redis; the cache calls were removed (catalog caches expire in 60 s).
+
+Docs corrected against prod and git (read-only, 2026-10-28/29): PRD §14 said DuitNow QR "stays off (checked 2026-10-26)" and "staging = main"; prod showed DuitNow QR on since 2026-10-28 13:28 UTC (unpayable with the wrong code) and `staging` ahead of `main` by #582–#584. Also corrected: the Game ID Checker row and `foundation-security.md` ("Redx only, never MooGold"), ADR-076/093 notes ("only MooGold remains"), ADR banners and index dates. Prod runs #581 (`2db6d62`): MLBB checks go Redx (HTTP 503 since 2026-10-28) → MooGold; the three `player_validations` rows since then are `moogold`.
+
+Correction to this session's earlier count: prod has 23 *paid* FPX orders, not 28 (28 includes failed and pending).
