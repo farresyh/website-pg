@@ -68,6 +68,9 @@ export interface AffiliateDomainRow {
   hostname: string;
   status: AffiliateDomainStatus;
   is_primary: boolean;
+  /** ADR-131: serves the store either way; takes CHIP payments only once approved. */
+  payments_approved: boolean;
+  payments_approved_at: string | null;
   provider: string;
   provider_managed: boolean;
   last_checked_at: string | null;
@@ -167,6 +170,14 @@ export function deleteAffiliate(id: number) {
 export function recheckAffiliateDomain(id: number, domainId: number) {
   return apiFetch<AffiliateDetail>(`/api/affiliates/${id}/domains/${domainId}/recheck`, {
     method: "POST",
+  });
+}
+
+/** ADR-131 decision 21: approve (or revoke) one domain for CHIP payments. Behind step-up (api-client prompts and retries). */
+export function approveAffiliateDomainPayments(id: number, domainId: number, approved: boolean) {
+  return apiFetch<AffiliateDetail>(`/api/affiliates/${id}/domains/${domainId}/payments-approval`, {
+    method: "PUT",
+    body: JSON.stringify({ approved }),
   });
 }
 

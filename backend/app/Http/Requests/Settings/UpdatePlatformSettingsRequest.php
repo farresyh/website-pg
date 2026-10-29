@@ -29,6 +29,10 @@ class UpdatePlatformSettingsRequest extends FormRequest
             'vip_spend_threshold_sen' => ['required', 'integer', 'min:0'],
             // ADR-116 decision 10 — `sometimes`, so a client that predates the switch can't reset it.
             'whatsapp_notifications_enabled' => ['sometimes', 'boolean'],
+            // ADR-131 decision 11 — the seller details a Purchase Balance receipt prints.
+            'company_legal_name' => ['sometimes', 'nullable', 'string', 'max:191'],
+            'company_reg_no' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'company_address' => ['sometimes', 'nullable', 'string', 'max:500'],
         ];
     }
 }

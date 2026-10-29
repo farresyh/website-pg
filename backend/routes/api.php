@@ -95,6 +95,7 @@ use App\Http\Controllers\ResellerPortal\ApiKeyController as ResellerPortalApiKey
 use App\Http\Controllers\ResellerPortal\OrderController as ResellerPortalOrderController;
 use App\Http\Controllers\ResellerPortal\ProfileController as ResellerPortalProfileController;
 use App\Http\Controllers\ResellerPortal\WalletController as ResellerPortalWalletController;
+use App\Http\Controllers\ResellerPortal\WalletReceiptController as ResellerPortalWalletReceiptController;
 use App\Http\Controllers\ResellerPortal\WebhookController as ResellerPortalWebhookController;
 use App\Http\Controllers\ReviewCatalogController;
 use App\Http\Controllers\ReviewController;
@@ -219,6 +220,7 @@ Route::post('/player-check/{slug}', [PlayerCheckController::class, 'check'])->mi
 // storefront the request came in on — an order number is only valid on
 // the storefront it was placed on (see Order::scopeForStorefrontBrand).
 Route::get('/track-order/{orderNumber}', [TrackOrderController::class, 'show'])->middleware(['throttle:20,1,track-order', 'storefront.brand']);
+Route::post('/track-order/{orderNumber}/check-payment', [TrackOrderController::class, 'checkPayment'])->middleware(['throttle:10,1,check-payment', 'storefront.brand']);
 
 // ADR-053 (REV-1..5) — public guest review submission, same
 // order_number-as-proof-of-ownership trust model as track-order above.
@@ -432,6 +434,7 @@ Route::prefix('affiliate')->group(function () {
 Route::prefix('reseller-portal')->middleware(['auth:affiliate', 'account.type:reseller'])->group(function () {
     Route::get('/wallet', [ResellerPortalWalletController::class, 'show']);
     Route::post('/wallet/topup', [ResellerPortalWalletController::class, 'topup']);
+    Route::get('/wallet/receipts/{number}', [ResellerPortalWalletReceiptController::class, 'show']);
 
     Route::get('/orders', [ResellerPortalOrderController::class, 'index']);
     Route::get('/orders/{orderNumber}', [ResellerPortalOrderController::class, 'show']);
@@ -752,6 +755,8 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::put('/platform', [SettingsController::class, 'updatePlatform']);
         // ADR-124 decision 10 — Customer Login Policy, behind step-up.
         Route::put('/customer-login-policy', [SettingsController::class, 'updateCustomerLoginPolicy'])->middleware('mfa.stepup');
+        // ADR-131 decision 4 — the Purchase Balance limits.
+        Route::put('/purchase-balance-policy', [SettingsController::class, 'updatePurchaseBalancePolicy'])->middleware('mfa.stepup');
         Route::post('/platform/bulk-markup', [SettingsController::class, 'bulkMarkup']);
     });
 
@@ -879,6 +884,7 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
             // self-serve (or the founder via RES-4 impersonation). No
             // add-domain form here (addendum section F).
             Route::post('/{affiliate}/domains/{affiliateDomain}/recheck', [AffiliateController::class, 'recheckDomain']);
+            Route::put('/{affiliate}/domains/{affiliateDomain}/payments-approval', [AffiliateController::class, 'updateDomainPaymentsApproval'])->middleware('mfa.stepup');
             Route::delete('/{affiliate}/domains/{affiliateDomain}', [AffiliateController::class, 'removeDomain']);
         });
 
@@ -905,8 +911,11 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
             Route::get('/{reseller}', [ResellerController::class, 'show']);
             Route::put('/{reseller}', [ResellerController::class, 'update']);
             Route::patch('/{reseller}/status', [ResellerController::class, 'updateStatus']);
+            Route::put('/{reseller}/balance-cap', [ResellerController::class, 'updateBalanceCap'])->middleware('mfa.stepup');
             Route::post('/{reseller}/tier', [ResellerController::class, 'assignTier']);
-            Route::delete('/{reseller}', [ResellerController::class, 'destroy']);
+            // ADR-131 decision 12 — the only way to remove a Reseller (no bare DELETE).
+            Route::get('/{reseller}/close-check', [ResellerController::class, 'closeCheck']);
+            Route::post('/{reseller}/close', [ResellerController::class, 'close'])->middleware('mfa.stepup');
 
             // PR-G — this account's portal login (ADR-072 decision 5),
             // mirrors AffiliateController's own staff-login actions.

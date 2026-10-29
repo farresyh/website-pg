@@ -65,6 +65,62 @@ class ResellerBotTopupTest extends TestCase
         ]);
     }
 
+    public function test_topupbaki_above_the_per_top_up_maximum_gets_its_own_reply_and_no_attempt(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $reseller = $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 15000', 'msg-1');
+
+        $this->assertSame(0, WalletTopupAttempt::query()->count());
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'topup_over_maximum',
+        ]);
+        $this->assertSame(
+            'Jumlah maksimum untuk sekali tambah baki ialah RM10,000.00.',
+            \App\Services\Reseller\Bot\ResellerBotReplyFormatter::topupOverMaximum(1_000_000),
+        );
+    }
+
+    public function test_topupbaki_that_would_pass_the_balance_cap_gets_its_own_reply_and_no_attempt(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $reseller = $this->makeLinkedReseller();
+        $reseller->update(['balance_cap_sen' => 300_000]);
+        app(\App\Services\Ledger\LedgerService::class)->credit(\App\Services\Ledger\LedgerOwnerType::ResellerWallet, $reseller->id, 250_000, 'wallet_topup');
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 600', 'msg-1');
+
+        $this->assertSame(0, WalletTopupAttempt::query()->count());
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'topup_over_balance_cap',
+        ]);
+        $this->assertSame(
+            'Ini akan melebihi had Baki Pembelian anda (RM3,000.00). Anda boleh tambah sehingga RM500.00 sekarang.',
+            \App\Services\Reseller\Bot\ResellerBotReplyFormatter::topupOverCap(300_000, 50_000),
+        );
+    }
+
+    public function test_the_bot_never_calls_the_balance_a_wallet_to_the_reseller(): void
+    {
+        $replies = [
+            \App\Services\Reseller\Bot\ResellerBotReplyFormatter::commandList(),
+            \App\Services\Reseller\Bot\ResellerBotReplyFormatter::topupPaid(12_345),
+            \App\Services\Reseller\Bot\ResellerBotReplyFormatter::topupBelowMinimum(),
+            \App\Services\Reseller\Bot\ResellerBotReplyFormatter::topupUnavailable(),
+            \App\Services\Reseller\Bot\ResellerBotReplyFormatter::topupCheckoutFailed(),
+        ];
+
+        foreach ($replies as $reply) {
+            $this->assertStringNotContainsStringIgnoringCase('wallet', $reply);
+            $this->assertStringNotContainsStringIgnoringCase('top-up', $reply);
+        }
+    }
+
     public function test_topupbaki_with_a_non_numeric_amount_is_rejected(): void
     {
         $this->activeFpx();

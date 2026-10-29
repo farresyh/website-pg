@@ -36,7 +36,7 @@ final class PaymentReconciliationService
      *
      * @return array{outcome: ?string, applied: bool, lookup_succeeded: bool, data: mixed, error_code: ?string, error_message: ?string}
      */
-    public function reconcileOrder(Order $order): array
+    public function reconcileOrder(Order $order, bool $earlyCheck = false): array
     {
         Log::withContext(['order_number' => $order->order_number, 'payment_request_id' => $order->payment_ref]);
 
@@ -70,7 +70,11 @@ final class PaymentReconciliationService
 
         $outcome = match ($payment->status) {
             PaymentStatus::Paid => $this->paymentOutcomes->applyPaid($order, $amountSen, $payment->data['paid_on'] ?? null, $payment->data['fee_sen'] ?? null),
-            PaymentStatus::Failed => $this->paymentOutcomes->applyFailed($order),
+            // ADR-110 2026-10-29 addendum: asked early (a customer back on the
+            // status page, a checkout replay), a failure is only applied once
+            // CHIP says it cannot be retried; the sweep runs after `due`, when
+            // every failure is.
+            PaymentStatus::Failed => $earlyCheck && ! $payment->isFinalFailure() ? null : $this->paymentOutcomes->applyFailed($order),
             default => null,
         };
 

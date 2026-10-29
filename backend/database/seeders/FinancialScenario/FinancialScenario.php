@@ -34,6 +34,7 @@ use App\Services\Order\PaymentStatus;
 use App\Services\Payment\Fake\FakePaymentGateway;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Reseller\ResellerApiKeyService;
+use App\Services\Reseller\ResellerClosureService;
 use App\Services\Reseller\ResellerWalletService;
 use App\Services\Supplier\SupplierOutcome;
 use Carbon\CarbonImmutable;
@@ -155,6 +156,18 @@ final class FinancialScenario
     }
 
     /** Moves the clock to a Malaysia wall-clock time; every following action happens then. */
+    /**
+     * The admin sends the whole balance back by bank transfer, then records the closure on the same
+     * Malaysia day (ADR-131 decisions 12-14): the ledger debit and the bank movement fall together.
+     */
+    public function closeResellerAccount(string $bankReference = 'SCENARIO-REFUND'): int
+    {
+        $refunded = app(ResellerClosureService::class)->close($this->reseller, $this->admin->id, now('Asia/Kuala_Lumpur')->toDateString(), $bankReference);
+        $this->bank(-$refunded);
+
+        return $refunded;
+    }
+
     public function at(string $malaysiaTime): self
     {
         Carbon::setTestNow(CarbonImmutable::parse($malaysiaTime, 'Asia/Kuala_Lumpur')->utc());
@@ -406,7 +419,7 @@ final class FinancialScenario
         );
         AffiliateDomain::query()->firstOrCreate(
             ['hostname' => $this->affiliateHost()],
-            ['affiliate_id' => $affiliate->id, 'status' => AffiliateDomainStatus::Active, 'is_primary' => true],
+            ['affiliate_id' => $affiliate->id, 'status' => AffiliateDomainStatus::Active, 'is_primary' => true, 'payments_approved_at' => now()], // ADR-131: CHIP-approved
         );
 
         return $affiliate;

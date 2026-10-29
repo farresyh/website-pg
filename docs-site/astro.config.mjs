@@ -15,7 +15,7 @@ export default defineConfig({
 		starlight({
 			title: 'PekanGame Reseller API',
 			description:
-				'Place orders, check status, read the price list and wallet balance for a PekanGame prepaid-wallet reseller account.',
+				'Place orders, check status, read the price list and Purchase Balance for a PekanGame prepaid reseller account.',
 			social: [
 				{ icon: 'external', label: 'PekanGame', href: 'https://pekangame.space' },
 			],
@@ -43,7 +43,7 @@ export default defineConfig({
 						{ label: 'Product codes', slug: 'product-codes' },
 						{ label: 'Idempotency & retries', slug: 'idempotency' },
 						{ label: 'Delivery notifications', slug: 'webhooks' },
-						{ label: 'Wallet & balance', slug: 'wallet' },
+						{ label: 'Purchase Balance', slug: 'wallet' },
 					],
 				},
 				{

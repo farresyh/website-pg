@@ -25,6 +25,9 @@ export interface ResellerRow {
   notes: string | null;
   deleted_at: string | null;
   wallet_balance_sen: number;
+  /** ADR-131 decision 4: this reseller's own cap, or null to use the platform default. */
+  balance_cap_sen: number | null;
+  effective_balance_cap_sen: number;
 }
 
 export interface ResellerTier {
@@ -75,8 +78,28 @@ export function assignResellerTier(id: number, resellerTierId: number) {
   });
 }
 
-export function deleteReseller(id: number) {
-  return apiFetch<{ message: string }>(`/api/resellers/${id}`, { method: "DELETE" });
+/** ADR-131 decision 4 — behind MFA step-up; api-client shows the prompt. `null` = platform default. */
+export function setResellerBalanceCap(id: number, balanceCapSen: number | null) {
+  return apiFetch<ResellerRow>(`/api/resellers/${id}/balance-cap`, { method: "PUT", body: { balance_cap_sen: balanceCapSen } });
+}
+
+/** ADR-131 decision 12: what a closure would refund and what still blocks it. No side effects. */
+export interface ResellerCloseCheck {
+  balance_sen: number;
+  blockers: string[];
+  can_close: boolean;
+}
+
+export function getResellerCloseCheck(id: number) {
+  return apiFetch<ResellerCloseCheck>(`/api/resellers/${id}/close-check`);
+}
+
+/**
+ * ADR-131 decisions 12-16 — the only way to remove a reseller (there is no DELETE). The refund
+ * was sent by bank transfer first. Behind MFA step-up; api-client shows the prompt and retries.
+ */
+export function closeReseller(id: number, values: { transferred_on: string; bank_reference: string }) {
+  return apiFetch<{ message: string; refunded_sen: number }>(`/api/resellers/${id}/close`, { method: "POST", body: values });
 }
 
 export function listResellerTiers() {

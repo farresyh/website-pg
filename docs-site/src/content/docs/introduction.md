@@ -4,7 +4,7 @@ description: What the PekanGame Reseller API is, who it is for, and how to get a
 ---
 
 The Reseller API lets your own system place game top-up orders against a
-**prepaid PekanGame wallet**. You top the wallet up; every order is charged to
+**prepaid PekanGame Purchase Balance**. You add balance to it; every order is charged to
 it at your account's price; PekanGame fulfils the order and reports the outcome
 back to you.
 
@@ -14,7 +14,7 @@ in, JSON out, one bearer key.
 ## Who it is for
 
 A reseller account is **prepaid and spend-only** — you place orders against a
-balance you have topped up. If you resell PekanGame top-ups through your own
+balance you have added. If you resell PekanGame game top-ups through your own
 shop, bot, or website and want to automate ordering, this API is for you.
 
 ## Base URL
@@ -34,7 +34,7 @@ There is no public sign-up form. PekanGame:
 1. Creates your reseller account and sets your pricing.
 2. Issues your first API key (a `pgrk_` token, shown once).
 3. Gives you a login to the partner portal, where you manage keys, the webhook,
-   and wallet top-ups yourself.
+   and adding balance yourself.
 
 <a id="request-access"></a>
 
@@ -49,7 +49,8 @@ sell through, and your expected monthly volume.
   Validation happens when the order is placed; an invalid ID comes back as a
   failed order.
 - **Cash refunds** — a failed order that is not retried is refunded to your
-  **wallet**, never to a card or bank account.
+  **Purchase Balance**, never to a card or bank account. Unused balance is refunded
+  only if the account is closed.
 - **Anything that is not yours** — the API only ever returns your own account's
   data and your own prices. It never exposes another reseller's orders, or how
   a price is composed upstream.

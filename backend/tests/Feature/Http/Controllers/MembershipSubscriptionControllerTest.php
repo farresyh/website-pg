@@ -15,6 +15,7 @@ use App\Models\Supplier;
 use App\Services\Affiliate\AffiliateDomainStatus;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Membership\MembershipSessionTokenService;
+use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
@@ -210,6 +211,7 @@ class MembershipSubscriptionControllerTest extends TestCase
             'affiliate_id' => $affiliate->id,
             'hostname' => 'shop.acme.com',
             'status' => AffiliateDomainStatus::Active,
+            'payments_approved_at' => now(), // ADR-131: a domain CHIP has approved
             'is_primary' => true,
         ]);
 
@@ -478,5 +480,87 @@ class MembershipSubscriptionControllerTest extends TestCase
         $this->subscribeWithBank($token, 'XXX9999')->assertUnprocessable()->assertJsonValidationErrors('fpx_bank_code');
         $this->subscribeWithBank($token, 'MB2U0227', 'idem-dnqr', 'dnqr')->assertUnprocessable()->assertJsonValidationErrors('fpx_bank_code');
         $this->assertDatabaseCount('membership_checkout_attempts', 0);
+    }
+
+    // --- ADR-110 2026-10-29: a failed attempt is final ---
+
+    /** A working gateway on which CHIP has ended the given purchases (single_attempt: cancelled at the bank). */
+    private function bindGatewayEnding(array $endedRefs): void
+    {
+        $gateway = new class($endedRefs) implements PaymentGateway
+        {
+            public function __construct(private readonly array $endedRefs) {}
+
+            public function createPayment(PaymentRequest $request): PaymentResponse
+            {
+                return PaymentResponse::success([
+                    'payment_request_id' => 'pr-'.$request->referenceId,
+                    'actions' => [['type' => 'REDIRECT', 'value' => 'https://gate.chip-in.asia/p/'.$request->referenceId]],
+                ]);
+            }
+
+            public function getPayment(string $paymentRequestId): PaymentResponse
+            {
+                $ended = in_array($paymentRequestId, $this->endedRefs, true);
+
+                return PaymentResponse::success(
+                    ['payment_request_id' => $paymentRequestId, 'failure_is_final' => $ended],
+                    status: $ended ? PaymentStatus::Failed : null,
+                );
+            }
+
+            public function verifyWebhookSignature(Request $request): bool
+            {
+                throw new RuntimeException('not used');
+            }
+
+            public function parseWebhookEvent(array $payload): PaymentWebhookEvent
+            {
+                throw new RuntimeException('not used');
+            }
+        };
+
+        $this->app->bind('payment-gateway.chip', fn () => $gateway);
+    }
+
+    public function test_a_replay_of_a_cancelled_attempt_is_closed_not_given_the_dead_link(): void
+    {
+        $token = $this->tokenFor('member@example.com');
+        $this->subscribeWithBank($token, null, 'idem-a')->assertCreated();
+        $this->bindGatewayEnding([MembershipCheckoutAttempt::query()->firstOrFail()->payment_ref]);
+
+        $replay = $this->subscribeWithBank($token, null, 'idem-a');
+
+        $replay->assertUnprocessable()->assertJsonPath('code', 'checkout_closed');
+        $replay->assertJsonMissingPath('checkout_url');
+        $this->assertSame(MembershipCheckoutAttemptStatus::Failed, MembershipCheckoutAttempt::query()->firstOrFail()->status);
+    }
+
+    public function test_a_new_click_after_a_cancelled_attempt_starts_a_new_attempt(): void
+    {
+        $token = $this->tokenFor('member@example.com');
+        $first = $this->subscribeWithBank($token, null, 'idem-a')->assertCreated();
+        $this->bindGatewayEnding([MembershipCheckoutAttempt::query()->firstOrFail()->payment_ref]);
+
+        $second = $this->subscribeWithBank($token, null, 'idem-b');
+
+        $second->assertCreated();
+        $this->assertNotSame($first->json('subscription_number'), $second->json('subscription_number'));
+        $this->assertSame(
+            [MembershipCheckoutAttemptStatus::Failed, MembershipCheckoutAttemptStatus::Pending],
+            MembershipCheckoutAttempt::query()->orderBy('id')->get()->pluck('status')->all(),
+        );
+    }
+
+    public function test_a_still_open_pending_attempt_is_reused_as_before(): void
+    {
+        $token = $this->tokenFor('member@example.com');
+        $first = $this->subscribeWithBank($token, null, 'idem-a')->assertCreated();
+        $this->bindGatewayEnding([]);
+
+        $second = $this->subscribeWithBank($token, null, 'idem-b');
+
+        $this->assertSame($first->json('subscription_number'), $second->json('subscription_number'));
+        $this->assertSame(1, MembershipCheckoutAttempt::query()->count());
     }
 }

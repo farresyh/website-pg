@@ -93,25 +93,27 @@ class ResellerControllerTest extends TestCase
         $this->assertDatabaseHas('resellers', ['id' => $reseller->id, 'is_active' => 0]);
     }
 
-    public function test_destroy_soft_deletes_when_wallet_balance_is_zero(): void
+    /** ADR-131 decision 12: the bare DELETE is gone; "Close account" is the one way (more in ResellerClosureTest). */
+    public function test_close_soft_deletes_a_reseller_with_a_zero_balance(): void
     {
-        $this->actAsSuperAdmin();
+        $this->actingAsSteppedUp($this->actAsSuperAdmin()); // closing is behind step-up
         $reseller = Reseller::query()->create(['business_name' => 'Acme', 'is_active' => true]);
         app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
 
-        $this->deleteJson("/api/resellers/{$reseller->id}")->assertOk();
+        $this->postJson("/api/resellers/{$reseller->id}/close", ['transferred_on' => now('Asia/Kuala_Lumpur')->toDateString(), 'bank_reference' => 'MBB-1'])->assertOk();
         $this->assertSoftDeleted('resellers', ['id' => $reseller->id]);
     }
 
-    public function test_destroy_blocked_when_wallet_balance_nonzero(): void
+    public function test_close_with_a_balance_refunds_it_where_the_old_delete_refused(): void
     {
-        $this->actAsSuperAdmin();
+        $this->actingAsSteppedUp($this->actAsSuperAdmin()); // closing is behind step-up
         $reseller = Reseller::query()->create(['business_name' => 'Acme', 'is_active' => true]);
         app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
         app(LedgerService::class)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, 1000, 'wallet_topup');
 
-        $this->deleteJson("/api/resellers/{$reseller->id}")->assertUnprocessable();
-        $this->assertDatabaseHas('resellers', ['id' => $reseller->id, 'deleted_at' => null]);
+        $this->postJson("/api/resellers/{$reseller->id}/close", ['transferred_on' => now('Asia/Kuala_Lumpur')->toDateString(), 'bank_reference' => 'MBB-2'])
+            ->assertOk()->assertJsonPath('refunded_sen', 1000);
+        $this->assertSame(0, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
     }
 
     /**

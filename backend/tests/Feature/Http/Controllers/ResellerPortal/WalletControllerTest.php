@@ -8,10 +8,12 @@ use App\Models\Reseller;
 use App\Models\WalletTopupAttempt;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
+use App\Services\Reseller\WalletTopupAttemptStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -53,10 +55,13 @@ class WalletControllerTest extends TestCase
         ]);
     }
 
-    private function bindGateway(): void
+    /** @param  list<string>  $endedRefs  purchases CHIP has ended for good (single_attempt: cancelled at the bank) */
+    private function bindGateway(array $endedRefs = []): void
     {
-        $gateway = new class implements PaymentGateway
+        $gateway = new class($endedRefs) implements PaymentGateway
         {
+            public function __construct(private readonly array $endedRefs) {}
+
             public function createPayment(PaymentRequest $request): PaymentResponse
             {
                 return PaymentResponse::success([
@@ -67,7 +72,12 @@ class WalletControllerTest extends TestCase
 
             public function getPayment(string $paymentRequestId): PaymentResponse
             {
-                throw new RuntimeException('not used');
+                $ended = in_array($paymentRequestId, $this->endedRefs, true);
+
+                return PaymentResponse::success(
+                    ['payment_request_id' => $paymentRequestId, 'failure_is_final' => $ended],
+                    status: $ended ? PaymentStatus::Failed : null,
+                );
             }
 
             public function verifyWebhookSignature(Request $request): bool
@@ -175,5 +185,37 @@ class WalletControllerTest extends TestCase
             'amount_sen' => 5000, 'channel_code' => 'dnqr', 'fpx_bank_code' => 'MB2U0227',
         ])->assertUnprocessable()->assertJsonValidationErrors('fpx_bank_code');
         $this->assertDatabaseCount('wallet_topup_attempts', 0);
+    }
+
+    // --- ADR-110 2026-10-29: a failed attempt is final ---
+
+    public function test_a_top_up_whose_purchase_was_cancelled_at_the_bank_does_not_block_a_new_one(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $token = $this->tokenFor($this->reseller());
+        $first = $this->withToken($token)->postJson('/api/reseller-portal/wallet/topup', ['amount_sen' => 5000, 'channel_code' => 'fpx'])->assertCreated();
+        $this->bindGateway([WalletTopupAttempt::query()->firstOrFail()->chip_payment_ref]);
+
+        $second = $this->withToken($token)->postJson('/api/reseller-portal/wallet/topup', ['amount_sen' => 5000, 'channel_code' => 'fpx']);
+
+        $second->assertCreated();
+        $this->assertNotSame($first->json('reference'), $second->json('reference'));
+        $this->assertSame(
+            [WalletTopupAttemptStatus::Failed, WalletTopupAttemptStatus::Pending],
+            WalletTopupAttempt::query()->orderBy('id')->get()->pluck('status')->all(),
+        );
+    }
+
+    public function test_a_top_up_still_open_at_chip_keeps_blocking_a_second_one(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $token = $this->tokenFor($this->reseller());
+        $this->withToken($token)->postJson('/api/reseller-portal/wallet/topup', ['amount_sen' => 5000, 'channel_code' => 'fpx'])->assertCreated();
+
+        $this->withToken($token)->postJson('/api/reseller-portal/wallet/topup', ['amount_sen' => 5000, 'channel_code' => 'fpx'])->assertUnprocessable();
+
+        $this->assertSame(1, WalletTopupAttempt::query()->count());
     }
 }

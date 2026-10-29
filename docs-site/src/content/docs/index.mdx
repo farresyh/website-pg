@@ -1,9 +1,9 @@
 ---
 title: PekanGame Reseller API
-description: Place orders, check status, and read the price list and wallet balance for a PekanGame prepaid-wallet reseller account.
+description: Place orders, check status, and read the price list and Purchase Balance for a PekanGame prepaid reseller account.
 template: splash
 hero:
-  tagline: A small REST API for placing game top-up orders against your prepaid PekanGame wallet.
+  tagline: A small REST API for placing game top-up orders against your prepaid PekanGame Purchase Balance.
   actions:
     - text: Get started
       link: /introduction/
@@ -20,9 +20,9 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 		Authenticate every request with a single `Authorization: Bearer` API key. No
 		request signing, no second secret.
 	</Card>
-	<Card title="Prepaid wallet" icon="setting">
-		Every order is charged to your wallet at your account's price. Top up and
-		read your balance from the partner portal.
+	<Card title="Prepaid Purchase Balance" icon="setting">
+		Every order is charged to your Purchase Balance at your account's price. Add
+		balance and read it from the partner portal.
 	</Card>
 	<Card title="Idempotent orders" icon="random">
 		Send one UUID per logical order. A retry with the same key returns the

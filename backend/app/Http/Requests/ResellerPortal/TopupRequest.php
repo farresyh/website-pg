@@ -9,9 +9,11 @@ use Illuminate\Validation\Rule;
 
 /**
  * PR-G planning addendum decision 3: free-form amount, minimum RM10
- * (1000 sen), no platform-imposed maximum — CHIP's/the bank's own
- * per-transaction ceiling is the only ceiling, handled by the existing
- * generic payment-failure path.
+ * (1000 sen). The maximum per top-up and the balance cap are enforced
+ * where the credit is written (ADR-131 decision 5,
+ * `ResellerWalletService::assertWithinLimits()`), not here: the portal
+ * and the WhatsApp bot both reach `ResellerWalletTopupService::initiate()`
+ * and the limits are settings, so this request carries no constant for them.
  */
 class TopupRequest extends FormRequest
 {

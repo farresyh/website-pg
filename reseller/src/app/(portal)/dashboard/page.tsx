@@ -71,31 +71,31 @@ function ResellerDashboard({ hello }: { hello: string }) {
 
   return (
     <div>
-      <PageHeader title={hello} subtitle="Your wallet, your integrations and the latest orders placed through them." />
+      <PageHeader title={hello} subtitle="Your Purchase Balance, your integrations and the latest orders placed through them." />
       {error && <ErrorNote message={error} />}
 
       <div className="mb-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         {data ? (
           <BalanceHero
             icon="wallet"
-            label="Wallet balance"
+            label="Purchase Balance"
             amount={formatRm(data.wallet.balance)}
             note="Available for API and WhatsApp bot orders right now."
             actions={
               <>
-                <Link href="/wallet" className={buttonClass("primary")}>
+                <Link href="/balance" className={buttonClass("primary")}>
                   <PortalIcon name="plus" className="h-4 w-4" />
-                  Top up wallet
+                  Add Balance
                 </Link>
-                <Link href="/wallet" className={buttonClass("secondary")}>
-                  Wallet history
+                <Link href="/balance#history" className={buttonClass("secondary")}>
+                  Balance history
                 </Link>
               </>
             }
           >
             <Facts
               items={[
-                ...(lastTopup ? [{ label: "Last top-up", value: formatRm(lastTopup.amount), sub: dateAndTime(lastTopup.created_at).date }] : []),
+                ...(lastTopup ? [{ label: "Last added", value: formatRm(lastTopup.amount), sub: dateAndTime(lastTopup.created_at).date }] : []),
                 ...(lastOrder ? [{ label: "Last order", value: formatRm(Math.abs(lastOrder.amount)), sub: whenLabel(lastOrder.created_at) }] : []),
                 { label: "Pricing tier", value: data.profile.tier_name ?? "—", sub: "Set by PekanGame" },
               ]}

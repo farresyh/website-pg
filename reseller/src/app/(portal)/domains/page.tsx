@@ -23,7 +23,7 @@ import {
   type AffiliateDomainRow,
   type DomainsResponse,
 } from "@/lib/portal";
-import { formatDateTime } from "@/lib/format";
+import { domainPaymentsBadge, formatDateTime } from "@/lib/format";
 import { PageHeader, Panel, ErrorNote, EmptyRow, StatusTag } from "@/components/composites";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -187,6 +187,15 @@ export default function DomainsPage() {
                       <p className="mt-1 max-w-xs text-theme-xs text-ink-subtle">
                         {d.last_error ?? STATUS_HINT[d.status]}
                       </p>
+                      {(() => {
+                        const payments = domainPaymentsBadge(d);
+                        return payments && (
+                          <div className="mt-2">
+                            <StatusTag severity={payments.severity}>{payments.label}</StatusTag>
+                            {payments.hint && <p className="mt-1 max-w-xs text-theme-xs text-ink-subtle">{payments.hint}</p>}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-5 py-4 text-ink-subtle">
                       {d.last_checked_at ? formatDateTime(d.last_checked_at) : "—"}

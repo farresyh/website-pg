@@ -2,8 +2,10 @@
 
 namespace App\Services\Reseller;
 
+use App\Models\LedgerAccount;
 use App\Models\LedgerEntry;
 use App\Models\Order;
+use App\Models\PlatformSettings;
 use App\Models\Reseller;
 use App\Models\WalletTopupAttempt;
 use App\Models\WalletTopupReceipt;
@@ -15,6 +17,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -42,6 +45,63 @@ final class ResellerWalletService
     public function balance(Reseller $reseller): int
     {
         return $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id);
+    }
+
+    /**
+     * ADR-131 decision 4: what this reseller may add right now. The cap is
+     * the reseller's own override or the platform default; headroom is how
+     * much more the balance can take (never negative, a balance can sit
+     * above a cap that was lowered later).
+     *
+     * @return array{min_topup_sen: int, max_topup_sen: int, balance_cap_sen: int, headroom_sen: int}
+     */
+    public function limits(Reseller $reseller): array
+    {
+        $settings = PlatformSettings::current();
+        $cap = (int) ($reseller->balance_cap_sen ?? $settings->balance_cap_default_sen);
+
+        return [
+            'min_topup_sen' => ResellerWalletTopupService::MIN_AMOUNT_SEN,
+            'max_topup_sen' => (int) $settings->topup_max_sen,
+            'balance_cap_sen' => $cap,
+            'headroom_sen' => max(0, $cap - $this->balance($reseller)),
+        ];
+    }
+
+    /**
+     * ADR-131 decision 5: the ONE limits check, used by the CHIP top-up start
+     * and the admin manual credit. `LedgerService::credit()` takes no lock,
+     * so this takes the reseller's own `ledger_accounts` mutex (the row
+     * `initiate()` and `debit()` already lock) before it reads the balance;
+     * the caller must be inside the transaction that then writes, or two
+     * concurrent credits could both pass. `completeTopup` and the order
+     * `wallet_refund` never call this: that money is already received or
+     * already owed, and is not refused (decision 6).
+     *
+     * @throws WalletTopupOverMaximumException
+     * @throws WalletBalanceCapExceededException
+     */
+    public function assertWithinLimits(Reseller $reseller, int $amountSen): void
+    {
+        if (DB::transactionLevel() === 0) {
+            throw new LogicException('assertWithinLimits() must run inside the transaction that writes the credit.');
+        }
+
+        LedgerAccount::query()
+            ->where('owner_type', LedgerOwnerType::ResellerWallet->value)
+            ->where('owner_id', $reseller->id)
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        $limits = $this->limits($reseller);
+
+        if ($amountSen > $limits['max_topup_sen']) {
+            throw new WalletTopupOverMaximumException($limits['max_topup_sen']);
+        }
+
+        if ($amountSen > $limits['headroom_sen']) {
+            throw new WalletBalanceCapExceededException($limits['balance_cap_sen'], $limits['headroom_sen']);
+        }
     }
 
     /**
@@ -85,6 +145,16 @@ final class ResellerWalletService
             ? []
             : Order::query()->whereIn('id', $orderIds)->pluck('order_number', 'id');
 
+        // ADR-131 decision 9: a CHIP top-up's receipt number is built from its attempt reference.
+        $attemptIds = $page->getCollection()
+            ->where('reference_type', 'wallet_topup_attempt')
+            ->pluck('reference_id')
+            ->filter()
+            ->all();
+        $attemptReferences = $attemptIds === []
+            ? []
+            : WalletTopupAttempt::query()->whereIn('id', $attemptIds)->pluck('reference', 'id');
+
         return $page->through(fn (LedgerEntry $entry): array => [
             'id' => $entry->id,
             'type' => $entry->type,
@@ -94,6 +164,10 @@ final class ResellerWalletService
             'receipt_name' => $entry->reference_type === 'wallet_topup_receipt'
                 ? ($receiptNames[$entry->reference_id] ?? null)
                 : null,
+            'receipt_number' => ResellerWalletReceiptService::numberFor(
+                $entry,
+                $entry->reference_type === 'wallet_topup_attempt' ? ($attemptReferences[$entry->reference_id] ?? null) : null,
+            ),
             'order_number' => $entry->reference_type === 'order'
                 ? ($orderNumbers[$entry->reference_id] ?? null)
                 : null,
@@ -145,6 +219,9 @@ final class ResellerWalletService
         $disk = config('filesystems.wallet_receipts_disk');
 
         return AccountingFileStore::storeThen($receipt, $disk, 'wallet-topup-receipts', now(), fn (?string $path) => DB::transaction(function () use ($reseller, $amountSen, $note, $receipt, $adminUserId, $idempotencyKey, $disk, $path) {
+            // ADR-131 decision 2: a manual credit is a top-up like any other.
+            $this->assertWithinLimits($reseller, $amountSen);
+
             $receiptRow = $path === null ? null : WalletTopupReceipt::query()->create([
                 'disk' => $disk,
                 'path' => $path,
@@ -227,6 +304,16 @@ final class ResellerWalletService
         }
 
         $attempt->refresh();
+
+        // ADR-131 decision 6: paid money is never refused, but a payment that reaches a closed
+        // account is stranded money someone must send back, so it is loud.
+        if (Reseller::onlyTrashed()->whereKey($attempt->reseller_id)->exists()) {
+            Log::critical('A paid Add Balance payment was credited to a closed reseller account. Refund it to the payer.', [
+                'reseller_id' => $attempt->reseller_id,
+                'wallet_topup_attempt_id' => $attempt->id,
+                'amount_sen' => $attempt->amount_sen,
+            ]);
+        }
 
         // ADR-076 PR-H decision 2 — a paid top-up fires no event, so the
         // "top-up berjaya" WhatsApp reply is sent from here, the one seam

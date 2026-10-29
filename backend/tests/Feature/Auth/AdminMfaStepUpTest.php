@@ -42,12 +42,16 @@ class AdminMfaStepUpTest extends TestCase
             'POST api/mfa/recovery-codes mfa.stepup',
             'POST api/middleware/suppliers mfa.stepup',
             'POST api/orders/{order}/credentials/reveal mfa.stepup',
+            'POST api/resellers/{reseller}/close mfa.stepup',
             'POST api/resellers/{reseller}/wallet/credit mfa.stepup',
             'PUT api/admin-users/{admin_user} mfa.stepup',
+            'PUT api/affiliates/{affiliate}/domains/{affiliateDomain}/payments-approval mfa.stepup',
             'PUT api/middleware/payment-gateways/{gatewayKey} mfa.stepup',
             'PUT api/middleware/suppliers/{supplier} mfa.stepup:api_config',
             'PUT api/orders/{order}/credentials mfa.stepup',
+            'PUT api/resellers/{reseller}/balance-cap mfa.stepup',
             'PUT api/settings/customer-login-policy mfa.stepup',
+            'PUT api/settings/purchase-balance-policy mfa.stepup',
         ], $guarded);
     }
 

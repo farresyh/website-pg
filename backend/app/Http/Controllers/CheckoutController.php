@@ -30,6 +30,7 @@ use App\Services\Order\PaymentStatus;
 use App\Services\Payment\Chip\FpxBankRedirect;
 use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
+use App\Services\Payment\PaymentReconciliationService;
 use App\Services\Pricing\PaymentMethodFeeResolver;
 use App\Services\Voucher\InvalidVoucherException;
 use App\Support\StorefrontBrand;
@@ -70,6 +71,7 @@ class CheckoutController extends Controller
         private readonly StorefrontBrand $storefrontBrand,
         private readonly CheckoutInputValidator $checkoutInputValidator,
         private readonly JokiCheckoutService $jokiCheckout,
+        private readonly PaymentReconciliationService $reconciliation,
     ) {}
 
     public function store(CreateCheckoutRequest $request): JsonResponse
@@ -298,6 +300,14 @@ class CheckoutController extends Controller
                 'code' => 'idempotency_mismatch',
                 'message' => 'This checkout was already submitted with different details. Please review your order and try again.',
             ], 422);
+        }
+
+        // ADR-110 2026-10-29 addendum: never hand out the link of a purchase CHIP
+        // has already ended (a cancelled bank login, then Back and Confirm again).
+        // A final failure fails the order here, and resume() below closes the attempt.
+        if ($order->payment_ref !== null && $order->payment_status === PaymentStatus::Pending) {
+            $this->reconciliation->reconcileOrder($order, earlyCheck: true);
+            $order->refresh();
         }
 
         // ADR-024 decision #5: an order already settled entirely by a

@@ -7,6 +7,7 @@ use App\Models\LedgerEntry;
 use App\Models\Reseller;
 use App\Models\WalletTopupReceipt;
 use App\Services\Ledger\LedgerOwnerType;
+use App\Services\Ledger\LedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -31,7 +32,11 @@ class ResellerWalletControllerTest extends TestCase
 
     private function makeReseller(): Reseller
     {
-        return Reseller::query()->create(['business_name' => 'Acme', 'is_active' => true]);
+        $reseller = Reseller::query()->create(['business_name' => 'Acme', 'is_active' => true]);
+        // Every real reseller has its wallet account from creation (ResellerController::store); the limits check locks it.
+        app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
+
+        return $reseller;
     }
 
     /** @param  array<string, mixed>  $data */

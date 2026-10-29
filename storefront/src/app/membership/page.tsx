@@ -28,14 +28,14 @@ export default async function MembershipPage() {
   // called it this request, so this is a cache hit, not a round-trip.
   // The backend `/api/membership/me` stays reachable for an existing
   // member's own read-only view — this only removes the storefront page.
-  const plans = await listPlans();
+  const [plans, branding] = await Promise.all([listPlans(), getBranding()]);
   if (plans.length === 0) notFound();
 
   return (
     <>
       <main className="pb-nav lg:pb-0">
         <Suspense fallback={<MembershipFormSkeleton />}>
-          <MembershipClient />
+          <MembershipClient paymentsEnabled={branding.paymentsEnabled} />
         </Suspense>
       </main>
       <SiteFooter />

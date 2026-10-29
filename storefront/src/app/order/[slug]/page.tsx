@@ -156,6 +156,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
               packages={packages}
               paymentChannels={paymentChannels}
               membershipPlans={membershipPlans}
+              paymentsEnabled={branding.paymentsEnabled}
             />
           </Suspense>
         </div>

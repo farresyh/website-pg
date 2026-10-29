@@ -27,9 +27,11 @@ const LEDGER_TYPE_LABELS: Record<string, string> = {
   reseller_tier_fee: "Wholesale-tier fee",
   adjustment: "Adjustment",
   // ADR-073 — a Reseller (wallet) account's own ledger entry types.
-  wallet_topup: "Top-up",
+  wallet_topup: "Balance added",
   wallet_debit: "Order",
   wallet_refund: "Refund",
+  // ADR-131 decision 14: written once, when PekanGame closes the account and sends the balance back.
+  wallet_closure_refund: "Closed account refund",
 };
 
 export function ledgerTypeLabel(type: string): string {
@@ -99,7 +101,7 @@ export function compensationNote(order: {
   has_compensation_voucher?: boolean;
   has_voucher_restored?: boolean;
 }): string | null {
-  if (order.wallet_refunded) return "Refunded to wallet";
+  if (order.wallet_refunded) return "Refunded to Purchase Balance";
   if (order.has_voucher_restored) return "Customer's voucher restored";
   if (order.has_compensation_voucher) return "Customer got a store voucher";
   return null;
@@ -135,8 +137,9 @@ export function ledgerRow(entry: { type: string; amount: number; reference_type:
     wallet_topup: entry.reference_type === "wallet_topup_attempt"
       ? { tone: "info", detail: "Paid online through CHIP" }
       : { tone: "info", detail: "Credited by PekanGame" },
-    wallet_debit: { tone: "neutral", detail: "Paid from wallet" },
+    wallet_debit: { tone: "neutral", detail: "Paid from Purchase Balance" },
     wallet_refund: { tone: "success", detail: "Order not delivered, amount returned" },
+    wallet_closure_refund: { tone: "neutral", detail: "Balance sent back when the account was closed" },
     order_profit: credit ? { tone: "success", detail: "Your margin on a delivered order" } : { tone: "review", detail: "Correction to an order's margin" },
     withdrawal: { tone: "neutral", detail: "Sent to your bank" },
     reseller_tier_fee: { tone: "neutral", detail: "Monthly wholesale-tier fee" },
@@ -157,3 +160,16 @@ export function toSen(value: string): number | null {
   const sen = Math.round(Number(value) * 100);
   return sen > 0 ? sen : null;
 }
+
+/** ADR-131: the payments state of an Active domain; other domains have none to show. */
+export function domainPaymentsBadge(domain: { status: string; payments_approved: boolean }): { severity: "warn" | "success"; label: string; hint: string | null } | null {
+  if (domain.status !== "active") return null;
+  return domain.payments_approved
+    ? { severity: "success", label: "Payments on", hint: null }
+    : {
+        severity: "warn",
+        label: "Payments awaiting approval",
+        hint: "Your store is live at this address. Payments are switched on once PekanGame approves the domain; we will let you know.",
+      };
+}
+

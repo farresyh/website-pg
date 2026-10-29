@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -182,6 +183,49 @@ class ChipGatewayTest extends TestCase
             return $request['due'] === $expectedDue
                 && $request['purchase']['due_strict'] === true;
         });
+    }
+
+    /**
+     * ADR-110 2026-10-29 addendum: one failed attempt ends the purchase, so a
+     * cancelled bank login can never be paid again (CHIP cancels it itself).
+     */
+    public function test_create_payment_sends_single_attempt(): void
+    {
+        Http::fake(['gate.chip-in.asia/*' => Http::response(['id' => 'p-1', 'status' => 'created', 'purchase' => ['total' => 100]], 201)]);
+
+        $this->gateway()->createPayment($this->probe('fpx', verifyChannel: false));
+
+        Http::assertSent(fn ($request) => ($request['purchase']['single_attempt'] ?? null) === true);
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: bool|null, 2: bool}>
+     */
+    public static function finalFailureCases(): array
+    {
+        return [
+            'cancelled is final' => ['cancelled', null, true],
+            'expired is final' => ['expired', null, true],
+            'overdue is final' => ['overdue', null, true],
+            'blocked is final' => ['blocked', null, true],
+            'error on a single-attempt purchase is final' => ['error', true, true],
+            'error on a retryable purchase is not final' => ['error', false, false],
+            'error with no single_attempt in the answer is not final' => ['error', null, false],
+            'created is not a failure' => ['created', true, false],
+            'paid is not a failure' => ['paid', true, false],
+        ];
+    }
+
+    #[DataProvider('finalFailureCases')]
+    public function test_get_payment_says_whether_a_failure_is_final(string $status, ?bool $singleAttempt, bool $expected): void
+    {
+        $purchase = ['total' => 100] + ($singleAttempt === null ? [] : ['single_attempt' => $singleAttempt]);
+        Http::fake(['gate.chip-in.asia/*' => Http::response(['id' => 'p-1', 'status' => $status, 'purchase' => $purchase], 200)]);
+
+        $result = $this->gateway()->getPayment('p-1');
+
+        $this->assertSame($expected, $result->data['failure_is_final']);
+        $this->assertSame($expected, $result->isFinalFailure());
     }
 
     public function test_create_payment_omits_success_callback_when_no_callback_url_is_configured(): void

@@ -33,7 +33,7 @@ use Illuminate\Support\Str;
  */
 final class ResellerWalletTopupService
 {
-    /** PR-G planning addendum decision 3: minimum RM10, no maximum. */
+    /** PR-G planning addendum decision 3: minimum RM10. The maximum and the balance cap are ADR-131 settings. */
     public const MIN_AMOUNT_SEN = 1000;
 
     /** PR-G planning addendum decision 8. */
@@ -43,6 +43,7 @@ final class ResellerWalletTopupService
         private readonly PaymentGatewayFactory $gateways,
         private readonly PaymentMethodFeeResolver $fees,
         private readonly CheckoutTotalService $totals,
+        private readonly ResellerWalletService $wallets,
     ) {}
 
     /**
@@ -56,7 +57,7 @@ final class ResellerWalletTopupService
     ): WalletTopupAttempt {
         if ($amountSen < self::MIN_AMOUNT_SEN) {
             throw new InvalidWalletTopupAmountException(
-                'Minimum top-up amount is '.self::MIN_AMOUNT_SEN.' sen.',
+                'The minimum you can add is RM'.number_format(self::MIN_AMOUNT_SEN / 100, 2).'.',
             );
         }
 
@@ -71,6 +72,12 @@ final class ResellerWalletTopupService
         // decision 3(a)).
         $feeConfig = $this->fees->resolve($channelCode);
         $totalChargedSen = $this->totals->calculate($amountSen, 0, $feeConfig)->finalAmount;
+
+        // ADR-110 2026-10-29 addendum: before the lock below says "already pending",
+        // fail a pending attempt whose purchase CHIP has ended for good (the reseller
+        // cancelled at the bank). Done here, not inside the transaction, so no CHIP
+        // call is made while the wallet account is locked.
+        $this->failPendingIfFinal($reseller);
 
         $attempt = DB::transaction(function () use ($reseller, $amountSen, $totalChargedSen, $channelCode) {
             // Lock this reseller's own wallet ledger_accounts row as a
@@ -96,6 +103,10 @@ final class ResellerWalletTopupService
                 );
             }
 
+            // ADR-131 decision 5: the per-top-up maximum and the balance cap, under the
+            // mutex locked above and before any gateway call.
+            $this->wallets->assertWithinLimits($reseller, $amountSen);
+
             return WalletTopupAttempt::query()->create([
                 'reseller_id' => $reseller->id,
                 'reference' => self::generateReference(),
@@ -108,6 +119,26 @@ final class ResellerWalletTopupService
         });
 
         return $this->requestPayment($attempt, $paymentMethod->gateway, $channelProperties);
+    }
+
+    private function failPendingIfFinal(Reseller $reseller): void
+    {
+        $pending = WalletTopupAttempt::query()
+            ->where('reseller_id', $reseller->id)
+            ->where('status', WalletTopupAttemptStatus::Pending->value)
+            ->where('expires_at', '>', now())
+            ->whereNotNull('chip_payment_ref')
+            ->first();
+
+        if ($pending === null) {
+            return;
+        }
+
+        $gatewayName = PaymentMethod::query()->where('channel_code', $pending->channel_code)->value('gateway');
+
+        if ($gatewayName !== null && $this->gateways->make($gatewayName)->getPayment($pending->chip_payment_ref)->isFinalFailure()) {
+            $pending->leavePending(WalletTopupAttemptStatus::Failed);
+        }
     }
 
     /**
@@ -129,7 +160,7 @@ final class ResellerWalletTopupService
             country: 'MY',
             channelCode: $attempt->channel_code,
             channelProperties: $channelProperties,
-            description: "PekanGame reseller wallet top-up ({$attempt->reference})",
+            description: "PekanGame purchase balance ({$attempt->reference})",
             customer: new PaymentCustomer(
                 referenceId: $attempt->reference,
                 givenNames: $attempt->reseller->business_name,
@@ -148,7 +179,7 @@ final class ResellerWalletTopupService
                 'error_message' => $payment->errorMessage,
             ]);
 
-            throw new WalletTopupCheckoutFailedException('The payment provider could not start this top-up. Please try again.');
+            throw new WalletTopupCheckoutFailedException('The payment provider could not start this payment. Please try again.');
         }
 
         $attempt->update([

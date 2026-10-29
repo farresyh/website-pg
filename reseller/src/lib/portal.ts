@@ -295,6 +295,8 @@ export interface AffiliateDomainRow {
   hostname: string;
   status: AffiliateDomainStatus;
   is_primary: boolean;
+  /** ADR-131: serves the store once Active, takes payments once PekanGame approves the domain. */
+  payments_approved: boolean;
   verification: { type: string; domain: string; value: string }[];
   last_checked_at: string | null;
   verified_at: string | null;

@@ -4,6 +4,7 @@ namespace App\Services\Fulfillment;
 
 use App\Models\MembershipQuotaDebit;
 use App\Models\Order;
+use App\Models\Reseller;
 use App\Models\OrderDeliveryLeg;
 use App\Models\ResellerBotOrderNotification;
 use App\Models\VoucherRedemption;
@@ -80,6 +81,12 @@ final class OrderSettlementService
 
             if ($locked->isAlreadyCompensated()) {
                 throw new OrderFulfillmentException("Order #{$locked->id} has already been compensated");
+            }
+
+            // ADR-131 decision 15: the one seam every compensation passes through. A closed account's
+            // wallet is never credited again (its balance was refunded to the payer at closure).
+            if ($locked->wallet_reseller_id !== null && Reseller::onlyTrashed()->whereKey($locked->wallet_reseller_id)->exists()) {
+                throw new OrderFulfillmentException("Order #{$locked->id} belongs to a closed reseller account, so its wallet cannot be credited");
             }
 
             $amounts = $this->amounts($locked);

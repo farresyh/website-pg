@@ -8,6 +8,7 @@ import { listPaymentChannels, type PaymentChannel } from "@/lib/payment-methods"
 import PaymentChannelPicker from "@/components/order/PaymentChannelPicker";
 import Button from "@/components/ui/Button";
 import MembershipTransitionModal from "@/components/order/MembershipTransitionModal";
+import PaymentsUnavailableNotice from "@/components/order/PaymentsUnavailableNotice";
 
 const CTA_LABEL: Record<SubscribePlan["relation"], string> = {
   subscribe: "Subscribe",
@@ -33,7 +34,7 @@ const CTA_LABEL: Record<SubscribePlan["relation"], string> = {
  * the server sets the return URLs back to /membership?checkout=…
  * (handled by MembershipClient).
  */
-export default function MembershipSubscribe({ token }: { token: string }) {
+export default function MembershipSubscribe({ token, paymentsEnabled = true }: { token: string; paymentsEnabled?: boolean }) {
   const [options, setOptions] = useState<SubscribeOptions | null>(null);
   const [channels, setChannels] = useState<PaymentChannel[]>([]);
   const [loadError, setLoadError] = useState(false);
@@ -108,6 +109,13 @@ export default function MembershipSubscribe({ token }: { token: string }) {
       }
       setError("Could not start the payment. Please try again.");
     } catch (err) {
+      if (err instanceof ApiError && err.code === "checkout_closed") {
+        // ADR-110 2026-10-29 addendum: that payment was cancelled for good. A new
+        // key makes the next click a fresh attempt (an order does the same).
+        idemKey.current = crypto.randomUUID();
+        setError("That payment was not completed. Choose how to pay and continue to try again.");
+        return;
+      }
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
     } finally {
       setStarting(false);
@@ -249,9 +257,11 @@ export default function MembershipSubscribe({ token }: { token: string }) {
             RM{selectedPlan.feeRm.toFixed(2)}/month, plus the payment provider&apos;s fee shown at checkout.
           </p>
 
+          {!paymentsEnabled && <PaymentsUnavailableNotice />}
+
           <Button
             onClick={startPayment}
-            disabled={starting || channelCode === null || channels.length === 0}
+            disabled={!paymentsEnabled || starting || channelCode === null || channels.length === 0}
             className="w-full justify-center"
           >
             {starting ? "Starting…" : "Continue to Payment"} <ArrowRight size={16} weight="bold" />

@@ -58,7 +58,7 @@ return [
         /*
          * Description rendered on the home page of the API documentation (`/docs/api`).
          */
-        'description' => 'Order placement, order status, price list, and wallet balance for a PekanGame reseller account. Every request needs a Bearer API key issued by PekanGame — Authorization: Bearer <key>.',
+        'description' => 'Order placement, order status, price list, and Purchase Balance for a PekanGame reseller account. Every request needs a Bearer API key issued by PekanGame — Authorization: Bearer <key>.',
     ],
 
     'ui' => [

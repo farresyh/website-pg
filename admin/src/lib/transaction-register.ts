@@ -28,6 +28,10 @@ export interface TransactionRegisterRow {
     | "membership_payment"
     | "reseller_wallet_topup"
     | "reseller_wallet_refund"
+    /** ADR-131 decision 17: a bank-transfer credit by an admin (no CHIP attempt behind it). */
+    | "reseller_wallet_manual_credit"
+    /** ADR-131 decision 17: the refund sent to a reseller whose account was closed. */
+    | "reseller_wallet_closure"
     | "withdrawal_payout";
   reference: string;
   description: string;

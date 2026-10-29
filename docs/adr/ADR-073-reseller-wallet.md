@@ -1,6 +1,6 @@
 # ADR-073: Reseller wallet — fee-less tiers, prepaid-deposit ledger, order-placement contract, profit booking, delivery-failure handling
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-29):** In force; extended by [ADR-131](./ADR-131-chip-activation-conditions.md) (2026-10-29 addendum): display name, limits, receipts, closure. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-09-04, same grill session as ADR-072. Depends on ADR-072 (the `Reseller` entity must exist before its money mechanics do).
 
@@ -72,3 +72,8 @@
 ### Cross-reference (2026-10-04) — decision 7's Refund to Wallet now goes through one shared settlement service
 
 `ADR-094`'s 2026-10-04 addendum (decisions 30-33) makes Refund to Wallet a thin caller of the settlement service shared with Issue Voucher. It is gated on `Failed` or `PartiallyDelivered`, and the amount comes from a formula (`final_amount × u`) instead of always `final_amount`, so a partly delivered wallet combo can be refunded. Decision 7's "never both buttons" still holds: the instrument is picked from the order.
+
+
+### 2026-10-29 addendum — display name, limits, receipts and closure (ADR-131)
+
+The customer-visible name of the wallet is now "Purchase Balance" (internal names and ledger types unchanged). PR-G planning addendum decision 3 ("minimum RM10, no maximum") is superseded: RM10,000 per top-up and a RM100,000 default balance cap, overridable per reseller, enforced under the wallet mutex. A paid top-up gets a Payment Receipt, and a Reseller is removed only by one "Close account" action that refunds the balance to the original payer. Decision 7 (failed order to wallet) stands. Details: [ADR-131](./ADR-131-chip-activation-conditions.md).

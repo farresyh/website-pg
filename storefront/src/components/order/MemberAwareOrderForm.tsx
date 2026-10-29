@@ -10,6 +10,8 @@ interface Props {
   packages: GamePackage[];
   paymentChannels: PaymentChannel[];
   membershipPlans: MembershipPlan[];
+  /** ADR-131 decision 20: from the branding of this domain. */
+  paymentsEnabled?: boolean;
 }
 
 /**
@@ -31,7 +33,7 @@ interface Props {
  * skipped. A lapsed/invalid token → `getMe().catch(() => null)` → the
  * member is treated as a guest, same as the old client fallback.
  */
-export default async function MemberAwareOrderForm({ game, packages, paymentChannels, membershipPlans }: Props) {
+export default async function MemberAwareOrderForm({ game, packages, paymentChannels, membershipPlans, paymentsEnabled = true }: Props) {
   const token = await getServerMembershipToken();
 
   const [memberPackagesRaw, memberInfo] = token
@@ -56,6 +58,7 @@ export default async function MemberAwareOrderForm({ game, packages, paymentChan
       packages={packages}
       paymentChannels={paymentChannels}
       membershipPlans={membershipPlans}
+      paymentsEnabled={paymentsEnabled}
       memberPackages={memberPackages}
       memberSession={memberSession}
       ssrMembershipToken={token}

@@ -5,7 +5,7 @@ import type { LedgerEntry, Paginated } from "@/lib/portal";
 import { dateAndTime, ledgerRow, signedRm } from "@/lib/format";
 import { Badge, Pager, Skeleton } from "@/components/composites";
 
-type Entry = LedgerEntry & { receipt_name?: string | null };
+type Entry = LedgerEntry & { receipt_name?: string | null; receipt_number?: string | null };
 
 /**
  * Every movement in or out of a balance, newest first (ADR-128 Money): a
@@ -16,10 +16,13 @@ export default function LedgerTable({
   entries,
   onPage,
   empty,
+  onReceipt,
 }: {
   entries: Paginated<Entry> | null;
   onPage: (page: number) => void;
   empty: string;
+  /** When given, a paid top-up row gets a "Receipt" button (ADR-131 decision 9). */
+  onReceipt?: (receiptNumber: string) => void;
 }) {
   if (!entries) {
     return (
@@ -44,6 +47,7 @@ export default function LedgerTable({
                 <Badge tone={row.badge.tone}>{row.badge.label}</Badge>
                 <Reference entry={entry} />
                 <span className="max-w-full truncate text-xs text-ink-subtle">{row.detail}</span>
+                <ReceiptLink entry={entry} onReceipt={onReceipt} />
               </span>
               <span className="flex shrink-0 flex-col items-end gap-1">
                 <Amount sen={entry.amount} />
@@ -78,6 +82,7 @@ export default function LedgerTable({
                     <span className="flex min-w-0 flex-col">
                       <Reference entry={entry} />
                       <span className="truncate text-xs text-ink-subtle">{row.detail}</span>
+                      <ReceiptLink entry={entry} onReceipt={onReceipt} />
                     </span>
                   </td>
                   <td className="text-right">
@@ -100,6 +105,16 @@ export default function LedgerTable({
 
 function Amount({ sen }: { sen: number }) {
   return <span className={`whitespace-nowrap text-sm font-semibold ${sen > 0 ? "text-success-ink" : "text-ink"}`}>{signedRm(sen)}</span>;
+}
+
+function ReceiptLink({ entry, onReceipt }: { entry: Entry; onReceipt?: (receiptNumber: string) => void }) {
+  if (!onReceipt || !entry.receipt_number) return null;
+  const number = entry.receipt_number;
+  return (
+    <button type="button" onClick={() => onReceipt(number)} className="mt-0.5 w-fit text-xs font-semibold text-cyan-ink hover:underline">
+      Receipt {number}
+    </button>
+  );
 }
 
 function Reference({ entry }: { entry: Entry }) {

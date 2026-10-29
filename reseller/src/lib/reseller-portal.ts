@@ -1,22 +1,43 @@
-import { apiFetch } from "@/lib/api-client";
+import { apiBlob, apiFetch } from "@/lib/api-client";
 import type { LedgerEntry, Paginated } from "@/lib/portal";
 
 /**
- * ADR-072 decision 5 / PR-G: the Reseller (wallet) portal's own
- * five-screen backend calls — Wallet (balance + top-up + ledger
- * history), Profile (view-only), API Keys (full self-service). Mirrors
+ * ADR-072 decision 5 / PR-G: the Reseller portal's own
+ * five-screen backend calls — Purchase Balance (balance + add balance +
+ * ledger history; the API path stays `/wallet`, ADR-131 decision 2), Profile (view-only), API Keys (full self-service). Mirrors
  * `lib/portal.ts`'s role for the Affiliate side; kept in its own file
  * since the two account types' screens don't overlap beyond Orders
  * (which stays in `portal.ts`, parameterized by ownerType).
  */
 
+/** ADR-131 decisions 4-7: the server's limits, so the portal keeps no second constant. */
+export interface BalanceLimits {
+  min_topup_sen: number;
+  max_topup_sen: number;
+  balance_cap_sen: number;
+  /** The most that can be added right now: max(0, cap − balance). */
+  headroom_sen: number;
+}
+
 export interface WalletResponse {
   balance: number;
-  entries: Paginated<LedgerEntry & { receipt_name: string | null }>;
+  entries: Paginated<LedgerEntry & { receipt_name: string | null; receipt_number?: string | null }>;
+  limits: BalanceLimits;
 }
 
 export function getWallet(token: string, page = 1) {
   return apiFetch<WalletResponse>(`/api/reseller-portal/wallet?page=${page}`, { token });
+}
+
+/** Fetches the Payment Receipt PDF (ADR-131 decision 9) and hands it to the browser as a download. */
+export async function downloadReceipt(token: string, receiptNumber: string): Promise<void> {
+  const blob = await apiBlob(`/api/reseller-portal/wallet/receipts/${encodeURIComponent(receiptNumber)}`, { token });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${receiptNumber}.pdf`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 export interface TopupResponse {

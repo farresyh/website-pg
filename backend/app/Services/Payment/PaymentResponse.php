@@ -31,12 +31,23 @@ final class PaymentResponse
         public readonly ?PaymentStatus $status,
         public readonly ?string $errorCode,
         public readonly ?string $errorMessage,
-    ) {
-    }
+    ) {}
 
     public static function success(mixed $data, ?PaymentStatus $status = null): self
     {
         return new self(true, $data, $status, null, null);
+    }
+
+    /**
+     * ADR-110 2026-10-29 addendum: the gateway answered, the answer is a
+     * failure, and that failure cannot be retried (`failure_is_final`).
+     */
+    public function isFinalFailure(): bool
+    {
+        return $this->success
+            && $this->status === PaymentStatus::Failed
+            && is_array($this->data)
+            && ($this->data['failure_is_final'] ?? false) === true;
     }
 
     public static function failure(string $errorCode, string $errorMessage): self
