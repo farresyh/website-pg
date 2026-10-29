@@ -1,6 +1,6 @@
 # ADR-076: Reseller Bot v2 — two-stage order-completion messaging, `.trackorder`/`.checkid`/`.info`, reply styling
 
-> **Standing (2026-10-28):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-29):** In force; decision 3 (no maximum) superseded by [ADR-131](./ADR-131-chip-activation-conditions.md) (2026-10-29 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-09-05, grilled `/mattpocock-skills:grilling` across two rounds (all frontier resolved, founder confirmed shared understanding before write-up). Depends on ADR-075 (PR-F, shipped) — this is a follow-up to that channel, not a new one.
 
@@ -184,4 +184,8 @@ Docs audit. Of the validators named above, only MooGold remains, with RedxGame a
 ### 2026-10-28 note — validators
 
 Two statements above are dated. The MLBB chain is now RedxGame → UniPlay and MooGold is removed ([ADR-005](./ADR-005-player-id-pre-payment-validation-is-not.md) 2026-10-28 addendum). `.checkid` is bound for five families (MLBB, Free Fire, Genshin, HSR, ZZZ, ADR-005 2026-10-16 addenda), not only MLBB. No decision changes here.
+
+### 2026-10-29 addendum — limits and wording (ADR-131)
+
+Decision 3's "no platform-imposed maximum" is superseded by [ADR-131](./ADR-131-chip-activation-conditions.md) (CHIP's activation condition): RM10,000 per top-up and a RM100,000 default balance cap, overridable per reseller, checked in `ResellerWalletTopupService::initiate()`, so the portal and the bot's `.topupbaki` are both held to them. The bot answers an over-limit request with its own Malay replies (`topup_over_maximum`, `topup_over_balance_cap` in the command log), never the "minimum" reply. Its reply text now says "Baki Pembelian" / "tambah baki" instead of "wallet" / "top-up"; the commands `.baki` and `.topupbaki` are unchanged.
 
