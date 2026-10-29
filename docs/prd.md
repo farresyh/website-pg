@@ -697,10 +697,15 @@ gate code present; `/api/health` 200; the four Vercel production builds
 succeeded. Prod `affiliate_domains` holds exactly one row: `fixfastapp.com`
 (FixFast Demo, active, **not approved**, so it cannot take a payment). Before
 the release prod had no row for the primary affiliate (its hosts are config),
-so the migration's backfill touched none. **Not yet seen in a browser:** the
-storefront "payments not available" notice, the partner-portal "awaiting
-approval" badge, the `/wallet`→`/balance` redirect on prod, and the step-up
-saves with an MFA admin. **Owed:** §16 items 138, 140 and 141. §15 "Reseller
+so the migration's backfill touched none. **Seen on prod by the founder the same
+evening:** the storefront notice on `fixfastapp.com`, the admin "Payments not
+approved" tag and Approve button, the Purchase Balance portal, a receipt PDF
+with the company details filled, and a real cancel at a bank for FPX and
+DuitNow QR (item 140: both orders went Failed within 12 s and 20 s and the
+"Payment Not Completed / Try Again" page showed). **Not yet seen:** the
+affiliate portal's "awaiting approval" badge, the `/wallet`→`/balance`
+redirect on prod, and the step-up saves with an MFA admin. **Owed:** §16
+items 138 and 141; new items 142–144. §15 "Reseller
 (wallet)", "Affiliates / whitelabel", "Payment Gateway", "Settings".
 
 **Previous release 2026-10-29 (`staging`→`main`, PR #589).** Merged as `c7cfcf06`
@@ -909,7 +914,7 @@ for the 2026-09-17 audit that found two dark-mode token bugs).
 production on 2026-10-15 after release #449; items 98, 99, 106 and 107
 checked again on 2026-10-16, after release #469; 107 closed after release #472;
 106, 11, 96 and the payment state re-checked 2026-10-17 after release #476;
-every open item re-checked 2026-10-26 after release #557; item 133 closed 2026-10-27 after release #571; items 134 and 137 closed and 138–140 added 2026-10-29 after release #589, with the payment state re-checked on prod; 141 (ADR-131) released and 142–143 added 2026-10-29 after release #599.** This list holds only **open** items. "Next up"
+every open item re-checked 2026-10-26 after release #557; item 133 closed 2026-10-27 after release #571; items 134 and 137 closed and 138–140 added 2026-10-29 after release #589, with the payment state re-checked on prod; 140 closed, 141 (ADR-131) released and 142–144 added 2026-10-29 after release #599.** This list holds only **open** items. "Next up"
 is the one place they are sorted, one line each; "Details" holds each item's
 full text once, by number. Everything closed is one line under "Recently
 closed", pointing to where the full story lives (`docs/build-log.md` /
@@ -930,6 +935,12 @@ and the admin-loading investigation (#515, #516). Re-checked again
 moved to group D). Re-verify before building.
 
 **A. Buildable now: code, no new design**
+- **144** The order status page for a failed payment (seen on prod 2026-10-29, item
+  140): (1) it shows "AMOUNT PAID RM2.07" on an order the same page says was not
+  charged: the label should be the amount due, or hidden; (2) two badges at
+  once, "Payment Failed" and "Waiting for payment"; (3) the Method row prints the
+  raw code (`fpx`, `duitnow_qr`) instead of a label ("Online Banking (FPX)",
+  "DuitNow QR"). The customer is told the right thing; the labels contradict it.
 - **143** The partner portal footer (`reseller/src/components/shell/TrustFooter.tsx`)
   hard-codes "LWF Group Sdn. Bhd. (202601038896)" while receipts read the
   company details from the admin settings (ADR-131 decision 11): two homes for
@@ -957,32 +968,16 @@ moved to group D). Re-verify before building.
   grid bank) exercises (a) and also produces a real receipt for CHIP. If (a)
   lands on CHIP's normal page or an error, revert the `FpxBankRedirect` calls;
   nothing else changed.
-- **140** A failed payment attempt is final (ADR-110 2026-10-29 addendum):
-  after a customer cancels at the bank (or any attempt fails) they start a new
-  checkout and cannot pay the same purchase again. Found 2026-10-29: the
-  founder's bank-login cancel left the order Pending for 42 minutes and CHIP's
-  page offered a retry. **Released 2026-10-29 in #599:** #591
-  (backend: `single_attempt: true` on every purchase, `failure_is_final`, a
-  check wherever a link would be handed out again, the public
-  `POST /api/track-order/{orderNumber}/check-payment`) and #592 (storefront:
-  "Confirming your payment…", then "Payment Not Completed" with "Try Again";
-  membership clears its key on `checkout_closed`). **Tested** in CHIP test
-  mode (CHIP cancels the purchase itself after one failed attempt; a simulated
-  failure fails the order at once; a replay answers `checkout_closed`).
-  **Owed after release:** one real cancel at a bank (CHIP error `1C`): expect
-  our failed page, the order Failed within seconds, and a new checkout working
-  (extends item 138); and the new status-page copy has not been seen in a
-  browser.
 - **141** CHIP activation conditions (ADR-131), **released 2026-10-29 in #599**; the
   code is complete. What is owed is the founder's, then one reply to CHIP:
-  (a) fill Settings → Purchase Balance → Company details (legal name, SSM,
-  address): receipts print them, read live; (b) deactivate the `fixfastapp.com`
+  (a) the company details are filled on prod (checked 2026-10-29): receipts print
+  them, read live; (b) deactivate the `fixfastapp.com`
   test affiliate (Affiliates → FixFast Demo → Deactivate; its domain already
   cannot take a payment, and item 129's switch-over lists it too); (c) the
-  browser checks not done: the storefront notice on an unapproved domain, the
-  partner-portal badge, the `/wallet` redirect on prod, and the "Save Limits",
-  "Close account" and domain-approval submits with an MFA admin (covered by
-  backend tests); (d) one reply to CHIP with attachments (portal screenshots from
+  browser checks not done: the affiliate portal's "awaiting approval" badge, the
+  `/wallet` redirect on prod, and the "Save Limits", "Close account" and
+  domain-approval submits with an MFA admin (covered by backend tests; the
+  storefront notice and the admin Approve button were seen on prod); (d) one reply to CHIP with attachments (portal screenshots from
   the FixFast test reseller, a receipt, the onboarding procedure PDF). Agreed
   wording: no officially onboarded resellers and one in onboarding; a failed
   reseller order returns to the Purchase Balance (the balance is that order's
@@ -1419,6 +1414,8 @@ moved to group D). Re-verify before building.
     go live for real customers. The switch-over steps above apply either way.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
+
+- **140** 2026-10-29: a failed payment attempt is final (ADR-110 2026-10-29 addendum), #591 and #592, released in #599. Seen on prod the same evening: the founder cancelled one FPX and one DuitNow QR payment at the bank; both orders were Failed within 12 s and 20 s (no voucher, none left Pending) and the "Payment Not Completed / Try Again" page showed. The page's own copy has defects, item 144. Details: build-log 2026-10-29.
 
 - **137** 2026-10-29: FPX bank-direct (ADR-130), #587 (checkout, `/joki`) and #588 (membership, partner-portal wallet top-up). The customer picks the bank on our page; one helper applies it where the checkout URL leaves the API; nothing is stored. Released 2026-10-29 in #589. Bank-down status split out as item 139; the real-bank proof is item 138. Details: build-log 2026-10-29.
 - **134** 2026-10-29: the "BNM Compliant • 256-bit SSL" line removed from the shared payment picker (founder's decision), #588. Details: build-log 2026-10-29.

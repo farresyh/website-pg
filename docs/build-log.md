@@ -2785,3 +2785,11 @@ Correction to this session's earlier count: prod has 23 *paid* FPX orders, not 2
 
 **Owed.** PRD §16 items 138 and 140 (real FPX and DuitNow payments, a real cancel at a bank) and 141 (company details, deactivate `fixfastapp.com`, the browser checks, the reply to CHIP, approving `ohahastore.com` only after CHIP's written approval); new items 142 (receipt redesign and its follow-ups) and 143 (the portal footer hard-codes the company details).
 
+## 2026-10-29 (evening) — Live checks after release #599
+
+**What was seen on prod.** The company details are filled (read-only check: name, SSM and address set), and a receipt PDF for the FixFast test reseller's earlier RM10 top-up prints them. The founder cancelled one FPX and one DuitNow QR payment at the bank. Read-only on prod: the FPX order (RM2.07) was created 12:44:50 UTC and Failed 12:45:02; the DuitNow order (RM1.08, channel `dnqr`) was created 12:45:51 and Failed 12:46:11; neither has a voucher and none was left Pending, and the "Payment Not Completed / Try Again" page showed for both (item 140 closed). Also seen: the storefront notice on `fixfastapp.com` ("Payments are not available on this store yet"), the admin "Payments not approved" tag with the Approve button, the Purchase Balance portal and dashboard (no "wallet" word, the limit line, the headroom "you can add up to RM 99,996.56 now", the receipt link in Balance history, a failed order shown as refunded to the Purchase Balance).
+
+**Defects seen on the failed-payment status page** (item 144, not blocking): "AMOUNT PAID RM2.07" on an order the page says was not charged; two badges at once ("Payment Failed" and "Waiting for payment"); the Method row prints raw codes (`fpx`, `duitnow_qr`).
+
+**Not yet done.** Item 138 (a completed FPX and DuitNow payment; none has completed since #589), the affiliate portal's "awaiting approval" badge and the `/wallet` redirect on prod, step-up saves with an MFA admin, and approving a branded domain only after CHIP's written approval. `fixfastapp.com` stays active but unapproved (the FixFast Demo affiliate was not deactivated; the domain cannot take a payment either way).
+
