@@ -2810,3 +2810,7 @@ The legacy link was then checked on prod: `https://reseller.pekangame.space/wall
 The Purchase Balance receipt (`resources/views/receipts/purchase-balance.blade.php`) now follows a plain Stripe-style layout and carries the LWF logo (`backend/resources/img/lwf-logo.png`, black on transparent, embedded as a data URI). `ResellerWalletReceiptService` adds `bill_to` (business name, contact name, email). No money or ledger code changed. Decisions and what was left out (tax lines, card detail, address): ADR-131 2026-10-30 addendum.
 
 **Verified:** `PurchaseBalancePortalTest` and `PurchaseBalanceAdminTest` 20/20 (new: the receipt bills the reseller and embeds the logo); the PDF was rendered and read page by page (title, logo, meta block, parties, headline, items, totals, note). Not rendered from a real prod top-up: do that after release with the FixFast test reseller.
+
+## 2026-10-30 — Items 142 (rest) and 143 closed as not needed
+
+Founder's decision after #602 and #603 merged to `staging`: the footer's hard-coded company details (143) stay as they are, and the three open parts of item 142 (admin download of a closed reseller's receipts, stored snapshot of the company details, automatic email) are not planned. Recorded in PRD §16 "Recently closed" and the ADR-131 2026-10-30 later addendum. Docs only; nothing built.

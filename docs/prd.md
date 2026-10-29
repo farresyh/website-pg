@@ -707,7 +707,7 @@ DuitNow QR (item 140: both orders went Failed within 12 s and 20 s and the
 the bank ended Failed and returned to `/balance`. The legacy `/wallet` link
 was checked on prod too (`308` to `/balance`, query kept). **Not yet seen:** the
 step-up saves with an MFA admin. **Owed:** §16
-items 138 and 141; new items 142–144. §15 "Reseller
+items 138 and 141. Items 142–144 were added the same evening and closed 2026-10-30 on `staging` (#602, #603; not yet released). §15 "Reseller
 (wallet)", "Affiliates / whitelabel", "Payment Gateway", "Settings".
 
 **Previous release 2026-10-29 (`staging`→`main`, PR #589).** Merged as `c7cfcf06`
@@ -937,19 +937,10 @@ and the admin-loading investigation (#515, #516). Re-checked again
 moved to group D). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- **143** The partner portal footer (`reseller/src/components/shell/TrustFooter.tsx`)
-  hard-codes "LWF Group Sdn. Bhd. (202601038896)" while receipts read the
-  company details from the admin settings (ADR-131 decision 11): two homes for
-  one fact. Point the footer at the setting once it is filled, or leave it if
-  the company details never change.
+(none: 143 closed 2026-10-30)
 
 **B. Needs a short grill / ADR addendum first**
-- **142** Payment Receipt redesign: the layout and the LWF logo are built (ADR-131
-  2026-10-30 addendum; PR open, not released). Still open, no design yet: an
-  admin download of a closed reseller's receipts (the reseller can no longer log
-  in; the data stays), a stored snapshot of the company details (today an old
-  receipt reprints with the current ones), and an automatic email (today it is
-  on request in the portal). None is urgent: build each at its trigger.
+(none: 142 closed 2026-10-30)
 
 **C. Founder actions (no code)**
 - **138** Real-bank proof for release #589 (2026-10-29), partly done. Seen on
@@ -1410,6 +1401,8 @@ moved to group D). Re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **143** 2026-10-30: closed as not needed (founder). The partner portal footer keeps its hard-coded "LWF Group Sdn. Bhd. (202601038896)"; the company details do not change, and the footer also shows on the login page, where reading them from the admin setting would need a new public endpoint. Reopen only if the company name or SSM number changes.
+- **142** 2026-10-30: the receipt layout and the LWF logo, built (ADR-131 2026-10-30 addendum, #603, on `staging`, not released). The other three parts (an admin download of a closed reseller's receipts, a stored snapshot of the company details, an automatic email) were closed as not needed (founder). Reopen each only at its trigger: an accountant's request or a change of company details, the first closed real reseller, a reseller asking for the email.
 - **144** 2026-10-30: the failed-payment status page labels fixed (amount reads "Amount Due" until paid, one badge, the payment method as a label), in the same PR as the smaller FPX bank tiles and the removal of the "Other bank" link (ADR-130 2026-10-30 addendum). Details: build-log 2026-10-30. Not yet released.
 
 - **140** 2026-10-29: a failed payment attempt is final (ADR-110 2026-10-29 addendum), #591 and #592, released in #599. Seen on prod the same evening: the founder cancelled one FPX and one DuitNow QR payment at the bank; both orders were Failed within 12 s and 20 s (no voucher, none left Pending) and the "Payment Not Completed / Try Again" page showed. The page's own copy has defects, item 144. Details: build-log 2026-10-29.
