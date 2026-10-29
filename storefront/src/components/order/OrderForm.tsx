@@ -188,6 +188,7 @@ export default function OrderForm({
   const [validationResult, setValidationResult] = useState<ValidatePlayerResult | null>(null);
 
   const [channelCode, setChannelCode] = useState<string | null>(null);
+  const [bankCode, setBankCode] = useState<string | null>(null);
 
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -433,6 +434,7 @@ export default function OrderForm({
           ? { credentials, credential_consent: credentialConsent }
           : { player_id: playerId, server_id: game.extraField ? serverId : undefined }),
         channel_code: channelCode,
+        fpx_bank_code: bankCode ?? undefined,
         idempotency_key: idempotencyKeyRef.current ?? crypto.randomUUID(),
         voucher_code: voucherCode ?? undefined,
         // CHIP needs these for its hosted checkout page (FPX, DuitNow QR)
@@ -511,7 +513,15 @@ export default function OrderForm({
 
         <div ref={step3Ref}>
         <StepCard number={3} title="Choose Payment Method" locked={!step2Complete} lockHint="Choose a package first">
-          <PaymentChannelPicker channels={paymentChannels} selected={channelCode} onSelect={setChannelCode} />
+          <PaymentChannelPicker
+            channels={paymentChannels}
+            selected={channelCode}
+            bankCode={bankCode}
+            onSelect={(code, bank) => {
+              setChannelCode(code);
+              setBankCode(bank ?? null);
+            }}
+          />
         </StepCard>
         </div>
       </div>

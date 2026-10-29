@@ -76,6 +76,8 @@ const CheckoutPayloadSchema = z.object({
   credentials: z.record(z.string(), z.string()).optional(),
   credential_consent: z.boolean().optional(),
   channel_code: z.string(),
+  // ADR-130: the FPX bank picked on our page; the backend refuses it on any other channel.
+  fpx_bank_code: z.string().optional(),
   channel_properties: z.record(z.string(), z.unknown()).optional(),
   /**
    * Generated once per checkout attempt (OrderForm.tsx, when the Review
