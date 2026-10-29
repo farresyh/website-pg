@@ -242,12 +242,12 @@ export default function BalancePage() {
             </p>
           </form>
         </Panel>
-        <div className="xl:col-start-1">
+        <div className="flex flex-col gap-4 xl:col-start-1">
           <StepsCard
             title="How adding balance works"
             steps={[
               { title: "Pay on a secure payment page", body: "You leave PekanGame to pay with your bank. PekanGame never sees your banking login." },
-              { title: "Your balance updates by itself", body: "As soon as CHIP confirms the payment. No receipt to send." },
+              { title: "Your balance updates by itself", body: "As soon as CHIP confirms the payment. A Payment Receipt then appears in your balance history." },
               { title: "One payment at a time", body: "An unpaid payment closes after 30 minutes, then you can start another." },
             ]}
           />
