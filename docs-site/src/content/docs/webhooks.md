@@ -26,14 +26,14 @@ PekanGame support can also set this for you.
 | Event | When |
 | --- | --- |
 | `order.delivered` | The order was fulfilled successfully. |
-| `order.failed` | Delivery failed; PekanGame may retry it, so a wallet refund is not guaranteed. |
+| `order.failed` | Delivery failed; PekanGame may retry it, so a Purchase Balance refund is not guaranteed. |
 | `order.partially_delivered` | Part of the order was delivered and the rest failed. The undelivered share is refunded separately (`order.refunded`). |
-| `order.refunded` | A failed or partially delivered order was refunded to your wallet — all of it, or only the undelivered share. |
+| `order.refunded` | A failed or partially delivered order was refunded to your Purchase Balance — all of it, or only the undelivered share. |
 
 Each **event type** fires **at most once per order** — so one order can send
 you both an `order.failed` and a later `order.refunded`, but never two
 `order.failed`.
-`order.failed` does not mean the wallet has been credited. Webhooks can arrive
+`order.failed` does not mean the Purchase Balance has been credited. Webhooks can arrive
 out of order or be retried; `GET /v1/orders/{order_number}` is the authoritative
 current state when you need to reconcile.
 
@@ -65,7 +65,7 @@ event is delivered more than once.
 For `order.refunded`, `delivery_status` stays what it was (`failed` or
 `partially_delivered`), while `wallet_refunded` is `true` and `wallet_refund`
 contains `amount_sen` and `refunded_at` (ISO 8601). The refund fields come
-from the wallet ledger, not from a new delivery state.
+from the Purchase Balance ledger, not from a new delivery state.
 
 ## Headers
 

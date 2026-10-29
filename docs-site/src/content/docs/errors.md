@@ -51,7 +51,7 @@ code, so read it only for the codes below:
 | 422 | `PRICE_CHANGED` | Your current price is above the `max_price_sen` you sent. Nothing was charged. See `details.current_price_sen`. | Decide whether the new price still works for you; if so, retry (the same `idempotency_key` is fine). |
 | 422 | `UNKNOWN_PRODUCT_CODE` | The `product_code` is unknown or unavailable. | Re-read `GET /v1/catalog`. |
 | 422 | `NO_TIER_ASSIGNED` | Your account has no pricing configured yet. | Contact PekanGame. |
-| 422 | `INSUFFICIENT_BALANCE` | The order would overdraw the wallet. | Top up; retry with a fresh key. |
+| 422 | `INSUFFICIENT_BALANCE` | The order would overdraw the Purchase Balance. | Add balance; retry with a fresh key. |
 | 429 | `RATE_LIMITED` | Too many requests. | Wait for the `Retry-After` header, then retry. |
 
 ## 5xx

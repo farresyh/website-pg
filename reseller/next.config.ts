@@ -41,6 +41,12 @@ const cspDirectives = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // ADR-131 decision 3: the page moved from /wallet to /balance. A CHIP purchase
+  // started before the release still returns to /wallet?topup=… (up to 30 minutes),
+  // and the query string is carried over.
+  async redirects() {
+    return [{ source: "/wallet", destination: "/balance", permanent: true }];
+  },
   async headers() {
     return [
       {

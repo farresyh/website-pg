@@ -27,7 +27,7 @@ const LEDGER_TYPE_LABELS: Record<string, string> = {
   reseller_tier_fee: "Wholesale-tier fee",
   adjustment: "Adjustment",
   // ADR-073 — a Reseller (wallet) account's own ledger entry types.
-  wallet_topup: "Top-up",
+  wallet_topup: "Balance added",
   wallet_debit: "Order",
   wallet_refund: "Refund",
 };
@@ -99,7 +99,7 @@ export function compensationNote(order: {
   has_compensation_voucher?: boolean;
   has_voucher_restored?: boolean;
 }): string | null {
-  if (order.wallet_refunded) return "Refunded to wallet";
+  if (order.wallet_refunded) return "Refunded to Purchase Balance";
   if (order.has_voucher_restored) return "Customer's voucher restored";
   if (order.has_compensation_voucher) return "Customer got a store voucher";
   return null;
@@ -135,7 +135,7 @@ export function ledgerRow(entry: { type: string; amount: number; reference_type:
     wallet_topup: entry.reference_type === "wallet_topup_attempt"
       ? { tone: "info", detail: "Paid online through CHIP" }
       : { tone: "info", detail: "Credited by PekanGame" },
-    wallet_debit: { tone: "neutral", detail: "Paid from wallet" },
+    wallet_debit: { tone: "neutral", detail: "Paid from Purchase Balance" },
     wallet_refund: { tone: "success", detail: "Order not delivered, amount returned" },
     order_profit: credit ? { tone: "success", detail: "Your margin on a delivered order" } : { tone: "review", detail: "Correction to an order's margin" },
     withdrawal: { tone: "neutral", detail: "Sent to your bank" },

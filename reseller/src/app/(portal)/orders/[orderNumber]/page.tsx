@@ -78,7 +78,7 @@ export default function OrderDetailPage() {
         <>
           <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border shadow-xs md:grid-cols-4">
             <Summary label="Game · package" value={order.game?.name ?? "—"} sub={order.package_name ?? "—"} />
-            <Summary label={affiliate ? "Customer paid" : "Amount"} value={formatRm(order.final_amount)} sub={affiliate ? order.payment_method ?? "—" : "From your wallet"} money />
+            <Summary label={affiliate ? "Customer paid" : "Amount"} value={formatRm(order.final_amount)} sub={affiliate ? order.payment_method ?? "—" : "From your Purchase Balance"} money />
             <Summary label="Player" value={order.player_id ?? "—"} sub={order.server_id ? `Server ${order.server_id}` : undefined} mono />
             <Summary label="Placed" value={dateAndTime(order.created_at).date} sub={`${dateAndTime(order.created_at).time} MYT`} />
           </dl>
@@ -124,7 +124,7 @@ export default function OrderDetailPage() {
                 <KeyValues
                   rows={[
                     ["Charged", formatRm(order.final_amount)],
-                    ["Paid from", "Wallet"],
+                    ["Paid from", "Purchase Balance"],
                     ["Refunded", order.wallet_refund ? `${formatRm(order.wallet_refund.amount_sen)} · ${dateAndTime(order.wallet_refund.refunded_at).date}` : "No"],
                   ]}
                 />
@@ -166,7 +166,7 @@ function Resolution({ order, affiliate }: { order: OrderDetail; affiliate: boole
   if (!failed && !review) return null;
 
   const resolved = order.wallet_refund
-    ? { title: "Refunded to your wallet", facts: [["Refunded", formatRm(order.wallet_refund.amount_sen)], ["When", `${dateAndTime(order.wallet_refund.refunded_at).date} · ${dateAndTime(order.wallet_refund.refunded_at).time}`]], link: { href: "/wallet", label: "See it in Wallet" } }
+    ? { title: "Refunded to your Purchase Balance", facts: [["Refunded", formatRm(order.wallet_refund.amount_sen)], ["When", `${dateAndTime(order.wallet_refund.refunded_at).date} · ${dateAndTime(order.wallet_refund.refunded_at).time}`]], link: { href: "/wallet", label: "See it in Wallet" } }
     : order.has_voucher_restored
       ? { title: "The customer's voucher was restored", facts: [], link: null }
       : order.has_compensation_voucher
@@ -185,7 +185,7 @@ function Resolution({ order, affiliate }: { order: OrderDetail; affiliate: boole
             : resolved
               ? affiliate
                 ? "The top-up did not reach the player, and the customer has been compensated."
-                : "The top-up did not reach the player. The amount went back to your wallet."
+                : "The top-up did not reach the player. The amount went back to your Purchase Balance."
               : "The top-up did not reach the player. PekanGame is sorting it out; contact support if you need an update."
         }
       />

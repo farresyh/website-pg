@@ -66,7 +66,7 @@ The version number on this documentation (shown in the API Reference) is the
 
 - New final `delivery_status`: `partially_delivered` — part of an order was
   delivered and the rest failed. The undelivered share is refunded to the
-  wallet as a separate action; `wallet_refund.amount_sen` shows how much.
+  Purchase Balance as a separate action; `wallet_refund.amount_sen` shows how much.
 - New webhook event `order.partially_delivered`. `order.refunded` now also
   covers a partially delivered order, for the undelivered share only.
 - The additive-change list above now names new status values and new webhook
@@ -77,8 +77,8 @@ The version number on this documentation (shown in the API Reference) is the
 - Order responses (create/replay, get, and list) and delivery webhooks now
   include `wallet_refunded` and `wallet_refund` (amount in sen and refund time).
   These are additive fields; the API path remains `/v1`.
-- Clarified that `delivery_status: failed` does not itself mean a wallet refund
-  has occurred. `order.refunded` announces the separate wallet credit.
+- Clarified that `delivery_status: failed` does not itself mean a Purchase Balance refund
+  has occurred. `order.refunded` announces the separate Purchase Balance credit.
 
 ### 2026-09 — v1.0.0
 

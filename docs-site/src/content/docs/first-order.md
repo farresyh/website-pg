@@ -120,13 +120,13 @@ On success you get **HTTP 201** and the order:
 }
 ```
 
-Your wallet is charged `price_sen` at this moment. `payment_status` is `paid`
-straight away (it is a wallet debit). `delivery_status` then progresses on its
+Your Purchase Balance is charged `price_sen` at this moment. `payment_status` is `paid`
+straight away (it is a Purchase Balance debit). `delivery_status` then progresses on its
 own — see the table below.
 
 ### Order status values
 
-`payment_status` is always `paid` for a wallet order.
+`payment_status` is always `paid` for a Purchase Balance order.
 
 | `delivery_status` | Meaning |
 | --- | --- |
@@ -134,9 +134,9 @@ own — see the table below.
 | `processing` | Being fulfilled. |
 | `pending` | Submitted; awaiting the final result. |
 | `delivered` | Done. `delivered_at` is set. |
-| `failed` | Delivery failed. PekanGame may retry; a wallet refund is a separate later action. |
+| `failed` | Delivery failed. PekanGame may retry; a Purchase Balance refund is a separate later action. |
 | `needs_review` | The outcome is ambiguous and being confirmed manually. Rare. |
-| `partially_delivered` | Part of the order was delivered and the rest failed. The undelivered part is refunded to your wallet as a separate later action. Rare. |
+| `partially_delivered` | Part of the order was delivered and the rest failed. The undelivered part is refunded to your Purchase Balance as a separate later action. Rare. |
 
 `delivered` is final. `failed` and `partially_delivered` are usually final
 too, but PekanGame may re-attempt the part that failed, so either can still
@@ -144,7 +144,7 @@ reach `delivered` later (you get an `order.delivered` webhook if so). Poll or
 use the webhook until the order is `delivered`, `failed` or
 `partially_delivered`.
 For a failed or partially delivered order, check `wallet_refunded` separately
-to learn whether the wallet has actually been credited, and
+to learn whether the Purchase Balance has actually been credited, and
 `wallet_refund.amount_sen` for how much — for a partial delivery it is only
 the undelivered share. Do not infer a refund from the status alone.
 
@@ -178,8 +178,8 @@ GET /v1/orders/PG-7QK2M9X4RJ
 }
 ```
 
-A failed order can later be refunded to your wallet after PekanGame decides
+A failed order can later be refunded to your Purchase Balance after PekanGame decides
 not to retry it. In that case the order still reports `payment_status: paid`
 and `delivery_status: failed`, but `wallet_refunded` becomes `true` and
 `wallet_refund` supplies the actual credited amount and time. See
-[Wallet & balance](/wallet/).
+[Purchase Balance](/wallet/).

@@ -2,7 +2,7 @@ import type { PortalIconName } from "@/components/shell/PortalIcon";
 
 /**
  * The portal's navigation per account type (ADR-072 decision 5: an
- * Affiliate never sees Wallet/API keys, a Reseller never sees
+ * Affiliate never sees Purchase Balance/API keys, a Reseller never sees
  * Earnings/Subscription/Withdrawal). ADR-112 fixes the destinations and the
  * phone bar (Dashboard, Orders, the role's money page, More); ADR-128 adds
  * the sidebar groups.
@@ -37,7 +37,7 @@ const RESELLER_NAV: PortalNavGroup[] = [
     label: "Orders & money",
     items: [
       { name: "Orders", href: "/orders", icon: "orders" },
-      { name: "Wallet", href: "/wallet", icon: "wallet" },
+      { name: "Purchase Balance", href: "/balance", icon: "wallet" },
     ],
   },
   { label: "Integration", items: [{ name: "API keys", href: "/api-keys", icon: "key" }] },
@@ -46,7 +46,7 @@ const RESELLER_NAV: PortalNavGroup[] = [
 
 const PHONE_BAR: Record<"affiliate" | "reseller", string[]> = {
   affiliate: ["/dashboard", "/orders", "/earnings"],
-  reseller: ["/dashboard", "/orders", "/wallet"],
+  reseller: ["/dashboard", "/orders", "/balance"],
 };
 
 export function portalNav(ownerType: "affiliate" | "reseller"): PortalNavGroup[] {

@@ -56,5 +56,5 @@ We recommend an allowlist for any fixed server-to-server integration.
 1. **Revoke it** in the portal immediately — this stops all use of it.
 2. Issue a replacement and deploy it.
 3. Check your recent orders (`GET /v1/orders`) and the webhook delivery log for
-   anything you did not place. The maximum exposure is your wallet balance;
+   anything you did not place. The maximum exposure is your Purchase Balance;
    there is no way to move money out of the account with the API.
