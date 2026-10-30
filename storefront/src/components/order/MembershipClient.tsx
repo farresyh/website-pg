@@ -161,7 +161,8 @@ export default function MembershipClient({ paymentsEnabled = true }: { paymentsE
     return (
       <div className="mx-auto max-w-[420px] px-4 py-10 lg:py-16">
         <h1 className="font-display mb-2 text-3xl font-bold uppercase lg:text-headline-lg tracking-tight">Enter Your Code</h1>
-        <p className="mb-6 text-sm text-on-surface-variant">We sent a 6-digit code to {email}. It expires in 10 minutes.</p>
+        <p className="mb-2 text-sm text-on-surface-variant">We sent a 6-digit code to {email}. It expires in 10 minutes.</p>
+        <p className="mb-6 text-sm text-on-surface-variant">Can&apos;t find it? Check your Spam or Junk folder, and mark the email as Not spam.</p>
         <form onSubmit={handleVerify} className="flex flex-col items-center gap-4">
           <OtpInput value={code} onChange={setCode} disabled={verifying} />
           <Button type="submit" disabled={verifying || code.length !== 6} className="w-full justify-center">

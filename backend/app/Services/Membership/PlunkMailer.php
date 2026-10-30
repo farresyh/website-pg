@@ -34,14 +34,14 @@ final class PlunkMailer
 
     public function sendOtpEmail(string $to, string $code, ?Affiliate $affiliate = null): void
     {
+        $branding = $this->brandingFor($affiliate);
+
+        // The code and the brand in the subject: the form Gmail recognises and trusts for a one-time code.
         $this->sendView(
             $to,
-            'Your verification code',
+            "{$code} is your {$branding['storeName']} verification code",
             'emails.membership-otp',
-            [
-                'code' => $code,
-                ...$this->brandingFor($affiliate),
-            ]
+            ['code' => $code, ...$branding]
         );
     }
 
