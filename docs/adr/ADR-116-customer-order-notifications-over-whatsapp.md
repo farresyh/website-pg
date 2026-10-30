@@ -211,5 +211,5 @@ a risk at this volume. Removing it also closes the retry hole.
 
 **Decision:** `PhoneNumber::normalize()` treats a 9 or 10 digit number starting with `1` as a Malaysian mobile missing its trunk `0` and makes it `60…`. Country code 1 numbers always have 11 digits, so they are never caught by the rule. `1123456267`, `01123456267`, `601123456267` and `+60 11-2345 6267` are now one number. The stored `customer_phone` is still never rewritten (suppliers receive it as typed).
 
-**Not done:** warning the customer at checkout, and any change for numbers that start with other digits (landlines and other countries stay as before). The fix does not run backwards: PG-L4RCBELJ9RE3 did not get its receipt and the founder told the customer by hand.
+**Not done:** warning the customer at checkout, and any change for numbers that start with other digits (landlines and other countries stay as before). The fix does not run backwards: PG-L4RCBELJ9RE3 did not get its receipt (the founder was advised to tell the customer by hand).
 
