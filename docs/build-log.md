@@ -2898,6 +2898,23 @@ The next CI run failed `backend-concurrency` on `CheckoutSettleWithVoucherConcur
 
 **Owed.** Not live until a `staging` → `main` release. Then the founder presses "Redirect www here" on OhahaStore's Domains screen (the only path: no console command, no hand-run patch), and `curl -I https://www.ohahastore.com` should answer 308 to `ohahastore.com`; the `www` row's CHIP approval stops mattering.
 
+## 2026-10-30 — Membership OTP emails landing in spam: diagnosis, Plunk and DNS changes, and a subject/copy change
+
+**Report.** The founder said the membership code email goes to the spam folder, and shared one such message (Gmail "Show original").
+
+**Diagnosis (read-only).** Authentication was fine: SPF PASS, DKIM PASS with `d=pekangame.space` (aligned), DMARC PASS (the zone has `p=quarantine`). The causes were in the message and the sender: (1) Plunk's project tracking was **Enabled**, so every link went through the shared `track.useplunk.dev` redirect, a 1x1 open pixel was added, and the free plan's "Powered by Plunk" badge image and link; (2) the sender domain `pekangame.space` differs from the domain every link points to (`pekangame.com`, the real storefront, which `.space` redirects to), and `.space` is a low-reputation TLD; (3) `Reply-To` was `noreply@pekangame.space`, a domain with no MX; (4) a generic subject.
+
+**Changes made by me in the founder's logged-in browser, with the founder's go-ahead (before to after).**
+- **Plunk, Settings, General:** Email tracking `Enabled` to `Marketing only` (transactional sends are no longer tracked; campaigns still are). Reversible in the same place.
+- **Plunk, Settings, Domains:** added `pekangame.com` (it was not there; only `pekangame.space` was). Optional Custom MAIL FROM and inbound were skipped on purpose.
+- **Cloudflare, `pekangame.com`, DNS:** 9 records to 12. Added three CNAMEs, **DNS only**, for Amazon SES DKIM: `dhzrtflz5z4zybf2nrwmdcjezlamtaqj`, `zba5w2gyjitwlfsifm6pjt2iuldtmg5z` and `jtlpl5rv4oaxkl4rumi6z6nxe4rrrgg3`, each `._domainkey` to `<same>.dkim.amazonses.com`. **The SPF record was not touched** (it also serves the Zoho mailbox; DMARC only needs the aligned DKIM), and the Zoho MX, SPF, verification and DKIM records were read back unchanged afterwards. Plunk then reported "Domain pekangame.com is verified!".
+- **A slip, disclosed.** One Save click missed (the form grows after the target is typed), and the follow-up clicks landed on the Cloudflare dashboard and opened the `fixfastapp.com` overview. Nothing there was edited (no form was open); the `pekangame.com` record count was checked (10, only the intended one) before continuing, and each remaining record was zoom-checked before Save.
+- **Not done by me:** buying the Plunk plan that removes the badge (a purchase; the founder says they will subscribe), and the production `PLUNK_FROM_EMAIL` change (handed to the founder as exact commands, below).
+
+**Code (branch `fix/membership-otp-email-deliverability`).** The OTP email's subject is now `{code} is your {brand} verification code` (the form Gmail trusts for one-time codes), with a test that was red first, and the storefront's code screen says to check Spam or Junk and mark the email Not spam. No Reply-To change: I could not confirm Plunk's field for it.
+
+**Owed.** The sender switch is not made: set `PLUNK_FROM_EMAIL=noreply@pekangame.com` on the Forge box (blast radius: every system email, which all go through Plunk), `php artisan config:cache`, `php artisan horizon:terminate`, then request one OTP and read the Gmail headers. Optionally a Zoho alias for `noreply@pekangame.com` so replies do not bounce. The code change ships with the next release.
+
 ## 2026-10-30 — A delivery receipt that never came (PG-L4RCBELJ9RE3), the phone normaliser, and item 138 closed
 
 **Report.** The founder asked why a customer who used the Contact Support button (a failed order), got the status card, and then had the item resent and delivered, received no delivery message.

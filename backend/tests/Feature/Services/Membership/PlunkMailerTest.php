@@ -45,6 +45,21 @@ class PlunkMailerTest extends TestCase
         });
     }
 
+    /**
+     * Production, 2026-10-30: the OTP landed in spam. Gmail shows the code in the subject of an OTP email it
+     * recognises, and a subject naming the brand and carrying the code is the form it trusts.
+     */
+    public function test_the_otp_subject_carries_the_code_and_names_the_brand(): void
+    {
+        Http::fake(['next-api.useplunk.com/v1/send' => Http::response(['success' => true], 200)]);
+
+        $this->mailer()->sendOtpEmail('member@example.com', '123456');
+
+        Http::assertSent(fn ($request) => str_starts_with($request['subject'], '123456 is your ')
+            && str_ends_with($request['subject'], ' verification code')
+            && ! str_contains($request['subject'], 'Your verification code'));
+    }
+
     public function test_throws_when_plunk_returns_a_non_success_response(): void
     {
         Http::fake(['next-api.useplunk.com/v1/send' => Http::response(['success' => false, 'error' => ['message' => 'Invalid API key']], 401)]);
