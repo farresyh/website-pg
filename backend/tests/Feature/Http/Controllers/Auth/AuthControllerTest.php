@@ -5,6 +5,7 @@ namespace Tests\Feature\Http\Controllers\Auth;
 use App\Models\AdminUser;
 use App\Services\Backup\BackupFailureAlerter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Laravel\Sanctum\Sanctum;
 use Mockery;
@@ -65,6 +66,8 @@ class AuthControllerTest extends TestCase
      */
     public function test_login_locks_an_account_after_10_failures_from_any_ips(): void
     {
+        // The lockout alert goes out through Plunk; never let a test reach the real API (it once sent real emails).
+        Http::fake(['next-api.useplunk.com/*' => Http::response(['success' => true], 200)]);
         $admin = AdminUser::factory()->create(['password' => 'secret-password']);
 
         for ($i = 1; $i <= 10; $i++) {
@@ -76,6 +79,8 @@ class AuthControllerTest extends TestCase
         $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.1'])
             ->postJson('/api/login', ['email' => $admin->email, 'password' => 'secret-password'])
             ->assertStatus(429);
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'useplunk.com') && str_contains($request['subject'] ?? '', 'Account locked'));
 
         $this->travel(16)->minutes();
 

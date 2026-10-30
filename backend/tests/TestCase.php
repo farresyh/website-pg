@@ -6,10 +6,23 @@ use App\Models\AdminUser;
 use App\Models\Affiliate;
 use App\Support\OutboundUrlGuard;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 
 abstract class TestCase extends BaseTestCase
 {
+    /**
+     * An outbound HTTP call a test did not fake is a bug: with a real key in
+     * `backend/.env` it once sent real emails through production Plunk. Any
+     * stray request now fails the test instead of leaving the machine.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Http::preventStrayRequests();
+    }
+
     /**
      * Wave 3 S-3: `*.test` hostnames never resolve, so a test that saves
      * or delivers to a reseller webhook URL resolves every host to one

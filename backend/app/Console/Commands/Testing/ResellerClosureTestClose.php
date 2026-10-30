@@ -20,7 +20,16 @@ class ResellerClosureTestClose extends Command
 {
     public function handle(ResellerClosureService $closures): int
     {
-        $reseller = Reseller::query()->findOrFail((int) $this->argument('resellerId'));
+        // The two racers each boot Laravel, so on a slow runner one can finish closing (soft-deleting) the
+        // account before the other looks it up. Finding it already closed is a refusal, like any later attempt,
+        // not an error that leaves the result file empty.
+        $reseller = Reseller::query()->find((int) $this->argument('resellerId'));
+
+        if ($reseller === null) {
+            file_put_contents($this->argument('resultFile'), 'refused:'.json_encode(['reseller' => ['This account is already closed.']]));
+
+            return self::SUCCESS;
+        }
 
         try {
             $refunded = $closures->close($reseller, (int) $this->argument('adminId'), now('Asia/Kuala_Lumpur')->toDateString(), 'RACE-REF');

@@ -422,6 +422,7 @@ class ProductSyncServiceTest extends TestCase
      */
     public function test_sync_persists_the_cutoff_window_fields(): void
     {
+        Http::fake(['open.er-api.com/*' => Http::response(['result' => 'success', 'rates' => ['MYR' => 0.000228]], 200)]);
         $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'currency' => 'IDR', 'api_config' => []]);
         $adapter = $this->fakeAdapter(true, [
             new SupplierCatalogItem(
