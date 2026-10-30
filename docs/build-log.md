@@ -2829,3 +2829,11 @@ The founder wanted the platform, not the affiliate, to open the withdrawal ticke
 
 **Accepted risk.** A tier change to a higher fee after the ticket opens, "Charge Now", or `reactivate()` can push the balance under the ticket; approve then returns a clear 422 and the admin rejects (the money joins next month's payout).
 
+## 2026-10-30 — Storefront: Bumblebee header colour; package list browsable before the ID (founder, Ohaha store)
+
+Two founder findings from the live `ohahastore.com` on a phone. **Header:** the header and the page were the same cream (`bg-surface` on both), so the nav bar had no edge; Cyber Bumblebee now has a yellow header with an ink "Track Order" button, through five new `--color-header*` tokens whose defaults leave every other preset unchanged (ADR-090 addendum). **Package list:** Step 2 was `inert` until the ID was verified, so "Show all N packages" could not be pressed; it is now browsable, a tapped package is kept, and on a phone the page scrolls up to Step 1 (ADR-064 addendum). Step 3 now needs both the ID and a package.
+
+**Verified.** `tsc` and `lint` clean; reseller tests pass (its `theme-presets.ts` copy regenerated with `sync-shared-files.mjs`). Seen in a headless browser on a throwaway sqlite backend with the e2e data and 17 packages: mobile header yellow `rgb(255,199,0)` against the page `rgb(255,248,225)`, button ink with yellow text; Step 2 not inert and not dimmed; "Show all" works while locked (17 packages); tapping a package scrolled from y=1014 to y=408 with the ID field in view, the package stayed selected, Step 3 stayed locked; entering the ID and Continue unlocked Step 3 and scrolled to it; on a 1280 px desktop tapping a package scrolled 0 px and the active nav link is ink with an ink underline. **Not seen:** the dark mode of Bumblebee (read from `generateThemeCss`, which applies only `tokensDark` in dark mode, so the header falls back to the dark surface), and the Joki and membership order pages (untouched). The e2e checkout spec (`storefront-checkout.spec.ts`) has not been run on this branch.
+
+**Not in this change:** the `www.ohahastore.com` certificate error (the affiliate adds `www.` as a second domain in the portal for now; the automatic `www` pairing is a separate item that needs its own ADR addendum to ADR-060).
+
