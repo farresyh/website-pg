@@ -2843,5 +2843,7 @@ Found by the founder approving `ohahastore.com` in the admin. `approveAffiliateD
 
 **Fix:** `body: { approved }`, plus `admin/src/lib/api-body.test.ts`, which fails if any admin file that uses `apiFetch` passes a `JSON.stringify`'d body (red on the old line, green on the fix). **Verified** in a browser on a throwaway backend: the PUT now carries `{"approved":true}` as `application/json`; the throwaway admin has no MFA so the step-up answered 403 there, which the real admin does not hit. Admin tests 20/20, `lint` and `tsc` clean.
 
+**Also in this PR:** CI's `backend-tests` failed once on `CustomerAnalyticsListingTest::test_search_matches_part_of_the_email_ignoring_case_and_wildcards`, unrelated to the change: every order in that class gets `paid_at = now()` less some days, so a second boundary between two orders reversed the tied `last_order_at` sort (the same flake class as 2026-10-16, which had frozen time in one test only). `setUp()` now freezes time for the whole class. Proved by adding `sleep(1)` to the order helper: red without the freeze, green with it.
+
 **Owed:** the fix is on `staging`, not live: the admin Vercel app deploys from `main`, so the approval works in production only after a `staging` → `main` release. The founder will approve `ohahastore.com` after that, once CHIP has approved it in writing (ADR-131 condition 5).
 
