@@ -37,3 +37,11 @@ Grilled over two rounds. Round 1 settled: "dark mode" means a **per-affiliate fi
 ### 2026-10-30 addendum — the site header gets its own colour tokens
 
 Founder, on the Ohaha store (Cyber Bumblebee): the header was the same cream as the page behind it. The header used `bg-surface`, the same token as `<body>`, in every preset; only the ink border set it apart. **Decision:** five tokens, `--color-header`, `--color-header-accent`, `--color-on-header-accent`, `--color-header-action`, `--color-on-header-action`, declared in `storefront/src/app/globals.css` with defaults that reproduce today's look (the header is the surface colour, the active link and the action button use the primary pair), so no other preset changes. **Cyber Bumblebee** sets the header to the brand yellow `#FFC700`, with ink for the active link and an ink "Track Order" button with yellow text (yellow on yellow has no contrast). Only the light set carries them; the dark set does not override them, so dark mode keeps the dark header. `Button` gets a `header` variant. A further preset gives its header a colour by setting those tokens.
+
+### 2026-10-30 addendum (later) — the header tokens are withdrawn; the bottom nav is what changed
+
+The founder clarified that the "nav bar" in the report was the mobile **bottom nav**, not the header; the header was fine as it was. #609 removes the five `--color-header*` tokens, the `Button` `header` variant and Cyber Bumblebee's header colours, so the header is exactly as before the earlier addendum of the same day, which no longer applies.
+
+What changed instead: the bottom nav's pill labels were `text-on-primary` on `bg-ink`. On Cyber Bumblebee `on-primary` is ink (`#19192f`), so the labels were ink on ink and the pills showed no Home, Membership, Track Order or Support. They are now `text-surface` (active) and `text-surface/60` (inactive). Measured against the pill on Bumblebee light: 16.18:1 active, 6.52:1 inactive. The other presets and Bumblebee dark were not measured (reasoned from the tokens: only Bumblebee's `on-primary` is dark).
+
+**Rule:** text on a `bg-ink` surface takes `surface`; `on-primary` pairs with `bg-primary` only.

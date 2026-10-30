@@ -366,3 +366,11 @@ Build order: 056 → 057 → 058 → **061** → 059 → (production deployment)
 ### 2026-10-29 addendum — a domain takes no CHIP payment until approved (ADR-131)
 
 Decision D ("full self-serve, no admin approval") stands for adding, verifying and serving a domain. It no longer holds for **payments**: CHIP's activation condition is that no branded store uses its payment services without CHIP's prior written approval. `affiliate_domains.payments_approved_at` gates every customer-side `createPayment` through one `StorefrontBrand::assertPaymentsEnabled()`; browsing is unaffected. Details: [ADR-131](./ADR-131-chip-activation-conditions.md) decisions 19–22.
+
+### 2026-10-30 addendum — the first `www` report, and one TXT per hostname
+
+The trigger in the 2026-10-02 addendum fired once: an affiliate (OhahaStore, `ohahastore.com`) added only the apex, then opened `www.ohahastore.com` on a PC and got Chrome's "Your connection is not private" (`ERR_CERT_DATE_INVALID`, no way past it because of HSTS). Facts found (DNS and `openssl`, read-only): the apex had a fresh Let's Encrypt certificate; `www` CNAMEd to our connect host but was not a registered domain, and Vercel served an expired `*.ohahastore.com` wildcard certificate from February 2026, which predates the domain's registration here and suggests the domain was on Vercel in another account earlier (not verified: no Vercel access in the session).
+
+Adding `www.ohahastore.com` as a second domain in the portal (the guide's advice) left it `pending`: Vercel asks for **one `_vercel` TXT record per hostname** (`vc-domain-verify=<hostname>,<code>`), and the apex's TXT does not cover `www`. The guide does not say that each hostname needs its own TXT.
+
+**Decision:** automatic `www` pairing stays unbuilt and is queued as PRD §16 item 148 (it needs this ADR's design revisited first): register `www.<apex>` as a redirect to the apex at Vercel (a redirect takes no payment, so no separate CHIP approval, ADR-131), remove it with the apex, offer an "Also add www" option instead of guessing which names are apexes, and have the Domains guide state that every hostname needs its own TXT. Check Vercel's add-domain `redirect` parameter in its documentation before building.
