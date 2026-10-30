@@ -58,3 +58,9 @@ The first plan appended the parameter inside `ChipGateway::createPayment` and ca
 - **The portal has its own grid component** (`FpxBankGrid`, the portal's tokens, ADR-128) over generated copies of the one JSON and the logos; only the styling differs from the storefront's.
 - **The "BNM Compliant • 256-bit SSL" line was removed** from the shared picker (PRD item 134, founder's decision), and the two wallet lines that said the fee is shown on "CHIP's page" now say "payment page", since bank-direct skips CHIP's page.
 
+### 2026-10-30 addendum — the "Other bank" link is removed
+
+- **Decision 1 is revised (founder, 2026-10-30):** the 20 banks are enough, so the "Other bank? Choose it on the next page" link is gone from both bank grids (storefront `PaymentChannelPicker`, partner portal `FpxBankGrid`). Choosing FPX now always means tapping a bank, so checkout never sends FPX without a bank code from the grid.
+- **What this accepts:** a customer whose bank is not one of the 20 (a bank CHIP adds later, or the corporate Maybank2E) has no FPX path on our page and pays by DuitNow QR instead. The "A new CHIP bank" line under Consequence to track is now: one JSON line, one logo, one release, and until then those customers cannot use FPX.
+- **Unchanged:** the backend still accepts an FPX request with no `fpx_bank_code` (the helper adds none), and the plain FPX button still shows when the bank list is empty.
+- **Also in the same change:** the tiles are smaller (storefront: 6 columns on desktop, 4 on mobile, tile `h-10`, logo `max-h-5`; the portal grid is unchanged in size).

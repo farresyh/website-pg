@@ -9,6 +9,7 @@ import { checkOrderPayment, trackOrder, TrackedOrderSchema, type TrackedOrder } 
 import { useSiteConfig } from "@/context/SiteConfigContext";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/order/StatusBadge";
+import { CHANNEL_GROUPS } from "@/components/order/PaymentChannelPicker";
 import RateOrderModal from "@/components/order/RateOrderModal";
 
 // ADR-047 decision 1/4: Reverb push (subscribed below) is the primary
@@ -355,7 +356,7 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
             </div>
             <div className="flex gap-2">
               <StatusBadge type="payment" status={order.payment_status} />
-              <StatusBadge type="delivery" status={order.delivery_status} />
+              {!paymentFailed && <StatusBadge type="delivery" status={order.delivery_status} />}
             </div>
           </div>
 
@@ -418,7 +419,7 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
             </div>
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex-1">
-                {order.payment_method && <DetailRow k="Method" v={order.payment_method} />}
+                {order.payment_method && <DetailRow k="Method" v={CHANNEL_GROUPS.find((g) => g.key === order.payment_method)?.label ?? order.payment_method} />}
                 <DetailRow k="Package Price" v={rm(order.selling_price)} mono />
                 <DetailRow k="Transaction Fee" v={`+ ${rm(order.transaction_fee)}`} mono />
                 {order.voucher_discount > 0 && (
@@ -427,7 +428,7 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
               </div>
               <div className="border-2 border-ink bg-surface-container-high p-4 text-center md:min-w-[150px] md:text-right">
                 <span className="block text-[11px] font-display font-bold uppercase tracking-wide text-on-surface-variant">
-                  Amount Paid
+                  {isPaid ? "Amount Paid" : "Amount Due"}
                 </span>
                 <span className="block font-mono text-headline-md font-bold text-primary-on-surface">{rm(order.final_amount)}</span>
               </div>

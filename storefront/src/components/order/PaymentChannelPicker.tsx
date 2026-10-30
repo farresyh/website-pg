@@ -26,7 +26,7 @@ function FpxBankGrid({
 }) {
   return (
     <>
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6 sm:gap-2">
         {fpxBanks.map((bank) => (
           <button
             key={bank.code}
@@ -35,33 +35,23 @@ function FpxBankGrid({
             aria-pressed={selected && bankCode === bank.code}
             title={bank.name}
             onClick={() => onSelect(bank.code)}
-            className={`${TILE} flex h-12 items-center justify-center rounded-md px-2 ${tileState(selected && bankCode === bank.code)}`}
+            className={`${TILE} flex h-10 items-center justify-center rounded-md px-1.5 ${tileState(selected && bankCode === bank.code)}`}
           >
             <Image
               src={`/images/banks/${bank.code.toLowerCase()}.png`}
               alt=""
               width={240}
               height={96}
-              className="h-auto max-h-7 w-auto max-w-full object-contain"
+              className="h-auto max-h-5 w-auto max-w-full object-contain"
             />
           </button>
         ))}
       </div>
-      <button
-        type="button"
-        aria-pressed={selected && bankCode === null}
-        onClick={() => onSelect(null)}
-        className={`mt-2 text-xs underline underline-offset-2 ${
-          selected && bankCode === null ? "font-semibold text-primary-on-surface" : "text-on-surface-variant"
-        }`}
-      >
-        Other bank? Choose it on the next page
-      </button>
     </>
   );
 }
 
-const CHANNEL_GROUPS: { key: string; label: string }[] = [
+export const CHANNEL_GROUPS: { key: string; label: string }[] = [
   { key: "fpx", label: "Online Banking (FPX)" },
   { key: "duitnow_qr", label: "DuitNow QR" },
   { key: "ewallet", label: "e-Wallet" },

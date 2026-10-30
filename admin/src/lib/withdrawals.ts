@@ -5,13 +5,17 @@ export type WithdrawalStatus = "pending" | "approved" | "rejected" | "completed"
 export interface Withdrawal {
   id: number;
   owner_type: "platform" | "affiliate";
+  /** ADR-132: who the ticket is for; null on a platform withdrawal. */
+  affiliate: { id: number; name: string | null } | null;
+  /** ADR-132: `YYYY-MM` of the monthly payout that opened it; null on a manual-era ticket. */
+  payout_period: string | null;
   amount: number;
   bank_name: string;
   bank_account_no: string;
   bank_account_holder: string;
   status: WithdrawalStatus;
   admin_note: string | null;
-  requested_by: number;
+  requested_by: number | null;
   approved_by: number | null;
   processed_at: string | null;
   created_at: string;
@@ -32,6 +36,19 @@ export interface WithdrawalStats {
 export interface WithdrawalIndexResponse {
   stats: Record<WithdrawalStatus, WithdrawalStats>;
   withdrawals: Withdrawal[];
+}
+
+export type PayoutSkip = "no_bank" | "below_min" | "open_ticket";
+
+/** ADR-132 decision 10: the admin worklist beyond the tickets themselves. */
+export interface PayoutRunResponse {
+  period: string;
+  skipped: { affiliate_id: number; name: string; balance: number; reserve: number; amount: number; skip: PayoutSkip }[];
+  stale_tickets: { id: number; affiliate_id: number; name: string | null; amount: number; payout_period: string }[];
+}
+
+export function getPayoutRun() {
+  return apiFetch<PayoutRunResponse>("/api/withdrawals/payout-run");
 }
 
 export function listWithdrawals() {

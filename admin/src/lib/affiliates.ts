@@ -177,7 +177,7 @@ export function recheckAffiliateDomain(id: number, domainId: number) {
 export function approveAffiliateDomainPayments(id: number, domainId: number, approved: boolean) {
   return apiFetch<AffiliateDetail>(`/api/affiliates/${id}/domains/${domainId}/payments-approval`, {
     method: "PUT",
-    body: JSON.stringify({ approved }),
+    body: { approved },
   });
 }
 

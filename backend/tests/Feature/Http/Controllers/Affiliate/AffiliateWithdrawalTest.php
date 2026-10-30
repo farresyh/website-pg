@@ -6,6 +6,7 @@ use App\Models\AdminUser;
 use App\Models\Affiliate;
 use App\Models\AffiliateUser;
 use App\Models\Withdrawal;
+use App\Services\Affiliate\AffiliateWithdrawalService;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -13,8 +14,9 @@ use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 /**
- * ADR-059 59c: the affiliate-portal side of WTH-1..5 — request only.
- * Approval / rejection / completion stay on the admin flow, unchanged.
+ * ADR-059 59c / ADR-132: the affiliate-portal side of WTH-1..5 — read only;
+ * the platform opens the ticket (AffiliateMonthlyPayoutTest). Approval /
+ * rejection / completion stay on the admin flow, unchanged.
  */
 class AffiliateWithdrawalTest extends TestCase
 {
@@ -79,97 +81,43 @@ class AffiliateWithdrawalTest extends TestCase
             ->assertJsonCount(1, 'withdrawals');
     }
 
-    public function test_store_creates_a_affiliate_owned_pending_withdrawal_prefilled_from_profile(): void
+    public function test_index_returns_the_payout_block_with_the_fee_reserve_and_bank_flag(): void
     {
         $affiliate = $this->affiliate();
-        $this->ledger->credit(LedgerOwnerType::Affiliate, $affiliate->id, 30000, 'order_profit', 'order', 1);
-
-        $this->withToken($this->tokenFor($affiliate))->postJson('/api/affiliate/withdrawals', [
-            'amount' => 25000,
-        ])->assertCreated()->assertJsonPath('status', 'pending');
-
-        $this->assertDatabaseHas('withdrawals', [
-            'owner_type' => 'affiliate',
-            'owner_id' => $affiliate->id,
-            'amount' => 25000,
-            'bank_name' => 'Maybank',
-            'requested_by' => null,
-        ]);
-    }
-
-    public function test_store_ignores_a_bank_detail_override_in_the_request_body(): void
-    {
-        // ADR-059 addendum, 2026-09-26: the payout-redirect gap this
-        // closes — an affiliate_user used to be able to send its own
-        // bank_name/bank_account_no/bank_account_holder per request and
-        // silently redirect the payout. A withdrawal now always reads
-        // the saved profile, no matter what the request body carries.
-        $affiliate = $this->affiliate();
-        $this->ledger->credit(LedgerOwnerType::Affiliate, $affiliate->id, 30000, 'order_profit', 'order', 1);
-
-        $this->withToken($this->tokenFor($affiliate))->postJson('/api/affiliate/withdrawals', [
-            'amount' => 25000,
-            'bank_name' => 'Some Other Bank',
-            'bank_account_no' => '999999',
-            'bank_account_holder' => 'Attacker',
-        ])->assertCreated();
-
-        $this->assertDatabaseHas('withdrawals', [
-            'owner_type' => 'affiliate',
-            'owner_id' => $affiliate->id,
-            'bank_name' => 'Maybank',
-            'bank_account_no' => '1234567',
-            'bank_account_holder' => 'Acme Sdn Bhd',
-        ]);
-    }
-
-    public function test_store_rejects_an_amount_over_the_withdrawable_balance(): void
-    {
-        $affiliate = $this->affiliate();
-        $this->ledger->credit(LedgerOwnerType::Affiliate, $affiliate->id, 5000, 'order_profit', 'order', 1);
-
-        $this->withToken($this->tokenFor($affiliate))->postJson('/api/affiliate/withdrawals', [
-            'amount' => 9000,
-        ])->assertStatus(422)->assertJsonValidationErrorFor('amount');
-
-        $this->assertDatabaseCount('withdrawals', 0);
-    }
-
-    public function test_store_422s_when_no_bank_details_exist_anywhere(): void
-    {
-        $affiliate = Affiliate::query()->create([
-            'business_name' => 'NoBank', 'markup_pct' => 0, 'status' => 'active',
-        ]);
-        $this->ledger->credit(LedgerOwnerType::Affiliate, $affiliate->id, 10000, 'order_profit', 'order', 1);
-
-        $this->withToken($this->tokenFor($affiliate))->postJson('/api/affiliate/withdrawals', [
-            'amount' => 5000,
-        ])->assertStatus(422)->assertJsonValidationErrorFor('bank_name');
-    }
-
-    public function test_store_blocks_a_second_request_while_one_is_in_progress(): void
-    {
-        $affiliate = $this->affiliate();
+        $this->travelTo(now()->subMonth());
         $this->ledger->credit(LedgerOwnerType::Affiliate, $affiliate->id, 50000, 'order_profit', 'order', 1);
+        $this->travelBack();
+
         $token = $this->tokenFor($affiliate);
+        $this->withToken($token)->getJson('/api/affiliate/withdrawals')
+            ->assertOk()
+            ->assertJsonPath('payout.min_payout_sen', 1000)
+            ->assertJsonPath('payout.reserved_for_fee_sen', 0)
+            ->assertJsonPath('payout.fee_due_at', null)
+            ->assertJsonPath('payout.has_bank_details', true);
 
-        $this->withToken($token)->postJson('/api/affiliate/withdrawals', ['amount' => 10000])->assertCreated();
-        $this->withToken($token)->postJson('/api/affiliate/withdrawals', ['amount' => 10000])
-            ->assertStatus(422)->assertJsonValidationErrorFor('amount');
-
-        $this->assertDatabaseCount('withdrawals', 1);
+        $affiliate->update(['bank_name' => null]);
+        $this->withToken($token)->getJson('/api/affiliate/withdrawals')
+            ->assertJsonPath('payout.has_bank_details', false);
     }
 
-    public function test_a_portal_request_then_the_existing_admin_approve_flow_debits_the_affiliate_ledger(): void
+    public function test_the_manual_request_endpoint_is_gone(): void
+    {
+        $this->withToken($this->tokenFor($this->affiliate()))
+            ->postJson('/api/affiliate/withdrawals', ['amount' => 5000])
+            ->assertStatus(405);
+    }
+
+    public function test_an_auto_opened_ticket_then_the_existing_admin_approve_flow_debits_the_affiliate_ledger(): void
     {
         $affiliate = $this->affiliate();
+        // Earned last month, so it is before this month's cut-off.
+        $this->travelTo(now()->subMonth());
         $this->ledger->credit(LedgerOwnerType::Affiliate, $affiliate->id, 40000, 'order_profit', 'order', 1);
+        $this->travelBack();
 
-        // The full path: portal store() (which also opens the
-        // ledger_accounts row) → admin approve().
-        $this->withToken($this->tokenFor($affiliate))
-            ->postJson('/api/affiliate/withdrawals', ['amount' => 15000])
-            ->assertCreated();
+        // The full path: the monthly payout opens the ticket → admin approve().
+        app(AffiliateWithdrawalService::class)->openMonthly($affiliate);
 
         $withdrawal = Withdrawal::query()->firstOrFail();
         $this->assertNull($withdrawal->requested_by);
@@ -181,8 +129,8 @@ class AffiliateWithdrawalTest extends TestCase
             ->assertJsonPath('status', 'approved');
 
         // The maker-checker "different Super Admin" check compares
-        // $admin->id === $withdrawal->requested_by — null for an affiliate
-        // request, so it never false-positives.
-        $this->assertSame(25000, $this->ledger->balance(LedgerOwnerType::Affiliate, $affiliate->id));
+        // $admin->id === $withdrawal->requested_by — null for a system
+        // ticket, so it never false-positives.
+        $this->assertSame(0, $this->ledger->balance(LedgerOwnerType::Affiliate, $affiliate->id));
     }
 }

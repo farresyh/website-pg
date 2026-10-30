@@ -47,14 +47,6 @@ export default function FpxBankGrid({
           );
         })}
       </div>
-      <button
-        type="button"
-        aria-pressed={selected && bankCode === null}
-        onClick={() => onSelect(null)}
-        className={`mt-2 text-xs underline underline-offset-2 ${selected && bankCode === null ? "font-semibold text-ink" : "text-ink-subtle"}`}
-      >
-        Other bank? Choose it on the next page
-      </button>
     </>
   );
 }

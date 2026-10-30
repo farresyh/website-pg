@@ -53,6 +53,11 @@ final class ResellerWalletReceiptService
         return $data + [
             'number' => $number,
             'reseller_name' => $reseller->business_name,
+            'bill_to' => array_filter([
+                'name' => $reseller->business_name,
+                'contact' => $reseller->contact_name,
+                'email' => $reseller->email,
+            ]),
             'seller' => [
                 'name' => $settings->company_legal_name,
                 'reg_no' => $settings->company_reg_no,

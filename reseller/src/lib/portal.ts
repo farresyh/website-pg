@@ -209,6 +209,13 @@ export interface WithdrawalsResponse {
     bank_account_holder: string | null;
   };
   withdrawals: WithdrawalRow[];
+  /** ADR-132: computed once on the server. Fee amount and date only. */
+  payout: {
+    min_payout_sen: number;
+    reserved_for_fee_sen: number;
+    fee_due_at: string | null;
+    has_bank_details: boolean;
+  };
 }
 
 export interface ImpersonationContext {
@@ -261,18 +268,6 @@ export function updateProfile(
 
 export function getWithdrawals(token: string) {
   return apiFetch<WithdrawalsResponse>("/api/affiliate/withdrawals", { token });
-}
-
-export function createWithdrawal(
-  token: string,
-  body: {
-    amount: number;
-  },
-) {
-  return apiFetch<{ id: number; amount: number; status: WithdrawalStatus }>(
-    "/api/affiliate/withdrawals",
-    { method: "POST", token, body },
-  );
 }
 
 export function endImpersonation(token: string) {

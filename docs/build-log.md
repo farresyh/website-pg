@@ -2769,3 +2769,83 @@ Correction to this session's earlier count: prod has 23 *paid* FPX orders, not 2
 
 **Owed before the one release.** Re-check prod's `affiliate_domains` read-only (any `Active` row besides the primary affiliate's would stop taking payments on deploy); the browser check of the three screens; then, after CHIP's written approval of `ohahastore.com` (not in prod yet), approve it in the admin. `fixfastapp.com` stays unapproved (to be deactivated, item 129's switch-over steps).
 
+## 2026-10-29 — Release #599 live: ADR-131 (CHIP's activation conditions) and the failed-attempt work (#590–#598)
+
+**Release.** `staging`→`main`, PR #599, merged as `a6ae7f4a` at 12:01 UTC (merge commit, `staging` kept). Before it: draft PR first; `origin/main..origin/staging` was 34 commits, then 36 after #600 (the receipt note fix); a trial merge was clean (the main-only commits are earlier release merges). CI (nine jobs) and `deploy` green.
+
+**Read-only prod check before the release.** One custom domain, `fixfastapp.com` (FixFast Demo, active, not the primary affiliate): after the deploy it cannot pay (intended). No row for the primary affiliate (its hosts are config), so the migration's backfill touched none. `fpx` and `dnqr` on, `fpx_b2b1` off; 2 resellers, 3 paid top-ups.
+
+**Verified on prod after the deploy (read-only).** `current` → release `81561008` at `a6ae7f4`; both `2026_10_29_*` migrations in `migrations`; `topup_max_sen` 1000000, `balance_cap_default_sen` 10000000, company details empty, no reseller cap set; `ResellerClosureService` and `StorefrontBrand::assertPaymentsEnabled()` present; `/api/health` 200; the four Vercel production builds succeeded.
+
+**Found before sending CHIP the receipt.** The receipt note said "An invoice is issued for each order", which is false (the system issues no per-order invoice; e-Invoicing is outside our code, ADR-083 decision 6). Fixed in #600 before the release, with a test and an ADR-131 addendum.
+
+**Also settled while drafting the reply to CHIP.** A reseller's order is paid from the Purchase Balance, never through a payment method; a failed order returns to that balance (its payment source), so the offer "tell us if you want it back to the original payment method" was dropped as wrong for the reseller model. The reply and the onboarding procedure PDF live outside the repo (it is public). The FixFast reseller is a test account whose login CHIP already has; FixFast Demo / `fixfastapp.com` is the test affiliate.
+
+**Dev environment notes.** `lsof` and a `curl` port check were denied by the harness; Playwright against the founder's `./scripts/dev.sh` and read-only SSH worked. A second `dev.sh` fails with `EADDRINUSE` while the first runs; a Next config change (the `/wallet` redirect) needs the dev server restarted. The local storefront catalog answers 500 when the local `CACHE_STORE` does not support tags (backend/AGENTS.md gotcha 5), so storefront order pages cannot be viewed locally without a Redis cache.
+
+**Owed.** PRD §16 items 138 and 140 (real FPX and DuitNow payments, a real cancel at a bank) and 141 (company details, deactivate `fixfastapp.com`, the browser checks, the reply to CHIP, approving `ohahastore.com` only after CHIP's written approval); new items 142 (receipt redesign and its follow-ups) and 143 (the portal footer hard-codes the company details).
+
+## 2026-10-29 (evening) — Live checks after release #599
+
+**What was seen on prod.** The company details are filled (read-only check: name, SSM and address set), and a receipt PDF for the FixFast test reseller's earlier RM10 top-up prints them. The founder cancelled one FPX and one DuitNow QR payment at the bank. Read-only on prod: the FPX order (RM2.07) was created 12:44:50 UTC and Failed 12:45:02; the DuitNow order (RM1.08, channel `dnqr`) was created 12:45:51 and Failed 12:46:11; neither has a voucher and none was left Pending, and the "Payment Not Completed / Try Again" page showed for both (item 140 closed). Also seen: the storefront notice on `fixfastapp.com` ("Payments are not available on this store yet"), the admin "Payments not approved" tag with the Approve button, the Purchase Balance portal and dashboard (no "wallet" word, the limit line, the headroom "you can add up to RM 99,996.56 now", the receipt link in Balance history, a failed order shown as refunded to the Purchase Balance).
+
+**Defects seen on the failed-payment status page** (item 144, not blocking): "AMOUNT PAID RM2.07" on an order the page says was not charged; two badges at once ("Payment Failed" and "Waiting for payment"); the Method row prints raw codes (`fpx`, `duitnow_qr`).
+
+**Not yet done.** Item 138 (a completed FPX and DuitNow payment; none has completed since #589), the affiliate portal's "awaiting approval" badge and the `/wallet` redirect on prod, step-up saves with an MFA admin, and approving a branded domain only after CHIP's written approval. `fixfastapp.com` stays active but unapproved (the FixFast Demo affiliate was not deactivated; the domain cannot take a payment either way).
+
+**Later the same evening.** The affiliate portal's "Payments awaiting approval" badge on `fixfastapp.com` was seen (through admin impersonation). An Add Balance was started and cancelled at the bank: the attempt ended `failed` straight away (not after its 30 minutes) and the browser came back to `/balance`, so the wallet top-up path of item 140 works too. The legacy `/wallet` link redirecting has still not been hit on prod (a new return URL goes straight to `/balance`); it was checked locally (`308` to `/balance?topup=success`).
+
+The legacy link was then checked on prod: `https://reseller.pekangame.space/wallet` answers `308` to `/balance`, and `/wallet?topup=success` to `/balance?topup=success` (query kept).
+
+
+## 2026-10-30 — Failed-payment status page labels (item 144), smaller FPX tiles, "Other bank" link removed
+
+**Item 144** (`OrderStatusTracker.tsx`): the amount box reads "Amount Due" until the order is paid; the delivery badge is hidden when the payment failed (it said "Waiting for Payment" next to "Payment Failed"); the Method row shows the channel label ("Online Banking (FPX)", "DuitNow QR") by reusing `CHANNEL_GROUPS`, now exported from `PaymentChannelPicker`.
+
+**FPX grid** (founder: the logos were too big): storefront 6 columns on desktop and 4 on mobile (was 4 and 3), tile `h-10`, logo `max-h-5`. The founder also decided the 20 banks are enough, so the "Other bank" link is removed from the storefront grid and the partner portal grid (ADR-130 2026-10-30 addendum).
+
+**Verified:** `tsc`/`lint` clean on the storefront and the portal. The grid was seen in the browser on `/order/arena-breakout` (desktop width, and 606 px, the smallest the window goes). The failed-payment status page was **not** seen: locally the browser's `track-order` preflight gets a 503 (curl gets 204), and the dev order is Pending, so check it on the PR's Vercel Preview with a real cancelled FPX order. Gotcha: after a `git checkout` the running storefront dev server kept serving the old classes until it was restarted.
+## 2026-10-30 — Payment Receipt redesign (item 142, layout only)
+
+The Purchase Balance receipt (`resources/views/receipts/purchase-balance.blade.php`) now follows a plain Stripe-style layout and carries the LWF logo (`backend/resources/img/lwf-logo.png`, black on transparent, embedded as a data URI). `ResellerWalletReceiptService` adds `bill_to` (business name, contact name, email). No money or ledger code changed. Decisions and what was left out (tax lines, card detail, address): ADR-131 2026-10-30 addendum.
+
+**Verified:** `PurchaseBalancePortalTest` and `PurchaseBalanceAdminTest` 20/20 (new: the receipt bills the reseller and embeds the logo); the PDF was rendered and read page by page (title, logo, meta block, parties, headline, items, totals, note). Not rendered from a real prod top-up: do that after release with the FixFast test reseller.
+
+## 2026-10-30 — Items 142 (rest) and 143 closed as not needed
+
+Founder's decision after #602 and #603 merged to `staging`: the footer's hard-coded company details (143) stay as they are, and the three open parts of item 142 (admin download of a closed reseller's receipts, stored snapshot of the company details, automatic email) are not planned. Recorded in PRD §16 "Recently closed" and the ADR-131 2026-10-30 later addendum. Docs only; nothing built.
+
+## 2026-10-30 — Affiliate monthly auto-payout (item 145, ADR-132)
+
+The founder wanted the platform, not the affiliate, to open the withdrawal ticket: an affiliate could hold a balance for months and request any amount at any time. The money concept did not change (ledger debit still at admin approve, maker-checker unchanged).
+
+**Design.** Grilled with the founder, then stress-tested by three read-only reviewers (creation and reserve; approve and accounting; portal, admin and hygiene). Their findings changed the design: the tier fee became a **reserve** held back from the payout (an early charge would shift billing cycles and push affiliates into `grace`); the amount is `min(balance at cut-off, current balance) − reserve`; the command runs **daily** at 00:10 MYT with a unique `payout_period` so a missed 1st repairs itself; only a **Pending** ticket blocks the next one; the "skip inactive affiliate" rule was dropped (in this codebase `inactive` only means soft-deleted, which needs a zero balance).
+
+**Built (`feature/affiliate-auto-withdrawal`).** Migration `withdrawals.payout_period` + unique `(owner_type, owner_id, payout_period)`. `AffiliateWithdrawalService` is now `plan()` / `openMonthly()` / `openAll()` / `worklist()`; `AffiliateTierFeeService::feesDueBetween()` owns the cycle maths; `LedgerService::balance()` takes an optional `$before`. Command `app:open-affiliate-payouts` (`CRITICAL`, daily 00:10 MYT). Removed: `POST /affiliate/withdrawals`, `store()`, `CreateAffiliateWithdrawalRequest`, the portal form. Admin: `GET /withdrawals/payout-run` (skipped affiliates with a reason, stale Pending tickets), affiliate name and period on the index, a "needs attention" panel and a "this month only" toggle. Portal: schedule note, scheduled amount, tier-fee reserve, bank-details banner, copy changes.
+
+**Gotcha found by a test:** a `Carbon` in Malaysia time bound into `where created_at < ?` uses its local clock, but `created_at` is UTC, so the cut-off was 8 hours off. `LedgerService::balance()` now converts to UTC itself.
+
+**Verified.** Backend suite green apart from `RouteAccessTest` (new admin route, fixed); the concurrency suite on real MySQL: two simultaneous runs open exactly one ticket, and the six existing withdrawal concurrency tests pass. Portal and admin: `tsc`, `lint`, unit tests clean, admin `build` passes. Dev DB migrated (plain `migrate`). Production read-only before the build: 2 affiliates, none at RM10 or more, no open tickets. **Admin page seen in a local browser** (Playwright, throwaway sqlite DB, light, dark and 390 px mobile, no page overflow): the needs-attention panel, the Affiliate/Period columns and the this-month toggle work. That check showed the stale-ticket line had no affiliate name; fixed (the payload now carries it). Approve from the page was not exercised: it needs MFA step-up, which the throwaway admin does not have (backend tests cover it). **Portal seen in a local browser too** (same setup, two affiliates; light, dark, 390 px, no console errors, no page overflow): the Withdrawal page shows the schedule note, the scheduled RM 220.00 ticket, RM 30.00 kept for the tier fee with its due date, the bank, and the bank-details banner for an affiliate without bank (the warning text colours were read with `getComputedStyle`); Dashboard and Earnings show "Earnings balance" and "Monthly payout" and no request button.
+
+**Accepted risk.** A tier change to a higher fee after the ticket opens, "Charge Now", or `reactivate()` can push the balance under the ticket; approve then returns a clear 422 and the admin rejects (the money joins next month's payout).
+
+## 2026-10-30 — Storefront: Bumblebee header colour; package list browsable before the ID (founder, Ohaha store)
+
+Two founder findings from the live `ohahastore.com` on a phone. **Header:** the header and the page were the same cream (`bg-surface` on both), so the nav bar had no edge; Cyber Bumblebee now has a yellow header with an ink "Track Order" button, through five new `--color-header*` tokens whose defaults leave every other preset unchanged (ADR-090 addendum). **Package list:** Step 2 was `inert` until the ID was verified, so "Show all N packages" could not be pressed; it is now browsable, a tapped package is kept, and on a phone the page scrolls up to Step 1 (ADR-064 addendum). Step 3 now needs both the ID and a package.
+
+**Verified.** `tsc` and `lint` clean; reseller tests pass (its `theme-presets.ts` copy regenerated with `sync-shared-files.mjs`). Seen in a headless browser on a throwaway sqlite backend with the e2e data and 17 packages: mobile header yellow `rgb(255,199,0)` against the page `rgb(255,248,225)`, button ink with yellow text; Step 2 not inert and not dimmed; "Show all" works while locked (17 packages); tapping a package scrolled from y=1014 to y=408 with the ID field in view, the package stayed selected, Step 3 stayed locked; entering the ID and Continue unlocked Step 3 and scrolled to it; on a 1280 px desktop tapping a package scrolled 0 px and the active nav link is ink with an ink underline. **Not seen:** the dark mode of Bumblebee (read from `generateThemeCss`, which applies only `tokensDark` in dark mode, so the header falls back to the dark surface), and the Joki and membership order pages (untouched). The e2e checkout spec (`storefront-checkout.spec.ts`) has not been run on this branch.
+
+**Not in this change:** the `www.ohahastore.com` certificate error (the affiliate adds `www.` as a second domain in the portal for now; the automatic `www` pairing is a separate item that needs its own ADR addendum to ADR-060).
+
+## 2026-10-30 — Fix: approving a domain's payments failed with "The approved field is required"
+
+Found by the founder approving `ohahastore.com` in the admin. `approveAffiliateDomainPayments()` (ADR-131 PR C, released in #599) passed `body: JSON.stringify({ approved })` to `apiFetch`, which already JSON-encodes its body, so the server received a JSON string, not an object, and Laravel saw no `approved` field. The backend and its tests were right (they send a plain object); no frontend test sent the real request, so it shipped. It was the only `apiFetch` caller doing this (the other `JSON.stringify` bodies in the apps call `fetch` directly).
+
+**Fix:** `body: { approved }`, plus `admin/src/lib/api-body.test.ts`, which fails if any admin file that uses `apiFetch` passes a `JSON.stringify`'d body (red on the old line, green on the fix). **Verified** in a browser on a throwaway backend: the PUT now carries `{"approved":true}` as `application/json`; the throwaway admin has no MFA so the step-up answered 403 there, which the real admin does not hit. Admin tests 20/20, `lint` and `tsc` clean.
+
+**Also in this PR:** CI's `backend-tests` failed once on `CustomerAnalyticsListingTest::test_search_matches_part_of_the_email_ignoring_case_and_wildcards`, unrelated to the change: every order in that class gets `paid_at = now()` less some days, so a second boundary between two orders reversed the tied `last_order_at` sort (the same flake class as 2026-10-16, which had frozen time in one test only). `setUp()` now freezes time for the whole class. Proved by adding `sleep(1)` to the order helper: red without the freeze, green with it.
+
+The next CI run failed `backend-concurrency` on `CheckoutSettleWithVoucherConcurrencyTest` (two simultaneous full-cover checkouts). The money was safe (the voucher was spent once and the second checkout refused), but the loser was refused earlier, with `InvalidVoucherException`, because a slow CI start put its `initiate()` after the winner had committed, and the test treats any `error:` as a failure. `app:checkout-test-initiate-full-cover` now takes an optional `startAt`: both processes boot, then wait for the same instant before `initiate()`, so they overlap. Green 3 of 3 on local MySQL; CI to confirm.
+
+**Owed:** the fix is on `staging`, not live: the admin Vercel app deploys from `main`, so the approval works in production only after a `staging` → `main` release. The founder will approve `ohahastore.com` after that, once CHIP has approved it in writing (ADR-131 condition 5).
+

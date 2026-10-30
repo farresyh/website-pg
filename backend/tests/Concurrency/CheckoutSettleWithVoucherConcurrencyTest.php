@@ -70,10 +70,13 @@ class CheckoutSettleWithVoucherConcurrencyTest extends TestCase
             'QUEUE_CONNECTION' => 'database',
         ];
 
+        // Both processes boot first, then start together (see the command's docblock).
+        $startAt = microtime(true) + 8.0;
+
         $command = fn (string $idempotencyKey, string $resultFile) => [
             PHP_BINARY, 'artisan', 'app:checkout-test-initiate-full-cover',
             (string) $affiliate->id, (string) $game->id, (string) $package->id,
-            $voucher->code, '500', $idempotencyKey, $resultFile,
+            $voucher->code, '500', $idempotencyKey, $resultFile, (string) $startAt,
         ];
 
         $processA = Process::path(base_path())->env($env)->start($command('idem-race-a', $resultFileA));

@@ -2,7 +2,7 @@
 
 > **Standing (2026-10-29):** Accepted (design). Extends [ADR-073](./ADR-073-reseller-wallet.md) (the prepaid balance gets a display name, limits, receipts and a closure path) and adds an addendum-level change to [ADR-060](./ADR-060-multi-tenant-branded-storefront-custom-domain.md) decision D ("no admin gate" no longer holds for *payments*). Does not touch [ADR-004](./ADR-004-no-cash-refunds-ever.md) or PRD §16 item 129.
 
-**Status:** Accepted (design), 2026-10-29. Grilled with the founder (two rounds, `/mattpocock-skills:grilling`), then code-traced by three read-only reviewers, one per layer (limits and checkout; ledger and closure; downstream readers and public surface), per the money-critical rule in the root `AGENTS.md`. The reviewers' top findings were re-checked against code by the author (`LedgerService::credit()` takes no lock; `OrderSettlementService::settle()` has no reseller-state check; `ResellerController::destroy()` is a non-atomic read that revokes nothing). Nothing here is built.
+**Status:** Accepted (design), 2026-10-29. Grilled with the founder (two rounds, `/mattpocock-skills:grilling`), then code-traced by three read-only reviewers, one per layer (limits and checkout; ledger and closure; downstream readers and public surface), per the money-critical rule in the root `AGENTS.md`. The reviewers' top findings were re-checked against code by the author (`LedgerService::credit()` takes no lock; `OrderSettlementService::settle()` has no reseller-state check; `ResellerController::destroy()` is a non-atomic read that revokes nothing). Build and live status: PRD §15.
 
 ## Context
 
@@ -113,3 +113,14 @@ CHIP's conditions are narrow and mostly cheap: a display name, two numbers, a do
 
 Decision 8 had the receipt end with "An invoice is issued for each order." The system issues no per-order invoice (e-Invoicing is outside our code, ADR-083 decision 6; found when drafting the reply to CHIP, which would have been given a sample receipt). The note now reads "This is a receipt for money received, not an invoice. Orders paid from this balance appear in your order history." The rest of decision 8 stands: it is a receipt, not an invoice. If the founder's accountant later decides orders need invoices, the note changes with that, not before.
 
+### 2026-10-30 addendum — the receipt layout (item 142, layout only)
+
+- **Layout** follows a plain Stripe-style receipt (founder's reference): title and the LWF logo on one line, a small meta block (receipt number, date paid, payment method), the seller and "Bill to" side by side, a "RM x paid on <date>" line, a one-table items list, then Total and Amount paid. The title stays "Payment Receipt" (decision 8) and the "not an invoice" note stays.
+- **"Bill to"** is the reseller's `business_name`, `contact_name` and `email` (the portal account holds no address or SSM number; none was added). Phone is not printed.
+- **Logo** is a fixed file, `backend/resources/img/lwf-logo.png` (the black transparent logo, 600 px wide), embedded in the PDF as a data URI. Not a setting: it changes rarely.
+- **No tax lines and no card or bank detail** (we state no tax and keep no bank choice, ADR-130). The payment method reads "Online Banking (FPX)", "DuitNow QR" or "Bank transfer".
+- **Still open in item 142:** a stored snapshot of the company details, an admin download of a closed reseller's receipts, an automatic email. Triggers: an accountant's request or a change of company details; the first closed real reseller; a reseller asking for it.
+
+### 2026-10-30 addendum (later) — what was dropped
+
+The three receipt parts left open above (a stored snapshot of the company details, an admin download of a closed reseller's receipts, an automatic email) are **not planned** (founder, 2026-10-30): none is needed now. Decision 11's `ponytail:` note stands as the rule if one is ever wanted: an old receipt reprints the current company details and reseller name. The same decision closed PRD item 143: the partner portal footer keeps its hard-coded company name and SSM number (it also shows on the login page, so reading it from the setting would need a public endpoint), to be changed by hand if the details change.

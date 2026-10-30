@@ -5,6 +5,7 @@ namespace App\Services\Ledger;
 use App\Models\LedgerAccount;
 use App\Models\LedgerEntry;
 use App\Models\Order;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 final class LedgerService
@@ -24,11 +25,13 @@ final class LedgerService
         ]);
     }
 
-    public function balance(LedgerOwnerType|string $ownerType, ?int $ownerId): int
+    public function balance(LedgerOwnerType|string $ownerType, ?int $ownerId, ?\DateTimeInterface $before = null): int
     {
         return (int) LedgerEntry::query()
             ->where('owner_type', LedgerOwnerType::coerce($ownerType)->value)
             ->where('owner_id', $ownerId)
+            // created_at is stored in UTC; a Carbon in another zone would bind its local clock.
+            ->when($before !== null, fn ($q) => $q->where('created_at', '<', CarbonImmutable::instance($before)->utc()))
             ->sum('amount');
     }
 

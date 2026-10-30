@@ -35,20 +35,20 @@ export default function EarningsPage() {
 
   return (
     <div>
-      <PageHeader title="Earnings" subtitle="Your margin on each delivered order, less tier fees and withdrawals." />
+      <PageHeader title="Earnings" subtitle="Your margin on each delivered order, less tier fees and payouts." />
       {error && <ErrorNote message={error} />}
 
       <div className="mb-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         {data ? (
           <BalanceHero
             icon="trend"
-            label="Withdrawable earnings"
+            label="Earnings balance"
             amount={formatRm(data.balance)}
             note="Earnings from an order are added when it is delivered."
             actions={
               <Link href="/withdrawal" className={buttonClass("primary")}>
                 <PortalIcon name="bank" className="h-4 w-4" />
-                Request withdrawal
+                Monthly payout
               </Link>
             }
           />
@@ -60,7 +60,7 @@ export default function EarningsPage() {
           steps={[
             { title: "Your margin on each sale", body: "Your storefront price minus your wholesale price, on delivered orders only." },
             { title: "Your tier fee", body: "A wholesale tier's monthly fee is taken from your earnings." },
-            { title: "Withdrawals", body: "Paid to your bank once PekanGame approves them. Track them under Withdrawal." },
+            { title: "Monthly payout", body: "On the 1st PekanGame opens a payout for your balance and pays it to your bank by the 7th. Track it under Withdrawal." },
           ]}
         />
       </div>

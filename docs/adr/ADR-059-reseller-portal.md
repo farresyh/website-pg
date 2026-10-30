@@ -1,6 +1,6 @@
 # ADR-059: Reseller portal — `reseller/` app, earnings ledger, withdrawals, self-service storefront config — BUILT + LIVE at `reseller.pekangame.space` (entity later renamed `Reseller`→`Affiliate` by ADR-072; the app now also serves wallet `Reseller` accounts)
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-30):** In force; 59c's manual withdrawal request revised by [ADR-132](./ADR-132-affiliate-monthly-auto-payout.md) (monthly auto-payout). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** BUILT + LIVE (59a/59b/59c shipped; portal live at `reseller.pekangame.space` since 2026-09-02). Per ADR-072 the `reseller/` app now serves both `Affiliate` (this ADR's entity, renamed) and wallet `Reseller` accounts. Original: Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056)
 
@@ -123,3 +123,7 @@ Decision 1's "descoped, matching admin" no longer matches admin: admin MFA
 will be built (ADR-019 2026-10-14 addendum). Portal MFA stays off, now as a
 drop rather than a deferral, for the reasons decision 1 already lists: an
 admin approves every payout, with the "bank details changed" flag.
+
+### 2026-10-30 addendum — the manual withdrawal request is replaced by a monthly auto-payout
+
+59c's `Affiliate\WithdrawalController::store()` (request any amount at any time) is removed by [ADR-132](./ADR-132-affiliate-monthly-auto-payout.md): the platform opens one Pending ticket per affiliate each Malaysia month for the balance minus the tier-fee reserve (minimum RM10). The approve → complete flow, the maker-checker, the ledger debit at approval and the saved-profile-only bank rule above are unchanged. The `AffiliateWithdrawalService::request()` lock pattern lives on in `openMonthly()`.
