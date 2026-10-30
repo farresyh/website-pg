@@ -23,8 +23,8 @@ import { useSiteConfig } from "@/context/SiteConfigContext";
  * on their own pages, none elsewhere. It used to be fixed on "All Products".
  */
 const NAV_LINK = "border-b-2 pb-0.5";
-const NAV_ACTIVE = "border-header-accent text-on-header-accent";
-const NAV_IDLE = "border-transparent hover:text-on-header-accent";
+const NAV_ACTIVE = "border-primary text-primary-on-surface";
+const NAV_IDLE = "border-transparent hover:text-primary-on-surface";
 export default function SiteHeader() {
   const { query, setQuery } = useSearch();
   const { membershipEnabled, checkIdEnabled, jokiEnabled, branding } = useSiteConfig();
@@ -36,7 +36,7 @@ export default function SiteHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b-2 border-ink bg-header">
+    <header className="sticky top-0 z-40 border-b-2 border-ink bg-surface">
       <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4 px-4 py-3">
         <Link href="/" className="flex shrink-0 items-center gap-2">
           <Logo maxHeight={48} maxWidth={180} src={branding.logoUrl} alt={branding.storeName} />
@@ -87,7 +87,7 @@ export default function SiteHeader() {
           )}
         </nav>
 
-        <Button href="/track-order" size="sm" variant="header" className="shrink-0">
+        <Button href="/track-order" size="sm" variant="primary" className="shrink-0">
           Track Order
         </Button>
       </div>
