@@ -677,7 +677,7 @@ Cancel At Login Page"); the DuitNow order reached DuitNow (CHIP's attempt shows
 `payment_method: dnqr`, so the old "No matching terminal" is fixed) and was
 cancelled by the user ("Transaction cancelled by user"). The payment-method
 **Test** action has not been run since #584 (the stored results for `fpx` and
-`dnqr` are the old HTTP 400 ones). Both proofs are §16 item 138.
+`dnqr` are the old HTTP 400 ones). Both proofs are §16 item 138. **Update 2026-10-30:** both are now seen on production (§16 item 138, closed): one completed FPX payment through the bank grid and one completed DuitNow QR payment, each `paid` at CHIP and delivered here.
 
 **Latest release 2026-10-30 (`staging`→`main`, PRs #608 and #610).** #608 merged as
 `8f3e9ea8` (07:31 UTC); the box runs release `81640214` after it. CI (all jobs)
@@ -978,18 +978,6 @@ moved to group D). Re-verify before building.
 
 **C. Founder actions (no code)**
 - **147** OhahaStore go-live (founder). `ohahastore.com` is registered and active (2026-10-30), payments not approved. Owed: (a) the second `_vercel` TXT at GoDaddy for `www.ohahastore.com` (the value is in the portal's Domains row), then Check now: Vercel asks one TXT per hostname and the apex's does not cover `www`; (b) look in Vercel for another account or team that still holds `ohahastore.com` (an expired `*.ohahastore.com` certificate from February 2026 was served on `www`, which suggests the domain was on Vercel earlier) and remove it there; (c) after CHIP's written approval: Affiliates → OhahaStore → Manage → Approve payments (works since #607/#608); (d) OhahaStore has no bank details, so the monthly payout skips it until they are saved in Profile (item 146 would force them). See ADR-060's 2026-10-30 addendum.
-- **138** Real-bank proof for release #589 (2026-10-29), partly done. Seen on
-  prod: two orders reached CIMB's login through the bank grid and were
-  cancelled there; a DuitNow order reached DuitNow and was cancelled by the
-  user. **Still owed:** (a) one completed FPX payment (RM1) through a grid bank
-  (CHIP's test mode accepts any `fpx_bank_code`, so only a real payment proves
-  the customer lands at the right bank and the order is Paid); (b) one
-  completed DuitNow QR payment (never completed yet); (c) run **Test** on `fpx`
-  and `dnqr` in Payment Methods (their stored results are the old HTTP 400
-  ones, from before #584). The FixFast test reseller's first real Add Balance (RM10 minimum, through a
-  grid bank) exercises (a) and also produces a real receipt for CHIP. If (a)
-  lands on CHIP's normal page or an error, revert the `FpxBankRedirect` calls;
-  nothing else changed.
 - **141** CHIP activation conditions (ADR-131), **released 2026-10-29 in #599**; the
   code is complete. What is owed is the founder's, then one reply to CHIP:
   (a) the company details are filled on prod (checked 2026-10-29): receipts print
@@ -1437,6 +1425,7 @@ moved to group D). Re-verify before building.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **138** 2026-10-30: real-bank proof for release #589, closed. Seen on prod, read-only: an FPX order through the bank grid (`PG-SOOP26HC3ZXL`, RM13.32, paid and delivered; CHIP shows `paid`, not a test, one successful attempt at Maybank2u, whose code is in the grid) and a DuitNow QR order (`PG-L4RCBELJ9RE3`, RM25.70, paid and delivered; CHIP shows `paid`, not a test, method `dnqr`, one successful attempt). The **Test** action on `fpx` and `dnqr` stored `success` on 2026-10-29. No `FpxBankRedirect` revert is needed. Details: build-log 2026-10-30.
 - **148** 2026-10-30: a custom domain brings a `www` redirect twin (ADR-060's second 2026-10-30 addendum, Accepted). "Also add www" on the add-domain form and an "Add www" / "Redirect www here" action; a twin row (`redirects_to_domain_id`) that 308-redirects to the typed domain and is never served, canonical, primary, CORS-allowed or payment-approved. **Built on branch `feature/affiliate-www-pairing`, not released.** Owed after the release (founder): press "Redirect www here" on OhahaStore's Domains screen, then `curl -I https://www.ohahastore.com` should answer 308 to `ohahastore.com`. Details: build-log 2026-10-30.
 - **149** 2026-10-30: an owned brand prices as the platform: no tier, no brand markup, `affiliate_profit` always 0 (ADR-061's 2026-10-30 addendum, Accepted). One `Affiliate::storefrontPriceTerms()` seam now decides what every storefront path charges; the `max_markup_pct` ceiling is held at checkout too. **Built on branch `fix/owned-brand-pricing-seam`, not released** until a `staging` → `main` release. Owed afterwards (founder): the RM0 OhahaStore tier subscription (leave or remove) and the "Owned Brand" tier's name once FixFast Demo is deactivated (item 141). Details: build-log 2026-10-30.
 - **145** 2026-10-30: the affiliate monthly auto-payout (ADR-132), #605, released in #608. The platform opens one withdrawal ticket per affiliate per Malaysia month and the manual request is gone. On prod after the release: three affiliates, none at RM10 (balances 0, 15 sen, 0), no open ticket, `affiliate-payout-open` scheduled, `/api/health` ok. Follow-ups: items 147 and 149. Details: build-log 2026-10-30.
