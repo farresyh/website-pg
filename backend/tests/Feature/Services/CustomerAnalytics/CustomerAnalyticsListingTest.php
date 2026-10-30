@@ -28,6 +28,10 @@ class CustomerAnalyticsListingTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Every order's `paid_at` is `now()` less some days: unfrozen, a second boundary
+        // between two orders breaks the ties the sort tests rely on (CI, 2026-10-30,
+        // and 2026-10-16 for the one test that had its own freeze).
+        $this->freezeTime();
         $this->analytics = new CustomerAnalyticsService;
     }
 

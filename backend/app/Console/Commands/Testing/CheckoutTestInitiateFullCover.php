@@ -22,8 +22,15 @@ use Illuminate\Http\Request;
  * (M-6, 2026-09-29 audit / ADR-024 addendum). Never reaches the gateway
  * (full-cover skips it entirely), so the fake gateway just needs to
  * satisfy the type hint.
+ *
+ * `startAt` (epoch seconds, optional): both processes boot, then wait for
+ * the same instant before calling `initiate()`, so they genuinely overlap.
+ * Without it a slow CI start put the second process after the winner had
+ * committed, and it was refused earlier (InvalidVoucherException) instead of
+ * losing at the voucher row lock: correct behaviour, but not the race the
+ * test is meant to prove (CI, 2026-10-30).
  */
-#[Signature('app:checkout-test-initiate-full-cover {affiliateId} {gameId} {packageId} {voucherCode} {sellingPriceSen} {idempotencyKey} {resultFile}')]
+#[Signature('app:checkout-test-initiate-full-cover {affiliateId} {gameId} {packageId} {voucherCode} {sellingPriceSen} {idempotencyKey} {resultFile} {startAt=0}')]
 #[Description('Test-only: initiate a full-cover-by-voucher checkout and write the outcome to a result file.')]
 class CheckoutTestInitiateFullCover extends Command
 {
@@ -53,6 +60,10 @@ class CheckoutTestInitiateFullCover extends Command
                 throw new \RuntimeException('not used in this test');
             }
         };
+
+        while (microtime(true) < (float) $this->argument('startAt')) {
+            usleep(500);
+        }
 
         try {
             $order = $checkout->initiate(new CheckoutRequest(
