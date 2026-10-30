@@ -164,6 +164,7 @@ class Affiliate extends Model
         }
 
         $host = AffiliateDomain::withoutAffiliateScope()
+            ->servable()
             ->where('affiliate_id', $this->id)
             ->where('status', AffiliateDomainStatus::Active->value)
             ->orderByDesc('is_primary')

@@ -18,10 +18,21 @@ use Illuminate\Support\Facades\Log;
  */
 final class NullDomainProvider implements AffiliateDomainProvider
 {
-    public function attach(string $hostname): DomainProviderState
+    public function attach(string $hostname, ?string $redirectTo = null): DomainProviderState
     {
         Log::info('NullDomainProvider::attach (services.vercel unconfigured) — domain will stay pending', [
             'hostname' => $hostname,
+            'redirect_to' => $redirectTo,
+        ]);
+
+        return new DomainProviderState(providerRef: $hostname, verified: false);
+    }
+
+    public function redirect(string $hostname, string $target): DomainProviderState
+    {
+        Log::info('NullDomainProvider::redirect (services.vercel unconfigured) — no-op', [
+            'hostname' => $hostname,
+            'redirect_to' => $target,
         ]);
 
         return new DomainProviderState(providerRef: $hostname, verified: false);

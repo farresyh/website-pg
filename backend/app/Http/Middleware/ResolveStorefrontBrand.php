@@ -77,7 +77,9 @@ class ResolveStorefrontBrand
             return $next($request);
         }
 
+        // A redirect twin (`www.` → the typed domain) never serves a storefront (ADR-060 second 2026-10-30 addendum).
         $domain = AffiliateDomain::query()
+            ->servable()
             ->where('hostname', $host)
             ->where('status', AffiliateDomainStatus::Active)
             ->with(['affiliate' => fn ($q) => $q->with('subscription.tier')])

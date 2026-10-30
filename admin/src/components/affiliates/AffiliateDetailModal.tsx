@@ -303,6 +303,7 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
                   <p className="font-medium text-gray-800 dark:text-white/90">
                     {d.hostname}
                     {d.is_primary && <span className="ml-2 text-theme-xs text-brand-500">primary</span>}
+                    {d.redirects_to && <span className="ml-2 text-theme-xs text-gray-500 dark:text-gray-400">redirects to {d.redirects_to}</span>}
                   </p>
                   <p className="text-theme-xs text-gray-500 dark:text-gray-400">
                     Checked {formatDate(d.last_checked_at)}
@@ -312,18 +313,23 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
                 </div>
                 <div className="flex items-center gap-2">
                   <Tag severity={domainStatusSeverity[d.status]}>{d.status}</Tag>
-                  <Tag severity={d.payments_approved ? "success" : "warn"}>
-                    {d.payments_approved ? "Payments approved" : "Payments not approved"}
-                  </Tag>
-                  <Button
-                    type="button"
-                    size="small"
-                    variant="outlined"
-                    disabled={busy !== null}
-                    onClick={() => setApproval({ domain: d, approved: !d.payments_approved })}
-                  >
-                    {d.payments_approved ? "Revoke payments" : "Approve payments"}
-                  </Button>
+                  {/* A www redirect takes no payments, so it has nothing to approve (ADR-060 second 2026-10-30 addendum). */}
+                  {!d.redirects_to && (
+                    <>
+                      <Tag severity={d.payments_approved ? "success" : "warn"}>
+                        {d.payments_approved ? "Payments approved" : "Payments not approved"}
+                      </Tag>
+                      <Button
+                        type="button"
+                        size="small"
+                        variant="outlined"
+                        disabled={busy !== null}
+                        onClick={() => setApproval({ domain: d, approved: !d.payments_approved })}
+                      >
+                        {d.payments_approved ? "Revoke payments" : "Approve payments"}
+                      </Button>
+                    </>
+                  )}
                   {d.provider_managed && (
                     <>
                       <Button

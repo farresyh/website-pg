@@ -49,6 +49,8 @@ class StoreAffiliateDomainRequest extends FormRequest
                 // do not.
                 'regex:/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/',
             ],
+            // ADR-060 second 2026-10-30 addendum decision 1: also add `www.<hostname>` as a redirect to it.
+            'with_www' => ['sometimes', 'boolean'],
         ];
     }
 

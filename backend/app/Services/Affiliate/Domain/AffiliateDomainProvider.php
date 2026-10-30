@@ -24,11 +24,22 @@ interface AffiliateDomainProvider
      * Attach `$hostname` to the storefront project. Returns the
      * provider's view right after creation (usually `verified: false`
      * with a `verification` payload, occasionally `verified: true` when
-     * the DNS is already correct).
+     * the DNS is already correct). A `$redirectTo` makes it a permanent
+     * redirect to that (already attached) domain: ADR-060's `www` twin.
      *
      * @throws DomainProviderException
      */
-    public function attach(string $hostname): DomainProviderState;
+    public function attach(string $hostname, ?string $redirectTo = null): DomainProviderState;
+
+    /**
+     * Point an already attached domain at `$target` as a permanent redirect,
+     * in place (never remove and re-add: a re-added domain gets a new
+     * ownership value). Idempotent. A hostname the provider no longer knows
+     * comes back `missing`.
+     *
+     * @throws DomainProviderException
+     */
+    public function redirect(string $hostname, string $target): DomainProviderState;
 
     /**
      * Re-read (and re-trigger verification of) `$hostname`. Used by the
