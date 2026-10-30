@@ -254,3 +254,7 @@ As built (2b):
 ### 2026-10-23 addendum — changes made by ADR-126's 2026-10-23 addendum
 
 ADR-126's 2026-10-23 addendum revises four rules here, for every manual order, not only joki. The supplier post's dedupe key gains the supplier (its decision 17). `confirmDelivered`/`confirmFailed` re-check the supplier under the lock (decision 18). Staleness reads a new `orders.manual_activity_at` (the post time for Login Top-up, as today), and the SLA maximum becomes 3 days (decision 20). A pool supplier flag exempts the joki pool from decision 56 and from the group posts (decision 15). Detail is in ADR-126.
+
+### 2026-10-30 addendum — two numbers here are out of date
+
+The "Owned Brand" tier is **15%** in production (edited from 10% on 2026-10-30), and member Tier 2 gives **70%** off the markup, not 80% (set 2026-10-28). Neither changes the reasoning above, which only needs "at 15% markup a Tier 2 member keeps 4.5%, not 3%". [ADR-061](./ADR-061-every-storefront-is-a-reseller.md)'s 2026-10-30 addendum also means an owned brand no longer prices through that tier at all: it prices as the platform.
