@@ -5,6 +5,8 @@ interface StepCardProps {
   title: string;
   locked: boolean;
   lockHint?: string;
+  /** A locked card that can still be looked at and tapped (the package list before the ID is verified). */
+  browsable?: boolean;
   children: ReactNode;
 }
 
@@ -12,15 +14,17 @@ interface StepCardProps {
  * ADR-064: Stitch's numbered-section card — a floating label notched
  * into the top border. `inert` (not just opacity + pointer-events) so a
  * locked step is genuinely unreachable by keyboard / screen-reader.
+ * `browsable` keeps a locked card readable and tappable (still shows the hint).
  */
-export default function StepCard({ number, title, locked, lockHint, children }: StepCardProps) {
+export default function StepCard({ number, title, locked, lockHint, browsable = false, children }: StepCardProps) {
+  const inactive = locked && !browsable;
   return (
     <div
       className={`relative rounded-lg border-2 border-ink bg-surface-container-lowest p-5 pt-7 neo transition-opacity duration-200 lg:p-6 lg:pt-8 ${
-        locked ? "opacity-45" : ""
+        inactive ? "opacity-45" : ""
       }`}
-      aria-disabled={locked}
-      inert={locked ? true : undefined}
+      aria-disabled={inactive}
+      inert={inactive ? true : undefined}
     >
       <div className="absolute -top-3.5 left-5 flex items-center gap-2 bg-surface-container-lowest px-2">
         <span className="flex h-6 w-6 items-center justify-center rounded-sm border-2 border-ink bg-primary font-mono text-[11px] font-bold text-on-primary">

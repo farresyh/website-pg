@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 interface BaseProps {
   children: ReactNode;
   size?: "sm" | "md" | "lg";
-  variant?: "primary" | "outline" | "text" | "destructive";
+  variant?: "primary" | "header" | "outline" | "text" | "destructive";
   startIcon?: ReactNode;
   className?: string;
 }
@@ -32,6 +32,10 @@ const sizeClasses = {
 const variantClasses = {
   primary:
     "border-2 border-ink bg-primary text-on-primary neo neo-hover-cyan hover:bg-primary-container",
+  // The site header's action: the preset's header-action colours (the
+  // primary pair unless a preset sets its own).
+  header:
+    "border-2 border-ink bg-header-action text-on-header-action neo neo-hover-cyan hover:brightness-110",
   outline:
     "border-2 border-ink bg-surface-container-lowest text-on-surface neo neo-hover hover:bg-surface-container-low",
   text: "border-2 border-transparent bg-transparent text-primary-on-surface hover:bg-primary-fixed",
