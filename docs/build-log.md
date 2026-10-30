@@ -2845,5 +2845,7 @@ Found by the founder approving `ohahastore.com` in the admin. `approveAffiliateD
 
 **Also in this PR:** CI's `backend-tests` failed once on `CustomerAnalyticsListingTest::test_search_matches_part_of_the_email_ignoring_case_and_wildcards`, unrelated to the change: every order in that class gets `paid_at = now()` less some days, so a second boundary between two orders reversed the tied `last_order_at` sort (the same flake class as 2026-10-16, which had frozen time in one test only). `setUp()` now freezes time for the whole class. Proved by adding `sleep(1)` to the order helper: red without the freeze, green with it.
 
+The next CI run failed `backend-concurrency` on `CheckoutSettleWithVoucherConcurrencyTest` (two simultaneous full-cover checkouts). The money was safe (the voucher was spent once and the second checkout refused), but the loser was refused earlier, with `InvalidVoucherException`, because a slow CI start put its `initiate()` after the winner had committed, and the test treats any `error:` as a failure. `app:checkout-test-initiate-full-cover` now takes an optional `startAt`: both processes boot, then wait for the same instant before `initiate()`, so they overlap. Green 3 of 3 on local MySQL; CI to confirm.
+
 **Owed:** the fix is on `staging`, not live: the admin Vercel app deploys from `main`, so the approval works in production only after a `staging` → `main` release. The founder will approve `ohahastore.com` after that, once CHIP has approved it in writing (ADR-131 condition 5).
 
