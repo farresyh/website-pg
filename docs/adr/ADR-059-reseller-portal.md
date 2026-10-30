@@ -123,3 +123,7 @@ Decision 1's "descoped, matching admin" no longer matches admin: admin MFA
 will be built (ADR-019 2026-10-14 addendum). Portal MFA stays off, now as a
 drop rather than a deferral, for the reasons decision 1 already lists: an
 admin approves every payout, with the "bank details changed" flag.
+
+### 2026-10-30 addendum — the manual withdrawal request is replaced by a monthly auto-payout
+
+59c's `Affiliate\WithdrawalController::store()` (request any amount at any time) is removed by [ADR-132](./ADR-132-affiliate-monthly-auto-payout.md): the platform opens one Pending ticket per affiliate each Malaysia month for the balance minus the tier-fee reserve (minimum RM10). The approve → complete flow, the maker-checker, the ledger debit at approval and the saved-profile-only bank rule above are unchanged. The `AffiliateWithdrawalService::request()` lock pattern lives on in `openMonthly()`.

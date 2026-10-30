@@ -2814,3 +2814,18 @@ The Purchase Balance receipt (`resources/views/receipts/purchase-balance.blade.p
 ## 2026-10-30 — Items 142 (rest) and 143 closed as not needed
 
 Founder's decision after #602 and #603 merged to `staging`: the footer's hard-coded company details (143) stay as they are, and the three open parts of item 142 (admin download of a closed reseller's receipts, stored snapshot of the company details, automatic email) are not planned. Recorded in PRD §16 "Recently closed" and the ADR-131 2026-10-30 later addendum. Docs only; nothing built.
+
+## 2026-10-30 — Affiliate monthly auto-payout (item 145, ADR-132)
+
+The founder wanted the platform, not the affiliate, to open the withdrawal ticket: an affiliate could hold a balance for months and request any amount at any time. The money concept did not change (ledger debit still at admin approve, maker-checker unchanged).
+
+**Design.** Grilled with the founder, then stress-tested by three read-only reviewers (creation and reserve; approve and accounting; portal, admin and hygiene). Their findings changed the design: the tier fee became a **reserve** held back from the payout (an early charge would shift billing cycles and push affiliates into `grace`); the amount is `min(balance at cut-off, current balance) − reserve`; the command runs **daily** at 00:10 MYT with a unique `payout_period` so a missed 1st repairs itself; only a **Pending** ticket blocks the next one; the "skip inactive affiliate" rule was dropped (in this codebase `inactive` only means soft-deleted, which needs a zero balance).
+
+**Built (`feature/affiliate-auto-withdrawal`).** Migration `withdrawals.payout_period` + unique `(owner_type, owner_id, payout_period)`. `AffiliateWithdrawalService` is now `plan()` / `openMonthly()` / `openAll()` / `worklist()`; `AffiliateTierFeeService::feesDueBetween()` owns the cycle maths; `LedgerService::balance()` takes an optional `$before`. Command `app:open-affiliate-payouts` (`CRITICAL`, daily 00:10 MYT). Removed: `POST /affiliate/withdrawals`, `store()`, `CreateAffiliateWithdrawalRequest`, the portal form. Admin: `GET /withdrawals/payout-run` (skipped affiliates with a reason, stale Pending tickets), affiliate name and period on the index, a "needs attention" panel and a "this month only" toggle. Portal: schedule note, scheduled amount, tier-fee reserve, bank-details banner, copy changes.
+
+**Gotcha found by a test:** a `Carbon` in Malaysia time bound into `where created_at < ?` uses its local clock, but `created_at` is UTC, so the cut-off was 8 hours off. `LedgerService::balance()` now converts to UTC itself.
+
+**Verified.** Backend suite green apart from `RouteAccessTest` (new admin route, fixed); the concurrency suite on real MySQL: two simultaneous runs open exactly one ticket, and the six existing withdrawal concurrency tests pass. Portal and admin: `tsc`, `lint`, unit tests clean, admin `build` passes. Dev DB migrated (plain `migrate`). Production read-only before the build: 2 affiliates, none at RM10 or more, no open tickets. **Not seen in a browser**, so the new admin panel and the portal Withdrawal page are unchecked visually.
+
+**Accepted risk.** A tier change to a higher fee after the ticket opens, "Charge Now", or `reactivate()` can push the balance under the ticket; approve then returns a clear 422 and the admin rejects (the money joins next month's payout).
+
