@@ -1,6 +1,6 @@
 # ADR-116: Customer order notifications over WhatsApp (OpenWA), not email — closes audit M-11
 
-> **Standing (2026-10-23):** In force; send queue generalised to (session, chat) by [ADR-125](./ADR-125-login-top-up-manual-supplier.md); a joki progress message is queued with an earliest send time and worded at send time ([ADR-126](./ADR-126-joki-mlbb.md), 2026-10-23). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-30):** In force; decision 8's phone normalisation extended for a Malaysian mobile typed without its leading 0 (2026-10-30 addendum); send queue generalised to (session, chat) by [ADR-125](./ADR-125-login-top-up-manual-supplier.md); a joki progress message is queued with an earliest send time and worded at send time ([ADR-126](./ADR-126-joki-mlbb.md), 2026-10-23). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — grilled (`/mattpocock-skills:grilling`) with the founder 2026-09-30, five rounds. **PR-B1 (#323) and PR-B2 (#324) both built 2026-09-30** and released `staging`→`main` the same day (#325). The switch is ON and was live-tested by the founder. Read the two addenda at the end of this entry before building on it:
 - The **build addendum's items 1–2 are superseded** by the **post-live-test addendum**: the order number is the opt-in, and there is one timeline status card.
@@ -202,3 +202,14 @@ a risk at this volume. Removing it also closes the retry hole.
   for order numbers. They belong to the CS-agent ADR (PRD §16 item 82).
 - The admin order page already shows every row as a card, so repeated cards
   will appear there. Grouping them is not built; do it if the page gets noisy.
+
+### 2026-10-30 addendum — a Malaysian mobile typed without its leading 0 (revises decision 8)
+
+**Found in production.** Order PG-L4RCBELJ9RE3 (OhahaStore): the customer asked for help with the Contact Support button, got the status card, and after an admin Resend the order became Delivered, but **no receipt was queued and no `customer_notifications` row exists**. The order's `customer_phone` was typed as ten digits starting with `1` (no `0`, no `+60`); WhatsApp wrote from the twelve-digit `60…` number. Decision 8's normaliser took "anything else" to already carry its country code, so the order's number stayed `1…` and the sender's was `60 1…`. The opt-in was recorded under the second, `receivesReceipts()` looked up the first, found no opt-in, and `orderDelivered()` returned without a row (by design: not sending is the normal case).
+
+**Scope found (read-only, 2026-10-30).** 1 of 42 real storefront orders had a number that did not normalise to a `60…` number: this one. The same normaliser feeds the joki progress updates, the voucher messages and the voucher redemption phone match, so a customer typed like this would also have had a voucher sent to a number that is not theirs.
+
+**Decision:** `PhoneNumber::normalize()` treats a 9 or 10 digit number starting with `1` as a Malaysian mobile missing its trunk `0` and makes it `60…`. Country code 1 numbers always have 11 digits, so they are never caught by the rule. `1123456267`, `01123456267`, `601123456267` and `+60 11-2345 6267` are now one number. The stored `customer_phone` is still never rewritten (suppliers receive it as typed).
+
+**Not done:** warning the customer at checkout, and any change for numbers that start with other digits (landlines and other countries stay as before). The fix does not run backwards: PG-L4RCBELJ9RE3 did not get its receipt and the founder told the customer by hand.
+
