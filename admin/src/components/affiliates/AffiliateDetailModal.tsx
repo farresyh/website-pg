@@ -123,99 +123,108 @@ function Body({ detail, tiers, onChanged, onRefresh, onClose }: Omit<Props, "isO
         <div>
           <p className="text-theme-xs text-gray-500 dark:text-gray-400">Markup %</p>
           <p className="font-semibold text-gray-800 dark:text-white/90">
-            {r.markup_pct}
-            {r.max_markup_pct ? ` / ${r.max_markup_pct} max` : ""}
+            {r.is_owned ? "None (owned brand)" : r.markup_pct}
+            {!r.is_owned && r.max_markup_pct ? ` / ${r.max_markup_pct} max` : ""}
           </p>
         </div>
       </div>
 
-      {/* Affiliate-tier subscription */}
-      <section className="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-800 dark:text-white/90">Affiliate tier</h3>
-          {sub && <Tag severity={subStatusSeverity[sub.status]}>{sub.status}</Tag>}
-        </div>
-
-        {sub ? (
-          <div className="mb-3 grid grid-cols-2 gap-2 text-theme-xs text-gray-600 dark:text-gray-400 sm:grid-cols-4">
-            <div><span className="text-ink-subtle">Tier</span><br />{sub.tier_name ?? "—"}</div>
-            <div><span className="text-ink-subtle">Fee</span><br />{formatRm(sub.monthly_fee_sen)}/mo</div>
-            <div><span className="text-ink-subtle">Next charge</span><br />{formatDate(sub.next_charge_at)}</div>
-            <div><span className="text-ink-subtle">Grace until</span><br />{formatDate(sub.grace_until)}</div>
-          </div>
-        ) : (
-          <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
-            No subscription — this affiliate pays the walk-in rate (standard selling price).
+      {/* Affiliate-tier subscription — an owned brand has none (ADR-061 2026-10-30 addendum) */}
+      {r.is_owned ? (
+        <section className="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+          <h3 className="mb-2 text-sm font-semibold text-gray-800 dark:text-white/90">Pricing</h3>
+          <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+            Our own brand: it prices as the platform, with no tier and no markup of its own. Every margin is platform profit.
           </p>
-        )}
-
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-56 flex-1">
-            <Label htmlFor="tier_select">{sub ? "Change tier" : "Assign tier"}</Label>
-            <SimpleSelect options={tierOptions} value={tierId} onChange={setTierId} />
+        </section>
+      ) : (
+        <section className="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-white/90">Affiliate tier</h3>
+            {sub && <Tag severity={subStatusSeverity[sub.status]}>{sub.status}</Tag>}
           </div>
-          <div className="min-w-40 flex-1">
-            <Label htmlFor="tier_note">Note (optional)</Label>
-            <Input id="tier_note" value={tierNote} onChange={(e) => setTierNote(e.target.value)} />
-          </div>
-          <Button
-            type="button"
-            size="small"
-            disabled={busy !== null || tierId === "" || (sub !== null && String(sub.tier_id) === tierId)}
-            onClick={() =>
-              run("assign", async () => {
-                const d = await assignAffiliateTier(r.id, Number(tierId), tierNote || null);
-                setTierNote("");
-                onChanged(d);
-              }, { success: "Tier updated", sticky: true })
-            }
-          >
-            {busy === "assign" ? "Saving…" : "Apply tier"}
-          </Button>
-        </div>
 
-        {sub && (
-          <div className="mt-3 flex flex-wrap gap-2">
+          {sub ? (
+            <div className="mb-3 grid grid-cols-2 gap-2 text-theme-xs text-gray-600 dark:text-gray-400 sm:grid-cols-4">
+              <div><span className="text-ink-subtle">Tier</span><br />{sub.tier_name ?? "—"}</div>
+              <div><span className="text-ink-subtle">Fee</span><br />{formatRm(sub.monthly_fee_sen)}/mo</div>
+              <div><span className="text-ink-subtle">Next charge</span><br />{formatDate(sub.next_charge_at)}</div>
+              <div><span className="text-ink-subtle">Grace until</span><br />{formatDate(sub.grace_until)}</div>
+            </div>
+          ) : (
+            <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
+              No subscription — this affiliate pays the walk-in rate (standard selling price).
+            </p>
+          )}
+
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-56 flex-1">
+              <Label htmlFor="tier_select">{sub ? "Change tier" : "Assign tier"}</Label>
+              <SimpleSelect options={tierOptions} value={tierId} onChange={setTierId} />
+            </div>
+            <div className="min-w-40 flex-1">
+              <Label htmlFor="tier_note">Note (optional)</Label>
+              <Input id="tier_note" value={tierNote} onChange={(e) => setTierNote(e.target.value)} />
+            </div>
             <Button
               type="button"
               size="small"
-              variant="outlined"
-              disabled={busy !== null}
+              disabled={busy !== null || tierId === "" || (sub !== null && String(sub.tier_id) === tierId)}
               onClick={() =>
-                run("charge", async () => {
-                  const d = await chargeAffiliateTierFee(r.id);
+                run("assign", async () => {
+                  const d = await assignAffiliateTier(r.id, Number(tierId), tierNote || null);
+                  setTierNote("");
                   onChanged(d);
-                  // Short earnings still answer 200: no debit, the cycle goes to grace.
-                  // Only an advanced next_charge_at means the fee was debited.
-                  if (d.affiliate.subscription?.next_charge_at !== sub.next_charge_at) {
-                    notify.success("Tier fee charged");
-                  } else {
-                    notify.warn("Fee not charged", `Earnings too low or already charged this cycle. Status: ${d.affiliate.subscription?.status ?? "none"}.`);
-                  }
-                }, { sticky: true })
+                }, { success: "Tier updated", sticky: true })
               }
             >
-              {busy === "charge" ? "Charging…" : "Charge fee now"}
+              {busy === "assign" ? "Saving…" : "Apply tier"}
             </Button>
-            {sub.status !== "active" && (
+          </div>
+
+          {sub && (
+            <div className="mt-3 flex flex-wrap gap-2">
               <Button
                 type="button"
                 size="small"
                 variant="outlined"
                 disabled={busy !== null}
                 onClick={() =>
-                  run("reactivate", async () => {
-                    const d = await reactivateAffiliateSubscription(r.id);
+                  run("charge", async () => {
+                    const d = await chargeAffiliateTierFee(r.id);
                     onChanged(d);
-                  }, { success: "Subscription reactivated", sticky: true })
+                    // Short earnings still answer 200: no debit, the cycle goes to grace.
+                    // Only an advanced next_charge_at means the fee was debited.
+                    if (d.affiliate.subscription?.next_charge_at !== sub.next_charge_at) {
+                      notify.success("Tier fee charged");
+                    } else {
+                      notify.warn("Fee not charged", `Earnings too low or already charged this cycle. Status: ${d.affiliate.subscription?.status ?? "none"}.`);
+                    }
+                  }, { sticky: true })
                 }
               >
-                {busy === "reactivate" ? "…" : "Reactivate"}
+                {busy === "charge" ? "Charging…" : "Charge fee now"}
               </Button>
-            )}
-          </div>
-        )}
-      </section>
+              {sub.status !== "active" && (
+                <Button
+                  type="button"
+                  size="small"
+                  variant="outlined"
+                  disabled={busy !== null}
+                  onClick={() =>
+                    run("reactivate", async () => {
+                      const d = await reactivateAffiliateSubscription(r.id);
+                      onChanged(d);
+                    }, { success: "Subscription reactivated", sticky: true })
+                  }
+                >
+                  {busy === "reactivate" ? "…" : "Reactivate"}
+                </Button>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Portal users */}
       <section className="rounded-lg border border-gray-200 p-4 dark:border-gray-800">

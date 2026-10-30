@@ -27,6 +27,8 @@ export interface SubscriptionSnapshot {
 }
 
 export interface DashboardStats {
+  /** An owned brand has no wholesale tier (ADR-061 2026-10-30). */
+  is_owned: boolean;
   earnings_balance: number;
   today: { orders: number; sales: number };
   this_month: { orders: number; sales: number };
@@ -536,8 +538,11 @@ export function setStorefrontGameVisibility(token: string, gameId: number, isVis
 export interface StorefrontPricing {
   markup_pct: number;
   effective_markup_pct: number;
-  max_markup_pct: number;
+  /** Null = the platform has set no ceiling, so the brand cannot raise its own markup. */
+  max_markup_pct: number | null;
   wholesale_rate_active: boolean;
+  /** ADR-061 2026-10-30: an owned brand prices as the platform and has no markup to set. */
+  is_owned: boolean;
 }
 
 export interface MarkupPreviewRow {

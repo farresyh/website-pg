@@ -236,7 +236,7 @@ function AffiliateDashboard({ hello }: { hello: string }) {
           ) : (
             <Skeleton className="h-[120px]" />
           )}
-          {stats && (
+          {stats && !stats.is_owned && (
             <Panel>
               <div className="px-5 py-4">
                 <div className="flex items-start justify-between gap-2">
