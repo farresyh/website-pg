@@ -14,12 +14,15 @@ The third Next.js app, alongside `admin/` and `storefront/`, on `:3002`
 (the fourth frontend, `docs-site/`, is Astro). **One app, two account types** since ADR-072:
 
 - **Affiliate** — a whitelabel storefront owner. Nav: Dashboard / Orders /
-  Earnings / Withdrawals / Storefront config / Subscription / Domain. Earns a
-  margin per order into an earnings ledger, requests manual payouts, runs a
-  branded `Host`-resolved storefront (ADR-060) on a custom domain. *This is
+  Earnings / Withdrawal / Storefront / Domains / Subscription / Profile
+  (`src/lib/portal-nav.ts`). Earns a margin per order into an earnings ledger,
+  is paid out monthly by a ticket the platform opens on the 1st (ADR-132;
+  there is no request form), runs a branded `Host`-resolved storefront
+  (ADR-060) on a custom domain. *This is
   the entity ADR-058/059 originally called "Reseller".*
 - **Reseller** — a prepaid-wallet, spend-only account (ADR-072/073). Nav:
-  Dashboard / Orders / Wallet / API Keys / Profile. Tops up the wallet via
+  Dashboard / Orders / Purchase Balance / API Keys / Profile (ADR-131 renamed
+  the wallet for resellers). Adds balance via
   CHIP, spends it placing orders through three channels: this portal, the
   REST API (per-tenant keys — ADR-074, docs at `docs.pekangame.space`, ADR-084), and a WhatsApp
   bot (OpenWA — ADR-075). Never earns.
