@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Affiliate;
 
+use App\Models\Affiliate;
 use App\Models\AffiliateSubscription;
 use App\Services\Affiliate\AffiliateSubscriptionStatus;
 use App\Services\Affiliate\AffiliateTierFeeService;
@@ -30,12 +31,16 @@ class ChargeAffiliateTierFeesCommand extends Command
 {
     public function handle(AffiliateTierFeeService $service): int
     {
+        // ADR-061 2026-10-30 addendum decision 5: a tier never prices an owned
+        // brand, so an owned brand's leftover subscription is never billed.
         $dueIds = AffiliateSubscription::query()
+            ->whereNotIn('affiliate_id', Affiliate::withTrashed()->where('is_owned', true)->select('id'))
             ->where(function ($query) {
-                $query->where('status', AffiliateSubscriptionStatus::Active)
-                    ->where('next_charge_at', '<=', now());
+                $query->where(function ($query) {
+                    $query->where('status', AffiliateSubscriptionStatus::Active)
+                        ->where('next_charge_at', '<=', now());
+                })->orWhere('status', AffiliateSubscriptionStatus::Grace);
             })
-            ->orWhere('status', AffiliateSubscriptionStatus::Grace)
             ->pluck('id');
 
         $charged = 0;

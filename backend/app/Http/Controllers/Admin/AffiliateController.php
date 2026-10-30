@@ -13,6 +13,7 @@ use App\Http\Requests\Admin\UpdateDomainPaymentsApprovalRequest;
 use App\Models\Affiliate;
 use App\Models\AffiliateDomain;
 use App\Models\AffiliateImpersonationSession;
+use App\Models\AffiliateMarkupChange;
 use App\Models\AffiliateMembershipTier;
 use App\Models\AffiliateUser;
 use App\Services\Affiliate\AffiliateInviteService;
@@ -106,6 +107,13 @@ class AffiliateController extends Controller
             $ownedOnly[$key] = $isOwned && (bool) ($data[$key] ?? false);
         }
 
+        // ADR-061 2026-10-30 addendum decisions 3 and 5: an owned brand has
+        // no brand markup and no wholesale tier — it prices as the platform.
+        if ($isOwned && ! empty($data['tier_id'])) {
+            throw $this->ownedBrandHasNoTier();
+        }
+        $data['markup_pct'] = $isOwned ? 0 : $data['markup_pct'];
+
         $affiliate = DB::transaction(function () use ($data, $request, $isOwned, $ownedOnly) {
             $affiliate = Affiliate::query()->create([
                 'business_name' => $data['business_name'],
@@ -164,23 +172,45 @@ class AffiliateController extends Controller
             $ownedOnly[$key] = $isOwned && (array_key_exists($key, $data) ? (bool) $data[$key] : (bool) $affiliate->{$key});
         }
 
+        // ADR-061 2026-10-30 addendum decisions 3 and 4: an owned brand's
+        // stored markup is forced to 0, and every admin markup change leaves
+        // an audit row (the append-only history stays true).
+        $oldMarkup = (float) $affiliate->markup_pct;
+        $newMarkup = $isOwned ? 0.0 : (float) $data['markup_pct'];
+
         $affiliate->update([
             'business_name' => $data['business_name'],
             'contact_name' => $data['contact_name'] ?? null,
             'email' => $data['email'] ?? null,
             'phone' => $data['phone'] ?? null,
-            'markup_pct' => $data['markup_pct'],
+            'markup_pct' => $newMarkup,
             'max_markup_pct' => $data['max_markup_pct'] ?? null,
             'is_owned' => $isOwned,
             ...$ownedOnly,
             'notes' => $data['notes'] ?? null,
         ]);
 
+        if (number_format($newMarkup, 2) !== number_format($oldMarkup, 2)) {
+            $admin = $request->user();
+            AffiliateMarkupChange::create([
+                'affiliate_id' => $affiliate->id,
+                'old_pct' => $oldMarkup,
+                'new_pct' => $newMarkup,
+                'source' => 'admin',
+                'changed_by_id' => $admin->id,
+                'changed_by_label' => trim($admin->name.' <'.$admin->email.'>'),
+                'created_at' => now(),
+            ]);
+        }
+
         // The public catalog caches the primary brand's markup into every
         // game's `price_from_sen` / package price (CatalogController::
         // sellingPriceSen) and gates member pricing on the effective
-        // Membership flag — both must be re-derived when either changes.
-        if ($affiliate->wasChanged(['markup_pct', 'membership_enabled'])) {
+        // Membership flag — all must be re-derived when any of them changes.
+        // `is_owned` and the ceiling change the price too (an owned brand has
+        // no tier or markup; the markup is held to its ceiling — ADR-061
+        // 2026-10-30 addendum decision 10).
+        if ($affiliate->wasChanged(['markup_pct', 'max_markup_pct', 'membership_enabled', 'is_owned'])) {
             CatalogController::forgetPackagesCacheForMembership();
             CatalogController::forgetIndexCache();
         }
@@ -193,9 +223,21 @@ class AffiliateController extends Controller
         return response()->json($this->detailShape($affiliate->fresh()));
     }
 
+    /** ADR-061 2026-10-30 addendum decision 5: a tier would not move any price of an owned brand. */
+    private function ownedBrandHasNoTier(): ValidationException
+    {
+        return ValidationException::withMessages([
+            'tier_id' => ['An owned brand prices as the platform and has no wholesale tier.'],
+        ]);
+    }
+
     /** RES-3 / ADR-056 decision 8: assign or change the wholesale tier. */
     public function assignTier(AssignAffiliateTierRequest $request, Affiliate $affiliate): JsonResponse
     {
+        if ($affiliate->is_owned) {
+            throw $this->ownedBrandHasNoTier();
+        }
+
         $tier = AffiliateMembershipTier::query()->findOrFail($request->validated('tier_id'));
 
         $this->subscriptions->assignTier(
@@ -215,7 +257,7 @@ class AffiliateController extends Controller
      */
     public function chargeTierFee(Affiliate $affiliate): JsonResponse
     {
-        $subscription = $affiliate->subscription;
+        $subscription = $affiliate->tierSubscription();
 
         if ($subscription === null) {
             throw ValidationException::withMessages([
@@ -235,7 +277,7 @@ class AffiliateController extends Controller
      */
     public function reactivateSubscription(Affiliate $affiliate): JsonResponse
     {
-        $subscription = $affiliate->subscription;
+        $subscription = $affiliate->tierSubscription();
 
         if ($subscription === null) {
             throw ValidationException::withMessages([
@@ -505,7 +547,8 @@ class AffiliateController extends Controller
      */
     private function rowShape(Affiliate $affiliate, int $earningsBalanceSen): array
     {
-        $subscription = $affiliate->subscription;
+        // An owned brand has no tier (ADR-061 2026-10-30 addendum decision 5), whatever row is left over.
+        $subscription = $affiliate->is_owned ? null : $affiliate->subscription;
 
         return [
             'id' => $affiliate->id,
