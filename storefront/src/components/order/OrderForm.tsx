@@ -154,27 +154,25 @@ export default function OrderForm({
   }, [membershipToken, game.slug, ssrMembershipToken]);
 
   const [selectedPackageId, setSelectedPackageId] = useState<number | null>(null);
+  const step1Ref = useRef<HTMLDivElement>(null);
   const step3Ref = useRef<HTMLDivElement>(null);
-  // Picking a package brings Step 3 (and the membership promo card right
-  // below it) into view without a manual scroll — mobile/tablet only
+  // Brings a step into view without a manual scroll — mobile/tablet only
   // (< lg, the same breakpoint the layout itself switches on): desktop's
-  // two-column layout already keeps Step 3 and the sidebar promo card in
-  // view side by side, so a scroll jump there would be an unrequested,
-  // more jarring surprise for a mouse-driven visitor. Scrolls by a
-  // manually computed offset, not bare `scrollIntoView`, because the
-  // sticky `SiteHeader` would otherwise sit on top of and hide Step 3's
-  // own title. Skipped for a visitor who has asked the OS to reduce
-  // motion.
-  useEffect(() => {
-    if (selectedPackageId === null) return;
+  // two-column layout already keeps the steps and the sidebar in view side
+  // by side, so a scroll jump there would be an unrequested, more jarring
+  // surprise for a mouse-driven visitor. Scrolls by a manually computed
+  // offset, not bare `scrollIntoView`, because the sticky `SiteHeader`
+  // would otherwise sit on top of and hide the step's own title. Skipped
+  // for a visitor who has asked the OS to reduce motion.
+  function scrollToStep(ref: React.RefObject<HTMLDivElement | null>) {
     if (window.matchMedia("(min-width: 1024px)").matches) return;
-    const target = step3Ref.current;
+    const target = ref.current;
     if (!target) return;
     const headerHeight = document.querySelector("header")?.getBoundingClientRect().height ?? 0;
     const top = target.getBoundingClientRect().top + window.scrollY - headerHeight - 12;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     window.scrollTo({ top, behavior: reduceMotion ? "auto" : "smooth" });
-  }, [selectedPackageId]);
+  }
   // ADR-123 decision 5: the Game ID Checker's "Top up now" prefills the
   // ID (and server or zone). Only prefilled: the customer still presses
   // Verify, so opening a link never costs a provider call.
@@ -184,6 +182,14 @@ export default function OrderForm({
   const [playerId, setPlayerIdRaw] = useState(() => (loginGame ? "" : (searchParams.get("player_id") ?? "").slice(0, 64)));
   const [serverId, setServerIdRaw] = useState(() => (game.extraField ? (searchParams.get("server_id") ?? "").slice(0, 64) : ""));
   const [step1Continued, setStep1Continued] = useState(false);
+  // Picking a package brings Step 3 (and the membership promo card right
+  // below it) into view. A package can be picked before the ID is verified
+  // (the list is open to browse); Step 3 stays locked until both are done,
+  // so the scroll to Step 3 waits for Step 1 (below).
+  useEffect(() => {
+    if (selectedPackageId === null || !step1Continued) return;
+    scrollToStep(step3Ref);
+  }, [selectedPackageId, step1Continued]);
   // ADR-125 decision 32 + ADR-124 decision 8: React state only, never storage.
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [credentialConsent, setCredentialConsentRaw] = useState(false);
@@ -399,15 +405,23 @@ export default function OrderForm({
   }
 
   const step2Complete = selectedPackage !== null;
+  // Step 3 needs both: a package can be picked before the ID is verified.
+  const step3Open = step1Continued && step2Complete;
   const step3Complete = channelCode !== null;
+  // A package tapped before the ID is verified is kept; on a phone the page
+  // scrolls up to Step 1 so the customer fills the ID in next.
+  function handleSelectPackage(id: number) {
+    setSelectedPackageId(id);
+    if (!step1Continued) scrollToStep(step1Ref);
+  }
   const readyForReview = step1Continued && step2Complete && step3Complete;
   // ADR-131: the steps can all be done and the store still cannot take the payment.
   const canPay = readyForReview && paymentsEnabled;
 
   const steps: StepInfo[] = [
     { label: loginGame ? "Enter Login" : "Enter ID", state: step1Continued ? "done" : "active" },
-    { label: "Choose Package", state: step2Complete ? "done" : step1Continued ? "active" : "pending" },
-    { label: "Payment Method", state: step3Complete ? "done" : step2Complete ? "active" : "pending" },
+    { label: "Choose Package", state: step1Continued && step2Complete ? "done" : step1Continued ? "active" : "pending" },
+    { label: "Payment Method", state: step3Complete ? "done" : step3Open ? "active" : "pending" },
   ];
 
   async function handleConfirmPayment() {
@@ -489,6 +503,7 @@ export default function OrderForm({
         {!paymentsEnabled && <PaymentsUnavailableNotice />}
         <Stepper steps={steps} />
 
+        <div ref={step1Ref}>
         <StepCard number={1} title="Enter Your Account Info" locked={false}>
           <Step1AccountInfo
             game={game}
@@ -507,19 +522,20 @@ export default function OrderForm({
             setCredentialConsent={setCredentialConsent}
           />
         </StepCard>
+        </div>
 
-        <StepCard number={2} title="Choose Package" locked={!step1Continued} lockHint="Complete Step 1 first">
+        <StepCard number={2} title="Choose Package" locked={!step1Continued} browsable lockHint="Browse the prices now. Tap a package to pick it, then enter your ID in Step 1.">
           <PackageGrid
             packages={packages}
             selectedId={selectedPackageId}
-            onSelect={setSelectedPackageId}
+            onSelect={handleSelectPackage}
             quotaRemainingRm={quotaRemainingRm}
           />
           {packages.length === 0 && <p className="text-sm text-on-surface-variant">No packages available for this game yet.</p>}
         </StepCard>
 
         <div ref={step3Ref}>
-        <StepCard number={3} title="Choose Payment Method" locked={!step2Complete} lockHint="Choose a package first">
+        <StepCard number={3} title="Choose Payment Method" locked={!step3Open} lockHint={step2Complete ? "Complete Step 1 first" : "Choose a package first"}>
           <PaymentChannelPicker
             channels={paymentChannels}
             selected={channelCode}

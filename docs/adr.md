@@ -86,7 +86,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-061](./adr/ADR-061-every-storefront-is-a-reseller.md) | Every storefront is a Reseller — abolish the platform-owner special-case | In force; decision 7's platform withdrawal retired by ADR-083 (2026-10-10); owned-brand rule also gates Joki (ADR-126) | 2026-08-31 |
 | [ADR-062](./adr/ADR-062-rebrand-the-primary-storefront-to-pekangame.md) | Rebrand the primary storefront to "PekanGame" | In force | 2026-09-01 |
 | [ADR-063](./adr/ADR-063-storefront-visual-system-replacement.md) | Storefront visual system replacement — light neo-brutalist "Digital Architect" world | In force |  |
-| [ADR-064](./adr/ADR-064-storefront-per-surface-redesign-component.md) | Storefront per-surface redesign + component rebuild | In force | 2026-09-19 |
+| [ADR-064](./adr/ADR-064-storefront-per-surface-redesign-component.md) | Storefront per-surface redesign + component rebuild | In force | 2026-10-30 |
 | [ADR-065](./adr/ADR-065-guest-order-status-detail.md) | Guest order-status detail — masked contact + payment breakdown on a track-by-number view | In force |  |
 | [ADR-066](./adr/ADR-066-production-deploy-via-laravel-forge.md) | Production deploy via Laravel Forge — reverses ADR-020's Docker Compose containerisation | In force | 2026-09-02 |
 | [ADR-067](./adr/ADR-067-digiflazz-adapter-completion.md) | Digiflazz adapter completion — buyer-area scoping, dual product status, per-supplier Product Manager grouping | In force | 2026-09-02 |
@@ -112,7 +112,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-087](./adr/ADR-087-admin-reports-llm-assistant.md) | Admin Reports LLM Assistant — Gemini-backed, curated read-only SQL views, additive to the Reports tabs | In force; orders view gains recognition date and channel, profit filed by recognition (ADR-127) | 2026-10-24 |
 | [ADR-088](./adr/ADR-088-reports.md) | Reports — unified date-range filter (reverses RPT-2's decoupled-trend rule) + export widening | In force (decision 4 retired by ADR-049 2026-10-15; decision 6's demo seeder deleted by ADR-127, 2026-10-24) | 2026-10-24 |
 | [ADR-089](./adr/ADR-089-brand-asset-pipeline.md) | Brand asset pipeline — aspect-preserving logo sizing, a primary-brand admin Logo/Favicon panel, per-brand dynamic favicon | In force |  |
-| [ADR-090](./adr/ADR-090-theme-preset-background-ink-tokens-a-per.md) | Theme preset background/ink tokens + a per-affiliate Site Mode (light/dark), the first slice of ADR-081's pinned dark-mode requirement | In force |  |
+| [ADR-090](./adr/ADR-090-theme-preset-background-ink-tokens-a-per.md) | Theme preset background/ink tokens + a per-affiliate Site Mode (light/dark), the first slice of ADR-081's pinned dark-mode requirement | In force | 2026-10-30 |
 | [ADR-091](./adr/ADR-091-public-reseller-price-list-page.md) | Public Reseller Price List page — a sales/acquisition surface on `is_owned` storefronts, admin-selected tiers | In force | 2026-09-13 |
 | [ADR-092](./adr/ADR-092-admin-orders-kpi-cards.md) | Admin Orders KPI cards — persistent, clickable status counts, closing the reseller-family audit's "no admin alert" gap without reopening ADR-073's manual-refund policy | In force |  |
 | [ADR-093](./adr/ADR-093-reseller-bot-fat-finger-safety-net.md) | Reseller Bot `.order` fat-finger safety net — auto player-ID/region validation before placing, player ID echoed in the confirmation reply, no mandatory 2-step confirm | In force | 2026-10-28 |
