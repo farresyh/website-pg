@@ -167,7 +167,7 @@ export default function WithdrawalsPage() {
           <ul className="flex flex-col gap-1 text-gray-600 dark:text-gray-300">
             {run.stale_tickets.map((t) => (
               <li key={`t${t.id}`}>
-                <Tag severity="danger">Stale</Tag> Ticket #{t.id} ({formatRm(t.amount)}, {t.payout_period}) is still Pending past the 7th. Approve it, or reject it to roll the
+                <Tag severity="danger">Stale</Tag> {t.name ?? `Affiliate #${t.affiliate_id}`}: ticket #{t.id} ({formatRm(t.amount)}, {t.payout_period}) is still Pending past the 7th. Approve it, or reject it to roll the
                 amount into next month.
               </li>
             ))}

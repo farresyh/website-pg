@@ -82,6 +82,7 @@ class WithdrawalPayoutRunTest extends TestCase
         $skipped = collect($res->json('skipped'))->pluck('skip', 'name')->all();
         $this->assertSame(['NoBank' => 'no_bank', 'Tiny' => 'below_min', 'Blocked' => 'open_ticket'], $skipped);
         $this->assertSame([$stale->id], collect($res->json('stale_tickets'))->pluck('id')->all());
+        $this->assertSame('Blocked', $res->json('stale_tickets.0.name'));
         $this->assertSame($noBank->id, $res->json('skipped.0.affiliate_id'));
     }
 

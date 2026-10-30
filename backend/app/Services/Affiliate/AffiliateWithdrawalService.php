@@ -177,8 +177,11 @@ final class AffiliateWithdrawalService
             ->where(fn ($q) => $q->where('payout_period', '<', $period)
                 ->when($now->gt($windowEnd), fn ($q) => $q->orWhere('payout_period', $period)))
             ->orderBy('id')
-            ->get(['id', 'owner_id', 'amount', 'payout_period'])
-            ->map(fn (Withdrawal $w) => ['id' => $w->id, 'affiliate_id' => $w->owner_id, 'amount' => $w->amount, 'payout_period' => $w->payout_period])
+            ->get(['id', 'owner_id', 'amount', 'payout_period']);
+
+        $names = Affiliate::withTrashed()->whereIn('id', $stale->pluck('owner_id'))->pluck('business_name', 'id');
+        $stale = $stale
+            ->map(fn (Withdrawal $w) => ['id' => $w->id, 'affiliate_id' => $w->owner_id, 'name' => $names[$w->owner_id] ?? null, 'amount' => $w->amount, 'payout_period' => $w->payout_period])
             ->all();
 
         return ['period' => $period, 'skipped' => $skipped, 'stale_tickets' => $stale];

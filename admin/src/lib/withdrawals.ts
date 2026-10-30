@@ -44,7 +44,7 @@ export type PayoutSkip = "no_bank" | "below_min" | "open_ticket";
 export interface PayoutRunResponse {
   period: string;
   skipped: { affiliate_id: number; name: string; balance: number; reserve: number; amount: number; skip: PayoutSkip }[];
-  stale_tickets: { id: number; affiliate_id: number; amount: number; payout_period: string }[];
+  stale_tickets: { id: number; affiliate_id: number; name: string | null; amount: number; payout_period: string }[];
 }
 
 export function getPayoutRun() {
