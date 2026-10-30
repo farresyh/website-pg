@@ -1,6 +1,6 @@
 # ADR-004 (D4): No cash refunds, ever
 
-> **Standing (2026-10-22):** In force, **being revised**: the founder decided on 2026-10-22 (CHIP merchant review) that a paid order that cannot be delivered may be refunded to the original payment method within 7 working days, at the customer's choice. Until its addendum is grilled and built (PRD §16 item 129), no such refund path exists in the system. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-22):** In force, **being revised**: the founder decided on 2026-10-22 (CHIP merchant review) that a paid order that cannot be delivered may be refunded to the original payment method within 7 working days, at the customer's choice. Until its addendum is grilled and implemented (PRD §16 item 129), no such refund path exists in the system. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — 2026-07-23
 

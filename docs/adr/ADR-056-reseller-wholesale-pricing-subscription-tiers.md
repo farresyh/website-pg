@@ -1,6 +1,6 @@
 # ADR-056: Reseller wholesale pricing & subscription tiers — `reseller_membership_tiers`, cost-anchored wholesale rate, tier fee from earnings
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-30):** In force; the tier and its fee do not apply to an owned brand ([ADR-061](./ADR-061-every-storefront-is-a-reseller.md) 2026-10-30 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** BUILT + LIVE (wholesale tiers + subscription state machine shipped; entity renamed `Reseller`→`Affiliate` in ADR-072). Original: Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, six rounds, before any code touched — the design tree covered premise, scope boundary, transaction channel, money model, auth, domain routing, and phasing)
 

@@ -170,10 +170,9 @@ banner). This file covers the whole repo.
   kept. The tokens' one source is `admin/src/app/tokens.css`; the partner
   portal imports a generated copy, so after editing run
   `node scripts/sync-shared-files.mjs` (CI's `theme-preset-drift` job fails
-  on a stale copy, ADR-128). Open gap: the portal's screens still use a
-  portal-only Tailwind kit (`reseller/src/components/ui.tsx`). The decided
-  fix is the admin kit, moved onto the tokens and generated into the portal
-  (ADR-128 2026-10-26 addendum, PRD §16 item 133). Tailwind v4 silently
+  on a stale copy, ADR-128). The portal's `components/ui` is generated from
+  the admin's kit by the same script (ADR-128 2026-10-26 addendum, PRD §16
+  item 133, closed): edit the admin source, never the copy. Tailwind v4 silently
   drops a colour class whose `--color-*` token doesn't exist; each app's
   `color-tokens.test.ts` catches it (PRD §16 item 100). The portal's test
   also blocks TailAdmin colour classes.

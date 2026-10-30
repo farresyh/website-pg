@@ -2880,7 +2880,7 @@ The next CI run failed `backend-concurrency` on `CheckoutSettleWithVoucherConcur
 
 **Verified in a browser** (throwaway backend, the admin and portal dev servers, an owned and a third-party brand each). Admin: the list shows the owned brand as "walk-in rate"; its detail shows "Markup %: None (owned brand)" and a Pricing note with no tier controls; its edit form has no markup, ceiling or tier fields. Portal: the owned brand's dashboard has no wholesale-tier card, its Subscription screen reads "You are not on a wholesale tier — your storefront prices at the standard guest rate", and its Pricing tab shows the no-markup notice; the third-party brand shows the tier card, its plan and the markup form as before. **The e2e suite** passed 9 of 9 locally after the founder said to stop the stale servers from the first session (which held :3001 and :8000, a throwaway sqlite that no longer existed); CI's `playwright` job was green too.
 
-**Production facts recorded.** The "Owned Brand" tier is 15% (edited from 10% on 2026-10-30, two minutes after OhahaStore's subscription); member Tier 2 is 70% off the markup. ADR-125 and ADR-126 carry dated pointers to the right numbers. OhahaStore has 0 orders; no data migration was needed.
+**Production facts recorded.** The "Owned Brand" tier is 15% (it appears to have been edited from 10% on 2026-10-30, two minutes after OhahaStore's subscription); member Tier 2 is 70% off the markup. ADR-125 and ADR-126 carry dated pointers to the right numbers. OhahaStore has 0 orders; no data migration was needed.
 
 **Owed.** Not live until a `staging` → `main` release. After it: the RM0 OhahaStore tier subscription can stay (it prices nothing); rename or remove the "Owned Brand" tier after FixFast Demo is deactivated (item 141).
 

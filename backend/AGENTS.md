@@ -9,6 +9,7 @@ Laravel-specific, loaded only when working inside `backend/`.
   `cost_price`, `standard_selling_price`, `final_amount`, everything. Pricing is
   computed via `App\Services\Pricing\PricingService` /
   `CheckoutTotalService`, never hand-rolled inline.
+- **A storefront's pricing terms come from one place** — `Affiliate::storefrontPriceTerms()` returns the wholesale tier and the brand markup (an owned brand has neither, ADR-061 2026-10-30 addendum). Never read `markup_pct`, `max_markup_pct` or `wholesaleTierMarkupPct()` directly to price something.
 - **Balances are ledger-only, never a mutable column** (ADR-002) —
   `App\Services\Ledger\LedgerService` is the sole writer to `ledger_entries`.
   Anything that moves money (withdrawal approval, an admin-issued voucher,
