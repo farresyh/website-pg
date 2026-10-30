@@ -10,9 +10,13 @@ namespace App\Support;
  * two numbers must be compared or a WhatsApp chat id is built.
  *
  * A leading `00` is an international dialling prefix and is dropped. A
- * single leading `0` is a Malaysian trunk prefix and becomes `60`. Anything else
- * is taken to already carry its country code. Returns null for a value
- * that can't be a real number (E.164 allows 8–15 digits here).
+ * single leading `0` is a Malaysian trunk prefix and becomes `60`. A 9 or 10
+ * digit number starting with `1` is a Malaysian mobile typed without that
+ * trunk `0` (`11-2345 6789`): country code 1 numbers always have 11 digits,
+ * so it cannot be one, and it becomes `60…` too (ADR-116's 2026-10-30
+ * addendum). Anything else is taken to already carry its country code.
+ * Returns null for a value that can't be a real number (E.164 allows 8–15
+ * digits here).
  */
 final class PhoneNumber
 {
@@ -24,6 +28,8 @@ final class PhoneNumber
             $digits = substr($digits, 2); // international dialling prefix, e.g. 0060…
         } elseif (str_starts_with($digits, '0')) {
             $digits = '60'.substr($digits, 1);
+        } elseif (str_starts_with($digits, '1') && in_array(strlen($digits), [9, 10], true)) {
+            $digits = '60'.$digits;
         }
 
         $length = strlen($digits);

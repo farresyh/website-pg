@@ -185,6 +185,27 @@ class CustomerWhatsAppOptInTest extends TestCase
         $this->assertStringContainsString("We haven't received payment", $message);
     }
 
+    /**
+     * Production, 2026-10-30 (PG-L4RCBELJ9RE3): the customer typed their mobile without the leading 0, so the order
+     * held 1123456267 while WhatsApp wrote from 601123456267. The opt-in was recorded under the second, the receipt
+     * looked for the first, found no opt-in and stayed silent after a Resend.
+     */
+    public function test_a_number_typed_without_the_leading_zero_still_gets_its_receipt_after_a_resend(): void
+    {
+        $order = $this->order([
+            'customer_phone' => '1123456267', 'delivery_status' => DeliveryStatus::Failed->value, 'supplier_id' => null,
+        ]);
+        $this->inbound("Salam support, order {$order->order_number} gagal", from: '601123456267');
+        $this->assertSame('601123456267', WhatsappContact::query()->sole()->phone);
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+        $order->update(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+
+        $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'X1', 'supplier_price' => 4.75, 'note' => 'resent'])->assertOk();
+
+        $receipt = CustomerNotification::query()->where('order_id', $order->id)->where('event', 'delivered_receipt')->sole();
+        $this->assertSame('601123456267', $receipt->phone);
+    }
+
     public function test_a_later_order_from_an_opted_in_number_gets_its_receipt_on_delivery(): void
     {
         $first = $this->order();
