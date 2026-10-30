@@ -2837,3 +2837,11 @@ Two founder findings from the live `ohahastore.com` on a phone. **Header:** the 
 
 **Not in this change:** the `www.ohahastore.com` certificate error (the affiliate adds `www.` as a second domain in the portal for now; the automatic `www` pairing is a separate item that needs its own ADR addendum to ADR-060).
 
+## 2026-10-30 — Fix: approving a domain's payments failed with "The approved field is required"
+
+Found by the founder approving `ohahastore.com` in the admin. `approveAffiliateDomainPayments()` (ADR-131 PR C, released in #599) passed `body: JSON.stringify({ approved })` to `apiFetch`, which already JSON-encodes its body, so the server received a JSON string, not an object, and Laravel saw no `approved` field. The backend and its tests were right (they send a plain object); no frontend test sent the real request, so it shipped. It was the only `apiFetch` caller doing this (the other `JSON.stringify` bodies in the apps call `fetch` directly).
+
+**Fix:** `body: { approved }`, plus `admin/src/lib/api-body.test.ts`, which fails if any admin file that uses `apiFetch` passes a `JSON.stringify`'d body (red on the old line, green on the fix). **Verified** in a browser on a throwaway backend: the PUT now carries `{"approved":true}` as `application/json`; the throwaway admin has no MFA so the step-up answered 403 there, which the real admin does not hit. Admin tests 20/20, `lint` and `tsc` clean.
+
+**Owed:** the fix is on `staging`, not live: the admin Vercel app deploys from `main`, so the approval works in production only after a `staging` → `main` release. The founder will approve `ohahastore.com` after that, once CHIP has approved it in writing (ADR-131 condition 5).
+
