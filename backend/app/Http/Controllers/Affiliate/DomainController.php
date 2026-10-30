@@ -10,6 +10,7 @@ use App\Services\Affiliate\Domain\AffiliateDomainService;
 use App\Services\Affiliate\Domain\DomainProviderException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -38,15 +39,17 @@ class DomainController extends Controller
     {
         $affiliate = $request->user()->affiliateOwner();
 
-        $rows = $affiliate->customDomains()
+        $domains = $affiliate->customDomains()
             ->orderByDesc('is_primary')
             ->orderBy('hostname')
-            ->get()
-            ->map(fn (AffiliateDomain $d) => $this->shape($d));
+            ->get();
+        $targets = $domains->pluck('hostname', 'id');
 
         return response()->json([
-            'domains' => $rows,
+            'domains' => $domains->map(fn (AffiliateDomain $d) => $this->shape($d, $targets[$d->redirects_to_domain_id] ?? null))->values(),
             'max_domains' => AffiliateDomainService::MAX_DOMAINS,
+            // The cap counts domains the affiliate chose, not the www redirects we add for them.
+            'domains_used' => $domains->whereNull('redirects_to_domain_id')->count(),
             'writable' => $affiliate->status === 'active',
             'dns' => [
                 // The recommended path — a CNAME on `www.` / `shop.`
@@ -73,7 +76,36 @@ class DomainController extends Controller
             ], 422);
         }
 
-        return response()->json($this->shape($domain), 201);
+        // ADR-060 second 2026-10-30 addendum decision 5: the main domain stands even if its www twin fails.
+        $www = null;
+        $wwwError = null;
+        if ($request->boolean('with_www')) {
+            try {
+                $www = $this->shape($this->domains->pairWww($domain), $domain->hostname);
+            } catch (DomainProviderException $e) {
+                $wwwError = $e->getMessage();
+            } catch (ValidationException $e) {
+                $wwwError = collect($e->errors())->flatten()->first();
+            }
+        }
+
+        return response()->json([...$this->shape($domain), 'www' => $www, 'www_error' => $wwwError], 201);
+    }
+
+    /** Add (or re-add, or convert an existing) `www` redirect for one of the affiliate's domains. */
+    public function addWww(Request $request, AffiliateDomain $domain): JsonResponse
+    {
+        $affiliate = $request->user()->affiliateOwner();
+        abort_unless($domain->affiliate_id === $affiliate->id, 404);
+        $this->assertWritable($affiliate);
+
+        try {
+            $twin = $this->domains->pairWww($domain);
+        } catch (DomainProviderException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($this->shape($twin, $domain->hostname));
     }
 
     public function recheck(Request $request, AffiliateDomain $domain): JsonResponse
@@ -121,13 +153,15 @@ class DomainController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function shape(AffiliateDomain $domain): array
+    private function shape(AffiliateDomain $domain, ?string $redirectsTo = null): array
     {
         return [
             'id' => $domain->id,
             'hostname' => $domain->hostname,
             'status' => $domain->status->value,
             'is_primary' => $domain->is_primary,
+            // ADR-060 second 2026-10-30 addendum: the domain this `www` address redirects to, else null.
+            'redirects_to' => $domain->isRedirectTwin() ? ($redirectsTo ?? $domain->redirectTarget?->hostname) : null,
             // ADR-131: the domain serves the store at once, but takes payments once PekanGame approves it.
             'payments_approved' => $domain->payments_approved_at !== null,
             // The extra ownership-TXT records, only present in the rare

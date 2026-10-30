@@ -39,6 +39,7 @@ class ActiveCustomDomainOrigins
     {
         return Cache::remember(self::CACHE_KEY, self::TTL_SECONDS, function (): array {
             return AffiliateDomain::withoutAffiliateScope()
+                ->servable()
                 ->where('status', AffiliateDomainStatus::Active)
                 ->orderBy('hostname')
                 ->pluck('hostname')

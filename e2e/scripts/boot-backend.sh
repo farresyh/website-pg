@@ -31,6 +31,16 @@ export APP_ENV=e2e
 # not at key-generation time itself. Never reproduced locally: no
 # GITHUB_ACTIONS env var, so Symfony never force-decorates a non-TTY pipe.
 export APP_KEY="${APP_KEY:-$(php artisan key:generate --show --no-ansi)}"
+# Never use live credentials. backend/.env holds the real keys for local work and artisan still reads
+# it, so a membership receipt here once went out through production Plunk to an example.com address.
+# An empty value already set in the environment wins over .env. CI has none of these keys.
+export PLUNK_API_KEY=""
+export CHIP_SECRET_KEY=""
+export CHIP_BRAND_ID=""
+export GAMEVION_API_KEY=""
+export GAMEVION_BEARER_TOKEN=""
+export GEMINI_API_KEY=""
+export SUPPLIER_PROXY_URL=""
 export DB_CONNECTION=sqlite
 export DB_DATABASE="$ROOT_DIR/backend/database/e2e.sqlite"
 export QUEUE_CONNECTION=database

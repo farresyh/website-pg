@@ -13,7 +13,7 @@ use App\Services\Affiliate\Domain\DomainProviderState;
  */
 class FakeAffiliateDomainProvider implements AffiliateDomainProvider
 {
-    /** @var array<int, array{op: string, hostname: string}> */
+    /** @var array<int, array{op: string, hostname: string, redirectTo?: ?string}> */
     public array $calls = [];
 
     /** hostname => the state attach() / refresh() should return next. */
@@ -24,9 +24,9 @@ class FakeAffiliateDomainProvider implements AffiliateDomainProvider
 
     public bool $failNextAttach = false;
 
-    public function attach(string $hostname): DomainProviderState
+    public function attach(string $hostname, ?string $redirectTo = null): DomainProviderState
     {
-        $this->calls[] = ['op' => 'attach', 'hostname' => $hostname];
+        $this->calls[] = ['op' => 'attach', 'hostname' => $hostname, 'redirectTo' => $redirectTo];
 
         if ($this->failNextAttach) {
             $this->failNextAttach = false;
@@ -41,6 +41,14 @@ class FakeAffiliateDomainProvider implements AffiliateDomainProvider
     public function refresh(string $hostname): DomainProviderState
     {
         $this->calls[] = ['op' => 'refresh', 'hostname' => $hostname];
+        $this->maybeThrow($hostname);
+
+        return $this->states[$hostname] ?? new DomainProviderState(providerRef: $hostname, verified: false);
+    }
+
+    public function redirect(string $hostname, string $target): DomainProviderState
+    {
+        $this->calls[] = ['op' => 'redirect', 'hostname' => $hostname, 'redirectTo' => $target];
         $this->maybeThrow($hostname);
 
         return $this->states[$hostname] ?? new DomainProviderState(providerRef: $hostname, verified: false);
@@ -74,6 +82,12 @@ class FakeAffiliateDomainProvider implements AffiliateDomainProvider
         $this->failures[$hostname] = $e ?? DomainProviderException::generic();
 
         return $this;
+    }
+
+    /** The hostnames of one op, in call order. @return list<string> */
+    public function hostnamesFor(string $op): array
+    {
+        return array_values(array_map(fn ($c) => $c['hostname'], array_filter($this->calls, fn ($c) => $c['op'] === $op)));
     }
 
     public function opCount(string $op): int

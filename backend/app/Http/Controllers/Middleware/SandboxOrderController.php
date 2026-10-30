@@ -100,10 +100,11 @@ class SandboxOrderController extends Controller
         }
 
         $affiliate = Affiliate::primary();
+        $markup = $affiliate->storefrontPriceTerms()['markup'];
         $pricing = app(PricingService::class)->calculate(
             $package->cost_price,
             $package->standard_selling_price,
-            (float) $affiliate->markup_pct,
+            $markup,
         );
 
         $order = Order::query()->create([
@@ -121,7 +122,7 @@ class SandboxOrderController extends Controller
             'affiliate_id' => $affiliate->id,
             'cost_price' => $pricing->costPrice,
             'standard_selling_price' => $pricing->standardSellingPrice,
-            'affiliate_markup_pct' => $affiliate->markup_pct,
+            'affiliate_markup_pct' => $markup,
             'selling_price' => $pricing->sellingPrice,
             'transaction_fee' => 0,
             'final_amount' => $pricing->sellingPrice,

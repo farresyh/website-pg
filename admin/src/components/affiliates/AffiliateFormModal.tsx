@@ -78,7 +78,9 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
     e.preventDefault();
     setError(null);
 
-    const markup = parseFloat(markupPct);
+    // ADR-061 2026-10-30: an owned brand prices as the platform, so it has no markup.
+    const markup = isOwned ? 0 : parseFloat(markupPct);
+    // The ceiling is kept as stored for an owned brand (hidden, not cleared), so selling the brand later restores it.
     const maxMarkup = maxMarkupPct.trim() === "" ? null : parseFloat(maxMarkupPct);
 
     if (!Number.isFinite(markup) || markup < 0) {
@@ -110,7 +112,7 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
         // the payload honest.
         membership_enabled: isOwned && membershipEnabled,
         joki_enabled: isOwned && jokiEnabled,
-        tier_id: tierId === "" ? null : Number(tierId),
+        tier_id: isOwned || tierId === "" ? null : Number(tierId),
         user_name: userName,
         user_email: userEmail,
       });
@@ -154,14 +156,22 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
             <Label htmlFor="phone">Phone</Label>
             <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
-          <div>
-            <Label htmlFor="markup_pct">Affiliate markup %</Label>
-            <Input id="markup_pct" value={markupPct} onChange={(e) => setMarkupPct(e.target.value)} hint="Their own margin on top of the tier price." />
-          </div>
-          <div>
-            <Label htmlFor="max_markup_pct">Max markup % (ceiling)</Label>
-            <Input id="max_markup_pct" value={maxMarkupPct} onChange={(e) => setMaxMarkupPct(e.target.value)} hint="Leave blank for no ceiling." />
-          </div>
+          {isOwned ? (
+            <p className="text-theme-xs text-gray-500 dark:text-gray-400 sm:col-span-2">
+              An owned brand prices as the platform: no tier and no markup of its own, so every margin is platform profit.
+            </p>
+          ) : (
+            <>
+              <div>
+                <Label htmlFor="markup_pct">Affiliate markup %</Label>
+                <Input id="markup_pct" value={markupPct} onChange={(e) => setMarkupPct(e.target.value)} hint="Their own margin on top of the tier price." />
+              </div>
+              <div>
+                <Label htmlFor="max_markup_pct">Max markup % (ceiling)</Label>
+                <Input id="max_markup_pct" value={maxMarkupPct} onChange={(e) => setMaxMarkupPct(e.target.value)} hint="Leave blank for no ceiling." />
+              </div>
+            </>
+          )}
         </div>
 
         <div>
@@ -235,10 +245,12 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
               Initial affiliate tier + first portal login (they receive a set-password invite by email).
             </p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
-                <Label htmlFor="tier_id">Affiliate tier</Label>
-                <SimpleSelect options={tierOptions} value={tierId} onChange={setTierId} />
-              </div>
+              {!isOwned && (
+                <div className="sm:col-span-2">
+                  <Label htmlFor="tier_id">Affiliate tier</Label>
+                  <SimpleSelect options={tierOptions} value={tierId} onChange={setTierId} />
+                </div>
+              )}
               <div>
                 <Label htmlFor="user_name">Portal user name</Label>
                 <Input id="user_name" value={userName} onChange={(e) => setUserName(e.target.value)} required />

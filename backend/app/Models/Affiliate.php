@@ -164,6 +164,7 @@ class Affiliate extends Model
         }
 
         $host = AffiliateDomain::withoutAffiliateScope()
+            ->servable()
             ->where('affiliate_id', $this->id)
             ->where('status', AffiliateDomainStatus::Active->value)
             ->orderByDesc('is_primary')
@@ -200,6 +201,46 @@ class Affiliate extends Model
         }
 
         return (float) $subscription->tier->markup_percent;
+    }
+
+    /**
+     * The tier subscription this brand pays for — null for an owned brand,
+     * which has no tier (ADR-061 2026-10-30 addendum decision 5), even if a
+     * leftover row exists. What the portal shows as "your plan".
+     */
+    public function tierSubscription(): ?AffiliateSubscription
+    {
+        return $this->is_owned ? null : $this->subscription()->with('tier')->first();
+    }
+
+    /**
+     * ADR-061 2026-10-30 addendum, decision 2: the one place a storefront's
+     * pricing terms are decided — `tier` is the wholesale-tier markup (null
+     * = the standard chain) and `markup` is the brand's own margin, already
+     * held to its ceiling (a null `max_markup_pct` is no ceiling).
+     *
+     * An owned brand is the platform under another name: no tier and no
+     * markup whatever the row stores, so it prices exactly as the primary
+     * brand and every margin is `platform_profit`. Checkout, checkout
+     * preview, the catalog, voucher preview and the portal's preview read
+     * this; nothing prices from `markup_pct` directly. Needs
+     * `subscription.tier` loaded for a non-owned brand (as
+     * `wholesaleTierMarkupPct()` does).
+     *
+     * @return array{tier: ?float, markup: float}
+     */
+    public function storefrontPriceTerms(): array
+    {
+        if ($this->is_owned) {
+            return ['tier' => null, 'markup' => 0.0];
+        }
+
+        $markup = (float) $this->markup_pct;
+
+        return [
+            'tier' => $this->wholesaleTierMarkupPct(),
+            'markup' => $this->max_markup_pct === null ? $markup : min($markup, (float) $this->max_markup_pct),
+        ];
     }
 
     /**

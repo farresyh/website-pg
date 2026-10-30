@@ -68,7 +68,7 @@ class MembershipPlanController extends Controller
         $normalPriceSen = $this->pricing->calculate(
             $package->cost_price,
             $package->standard_selling_price,
-            (float) $affiliate->markup_pct,
+            $affiliate->storefrontPriceTerms()['markup'],
         )->sellingPrice;
         $effectiveMarkupPercent = $this->membershipPricing->effectiveMarkupPercent($packageMarkupPercent, $discountPercent);
         $memberPriceSen = $this->membershipPricing->calculateMemberPrice(

@@ -105,9 +105,10 @@ final class AffiliateEarningsService
         $todayStartUtc = $nowKl->startOfDay()->setTimezone('UTC');
         $monthStartUtc = $nowKl->startOfMonth()->setTimezone('UTC');
 
-        $subscription = $affiliate->subscription()->with('tier')->first();
+        $subscription = $affiliate->tierSubscription();
 
         return [
+            'is_owned' => (bool) $affiliate->is_owned,
             'earnings_balance' => $this->balance($affiliate),
             'today' => $this->salesAggregate($affiliate, $todayStartUtc),
             'this_month' => $this->salesAggregate($affiliate, $monthStartUtc),

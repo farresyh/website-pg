@@ -262,7 +262,13 @@ class CatalogControllerTest extends TestCase
         $this->assertTrue($packages['Weekly Pass']['has_catalog_code']);
     }
 
-    public function test_packages_applies_affiliate_markup_to_the_selling_price(): void
+    /**
+     * ADR-061 2026-10-30 addendum: the primary brand is owned, so a stored
+     * markup (one that bypassed the forms) never reaches the price. A
+     * third-party brand's markup is proven in
+     * `test_packages_are_priced_per_storefront_brand`.
+     */
+    public function test_packages_ignore_a_stored_markup_on_an_owned_brand(): void
     {
         $this->primaryAffiliate()->update(['markup_pct' => 10]);
         $supplier = $this->makeSupplier();
@@ -275,8 +281,8 @@ class CatalogControllerTest extends TestCase
         $response = $this->getJson('/api/catalog/games/free-fire-global/packages');
 
         $response->assertOk();
-        // 300 + 10% = 330.
-        $this->assertSame(330, $response->json()[0]['selling_price_sen']);
+        // The standard price, not 300 + 10%.
+        $this->assertSame(300, $response->json()[0]['selling_price_sen']);
     }
 
     /**

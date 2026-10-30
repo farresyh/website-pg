@@ -9,6 +9,7 @@ Laravel-specific, loaded only when working inside `backend/`.
   `cost_price`, `standard_selling_price`, `final_amount`, everything. Pricing is
   computed via `App\Services\Pricing\PricingService` /
   `CheckoutTotalService`, never hand-rolled inline.
+- **A storefront's pricing terms come from one place** — `Affiliate::storefrontPriceTerms()` returns the wholesale tier and the brand markup (an owned brand has neither, ADR-061 2026-10-30 addendum). Never read `markup_pct`, `max_markup_pct` or `wholesaleTierMarkupPct()` directly to price something.
 - **Balances are ledger-only, never a mutable column** (ADR-002) —
   `App\Services\Ledger\LedgerService` is the sole writer to `ledger_entries`.
   Anything that moves money (withdrawal approval, an admin-issued voucher,
@@ -111,6 +112,12 @@ Laravel-specific, loaded only when working inside `backend/`.
   and never build a model from `$request->all()`.
 
 ## Build & Test
+
+**Tests never use live credentials.** `backend/.env` holds the real Plunk, CHIP, Gamevion, Gemini
+and proxy settings for local work. `phpunit.xml` and `phpunit.concurrency.xml` force them blank
+(the state CI is in), and `Tests\TestCase` calls `Http::preventStrayRequests()`, so a test that
+forgets to fake an outbound call fails instead of reaching the network. Before that, local runs
+sent real emails through production Plunk (2026-10-30). The e2e boot script blanks them too.
 
 ```bash
 composer run dev                                          # serve + horizon + reverb + pulse + pail + vite together (needs local Redis — ADR-048)

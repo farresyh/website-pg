@@ -13,6 +13,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Supplier\SupplierOutcome;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -118,6 +119,7 @@ class DigiflazzWebhookControllerTest extends TestCase
 
     public function test_a_signed_sukses_callback_finalizes_the_pending_order_as_delivered(): void
     {
+        Http::fake(['open.er-api.com/*' => Http::response(['result' => 'success', 'rates' => ['MYR' => 0.000228]], 200)]);
         $order = $this->pendingOrder();
 
         $this->sendWebhook($this->suksesData($order))

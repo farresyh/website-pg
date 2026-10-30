@@ -44,6 +44,10 @@ class PricingController extends Controller
         $affiliate = $request->user()->affiliateOwner();
         $this->assertWritable($affiliate);
 
+        if ($refused = $this->refuseOwned($affiliate)) {
+            return $refused;
+        }
+
         $new = round((float) $request->validated('markup_pct'), 2);
         $max = (float) $affiliate->max_markup_pct;
 
@@ -81,8 +85,13 @@ class PricingController extends Controller
     public function preview(PreviewMarkupRequest $request): JsonResponse
     {
         $affiliate = $request->user()->affiliateOwner();
+
+        if ($refused = $this->refuseOwned($affiliate)) {
+            return $refused;
+        }
+
         $markup = round((float) $request->validated('markup_pct'), 2);
-        $tierPct = $affiliate->wholesaleTierMarkupPct();
+        $tierPct = $affiliate->storefrontPriceTerms()['tier'];
 
         $rows = $this->sampleBands($this->visiblePackages($affiliate->id))
             ->map(function (Package $package) use ($tierPct, $markup) {
@@ -109,22 +118,37 @@ class PricingController extends Controller
         ]);
     }
 
+    /** ADR-061 2026-10-30 addendum decision 3: an owned brand has no markup of its own. */
+    private function refuseOwned(object $affiliate): ?JsonResponse
+    {
+        if (! $affiliate->is_owned) {
+            return null;
+        }
+
+        return response()->json([
+            'message' => 'An owned brand prices as the platform and has no markup of its own.',
+            'errors' => ['markup_pct' => ['An owned brand has no markup of its own.']],
+        ], 422);
+    }
+
     /**
      * @return array<string, mixed>
      */
     private function state(object $affiliate): array
     {
         $stored = (float) $affiliate->markup_pct;
-        $max = (float) $affiliate->max_markup_pct;
+        $terms = $affiliate->storefrontPriceTerms();
 
         return [
             'markup_pct' => $stored,
-            // What the storefront actually prices at — clamped, so a
-            // stale higher value never reaches a customer if the admin
-            // lowered the ceiling (planning addendum decision 12).
-            'effective_markup_pct' => min($stored, $max),
-            'max_markup_pct' => $max,
-            'wholesale_rate_active' => $affiliate->wholesaleTierMarkupPct() !== null,
+            // What the storefront actually prices at (`storefrontPriceTerms()`):
+            // clamped to the ceiling, and 0 for an owned brand (ADR-061
+            // 2026-10-30 addendum). Planning addendum decision 12.
+            'effective_markup_pct' => $terms['markup'],
+            // Null = the platform has set no ceiling (so the brand cannot raise its own markup).
+            'max_markup_pct' => $affiliate->max_markup_pct === null ? null : (float) $affiliate->max_markup_pct,
+            'is_owned' => (bool) $affiliate->is_owned,
+            'wholesale_rate_active' => $terms['tier'] !== null,
         ];
     }
 

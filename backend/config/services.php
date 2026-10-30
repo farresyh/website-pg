@@ -183,10 +183,9 @@ return [
      * delivery for membership verification (Meta/WhatsApp evaluated and
      * rejected on cost per Decision 27). Base URL confirmed live against
      * Plunk's own API reference (docs.useplunk.com/api-reference/overview,
-     * 2026-08-29) — a secret key (sk_*), Bearer auth. Genuinely new
-     * external dependency: no key exists yet, same "config placeholder
-     * until provisioned" pattern as Xendit/Gamevion when they were first
-     * wired.
+     * 2026-08-29) — a secret key (sk_*), Bearer auth. A live
+     * external dependency (the key and the verified sender domains are
+     * provisioned in production).
      */
     'plunk' => [
         'base_url' => env('PLUNK_BASE_URL', 'https://next-api.useplunk.com'),

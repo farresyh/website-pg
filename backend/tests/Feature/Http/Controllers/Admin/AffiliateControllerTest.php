@@ -472,4 +472,176 @@ class AffiliateControllerTest extends TestCase
         $this->deleteJson("/api/affiliates/{$affiliate->id}/domains/{$domain->id}")->assertOk();
         $this->assertDatabaseMissing('affiliate_domains', ['id' => $domain->id]);
     }
+
+    // ---- ADR-061 2026-10-30 addendum: an owned brand has no markup and no tier ----
+
+    public function test_store_forces_zero_markup_for_an_owned_brand(): void
+    {
+        Http::fake();
+        $this->actAsSuperAdmin();
+
+        $this->postJson('/api/affiliates', [
+            'business_name' => 'Our Third Brand',
+            'markup_pct' => 12,
+            'is_owned' => true,
+            'user_name' => 'Owner',
+            'user_email' => 'third@example.com',
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('affiliates', ['business_name' => 'Our Third Brand', 'is_owned' => true, 'markup_pct' => 0]);
+    }
+
+    public function test_store_refuses_a_tier_for_an_owned_brand(): void
+    {
+        Http::fake();
+        $this->actAsSuperAdmin();
+
+        $this->postJson('/api/affiliates', [
+            'business_name' => 'Our Third Brand',
+            'markup_pct' => 0,
+            'is_owned' => true,
+            'tier_id' => $this->tier()->id,
+            'user_name' => 'Owner',
+            'user_email' => 'third@example.com',
+        ])->assertUnprocessable()->assertJsonValidationErrors('tier_id');
+
+        $this->assertDatabaseMissing('affiliates', ['business_name' => 'Our Third Brand']);
+    }
+
+    public function test_marking_a_brand_owned_zeroes_its_markup_and_leaves_an_audit_row(): void
+    {
+        $admin = $this->actAsSuperAdmin();
+        $affiliate = $this->affiliate(['markup_pct' => 12, 'max_markup_pct' => 30]);
+
+        $this->putJson("/api/affiliates/{$affiliate->id}", [
+            'business_name' => $affiliate->business_name,
+            'markup_pct' => 12,
+            'max_markup_pct' => 30,
+            'is_owned' => true,
+        ])->assertOk();
+
+        $this->assertDatabaseHas('affiliates', ['id' => $affiliate->id, 'is_owned' => true, 'markup_pct' => 0]);
+        $this->assertDatabaseHas('affiliate_markup_changes', [
+            'affiliate_id' => $affiliate->id, 'old_pct' => 12, 'new_pct' => 0,
+            'source' => 'admin', 'changed_by_id' => $admin->id,
+        ]);
+    }
+
+    public function test_an_admin_markup_change_on_a_third_party_brand_is_audited(): void
+    {
+        $admin = $this->actAsSuperAdmin();
+        $affiliate = $this->affiliate(['markup_pct' => 10, 'max_markup_pct' => 30]);
+
+        $this->putJson("/api/affiliates/{$affiliate->id}", [
+            'business_name' => $affiliate->business_name,
+            'markup_pct' => 15,
+            'max_markup_pct' => 30,
+        ])->assertOk();
+
+        $this->assertDatabaseHas('affiliate_markup_changes', [
+            'affiliate_id' => $affiliate->id, 'old_pct' => 10, 'new_pct' => 15,
+            'source' => 'admin', 'changed_by_id' => $admin->id,
+        ]);
+    }
+
+    public function test_an_unchanged_markup_writes_no_audit_row(): void
+    {
+        $this->actAsSuperAdmin();
+        $affiliate = $this->affiliate(['markup_pct' => 10, 'max_markup_pct' => 30]);
+
+        $this->putJson("/api/affiliates/{$affiliate->id}", [
+            'business_name' => 'Renamed',
+            'markup_pct' => 10,
+            'max_markup_pct' => 30,
+        ])->assertOk();
+
+        $this->assertDatabaseCount('affiliate_markup_changes', 0);
+    }
+
+    public function test_an_owned_brand_cannot_be_given_a_tier(): void
+    {
+        $this->actAsSuperAdmin();
+        $brand = $this->affiliate(['is_owned' => true, 'markup_pct' => 0]);
+
+        $this->postJson("/api/affiliates/{$brand->id}/tier", ['tier_id' => $this->tier()->id])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('tier_id');
+
+        $this->assertDatabaseCount('affiliate_subscriptions', 0);
+    }
+
+    public function test_flipping_is_owned_flushes_the_catalog_cache(): void
+    {
+        $this->actAsSuperAdmin();
+        $affiliate = $this->affiliate(['markup_pct' => 0, 'max_markup_pct' => 30]);
+
+        Cache::store(config('cache.catalog_packages_store'))->tags(['catalog.packages'])->put('sentinel', 'x', 300);
+
+        $this->putJson("/api/affiliates/{$affiliate->id}", [
+            'business_name' => $affiliate->business_name,
+            'markup_pct' => 0,
+            'max_markup_pct' => 30,
+            'is_owned' => true,
+        ])->assertOk();
+
+        $this->assertNull(Cache::store(config('cache.catalog_packages_store'))->tags(['catalog.packages'])->get('sentinel'));
+    }
+
+    public function test_an_owned_brands_leftover_subscription_can_not_be_charged_or_reactivated(): void
+    {
+        $this->actAsSuperAdmin();
+        $brand = $this->affiliate(['is_owned' => true, 'markup_pct' => 0]);
+        app(AffiliateSubscriptionService::class)->assignTier($brand, $this->tier());
+
+        $this->postJson("/api/affiliates/{$brand->id}/tier/charge")->assertUnprocessable()->assertJsonValidationErrors('tier');
+        $this->postJson("/api/affiliates/{$brand->id}/tier/reactivate")->assertUnprocessable()->assertJsonValidationErrors('tier');
+    }
+
+    public function test_an_owned_brand_is_shown_with_no_tier_in_the_detail(): void
+    {
+        $this->actAsSuperAdmin();
+        $brand = $this->affiliate(['is_owned' => true, 'markup_pct' => 0]);
+        app(AffiliateSubscriptionService::class)->assignTier($brand, $this->tier());
+
+        $this->getJson("/api/affiliates/{$brand->id}")
+            ->assertOk()
+            ->assertJsonPath('affiliate.is_owned', true)
+            ->assertJsonPath('affiliate.subscription', null);
+    }
+
+    public function test_lowering_the_ceiling_flushes_the_catalog_cache(): void
+    {
+        $this->actAsSuperAdmin();
+        $affiliate = $this->affiliate(['markup_pct' => 20, 'max_markup_pct' => 30]);
+
+        Cache::store(config('cache.catalog_packages_store'))->tags(['catalog.packages'])->put('sentinel', 'x', 300);
+
+        $this->putJson("/api/affiliates/{$affiliate->id}", [
+            'business_name' => $affiliate->business_name,
+            'markup_pct' => 20,
+            'max_markup_pct' => 12,
+        ])->assertUnprocessable(); // a ceiling under the markup is refused (gte:markup_pct), so lower both
+        $this->putJson("/api/affiliates/{$affiliate->id}", [
+            'business_name' => $affiliate->business_name,
+            'markup_pct' => 12,
+            'max_markup_pct' => 12,
+        ])->assertOk();
+
+        $this->assertNull(Cache::store(config('cache.catalog_packages_store'))->tags(['catalog.packages'])->get('sentinel'));
+    }
+
+    public function test_editing_an_owned_brand_keeps_its_stored_ceiling(): void
+    {
+        $this->actAsSuperAdmin();
+        $brand = $this->affiliate(['is_owned' => true, 'markup_pct' => 0, 'max_markup_pct' => 20]);
+
+        $this->putJson("/api/affiliates/{$brand->id}", [
+            'business_name' => 'Renamed Brand',
+            'markup_pct' => 0,
+            'max_markup_pct' => 20,
+            'is_owned' => true,
+        ])->assertOk();
+
+        $this->assertDatabaseHas('affiliates', ['id' => $brand->id, 'max_markup_pct' => 20]);
+    }
 }

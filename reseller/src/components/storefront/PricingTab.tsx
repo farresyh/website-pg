@@ -43,7 +43,7 @@ export default function PricingTab() {
         setPricing(result);
         setValue(String(result.markup_pct));
         setWritable(true);
-        runPreview(result.effective_markup_pct);
+        if (!result.is_owned) runPreview(result.effective_markup_pct);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -86,7 +86,19 @@ export default function PricingTab() {
   if (error && !pricing) return <ErrorNote message={error} />;
   if (!pricing) return <TabLoading />;
 
-  const clamped = pricing.markup_pct > pricing.max_markup_pct;
+  if (pricing.is_owned) {
+    return (
+      <Panel title="Your pricing">
+        <p className="p-5 text-theme-sm text-ink-subtle">
+          Your brand prices as the platform: there is no markup to set, and your storefront shows the standard
+          prices.
+        </p>
+      </Panel>
+    );
+  }
+
+  const ceiling = pricing.max_markup_pct;
+  const clamped = ceiling !== null && pricing.markup_pct > ceiling;
 
   return (
     <div className="space-y-6">
@@ -97,12 +109,16 @@ export default function PricingTab() {
         <form onSubmit={save} className="space-y-4 p-5">
           <Field
             label="Markup over wholesale (%)"
-            hint={`The platform allows up to ${pricing.max_markup_pct}%. Set 0 to sell at wholesale.`}
+            hint={
+              ceiling === null
+                ? "The platform has not opened a markup range for your brand yet."
+                : `The platform allows up to ${ceiling}%. Set 0 to sell at wholesale.`
+            }
           >
             <Input
               type="number"
               min={0}
-              max={pricing.max_markup_pct}
+              max={ceiling ?? 0}
               step={0.5}
               value={value}
               onChange={(e) => onChange(e.target.value)}
@@ -114,7 +130,7 @@ export default function PricingTab() {
           {clamped && (
             <p className="rounded-md bg-warning-surface px-3 py-2 text-theme-xs text-warning-ink">
               Your saved markup is {pricing.markup_pct}%, but the platform ceiling is now{" "}
-              {pricing.max_markup_pct}% — your storefront currently prices at {pricing.effective_markup_pct}%. Save
+              {ceiling}% — your storefront currently prices at {pricing.effective_markup_pct}%. Save
               a value at or below the ceiling to clear this.
             </p>
           )}

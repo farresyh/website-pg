@@ -27,6 +27,8 @@ export interface SubscriptionSnapshot {
 }
 
 export interface DashboardStats {
+  /** An owned brand has no wholesale tier (ADR-061 2026-10-30). */
+  is_owned: boolean;
   earnings_balance: number;
   today: { orders: number; sales: number };
   this_month: { orders: number; sales: number };
@@ -290,6 +292,8 @@ export interface AffiliateDomainRow {
   hostname: string;
   status: AffiliateDomainStatus;
   is_primary: boolean;
+  /** ADR-060 second 2026-10-30 addendum: the domain this www address redirects to; null for an ordinary domain. */
+  redirects_to: string | null;
   /** ADR-131: serves the store once Active, takes payments once PekanGame approves the domain. */
   payments_approved: boolean;
   verification: { type: string; domain: string; value: string }[];
@@ -301,6 +305,8 @@ export interface AffiliateDomainRow {
 export interface DomainsResponse {
   domains: AffiliateDomainRow[];
   max_domains: number;
+  /** Domains the affiliate chose; the www redirects we add are not counted. */
+  domains_used: number;
   writable: boolean;
   dns: { cname_target: string; apex_a_record: string };
 }
@@ -309,12 +315,23 @@ export function getDomains(token: string) {
   return apiFetch<DomainsResponse>("/api/affiliate/domains", { token });
 }
 
-export function addDomain(token: string, hostname: string) {
-  return apiFetch<AffiliateDomainRow>("/api/affiliate/domains", {
+export type AddDomainResult = AffiliateDomainRow & {
+  /** The www redirect added with it, or null; `www_error` says why when it could not be. */
+  www: AffiliateDomainRow | null;
+  www_error: string | null;
+};
+
+export function addDomain(token: string, hostname: string, withWww: boolean) {
+  return apiFetch<AddDomainResult>("/api/affiliate/domains", {
     method: "POST",
     token,
-    body: { hostname },
+    body: { hostname, with_www: withWww },
   });
+}
+
+/** Add, retry or convert the www redirect of one domain. */
+export function addWwwRedirect(token: string, id: number) {
+  return apiFetch<AffiliateDomainRow>(`/api/affiliate/domains/${id}/www`, { method: "POST", token });
 }
 
 export function recheckDomain(token: string, id: number) {
@@ -536,8 +553,11 @@ export function setStorefrontGameVisibility(token: string, gameId: number, isVis
 export interface StorefrontPricing {
   markup_pct: number;
   effective_markup_pct: number;
-  max_markup_pct: number;
+  /** Null = the platform has set no ceiling, so the brand cannot raise its own markup. */
+  max_markup_pct: number | null;
   wholesale_rate_active: boolean;
+  /** ADR-061 2026-10-30: an owned brand prices as the platform and has no markup to set. */
+  is_owned: boolean;
 }
 
 export interface MarkupPreviewRow {
