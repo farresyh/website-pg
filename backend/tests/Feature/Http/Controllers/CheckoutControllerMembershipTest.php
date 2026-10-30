@@ -159,14 +159,13 @@ class CheckoutControllerMembershipTest extends TestCase
     /**
      * ADR-027's 2026-08-29 continued addendum, decision 4: a member
      * order's `affiliate_profit` is always 0 — the platform absorbs the
-     * entire member discount itself, never the affiliate's own margin —
-     * regardless of what `Affiliate.markup_pct` is actually configured
-     * to. Proven here against a genuinely nonzero markup (10%), with a
-     * standard order under the identical markup as the contrasting
-     * control case: same affiliate, same package, same 10% — member
-     * gets 0, standard gets a real cut.
+     * entire member discount itself. Membership is an owned-brand-only
+     * capability, and since ADR-061's 2026-10-30 addendum an owned brand
+     * has no markup at all, so even a stored 10% (one that bypassed the
+     * forms) is ignored: the member order and the standard control both
+     * book `affiliate_profit` 0, and neither snapshots a markup.
      */
-    public function test_affiliate_profit_is_always_zero_for_a_member_order_even_when_affiliate_markup_is_nonzero(): void
+    public function test_affiliate_profit_is_zero_for_member_and_standard_orders_even_with_a_stale_stored_markup(): void
     {
         $this->bindGateway();
         ['game' => $game, 'package' => $package] = $this->memberPackage();
@@ -193,11 +192,11 @@ class CheckoutControllerMembershipTest extends TestCase
         $memberOrder = Order::query()->where('customer_email', 'markup-member@example.com')->firstOrFail();
 
         $this->assertSame('member', $memberOrder->pricing_basis->value);
-        $this->assertSame('10.00', $memberOrder->affiliate_markup_pct); // snapshotted, but unused for profit
+        $this->assertSame('0.00', $memberOrder->affiliate_markup_pct); // the stored 10% is ignored (owned brand)
         $this->assertSame(1040, $memberOrder->selling_price); // unaffected by affiliate markup
         $this->assertSame(0, $memberOrder->affiliate_profit);
 
-        // Control case: same affiliate markup, no membership token — affiliate must earn a real cut.
+        // Control case: same stored markup, no membership token — still no affiliate cut.
         $standardResponse = $this->postJson('/api/checkout', $this->payload($game, $package, [
             'customer_email' => 'no-member@example.com',
             'idempotency_key' => (string) Str::uuid(),
@@ -206,8 +205,8 @@ class CheckoutControllerMembershipTest extends TestCase
         $standardOrder = Order::query()->where('customer_email', 'no-member@example.com')->firstOrFail();
 
         $this->assertSame('standard', $standardOrder->pricing_basis->value);
-        $this->assertSame(1320, $standardOrder->selling_price); // 1200 + 10% affiliate markup
-        $this->assertSame(120, $standardOrder->affiliate_profit); // round(1200 * 10%)
+        $this->assertSame(1200, $standardOrder->selling_price); // the standard price, not 1200 + 10%
+        $this->assertSame(0, $standardOrder->affiliate_profit);
     }
 
     /**

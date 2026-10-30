@@ -158,6 +158,8 @@ class CheckoutController extends Controller
             ? $this->resolveMembershipId($request, $affiliate->id)
             : null;
 
+        $terms = $affiliate->storefrontPriceTerms();
+
         try {
             $order = $this->checkout->initiate(new CheckoutRequest(
                 customerEmail: $data['customer_email'],
@@ -168,8 +170,8 @@ class CheckoutController extends Controller
                 costPriceSen: $package->cost_price,
                 standardSellingPriceSen: $package->standard_selling_price,
                 packageMarkupPercent: (float) $package->markup_percent,
-                affiliateMarkupPct: (float) $affiliate->markup_pct,
-                tierMarkupPct: $affiliate->wholesaleTierMarkupPct(),
+                affiliateMarkupPct: $terms['markup'],
+                tierMarkupPct: $terms['tier'],
                 paymentFeeConfig: $this->fees->resolve($data['channel_code']),
                 paymentMethod: $paymentMethod->category,
                 paymentGateway: $paymentMethod->gateway,
@@ -246,13 +248,15 @@ class CheckoutController extends Controller
         $platformSettings = PlatformSettings::current();
         $membershipId = $this->membershipIdFor($request, $game, $affiliate, $platformSettings);
 
+        $terms = $affiliate->storefrontPriceTerms();
+
         try {
             $preview = $this->checkout->previewTotal(
                 costPriceSen: $package->cost_price,
                 standardSellingPriceSen: $package->standard_selling_price,
                 packageMarkupPercent: (float) $package->markup_percent,
-                affiliateMarkupPct: (float) $affiliate->markup_pct,
-                tierMarkupPct: $affiliate->wholesaleTierMarkupPct(),
+                affiliateMarkupPct: $terms['markup'],
+                tierMarkupPct: $terms['tier'],
                 affiliateId: $affiliate->id,
                 paymentFeeConfig: $this->fees->resolve($data['channel_code']),
                 membershipId: $membershipId,
