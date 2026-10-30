@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Withdrawal\RejectWithdrawalRequest;
+use App\Models\Affiliate;
 use App\Models\Withdrawal;
+use App\Services\Affiliate\AffiliateWithdrawalService;
 use App\Services\Ledger\InsufficientBalanceException;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
@@ -16,8 +18,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
- * WTH-1..5 — reviews withdrawal requests (affiliates request theirs from
- * the portal, ADR-059). The platform owner no longer requests one here
+ * WTH-1..5 — reviews withdrawal requests (the platform opens one per affiliate
+ * each month, ADR-132). The platform owner no longer requests one here
  * (ADR-083 2026-10-10 addendum, decision 17): money leaving to a director
  * is an Envelope Ledger repayment or dividend.
  */
@@ -46,8 +48,15 @@ class WithdrawalController extends Controller
             ->get()
             ->groupBy('owner_id');
 
+        $names = Affiliate::withTrashed()
+            ->whereIn('id', $withdrawals->where('owner_type', LedgerOwnerType::Affiliate->value)->pluck('owner_id')->unique())
+            ->pluck('business_name', 'id');
+
         $withdrawals = $withdrawals->map(fn (Withdrawal $w) => [
             ...$w->toArray(),
+            'affiliate' => $w->owner_type === LedgerOwnerType::Affiliate->value
+                ? ['id' => $w->owner_id, 'name' => $names[$w->owner_id] ?? null]
+                : null,
             'bank_details_changed_since_last_approval' => $this->bankDetailsChangedSinceLastApproval(
                 $w,
                 $approvedByOwner->get($w->owner_id) ?? collect(),
@@ -58,6 +67,12 @@ class WithdrawalController extends Controller
             'stats' => $stats,
             'withdrawals' => $withdrawals,
         ]);
+    }
+
+    /** ADR-132 decision 10: affiliates left without a ticket this month, and stale Pending tickets. */
+    public function payoutRun(AffiliateWithdrawalService $payouts): JsonResponse
+    {
+        return response()->json($payouts->worklist());
     }
 
     /**
