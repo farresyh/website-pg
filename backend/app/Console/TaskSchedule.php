@@ -42,6 +42,7 @@ class TaskSchedule
         'membership-payment-reconciliation',
         'membership-renewal-reminders',
         'affiliate-tier-fee-charge',
+        'affiliate-payout-open',
         'supplier-balance-refresh',
         'order-credential-wipe',
     ];
@@ -259,6 +260,17 @@ class TaskSchedule
         $schedule->command('app:charge-affiliate-tier-fees')
             ->daily()
             ->name('affiliate-tier-fee-charge')
+            ->withoutOverlapping($overlap);
+
+        // ADR-132 — opens the monthly payout ticket per affiliate. Daily, not
+        // monthly: the payout_period unique index makes a repeat a no-op, so a
+        // missed 1st self-heals. 00:10 Malaysia time, just after the 1st's
+        // cut-off; the fee command above runs at 08:00 MYT and the payout's
+        // fee reserve already covers it.
+        $schedule->command('app:open-affiliate-payouts')
+            ->dailyAt('00:10')
+            ->timezone(MalaysiaTime::TIMEZONE)
+            ->name('affiliate-payout-open')
             ->withoutOverlapping($overlap);
 
         // ADR-069 decision 12 — Supplier.balance is otherwise only refreshed

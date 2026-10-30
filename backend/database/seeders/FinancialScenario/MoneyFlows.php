@@ -20,11 +20,12 @@ use App\Services\Accounting\FundType;
 use App\Services\Accounting\PaidFrom;
 use App\Services\Accounting\SettlementReconciliationService;
 use App\Services\Accounting\SupplierFundingService;
-use App\Services\Affiliate\AffiliateWithdrawalService;
 use App\Services\Fulfillment\OrderResendService;
+use App\Services\Ledger\LedgerService;
 use App\Services\Membership\MembershipSessionTokenService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Reseller\ResellerWalletTopupService;
+use App\Services\Withdrawal\WithdrawalStatus;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
@@ -153,12 +154,19 @@ trait MoneyFlows
         $this->chipPaid($attempt->chip_payment_ref, $attempt->reference, $attempt->total_charged_sen);
     }
 
-    /** The affiliate withdraws earnings: requested in the portal, approved and paid by the admin. */
+    /**
+     * The affiliate is paid out: a Pending ticket as the monthly payout opens it (ADR-132, no requester), approved
+     * and paid by the admin. The ticket row is written directly so the scenario can pick the amount; the opener's
+     * own rules are proven in AffiliateMonthlyPayoutTest.
+     */
     public function affiliateWithdraws(int $amountSen): Withdrawal
     {
-        $withdrawal = app(AffiliateWithdrawalService::class)->request($this->affiliate, [
-            'amount' => $amountSen, 'bank_name' => 'Scenario Bank', 'bank_account_no' => '1234567890', 'bank_account_holder' => 'Scenario Affiliate',
-        ], null);
+        app(LedgerService::class)->openAccount('affiliate', $this->affiliate->id);
+        $withdrawal = Withdrawal::query()->create([
+            'owner_type' => 'affiliate', 'owner_id' => $this->affiliate->id, 'amount' => $amountSen,
+            'bank_name' => 'Scenario Bank', 'bank_account_no' => '1234567890', 'bank_account_holder' => 'Scenario Affiliate',
+            'status' => WithdrawalStatus::Pending,
+        ]);
 
         $request = Request::create('/', 'PATCH');
         $request->setUserResolver(fn () => $this->admin);
