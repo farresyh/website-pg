@@ -1,6 +1,6 @@
 # ADR-061: Every storefront is a Reseller — abolish the platform-owner special-case
 
-> **Standing (2026-10-23):** In force, except decision 7's `('platform', null)` withdrawal from `/admin`: retired by [ADR-083](./ADR-083-internal-accounting-financial-reconciliation.md)'s 2026-10-10 addendum, decision 17 (money leaving to a director is an Envelope Ledger repayment or dividend). Decision 8's owned-brand-only rule also gates Joki (`joki_enabled`, [ADR-126](./ADR-126-joki-mlbb.md)). Decisions 2 and 6 are revised for pricing by the **2026-10-30 addendum (Proposed)**: an owned brand has no tier and no brand markup. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-10-23):** In force, except decision 7's `('platform', null)` withdrawal from `/admin`: retired by [ADR-083](./ADR-083-internal-accounting-financial-reconciliation.md)'s 2026-10-10 addendum, decision 17 (money leaving to a director is an Envelope Ledger repayment or dividend). Decision 8's owned-brand-only rule also gates Joki (`joki_enabled`, [ADR-126](./ADR-126-joki-mlbb.md)). Decisions 2 and 6 are revised for pricing by the **2026-10-30 addendum**: an owned brand has no tier and no brand markup. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 >
 > **Terminology:** written before [ADR-072](./ADR-072-reseller-system-split.md); "Reseller" in this file means today's **Affiliate** (whitelabel storefront owner).
 
@@ -69,7 +69,7 @@
 
 ### 2026-10-30 addendum — an owned brand prices as the platform itself: no tier, no brand markup (revises decisions 2 and 6)
 
-**Status:** Proposed, 2026-10-30 (grilled with the founder via `/mattpocock-skills:grilling`, two rounds plus a stress test, then a code-trace pass against code and read-only production data). It becomes Accepted when the founder has read this text. PRD §16 item 149.
+**Status:** Accepted, 2026-10-30 (grilled with the founder via `/mattpocock-skills:grilling`, two rounds plus a stress test, then a code-trace pass against code and read-only production data; the founder read the text and accepted it, keeping decision 6 as written). PRD §16 item 149.
 
 **Context:**
 - Decision 2 said an `is_owned` brand "defaults `markup_pct = 0`" but "does not constrain `markup_pct`", and decision 6 kept `creditProfit()` unchanged. The result is that an owned brand still runs the **third-party affiliate pricing path** (wholesale tier plus its own markup) and only happens to match the primary brand. Production on 2026-10-30:
