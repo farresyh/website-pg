@@ -51,6 +51,7 @@ class VoucherPreviewController extends Controller
         }
 
         $brand = $this->storefrontBrand->get();
+        $terms = $brand->storefrontPriceTerms();
 
         // Same wholesale-tier/markup basis CheckoutService prices the real
         // order at — `calculateForAffiliate` with a null `tierMarkupPct`
@@ -65,8 +66,8 @@ class VoucherPreviewController extends Controller
             : $this->pricing->calculateForAffiliate(
                 $package->cost_price,
                 $package->standard_selling_price,
-                $brand->wholesaleTierMarkupPct(),
-                (float) $brand->markup_pct,
+                $terms['tier'],
+                $terms['markup'],
             )->sellingPrice;
 
         try {

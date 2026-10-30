@@ -159,4 +159,53 @@ class PricingControllerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('wholesale_rate_active', false);
     }
+
+    /** ADR-061 2026-10-30 addendum decision 3: an owned brand has no markup to set. */
+    public function test_an_owned_brand_cannot_change_its_markup(): void
+    {
+        $affiliate = $this->affiliate(['markup_pct' => 0, 'is_owned' => true]);
+
+        $this->withToken($this->tokenFor($affiliate))
+            ->putJson('/api/affiliate/storefront/pricing', ['markup_pct' => 5])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('markup_pct');
+
+        $this->assertDatabaseHas('affiliates', ['id' => $affiliate->id, 'markup_pct' => 0]);
+        $this->assertDatabaseCount('affiliate_markup_changes', 0);
+    }
+
+    public function test_an_owned_brand_cannot_preview_a_markup(): void
+    {
+        $affiliate = $this->affiliate(['markup_pct' => 0, 'is_owned' => true]);
+        $this->package(1000, 1200);
+
+        $this->withToken($this->tokenFor($affiliate))
+            ->postJson('/api/affiliate/storefront/pricing/preview', ['markup_pct' => 10])
+            ->assertStatus(422);
+    }
+
+    public function test_show_reports_an_owned_brand_as_owned_and_priced_at_zero_markup(): void
+    {
+        // A stale non-zero value that bypassed the forms must never be shown as what is charged.
+        $affiliate = $this->affiliate(['markup_pct' => 12, 'max_markup_pct' => 20, 'is_owned' => true]);
+
+        $this->withToken($this->tokenFor($affiliate))
+            ->getJson('/api/affiliate/storefront/pricing')
+            ->assertOk()
+            ->assertJsonPath('is_owned', true)
+            ->assertJsonPath('effective_markup_pct', 0)
+            ->assertJsonPath('wholesale_rate_active', false);
+    }
+
+    public function test_show_does_not_clamp_a_markup_to_zero_when_there_is_no_ceiling(): void
+    {
+        $affiliate = $this->affiliate(['markup_pct' => 10, 'max_markup_pct' => null]);
+
+        $this->withToken($this->tokenFor($affiliate))
+            ->getJson('/api/affiliate/storefront/pricing')
+            ->assertOk()
+            ->assertJsonPath('is_owned', false)
+            ->assertJsonPath('effective_markup_pct', 10)
+            ->assertJsonPath('max_markup_pct', null);
+    }
 }

@@ -207,3 +207,7 @@
 - The migration refuses to run if any route starts or ends below Epic. Joki was never released, so production has none. An order keeps its own rank snapshot.
 - The `GM` alias in `.progress` is gone with Grandmaster.
 - The launch gate "confirm the Warrior/Elite/Master rates" no longer exists.
+
+### 2026-10-30 addendum — the "Owned Brand" tier figure
+
+Decision 2's example used the owned brand's wholesale tier at 10%. Production now reads 15%, and [ADR-061](./ADR-061-every-storefront-is-a-reseller.md)'s 2026-10-30 addendum removes the tier from owned brands altogether. Joki is unaffected either way: it prices from its own table and reads neither the tier nor the brand markup.

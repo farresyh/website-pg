@@ -104,4 +104,18 @@ class ChargeAffiliateTierFeesCommandTest extends TestCase
         $this->assertSame(AffiliateSubscriptionStatus::Lapsed, $sub->refresh()->status);
         $this->assertSame(50000, app(LedgerService::class)->balance('affiliate', $sub->affiliate_id));
     }
+
+    /** ADR-061 2026-10-30 addendum decision 5: a tier never prices an owned brand, so it is never billed or lapsed. */
+    public function test_an_owned_brand_with_a_leftover_subscription_is_not_charged_or_lapsed(): void
+    {
+        $owned = $this->affiliateWithSubscription();
+        $owned->affiliate->update(['is_owned' => true]);
+
+        $this->artisan('app:charge-affiliate-tier-fees')
+            ->expectsOutputToContain('0 charged, 0 entered grace, 0 lapsed')
+            ->assertSuccessful();
+
+        $this->assertSame(AffiliateSubscriptionStatus::Active, $owned->refresh()->status);
+        $this->assertSame(0, app(LedgerService::class)->balance('affiliate', $owned->affiliate_id));
+    }
 }

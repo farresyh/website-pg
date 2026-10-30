@@ -82,7 +82,7 @@ final class MembershipPricingService
         $normalPriceSen = $this->pricing->calculate(
             $package->cost_price,
             $package->standard_selling_price,
-            (float) Affiliate::primary()->markup_pct,
+            Affiliate::primary()->storefrontPriceTerms()['markup'],
         )->sellingPrice;
 
         if ($normalPriceSen <= 0) {

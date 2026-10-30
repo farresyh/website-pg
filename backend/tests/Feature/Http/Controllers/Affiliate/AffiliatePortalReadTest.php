@@ -166,6 +166,32 @@ class AffiliatePortalReadTest extends TestCase
             ->assertJsonPath('charge_history', []);
     }
 
+    /** ADR-061 2026-10-30 addendum decision 5: a leftover tier subscription is not shown for an owned brand (it prices nothing). */
+    public function test_an_owned_brand_shows_no_tier_on_the_subscription_screen_or_the_dashboard(): void
+    {
+        $affiliate = $this->affiliate('Our Brand');
+        $affiliate->update(['is_owned' => true]);
+        $tier = AffiliateMembershipTier::query()->create([
+            'name' => 'Owned Brand', 'monthly_fee_sen' => 0, 'markup_percent' => 15, 'is_active' => true,
+        ]);
+        AffiliateSubscription::query()->create([
+            'affiliate_id' => $affiliate->id,
+            'affiliate_membership_tier_id' => $tier->id,
+            'status' => AffiliateSubscriptionStatus::Active,
+            'current_period_started_at' => now(),
+            'next_charge_at' => now()->addDays(30),
+        ]);
+        $token = $this->tokenFor($affiliate);
+
+        $this->withToken($token)->getJson('/api/affiliate/subscription')
+            ->assertOk()
+            ->assertJsonPath('subscription', null);
+        $this->withToken($token)->getJson('/api/affiliate/dashboard')
+            ->assertOk()
+            ->assertJsonPath('subscription', null)
+            ->assertJsonPath('is_owned', true);
+    }
+
     public function test_orders_index_respects_the_delivery_status_filter(): void
     {
         $affiliate = $this->affiliate('Acme');

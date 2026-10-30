@@ -405,13 +405,13 @@ class CatalogController extends Controller
      */
     private function sellingPriceSen(Package $package): int
     {
-        $brand = $this->storefrontBrand->get();
+        $terms = $this->storefrontBrand->get()->storefrontPriceTerms();
 
         return $this->pricing->calculateForAffiliate(
             $package->cost_price,
             $package->standard_selling_price,
-            $brand->wholesaleTierMarkupPct(),
-            (float) $brand->markup_pct,
+            $terms['tier'],
+            $terms['markup'],
         )->sellingPrice;
     }
 
