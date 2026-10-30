@@ -152,4 +152,84 @@ class AffiliateDomainControllerTest extends TestCase
             ->postJson("/api/affiliate/domains/{$row->id}/recheck")
             ->assertNotFound();
     }
+
+    public function test_store_with_www_adds_the_domain_and_its_redirect_twin(): void
+    {
+        $affiliate = $this->affiliate();
+
+        $this->withToken($this->tokenFor($affiliate))
+            ->postJson('/api/affiliate/domains', ['hostname' => 'acme.com', 'with_www' => true])
+            ->assertCreated()
+            ->assertJsonPath('hostname', 'acme.com')
+            ->assertJsonPath('www.hostname', 'www.acme.com')
+            ->assertJsonPath('www.redirects_to', 'acme.com')
+            ->assertJsonPath('www_error', null);
+
+        $this->assertSame(2, $affiliate->customDomains()->count());
+    }
+
+    public function test_store_with_www_keeps_the_domain_when_the_twin_fails(): void
+    {
+        $affiliate = $this->affiliate();
+        $this->provider->willFail('www.acme.com');
+
+        $response = $this->withToken($this->tokenFor($affiliate))
+            ->postJson('/api/affiliate/domains', ['hostname' => 'acme.com', 'with_www' => true])
+            ->assertCreated()
+            ->assertJsonPath('hostname', 'acme.com')
+            ->assertJsonPath('www', null);
+
+        $this->assertNotNull($response->json('www_error'));
+        $this->assertStringNotContainsStringIgnoringCase('vercel', $response->getContent());
+        $this->assertSame(1, $affiliate->customDomains()->count());
+    }
+
+    public function test_store_without_the_option_adds_no_twin(): void
+    {
+        $affiliate = $this->affiliate();
+
+        $this->withToken($this->tokenFor($affiliate))
+            ->postJson('/api/affiliate/domains', ['hostname' => 'acme.com'])
+            ->assertCreated()
+            ->assertJsonPath('www', null)
+            ->assertJsonPath('www_error', null);
+
+        $this->assertSame(1, $affiliate->customDomains()->count());
+    }
+
+    public function test_the_add_www_action_adds_a_twin_to_an_existing_domain(): void
+    {
+        $affiliate = $this->affiliate();
+        $token = $this->tokenFor($affiliate);
+        $id = $this->withToken($token)->postJson('/api/affiliate/domains', ['hostname' => 'acme.com'])->json('id');
+
+        $this->withToken($token)->postJson("/api/affiliate/domains/{$id}/www")
+            ->assertOk()
+            ->assertJsonPath('hostname', 'www.acme.com')
+            ->assertJsonPath('redirects_to', 'acme.com');
+    }
+
+    public function test_the_add_www_action_of_another_affiliates_domain_is_a_404(): void
+    {
+        $id = $this->affiliate()->customDomains()->create([
+            'hostname' => 'acme.com', 'status' => AffiliateDomainStatus::Pending, 'provider' => 'vercel', 'provider_ref' => 'acme.com',
+        ])->id;
+        $mine = $this->affiliate(['business_name' => 'Mine', 'email' => 'mine@acme.test']);
+
+        $this->withToken($this->tokenFor($mine))->postJson("/api/affiliate/domains/{$id}/www")->assertNotFound();
+    }
+
+    public function test_the_list_marks_a_twin_and_counts_only_chosen_domains_toward_the_cap(): void
+    {
+        $affiliate = $this->affiliate();
+        $token = $this->tokenFor($affiliate);
+        $this->withToken($token)->postJson('/api/affiliate/domains', ['hostname' => 'acme.com', 'with_www' => true])->assertCreated();
+
+        $response = $this->withToken($token)->getJson('/api/affiliate/domains')->assertOk();
+
+        $rows = collect($response->json('domains'))->keyBy('hostname');
+        $this->assertNull($rows['acme.com']['redirects_to']);
+        $this->assertSame('acme.com', $rows['www.acme.com']['redirects_to']);
+        $this->assertSame(1, $response->json('domains_used'));
+    }
 }

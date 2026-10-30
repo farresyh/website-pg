@@ -356,6 +356,11 @@ class AffiliateController extends Controller
     {
         abort_unless($affiliateDomain->affiliate_id === $affiliate->id, 404);
 
+        // ADR-060 second 2026-10-30 addendum decision 4: a redirect twin takes no payment, so there is nothing to approve.
+        if ($affiliateDomain->isRedirectTwin()) {
+            throw ValidationException::withMessages(['domain' => ['A www redirect takes no payments, so it needs no approval.']]);
+        }
+
         $approved = $request->validated('approved');
         $affiliateDomain->update([
             'payments_approved_at' => $approved ? now() : null,
@@ -515,6 +520,7 @@ class AffiliateController extends Controller
                     'hostname' => $d->hostname,
                     'status' => $d->status->value,
                     'is_primary' => $d->is_primary,
+                    'redirects_to' => $d->isRedirectTwin() ? $affiliate->customDomains->firstWhere('id', $d->redirects_to_domain_id)?->hostname : null,
                     'payments_approved' => $d->payments_approved_at !== null,
                     'payments_approved_at' => $d->payments_approved_at?->toIso8601String(),
                     'provider' => $d->provider,

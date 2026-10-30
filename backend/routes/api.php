@@ -390,6 +390,7 @@ Route::prefix('affiliate')->group(function () {
             Route::get('/domains', [AffiliateDomainController::class, 'index']);
             Route::post('/domains', [AffiliateDomainController::class, 'store']);
             Route::post('/domains/{domain}/recheck', [AffiliateDomainController::class, 'recheck']);
+            Route::post('/domains/{domain}/www', [AffiliateDomainController::class, 'addWww']);
             Route::post('/domains/{domain}/primary', [AffiliateDomainController::class, 'setPrimary']);
             Route::delete('/domains/{domain}', [AffiliateDomainController::class, 'destroy']);
 
