@@ -84,10 +84,13 @@ export default function BottomNav() {
     return pathname.startsWith(href);
   }
 
+  // The labels sit on the `bg-ink` pills, so they take `surface` (cream; the page
+  // colour in dark mode). They were `on-primary`, which is ink on Cyber Bumblebee:
+  // ink on ink, an unreadable black pill (founder, 2026-10-30).
   function renderItem({ href, label, icon: Icon, external }: NavItem) {
     const active = !external && isActive(href);
     const className = `flex min-h-11 flex-1 flex-col items-center gap-0.5 py-2 font-display text-[9.5px] font-bold uppercase tracking-wide ${
-      active ? "text-on-primary" : "text-on-primary/60"
+      active ? "text-surface" : "text-surface/60"
     }`;
 
     return external ? (
