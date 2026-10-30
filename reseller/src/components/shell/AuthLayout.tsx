@@ -9,7 +9,7 @@ import { LEGAL_LINKS } from "@/components/shell/TrustFooter";
 const LINKS = [...LEGAL_LINKS, { label: "API docs", href: "https://docs.pekangame.space" }];
 const POINTS: { icon: PortalIconName; lead: string; text: string }[] = [
   { icon: "wallet", lead: "Resellers", text: "order via automated messaging or API integration directly from a prepaid balance." },
-  { icon: "store", lead: "Affiliates", text: "run their own branded store and withdraw their margin." },
+  { icon: "store", lead: "Affiliates", text: "run their own branded store and get their margin paid monthly." },
   { icon: "shield", lead: "", text: "Secure payment processing. Full transaction tracking and transparent audit logs for every movement of your money." },
 ];
 

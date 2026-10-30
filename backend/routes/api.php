@@ -383,7 +383,6 @@ Route::prefix('affiliate')->group(function () {
             Route::get('/profile', [AffiliateProfileController::class, 'show']);
             Route::put('/profile', [AffiliateProfileController::class, 'update']);
             Route::get('/withdrawals', [AffiliateWithdrawalController::class, 'index']);
-            Route::post('/withdrawals', [AffiliateWithdrawalController::class, 'store']);
             Route::post('/impersonation/end', [AffiliateImpersonationEndController::class, 'end']);
 
             // ADR-060 PR-5 — self-serve custom-domain management (branded
@@ -486,6 +485,7 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
     // it depends on each withdrawal's own amount.
     Route::middleware('admin.role:super_admin,admin')->prefix('withdrawals')->group(function () {
         Route::get('/', [WithdrawalController::class, 'index']);
+        Route::get('/payout-run', [WithdrawalController::class, 'payoutRun']);
         Route::patch('/{withdrawal}/approve', [WithdrawalController::class, 'approve'])->middleware('mfa.stepup');
         Route::patch('/{withdrawal}/reject', [WithdrawalController::class, 'reject']);
         Route::patch('/{withdrawal}/complete', [WithdrawalController::class, 'complete']);

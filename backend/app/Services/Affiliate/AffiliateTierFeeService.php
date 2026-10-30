@@ -7,6 +7,8 @@ use App\Models\LedgerEntry;
 use App\Services\Ledger\InsufficientBalanceException;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -129,5 +131,29 @@ final class AffiliateTierFeeService
 
             return $subscription->refresh();
         });
+    }
+
+    /**
+     * ADR-132: the fees `chargeCycle()` will take from `$from` (inclusive) up
+     * to `$to` (exclusive) — what the monthly payout holds back so the fee
+     * still has a balance to come out of. Charges fall every CYCLE_DAYS from
+     * the later of `next_charge_at` and `$from` (an overdue or grace
+     * subscription is charged on the next run, not in the past). A free tier
+     * or a lapsed subscription charges nothing.
+     */
+    public function feesDueBetween(AffiliateSubscription $subscription, CarbonInterface $from, CarbonInterface $to): int
+    {
+        if ($subscription->status === AffiliateSubscriptionStatus::Lapsed) {
+            return 0;
+        }
+
+        $fee = (int) $subscription->tier()->withTrashed()->value('monthly_fee_sen');
+        $charges = 0;
+
+        for ($at = CarbonImmutable::instance($subscription->next_charge_at ?? $from)->max($from); $at->lt($to); $at = $at->addDays(self::CYCLE_DAYS)) {
+            $charges++;
+        }
+
+        return $fee * $charges;
     }
 }

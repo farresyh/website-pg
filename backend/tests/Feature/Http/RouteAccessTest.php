@@ -193,6 +193,7 @@ class RouteAccessTest extends TestCase
             'GET api/vouchers',
             'GET api/vouchers/{voucher}',
             'GET api/withdrawals',
+            'GET api/withdrawals/payout-run',
             'PATCH api/hero-slides/{hero_slide}/status',
             'PATCH api/packages/{package}/catalog-code',
             'PATCH api/packages/{package}/combo-override',
