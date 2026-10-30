@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * WTH-1..5 — reviews affiliate withdrawal requests. The platform owner no
+ * WTH-1..5 — reviews the monthly payout tickets the platform opens for
+ * affiliates (ADR-132). The platform owner no
  * longer withdraws here (ADR-083 2026-10-10 addendum, decision 17): money
  * leaving to a director is an Envelope Ledger repayment or dividend.
  * Maker-checker (WTH-5) is enforced server-side; this page just surfaces
@@ -31,6 +32,9 @@ import { notify } from "@/components/ui/toast";
 import {
   type Withdrawal,
   type WithdrawalIndexResponse,
+  type PayoutRunResponse,
+  type PayoutSkip,
+  getPayoutRun,
   listWithdrawals,
   approveWithdrawal,
   rejectWithdrawal,
@@ -48,6 +52,12 @@ function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
 }
 
+const SKIP_LABEL: Record<PayoutSkip, string> = {
+  no_bank: "Needs bank details",
+  below_min: "Below RM 10 after tier fee",
+  open_ticket: "Earlier ticket still Pending",
+};
+
 export default function WithdrawalsPage() {
   const router = useRouter();
   // Read in an effect, not render body — see UserDropdown.tsx for why.
@@ -56,10 +66,14 @@ export default function WithdrawalsPage() {
   const [data, setData] = useState<WithdrawalIndexResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actingOnId, setActingOnId] = useState<number | null>(null);
+  const [run, setRun] = useState<PayoutRunResponse | null>(null);
+  const [thisMonthOnly, setThisMonthOnly] = useState(false);
 
   async function refresh() {
     try {
-      setData(await listWithdrawals());
+      const [list, worklist] = await Promise.all([listWithdrawals(), getPayoutRun()]);
+      setData(list);
+      setRun(worklist);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load withdrawals.");
     }
@@ -72,8 +86,11 @@ export default function WithdrawalsPage() {
       return;
     }
 
-    listWithdrawals()
-      .then(setData)
+    Promise.all([listWithdrawals(), getPayoutRun()])
+      .then(([list, worklist]) => {
+        setData(list);
+        setRun(worklist);
+      })
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "Could not load withdrawals.");
       });
@@ -102,6 +119,8 @@ export default function WithdrawalsPage() {
     await refresh();
   }
 
+  const rows = (data?.withdrawals ?? []).filter((w) => !thisMonthOnly || w.payout_period === run?.period);
+
   const statusSeverity: Record<Withdrawal["status"], "warn" | "info" | "success" | "danger"> = {
     pending: "warn",
     approved: "info",
@@ -114,7 +133,7 @@ export default function WithdrawalsPage() {
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Withdrawals</h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Review and process affiliate withdrawal requests. Paying a director back, or a dividend, is recorded in the{" "}
+          Payout tickets are opened automatically on the 1st of each month; transfer them by the 7th. Paying a director back, or a dividend, is recorded in the{" "}
           <Link href="/admin/accounting/envelopes" className="text-brand-500 hover:underline">
             Envelope Ledger
           </Link>
@@ -142,14 +161,41 @@ export default function WithdrawalsPage() {
         ))}
       </div>
 
+      {run && (run.skipped.length > 0 || run.stale_tickets.length > 0) && (
+        <div className="mb-6 rounded-2xl border border-warning-400 bg-warning-50 p-4 text-theme-sm dark:border-warning-500/30 dark:bg-warning-500/10">
+          <p className="mb-2 font-medium text-gray-800 dark:text-white/90">Needs attention ({run.period})</p>
+          <ul className="flex flex-col gap-1 text-gray-600 dark:text-gray-300">
+            {run.stale_tickets.map((t) => (
+              <li key={`t${t.id}`}>
+                <Tag severity="danger">Stale</Tag> Ticket #{t.id} ({formatRm(t.amount)}, {t.payout_period}) is still Pending past the 7th. Approve it, or reject it to roll the
+                amount into next month.
+              </li>
+            ))}
+            {run.skipped.map((a) => (
+              <li key={`a${a.affiliate_id}`}>
+                <Tag severity="warn">No ticket</Tag> {a.name}: {SKIP_LABEL[a.skip]} (balance {formatRm(a.balance)}
+                {a.reserve > 0 ? `, ${formatRm(a.reserve)} kept for tier fee` : ""}).
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="mb-3 flex justify-end">
+        <Button size="small" variant={thisMonthOnly ? undefined : "outlined"} onClick={() => setThisMonthOnly((v) => !v)}>
+          {thisMonthOnly ? "Showing this month" : "This month only"}
+        </Button>
+      </div>
+
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <DataTable data={data?.withdrawals ?? []} dataKey="id">
+          <DataTable data={rows} dataKey="id">
             <DataTableTableContainer>
               <DataTableTable>
                 <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
                   <DataTableTHeadRow>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Affiliate</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Amount</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Bank Details</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
@@ -164,6 +210,10 @@ export default function WithdrawalsPage() {
                       <DataTableRow key={w.id}>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
                           {new Date(w.created_at).toLocaleString()}
+                        </DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-800 dark:text-white/90">
+                          {w.affiliate?.name ?? "—"}
+                          {w.payout_period && <div className="text-theme-xs text-gray-500 dark:text-gray-400">{w.payout_period}</div>}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
                           {formatRm(w.amount)}
@@ -213,8 +263,8 @@ export default function WithdrawalsPage() {
             </DataTableTableContainer>
           </DataTable>
 
-          {data?.withdrawals.length === 0 && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No withdrawal requests yet.</p>
+          {rows.length === 0 && data !== null && (
+            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No payout tickets yet.</p>
           )}
           {data === null && !error && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
