@@ -2898,6 +2898,16 @@ The next CI run failed `backend-concurrency` on `CheckoutSettleWithVoucherConcur
 
 **Owed.** Not live until a `staging` → `main` release. Then the founder presses "Redirect www here" on OhahaStore's Domains screen (the only path: no console command, no hand-run patch), and `curl -I https://www.ohahastore.com` should answer 308 to `ohahastore.com`; the `www` row's CHIP approval stops mattering.
 
+## 2026-10-30 — A delivery receipt that never came (PG-L4RCBELJ9RE3), the phone normaliser, and item 138 closed
+
+**Report.** The founder asked why a customer who used the Contact Support button (a failed order), got the status card, and then had the item resent and delivered, received no delivery message.
+
+**Cause (read-only on prod).** The order's `customer_phone` had ten digits starting with `1`: a Malaysian mobile typed without its leading `0`. WhatsApp wrote from the twelve-digit `60…` number, so the silent opt-in (12:29:06 UTC) was stored under the `60…` number while `orderDelivered()` normalised the order's number to the unchanged `1…` ten digits, found no opt-in and returned without a row (by design). `PhoneNumber::normalize()` took anything not starting `0` or `00` to already carry its country code. 1 of 42 real storefront orders had this shape. The same normaliser feeds joki updates, voucher messages and the voucher redemption phone match.
+
+**Fix (branch `fix/phone-normalize-malaysian-mobile-without-zero`).** A 9 or 10 digit number starting with `1` becomes `60…` (country code 1 numbers always have 11 digits). Tests: `PhoneNumberTest` (the new shapes, North American numbers kept, every way of typing one mobile is the same number) and an end-to-end case in `CustomerWhatsAppOptInTest` that reproduces the order (number typed without the zero, opt-in from the full number, receipt after a Mark Delivered). Recorded as ADR-116's 2026-10-30 addendum. The customer's missed receipt is not recoverable by code; the founder was advised to tell them by hand (not confirmed as done).
+
+**Item 138 closed.** The same order was a completed DuitNow QR payment (RM25.70; CHIP `paid`, `is_test` false, method `dnqr`, one successful attempt), and an earlier order was a completed FPX payment through the bank grid (Maybank2u). With the **Test** results, every part of item 138 is proven. The CHIP responses carried the buyers' names and emails; none of it is recorded here.
+
 ## 2026-10-30 — Membership OTP emails landing in spam: diagnosis, Plunk and DNS changes, and a subject/copy change
 
 **Report.** The founder said the membership code email goes to the spam folder, and shared one such message (Gmail "Show original").
@@ -2914,14 +2924,3 @@ The next CI run failed `backend-concurrency` on `CheckoutSettleWithVoucherConcur
 **Code (branch `fix/membership-otp-email-deliverability`).** The OTP email's subject is now `{code} is your {brand} verification code` (the form Gmail trusts for one-time codes), with a test that was red first, and the storefront's code screen says to check Spam or Junk and mark the email Not spam. No Reply-To change: I could not confirm Plunk's field for it.
 
 **Owed.** The sender switch is not made: set `PLUNK_FROM_EMAIL=noreply@pekangame.com` on the Forge box (blast radius: every system email, which all go through Plunk), `php artisan config:cache`, `php artisan horizon:terminate`, then request one OTP and read the Gmail headers. Optionally a Zoho alias for `noreply@pekangame.com` so replies do not bounce. The code change ships with the next release.
-
-## 2026-10-30 — A delivery receipt that never came (PG-L4RCBELJ9RE3), the phone normaliser, and item 138 closed
-
-**Report.** The founder asked why a customer who used the Contact Support button (a failed order), got the status card, and then had the item resent and delivered, received no delivery message.
-
-**Cause (read-only on prod).** The order's `customer_phone` had ten digits starting with `1`: a Malaysian mobile typed without its leading `0`. WhatsApp wrote from the twelve-digit `60…` number, so the silent opt-in (12:29:06 UTC) was stored under the `60…` number while `orderDelivered()` normalised the order's number to the unchanged `1…` ten digits, found no opt-in and returned without a row (by design). `PhoneNumber::normalize()` took anything not starting `0` or `00` to already carry its country code. 1 of 42 real storefront orders had this shape. The same normaliser feeds joki updates, voucher messages and the voucher redemption phone match.
-
-**Fix (branch `fix/phone-normalize-malaysian-mobile-without-zero`).** A 9 or 10 digit number starting with `1` becomes `60…` (country code 1 numbers always have 11 digits). Tests: `PhoneNumberTest` (the new shapes, North American numbers kept, every way of typing one mobile is the same number) and an end-to-end case in `CustomerWhatsAppOptInTest` that reproduces the order (number typed without the zero, opt-in from the full number, receipt after a Mark Delivered). Recorded as ADR-116's 2026-10-30 addendum. The customer's missed receipt is not recoverable by code; the founder was advised to tell them by hand (not confirmed as done).
-
-**Item 138 closed.** The same order was a completed DuitNow QR payment (RM25.70; CHIP `paid`, `is_test` false, method `dnqr`, one successful attempt), and an earlier order was a completed FPX payment through the bank grid (Maybank2u). With the **Test** results, every part of item 138 is proven. The CHIP responses carried the buyers' names and emails; none of it is recorded here.
-
