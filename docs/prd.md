@@ -1026,6 +1026,8 @@ moved to group D). Re-verify before building.
 - **25** Portal "needs attention" aggregate.
 - **57** Marketing Campaigns (ADR-118, designed).
 - **94** Best-selling products per game in Reports.
+- **145** Affiliate monthly auto-payout (ADR-132, designed 2026-10-30; build in progress on `feature/affiliate-auto-withdrawal`).
+- **146** Affiliate and Reseller onboarding (forced bank details, first-run steps). Founder has a reference video; needs its own ADR + grill.
 - **117** Storefront in more languages and currencies, to sell outside
   Malaysia. Long-term, not soon (founder, 2026-10-17).
 
