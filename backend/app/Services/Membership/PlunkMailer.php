@@ -15,8 +15,8 @@ use Illuminate\Support\Facades\Http;
  * live 2026-08-29: `POST {base_url}/v1/send`, `Authorization: Bearer
  * <secret key>`, JSON body `to`/`subject`/`body`, `from` required and
  * its domain must be verified), not an assumed shape. `from` was added
- * when the Plunk project + `send.fixfastapp.com` sender domain were
- * provisioned (2026-08-29) — `PLUNK_FROM_EMAIL`/`PLUNK_FROM_NAME`.
+ * when the Plunk project and its first sender domain were
+ * provisioned (2026-08-29; `pekangame.com` and `pekangame.space` are verified now) — `PLUNK_FROM_EMAIL`/`PLUNK_FROM_NAME`.
  * Same short-timeout discipline as ChipGateway/GamevionAdapter —
  * this can be called on a customer-facing verify request, never left
  * to hang indefinitely.

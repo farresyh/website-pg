@@ -257,4 +257,4 @@ ADR-126's 2026-10-23 addendum revises four rules here, for every manual order, n
 
 ### 2026-10-30 addendum — two numbers here are out of date
 
-The "Owned Brand" tier is **15%** in production (edited from 10% on 2026-10-30), and member Tier 2 gives **70%** off the markup, not 80% (set 2026-10-28). Neither changes the reasoning above, which only needs "at 15% markup a Tier 2 member keeps 4.5%, not 3%". [ADR-061](./ADR-061-every-storefront-is-a-reseller.md)'s 2026-10-30 addendum also means an owned brand no longer prices through that tier at all: it prices as the platform.
+The "Owned Brand" tier is **15%** in production (it appears to have been edited from 10% on 2026-10-30), and member Tier 2 gives **70%** off the markup, not 80% (set 2026-10-28). Neither changes the reasoning above, which only needs "at 15% markup a Tier 2 member keeps 4.5%, not 3%". [ADR-061](./ADR-061-every-storefront-is-a-reseller.md)'s 2026-10-30 addendum also means an owned brand no longer prices through that tier at all: it prices as the platform.

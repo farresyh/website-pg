@@ -98,7 +98,7 @@ cd reseller && npm run lint && npx tsc --noEmit
 ```
 
 ```bash
-cd e2e && npm test   # Playwright golden paths (ADR-023, 8 specs) — boots its own throwaway backend+DB, real Chromium
+cd e2e && npm test   # Playwright golden paths (ADR-023, 9 specs) — boots its own throwaway backend+DB, real Chromium
 ```
 
 ## Documentation

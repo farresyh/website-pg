@@ -373,7 +373,7 @@ The trigger in the 2026-10-02 addendum fired once: an affiliate (OhahaStore, `oh
 
 Adding `www.ohahastore.com` as a second domain in the portal (the guide's advice) left it `pending`: Vercel asks for **one `_vercel` TXT record per hostname** (`vc-domain-verify=<hostname>,<code>`), and the apex's TXT does not cover `www`. The guide does not say that each hostname needs its own TXT.
 
-**Decision:** automatic `www` pairing stays unbuilt and is queued as PRD §16 item 148 (it needs this ADR's design revisited first): register `www.<apex>` as a redirect to the apex at Vercel (a redirect takes no payment, so no separate CHIP approval, ADR-131), remove it with the apex, offer an "Also add www" option instead of guessing which names are apexes, and have the Domains guide state that every hostname needs its own TXT. Check Vercel's add-domain `redirect` parameter in its documentation before building.
+**Decision:** automatic `www` pairing stays unbuilt and is queued as PRD §16 item 148 (it needs this ADR's design revisited first): register `www.<apex>` as a redirect to the apex at Vercel (a redirect takes no payment, so no separate CHIP approval, ADR-131), remove it with the apex, offer an "Also add www" option instead of guessing which names are apexes, and have the Domains guide state that every hostname needs its own TXT. Check Vercel's add-domain `redirect` parameter in its documentation before building. **Replaced by the second 2026-10-30 addendum below: the twin is built there, and the "one TXT per hostname" sentence above is withdrawn.**
 
 ### 2026-10-30 addendum (second) — a domain brings a `www` redirect twin; the "one TXT per hostname" claim withdrawn
 
