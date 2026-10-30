@@ -27,7 +27,7 @@ const T = {
     steps: [
       {
         title: "Add your domain below",
-        body: "Usually your main domain, e.g. yourbrand.com. Want www.yourbrand.com to work too? Add it as a second domain. Type the full address into “Add a domain” below.",
+        body: "Usually your main domain, e.g. yourbrand.com. Leave “Also add www” ticked and we add www.yourbrand.com for you; it sends visitors to your main domain. Type the full address into “Add a domain” below.",
       },
       {
         title: "Find out where your DNS is managed",
@@ -56,7 +56,7 @@ const T = {
       rows: (cname: string, ip: string): Row[] => [
         { address: "yourbrand.com (main domain) on Cloudflare", record: `CNAME · Name @ · Target ${cname} · DNS only` },
         { address: "yourbrand.com (main domain) on GoDaddy and most others", record: `A · Name @ · Value ${ip}` },
-        { address: "www.yourbrand.com", record: `CNAME · Name www · Target ${cname}` },
+        { address: "www.yourbrand.com (the redirect we add for you)", record: `CNAME · Name www · Target ${cname}` },
         { address: "shop.yourbrand.com (any other prefix)", record: `CNAME · Name shop · Target ${cname}` },
       ],
     },
@@ -98,7 +98,7 @@ const T = {
     steps: [
       {
         title: "Tambah domain anda di bawah",
-        body: "Biasanya domain utama anda, cth. jenamaanda.com. Mahu www.jenamaanda.com berfungsi juga? Tambah ia sebagai domain kedua. Taip alamat penuh dalam “Add a domain” di bawah.",
+        body: "Biasanya domain utama anda, cth. jenamaanda.com. Biarkan “Also add www” bertanda dan kami tambah www.jenamaanda.com untuk anda; ia menghantar pengunjung ke domain utama anda. Taip alamat penuh dalam “Add a domain” di bawah.",
       },
       {
         title: "Kenal pasti di mana DNS anda diurus",
@@ -127,7 +127,7 @@ const T = {
       rows: (cname: string, ip: string): Row[] => [
         { address: "jenamaanda.com (domain utama) di Cloudflare", record: `CNAME · Name @ · Target ${cname} · DNS only` },
         { address: "jenamaanda.com (domain utama) di GoDaddy dan kebanyakan provider lain", record: `A · Name @ · Value ${ip}` },
-        { address: "www.jenamaanda.com", record: `CNAME · Name www · Target ${cname}` },
+        { address: "www.jenamaanda.com (lencongan yang kami tambah untuk anda)", record: `CNAME · Name www · Target ${cname}` },
         { address: "shop.jenamaanda.com (awalan lain)", record: `CNAME · Name shop · Target ${cname}` },
       ],
     },

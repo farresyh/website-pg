@@ -69,6 +69,8 @@ export interface AffiliateDomainRow {
   status: AffiliateDomainStatus;
   is_primary: boolean;
   /** ADR-131: serves the store either way; takes CHIP payments only once approved. */
+  /** ADR-060 second 2026-10-30 addendum: the domain this www address redirects to; null for an ordinary domain. */
+  redirects_to: string | null;
   payments_approved: boolean;
   payments_approved_at: string | null;
   provider: string;

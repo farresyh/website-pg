@@ -17,6 +17,7 @@ import { notify } from "@/components/ui/toast";
 import {
   getDomains,
   addDomain,
+  addWwwRedirect,
   recheckDomain,
   setPrimaryDomain,
   removeDomain,
@@ -47,6 +48,7 @@ export default function DomainsPage() {
   const [data, setData] = useState<DomainsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hostname, setHostname] = useState("");
+  const [withWww, setWithWww] = useState(true);
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
 
@@ -73,8 +75,12 @@ export default function DomainsPage() {
 
     setAdding(true);
     try {
-      await addDomain(session.token, hostname.trim());
-      notify.success("Domain added");
+      const added = await addDomain(session.token, hostname.trim(), withWww && !hostname.trim().toLowerCase().startsWith("www."));
+      if (added.www_error) {
+        notify.warn("Domain added, but not its www address", added.www_error);
+      } else {
+        notify.success(added.www ? "Domain and its www address added" : "Domain added");
+      }
       setHostname("");
       await refresh();
     } catch (err) {
@@ -101,7 +107,15 @@ export default function DomainsPage() {
   }
 
   const domains = data?.domains ?? [];
-  const atCap = data !== null && domains.length >= data.max_domains;
+  const atCap = data !== null && data.domains_used >= data.max_domains;
+  const hostnames = new Set(domains.map((d) => d.hostname));
+  const typedIsWww = hostname.trim().toLowerCase().startsWith("www.");
+  // A main domain (not a www redirect itself, not a www address) that has no redirect twin yet.
+  const canAddWww = (d: AffiliateDomainRow) =>
+    d.redirects_to === null &&
+    !d.hostname.startsWith("www.") &&
+    !domains.some((t) => t.redirects_to === d.hostname) &&
+    d.status !== "suspended";
   const canWrite = data?.writable ?? false;
 
   return (
@@ -120,7 +134,7 @@ export default function DomainsPage() {
       )}
 
       <div className="mt-6">
-        <Panel title={data ? `Add a domain (${domains.length}/${data.max_domains})` : "Add a domain"}>
+        <Panel title={data ? `Add a domain (${data.domains_used}/${data.max_domains})` : "Add a domain"}>
           <form onSubmit={handleAdd} className="flex flex-wrap items-end gap-3 p-5">
             <label className="flex-1 space-y-1.5">
               <span className="text-theme-sm font-medium text-ink-muted">Domain</span>
@@ -131,6 +145,15 @@ export default function DomainsPage() {
                 required
                 disabled={!canWrite || atCap}
               />
+            </label>
+            <label className="flex w-full items-center gap-2 text-theme-sm text-ink-muted">
+              <input
+                type="checkbox"
+                checked={withWww && !typedIsWww}
+                disabled={typedIsWww || !canWrite || atCap}
+                onChange={(e) => setWithWww(e.target.checked)}
+              />
+              Also add www{hostname.trim() && !typedIsWww ? `.${hostname.trim().toLowerCase()}` : ""}: it sends visitors to this domain
             </label>
             <Button
               type="submit"
@@ -164,6 +187,11 @@ export default function DomainsPage() {
                   <tr key={d.id} className="align-top text-ink-muted">
                     <td className="px-5 py-4">
                       <div className="font-medium text-ink">{d.hostname}</div>
+                      {d.redirects_to && (
+                        <span className="mt-1 inline-flex rounded-full bg-subtle px-2 py-0.5 text-theme-xs font-medium text-ink-muted">
+                          Redirects to {d.redirects_to}
+                        </span>
+                      )}
                       {d.is_primary && (
                         <span className="mt-1 inline-flex rounded-full bg-cyan-50 px-2 py-0.5 text-theme-xs font-medium text-cyan-ink">
                           Primary
@@ -185,9 +213,12 @@ export default function DomainsPage() {
                     <td className="px-5 py-4">
                       <StatusTag severity={STATUS_SEVERITY[d.status]}>{d.status}</StatusTag>
                       <p className="mt-1 max-w-xs text-theme-xs text-ink-subtle">
-                        {d.last_error ?? STATUS_HINT[d.status]}
+                        {d.last_error ??
+                          (d.redirects_to && d.status === "active"
+                            ? `Live — visitors are sent to ${d.redirects_to}.`
+                            : STATUS_HINT[d.status])}
                       </p>
-                      {(() => {
+                      {!d.redirects_to && (() => {
                         const payments = domainPaymentsBadge(d);
                         return payments && (
                           <div className="mt-2">
@@ -210,7 +241,23 @@ export default function DomainsPage() {
                         >
                           {busyId === d.id ? "…" : "Check now"}
                         </button>
-                        {canWrite && d.status === "active" && !d.is_primary && (
+                        {canWrite && canAddWww(d) && (
+                          <button
+                            type="button"
+                            disabled={busyId === d.id}
+                            onClick={() =>
+                              run(
+                                d.id,
+                                addWwwRedirect,
+                                hostnames.has(`www.${d.hostname}`) ? "www now redirects to this domain" : "www address added",
+                              )
+                            }
+                            className="rounded-md border border-border px-3 py-1.5 text-theme-xs text-ink-muted hover:bg-subtle disabled:opacity-50"
+                          >
+                            {hostnames.has(`www.${d.hostname}`) ? "Redirect www here" : "Add www"}
+                          </button>
+                        )}
+                        {canWrite && d.status === "active" && !d.is_primary && !d.redirects_to && (
                           <button
                             type="button"
                             disabled={busyId === d.id}
