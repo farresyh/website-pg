@@ -182,14 +182,14 @@ function AffiliateDashboard({ hello }: { hello: string }) {
           {stats ? (
             <BalanceHero
               icon="trend"
-              label="Withdrawable earnings"
+              label="Earnings balance"
               amount={formatRm(stats.earnings_balance)}
-              note="Your margin from delivered orders, ready to send to your bank."
+              note="Your margin from delivered orders. PekanGame pays it to your bank on the 1st of each month."
               actions={
                 <>
                   <Link href="/withdrawal" className={buttonClass("primary")}>
                     <PortalIcon name="bank" className="h-4 w-4" />
-                    Request withdrawal
+                    Monthly payout
                   </Link>
                   <Link href="/earnings" className={buttonClass("secondary")}>
                     Earnings history
