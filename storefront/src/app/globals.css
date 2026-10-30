@@ -74,14 +74,6 @@
   --color-surface-container-high: #ece5d7;
   --color-surface-container-highest: #e5ded0;
   --color-surface-variant: #e7e2d6;
-  /* The site header's own colours. By default the header is the page
-     colour (the ink border alone sets it apart); a preset can give it a
-     colour of its own (Cyber Bumblebee: yellow, ink action button). */
-  --color-header: var(--color-surface);
-  --color-header-accent: var(--color-primary);
-  --color-on-header-accent: var(--color-primary-on-surface);
-  --color-header-action: var(--color-primary);
-  --color-on-header-action: var(--color-on-primary);
 
   --color-outline: #7b7486;
   --color-outline-variant: #cbc3b7;

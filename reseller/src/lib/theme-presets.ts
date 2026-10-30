@@ -113,15 +113,6 @@ export const THEME_PRESETS: Record<string, ThemePreset> = {
       "--color-surface-variant": "#ffe9ad",
       "--color-outline": "#7b7050",
       "--color-outline-variant": "#e0c98a",
-      // The header is the brand yellow (founder, 2026-10-30: it was the same
-      // cream as the page behind it). Ink for the active link and the
-      // action button, since yellow-on-yellow has no contrast. The dark
-      // set below does not override these, so dark mode keeps the dark header.
-      "--color-header": "#FFC700",
-      "--color-header-accent": "#19192f",
-      "--color-on-header-accent": "#19192f",
-      "--color-header-action": "#19192f",
-      "--color-on-header-action": "#FFC700",
     },
     // DESIGN.md "Dark Mode Rules" applied: warm amber-black surface (not
     // neutral), muted warm-grey ink (not blazing cream), "white
