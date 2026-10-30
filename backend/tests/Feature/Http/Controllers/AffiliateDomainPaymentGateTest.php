@@ -272,4 +272,24 @@ class AffiliateDomainPaymentGateTest extends TestCase
 
         $this->assertFalse($domains[0]['payments_approved']);
     }
+
+    /** ADR-060 second 2026-10-30 addendum decision 4: a redirect twin takes no payment, so it has nothing to approve. */
+    public function test_a_redirect_twin_cannot_be_approved_and_the_admin_detail_marks_it(): void
+    {
+        [$affiliate, $apex] = $this->brand(approved: true);
+        $twin = AffiliateDomain::query()->create([
+            'affiliate_id' => $affiliate->id, 'hostname' => 'www.'.$apex->hostname, 'status' => AffiliateDomainStatus::Active,
+            'is_primary' => false, 'redirects_to_domain_id' => $apex->id,
+        ]);
+        $this->actingAsSteppedUp(AdminUser::factory()->superAdmin()->create());
+
+        $this->putJson("/api/affiliates/{$affiliate->id}/domains/{$twin->id}/payments-approval", ['approved' => true])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('domain');
+        $this->assertNull($twin->fresh()->payments_approved_at);
+
+        $rows = collect($this->getJson("/api/affiliates/{$affiliate->id}")->assertOk()->json('domains'))->keyBy('hostname');
+        $this->assertNull($rows[$apex->hostname]['redirects_to']);
+        $this->assertSame($apex->hostname, $rows['www.'.$apex->hostname]['redirects_to']);
+    }
 }

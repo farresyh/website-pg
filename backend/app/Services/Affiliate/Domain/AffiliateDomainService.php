@@ -53,7 +53,8 @@ class AffiliateDomainService
         $this->assertManageable($affiliate);
         $this->assertHostnameAllowed($hostname);
 
-        if ($affiliate->customDomains()->count() >= self::MAX_DOMAINS) {
+        // ADR-060 second 2026-10-30 addendum decision 4: the cap is on domains the affiliate chose, not on our redirect twins.
+        if ($affiliate->customDomains()->servable()->count() >= self::MAX_DOMAINS) {
             throw ValidationException::withMessages([
                 'hostname' => ['You can have at most '.self::MAX_DOMAINS.' domains. Remove one before adding another.'],
             ]);
@@ -89,6 +90,103 @@ class AffiliateDomainService
         $this->propagateChange($affiliate->id);
 
         return $domain->refresh();
+    }
+
+    /**
+     * ADR-060 second 2026-10-30 addendum: give `$apex` its `www.` redirect twin.
+     * Creates and attaches it, re-attaches a failed one, or converts a `www.`
+     * domain the affiliate already added by hand (OhahaStore) in place. Idempotent:
+     * an existing twin is returned untouched. The caller treats a failure as
+     * "the main domain still works, retry later" — the apex is never touched.
+     *
+     * @throws ValidationException not a main domain, the name is taken, or the account is inactive
+     * @throws DomainProviderException provider-side failure (already sanitised)
+     */
+    public function pairWww(AffiliateDomain $apex): AffiliateDomain
+    {
+        $affiliate = $apex->affiliate;
+
+        $this->assertManageable($affiliate);
+
+        if ($apex->isRedirectTwin() || $apex->provider_ref === null || str_starts_with($apex->hostname, 'www.')) {
+            throw ValidationException::withMessages([
+                'hostname' => ['A www address can only be added for a main domain, not for a www address itself.'],
+            ]);
+        }
+
+        $hostname = 'www.'.$apex->hostname;
+        $this->assertHostnameAllowed($hostname);
+
+        $existing = AffiliateDomain::withoutAffiliateScope()->where('hostname', $hostname)->first();
+
+        if ($existing === null) {
+            return $this->attachTwin(
+                $affiliate->customDomains()->create([
+                    'hostname' => $hostname,
+                    'status' => AffiliateDomainStatus::Pending,
+                    'provider' => 'vercel',
+                    'is_primary' => false,
+                    'redirects_to_domain_id' => $apex->id,
+                ]),
+                $apex,
+                discardOnFailure: true,
+            );
+        }
+
+        if ($existing->affiliate_id !== $apex->affiliate_id) {
+            throw ValidationException::withMessages([
+                'hostname' => ['That www address is already registered. Contact support if you believe this is a mistake.'],
+            ]);
+        }
+
+        if ($existing->redirects_to_domain_id === $apex->id) {
+            // A twin whose setup was torn down (no provider reference) is attached again; a live one is left alone.
+            return $existing->provider_ref === null ? $this->attachTwin($existing, $apex, discardOnFailure: false) : $existing;
+        }
+
+        return $this->convertToTwin($existing, $apex);
+    }
+
+    private function attachTwin(AffiliateDomain $twin, AffiliateDomain $apex, bool $discardOnFailure): AffiliateDomain
+    {
+        try {
+            $state = $this->provider->attach($twin->hostname, $apex->hostname);
+        } catch (DomainProviderException $e) {
+            if ($discardOnFailure) {
+                $twin->forceDelete();
+            }
+
+            throw $e;
+        }
+
+        $this->applyState($twin, $state);
+        $this->propagateChange($twin->affiliate_id);
+
+        return $twin->refresh();
+    }
+
+    /** A hand-added `www.` domain becomes the twin in place: a redirect call, never a remove and re-add. */
+    private function convertToTwin(AffiliateDomain $www, AffiliateDomain $apex): AffiliateDomain
+    {
+        if ($www->provider_ref === null) {
+            throw ValidationException::withMessages([
+                'hostname' => ['That www address cannot be turned into a redirect.'],
+            ]);
+        }
+
+        $state = $this->provider->redirect($www->provider_ref, $apex->hostname);
+        $wasPrimary = $www->is_primary;
+
+        $www->forceFill(['redirects_to_domain_id' => $apex->id, 'is_primary' => false])->save();
+        $this->applyState($www, $state);
+
+        if ($wasPrimary) {
+            $this->failoverPrimary($apex->affiliate);
+        }
+
+        $this->propagateChange($www->affiliate_id);
+
+        return $www->refresh();
     }
 
     /**
@@ -140,6 +238,8 @@ class AffiliateDomainService
         $affiliate = $domain->affiliate;
         $wasPrimary = $domain->is_primary;
 
+        $this->removeTwinsOf($domain);
+
         if ($domain->provider_ref !== null) {
             $this->provider->detach($domain->provider_ref);
         }
@@ -159,6 +259,12 @@ class AffiliateDomainService
      */
     public function setPrimary(AffiliateDomain $domain): void
     {
+        if ($domain->isRedirectTwin()) {
+            throw ValidationException::withMessages([
+                'domain' => ['A www redirect cannot be the main domain. Make the domain it redirects to the main one.'],
+            ]);
+        }
+
         if ($domain->status !== AffiliateDomainStatus::Active) {
             throw ValidationException::withMessages([
                 'domain' => ['Only an active domain can be made primary.'],
@@ -228,7 +334,9 @@ class AffiliateDomainService
      */
     public function removeAllForDelete(Affiliate $affiliate): void
     {
-        $domains = $affiliate->customDomains()->whereNotNull('provider_ref')->get();
+        // Twins first: a domain other domains redirect to is detached last.
+        $domains = $affiliate->customDomains()->whereNotNull('provider_ref')->get()
+            ->sortBy(fn (AffiliateDomain $d) => $d->isRedirectTwin() ? 0 : 1);
 
         foreach ($domains as $domain) {
             $this->provider->detach($domain->provider_ref);
@@ -250,6 +358,8 @@ class AffiliateDomainService
      */
     public function tearDownStuckPending(AffiliateDomain $domain): void
     {
+        $this->removeTwinsOf($domain);
+
         if ($domain->provider_ref !== null) {
             $this->provider->detach($domain->provider_ref);
         }
@@ -270,6 +380,18 @@ class AffiliateDomainService
         }
 
         $this->propagateChange($domain->affiliate_id);
+    }
+
+    /** A domain's redirect twins go before it: they are detached at the provider, then deleted. */
+    private function removeTwinsOf(AffiliateDomain $domain): void
+    {
+        foreach ($domain->twins()->get() as $twin) {
+            if ($twin->provider_ref !== null) {
+                $this->provider->detach($twin->provider_ref);
+            }
+
+            $twin->forceDelete();
+        }
     }
 
     /**
@@ -326,7 +448,7 @@ class AffiliateDomainService
 
         // First domain to reach active auto-becomes the canonical primary
         // (addendum section E).
-        if ($becameActive && $affiliate !== null && ! $this->hasActivePrimary($affiliate, $domain)) {
+        if ($becameActive && ! $domain->isRedirectTwin() && $affiliate !== null && ! $this->hasActivePrimary($affiliate, $domain)) {
             $domain->is_primary = true;
         }
 
@@ -346,6 +468,7 @@ class AffiliateDomainService
         }
 
         $next = $affiliate->customDomains()
+            ->servable()
             ->where('status', AffiliateDomainStatus::Active)
             ->orderBy('verified_at')
             ->orderBy('id')

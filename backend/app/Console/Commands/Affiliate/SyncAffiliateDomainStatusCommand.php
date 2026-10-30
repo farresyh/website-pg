@@ -79,7 +79,8 @@ class SyncAffiliateDomainStatusCommand extends Command
                     $failed++;
                 }
 
-                if ($after === AffiliateDomainStatus::Pending && in_array($ageDays, [3, 7], true)) {
+                // A twin is not nagged: its main domain's reminder already covers the DNS the affiliate has to set.
+                if ($after === AffiliateDomainStatus::Pending && ! $domain->isRedirectTwin() && in_array($ageDays, [3, 7], true)) {
                     $reminded += $this->remind($mailer, $domain) ? 1 : 0;
                 }
             } catch (DomainProviderException $e) {

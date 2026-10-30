@@ -19,6 +19,8 @@ use Illuminate\Support\Facades\Log;
  *  - get     `GET    /v9/projects/{project}/domains/{domain}`
  *  - verify  `POST   /v9/projects/{project}/domains/{domain}/verify`
  *  - remove  `DELETE /v9/projects/{project}/domains/{domain}`
+ *  - redirect `PATCH /v9/projects/{project}/domains/{domain}`   body {redirect, redirectStatusCode}
+ * (the add body takes the same two fields for a domain that is born a redirect)
  * all with `?teamId=` since the project lives under a team.
  *
  * Provider opacity (addendum section C): every failure is re-thrown as a
@@ -28,6 +30,9 @@ use Illuminate\Support\Facades\Log;
  */
 final class VercelDomainProvider implements AffiliateDomainProvider
 {
+    /** A permanent redirect that keeps the request method (ADR-060 second 2026-10-30 addendum, decision 3). */
+    public const REDIRECT_STATUS = 308;
+
     public function __construct(
         private readonly string $token,
         private readonly string $teamId,
@@ -37,19 +42,43 @@ final class VercelDomainProvider implements AffiliateDomainProvider
         private readonly int $connectTimeoutSeconds = 5,
     ) {}
 
-    public function attach(string $hostname): DomainProviderState
+    public function attach(string $hostname, ?string $redirectTo = null): DomainProviderState
     {
+        $body = ['name' => $hostname];
+        if ($redirectTo !== null) {
+            $body += ['redirect' => $redirectTo, 'redirectStatusCode' => self::REDIRECT_STATUS];
+        }
+
         $response = $this->send(
-            fn () => $this->request()->post(
-                "/v10/projects/{$this->projectId}/domains",
-                ['name' => $hostname],
-            ),
+            fn () => $this->request()->post("/v10/projects/{$this->projectId}/domains", $body),
             'attach',
             $hostname,
         );
 
         if ($response->failed()) {
             throw $this->translate($response, 'attach', $hostname);
+        }
+
+        return $this->stateFromPayload($hostname, $response->json());
+    }
+
+    public function redirect(string $hostname, string $target): DomainProviderState
+    {
+        $response = $this->send(
+            fn () => $this->request()->patch(
+                "/v9/projects/{$this->projectId}/domains/".rawurlencode($hostname),
+                ['redirect' => $target, 'redirectStatusCode' => self::REDIRECT_STATUS],
+            ),
+            'redirect',
+            $hostname,
+        );
+
+        if ($response->status() === 404) {
+            return new DomainProviderState(providerRef: $hostname, verified: false, missing: true);
+        }
+
+        if ($response->failed()) {
+            throw $this->translate($response, 'redirect', $hostname);
         }
 
         return $this->stateFromPayload($hostname, $response->json());
