@@ -969,7 +969,7 @@ and the admin-loading investigation (#515, #516). Re-checked again
 moved to group D). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-(none: 143 closed and 149 built, 2026-10-30)
+- **148** `www` redirect twin for a branded domain (ADR-060's second 2026-10-30 addendum, Accepted): "Also add www" on the add-domain form and an "Add www" action; a twin row (`redirects_to_domain_id`) that 308-redirects to the typed domain and is never served, canonical, primary, CORS-allowed or payment-approved; the provider gains a redirect target and a PATCH `redirect()`; the Domains guide changes; then convert `www.ohahastore.com` from the portal action after release (founder). Build in progress on `feature/affiliate-www-pairing`.
 
 **B. Needs a short grill / ADR addendum first**
 (none: 149 grilled 2026-10-30, now in A)
@@ -1060,7 +1060,6 @@ moved to group D). Re-verify before building.
 - **57** Marketing Campaigns (ADR-118, designed).
 - **94** Best-selling products per game in Reports.
 - **146** Affiliate and Reseller onboarding (forced bank details, first-run steps). Founder has a reference video; needs its own ADR + grill.
-- **148** `www` pairing for a branded domain, and a TXT note for each hostname in the Domains guide (ADR-060's 2026-10-30 addendum: register `www.<apex>` as a redirect at Vercel, remove it with the apex, an "Also add www" option, and the guide saying each hostname needs its own `_vercel` TXT). Check Vercel's add-domain `redirect` parameter first; needs the ADR-060 design revisited.
 - **117** Storefront in more languages and currencies, to sell outside
   Malaysia. Long-term, not soon (founder, 2026-10-17).
 
