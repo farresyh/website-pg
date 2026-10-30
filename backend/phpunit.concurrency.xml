@@ -31,5 +31,15 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
+        <!-- Tests never use live credentials. backend/.env holds the real keys for local work; CI has none.
+             Forced blank so a test that forgets to fake an HTTP call cannot send a real email, create a real
+             CHIP purchase, call a real supplier or bill the Gemini key. -->
+        <env name="PLUNK_API_KEY" value="" force="true"/>
+        <env name="CHIP_SECRET_KEY" value="" force="true"/>
+        <env name="CHIP_BRAND_ID" value="" force="true"/>
+        <env name="GAMEVION_API_KEY" value="" force="true"/>
+        <env name="GAMEVION_BEARER_TOKEN" value="" force="true"/>
+        <env name="GEMINI_API_KEY" value="" force="true"/>
+        <env name="SUPPLIER_PROXY_URL" value="" force="true"/>
     </php>
 </phpunit>
