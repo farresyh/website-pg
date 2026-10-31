@@ -1469,3 +1469,11 @@ The founder asked whether the docs were current and free of contradictions. Read
 - **Founder decision (2026-11-01):** the portal never opens to public signup; the ADR-133 application is the only way in. Item 111's second trigger dropped (ADR-019 2026-11-01 addendum).
 - **Gaps:** `foundation-security.md` gained the public application endpoints (§4) and the KYC file handling (§7); the root `AGENTS.md` `reseller/` row names the onboarding host. New §16 item 153 holds opening the application, including the docs-site "Request access" text that still says to email.
 - **Housekeeping:** `build-log.md` entries 2026-10-15 → 2026-10-22 (64 entries) moved verbatim to `build-log-archive.md` ("Ninth archive move"); both headers, PRD §15/§16 pointers and the root `AGENTS.md` now say 2026-10-23.
+
+## 2026-11-01 — Item 129 decided (voucher-only); item 153 request-access text
+
+- **Founder decisions:** (1) item 129: no refund to the original payment method for a storefront order, only retry or a voucher. ADR-004 stays in force and gets a 2026-11-01 addendum; the index row and `backend/AGENTS.md` no longer say "being revised"; PRD §6/§7/§16 updated. The detail block for 129 is gone; the open part is one line in group C. (2) Item 153: the founder turned "Public applications open" on; no link in the storefront footer.
+- **Read-only prod check:** 14 orders paid since 2026-10-22, all delivered, so no order is owed a refund under the old wording.
+- **Still owed by the founder:** the published Refund Policy (Admin → Settings → Footer) still has the refund-to-original-method wording until the founder saves a voucher-only text. Nothing was written to production.
+- **`partners@pekangame.space` does not exist** (founder). The docs-site "Request access" now links to `onboarding.pekangame.space/apply` and the intro heading reads "Access is by application"; the `/apply` closed-state message no longer names the address. The PDPA contact in the two notices (`services.onboarding.privacy_contact`) is now `business@pekangame.com` (founder); `ONBOARDING_PRIVACY_CONTACT` is not set on Forge (checked, count only), so the code default is what the notices print. Takes effect at the next release.
+- **Checks:** docs-site `npm run build` passes (18 pages).
