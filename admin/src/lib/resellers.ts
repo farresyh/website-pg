@@ -31,8 +31,8 @@ export interface ResellerRow {
   effective_balance_cap_sen: number;
   /** ADR-133 decision 18: only on the list. */
   readiness?: Readiness | null;
-  /** ADR-133 decision 12: "none" = an internal account (no KYC on file); "outside_system" = documents collected outside the system. */
-  kyc: "none" | "outside_system";
+  /** ADR-133 decision 12: "on_file" = approved from an application still held; "none" = an internal account; "outside_system" = documents collected outside the system. */
+  kyc: "on_file" | "none" | "outside_system";
   internal_reason: string | null;
 }
 
@@ -67,10 +67,6 @@ export interface UpdateResellerValues {
 
 export function listResellers() {
   return apiFetch<{ resellers: ResellerRow[] }>("/api/resellers");
-}
-
-export function createReseller(values: CreateResellerValues) {
-  return apiFetch<ResellerRow>("/api/resellers", { method: "POST", body: values });
 }
 
 /** ADR-133 decision 12(c): a test or internal account, no KYC on file. Behind MFA step-up; api-client shows the prompt. */
