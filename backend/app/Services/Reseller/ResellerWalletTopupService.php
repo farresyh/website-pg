@@ -55,6 +55,15 @@ final class ResellerWalletTopupService
         string $channelCode,
         array $channelProperties,
     ): WalletTopupAttempt {
+        // ADR-133 decision 20: an account that cannot order is not funded. Checked on
+        // the start only, never in completeTopup(): a top-up already paid still credits.
+        // An assigned tier can only be swapped, never cleared, so no lock is needed.
+        if ($reseller->reseller_tier_id === null) {
+            throw new NoResellerTierAssignedException(
+                'Your account has no pricing set up yet, so you cannot add balance. Contact PekanGame to set it up.',
+            );
+        }
+
         if ($amountSen < self::MIN_AMOUNT_SEN) {
             throw new InvalidWalletTopupAmountException(
                 'The minimum you can add is RM'.number_format(self::MIN_AMOUNT_SEN / 100, 2).'.',

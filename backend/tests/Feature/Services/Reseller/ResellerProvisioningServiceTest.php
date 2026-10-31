@@ -27,34 +27,85 @@ class ResellerProvisioningServiceTest extends TestCase
         return app(ResellerProvisioningService::class);
     }
 
-    public function test_create_makes_an_active_reseller_with_its_wallet_account(): void
+    private function tier(): ResellerTier
     {
-        $tier = ResellerTier::query()->create(['name' => 'Gold', 'markup_percent' => 5, 'is_active' => true, 'sort_order' => 1]);
-
-        $reseller = $this->service()->create([
-            'business_name' => 'Acme', 'contact_name' => 'Ali', 'email' => 'ali@example.test',
-            'phone' => '0123456789', 'notes' => 'n', 'reseller_tier_id' => $tier->id,
-        ]);
-
-        $this->assertTrue($reseller->is_active);
-        $this->assertSame($tier->id, $reseller->reseller_tier_id);
-        $this->assertSame('ali@example.test', $reseller->email);
-        $this->assertTrue(LedgerAccount::query()
-            ->where('owner_type', LedgerOwnerType::ResellerWallet->value)->where('owner_id', $reseller->id)->exists());
+        return ResellerTier::query()->create(['name' => 'Gold', 'markup_percent' => 5, 'is_active' => true, 'sort_order' => 1]);
     }
 
-    public function test_create_without_a_tier_still_works_until_the_callers_require_one(): void
+    /** @return array<string, mixed> */
+    private function details(array $overrides = []): array
     {
-        $reseller = $this->service()->create(['business_name' => 'Plain']);
+        return $overrides + [
+            'business_name' => 'Acme', 'contact_name' => 'Ali', 'email' => 'ali@example.test',
+            'phone' => '0123456789', 'notes' => 'n', 'reseller_tier_id' => $this->tier()->id,
+        ];
+    }
 
-        $this->assertNull($reseller->reseller_tier_id);
+    public function test_provision_makes_the_reseller_its_wallet_account_and_a_portal_login_with_the_invite(): void
+    {
+        Http::fake();
+
+        $reseller = $this->service()->provision($this->details());
+
         $this->assertTrue($reseller->is_active);
+        $this->assertNotNull($reseller->reseller_tier_id);
+        $this->assertNull($reseller->internal_reason);
+        $this->assertTrue(LedgerAccount::query()
+            ->where('owner_type', LedgerOwnerType::ResellerWallet->value)->where('owner_id', $reseller->id)->exists());
+
+        $user = AffiliateUser::query()->sole();
+        $this->assertSame(AccountOwnerType::Reseller, $user->owner_type);
+        $this->assertSame($reseller->id, $user->owner_id);
+        $this->assertSame('Ali', $user->name);
+        $this->assertSame('ali@example.test', $user->email);
+        $this->assertNull($user->password);
+        Http::assertSentCount(1);
+    }
+
+    /** ADR-133 decision 21: a reseller with no tier cannot order or add balance, so none is made. */
+    public function test_provision_without_a_tier_makes_nothing(): void
+    {
+        Http::fake();
+
+        try {
+            $this->service()->provision($this->details(['reseller_tier_id' => null]));
+            $this->fail('A reseller was provisioned without a tier.');
+        } catch (\InvalidArgumentException) {
+        }
+
+        $this->assertSame(0, Reseller::query()->count());
+        $this->assertSame(0, LedgerAccount::query()->count());
+        Http::assertNothingSent();
+    }
+
+    public function test_a_failed_invite_leaves_no_reseller_account_or_login(): void
+    {
+        Http::fake(fn () => throw new \RuntimeException('Plunk is down'));
+
+        try {
+            $this->service()->provision($this->details());
+            $this->fail('the invite failure must surface');
+        } catch (\Throwable) {
+        }
+
+        $this->assertSame(0, Reseller::withTrashed()->count());
+        $this->assertSame(0, LedgerAccount::query()->count());
+        $this->assertSame(0, AffiliateUser::query()->count());
+    }
+
+    public function test_an_internal_account_keeps_its_reason(): void
+    {
+        Http::fake();
+
+        $reseller = $this->service()->provision($this->details(['internal_reason' => 'Test account for CHIP review']));
+
+        $this->assertSame('Test account for CHIP review', $reseller->fresh()->internal_reason);
     }
 
     public function test_add_portal_user_makes_a_passwordless_user_and_sends_the_invite(): void
     {
         Http::fake();
-        $reseller = $this->service()->create(['business_name' => 'Acme']);
+        $reseller = $this->service()->provision($this->details());
 
         $user = $this->service()->addPortalUser($reseller, 'Staff', 'staff@example.test');
 
@@ -62,13 +113,14 @@ class ResellerProvisioningServiceTest extends TestCase
         $this->assertSame($reseller->id, $user->owner_id);
         $this->assertNull($user->password);
         $this->assertTrue($user->is_active);
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
     }
 
-    public function test_a_failed_invite_rolls_the_user_back(): void
+    public function test_a_failed_second_invite_rolls_only_that_user_back(): void
     {
+        Http::fake();
+        $reseller = $this->service()->provision($this->details());
         Http::fake(fn () => throw new \RuntimeException('Plunk is down'));
-        $reseller = $this->service()->create(['business_name' => 'Acme']);
 
         try {
             $this->service()->addPortalUser($reseller, 'Staff', 'staff@example.test');

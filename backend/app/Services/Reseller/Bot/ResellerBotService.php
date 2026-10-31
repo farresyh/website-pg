@@ -31,9 +31,9 @@ use App\Services\Reseller\ResellerOrderPlacementService;
 use App\Services\Reseller\ResellerWalletService;
 use App\Services\Reseller\ResellerWalletTopupService;
 use App\Services\Reseller\WalletBalanceCapExceededException;
-use App\Services\Reseller\WalletTopupOverMaximumException;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use App\Services\Reseller\WalletTopupCheckoutFailedException;
+use App\Services\Reseller\WalletTopupOverMaximumException;
 use App\Services\WhatsApp\WhatsAppGroupService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -596,6 +596,10 @@ final class ResellerBotService
 
         try {
             $attempt = $this->topups->initiate($reseller, $amountSen, $method->channel_code, []);
+        } catch (NoResellerTierAssignedException) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'topup_no_tier_assigned');
+
+            return ResellerBotReplyFormatter::topupNoTier();
         } catch (WalletTopupOverMaximumException $e) {
             // ADR-131 decision 7: own sentence for each limit, never the "minimum" reply.
             $this->logFailure($reseller, $groupId, $command->raw, 'topup_over_maximum');

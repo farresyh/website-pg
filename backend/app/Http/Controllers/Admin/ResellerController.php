@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AssignResellerTierRequest;
 use App\Http\Requests\Admin\CloseResellerRequest;
+use App\Http\Requests\Admin\StoreInternalResellerRequest;
 use App\Http\Requests\Admin\StoreResellerRequest;
 use App\Http\Requests\Admin\StoreResellerUserRequest;
 use App\Http\Requests\Admin\UpdateResellerBalanceCapRequest;
@@ -73,19 +74,32 @@ class ResellerController extends Controller
         return response()->json($this->rowShape($reseller, $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id)));
     }
 
-    /** ADR-133 decision 21: creation (and the wallet ledger account) lives in `ResellerProvisioningService`. */
+    /** ADR-133 decision 21: the reseller, its wallet account and its portal login, in `ResellerProvisioningService`. */
     public function store(StoreResellerRequest $request): JsonResponse
     {
-        $data = $request->validated();
-
-        $reseller = $this->provisioning->create($data);
+        $reseller = $this->provisioning->provision($request->validated());
 
         Log::info('Reseller created', [
             'reseller_id' => $reseller->id,
             'admin_user_id' => $request->user()->id,
         ]);
 
-        return response()->json($this->rowShape($reseller->fresh(), 0), 201);
+        return response()->json($this->rowShape($reseller->fresh(['tier', 'users']), 0), 201);
+    }
+
+    /** ADR-133 decision 12(c): a test or internal account, no KYC on file. Behind step-up. */
+    public function storeInternal(StoreInternalResellerRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+        $reseller = $this->provisioning->provision(['internal_reason' => $data['reason']] + $data);
+
+        Log::info('Internal reseller account created', [
+            'reseller_id' => $reseller->id,
+            'admin_user_id' => $request->user()->id,
+            'reason' => $data['reason'],
+        ]);
+
+        return response()->json($this->rowShape($reseller->fresh(['tier', 'users']), 0), 201);
     }
 
     public function update(UpdateResellerRequest $request, Reseller $reseller): JsonResponse
@@ -224,6 +238,10 @@ class ResellerController extends Controller
             'markup_percent' => $reseller->tier?->markup_percent,
             'is_active' => (bool) $reseller->is_active,
             'notes' => $reseller->notes,
+            // ADR-133 decision 12: an internal account has no KYC on file; every other account
+            // so far had its documents collected outside the system (PR 3 adds "on file").
+            'kyc' => $reseller->internal_reason !== null ? 'none' : 'outside_system',
+            'internal_reason' => $reseller->internal_reason,
             'deleted_at' => $reseller->deleted_at,
             'wallet_balance_sen' => $walletBalanceSen,
             'balance_cap_sen' => $reseller->balance_cap_sen,

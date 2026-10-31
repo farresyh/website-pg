@@ -9,6 +9,7 @@ use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use App\Services\Reseller\InvalidWalletTopupAmountException;
+use App\Services\Reseller\NoResellerTierAssignedException;
 use App\Services\Reseller\PendingWalletTopupAlreadyExistsException;
 use App\Services\Reseller\ResellerWalletService;
 use App\Services\Reseller\ResellerWalletTopupService;
@@ -81,7 +82,7 @@ class ResellerWalletTopupTestInitiate extends Command
                 $attempt = $service->initiate($reseller, $amount, 'fpx', []);
                 file_put_contents($resultFile, 'success:'.$attempt->reference);
             }
-        } catch (PendingWalletTopupAlreadyExistsException|InvalidWalletTopupAmountException $e) {
+        } catch (PendingWalletTopupAlreadyExistsException|InvalidWalletTopupAmountException|NoResellerTierAssignedException $e) {
             file_put_contents($resultFile, 'failed:'.$e->getMessage());
         }
 

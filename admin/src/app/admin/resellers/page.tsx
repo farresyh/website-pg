@@ -52,6 +52,7 @@ import { notify } from "@/components/ui/toast";
 import {
   listResellers,
   createReseller,
+  createInternalReseller,
   updateReseller,
   updateResellerStatus,
   assignResellerTier,
@@ -89,6 +90,7 @@ export default function ResellersPage() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ResellerRow | null>(null);
+  const [internalForm, setInternalForm] = useState(false);
   const [tierFormOpen, setTierFormOpen] = useState(false);
   const [editingTier, setEditingTier] = useState<ResellerTier | null>(null);
   const [statusTarget, setStatusTarget] = useState<ResellerRow | null>(null);
@@ -135,10 +137,23 @@ export default function ResellersPage() {
   }
 
   async function handleCreate(values: ResellerFormSubmitValues) {
-    if (!session) return;
-    await createReseller(values);
-    notify.success("Reseller created");
+    if (!session || values.reseller_tier_id === null || !values.contact_name || !values.email) return;
+    const create = {
+      business_name: values.business_name,
+      contact_name: values.contact_name,
+      email: values.email,
+      phone: values.phone,
+      reseller_tier_id: values.reseller_tier_id,
+      notes: values.notes,
+    };
+    if (internalForm) {
+      await createInternalReseller({ ...create, reason: values.reason ?? "" });
+    } else {
+      await createReseller(create);
+    }
+    notify.success(internalForm ? "Internal account created, invite sent" : "Reseller created, invite sent");
     setFormOpen(false);
+    setInternalForm(false);
     await refresh();
   }
 
@@ -175,10 +190,15 @@ export default function ResellersPage() {
             spends from a deposited balance, never earns.
           </p>
         </div>
-        <Button onClick={() => { setEditing(null); setFormOpen(true); }}>
-          <PlusIcon />
-          Add Reseller
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outlined" onClick={() => { setEditing(null); setInternalForm(true); setFormOpen(true); }}>
+            Create internal account
+          </Button>
+          <Button onClick={() => { setEditing(null); setInternalForm(false); setFormOpen(true); }}>
+            <PlusIcon />
+            Add Reseller
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -208,6 +228,13 @@ export default function ResellersPage() {
                         <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
                           {r.business_name}
                           {r.contact_name && <p className="text-theme-xs font-normal text-gray-500 dark:text-gray-400">{r.contact_name}</p>}
+                          {r.kyc === "none" ? (
+                            <span title={r.internal_reason ?? undefined}>
+                              <Tag severity="warn" className="mt-1">Internal · No KYC on file</Tag>
+                            </span>
+                          ) : (
+                            <p className="text-theme-xs font-normal text-ink-subtle">KYC outside the system</p>
+                          )}
                         </DataTableCell>
                         <DataTableCell className={TD}>
                           {r.tier_name ? (
@@ -396,10 +423,11 @@ export default function ResellersPage() {
 
       <ResellerFormModal
         isOpen={formOpen}
-        onClose={() => { setFormOpen(false); setEditing(null); }}
+        onClose={() => { setFormOpen(false); setEditing(null); setInternalForm(false); }}
         onSubmit={editing ? handleUpdate : handleCreate}
         editing={editing}
         tiers={tiers}
+        internal={internalForm}
       />
 
       <ResellerTierFormModal

@@ -2993,3 +2993,19 @@ The next CI run failed `backend-concurrency` on `CheckoutSettleWithVoucherConcur
 - Sanctum keeps the first authenticated user for the rest of a test (met again in PR 1a).
 
 **Next.** PR 2 (the tier-less top-up guard in `ResellerWalletTopupService::initiate()`, never `completeTopup()`; the admin create made to use `ResellerProvisioningService` with the tier required; wallet trace first), then PR 3 and PR 4.
+
+## 2026-10-31 — Partner onboarding PR 2: the tier-less top-up guard, the admin create with a login, Create internal account (ADR-133)
+
+**Built (branch `feature/partner-onboarding-pr2-topup-guard-provisioning`).**
+- **Top-up guard (decision 20):** `ResellerWalletTopupService::initiate()` refuses a reseller with no tier before any CHIP call; the portal answers 422, the bot replies in Malay (`topup_no_tier_assigned`). `completeTopup()` is untouched. The portal's no-tier banner and checklist step now say adding balance is blocked too.
+- **`ResellerProvisioningService::provision()` (decision 21):** reseller, wallet account, first portal login and invite in one transaction, tier required in the service. The admin "Add Reseller" requires an active tier, the contact name and an email no portal user has.
+- **Create internal account (decision 12(c)):** `POST /api/resellers/internal`, super_admin + MFA step-up, a required reason in `resellers.internal_reason` (new migration) and the log. The list shows "Internal · No KYC on file" or "KYC outside the system".
+
+**Trace before code.** Callers of `initiate()`: the portal, `.topupbaki`, the `FinancialScenario` seeder (its reseller has a tier) and the race-test command. Credit paths: the CHIP webhook, the 15-minute reconcile, the race-test complete command, the admin manual credit; none reads the tier. A tier can only be swapped, never cleared. Production (read-only, 2026-10-31): 3 resellers, all with a tier and a login, no pending top-up.
+
+**Verified.** Red first (top-up: 3 failing; provisioning and admin: 11 failing), then green. Full fast suite 3335/3335. The concurrency suite on local MySQL: 38 of 42, every wallet, top-up and order race passing; the 4 failures are `BackupRestoreMysqlTest`, which needs a `mysqldump` binary this machine lacks (CI has it). Admin `tsc`, lint, 20 unit tests; portal `tsc`, 18 unit tests. Three read-only review forks (wallet and ledger; provisioning and auth; admin, portal and bot readers): no money finding; their three small findings were fixed (an inactive tier refused on create, the race-test command catching the new refusal, the portal copy). Browser check on a throwaway backend with Plunk pointed at a local fake (no real email): the submit stays disabled until a tier is chosen, the inactive tier is not offered, create sends the invite and the row shows "KYC outside the system", a taken email shows "email has already been taken", the internal form sends the reason and a no-MFA admin gets the step-up refusal, the Internal tag and the KYC line have contrast 5.3 or more in light and dark. Everything stopped and deleted afterwards.
+
+**Trap.** The local `.env` has a live Plunk key, so a browser check that creates a portal login sends a real email unless `PLUNK_BASE_URL` points at a fake.
+
+**Not done.** FixFast is not marked internal in production (a data write, the founder's call). Next: PR 3 (the public application, KYC, retention), then PR 4 (`max_markup_pct`).
+

@@ -35,6 +35,7 @@ class Reseller extends Model
         'is_active',
         'notes',
         'balance_cap_sen',
+        'internal_reason',
     ];
 
     protected $casts = [

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\ResellerPortal;
 use App\Http\Requests\ResellerPortal\TopupRequest;
 use App\Services\Payment\Chip\FpxBankRedirect;
 use App\Services\Reseller\InvalidWalletTopupAmountException;
+use App\Services\Reseller\NoResellerTierAssignedException;
 use App\Services\Reseller\PendingWalletTopupAlreadyExistsException;
 use App\Services\Reseller\ResellerWalletService;
 use App\Services\Reseller\ResellerWalletTopupService;
@@ -49,7 +50,7 @@ class WalletController extends Controller
                 $request->validated('channel_code'),
                 $request->validated('channel_properties') ?? [],
             );
-        } catch (InvalidWalletTopupAmountException|PendingWalletTopupAlreadyExistsException $e) {
+        } catch (InvalidWalletTopupAmountException|PendingWalletTopupAlreadyExistsException|NoResellerTierAssignedException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         } catch (WalletTopupCheckoutFailedException $e) {
             return response()->json(['message' => $e->getMessage()], 502);
