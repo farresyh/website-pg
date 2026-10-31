@@ -57,6 +57,7 @@ import {
   type AffiliateSubscriptionStatus,
   type ImpersonationSessionRow,
 } from "@/lib/affiliates";
+import ReadinessCell from "@/components/partners/ReadinessCell";
 import AffiliateFormModal, { type AffiliateFormSubmitValues } from "@/components/affiliates/AffiliateFormModal";
 import AffiliateDetailModal from "@/components/affiliates/AffiliateDetailModal";
 import AffiliateTierFormModal from "@/components/affiliates/AffiliateTierFormModal";
@@ -200,6 +201,7 @@ export default function AffiliatesPage() {
                     <DataTableTHeadCell className={TH}>Tier</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Earnings</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Orders</DataTableTHeadCell>
+                    <DataTableTHeadCell className={TH}>Setup</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Status</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
@@ -229,6 +231,9 @@ export default function AffiliatesPage() {
                         </DataTableCell>
                         <DataTableCell className={TD}>{formatRm(r.earnings_balance_sen)}</DataTableCell>
                         <DataTableCell className={TD}>{r.orders_count}</DataTableCell>
+                        <DataTableCell className={TD}>
+                          <ReadinessCell readiness={r.readiness} />
+                        </DataTableCell>
                         <DataTableCell className="px-5 py-4">
                           <Tag severity={r.status === "active" ? "success" : "secondary"}>{r.status}</Tag>
                         </DataTableCell>
