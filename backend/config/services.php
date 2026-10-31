@@ -335,6 +335,13 @@ return [
         'url' => explode(',', env('RESELLER_PORTAL_URL', 'http://localhost:3002'))[0],
     ],
 
+    // ADR-133: the public reseller application (`/apply`, `/onboard/{token}`), served by the
+    // portal app on its own host. Links in the applicant emails point here.
+    'onboarding' => [
+        'url' => env('ONBOARDING_URL', 'http://localhost:3002'),
+        'privacy_contact' => env('ONBOARDING_PRIVACY_CONTACT', 'partners@pekangame.space'),
+    ],
+
     // ADR-021 (PAY-3) — ReconcilePendingPaymentsCommand's own thresholds.
     // pending_after_minutes: how stale a payment_status=pending order must
     // be before it's even worth asking the gateway about (a checkout from
