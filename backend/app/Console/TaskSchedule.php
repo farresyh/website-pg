@@ -56,6 +56,7 @@ class TaskSchedule
         'supplier-login-link-pruning',
         'reseller-whatsapp-pending-link-pruning',
         'reseller-bot-command-log-pruning',
+        'partner-application-pruning',
         'stale-cache-pruning',
         'affiliate-domain-status-sync',
         'horizon-snapshot',
@@ -186,6 +187,13 @@ class TaskSchedule
         $schedule->command('app:prune-reseller-bot-command-logs')
             ->daily()
             ->name('reseller-bot-command-log-pruning')
+            ->withoutOverlapping($overlap);
+
+        // ADR-133 decision 9 — reseller applications and KYC files past the
+        // retention the PDPA notices promise. See PrunePartnerApplicationsCommand.
+        $schedule->command('app:prune-partner-applications')
+            ->daily()
+            ->name('partner-application-pruning')
             ->withoutOverlapping($overlap);
 
         // ADR-077 decision 3 — the `database` cache store has no lazy-sweep for
