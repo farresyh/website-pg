@@ -54,6 +54,7 @@ class ResellerController extends Controller
     {
         $resellers = Reseller::query()
             ->with(['tier' => fn ($q) => $q->withTrashed()])
+            ->withExists('partnerApplication')
             ->orderBy('business_name')
             ->get();
 
@@ -69,7 +70,7 @@ class ResellerController extends Controller
 
     public function show(Reseller $reseller): JsonResponse
     {
-        $reseller->load(['tier' => fn ($q) => $q->withTrashed(), 'users']);
+        $reseller->load(['tier' => fn ($q) => $q->withTrashed(), 'users'])->loadExists('partnerApplication');
 
         return response()->json($this->rowShape($reseller, $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id)));
     }
@@ -238,9 +239,13 @@ class ResellerController extends Controller
             'markup_percent' => $reseller->tier?->markup_percent,
             'is_active' => (bool) $reseller->is_active,
             'notes' => $reseller->notes,
-            // ADR-133 decision 12: an internal account has no KYC on file; every other account
-            // so far had its documents collected outside the system (PR 3 adds "on file").
-            'kyc' => $reseller->internal_reason !== null ? 'none' : 'outside_system',
+            // ADR-133 decision 12: "on file" when approved from an application whose data is still
+            // held; an internal account has none; any other was collected outside the system.
+            'kyc' => match (true) {
+                (bool) ($reseller->partner_application_exists ?? $reseller->partnerApplication()->exists()) => 'on_file',
+                $reseller->internal_reason !== null => 'none',
+                default => 'outside_system',
+            },
             'internal_reason' => $reseller->internal_reason,
             'deleted_at' => $reseller->deleted_at,
             'wallet_balance_sen' => $walletBalanceSen,

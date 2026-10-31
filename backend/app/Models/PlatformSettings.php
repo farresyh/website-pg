@@ -36,6 +36,7 @@ class PlatformSettings extends Model
         'company_legal_name',
         'company_reg_no',
         'company_address',
+        'partner_applications_open',
     ];
 
     protected $casts = [
@@ -49,6 +50,7 @@ class PlatformSettings extends Model
         'credential_reveal_limit_per_hour' => 'integer',
         'topup_max_sen' => 'integer',
         'balance_cap_default_sen' => 'integer',
+        'partner_applications_open' => 'boolean',
     ];
 
     public static function current(): self
@@ -71,6 +73,7 @@ class PlatformSettings extends Model
             'credential_consent_text' => self::DEFAULT_CREDENTIAL_CONSENT_TEXT,
             'topup_max_sen' => 1_000_000,
             'balance_cap_default_sen' => 10_000_000,
+            'partner_applications_open' => false,
         ]);
     }
 }

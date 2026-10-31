@@ -9,7 +9,9 @@ use App\Services\Auth\AccountOwnerType;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
+use Throwable;
 
 /**
  * ADR-133 decision 21: the one place a Reseller is created and given a portal login. Both admin
@@ -28,17 +30,21 @@ final class ResellerProvisioningService
      * email), with the set-password invite: all or nothing, so a failed invite leaves no account
      * behind. The tier is required: without one the account can neither order nor add balance.
      *
+     * `$inviteAfterCommit` (ADR-133 decision 11, the application approval): the invite is sent once
+     * the caller's transaction commits, and a mail failure is logged, never undoes the approval;
+     * the admin's "Resend invite" covers it.
+     *
      * @param  array{business_name: string, contact_name: string, email: string, phone?: ?string, reseller_tier_id: ?int, notes?: ?string, internal_reason?: ?string}  $details
      */
-    public function provision(array $details): Reseller
+    public function provision(array $details, bool $inviteAfterCommit = false): Reseller
     {
         if (($details['reseller_tier_id'] ?? null) === null) {
             throw new InvalidArgumentException('A reseller is provisioned with a tier.');
         }
 
-        return DB::transaction(function () use ($details) {
+        return DB::transaction(function () use ($details, $inviteAfterCommit) {
             $reseller = $this->create($details);
-            $this->addPortalUser($reseller, $details['contact_name'], $details['email']);
+            $this->addPortalUser($reseller, $details['contact_name'], $details['email'], $inviteAfterCommit);
 
             return $reseller;
         });
@@ -48,9 +54,9 @@ final class ResellerProvisioningService
      * A portal login with no password yet, and its set-password invite. The invite is sent inside
      * the transaction on purpose: if the email provider fails, no half-made user is left behind.
      */
-    public function addPortalUser(Reseller $reseller, string $name, string $email): AffiliateUser
+    public function addPortalUser(Reseller $reseller, string $name, string $email, bool $inviteAfterCommit = false): AffiliateUser
     {
-        return DB::transaction(function () use ($reseller, $name, $email) {
+        return DB::transaction(function () use ($reseller, $name, $email, $inviteAfterCommit) {
             $user = AffiliateUser::query()->create([
                 'owner_type' => AccountOwnerType::Reseller->value,
                 'owner_id' => $reseller->id,
@@ -60,7 +66,15 @@ final class ResellerProvisioningService
                 'is_active' => true,
             ]);
 
-            $this->invites->sendInvite($user);
+            if ($inviteAfterCommit) {
+                DB::afterCommit(fn () => rescue(
+                    fn () => $this->invites->sendInvite($user),
+                    fn (Throwable $e) => Log::warning('Reseller invite failed after approval', ['affiliate_user_id' => $user->id, 'error' => $e->getMessage()]),
+                    report: false,
+                ));
+            } else {
+                $this->invites->sendInvite($user);
+            }
 
             return $user;
         });
