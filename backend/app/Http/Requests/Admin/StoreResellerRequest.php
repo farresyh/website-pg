@@ -7,10 +7,10 @@ use Illuminate\Validation\Rule;
 
 /**
  * ADR-072/073 PR-B: a super_admin registers a new prepaid-wallet
- * `Reseller` account. Admin-created only, no self-serve signup (ADR-072
- * decision 6). Optionally assigns an initial tier at creation — a direct
- * FK, no subscription state machine (ADR-073 decision 1). No portal-login
- * user is created here (PR-G's polymorphic `reseller_users`, unbuilt).
+ * `Reseller` account. ADR-133 decision 21: the tier is required (a direct
+ * FK, ADR-073 decision 1) and the contact name and email become the first
+ * portal login, so the email must not already belong to any portal user
+ * (decision 5, closed accounts included).
  */
 class StoreResellerRequest extends FormRequest
 {
@@ -26,10 +26,10 @@ class StoreResellerRequest extends FormRequest
     {
         return [
             'business_name' => ['required', 'string', 'max:255'],
-            'contact_name' => ['nullable', 'string', 'max:255'],
-            'email' => ['nullable', 'email', 'max:255'],
+            'contact_name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', Rule::unique('affiliate_users', 'email')],
             'phone' => ['nullable', 'string', 'max:30'],
-            'reseller_tier_id' => ['nullable', 'integer', Rule::exists('reseller_tiers', 'id')->whereNull('deleted_at')],
+            'reseller_tier_id' => ['required', 'integer', Rule::exists('reseller_tiers', 'id')->whereNull('deleted_at')],
             'notes' => ['nullable', 'string', 'max:5000'],
         ];
     }

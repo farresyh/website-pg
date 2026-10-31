@@ -46,8 +46,8 @@ use App\Http\Controllers\Affiliate\DashboardController as AffiliateDashboardCont
 use App\Http\Controllers\Affiliate\DomainController as AffiliateDomainController;
 use App\Http\Controllers\Affiliate\EarningsController as AffiliateEarningsController;
 use App\Http\Controllers\Affiliate\ImpersonationController as AffiliateImpersonationEndController;
-use App\Http\Controllers\Affiliate\OrderController as AffiliateOrderController;
 use App\Http\Controllers\Affiliate\OnboardingController as AffiliateOnboardingController;
+use App\Http\Controllers\Affiliate\OrderController as AffiliateOrderController;
 use App\Http\Controllers\Affiliate\ProfileController as AffiliateProfileController;
 use App\Http\Controllers\Affiliate\Storefront\BrandingController as AffiliateStorefrontBrandingController;
 use App\Http\Controllers\Affiliate\Storefront\HeroSlideController as AffiliateStorefrontHeroSlideController;
@@ -93,8 +93,8 @@ use App\Http\Controllers\ResellerApi\BalanceController as ResellerApiBalanceCont
 use App\Http\Controllers\ResellerApi\CatalogController as ResellerApiCatalogController;
 use App\Http\Controllers\ResellerApi\OrderController as ResellerApiOrderController;
 use App\Http\Controllers\ResellerPortal\ApiKeyController as ResellerPortalApiKeyController;
-use App\Http\Controllers\ResellerPortal\OrderController as ResellerPortalOrderController;
 use App\Http\Controllers\ResellerPortal\OnboardingController as ResellerPortalOnboardingController;
+use App\Http\Controllers\ResellerPortal\OrderController as ResellerPortalOrderController;
 use App\Http\Controllers\ResellerPortal\ProfileController as ResellerPortalProfileController;
 use App\Http\Controllers\ResellerPortal\WalletController as ResellerPortalWalletController;
 use App\Http\Controllers\ResellerPortal\WalletReceiptController as ResellerPortalWalletReceiptController;
@@ -913,6 +913,7 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::prefix('resellers')->group(function () {
             Route::get('/', [ResellerController::class, 'index']);
             Route::post('/', [ResellerController::class, 'store']);
+            Route::post('/internal', [ResellerController::class, 'storeInternal'])->middleware('mfa.stepup');
             Route::get('/{reseller}', [ResellerController::class, 'show']);
             Route::put('/{reseller}', [ResellerController::class, 'update']);
             Route::patch('/{reseller}/status', [ResellerController::class, 'updateStatus']);
