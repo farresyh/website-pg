@@ -27,7 +27,7 @@ import { clearClientSession, getClientSession } from "@/lib/session";
 // one identical 422 on the `email` field — there is nothing to distinguish
 // server-side, so one generic message covers all three (addendum decision 1).
 const INVALID_LINK_MESSAGE =
-  "Link tidak sah atau sudah tamat tempoh. Sila hubungi admin untuk hantar invite baharu.";
+  "This link is invalid or has expired. Please ask us to send you a new invite.";
 
 export default function SetPasswordPage() {
   const router = useRouter();
@@ -63,11 +63,11 @@ export default function SetPasswordPage() {
     // Mirror the backend's own `min:8|confirmed` rule so a doomed request
     // never round-trips (addendum "Shape").
     if (!passwordSaved && password.length < 8) {
-      setError("Kata laluan mesti sekurang-kurangnya 8 aksara.");
+      setError("Your password must be at least 8 characters.");
       return;
     }
     if (!passwordSaved && password !== passwordConfirmation) {
-      setError("Pengesahan kata laluan tidak sepadan.");
+      setError("The two passwords do not match.");
       return;
     }
 
@@ -101,12 +101,12 @@ export default function SetPasswordPage() {
         throw new Error("Could not clear the previous portal session.");
       }
       clearClientSession();
-      router.replace("/login?message=Password+berjaya+ditetapkan");
+      router.replace("/login?message=Password+set.+You+can+now+sign+in.");
     } catch (err) {
       if (saved) {
         // An invite token is single-use: retry cookie cleanup, not the
         // already successful password request.
-        setError("Kata laluan berjaya ditetapkan, tetapi sesi lama belum dapat ditutup. Sila cuba teruskan lagi.");
+        setError("Your password is set, but the previous session could not be closed. Please try to continue again.");
       } else if (err instanceof ApiError) {
         // A weak/mismatched password comes back on the `password` field —
         // show Laravel's own message verbatim. Anything on the `email`
@@ -114,7 +114,7 @@ export default function SetPasswordPage() {
         const passwordError = err.errors?.password?.[0];
         setError(passwordError ?? INVALID_LINK_MESSAGE);
       } else {
-        setError("Tidak dapat menghubungi pelayan. Sila cuba lagi.");
+        setError("Could not reach the server. Please try again.");
       }
     } finally {
       setSubmitting(false);
@@ -126,10 +126,10 @@ export default function SetPasswordPage() {
       <div className="flex flex-col gap-5">
         <div>
           <h2 className="text-[22px] font-[650] leading-7 text-ink">
-            Tetapkan Kata Laluan
+            Set your password
           </h2>
           <p className="mt-1 text-[13px] text-ink-muted">
-            Pilih kata laluan untuk akaun partner anda.
+            Choose a password for your partner account.
           </p>
         </div>
 
@@ -154,7 +154,7 @@ export default function SetPasswordPage() {
                     htmlFor="password"
                     className="text-theme-sm font-medium text-ink-muted"
                   >
-                    Kata Laluan Baharu
+                    New password
                   </label>
                   <Input
                     id="password"
@@ -171,7 +171,7 @@ export default function SetPasswordPage() {
                     htmlFor="password_confirmation"
                     className="text-theme-sm font-medium text-ink-muted"
                   >
-                    Sahkan Kata Laluan
+                    Confirm password
                   </label>
                   <Input
                     id="password_confirmation"
@@ -190,7 +190,7 @@ export default function SetPasswordPage() {
               disabled={submitting}
               className="h-11 w-full text-sm"
             >
-              {submitting ? "Sila tunggu…" : passwordSaved ? "Terus ke Login" : "Tetapkan Kata Laluan"}
+              {submitting ? "Please wait…" : passwordSaved ? "Continue to sign in" : "Set password"}
             </Button>
           </form>
         )}

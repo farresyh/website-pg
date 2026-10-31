@@ -51,7 +51,7 @@ import { ApiError } from "@/lib/api-client";
 import { notify } from "@/components/ui/toast";
 import {
   listResellers,
-  createReseller,
+  createInternalReseller,
   updateReseller,
   updateResellerStatus,
   assignResellerTier,
@@ -67,9 +67,11 @@ import ResellerTierFormModal from "@/components/resellers/ResellerTierFormModal"
 import ResellerWalletModal from "@/components/resellers/ResellerWalletModal";
 import ResellerCloseModal from "@/components/resellers/ResellerCloseModal";
 import ResellerApiKeysModal from "@/components/resellers/ResellerApiKeysModal";
+import ReadinessCell from "@/components/partners/ReadinessCell";
 import ResellerWebhookModal from "@/components/resellers/ResellerWebhookModal";
 import ResellerWhatsAppGroupsModal from "@/components/resellers/ResellerWhatsAppGroupsModal";
 import ResellerPortalUsersModal from "@/components/resellers/ResellerPortalUsersModal";
+import InviteApplicantModal from "@/components/partner-applications/InviteApplicantModal";
 
 function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
@@ -88,6 +90,8 @@ export default function ResellersPage() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ResellerRow | null>(null);
+  const [internalForm, setInternalForm] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [tierFormOpen, setTierFormOpen] = useState(false);
   const [editingTier, setEditingTier] = useState<ResellerTier | null>(null);
   const [statusTarget, setStatusTarget] = useState<ResellerRow | null>(null);
@@ -134,10 +138,20 @@ export default function ResellersPage() {
   }
 
   async function handleCreate(values: ResellerFormSubmitValues) {
-    if (!session) return;
-    await createReseller(values);
-    notify.success("Reseller created");
+    if (!session || values.reseller_tier_id === null || !values.contact_name || !values.email) return;
+    const create = {
+      business_name: values.business_name,
+      contact_name: values.contact_name,
+      email: values.email,
+      phone: values.phone,
+      reseller_tier_id: values.reseller_tier_id,
+      notes: values.notes,
+    };
+    // ADR-133 2026-11-01: a real reseller comes from an application (Invite directly); this form only makes internal accounts.
+    await createInternalReseller({ ...create, reason: values.reason ?? "" });
+    notify.success("Internal account created, invite sent");
     setFormOpen(false);
+    setInternalForm(false);
     await refresh();
   }
 
@@ -174,10 +188,15 @@ export default function ResellersPage() {
             spends from a deposited balance, never earns.
           </p>
         </div>
-        <Button onClick={() => { setEditing(null); setFormOpen(true); }}>
-          <PlusIcon />
-          Add Reseller
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outlined" onClick={() => { setEditing(null); setInternalForm(true); setFormOpen(true); }}>
+            Create internal account
+          </Button>
+          <Button onClick={() => setInviteOpen(true)}>
+            <PlusIcon />
+            Invite directly
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -194,6 +213,7 @@ export default function ResellersPage() {
                     <DataTableTHeadCell className={TH}>Business</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Tier</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Wallet balance</DataTableTHeadCell>
+                    <DataTableTHeadCell className={TH}>Setup</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Status</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
@@ -206,6 +226,15 @@ export default function ResellersPage() {
                         <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
                           {r.business_name}
                           {r.contact_name && <p className="text-theme-xs font-normal text-gray-500 dark:text-gray-400">{r.contact_name}</p>}
+                          {r.kyc === "on_file" ? (
+                            <p className="text-theme-xs font-normal text-success-600 dark:text-success-400">KYC on file</p>
+                          ) : r.kyc === "none" ? (
+                            <span title={r.internal_reason ?? undefined}>
+                              <Tag severity="warn" className="mt-1">Internal · No KYC on file</Tag>
+                            </span>
+                          ) : (
+                            <p className="text-theme-xs font-normal text-ink-subtle">KYC outside the system</p>
+                          )}
                         </DataTableCell>
                         <DataTableCell className={TD}>
                           {r.tier_name ? (
@@ -217,6 +246,9 @@ export default function ResellersPage() {
                           )}
                         </DataTableCell>
                         <DataTableCell className={TD}>{formatRm(r.wallet_balance_sen)}</DataTableCell>
+                        <DataTableCell className={TD}>
+                          <ReadinessCell readiness={r.readiness} />
+                        </DataTableCell>
                         <DataTableCell className="px-5 py-4">
                           <Tag severity={r.is_active ? "success" : "secondary"}>{r.is_active ? "active" : "inactive"}</Tag>
                         </DataTableCell>
@@ -391,10 +423,21 @@ export default function ResellersPage() {
 
       <ResellerFormModal
         isOpen={formOpen}
-        onClose={() => { setFormOpen(false); setEditing(null); }}
+        onClose={() => { setFormOpen(false); setEditing(null); setInternalForm(false); }}
         onSubmit={editing ? handleUpdate : handleCreate}
         editing={editing}
         tiers={tiers}
+        internal={internalForm}
+      />
+
+      <InviteApplicantModal
+        isOpen={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        onInvited={(application) => {
+          setInviteOpen(false);
+          notify.success(`Invite sent to ${application.email}`);
+          router.push(`/admin/applications?application=${application.id}`);
+        }}
       />
 
       <ResellerTierFormModal

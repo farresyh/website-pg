@@ -4,7 +4,9 @@ namespace Tests;
 
 use App\Models\AdminUser;
 use App\Models\Affiliate;
+use App\Support\MalaysiaTime;
 use App\Support\OutboundUrlGuard;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
@@ -21,6 +23,18 @@ abstract class TestCase extends BaseTestCase
         parent::setUp();
 
         Http::preventStrayRequests();
+    }
+
+    /**
+     * The middle of last month, Malaysia time. A test that needs "last month"
+     * must not use `now()->subMonth()`: on the 31st it overflows into the
+     * current month ("31 Sep" is 1 Oct), and a UTC "now" on the last evening
+     * of a month is already next month in Kuala Lumpur, where the payout and
+     * the reports cut the month. Mid-month is safe on every day of the year.
+     */
+    protected function midLastMonth(): CarbonImmutable
+    {
+        return CarbonImmutable::now(MalaysiaTime::TIMEZONE)->subMonthNoOverflow()->startOfMonth()->addDays(14);
     }
 
     /**

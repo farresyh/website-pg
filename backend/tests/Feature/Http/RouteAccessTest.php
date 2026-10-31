@@ -55,6 +55,7 @@ class RouteAccessTest extends TestCase
             ->keys()->sort()->values()->all();
 
         $this->assertSame([
+            'DELETE api/onboarding/stage-two/{token}/documents/{document}',
             'GET api/catalog/branding',
             'GET api/catalog/games',
             'GET api/catalog/games/{slug}',
@@ -79,6 +80,9 @@ class RouteAccessTest extends TestCase
             'GET api/membership/me',
             'GET api/membership/plans',
             'GET api/membership/subscribe-options',
+            'GET api/onboarding/stage-two/{token}',
+            'GET api/onboarding/status',
+            'GET api/partner-documents/{document}/file',
             'GET api/track-order/{orderNumber}',
             'POST api/affiliate/login',
             'POST api/affiliate/set-password',
@@ -93,6 +97,10 @@ class RouteAccessTest extends TestCase
             'POST api/membership/otp/send',
             'POST api/membership/otp/verify',
             'POST api/membership/subscribe',
+            'POST api/onboarding/applications',
+            'POST api/onboarding/stage-two/{token}/documents',
+            'POST api/onboarding/stage-two/{token}/submit',
+            'POST api/onboarding/verify-email',
             'POST api/orders/{orderNumber}/review',
             'POST api/player-check/{slug}',
             'POST api/track-order/{orderNumber}/check-payment',
@@ -100,6 +108,7 @@ class RouteAccessTest extends TestCase
             'POST api/webhooks/chip',
             'POST api/webhooks/digiflazz',
             'POST api/webhooks/openwa',
+            'PUT api/onboarding/stage-two/{token}',
         ], $public);
     }
 

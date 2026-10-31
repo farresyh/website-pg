@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api-client";
+import type { Readiness } from "@/lib/readiness";
 
 /**
  * ADR-058 58b — admin Affiliate Management (RES-1..6) + the
@@ -41,6 +42,8 @@ export interface AffiliateRow {
   orders_count: number;
   earnings_balance_sen: number;
   subscription: AffiliateSubscription | null;
+  /** ADR-133 decision 18: only on the list, and null for the platform's own brand. */
+  readiness?: Readiness | null;
 }
 
 export interface AffiliateUserRow {

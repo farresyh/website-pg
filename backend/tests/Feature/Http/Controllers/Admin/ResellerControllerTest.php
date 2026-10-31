@@ -28,28 +28,116 @@ class ResellerControllerTest extends TestCase
         return $admin;
     }
 
-    public function test_store_creates_reseller_and_opens_a_wallet_ledger_account(): void
+    private function goldTier(): ResellerTier
+    {
+        return ResellerTier::query()->create(['name' => 'Gold', 'markup_percent' => 8, 'is_active' => true, 'sort_order' => 1]);
+    }
+
+    /** ADR-133 2026-11-01: the plain create is gone; a real reseller comes from an application. */
+    public function test_the_plain_create_route_is_gone(): void
     {
         $this->actAsSuperAdmin();
-        $tier = ResellerTier::query()->create([
-            'name' => 'Gold', 'markup_percent' => 8, 'is_active' => true, 'sort_order' => 1,
-        ]);
 
-        $response = $this->postJson('/api/resellers', [
+        $this->postJson('/api/resellers', ['business_name' => 'Acme Reseller'])->assertStatus(405);
+    }
+
+    /** ADR-133 decision 21: the create makes the reseller, its wallet account and the portal login. */
+    public function test_store_internal_creates_reseller_wallet_account_and_portal_login(): void
+    {
+        Http::fake();
+        $this->actingAsSteppedUp($this->actAsSuperAdmin());
+
+        $response = $this->postJson('/api/resellers/internal', [
             'business_name' => 'Acme Reseller',
             'contact_name' => 'Ah Beng',
             'email' => 'beng@acme.test',
-            'reseller_tier_id' => $tier->id,
+            'reseller_tier_id' => $this->goldTier()->id,
+            'reason' => 'Test account for a partner demo',
         ])->assertCreated();
 
         $id = $response->json('id');
-        $this->assertDatabaseHas('resellers', ['id' => $id, 'business_name' => 'Acme Reseller', 'is_active' => 1]);
+        $this->assertDatabaseHas('resellers', ['id' => $id, 'business_name' => 'Acme Reseller', 'is_active' => 1, 'internal_reason' => 'Test account for a partner demo']);
         $this->assertDatabaseHas('ledger_accounts', [
             'owner_type' => LedgerOwnerType::ResellerWallet->value,
             'owner_id' => $id,
         ]);
+        $this->assertDatabaseHas('affiliate_users', ['owner_type' => 'reseller', 'owner_id' => $id, 'email' => 'beng@acme.test', 'password' => null]);
         $response->assertJsonPath('wallet_balance_sen', 0)
-            ->assertJsonPath('tier_name', 'Gold');
+            ->assertJsonPath('tier_name', 'Gold')
+            ->assertJsonPath('kyc', 'none')
+            ->assertJsonPath('users.0.invite_pending', true);
+        Http::assertSentCount(1);
+    }
+
+    public function test_store_internal_requires_a_tier_and_a_login(): void
+    {
+        $this->actingAsSteppedUp($this->actAsSuperAdmin());
+
+        $this->postJson('/api/resellers/internal', ['business_name' => 'Acme Reseller', 'reason' => 'Test account for a partner demo'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['reseller_tier_id', 'contact_name', 'email']);
+
+        $this->assertSame(0, Reseller::query()->count());
+    }
+
+    public function test_store_internal_refuses_an_inactive_tier(): void
+    {
+        $this->actingAsSteppedUp($this->actAsSuperAdmin());
+        $tier = ResellerTier::query()->create(['name' => 'Retired', 'markup_percent' => 8, 'is_active' => false, 'sort_order' => 1]);
+
+        $this->postJson('/api/resellers/internal', [
+            'business_name' => 'Acme Reseller', 'contact_name' => 'Ah Beng', 'email' => 'beng@acme.test',
+            'reseller_tier_id' => $tier->id, 'reason' => 'Test account for a partner demo',
+        ])->assertUnprocessable()->assertJsonValidationErrors(['reseller_tier_id']);
+    }
+
+    /** ADR-133 decision 5: an email that already logs in to the portal cannot be reused. */
+    public function test_store_internal_refuses_an_email_that_already_has_a_portal_login(): void
+    {
+        $this->actingAsSteppedUp($this->actAsSuperAdmin());
+        AffiliateUser::query()->create([
+            'owner_type' => 'reseller', 'owner_id' => 999, 'name' => 'Old', 'email' => 'beng@acme.test',
+            'password' => null, 'is_active' => false,
+        ]);
+
+        $this->postJson('/api/resellers/internal', [
+            'business_name' => 'Acme Reseller', 'contact_name' => 'Ah Beng', 'email' => 'beng@acme.test',
+            'reseller_tier_id' => $this->goldTier()->id, 'reason' => 'Test account for a partner demo',
+        ])->assertUnprocessable()->assertJsonValidationErrors(['email']);
+    }
+
+    /** ADR-133 decision 12(c): a test or internal account, behind step-up, with a reason on record. */
+    public function test_store_internal_needs_a_reason_and_is_listed_with_no_kyc(): void
+    {
+        Http::fake();
+        $this->actingAsSteppedUp($this->actAsSuperAdmin());
+        $payload = [
+            'business_name' => 'FixFast', 'contact_name' => 'Founder', 'email' => 'fixfast@example.test',
+            'reseller_tier_id' => $this->goldTier()->id,
+        ];
+
+        $this->postJson('/api/resellers/internal', $payload)
+            ->assertUnprocessable()->assertJsonValidationErrors(['reason']);
+
+        $id = $this->postJson('/api/resellers/internal', $payload + ['reason' => 'Test account for the CHIP review'])
+            ->assertCreated()
+            ->assertJsonPath('kyc', 'none')
+            ->json('id');
+
+        $this->assertDatabaseHas('resellers', ['id' => $id, 'internal_reason' => 'Test account for the CHIP review']);
+        $this->getJson('/api/resellers')->assertOk()->assertJsonPath('resellers.0.kyc', 'none');
+    }
+
+    public function test_store_internal_is_refused_without_step_up(): void
+    {
+        $this->actAsSuperAdmin();
+
+        $this->postJson('/api/resellers/internal', [
+            'business_name' => 'FixFast', 'contact_name' => 'Founder', 'email' => 'fixfast@example.test',
+            'reseller_tier_id' => $this->goldTier()->id, 'reason' => 'Test account',
+        ])->assertForbidden();
+
+        $this->assertSame(0, Reseller::query()->count());
     }
 
     public function test_index_lists_resellers_with_wallet_balance(): void

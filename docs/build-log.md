@@ -2940,3 +2940,116 @@ The next CI run failed `backend-concurrency` on `CheckoutSettleWithVoucherConcur
 
 **Also fixed here: a concurrency flake that failed PR #616's CI** (a docs-only PR). `ResellerClosureConcurrencyTest::test_two_simultaneous_closures_refund_once` got outcomes `["", "closed:150000"]`: its helper command looked the reseller up with `findOrFail` at start, and when the other racer had already soft-deleted it (two booting processes on a loaded runner), the helper threw `ModelNotFoundException` and wrote nothing instead of a refusal. Money was never at risk (exactly one closure and one refund). The helper now treats an account that is already closed as a refusal (`refused:`), which is what a later attempt always was. The fix and the credentials change are in the same PR because both are test hygiene.
 
+
+## 2026-10-31 — Partner onboarding designed (ADR-133, PRD §16 items 13 and 146); nothing built
+
+**Request.** The founder asked for a docs and backlog audit, then to grill item 146 with the reference video (a UX-pattern video for a budget app: one question, a checklist that starts at 1 of 3, one-button empty states, one coach mark, a skip that remembers). Transcribed locally (the audio only repeats the on-screen text). It is a style reference, not a spec.
+
+**What the grill settled (four rounds, then a code stress test).** The founder widened the scope: a public reseller application with KYC (documents only **after** a first screening, so no identity document is held for applicants who will not be accepted), plus onboarding inside the portal. All decisions are in [ADR-133](./adr/ADR-133-partner-onboarding.md). Item 13 (self-serve reseller signup) is folded into item 146.
+
+**Facts found read-only (code, 2026-10-31).** No onboarding, first-run or readiness code exists. The dashboard's "Live" badge ignores `payments_approved_at`. Bank details are never forced and the admin cannot edit them; the "bank present" check is already copied in two places. A reseller with no tier cannot order but can still add balance; creating a reseller makes no login. The admin sandbox (ADR-018) is alive (21 tests pass) but admin-only; reseller paths never mention `is_test`. The Spatie backup is a SQL dump only, so documents would never be in it and deleted rows linger in older dumps.
+
+**Stress test (seven findings, all folded into the ADR).** One `Affiliate::hasBankDetails()` instead of a third copy; the tier guard goes in `ResellerWalletTopupService::initiate()` and never in `completeTopup()`; one `ResellerProvisioningService` for the application approval and the admin create; retention wording admits dump retention; host split in `proxy.ts`; an email of a closed account stays reserved; a single `PartnerApplicationService` with a row lock and a unique `reseller_id`.
+
+**PDPA research.** Notices must be Malay and English (section 7). The 2024 amendment adds breach notice, DPO thresholds (far above our size) and a new cross-border regime; the figures come from secondary sources and are marked to re-check. No NRIC guidance was found. The notice text is to be written with a lawyer.
+
+**Backlog.** PRD §16: item 13 points to 146; 146 carries the build order and the owed list; new group D items 151 (partner sandbox, its own money-critical ADR) and 152 (refresh the admin sandbox). **Not touched:** PRD §14 still says the OhahaStore `www` row "becomes a redirect after the next release"; item 148 is built and released, so that sentence needs a docs-audit fix.
+
+## 2026-10-31 — Month-end CI failures: four tests built "last month" with `now()->subMonth()`
+
+**Found.** PR #619 (docs only) failed `backend-tests` (3 tests) and `backend-concurrency` (1), all around the affiliate payout and customer analytics. CI ran at 18:54 UTC on 2026-10-30, which is 02:54 on 31 October in Kuala Lumpur.
+
+**Cause (tests, not production).** Two date traps in the test setup: `now()->subMonth()` on the 31st overflows ("31 Sep" is 1 Oct) into the current month, and a UTC "last month" on the last evening of a month is already the current month in Kuala Lumpur, where the payout and the reports cut the month. The payout command runs on the 1st at 00:10 MYT, which never overflows, so production was not affected. `CustomerAnalyticsServiceTest` had been fixed once for the UTC side (2026-09-30/10-01) but still used `subMonths(1)` in Malaysia time.
+
+**Fix (branch `fix/date-dependent-tests-month-end`).** One shared `TestCase::midLastMonth()` (the middle of last month, Malaysia time, safe on every day) used by the four affiliate tests; `subMonthsNoOverflow(1)` in the analytics test. Of the 14 `subMonth`/`addMonth` uses in tests, the other 7 only mean "in the past" or "in the future" and are harmless on any day. Red first: on this machine's clock (31 Oct, 09:28 MYT) the old code failed 2 of 30; the new code passes 30 of 30, and the full fast suite passes (3286). The concurrency suite needs Docker MySQL, so CI is its proof.
+
+## 2026-10-31 — Partner onboarding PR 1a: the backend foundation (ADR-133)
+
+**Built (no UI, no migration, no behaviour change for any user).**
+- `Affiliate::hasBankDetails()` replaces two hand-written copies (the payout plan's `no_bank` skip and the portal's `has_bank_details`); the readiness service is the third reader.
+- `AffiliateDomain::paymentsApproved()` replaces three `payments_approved_at !== null` reads (the storefront resolver, the admin domain list, the portal domain list). `Order::scopePaidAndReal()` replaces the paid + `is_test = false` pair in the affiliate sales figures.
+- `ResellerProvisioningService` (`create()`, `addPortalUser()`): `Admin\ResellerController` `store()` and `storeUser()` call it; same behaviour, one copy.
+- `PartnerReadinessService` (`forAffiliate(s)`, `forReseller(s)`), `PartnerReadiness`, `ReadinessStep`, `StepState`. Read-only, a fixed number of queries per batch (tested with 2 and 9 partners).
+
+**Verified.** Red first (24 errors, the classes did not exist). The invariant test asks the real storefront (the public branding endpoint, ADR-131's gate) across seven domain states and both account states; a deliberate mutation (readiness ignoring the payments approval) made it fail, then it was restored. Full fast suite 3312/3312. Pint passes on the changed files (it fails on an untouched seeder, `database/seeders/FinancialScenario/MoneyFlows.php`, and CI does not run it).
+
+**A test trap met again.** Sanctum keeps the first authenticated user for the rest of one test, so two portal requests as two users in one test both ran as the first: one affiliate per test.
+
+**Next.** PR 1b: the endpoints that expose this, the portal checklist, banners and empty states, the admin readiness column, and the approval email.
+
+## 2026-10-31 — Partner onboarding PR 1b: checklist, banners, empty states, admin Setup column, approval email (ADR-133)
+
+**Built.**
+- **Backend:** `GET /api/affiliate/onboarding` and `GET /api/reseller-portal/onboarding` (each behind its own account-type gate); a `readiness` summary on every row of the admin Affiliates and Resellers lists (one batch, no query per row; the platform's own brand has none); `PaymentsApprovedNotice`, an email to the affiliate when an admin approves a domain for payments (only on the move to approved; a mail failure never undoes it). The `order_channel` step now says which channels are set up (`api_key`, `whatsapp_group`).
+- **Portal (`reseller/`):** a collapsible "Get started" checklist (collapsed by the partner, remembered in `localStorage`, or by itself when every required step is done); non-dismissable banners for what costs money (no bank details, payments off, a reseller with no tier); the store badge split into "Ready to sell" and "Online, payments off"; one-button empty states for Orders; the WhatsApp bot's link state and instructions; a "Your first order" card (there is no partner sandbox); the DNS teardown deadline; the set-password page in English.
+- **Admin:** a "Setup" column on the Affiliates and Resellers lists.
+
+**Verified.** Backend tests red first, then green; full fast suite 3324/3324. Portal and admin lint, `node --test` (18 and 20) and build pass. A browser check on a throwaway backend (sqlite file in the scratchpad, API on :8000, portal :3002, admin :3000; all stopped and deleted afterwards): 44 checks across every state, mobile 390 px, contrast at least 4.5 in light and dark, and screenshots read by eye. The browser check found one thing the tests did not (an Optional step with a destination showed no link); fixed.
+
+**Traps met.**
+- I ran Pint over the whole of `app/` and it reformatted 25 untouched files (the repo has existing Pint failures; CI does not run it). Reverted with `git checkout` on every file that was not mine. Run Pint only on the files you changed.
+- A "queries do not grow with the rows" test must not compare equal counts: the first measured request pays one-off queries (settings cache). Warm it, then assert the larger set is not more than the smaller.
+- A set-password field with `minLength=8` stops the browser before the JS message appears, so a check of that message needs a long enough, mismatched pair.
+- Sanctum keeps the first authenticated user for the rest of a test (met again in PR 1a).
+
+**Next.** PR 2 (the tier-less top-up guard in `ResellerWalletTopupService::initiate()`, never `completeTopup()`; the admin create made to use `ResellerProvisioningService` with the tier required; wallet trace first), then PR 3 and PR 4.
+
+## 2026-10-31 — Partner onboarding PR 2: the tier-less top-up guard, the admin create with a login, Create internal account (ADR-133)
+
+**Built (branch `feature/partner-onboarding-pr2-topup-guard-provisioning`).**
+- **Top-up guard (decision 20):** `ResellerWalletTopupService::initiate()` refuses a reseller with no tier before any CHIP call; the portal answers 422, the bot replies in Malay (`topup_no_tier_assigned`). `completeTopup()` is untouched. The portal's no-tier banner and checklist step now say adding balance is blocked too.
+- **`ResellerProvisioningService::provision()` (decision 21):** reseller, wallet account, first portal login and invite in one transaction, tier required in the service. The admin "Add Reseller" requires an active tier, the contact name and an email no portal user has.
+- **Create internal account (decision 12(c)):** `POST /api/resellers/internal`, super_admin + MFA step-up, a required reason in `resellers.internal_reason` (new migration) and the log. The list shows "Internal · No KYC on file" or "KYC outside the system".
+
+**Trace before code.** Callers of `initiate()`: the portal, `.topupbaki`, the `FinancialScenario` seeder (its reseller has a tier) and the race-test command. Credit paths: the CHIP webhook, the 15-minute reconcile, the race-test complete command, the admin manual credit; none reads the tier. A tier can only be swapped, never cleared. Production (read-only, 2026-10-31): 3 resellers, all with a tier and a login, no pending top-up.
+
+**Verified.** Red first (top-up: 3 failing; provisioning and admin: 11 failing), then green. Full fast suite 3335/3335. The concurrency suite on local MySQL: 38 of 42, every wallet, top-up and order race passing; the 4 failures are `BackupRestoreMysqlTest`, which needs a `mysqldump` binary this machine lacks (CI has it). Admin `tsc`, lint, 20 unit tests; portal `tsc`, 18 unit tests. Three read-only review forks (wallet and ledger; provisioning and auth; admin, portal and bot readers): no money finding; their three small findings were fixed (an inactive tier refused on create, the race-test command catching the new refusal, the portal copy). Browser check on a throwaway backend with Plunk pointed at a local fake (no real email): the submit stays disabled until a tier is chosen, the inactive tier is not offered, create sends the invite and the row shows "KYC outside the system", a taken email shows "email has already been taken", the internal form sends the reason and a no-MFA admin gets the step-up refusal, the Internal tag and the KYC line have contrast 5.3 or more in light and dark. Everything stopped and deleted afterwards.
+
+**Trap.** The local `.env` has a live Plunk key, so a browser check that creates a portal login sends a real email unless `PLUNK_BASE_URL` points at a fake.
+
+**Not done.** FixFast is not marked internal in production (a data write, the founder's call). Next: PR 3 (the public application, KYC, retention), then PR 4 (`max_markup_pct`).
+
+
+## 2026-10-31 — Game ID Checker: OhahaStore's checker stuck, and a message when Turnstile fails (ADR-123)
+
+**Found.** `https://ohahastore.com/check-id/mobile-legends` stayed on "Verifying you're human…" with Check ID disabled; the browser console showed Turnstile error `110200` (hostname not allowed). The widget "PekanGame Game ID Checker" lists only `fixfastapp.com`, `pekangame.com`, `pekangame.space`. ADR-123 already says every new affiliate domain must be added to the widget; it was missed when OhahaStore went live.
+
+**Fix (two parts).** (1) Add `ohahastore.com` to the widget's hostnames in Cloudflare (a founder action; staged in the dashboard but not saved by Claude). (2) Code: `PlayerCheckClient` now shows "We couldn't verify you on this page. Please reload, or try again later." when Turnstile calls its error callback, instead of waiting forever; a later success clears it.
+
+**Verified.** Local storefront against a throwaway backend with one checker family, using Cloudflare's test site keys: the always-failing key shows the message with the button disabled (390 px); the always-passing key shows "Ready to check." and no message. Everything stopped and deleted afterwards.
+
+## 2026-10-31 — CHIP approved FPX and DuitNow QR (docs only)
+
+Recorded from the founder: the reply to CHIP (PRD §16 item 141(d)) was sent on 2026-10-29. CHIP answered that it is checking the documents, and that FPX and DuitNow QR may be used meanwhile; its other payment methods are still under review. The email is the founder's record outside the repo. PRD §14 (payment methods: FPX no longer "on only while CHIP reviews"; the stale "`www` becomes a redirect after the next release" line), §16 items 141, 114 (the CHIP gate) and 129 (the founder's choice between voucher-only and refund to the original payment method is now due). Still open in ADR-133: whether CHIP receives copies of reseller documents.
+
+## 2026-10-31 — ADR-133 PR 4: a blank markup ceiling opens no markup (ADR-061 addendum)
+
+**What.** `max_markup_pct` null had two meanings: no ceiling in the admin form and in `Affiliate::storefrontPriceTerms()`, a ceiling of 0 in the portal's markup save and Pricing tab. The founder chose fail-closed (ADR-061 2026-10-31 addendum): null is a ceiling of 0 everywhere. `storefrontPriceTerms()` clamps to `max_markup_pct ?? 0`; the admin create and edit refuse a non-zero markup on a third-party brand with no ceiling (422 on `markup_pct`; an owned brand is forced to 0 as before); the admin form checks the same and its hint says blank means no markup. The portal already behaved this way and is unchanged.
+
+**Trace.** Every writer of the column: the admin store/update (validated `gte:markup_pct`), the seeders (owned brands only). Every price reader goes through `storefrontPriceTerms()` (checkout, checkout preview, catalog, voucher preview, sandbox order, membership plan preview, member-savings badge); the last three read the primary, an owned brand, so they cannot move. Orders snapshot the effective markup, so no stored order changes. Production, read-only on 2026-10-31: the only third-party affiliate (FixFast Demo) has a 25% ceiling and 5% markup, the two owned brands ignore markup, so no live price moves and no cache flush is needed.
+
+**Verified.** Red first: five tests failed for the intended reason (the seam dataset row, a checkout under a null ceiling, the portal `show`, two admin refusals). Then the full backend suite green; four existing fixtures that set a markup with no ceiling got one (two admin create payloads, a catalog and a voucher-preview brand). Admin `tsc` and `eslint` clean. No browser check: the admin change is one hint and one client-side check that mirrors the server's 422.
+
+## 2026-11-01 — ADR-133 PR 3a: the reseller application backend
+
+**What.** The backend half of the public reseller application with KYC (ADR-133 decisions 2–11 and its 2026-11-01 addendum). New tables `partner_applications` (both stages in one row; `active_email` nulled on approve or decline, so a unique index guards "one open application per email"), `partner_application_documents` and `partner_document_views` (short names: MySQL caps identifiers at 64 characters); `platform_settings.partner_applications_open` (default off). `PartnerApplicationService` owns every status change under a row lock: stage 1 (refreshes itself while unconfirmed), email confirmation, Invite directly, send or regenerate the stage-2 link, save and submit stage 2, decline, approve (an active tier, `ResellerProvisioningService::provision(..., inviteAfterCommit: true)`), delete data. `PartnerApplicationDocuments`: kinds per applicant type, one file per kind except two bank statements, files stored before the row and deleted after commit. Public routes under `/api/onboarding` (own limiters, Turnstile on stage 1); admin routes under `/api/partner-applications` (super_admin; delete behind step-up); KYC files only through a 5-minute signed link that re-checks the admin and logs the view. The bilingual notices list recipients by class. `app:prune-partner-applications` (daily, routine): declined after 90 days, approved after 90 days from account closure, unconfirmed after 7 days. The reseller list shows "KYC on file".
+
+**Founder decisions (2026-10-31):** split PR 3 into 3a/3b/3c; "Add Reseller" becomes "Invite directly" (button in 3c); the open switch, off by default; 10 MB per file; recipients by class (checked with a contact in the legal industry). The founder created the R2 token; Claude created the `pekangame-kyc` bucket from the founder's browser (Asia-Pacific, Standard, public access disabled).
+
+**Verified.** Service tests (15), endpoint tests (16), the retention command test, the step-up pin list and `TaskScheduleTest`; the full backend suite; the local dev DB migrated (plain `migrate`); `curl` against the local Herd site: `GET /api/onboarding/status` returns the closed switch and the notice, an empty stage-1 POST answers 422. No UI yet (3b, 3c).
+
+**Gotchas.** `Http::fake()` in `setUp` wins over a later `Http::fake([...])` in the same test, so a "mail fails" test passed without failing anything; the fix is one closure fake reading a per-test response. A missing `use ($inviteAfterCommit)` in a nested closure only showed at runtime.
+
+## 2026-11-01 — ADR-133 PR 3b: the public reseller application forms
+
+**What.** Three pages in the portal app under a `(onboarding)` route group: `/apply` (stage 1: applicant type, details, reselling answers, the bilingual notice with an English/Malay switch, one consent box, Turnstile), `/apply/verify` (confirms the email on a click) and `/onboard/[token]` (stage 2: addresses with "Save progress", one upload row per required document, the stage-2 notice and consent, submit). `proxy.ts` serves them only on an `onboarding.` host (everything else there goes to `/apply`, with `X-Robots-Tag: noindex`) and answers 404 for them on the portal host. Backend: `ONBOARDING_URL` is now an allowed CORS origin. Details in ADR-133's PR 3b addendum.
+
+**Found in the browser check, fixed before the PR.** (1) The portal's CSP blocked the Turnstile script, so the submit button never enabled: Turnstile is now allowed only on the application pages. (2) Confirming the email on page load spent the single-use token twice in development (React's double effect) and could be spent by an email scanner in production: confirmation is now a button.
+
+**Verified.** Throwaway sqlite backend on :8000 (a local fake for Plunk and the Turnstile check, so no real email left the machine), the portal on :3002 with Cloudflare's always-pass test site key, Playwright on `onboarding.localhost:3002`: 18 checks passed (portal host 404s both paths, `/login` on the onboarding host goes to `/apply`, noindex header, notice switches language, stage 1 sent, opening the link alone does not confirm, confirm works and a bad link explains, stage-2 link emailed, save, two uploads, resume after reload, mobile 390 px with no sideways scroll on both pages, submit, a used link explains, no page errors), and the database row read back as `documents_submitted` with two files. Text contrast 4.8 to 16.4 in light and dark. `tsc`, `eslint`, `npm test` (18) and `next build` clean. Servers stopped, the sqlite file and the test KYC files deleted afterwards.
+
+## 2026-11-01 — ADR-133 PR 3c: the admin applications screen; "Add Reseller" becomes "Invite directly"
+
+**What.** `/admin/applications` (sidebar Partners → Applications): status tabs with counts, a list in the `/admin/orders` style, the detail in `OrderDetailCards`-style cards, actions by status (send or resend the stage-2 link, approve with an active tier, decline, delete data behind step-up), documents opened through the 5-minute signed link with their view log, and the "Public applications open" switch. `InviteApplicantModal` is shared by Applications and Resellers. On Resellers, "Add Reseller" is replaced by "Invite directly", and an approved account shows "KYC on file". Backend: `POST /api/resellers` and `ResellerController::store()` removed (grep of the whole repo: only the admin page and four tests used them); the tests now exercise `/api/resellers/internal`, plus one that the old route answers 405.
+
+**Verified.** Throwaway sqlite backend, a local fake for Plunk, a throwaway admin, the admin dev server on `localhost:3000`, Playwright: the list, the switch, the detail, a file opened in a new tab (200, PDF) and its view shown on the detail, approve with a tier (set-password email sent), send stage-2 link (one email), decline (one email), decline of an unconfirmed email (no email, and the dialog says so), delete asking for step-up (the throwaway admin has no MFA, so the prompt is as far as it goes), Resellers without "Add Reseller" and with "KYC on file", Invite directly landing on the new application, no page errors; the list and detail at 390 px fresh-loaded with no sideways scroll, and dark mode by screenshot. The first mobile screenshot showed detail rows squeezed one letter per line (a `shrink-0` label beside an `overflow-wrap: anywhere` value): rows now wrap. The admin's colour-token test caught a `success-700` class with no token: the banner uses `success-surface`/`success-ink`. `/admin/orders` itself scrolls sideways at 390 px; that is older than this work and left as it is. Admin `tsc`, `eslint`, `npm test` (20) and `next build` clean; backend reseller, step-up and route tests green. Servers stopped and test files deleted afterwards.

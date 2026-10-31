@@ -37,6 +37,9 @@ export default function PlayerCheckClient({ family, storeName }: { family: Playe
   const [playerId, setPlayerId] = useState("");
   const [serverId, setServerId] = useState("");
   const [token, setToken] = useState<string | null>(null);
+  // Turnstile reports an error (e.g. 110200: this hostname is not on the widget) through
+  // error-callback and never produces a token, so without this the form waits forever.
+  const [verifyFailed, setVerifyFailed] = useState(false);
   const [scriptReady, setScriptReady] = useState(false);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,9 +60,15 @@ export default function PlayerCheckClient({ family, storeName }: { family: Playe
     widgetId.current = window.turnstile.render(widgetRef.current, {
       sitekey: SITE_KEY,
       appearance: "interaction-only",
-      callback: (t: string) => setToken(t),
+      callback: (t: string) => {
+        setToken(t);
+        setVerifyFailed(false);
+      },
       "expired-callback": () => setToken(null),
-      "error-callback": () => setToken(null),
+      "error-callback": () => {
+        setToken(null);
+        setVerifyFailed(true);
+      },
     });
     return () => {
       if (widgetId.current) window.turnstile?.remove(widgetId.current);
@@ -165,7 +174,11 @@ export default function PlayerCheckClient({ family, storeName }: { family: Playe
         <div ref={widgetRef} className="mt-3" />
 
         <div className="mt-4 flex items-center justify-between gap-3">
-          <p className="text-xs text-on-surface-variant">{token ? "Ready to check." : "Verifying you're human…"}</p>
+          <p className="text-xs text-on-surface-variant">{token
+              ? "Ready to check."
+              : verifyFailed
+                ? "We couldn't verify you on this page. Please reload, or try again later."
+                : "Verifying you're human…"}</p>
           <Button type="submit" disabled={checking || !ready || !token}>
             {checking ? "Checking…" : "Check ID"}
           </Button>

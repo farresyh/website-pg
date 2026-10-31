@@ -91,6 +91,11 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
       setError("Max markup % must be a number no lower than markup %.");
       return;
     }
+    // ADR-061 2026-10-31 addendum: a blank ceiling opens no markup.
+    if (maxMarkup === null && markup > 0) {
+      setError("Set a max markup % first: with no ceiling the affiliate cannot add a markup.");
+      return;
+    }
     if (willDisableMembershipWithMembers && !acknowledgeDisable) {
       setError(`Tick the acknowledgement below — ${activeMemberCount} active member${activeMemberCount === 1 ? "" : "s"} will lose access.`);
       return;
@@ -168,7 +173,7 @@ function Fields({ onClose, onSubmit, editing, tiers }: Omit<Props, "isOpen">) {
               </div>
               <div>
                 <Label htmlFor="max_markup_pct">Max markup % (ceiling)</Label>
-                <Input id="max_markup_pct" value={maxMarkupPct} onChange={(e) => setMaxMarkupPct(e.target.value)} hint="Leave blank for no ceiling." />
+                <Input id="max_markup_pct" value={maxMarkupPct} onChange={(e) => setMaxMarkupPct(e.target.value)} hint="Blank = no markup allowed; the affiliate sells at the tier price." />
               </div>
             </>
           )}

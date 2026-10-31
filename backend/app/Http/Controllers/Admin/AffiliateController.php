@@ -21,11 +21,13 @@ use App\Services\Affiliate\AffiliateSubscriptionService;
 use App\Services\Affiliate\AffiliateTierFeeService;
 use App\Services\Affiliate\Domain\AffiliateDomainService;
 use App\Services\Affiliate\Domain\DomainProviderException;
+use App\Services\Affiliate\PaymentsApprovedNotice;
 use App\Services\Auth\AccountOwnerType;
 use App\Services\Cache\NextRevalidation;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Membership\MembershipStatus;
+use App\Services\Partner\PartnerReadinessService;
 use App\Services\Withdrawal\WithdrawalStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -57,6 +59,8 @@ class AffiliateController extends Controller
         private readonly AffiliateInviteService $invites,
         private readonly AffiliateTierFeeService $tierFees,
         private readonly AffiliateDomainService $domains,
+        private readonly PartnerReadinessService $readiness,
+        private readonly PaymentsApprovedNotice $paymentsNotice,
     ) {}
 
     /**
@@ -74,9 +78,12 @@ class AffiliateController extends Controller
             ->get();
 
         $balances = $this->ledger->balances(LedgerOwnerType::Affiliate, $affiliates->pluck('id')->all());
+        // ADR-133 decision 18: the platform's own brand is not a partner, so it has no readiness.
+        $readiness = $this->readiness->forAffiliates($affiliates->reject(fn (Affiliate $a) => $a->is_primary));
 
         return response()->json([
-            'affiliates' => $affiliates->map(fn (Affiliate $r) => $this->rowShape($r, $balances[$r->id] ?? 0))->all(),
+            'affiliates' => $affiliates->map(fn (Affiliate $r) => $this->rowShape($r, $balances[$r->id] ?? 0)
+                + ['readiness' => isset($readiness[$r->id]) ? $readiness[$r->id]->toSummary() : null])->all(),
         ]);
     }
 
@@ -113,6 +120,7 @@ class AffiliateController extends Controller
             throw $this->ownedBrandHasNoTier();
         }
         $data['markup_pct'] = $isOwned ? 0 : $data['markup_pct'];
+        $this->assertMarkupWithinCeiling($isOwned, $data);
 
         $affiliate = DB::transaction(function () use ($data, $request, $isOwned, $ownedOnly) {
             $affiliate = Affiliate::query()->create([
@@ -177,6 +185,7 @@ class AffiliateController extends Controller
         // an audit row (the append-only history stays true).
         $oldMarkup = (float) $affiliate->markup_pct;
         $newMarkup = $isOwned ? 0.0 : (float) $data['markup_pct'];
+        $this->assertMarkupWithinCeiling($isOwned, $data);
 
         $affiliate->update([
             'business_name' => $data['business_name'],
@@ -221,6 +230,22 @@ class AffiliateController extends Controller
         }
 
         return response()->json($this->detailShape($affiliate->fresh()));
+    }
+
+    /**
+     * ADR-061 2026-10-31 addendum: a blank ceiling opens no markup, so a
+     * third-party brand without one must have 0 (`gte:markup_pct` holds it
+     * under a set ceiling). An owned brand's markup is forced to 0 anyway.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function assertMarkupWithinCeiling(bool $isOwned, array $data): void
+    {
+        if (! $isOwned && ($data['max_markup_pct'] ?? null) === null && (float) $data['markup_pct'] > 0) {
+            throw ValidationException::withMessages([
+                'markup_pct' => ['Set a max markup first: with no ceiling the brand cannot add a markup.'],
+            ]);
+        }
     }
 
     /** ADR-061 2026-10-30 addendum decision 5: a tier would not move any price of an owned brand. */
@@ -362,6 +387,7 @@ class AffiliateController extends Controller
         }
 
         $approved = $request->validated('approved');
+        $wasApproved = $affiliateDomain->paymentsApproved();
         $affiliateDomain->update([
             'payments_approved_at' => $approved ? now() : null,
             'payments_approved_by' => $approved ? $request->user()->id : null,
@@ -374,6 +400,11 @@ class AffiliateController extends Controller
             'approved' => $approved,
             'admin_user_id' => $request->user()->id,
         ]);
+
+        // ADR-133 decision 17: only the move from not approved to approved is news to the affiliate.
+        if ($approved && ! $wasApproved) {
+            $this->paymentsNotice->send($affiliateDomain);
+        }
 
         return response()->json($this->detailShape($affiliate->fresh()));
     }
@@ -521,7 +552,7 @@ class AffiliateController extends Controller
                     'status' => $d->status->value,
                     'is_primary' => $d->is_primary,
                     'redirects_to' => $d->isRedirectTwin() ? $affiliate->customDomains->firstWhere('id', $d->redirects_to_domain_id)?->hostname : null,
-                    'payments_approved' => $d->payments_approved_at !== null,
+                    'payments_approved' => $d->paymentsApproved(),
                     'payments_approved_at' => $d->payments_approved_at?->toIso8601String(),
                     'provider' => $d->provider,
                     'provider_managed' => $d->provider_ref !== null,

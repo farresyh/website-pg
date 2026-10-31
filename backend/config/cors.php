@@ -36,6 +36,8 @@ return [
         // reseller/ portal (ADR-059) — pinned to :3002 (its `next dev -p`
         // and config/services.php's reseller_portal.url both use it).
         explode(',', env('RESELLER_PORTAL_URL', 'http://localhost:3002')),
+        // ADR-133: the public reseller application, the same portal app on its own host.
+        explode(',', env('ONBOARDING_URL', 'http://onboarding.localhost:3002')),
     )),
 
     'allowed_origins_patterns' => [],

@@ -10,7 +10,8 @@ use Illuminate\Foundation\Http\FormRequest;
  * (it writes an audit row); status changes go through updateStatus.
  * `markup_pct` is the affiliate's own downstream margin and stays
  * editable here; `max_markup_pct` is the admin-set ceiling the portal
- * (ADR-059) will clamp the affiliate's self-service edits to.
+ * (ADR-059) clamps the affiliate's self-service edits to (blank = no
+ * markup opened, ADR-061 2026-10-31 addendum, checked in the controller).
  *
  * ADR-061: `is_owned` (our brand) and `membership_enabled` (the
  * per-brand consumer-Membership toggle — the founder's own switch for

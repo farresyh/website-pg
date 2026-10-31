@@ -455,19 +455,24 @@ class CustomerAnalyticsServiceTest extends TestCase
      * night of 2026-09-30/10-01. Fixed by computing every "now" here in
      * the same timezone the service under test actually buckets by —
      * deterministic regardless of which side of KL midnight CI runs on.
+     *
+     * 2026-10-31: the `paid_at` values are stored `->utc()`. Eloquent writes
+     * a KL-zoned Carbon's wall clock as-is, and the service reads the column
+     * as UTC, so a KL "now" after 16:00 on a month's last day was read back
+     * 8 hours later, in next month.
      */
     public function test_monthly_trend_buckets_by_paid_month(): void
     {
         $now = CarbonImmutable::now(MalaysiaTime::TIMEZONE);
 
-        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-1', 'final_amount' => 1000, 'paid_at' => $now->subMonths(1)->startOfMonth()->addDays(5)]);
-        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-2', 'final_amount' => 500, 'paid_at' => $now->subMonths(1)->startOfMonth()->addDays(10)]);
-        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-3', 'final_amount' => 2000, 'paid_at' => $now]);
+        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-1', 'final_amount' => 1000, 'paid_at' => $now->subMonthsNoOverflow(1)->startOfMonth()->addDays(5)->utc()]);
+        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-2', 'final_amount' => 500, 'paid_at' => $now->subMonthsNoOverflow(1)->startOfMonth()->addDays(10)->utc()]);
+        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-3', 'final_amount' => 2000, 'paid_at' => $now->utc()]);
 
         $detail = $this->analytics->customerDetail('trend@example.com');
         $trend = collect($detail['monthly_trend'])->keyBy('month');
 
-        $lastMonthKey = $now->subMonths(1)->format('Y-m');
+        $lastMonthKey = $now->subMonthsNoOverflow(1)->format('Y-m');
         $thisMonthKey = $now->format('Y-m');
 
         $this->assertSame(1500, $trend[$lastMonthKey]['total_spent']);

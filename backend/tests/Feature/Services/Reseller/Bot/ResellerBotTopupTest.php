@@ -6,6 +6,9 @@ use App\Models\PaymentMethod;
 use App\Models\Reseller;
 use App\Models\ResellerBotCommandLog;
 use App\Models\WalletTopupAttempt;
+use App\Services\Ledger\LedgerOwnerType;
+use App\Services\Ledger\LedgerService;
+use App\Services\Reseller\Bot\ResellerBotReplyFormatter;
 use App\Services\Reseller\Bot\ResellerBotService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -50,6 +53,28 @@ class ResellerBotTopupTest extends TestCase
         ]);
     }
 
+    /** ADR-133 decision 20: the same refusal as the portal, through the shared seam. */
+    public function test_topupbaki_from_a_reseller_with_no_tier_is_refused_without_an_attempt(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $this->captureReplies();
+        $reseller = $this->makeLinkedReseller();
+        $reseller->update(['reseller_tier_id' => null]);
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1');
+
+        $this->assertSame(0, WalletTopupAttempt::query()->count());
+        $this->assertDatabaseHas('reseller_bot_command_logs', [
+            'reseller_id' => $reseller->id,
+            'failure_reason' => 'topup_no_tier_assigned',
+        ]);
+        $this->assertContains(
+            'Tambah Baki Pembelian tidak dapat dibuat: akaun anda belum ditetapkan tier harga. Sila hubungi admin.',
+            $this->replies(),
+        );
+    }
+
     public function test_topupbaki_below_the_minimum_is_rejected_without_a_gateway_call(): void
     {
         $this->activeFpx();
@@ -80,7 +105,7 @@ class ResellerBotTopupTest extends TestCase
         ]);
         $this->assertSame(
             'Jumlah maksimum untuk sekali tambah baki ialah RM10,000.00.',
-            \App\Services\Reseller\Bot\ResellerBotReplyFormatter::topupOverMaximum(1_000_000),
+            ResellerBotReplyFormatter::topupOverMaximum(1_000_000),
         );
     }
 
@@ -90,7 +115,7 @@ class ResellerBotTopupTest extends TestCase
         $this->bindGateway();
         $reseller = $this->makeLinkedReseller();
         $reseller->update(['balance_cap_sen' => 300_000]);
-        app(\App\Services\Ledger\LedgerService::class)->credit(\App\Services\Ledger\LedgerOwnerType::ResellerWallet, $reseller->id, 250_000, 'wallet_topup');
+        app(LedgerService::class)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, 250_000, 'wallet_topup');
 
         app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 600', 'msg-1');
 
@@ -101,18 +126,18 @@ class ResellerBotTopupTest extends TestCase
         ]);
         $this->assertSame(
             'Ini akan melebihi had Baki Pembelian anda (RM3,000.00). Anda boleh tambah sehingga RM500.00 sekarang.',
-            \App\Services\Reseller\Bot\ResellerBotReplyFormatter::topupOverCap(300_000, 50_000),
+            ResellerBotReplyFormatter::topupOverCap(300_000, 50_000),
         );
     }
 
     public function test_the_bot_never_calls_the_balance_a_wallet_to_the_reseller(): void
     {
         $replies = [
-            \App\Services\Reseller\Bot\ResellerBotReplyFormatter::commandList(),
-            \App\Services\Reseller\Bot\ResellerBotReplyFormatter::topupPaid(12_345),
-            \App\Services\Reseller\Bot\ResellerBotReplyFormatter::topupBelowMinimum(),
-            \App\Services\Reseller\Bot\ResellerBotReplyFormatter::topupUnavailable(),
-            \App\Services\Reseller\Bot\ResellerBotReplyFormatter::topupCheckoutFailed(),
+            ResellerBotReplyFormatter::commandList(),
+            ResellerBotReplyFormatter::topupPaid(12_345),
+            ResellerBotReplyFormatter::topupBelowMinimum(),
+            ResellerBotReplyFormatter::topupUnavailable(),
+            ResellerBotReplyFormatter::topupCheckoutFailed(),
         ];
 
         foreach ($replies as $reply) {

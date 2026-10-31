@@ -35,6 +35,7 @@ class Reseller extends Model
         'is_active',
         'notes',
         'balance_cap_sen',
+        'internal_reason',
     ];
 
     protected $casts = [
@@ -45,6 +46,12 @@ class Reseller extends Model
     public function tier(): BelongsTo
     {
         return $this->belongsTo(ResellerTier::class, 'reseller_tier_id');
+    }
+
+    /** ADR-133: the application this account was approved from, if it came through the KYC form. */
+    public function partnerApplication(): HasOne
+    {
+        return $this->hasOne(PartnerApplication::class);
     }
 
     /** ADR-074 decision 1: this account's Reseller API credentials. */

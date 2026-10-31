@@ -190,6 +190,15 @@ class Affiliate extends Model
      * Needs `subscription.tier` loaded — `ResolveStorefrontBrand` already
      * eager-loads it.
      */
+    /**
+     * ADR-133 decision 13: the one answer to "can the monthly payout reach this affiliate". The
+     * payout plan, the portal's withdrawal screen and the readiness checklist all call it.
+     */
+    public function hasBankDetails(): bool
+    {
+        return $this->bank_name !== null && $this->bank_account_no !== null && $this->bank_account_holder !== null;
+    }
+
     public function wholesaleTierMarkupPct(): ?float
     {
         $subscription = $this->subscription;
@@ -217,7 +226,8 @@ class Affiliate extends Model
      * ADR-061 2026-10-30 addendum, decision 2: the one place a storefront's
      * pricing terms are decided — `tier` is the wholesale-tier markup (null
      * = the standard chain) and `markup` is the brand's own margin, already
-     * held to its ceiling (a null `max_markup_pct` is no ceiling).
+     * held to its ceiling (a null `max_markup_pct` opens no markup: a
+     * ceiling of 0, ADR-061 2026-10-31 addendum).
      *
      * An owned brand is the platform under another name: no tier and no
      * markup whatever the row stores, so it prices exactly as the primary
@@ -239,7 +249,7 @@ class Affiliate extends Model
 
         return [
             'tier' => $this->wholesaleTierMarkupPct(),
-            'markup' => $this->max_markup_pct === null ? $markup : min($markup, (float) $this->max_markup_pct),
+            'markup' => min($markup, (float) ($this->max_markup_pct ?? 0)),
         ];
     }
 

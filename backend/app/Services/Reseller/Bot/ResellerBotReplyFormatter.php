@@ -324,6 +324,11 @@ final class ResellerBotReplyFormatter
         return 'Jumlah tidak sah. Masukkan jumlah dalam RM, contoh: .topupbaki 50';
     }
 
+    public static function topupNoTier(): string
+    {
+        return 'Tambah Baki Pembelian tidak dapat dibuat: akaun anda belum ditetapkan tier harga. Sila hubungi admin.';
+    }
+
     public static function topupUnavailable(): string
     {
         return 'Tambah Baki Pembelian tidak tersedia buat masa ini. Sila hubungi admin.';

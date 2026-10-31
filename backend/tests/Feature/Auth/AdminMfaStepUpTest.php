@@ -36,12 +36,14 @@ class AdminMfaStepUpTest extends TestCase
             ->sort()->values()->all();
 
         $this->assertSame([
+            'DELETE api/partner-applications/{partnerApplication} mfa.stepup',
             'PATCH api/admin-users/{admin_user}/status mfa.stepup',
             'PATCH api/withdrawals/{withdrawal}/approve mfa.stepup',
             'POST api/admin-users mfa.stepup',
             'POST api/mfa/recovery-codes mfa.stepup',
             'POST api/middleware/suppliers mfa.stepup',
             'POST api/orders/{order}/credentials/reveal mfa.stepup',
+            'POST api/resellers/internal mfa.stepup',
             'POST api/resellers/{reseller}/close mfa.stepup',
             'POST api/resellers/{reseller}/wallet/credit mfa.stepup',
             'PUT api/admin-users/{admin_user} mfa.stepup',

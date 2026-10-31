@@ -5,6 +5,7 @@ namespace Tests\Feature\Http\Controllers\ResellerPortal;
 use App\Models\AffiliateUser;
 use App\Models\PaymentMethod;
 use App\Models\Reseller;
+use App\Models\ResellerTier;
 use App\Models\WalletTopupAttempt;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
@@ -39,9 +40,12 @@ class WalletControllerTest extends TestCase
         return $user->createToken('affiliate')->plainTextToken;
     }
 
-    private function reseller(): Reseller
+    private function reseller(bool $withTier = true): Reseller
     {
-        $reseller = Reseller::query()->create(['business_name' => 'Wallet Reseller', 'is_active' => true]);
+        $tierId = $withTier
+            ? ResellerTier::query()->create(['name' => 'Gold', 'markup_percent' => 5, 'is_active' => true, 'sort_order' => 1])->id
+            : null;
+        $reseller = Reseller::query()->create(['business_name' => 'Wallet Reseller', 'is_active' => true, 'reseller_tier_id' => $tierId]);
         app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
 
         return $reseller;
@@ -217,5 +221,20 @@ class WalletControllerTest extends TestCase
         $this->withToken($token)->postJson('/api/reseller-portal/wallet/topup', ['amount_sen' => 5000, 'channel_code' => 'fpx'])->assertUnprocessable();
 
         $this->assertSame(1, WalletTopupAttempt::query()->count());
+    }
+
+    /** ADR-133 decision 20. */
+    public function test_topup_is_refused_for_a_reseller_with_no_tier(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $token = $this->tokenFor($this->reseller(withTier: false));
+
+        $this->withToken($token)->postJson('/api/reseller-portal/wallet/topup', [
+            'amount_sen' => 5000, 'channel_code' => 'fpx',
+        ])->assertUnprocessable()
+            ->assertJsonPath('message', 'Your account has no pricing set up yet, so you cannot add balance. Contact PekanGame to set it up.');
+
+        $this->assertSame(0, WalletTopupAttempt::query()->count());
     }
 }

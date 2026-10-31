@@ -22,6 +22,7 @@ use App\Http\Controllers\Admin\MembershipPlanController;
 use App\Http\Controllers\Admin\MonthCloseController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\OrderCredentialController;
+use App\Http\Controllers\Admin\PartnerApplicationController;
 use App\Http\Controllers\Admin\PartnerSupplierController;
 use App\Http\Controllers\Admin\PaymentSettlementController;
 use App\Http\Controllers\Admin\RedirectController;
@@ -46,6 +47,7 @@ use App\Http\Controllers\Affiliate\DashboardController as AffiliateDashboardCont
 use App\Http\Controllers\Affiliate\DomainController as AffiliateDomainController;
 use App\Http\Controllers\Affiliate\EarningsController as AffiliateEarningsController;
 use App\Http\Controllers\Affiliate\ImpersonationController as AffiliateImpersonationEndController;
+use App\Http\Controllers\Affiliate\OnboardingController as AffiliateOnboardingController;
 use App\Http\Controllers\Affiliate\OrderController as AffiliateOrderController;
 use App\Http\Controllers\Affiliate\ProfileController as AffiliateProfileController;
 use App\Http\Controllers\Affiliate\Storefront\BrandingController as AffiliateStorefrontBrandingController;
@@ -83,6 +85,7 @@ use App\Http\Controllers\Middleware\RequestLogController;
 use App\Http\Controllers\Middleware\SandboxOrderController;
 use App\Http\Controllers\Middleware\SupplierController;
 use App\Http\Controllers\Middleware\SupplierProductController;
+use App\Http\Controllers\Onboarding\PartnerApplicationController as OnboardingApplicationController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\PlayerCheckController;
@@ -92,6 +95,7 @@ use App\Http\Controllers\ResellerApi\BalanceController as ResellerApiBalanceCont
 use App\Http\Controllers\ResellerApi\CatalogController as ResellerApiCatalogController;
 use App\Http\Controllers\ResellerApi\OrderController as ResellerApiOrderController;
 use App\Http\Controllers\ResellerPortal\ApiKeyController as ResellerPortalApiKeyController;
+use App\Http\Controllers\ResellerPortal\OnboardingController as ResellerPortalOnboardingController;
 use App\Http\Controllers\ResellerPortal\OrderController as ResellerPortalOrderController;
 use App\Http\Controllers\ResellerPortal\ProfileController as ResellerPortalProfileController;
 use App\Http\Controllers\ResellerPortal\WalletController as ResellerPortalWalletController;
@@ -209,6 +213,25 @@ Route::post('/games/{game}/validate-player', [PlayerValidationController::class,
 // and an hourly budget in PublicPlayerCheckService, so it can't spend
 // the provider checkout depends on. Family listing lives in `catalog/`.
 Route::post('/player-check/{slug}', [PlayerCheckController::class, 'check'])->middleware(['throttle:player-check', 'storefront.brand']);
+
+// ADR-133 decisions 3–8: the public reseller application. No login. Stage 1 has its own tight
+// limiter plus Turnstile and the admin's open switch; stage 2 is reached only through the single-use
+// token emailed to the verified address.
+Route::prefix('onboarding')->middleware('throttle:onboarding')->group(function () {
+    Route::get('/status', [OnboardingApplicationController::class, 'status']);
+    Route::post('/applications', [OnboardingApplicationController::class, 'store'])->middleware('throttle:onboarding-apply');
+    Route::post('/verify-email', [OnboardingApplicationController::class, 'verify']);
+    Route::get('/stage-two/{token}', [OnboardingApplicationController::class, 'show']);
+    Route::put('/stage-two/{token}', [OnboardingApplicationController::class, 'update']);
+    Route::post('/stage-two/{token}/documents', [OnboardingApplicationController::class, 'upload']);
+    Route::delete('/stage-two/{token}/documents/{document}', [OnboardingApplicationController::class, 'destroyDocument'])->whereNumber('document');
+    Route::post('/stage-two/{token}/submit', [OnboardingApplicationController::class, 'submit']);
+});
+
+// ADR-133 decision 8: a KYC file, through the 5-minute signed link the admin mints below.
+Route::get('/partner-documents/{document}/file', [PartnerApplicationController::class, 'file'])
+    ->middleware(['signed', 'throttle:30,1,partner-document-file'])
+    ->name('partner-documents.file');
 
 // Public "Track Order" lookup (ADR-011) — order_number (12 random
 // base-36 chars, ~4.7e18 space — see OrderNumberService; no longer a
@@ -372,6 +395,7 @@ Route::prefix('affiliate')->group(function () {
             // `affiliate.context`; money reads go through
             // AffiliateEarningsService (decision 5).
             Route::get('/dashboard', [AffiliateDashboardController::class, 'show']);
+            Route::get('/onboarding', [AffiliateOnboardingController::class, 'show']);
             Route::get('/orders', [AffiliateOrderController::class, 'index']);
             Route::get('/orders/{orderNumber}', [AffiliateOrderController::class, 'show']);
             Route::get('/earnings', [AffiliateEarningsController::class, 'index']);
@@ -440,6 +464,7 @@ Route::prefix('reseller-portal')->middleware(['auth:affiliate', 'account.type:re
     Route::get('/orders/{orderNumber}', [ResellerPortalOrderController::class, 'show']);
 
     Route::get('/profile', [ResellerPortalProfileController::class, 'show']);
+    Route::get('/onboarding', [ResellerPortalOnboardingController::class, 'show']);
 
     // Full self-service (planning addendum decision 7) — capped at 5
     // active keys. Admin retains the same capability in parallel
@@ -906,9 +931,25 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
     // Same super_admin tier as Affiliate Management above. Distinct from
     // `Affiliate` (whitelabel storefront partner) — see ADR-072 decision 1.
     Route::middleware('admin.role:super_admin')->group(function () {
+        // ADR-133 decision 6: reseller applications (the public KYC form's admin side).
+        Route::prefix('partner-applications')->group(function () {
+            Route::get('/settings', [PartnerApplicationController::class, 'settings']);
+            Route::put('/settings', [PartnerApplicationController::class, 'updateSettings']);
+            Route::get('/', [PartnerApplicationController::class, 'index']);
+            Route::post('/invite', [PartnerApplicationController::class, 'invite']);
+            Route::get('/{partnerApplication}', [PartnerApplicationController::class, 'show']);
+            Route::post('/{partnerApplication}/send-link', [PartnerApplicationController::class, 'sendLink']);
+            Route::post('/{partnerApplication}/decline', [PartnerApplicationController::class, 'decline']);
+            Route::post('/{partnerApplication}/approve', [PartnerApplicationController::class, 'approve']);
+            Route::delete('/{partnerApplication}', [PartnerApplicationController::class, 'destroy'])->middleware('mfa.stepup');
+            Route::post('/{partnerApplication}/documents/{document}/link', [PartnerApplicationController::class, 'fileLink']);
+        });
+
         Route::prefix('resellers')->group(function () {
             Route::get('/', [ResellerController::class, 'index']);
-            Route::post('/', [ResellerController::class, 'store']);
+            // ADR-133 2026-11-01: a real reseller comes from an application (Invite directly or the
+            // public form); the plain create was removed. Test accounts use /internal.
+            Route::post('/internal', [ResellerController::class, 'storeInternal'])->middleware('mfa.stepup');
             Route::get('/{reseller}', [ResellerController::class, 'show']);
             Route::put('/{reseller}', [ResellerController::class, 'update']);
             Route::patch('/{reseller}/status', [ResellerController::class, 'updateStatus']);

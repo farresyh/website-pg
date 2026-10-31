@@ -79,6 +79,12 @@ return [
     'accounting_disk' => env('ACCOUNTING_DISK', 'local'),
 
     /*
+     * ADR-133 decision 8: reseller KYC documents. `r2_kyc` (its own private
+     * bucket and token) in production, the private `local` disk elsewhere.
+     */
+    'kyc_disk' => env('KYC_DISK', 'local'),
+
+    /*
     |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
@@ -182,6 +188,19 @@ return [
             'secret' => env('R2_ACCOUNTING_SECRET_ACCESS_KEY'),
             'region' => 'auto',
             'bucket' => env('R2_ACCOUNTING_BUCKET'),
+            'endpoint' => env('R2_ENDPOINT'),
+            'use_path_style_endpoint' => true,
+            'throw' => true,
+            'report' => false,
+        ],
+
+        // ADR-133 2026-10-31 addendum: the `pekangame-kyc` bucket, the r2_accounting shape.
+        'r2_kyc' => [
+            'driver' => 's3',
+            'key' => env('R2_KYC_ACCESS_KEY_ID'),
+            'secret' => env('R2_KYC_SECRET_ACCESS_KEY'),
+            'region' => 'auto',
+            'bucket' => env('R2_KYC_BUCKET', 'pekangame-kyc'),
             'endpoint' => env('R2_ENDPOINT'),
             'use_path_style_endpoint' => true,
             'throw' => true,

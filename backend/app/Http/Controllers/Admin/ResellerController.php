@@ -5,9 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AssignResellerTierRequest;
 use App\Http\Requests\Admin\CloseResellerRequest;
-use App\Http\Requests\Admin\StoreResellerRequest;
-use App\Http\Requests\Admin\UpdateResellerBalanceCapRequest;
+use App\Http\Requests\Admin\StoreInternalResellerRequest;
 use App\Http\Requests\Admin\StoreResellerUserRequest;
+use App\Http\Requests\Admin\UpdateResellerBalanceCapRequest;
 use App\Http\Requests\Admin\UpdateResellerRequest;
 use App\Http\Requests\Admin\UpdateResellerStatusRequest;
 use App\Models\AffiliateUser;
@@ -17,9 +17,10 @@ use App\Services\Affiliate\AffiliateInviteService;
 use App\Services\Auth\AccountOwnerType;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Services\Partner\PartnerReadinessService;
 use App\Services\Reseller\ResellerClosureService;
+use App\Services\Reseller\ResellerProvisioningService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
@@ -40,7 +41,9 @@ class ResellerController extends Controller
     public function __construct(
         private readonly LedgerService $ledger,
         private readonly AffiliateInviteService $invites,
+        private readonly ResellerProvisioningService $provisioning,
         private readonly ResellerClosureService $closures,
+        private readonly PartnerReadinessService $readiness,
     ) {}
 
     /** ADR-131 decision 4: the platform default cap, read once per request, not once per row. */
@@ -50,57 +53,40 @@ class ResellerController extends Controller
     {
         $resellers = Reseller::query()
             ->with(['tier' => fn ($q) => $q->withTrashed()])
+            ->withExists('partnerApplication')
             ->orderBy('business_name')
             ->get();
 
         $balances = $this->ledger->balances(LedgerOwnerType::ResellerWallet, $resellers->pluck('id')->all());
 
+        $readiness = $this->readiness->forResellers($resellers);
+
         return response()->json([
-            'resellers' => $resellers->map(fn (Reseller $r) => $this->rowShape($r, $balances[$r->id] ?? 0))->all(),
+            'resellers' => $resellers->map(fn (Reseller $r) => $this->rowShape($r, $balances[$r->id] ?? 0)
+                + ['readiness' => $readiness[$r->id]->toSummary()])->all(),
         ]);
     }
 
     public function show(Reseller $reseller): JsonResponse
     {
-        $reseller->load(['tier' => fn ($q) => $q->withTrashed(), 'users']);
+        $reseller->load(['tier' => fn ($q) => $q->withTrashed(), 'users'])->loadExists('partnerApplication');
 
         return response()->json($this->rowShape($reseller, $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id)));
     }
 
-    /**
-     * ADR-073 decision 3: the wallet ledger account is opened proactively
-     * at creation, not deferred to the first top-up — `LedgerService::
-     * debit()`'s `lockForUpdate()->firstOrFail()` would otherwise throw a
-     * hard "row not found" against a `ledger_accounts` row that was never
-     * opened, the same reasoning `AffiliateController::store()` already
-     * follows for a new `Affiliate`.
-     */
-    public function store(StoreResellerRequest $request): JsonResponse
+    /** ADR-133 decision 12(c): a test or internal account, no KYC on file. Behind step-up. */
+    public function storeInternal(StoreInternalResellerRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $reseller = $this->provisioning->provision(['internal_reason' => $data['reason']] + $data);
 
-        $reseller = DB::transaction(function () use ($data) {
-            $reseller = Reseller::query()->create([
-                'business_name' => $data['business_name'],
-                'contact_name' => $data['contact_name'] ?? null,
-                'email' => $data['email'] ?? null,
-                'phone' => $data['phone'] ?? null,
-                'reseller_tier_id' => $data['reseller_tier_id'] ?? null,
-                'is_active' => true,
-                'notes' => $data['notes'] ?? null,
-            ]);
-
-            $this->ledger->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
-
-            return $reseller;
-        });
-
-        Log::info('Reseller created', [
+        Log::info('Internal reseller account created', [
             'reseller_id' => $reseller->id,
             'admin_user_id' => $request->user()->id,
+            'reason' => $data['reason'],
         ]);
 
-        return response()->json($this->rowShape($reseller->fresh(), 0), 201);
+        return response()->json($this->rowShape($reseller->fresh(['tier', 'users']), 0), 201);
     }
 
     public function update(UpdateResellerRequest $request, Reseller $reseller): JsonResponse
@@ -182,18 +168,7 @@ class ResellerController extends Controller
     {
         $data = $request->validated();
 
-        DB::transaction(function () use ($data, $reseller) {
-            $user = AffiliateUser::query()->create([
-                'owner_type' => AccountOwnerType::Reseller->value,
-                'owner_id' => $reseller->id,
-                'name' => $data['name'],
-                'email' => $data['email'],
-                'password' => null,
-                'is_active' => true,
-            ]);
-
-            $this->invites->sendInvite($user);
-        });
+        $this->provisioning->addPortalUser($reseller, $data['name'], $data['email']);
 
         return response()->json($this->rowShape(
             $reseller->fresh(['tier' => fn ($q) => $q->withTrashed(), 'users']),
@@ -250,6 +225,14 @@ class ResellerController extends Controller
             'markup_percent' => $reseller->tier?->markup_percent,
             'is_active' => (bool) $reseller->is_active,
             'notes' => $reseller->notes,
+            // ADR-133 decision 12: "on file" when approved from an application whose data is still
+            // held; an internal account has none; any other was collected outside the system.
+            'kyc' => match (true) {
+                (bool) ($reseller->partner_application_exists ?? $reseller->partnerApplication()->exists()) => 'on_file',
+                $reseller->internal_reason !== null => 'none',
+                default => 'outside_system',
+            },
+            'internal_reason' => $reseller->internal_reason,
             'deleted_at' => $reseller->deleted_at,
             'wallet_balance_sen' => $walletBalanceSen,
             'balance_cap_sen' => $reseller->balance_cap_sen,

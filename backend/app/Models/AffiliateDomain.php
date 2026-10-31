@@ -61,6 +61,12 @@ class AffiliateDomain extends Model
         $query->whereNull('redirects_to_domain_id');
     }
 
+    /** ADR-131: has an admin approved this domain to take CHIP payments? Checkout, the portal and the readiness checklist read it here. */
+    public function paymentsApproved(): bool
+    {
+        return $this->payments_approved_at !== null;
+    }
+
     public function isRedirectTwin(): bool
     {
         return $this->redirects_to_domain_id !== null;
