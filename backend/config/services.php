@@ -338,7 +338,7 @@ return [
     // ADR-133: the public reseller application (`/apply`, `/onboard/{token}`), served by the
     // portal app on its own host. Links in the applicant emails point here.
     'onboarding' => [
-        'url' => env('ONBOARDING_URL', 'http://localhost:3002'),
+        'url' => env('ONBOARDING_URL', 'http://onboarding.localhost:3002'),
         'privacy_contact' => env('ONBOARDING_PRIVACY_CONTACT', 'partners@pekangame.space'),
     ],
 
