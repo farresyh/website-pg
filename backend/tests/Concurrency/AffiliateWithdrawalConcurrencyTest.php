@@ -43,7 +43,7 @@ class AffiliateWithdrawalConcurrencyTest extends TestCase
         ]);
         app(LedgerService::class)->credit(LedgerOwnerType::Affiliate, $affiliate->id, 50000, 'order_profit', 'order', 1);
         // Earned last month: before this month's cut-off, so it is payable.
-        LedgerEntry::query()->update(['created_at' => now()->subMonth()]);
+        LedgerEntry::query()->update(['created_at' => $this->midLastMonth()]);
 
         $resultFileA = tempnam(sys_get_temp_dir(), 'affiliate_withdrawal_test_');
         $resultFileB = tempnam(sys_get_temp_dir(), 'affiliate_withdrawal_test_');
