@@ -17,9 +17,13 @@ import {
   type WalletResponse,
 } from "@/lib/reseller-portal";
 import { dateAndTime, formatRm, greeting } from "@/lib/format";
-import { Badge, BalanceHero, CardHead, ErrorNote, Facts, PageHeader, Panel, Skeleton, buttonClass } from "@/components/composites";
+import { Badge, BalanceHero, CardHead, CopyId, EmptyState, ErrorNote, Facts, PageHeader, Panel, Skeleton, buttonClass } from "@/components/composites";
 import { PortalIcon, type PortalIconName } from "@/components/shell/PortalIcon";
 import OrderTable from "@/components/orders/OrderTable";
+import OnboardingChecklist from "@/components/onboarding/OnboardingChecklist";
+import FirstOrderCard from "@/components/onboarding/FirstOrderCard";
+import { useOnboarding } from "@/hooks/useOnboarding";
+import { channelsSetUp, storeStatus } from "@/lib/onboarding";
 
 const RECENT = 5;
 const DOCS_URL = "https://docs.pekangame.space";
@@ -48,6 +52,7 @@ function ResellerDashboard({ hello }: { hello: string }) {
     orders: OrderListItem[];
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const onboarding = useOnboarding("reseller");
 
   useEffect(() => {
     const session = getClientSession();
@@ -67,12 +72,14 @@ function ResellerDashboard({ hello }: { hello: string }) {
   const lastTopup = entries.find((e) => e.type === "wallet_topup");
   const lastOrder = entries.find((e) => e.type === "wallet_debit");
   const activeKeys = data?.keys.filter((k) => !k.revoked_at) ?? [];
+  const channels = channelsSetUp(onboarding);
   const lastUsed = activeKeys.map((k) => k.last_used_at).filter((d): d is string => !!d).sort().at(-1) ?? null;
 
   return (
     <div>
       <PageHeader title={hello} subtitle="Your Purchase Balance, your integrations and the latest orders placed through them." />
       {error && <ErrorNote message={error} />}
+      {onboarding && <OnboardingChecklist ownerType="reseller" onboarding={onboarding} />}
 
       <div className="mb-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         {data ? (
@@ -119,6 +126,16 @@ function ResellerDashboard({ hello }: { hello: string }) {
               end={activeKeys.length ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Not set up</Badge>}
             />
             <ChannelRow
+              icon="chat"
+              title="WhatsApp bot"
+              detail={
+                channels.whatsAppGroup
+                  ? "A WhatsApp group is linked"
+                  : "Add the PekanGame bot to your WhatsApp group and send any message. We link the group for you."
+              }
+              end={channels.whatsAppGroup ? <Badge tone="success">Linked</Badge> : <Badge tone="neutral">Not linked</Badge>}
+            />
+            <ChannelRow
               icon="refresh"
               title="Delivery webhook"
               detail={data.webhook?.url ?? "Not set — you'll need to poll order status"}
@@ -145,7 +162,34 @@ function ResellerDashboard({ hello }: { hello: string }) {
         )}
       </div>
 
-      <RecentOrders orders={data?.orders ?? null} ownerType="reseller" description={`The ${RECENT} newest orders from your API and bot. This is not a full list of problems.`} />
+      {onboarding?.steps.find((step) => step.key === "first_order")?.state === "todo" && (
+        <div className="mb-4">
+          <FirstOrderCard />
+        </div>
+      )}
+
+      <RecentOrders
+        orders={data?.orders ?? null}
+        ownerType="reseller"
+        description={`The ${RECENT} newest orders from your API and bot. This is not a full list of problems.`}
+        empty={
+          <EmptyState
+            title="No orders yet"
+            text="Orders placed through your API or the WhatsApp bot appear here."
+            action={
+              channels.apiKey || channels.whatsAppGroup ? (
+                <a href={DOCS_URL} target="_blank" rel="noreferrer" className={buttonClass("secondary")}>
+                  Read the first-order guide
+                </a>
+              ) : (
+                <Link href="/api-keys" className={buttonClass("primary")}>
+                  Create an API key
+                </Link>
+              )
+            }
+          />
+        }
+      />
     </div>
   );
 }
@@ -155,6 +199,7 @@ function AffiliateDashboard({ hello }: { hello: string }) {
   const [orders, setOrders] = useState<OrderListItem[] | null>(null);
   const [domains, setDomains] = useState<DomainsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const onboarding = useOnboarding("affiliate");
 
   useEffect(() => {
     const session = getClientSession();
@@ -176,6 +221,7 @@ function AffiliateDashboard({ hello }: { hello: string }) {
     <div>
       <PageHeader title={hello} subtitle={primary ? `Your earnings and how ${primary.hostname} is selling.` : "Your earnings and how your storefront is selling."} />
       {error && <ErrorNote message={error} />}
+      {onboarding && <OnboardingChecklist ownerType="affiliate" onboarding={onboarding} />}
 
       <div className="mb-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-4">
@@ -207,7 +253,7 @@ function AffiliateDashboard({ hello }: { hello: string }) {
                 icon="globe"
                 title={primary?.hostname ?? "No domain yet"}
                 detail={primary ? (primary.is_primary ? "Primary domain" : "Domain") : "Connect your own domain to start selling"}
-                end={primary ? <Badge tone={primary.status === "active" ? "success" : primary.status === "pending" ? "warning" : "danger"}>{primary.status === "active" ? "Live" : primary.status === "pending" ? "Checking DNS" : primary.status === "failed" ? "Failed" : "Suspended"}</Badge> : <Link href="/domains" className="text-[13px] font-semibold text-cyan-ink hover:underline">Add</Link>}
+                end={primary ? <StoreBadge status={primary.status} store={storeStatus(onboarding, primary.status === "active")} /> : <Link href="/domains" className="text-[13px] font-semibold text-cyan-ink hover:underline">Add</Link>}
               />
               <ChannelRow
                 icon="store"
@@ -268,7 +314,32 @@ function AffiliateDashboard({ hello }: { hello: string }) {
         </div>
       </div>
 
-      <RecentOrders orders={orders} ownerType="affiliate" description={`The ${RECENT} newest orders on your storefront.`} />
+      <RecentOrders
+        orders={orders}
+        ownerType="affiliate"
+        description={`The ${RECENT} newest orders on your storefront.`}
+        empty={
+          storeStatus(onboarding, primary?.status === "active") === "ready" && primary ? (
+            <EmptyState
+              title="No orders yet"
+              text="Your store is ready. Share its link, or place a small order yourself to check delivery."
+              action={<CopyId value={`https://${primary.hostname}`} label="Copy store link" />}
+            />
+          ) : (
+            <EmptyState
+              title="Your first order comes after setup"
+              text="Finish the steps above. Once payments are on, a small test order on your own store shows how it works."
+              action={
+                primary ? undefined : (
+                  <Link href="/domains" className={buttonClass("primary")}>
+                    Connect your domain
+                  </Link>
+                )
+              }
+            />
+          )
+        }
+      />
     </div>
   );
 }
@@ -300,7 +371,25 @@ function ChannelRow({ icon, title, detail, end }: { icon: PortalIconName; title:
   );
 }
 
-function RecentOrders({ orders, ownerType, description }: { orders: OrderListItem[] | null; ownerType: "affiliate" | "reseller"; description: string }) {
+/** ADR-133 decision 15: "Online" is not "Ready to sell": a store can be reachable while every payment is refused. */
+function StoreBadge({ status, store }: { status: string; store: ReturnType<typeof storeStatus> }) {
+  if (status === "active") {
+    return store === "ready" ? <Badge tone="success">Ready to sell</Badge> : <Badge tone="info">Online, payments off</Badge>;
+  }
+  return <Badge tone={status === "pending" ? "warning" : "danger"}>{status === "pending" ? "Checking DNS" : status === "failed" ? "Failed" : "Suspended"}</Badge>;
+}
+
+function RecentOrders({
+  orders,
+  ownerType,
+  description,
+  empty,
+}: {
+  orders: OrderListItem[] | null;
+  ownerType: "affiliate" | "reseller";
+  description: string;
+  empty: React.ReactNode;
+}) {
   return (
     <Panel>
       <CardHead
@@ -319,7 +408,7 @@ function RecentOrders({ orders, ownerType, description }: { orders: OrderListIte
           ))}
         </div>
       ) : orders.length === 0 ? (
-        <p className="border-t border-border p-6 text-center text-sm text-ink-subtle">No orders yet.</p>
+        empty
       ) : (
         <div className="border-t border-border md:border-t-0">
           <OrderTable orders={orders} ownerType={ownerType} />

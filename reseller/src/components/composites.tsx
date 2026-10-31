@@ -281,3 +281,17 @@ export function Pager({
 export function Skeleton({ className }: { className: string }) {
   return <span aria-hidden="true" className={`block animate-pulse rounded-md bg-subtle ${className}`} />;
 }
+
+/**
+ * ADR-133 decision 16: an empty screen says what it is for and offers the one
+ * next step, instead of a bare "No data yet".
+ */
+export function EmptyState({ title, text, action }: { title: string; text: string; action?: React.ReactNode }) {
+  return (
+    <div className="border-t border-border px-6 py-10 text-center">
+      <p className="text-sm font-semibold text-ink">{title}</p>
+      <p className="mx-auto mt-1 max-w-md text-sm text-ink-subtle">{text}</p>
+      {action && <div className="mt-4 flex justify-center">{action}</div>}
+    </div>
+  );
+}

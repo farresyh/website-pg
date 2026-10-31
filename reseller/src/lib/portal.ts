@@ -1,4 +1,5 @@
 import { apiFetch, apiUpload } from "@/lib/api-client";
+import type { Onboarding, OwnerType } from "@/lib/onboarding";
 
 /**
  * ADR-059 59a read layer. Mirrors
@@ -591,4 +592,9 @@ export function previewStorefrontMarkup(token: string, markupPct: number) {
     token,
     body: { markup_pct: markupPct },
   });
+}
+
+/** ADR-133: the account's own first-run checklist (an affiliate's or a reseller's). */
+export function getOnboarding(token: string, ownerType: OwnerType) {
+  return apiFetch<Onboarding>(ownerType === "reseller" ? "/api/reseller-portal/onboarding" : "/api/affiliate/onboarding", { token });
 }
