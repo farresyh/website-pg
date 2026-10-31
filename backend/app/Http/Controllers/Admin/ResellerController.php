@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AssignResellerTierRequest;
 use App\Http\Requests\Admin\CloseResellerRequest;
 use App\Http\Requests\Admin\StoreInternalResellerRequest;
-use App\Http\Requests\Admin\StoreResellerRequest;
 use App\Http\Requests\Admin\StoreResellerUserRequest;
 use App\Http\Requests\Admin\UpdateResellerBalanceCapRequest;
 use App\Http\Requests\Admin\UpdateResellerRequest;
@@ -73,19 +72,6 @@ class ResellerController extends Controller
         $reseller->load(['tier' => fn ($q) => $q->withTrashed(), 'users'])->loadExists('partnerApplication');
 
         return response()->json($this->rowShape($reseller, $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id)));
-    }
-
-    /** ADR-133 decision 21: the reseller, its wallet account and its portal login, in `ResellerProvisioningService`. */
-    public function store(StoreResellerRequest $request): JsonResponse
-    {
-        $reseller = $this->provisioning->provision($request->validated());
-
-        Log::info('Reseller created', [
-            'reseller_id' => $reseller->id,
-            'admin_user_id' => $request->user()->id,
-        ]);
-
-        return response()->json($this->rowShape($reseller->fresh(['tier', 'users']), 0), 201);
     }
 
     /** ADR-133 decision 12(c): a test or internal account, no KYC on file. Behind step-up. */
