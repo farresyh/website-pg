@@ -577,6 +577,13 @@ class AppServiceProvider extends ServiceProvider
             Limit::perHour(30)->by('player-check-hour:'.$request->ip()),
         ]);
 
+        // ADR-133: the public reseller application. Stage 1 sends an email, so it is tight.
+        RateLimiter::for('onboarding-apply', fn (Request $request) => [
+            Limit::perMinute(3)->by('onboarding-apply-min:'.$request->ip()),
+            Limit::perHour(10)->by('onboarding-apply-hour:'.$request->ip()),
+        ]);
+        RateLimiter::for('onboarding', fn (Request $request) => Limit::perMinute(60)->by('onboarding:'.$request->ip()));
+
         RateLimiter::for('otp-request', function (Request $request) {
             return [
                 Limit::perHour(3)->by('email:'.$request->input('email')),
