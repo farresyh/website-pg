@@ -84,7 +84,7 @@ class AffiliateWithdrawalTest extends TestCase
     public function test_index_returns_the_payout_block_with_the_fee_reserve_and_bank_flag(): void
     {
         $affiliate = $this->affiliate();
-        $this->travelTo(now()->subMonth());
+        $this->travelTo($this->midLastMonth());
         $this->ledger->credit(LedgerOwnerType::Affiliate, $affiliate->id, 50000, 'order_profit', 'order', 1);
         $this->travelBack();
 
@@ -112,7 +112,7 @@ class AffiliateWithdrawalTest extends TestCase
     {
         $affiliate = $this->affiliate();
         // Earned last month, so it is before this month's cut-off.
-        $this->travelTo(now()->subMonth());
+        $this->travelTo($this->midLastMonth());
         $this->ledger->credit(LedgerOwnerType::Affiliate, $affiliate->id, 40000, 'order_profit', 'order', 1);
         $this->travelBack();
 

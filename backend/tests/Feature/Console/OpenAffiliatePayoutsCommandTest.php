@@ -18,7 +18,7 @@ class OpenAffiliatePayoutsCommandTest extends TestCase
             'business_name' => 'Acme', 'markup_pct' => 10, 'max_markup_pct' => 30, 'status' => 'active',
             'bank_name' => 'Maybank', 'bank_account_no' => '1', 'bank_account_holder' => 'Acme',
         ]);
-        $this->travelTo(now()->subMonth());
+        $this->travelTo($this->midLastMonth());
         app(LedgerService::class)->credit('affiliate', $a->id, 25000, 'order_profit', 'order', 1);
         $this->travelBack();
 
