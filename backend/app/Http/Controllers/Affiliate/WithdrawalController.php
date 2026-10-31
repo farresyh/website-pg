@@ -58,7 +58,7 @@ class WithdrawalController extends Controller
                 'min_payout_sen' => AffiliateWithdrawalService::MIN_PAYOUT_SEN,
                 'reserved_for_fee_sen' => $plan['reserve'],
                 'fee_due_at' => $plan['fee_due_at'],
-                'has_bank_details' => $affiliate->bank_name !== null && $affiliate->bank_account_no !== null && $affiliate->bank_account_holder !== null,
+                'has_bank_details' => $affiliate->hasBankDetails(),
             ],
             'prefill' => [
                 'bank_name' => $affiliate->bank_name,
