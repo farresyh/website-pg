@@ -2962,3 +2962,17 @@ The next CI run failed `backend-concurrency` on `CheckoutSettleWithVoucherConcur
 **Cause (tests, not production).** Two date traps in the test setup: `now()->subMonth()` on the 31st overflows ("31 Sep" is 1 Oct) into the current month, and a UTC "last month" on the last evening of a month is already the current month in Kuala Lumpur, where the payout and the reports cut the month. The payout command runs on the 1st at 00:10 MYT, which never overflows, so production was not affected. `CustomerAnalyticsServiceTest` had been fixed once for the UTC side (2026-09-30/10-01) but still used `subMonths(1)` in Malaysia time.
 
 **Fix (branch `fix/date-dependent-tests-month-end`).** One shared `TestCase::midLastMonth()` (the middle of last month, Malaysia time, safe on every day) used by the four affiliate tests; `subMonthsNoOverflow(1)` in the analytics test. Of the 14 `subMonth`/`addMonth` uses in tests, the other 7 only mean "in the past" or "in the future" and are harmless on any day. Red first: on this machine's clock (31 Oct, 09:28 MYT) the old code failed 2 of 30; the new code passes 30 of 30, and the full fast suite passes (3286). The concurrency suite needs Docker MySQL, so CI is its proof.
+
+## 2026-10-31 — Partner onboarding PR 1a: the backend foundation (ADR-133)
+
+**Built (no UI, no migration, no behaviour change for any user).**
+- `Affiliate::hasBankDetails()` replaces two hand-written copies (the payout plan's `no_bank` skip and the portal's `has_bank_details`); the readiness service is the third reader.
+- `AffiliateDomain::paymentsApproved()` replaces three `payments_approved_at !== null` reads (the storefront resolver, the admin domain list, the portal domain list). `Order::scopePaidAndReal()` replaces the paid + `is_test = false` pair in the affiliate sales figures.
+- `ResellerProvisioningService` (`create()`, `addPortalUser()`): `Admin\ResellerController` `store()` and `storeUser()` call it; same behaviour, one copy.
+- `PartnerReadinessService` (`forAffiliate(s)`, `forReseller(s)`), `PartnerReadiness`, `ReadinessStep`, `StepState`. Read-only, a fixed number of queries per batch (tested with 2 and 9 partners).
+
+**Verified.** Red first (24 errors, the classes did not exist). The invariant test asks the real storefront (the public branding endpoint, ADR-131's gate) across seven domain states and both account states; a deliberate mutation (readiness ignoring the payments approval) made it fail, then it was restored. Full fast suite 3312/3312. Pint passes on the changed files (it fails on an untouched seeder, `database/seeders/FinancialScenario/MoneyFlows.php`, and CI does not run it).
+
+**A test trap met again.** Sanctum keeps the first authenticated user for the rest of one test, so two portal requests as two users in one test both ran as the first: one affiliate per test.
+
+**Next.** PR 1b: the endpoints that expose this, the portal checklist, banners and empty states, the admin readiness column, and the approval email.

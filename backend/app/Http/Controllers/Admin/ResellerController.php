@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AssignResellerTierRequest;
 use App\Http\Requests\Admin\CloseResellerRequest;
 use App\Http\Requests\Admin\StoreResellerRequest;
-use App\Http\Requests\Admin\UpdateResellerBalanceCapRequest;
 use App\Http\Requests\Admin\StoreResellerUserRequest;
+use App\Http\Requests\Admin\UpdateResellerBalanceCapRequest;
 use App\Http\Requests\Admin\UpdateResellerRequest;
 use App\Http\Requests\Admin\UpdateResellerStatusRequest;
 use App\Models\AffiliateUser;
@@ -18,8 +18,8 @@ use App\Services\Auth\AccountOwnerType;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Reseller\ResellerClosureService;
+use App\Services\Reseller\ResellerProvisioningService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
@@ -40,6 +40,7 @@ class ResellerController extends Controller
     public function __construct(
         private readonly LedgerService $ledger,
         private readonly AffiliateInviteService $invites,
+        private readonly ResellerProvisioningService $provisioning,
         private readonly ResellerClosureService $closures,
     ) {}
 
@@ -67,33 +68,12 @@ class ResellerController extends Controller
         return response()->json($this->rowShape($reseller, $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id)));
     }
 
-    /**
-     * ADR-073 decision 3: the wallet ledger account is opened proactively
-     * at creation, not deferred to the first top-up — `LedgerService::
-     * debit()`'s `lockForUpdate()->firstOrFail()` would otherwise throw a
-     * hard "row not found" against a `ledger_accounts` row that was never
-     * opened, the same reasoning `AffiliateController::store()` already
-     * follows for a new `Affiliate`.
-     */
+    /** ADR-133 decision 21: creation (and the wallet ledger account) lives in `ResellerProvisioningService`. */
     public function store(StoreResellerRequest $request): JsonResponse
     {
         $data = $request->validated();
 
-        $reseller = DB::transaction(function () use ($data) {
-            $reseller = Reseller::query()->create([
-                'business_name' => $data['business_name'],
-                'contact_name' => $data['contact_name'] ?? null,
-                'email' => $data['email'] ?? null,
-                'phone' => $data['phone'] ?? null,
-                'reseller_tier_id' => $data['reseller_tier_id'] ?? null,
-                'is_active' => true,
-                'notes' => $data['notes'] ?? null,
-            ]);
-
-            $this->ledger->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
-
-            return $reseller;
-        });
+        $reseller = $this->provisioning->create($data);
 
         Log::info('Reseller created', [
             'reseller_id' => $reseller->id,
@@ -182,18 +162,7 @@ class ResellerController extends Controller
     {
         $data = $request->validated();
 
-        DB::transaction(function () use ($data, $reseller) {
-            $user = AffiliateUser::query()->create([
-                'owner_type' => AccountOwnerType::Reseller->value,
-                'owner_id' => $reseller->id,
-                'name' => $data['name'],
-                'email' => $data['email'],
-                'password' => null,
-                'is_active' => true,
-            ]);
-
-            $this->invites->sendInvite($user);
-        });
+        $this->provisioning->addPortalUser($reseller, $data['name'], $data['email']);
 
         return response()->json($this->rowShape(
             $reseller->fresh(['tier' => fn ($q) => $q->withTrashed(), 'users']),

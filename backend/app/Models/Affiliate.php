@@ -190,6 +190,15 @@ class Affiliate extends Model
      * Needs `subscription.tier` loaded — `ResolveStorefrontBrand` already
      * eager-loads it.
      */
+    /**
+     * ADR-133 decision 13: the one answer to "can the monthly payout reach this affiliate". The
+     * payout plan, the portal's withdrawal screen and the readiness checklist all call it.
+     */
+    public function hasBankDetails(): bool
+    {
+        return $this->bank_name !== null && $this->bank_account_no !== null && $this->bank_account_holder !== null;
+    }
+
     public function wholesaleTierMarkupPct(): ?float
     {
         $subscription = $this->subscription;

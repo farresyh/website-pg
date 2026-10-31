@@ -171,6 +171,12 @@ class Order extends Model
     }
 
     /** The query-level mirror of isJoki(). */
+    /** Orders that count as sales: paid, and not a sandbox order (ADR-018). Reports and readiness read it here. */
+    public function scopePaidAndReal(Builder $query): Builder
+    {
+        return $query->where('is_test', false)->where('payment_status', PaymentStatus::Paid->value);
+    }
+
     public function scopeJoki(Builder $query): Builder
     {
         return $query->where('pricing_basis', PricingBasis::Fixed->value);

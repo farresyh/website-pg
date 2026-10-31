@@ -521,7 +521,7 @@ class AffiliateController extends Controller
                     'status' => $d->status->value,
                     'is_primary' => $d->is_primary,
                     'redirects_to' => $d->isRedirectTwin() ? $affiliate->customDomains->firstWhere('id', $d->redirects_to_domain_id)?->hostname : null,
-                    'payments_approved' => $d->payments_approved_at !== null,
+                    'payments_approved' => $d->paymentsApproved(),
                     'payments_approved_at' => $d->payments_approved_at?->toIso8601String(),
                     'provider' => $d->provider,
                     'provider_managed' => $d->provider_ref !== null,

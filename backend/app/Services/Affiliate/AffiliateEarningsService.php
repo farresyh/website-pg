@@ -7,7 +7,6 @@ use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
-use App\Services\Order\PaymentStatus;
 use App\Support\MalaysiaTime;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -129,8 +128,7 @@ final class AffiliateEarningsService
     {
         $row = Order::query()
             ->soldByAffiliate($affiliate->id)
-            ->where('is_test', false)
-            ->where('payment_status', PaymentStatus::Paid->value)
+            ->paidAndReal()
             ->whereNotNull('paid_at')
             ->where('paid_at', '>=', $fromUtc)
             ->selectRaw('COUNT(*) as order_count, COALESCE(SUM(final_amount), 0) as sales_total')

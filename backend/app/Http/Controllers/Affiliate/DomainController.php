@@ -163,7 +163,7 @@ class DomainController extends Controller
             // ADR-060 second 2026-10-30 addendum: the domain this `www` address redirects to, else null.
             'redirects_to' => $domain->isRedirectTwin() ? ($redirectsTo ?? $domain->redirectTarget?->hostname) : null,
             // ADR-131: the domain serves the store at once, but takes payments once PekanGame approves it.
-            'payments_approved' => $domain->payments_approved_at !== null,
+            'payments_approved' => $domain->paymentsApproved(),
             // The extra ownership-TXT records, only present in the rare
             // "already registered elsewhere" case. Already provider-
             // neutral in shape (type/name/value).

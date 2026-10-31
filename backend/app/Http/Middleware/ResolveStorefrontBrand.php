@@ -98,7 +98,7 @@ class ResolveStorefrontBrand
         }
 
         // ADR-131: whether CHIP has approved this domain for payments rides with the brand.
-        $this->brand->set($domain->affiliate, $host, $domain->payments_approved_at !== null);
+        $this->brand->set($domain->affiliate, $host, $domain->paymentsApproved());
 
         return $next($request);
     }

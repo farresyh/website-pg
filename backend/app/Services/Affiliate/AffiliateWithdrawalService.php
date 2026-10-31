@@ -76,7 +76,7 @@ final class AffiliateWithdrawalService
         $skip = match (true) {
             (clone $owned)->where('payout_period', $period)->exists() => 'already_opened',
             (clone $owned)->where('status', WithdrawalStatus::Pending->value)->exists() => 'open_ticket',
-            $affiliate->bank_name === null || $affiliate->bank_account_no === null || $affiliate->bank_account_holder === null => 'no_bank',
+            ! $affiliate->hasBankDetails() => 'no_bank',
             $amount < self::MIN_PAYOUT_SEN => 'below_min',
             default => null,
         };
