@@ -21,11 +21,13 @@ use App\Services\Affiliate\AffiliateSubscriptionService;
 use App\Services\Affiliate\AffiliateTierFeeService;
 use App\Services\Affiliate\Domain\AffiliateDomainService;
 use App\Services\Affiliate\Domain\DomainProviderException;
+use App\Services\Affiliate\PaymentsApprovedNotice;
 use App\Services\Auth\AccountOwnerType;
 use App\Services\Cache\NextRevalidation;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Membership\MembershipStatus;
+use App\Services\Partner\PartnerReadinessService;
 use App\Services\Withdrawal\WithdrawalStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -57,6 +59,8 @@ class AffiliateController extends Controller
         private readonly AffiliateInviteService $invites,
         private readonly AffiliateTierFeeService $tierFees,
         private readonly AffiliateDomainService $domains,
+        private readonly PartnerReadinessService $readiness,
+        private readonly PaymentsApprovedNotice $paymentsNotice,
     ) {}
 
     /**
@@ -74,9 +78,12 @@ class AffiliateController extends Controller
             ->get();
 
         $balances = $this->ledger->balances(LedgerOwnerType::Affiliate, $affiliates->pluck('id')->all());
+        // ADR-133 decision 18: the platform's own brand is not a partner, so it has no readiness.
+        $readiness = $this->readiness->forAffiliates($affiliates->reject(fn (Affiliate $a) => $a->is_primary));
 
         return response()->json([
-            'affiliates' => $affiliates->map(fn (Affiliate $r) => $this->rowShape($r, $balances[$r->id] ?? 0))->all(),
+            'affiliates' => $affiliates->map(fn (Affiliate $r) => $this->rowShape($r, $balances[$r->id] ?? 0)
+                + ['readiness' => isset($readiness[$r->id]) ? $readiness[$r->id]->toSummary() : null])->all(),
         ]);
     }
 
@@ -362,6 +369,7 @@ class AffiliateController extends Controller
         }
 
         $approved = $request->validated('approved');
+        $wasApproved = $affiliateDomain->paymentsApproved();
         $affiliateDomain->update([
             'payments_approved_at' => $approved ? now() : null,
             'payments_approved_by' => $approved ? $request->user()->id : null,
@@ -374,6 +382,11 @@ class AffiliateController extends Controller
             'approved' => $approved,
             'admin_user_id' => $request->user()->id,
         ]);
+
+        // ADR-133 decision 17: only the move from not approved to approved is news to the affiliate.
+        if ($approved && ! $wasApproved) {
+            $this->paymentsNotice->send($affiliateDomain);
+        }
 
         return response()->json($this->detailShape($affiliate->fresh()));
     }

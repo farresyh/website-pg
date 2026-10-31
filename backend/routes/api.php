@@ -47,6 +47,7 @@ use App\Http\Controllers\Affiliate\DomainController as AffiliateDomainController
 use App\Http\Controllers\Affiliate\EarningsController as AffiliateEarningsController;
 use App\Http\Controllers\Affiliate\ImpersonationController as AffiliateImpersonationEndController;
 use App\Http\Controllers\Affiliate\OrderController as AffiliateOrderController;
+use App\Http\Controllers\Affiliate\OnboardingController as AffiliateOnboardingController;
 use App\Http\Controllers\Affiliate\ProfileController as AffiliateProfileController;
 use App\Http\Controllers\Affiliate\Storefront\BrandingController as AffiliateStorefrontBrandingController;
 use App\Http\Controllers\Affiliate\Storefront\HeroSlideController as AffiliateStorefrontHeroSlideController;
@@ -93,6 +94,7 @@ use App\Http\Controllers\ResellerApi\CatalogController as ResellerApiCatalogCont
 use App\Http\Controllers\ResellerApi\OrderController as ResellerApiOrderController;
 use App\Http\Controllers\ResellerPortal\ApiKeyController as ResellerPortalApiKeyController;
 use App\Http\Controllers\ResellerPortal\OrderController as ResellerPortalOrderController;
+use App\Http\Controllers\ResellerPortal\OnboardingController as ResellerPortalOnboardingController;
 use App\Http\Controllers\ResellerPortal\ProfileController as ResellerPortalProfileController;
 use App\Http\Controllers\ResellerPortal\WalletController as ResellerPortalWalletController;
 use App\Http\Controllers\ResellerPortal\WalletReceiptController as ResellerPortalWalletReceiptController;
@@ -372,6 +374,7 @@ Route::prefix('affiliate')->group(function () {
             // `affiliate.context`; money reads go through
             // AffiliateEarningsService (decision 5).
             Route::get('/dashboard', [AffiliateDashboardController::class, 'show']);
+            Route::get('/onboarding', [AffiliateOnboardingController::class, 'show']);
             Route::get('/orders', [AffiliateOrderController::class, 'index']);
             Route::get('/orders/{orderNumber}', [AffiliateOrderController::class, 'show']);
             Route::get('/earnings', [AffiliateEarningsController::class, 'index']);
@@ -440,6 +443,7 @@ Route::prefix('reseller-portal')->middleware(['auth:affiliate', 'account.type:re
     Route::get('/orders/{orderNumber}', [ResellerPortalOrderController::class, 'show']);
 
     Route::get('/profile', [ResellerPortalProfileController::class, 'show']);
+    Route::get('/onboarding', [ResellerPortalOnboardingController::class, 'show']);
 
     // Full self-service (planning addendum decision 7) — capped at 5
     // active keys. Admin retains the same capability in parallel

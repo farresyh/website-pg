@@ -115,7 +115,12 @@ final class PartnerReadinessService
                 new ReadinessStep('password', $this->done($withPassword->has($r->id))),
                 new ReadinessStep('tier', $this->done($r->reseller_tier_id !== null), required: true),
                 new ReadinessStep('add_balance', $this->done($funded->has($r->id)), required: true),
-                new ReadinessStep('order_channel', $this->done($withKey->has($r->id) || $withGroup->has($r->id)), required: true),
+                new ReadinessStep(
+                    'order_channel',
+                    $this->done($withKey->has($r->id) || $withGroup->has($r->id)),
+                    required: true,
+                    detail: $this->channelsDone($withKey->has($r->id), $withGroup->has($r->id)),
+                ),
                 new ReadinessStep('first_order', $this->done($withOrder->has($r->id))),
                 new ReadinessStep('webhook', $withWebhook->has($r->id) ? StepState::Done : StepState::Optional),
             ];
@@ -130,6 +135,14 @@ final class PartnerReadinessService
         $ready = $accountActive && collect($steps)->every(fn (ReadinessStep $s) => ! $s->required || $s->state === StepState::Done);
 
         return new PartnerReadiness($steps, $ready);
+    }
+
+    /** The order channels that are set up, comma-separated ("api_key", "whatsapp_group"), or null. */
+    private function channelsDone(bool $apiKey, bool $whatsAppGroup): ?string
+    {
+        $done = array_filter([$apiKey ? 'api_key' : null, $whatsAppGroup ? 'whatsapp_group' : null]);
+
+        return $done === [] ? null : implode(',', $done);
     }
 
     private function done(bool $isDone): StepState

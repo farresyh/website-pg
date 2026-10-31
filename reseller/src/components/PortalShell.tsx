@@ -11,6 +11,7 @@ import PortalTopBar, { ThemeToggle } from "@/layout/PortalTopBar";
 import MobilePortalNav from "@/layout/MobilePortalNav";
 import Backdrop from "@/layout/Backdrop";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
+import PartnerBanners from "@/components/onboarding/PartnerBanners";
 import TrustFooter from "@/components/shell/TrustFooter";
 
 /**
@@ -109,6 +110,7 @@ function PortalShellFrame({ children }: { children: React.ReactNode }) {
           signingOut={loggingOut}
         />
         <ImpersonationBanner />
+        <PartnerBanners />
         <main className="px-4 pt-5 pb-8 md:px-8 md:pt-7 md:pb-10">
           {children}
           <TrustFooter />

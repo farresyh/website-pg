@@ -17,6 +17,7 @@ use App\Services\Affiliate\AffiliateInviteService;
 use App\Services\Auth\AccountOwnerType;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Services\Partner\PartnerReadinessService;
 use App\Services\Reseller\ResellerClosureService;
 use App\Services\Reseller\ResellerProvisioningService;
 use Illuminate\Http\JsonResponse;
@@ -42,6 +43,7 @@ class ResellerController extends Controller
         private readonly AffiliateInviteService $invites,
         private readonly ResellerProvisioningService $provisioning,
         private readonly ResellerClosureService $closures,
+        private readonly PartnerReadinessService $readiness,
     ) {}
 
     /** ADR-131 decision 4: the platform default cap, read once per request, not once per row. */
@@ -56,8 +58,11 @@ class ResellerController extends Controller
 
         $balances = $this->ledger->balances(LedgerOwnerType::ResellerWallet, $resellers->pluck('id')->all());
 
+        $readiness = $this->readiness->forResellers($resellers);
+
         return response()->json([
-            'resellers' => $resellers->map(fn (Reseller $r) => $this->rowShape($r, $balances[$r->id] ?? 0))->all(),
+            'resellers' => $resellers->map(fn (Reseller $r) => $this->rowShape($r, $balances[$r->id] ?? 0)
+                + ['readiness' => $readiness[$r->id]->toSummary()])->all(),
         ]);
     }
 

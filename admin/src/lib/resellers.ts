@@ -1,4 +1,5 @@
 import { apiFetch, apiUpload, apiDownload } from "@/lib/api-client";
+import type { Readiness } from "@/lib/readiness";
 import type { WhatsAppGroup } from "@/lib/whatsapp-groups";
 
 /**
@@ -28,6 +29,8 @@ export interface ResellerRow {
   /** ADR-131 decision 4: this reseller's own cap, or null to use the platform default. */
   balance_cap_sen: number | null;
   effective_balance_cap_sen: number;
+  /** ADR-133 decision 18: only on the list. */
+  readiness?: Readiness | null;
 }
 
 export interface ResellerTier {

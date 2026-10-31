@@ -77,3 +77,11 @@ Facts the design rests on (read from code, 2026-10-31): the existing sandbox ([A
 - **Two more shared predicates, beside `Affiliate::hasBankDetails()`:** `AffiliateDomain::paymentsApproved()` (read by the storefront resolver, the admin domain list, the portal domain list and the readiness service) and `Order::scopePaidAndReal()` (paid and not a sandbox order, read by the affiliate sales figures and the readiness "first order").
 - **`ResellerProvisioningService`** has `create()` and `addPortalUser()` only; the admin controller calls both, with no behaviour change (a tier is still optional there). The method that requires a tier and combines them is added in PR 2 and PR 3, when it gains its callers, so no code waits unused.
 - **The markup step is `optional` and never done:** nothing records that an affiliate reviewed their markup, and a step that can never complete should not hold the checklist open.
+
+### 2026-10-31 addendum — what PR 1b settled while building the screens
+
+- **The admin's "Needs attention" item (decision 17) is the Setup column.** No admin list of domains waiting for approval exists to extend (the Withdrawals page's "Needs attention" is payouts only), so the Affiliates list's Setup column carries it: "Awaiting your approval" when the only open step is PekanGame's, "Needs: ..." otherwise, "Ready" when done. The platform's own brand has no readiness.
+- **The payments-approved email** goes to each active portal login (the affiliate's contact email if there is none), once, only on the move from not approved to approved; revoking or approving again sends nothing, and a mail failure is logged and never undoes the approval. It is sent after the update, not in a transaction (decision 11's reasoning).
+- **Optional steps keep their link** ("Review pricing", "Set a webhook") beside the Optional badge, and are left out of the "n of m done" count.
+- **Banner and checklist failures are silent:** if the checklist cannot be read, the page it sits on still works.
+- **Browser check** (2026-10-31, throwaway backend, 44 checks): every state of both account types, the collapse remembered across a reload, mobile 390 px with no sideways scroll, text contrast at least 4.5 in light and dark, the English set-password page, and the admin Setup column. The approve action itself (step-up MFA) is proved by the backend tests, not the browser.

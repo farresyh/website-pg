@@ -67,6 +67,7 @@ import ResellerTierFormModal from "@/components/resellers/ResellerTierFormModal"
 import ResellerWalletModal from "@/components/resellers/ResellerWalletModal";
 import ResellerCloseModal from "@/components/resellers/ResellerCloseModal";
 import ResellerApiKeysModal from "@/components/resellers/ResellerApiKeysModal";
+import ReadinessCell from "@/components/partners/ReadinessCell";
 import ResellerWebhookModal from "@/components/resellers/ResellerWebhookModal";
 import ResellerWhatsAppGroupsModal from "@/components/resellers/ResellerWhatsAppGroupsModal";
 import ResellerPortalUsersModal from "@/components/resellers/ResellerPortalUsersModal";
@@ -194,6 +195,7 @@ export default function ResellersPage() {
                     <DataTableTHeadCell className={TH}>Business</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Tier</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Wallet balance</DataTableTHeadCell>
+                    <DataTableTHeadCell className={TH}>Setup</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Status</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
@@ -217,6 +219,9 @@ export default function ResellersPage() {
                           )}
                         </DataTableCell>
                         <DataTableCell className={TD}>{formatRm(r.wallet_balance_sen)}</DataTableCell>
+                        <DataTableCell className={TD}>
+                          <ReadinessCell readiness={r.readiness} />
+                        </DataTableCell>
                         <DataTableCell className="px-5 py-4">
                           <Tag severity={r.is_active ? "success" : "secondary"}>{r.is_active ? "active" : "inactive"}</Tag>
                         </DataTableCell>
