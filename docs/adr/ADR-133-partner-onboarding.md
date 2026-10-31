@@ -48,7 +48,7 @@ Facts the design rests on (read from code, 2026-10-31): the existing sandbox ([A
 
 20. **A reseller with no tier cannot add balance.** The guard sits in `ResellerWalletTopupService::initiate()`, the one seam the portal and `.topupbaki` share, and **never** in `completeTopup()`: a top-up already paid must still credit. The admin's manual credit stays allowed. A test starts a top-up, removes the tier, and proves it still completes.
 21. **One `ResellerProvisioningService`** (reseller + ledger account + portal user + invite, tier required) used by decision 11 and by both admin create paths, so the admin create makes the login too and no second copy exists.
-22. **`max_markup_pct` null** means "no ceiling" for the admin form and the pricing code, but the portal's markup edit casts it to 0 and answers "at most 0%". Fixed as its own PR after a trace of every writer and reader of the column.
+22. **`max_markup_pct` null** means "no ceiling" for the admin form and the pricing code, but the portal's markup edit casts it to 0 and answers "at most 0%". Fixed as its own PR after a trace of every writer and reader of the column. **Settled 2026-10-31:** null means no markup opened (a ceiling of 0) everywhere, [ADR-061](./ADR-061-every-storefront-is-a-reseller.md)'s 2026-10-31 addendum.
 23. **Set-password language** (decision 19).
 
 ### Not decided here

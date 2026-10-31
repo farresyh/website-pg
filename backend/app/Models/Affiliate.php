@@ -226,7 +226,8 @@ class Affiliate extends Model
      * ADR-061 2026-10-30 addendum, decision 2: the one place a storefront's
      * pricing terms are decided — `tier` is the wholesale-tier markup (null
      * = the standard chain) and `markup` is the brand's own margin, already
-     * held to its ceiling (a null `max_markup_pct` is no ceiling).
+     * held to its ceiling (a null `max_markup_pct` opens no markup: a
+     * ceiling of 0, ADR-061 2026-10-31 addendum).
      *
      * An owned brand is the platform under another name: no tier and no
      * markup whatever the row stores, so it prices exactly as the primary
@@ -248,7 +249,7 @@ class Affiliate extends Model
 
         return [
             'tier' => $this->wholesaleTierMarkupPct(),
-            'markup' => $this->max_markup_pct === null ? $markup : min($markup, (float) $this->max_markup_pct),
+            'markup' => min($markup, (float) ($this->max_markup_pct ?? 0)),
         ];
     }
 
