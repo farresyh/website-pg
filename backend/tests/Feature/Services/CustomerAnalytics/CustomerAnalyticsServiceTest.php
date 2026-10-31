@@ -460,14 +460,14 @@ class CustomerAnalyticsServiceTest extends TestCase
     {
         $now = CarbonImmutable::now(MalaysiaTime::TIMEZONE);
 
-        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-1', 'final_amount' => 1000, 'paid_at' => $now->subMonths(1)->startOfMonth()->addDays(5)]);
-        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-2', 'final_amount' => 500, 'paid_at' => $now->subMonths(1)->startOfMonth()->addDays(10)]);
+        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-1', 'final_amount' => 1000, 'paid_at' => $now->subMonthsNoOverflow(1)->startOfMonth()->addDays(5)]);
+        $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-2', 'final_amount' => 500, 'paid_at' => $now->subMonthsNoOverflow(1)->startOfMonth()->addDays(10)]);
         $this->order(['customer_email' => 'trend@example.com', 'order_number' => 'KRS-3', 'final_amount' => 2000, 'paid_at' => $now]);
 
         $detail = $this->analytics->customerDetail('trend@example.com');
         $trend = collect($detail['monthly_trend'])->keyBy('month');
 
-        $lastMonthKey = $now->subMonths(1)->format('Y-m');
+        $lastMonthKey = $now->subMonthsNoOverflow(1)->format('Y-m');
         $thisMonthKey = $now->format('Y-m');
 
         $this->assertSame(1500, $trend[$lastMonthKey]['total_spent']);

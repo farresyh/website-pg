@@ -2954,3 +2954,11 @@ The next CI run failed `backend-concurrency` on `CheckoutSettleWithVoucherConcur
 **PDPA research.** Notices must be Malay and English (section 7). The 2024 amendment adds breach notice, DPO thresholds (far above our size) and a new cross-border regime; the figures come from secondary sources and are marked to re-check. No NRIC guidance was found. The notice text is to be written with a lawyer.
 
 **Backlog.** PRD §16: item 13 points to 146; 146 carries the build order and the owed list; new group D items 151 (partner sandbox, its own money-critical ADR) and 152 (refresh the admin sandbox). **Not touched:** PRD §14 still says the OhahaStore `www` row "becomes a redirect after the next release"; item 148 is built and released, so that sentence needs a docs-audit fix.
+
+## 2026-10-31 — Month-end CI failures: four tests built "last month" with `now()->subMonth()`
+
+**Found.** PR #619 (docs only) failed `backend-tests` (3 tests) and `backend-concurrency` (1), all around the affiliate payout and customer analytics. CI ran at 18:54 UTC on 2026-10-30, which is 02:54 on 31 October in Kuala Lumpur.
+
+**Cause (tests, not production).** Two date traps in the test setup: `now()->subMonth()` on the 31st overflows ("31 Sep" is 1 Oct) into the current month, and a UTC "last month" on the last evening of a month is already the current month in Kuala Lumpur, where the payout and the reports cut the month. The payout command runs on the 1st at 00:10 MYT, which never overflows, so production was not affected. `CustomerAnalyticsServiceTest` had been fixed once for the UTC side (2026-09-30/10-01) but still used `subMonths(1)` in Malaysia time.
+
+**Fix (branch `fix/date-dependent-tests-month-end`).** One shared `TestCase::midLastMonth()` (the middle of last month, Malaysia time, safe on every day) used by the four affiliate tests; `subMonthsNoOverflow(1)` in the analytics test. Of the 14 `subMonth`/`addMonth` uses in tests, the other 7 only mean "in the past" or "in the future" and are harmless on any day. Red first: on this machine's clock (31 Oct, 09:28 MYT) the old code failed 2 of 30; the new code passes 30 of 30, and the full fast suite passes (3286). The concurrency suite needs Docker MySQL, so CI is its proof.
