@@ -657,15 +657,19 @@ any analysis that needs the distinction must judge each order (corrected
 2026-09-30, see `docs/build-log-archive.md`). The older "no external customers" line
 was wrong from at least then on. **FixFast** (a reseller) and **FixFast Demo** (an
 affiliate on `fixfastapp.com`) are *test* accounts; the FixFast reseller's
-login was given to CHIP for its review. They are not customers. **OhahaStore** (an affiliate, one of our own brands, `is_owned`, on `ohahastore.com`, registered 2026-10-30) is live: `ohahastore.com` and `www.ohahastore.com` are active and their payments were approved in the admin on 2026-10-30 (07:53 UTC); the `www` row becomes a redirect after the next release (§16 item 148). OhahaStore has one real order (`PG-L4RCBELJ9RE3`, DuitNow QR, priced on the old tier path: `platform_profit` 318, `affiliate_profit` 0) and no bank details.
+login was given to CHIP for its review. They are not customers. **OhahaStore** (an affiliate, one of our own brands, `is_owned`, on `ohahastore.com`, registered 2026-10-30) is live: `ohahastore.com` and `www.ohahastore.com` are active and their payments were approved in the admin on 2026-10-30 (07:53 UTC); the `www` row is a redirect since item 148's release. OhahaStore has one real order (`PG-L4RCBELJ9RE3`, DuitNow QR, priced on the old tier path: `platform_profit` 318, `affiliate_profit` 0) and no bank details.
 
 **Payment methods (checked read-only on prod 2026-10-29 06:31 UTC):** `fpx` on,
 `fpx_b2b1` off, `dnqr` (DuitNow QR) on. History: all three were off from
 2026-10-07 (the founder's choice, confirmed 2026-10-13); FPX was on for one
 test order on 2026-10-16 (one storefront order paid) and off again; **since
-2026-10-22 09:52 UTC FPX is on again**, on purpose, only while CHIP reviews the
-site for LWF Group's merchant account (the founder will switch it off again);
-DuitNow QR was switched on 2026-10-28 13:28 UTC to test it. Storefront
+2026-10-22 09:52 UTC FPX is on again**, at first only while CHIP reviewed the
+site for LWF Group's merchant account;
+DuitNow QR was switched on 2026-10-28 13:28 UTC to test it. **CHIP has
+approved FPX and DuitNow QR for use** (its reply to the founder's 2026-10-29
+reply, recorded 2026-10-31; the email is the founder's record outside the
+repo), so both stay on. CHIP's other payment methods are still under its
+review, and CHIP is still checking the documents. Storefront
 checkout and the wallet's self-serve top-up are payable by FPX. Re-read
 read-only at release time on 2026-10-29: unchanged.
 **Real payment proof (§16 item 138, closed 2026-10-30):** FPX through the bank grid (`PG-SOOP26HC3ZXL`, RM13.32, Maybank2u) and DuitNow QR (`PG-L4RCBELJ9RE3`, RM25.70) have each completed with real money: `paid` at CHIP (not a test, one successful attempt) and delivered here. Earlier, after release #589, three test orders of 2026-10-29 (04:29–04:33 UTC) ended Failed: two reached CIMB's login through the bank grid and were cancelled there, and the DuitNow order reached DuitNow (`payment_method: dnqr`, so the old "No matching terminal" is fixed) and was cancelled by the user. The **Test** action on `fpx` and `dnqr` stored `success` on 2026-10-29 06:34 UTC.
@@ -964,14 +968,14 @@ moved to group D). Re-verify before building.
 
 **C. Founder actions (no code)**
 - **141** CHIP activation conditions (ADR-131), **released 2026-10-29 in #599**; the
-  code is complete. What is owed is the founder's, then one reply to CHIP:
+  code is complete. What was owed is the founder's, then one reply to CHIP:
   (a) the company details are filled on prod (checked 2026-10-29): receipts print
   them, read live; (b) deactivate the `fixfastapp.com`
   test affiliate (Affiliates → FixFast Demo → Deactivate; its domain already
   cannot take a payment, and item 129's switch-over lists it too); (c) the
   browser checks not done: the "Save Limits", "Close account" and
   domain-approval submits with an MFA admin (covered by backend tests; the
-  storefront notice, the admin Approve button and the affiliate portal badge were seen on prod; the first domain approval, 2026-10-30, failed with "The approved field is required", a double-encoded body fixed in #607 and released in #608; the approval then succeeded the same day, 07:53 UTC, for `ohahastore.com` and `www.ohahastore.com`); (d) one reply to CHIP with attachments (portal screenshots from
+  storefront notice, the admin Approve button and the affiliate portal badge were seen on prod; the first domain approval, 2026-10-30, failed with "The approved field is required", a double-encoded body fixed in #607 and released in #608; the approval then succeeded the same day, 07:53 UTC, for `ohahastore.com` and `www.ohahastore.com`); (d) **done: sent by the founder on 2026-10-29**; CHIP answered that it is checking the documents and that FPX and DuitNow QR may be used meanwhile (other methods still in review; recorded 2026-10-31). The reply carried attachments (portal screenshots from
   the FixFast test reseller, a receipt, the onboarding procedure PDF). Agreed
   wording: no officially onboarded resellers and one in onboarding; a failed
   reseller order returns to the Purchase Balance (the balance is that order's
@@ -987,13 +991,15 @@ moved to group D). Re-verify before building.
 
 **D. Waiting on a trigger: don't build early**
 - **114** Joki MLBB (ADR-126), built and released 2026-10-25 (#554),
-  switched off, Epic up only. Launch gates: CHIP payments (approval of LWF
-  Group's merchant account), item 129, the rank icons and the rates plus
+  switched off, Epic up only. Launch gates: CHIP payments (FPX and DuitNow
+  QR approved by CHIP, recorded 2026-10-31; other methods still in review), item 129, the rank icons and the rates plus
   the Grading Express price (founder, with the penjoki).
 - **129** Refund to the original payment method, on hold until CHIP answers
   (founder, 2026-10-23). The founder plans to go back to voucher-only once
   CHIP approves. Before payments go live for real customers, either the
-  published policy is voucher-only again or this is built.
+  published policy is voucher-only again or this is built. **Now due:**
+  CHIP approved FPX and DuitNow QR (recorded 2026-10-31), so the
+  founder's choice between the two is the next step.
 - **139** FPX bank-down status on the bank grid (ADR-130 decision 9), only
   if real payments show customers failing at a down bank. Advisory and
   fail-open from `fpxstatus.chip-in.asia`'s JSON feed; never a hard
