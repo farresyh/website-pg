@@ -75,7 +75,7 @@ const RESELLER_COPY: Record<string, StepCopy> = {
   password: { title: "Set your password", text: "You chose a password from your invite." },
   tier: {
     title: "Pricing set up by PekanGame",
-    text: "Your account needs a pricing tier before it can place orders. Contact us and we will set it up.",
+    text: "Your account needs a pricing tier before it can add balance or place orders. Contact us and we will set it up.",
   },
   add_balance: {
     title: "Add Purchase Balance",
@@ -160,7 +160,7 @@ export function banners(ownerType: OwnerType, o: Onboarding): PartnerBanner[] {
       key: "tier",
       tone: "warning",
       title: "Your account is not set up yet",
-      text: "It needs a pricing tier before it can place orders. Please contact PekanGame.",
+      text: "It needs a pricing tier before it can add balance or place orders. Please contact PekanGame.",
     });
   }
 

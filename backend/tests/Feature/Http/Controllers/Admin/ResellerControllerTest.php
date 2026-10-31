@@ -71,6 +71,17 @@ class ResellerControllerTest extends TestCase
         $this->assertSame(0, Reseller::query()->count());
     }
 
+    public function test_store_refuses_an_inactive_tier(): void
+    {
+        $this->actAsSuperAdmin();
+        $tier = ResellerTier::query()->create(['name' => 'Retired', 'markup_percent' => 8, 'is_active' => false, 'sort_order' => 1]);
+
+        $this->postJson('/api/resellers', [
+            'business_name' => 'Acme Reseller', 'contact_name' => 'Ah Beng', 'email' => 'beng@acme.test',
+            'reseller_tier_id' => $tier->id,
+        ])->assertUnprocessable()->assertJsonValidationErrors(['reseller_tier_id']);
+    }
+
     /** ADR-133 decision 5: an email that already logs in to the portal cannot be reused. */
     public function test_store_refuses_an_email_that_already_has_a_portal_login(): void
     {

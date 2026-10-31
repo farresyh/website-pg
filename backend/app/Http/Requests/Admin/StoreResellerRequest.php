@@ -29,7 +29,7 @@ class StoreResellerRequest extends FormRequest
             'contact_name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('affiliate_users', 'email')],
             'phone' => ['nullable', 'string', 'max:30'],
-            'reseller_tier_id' => ['required', 'integer', Rule::exists('reseller_tiers', 'id')->whereNull('deleted_at')],
+            'reseller_tier_id' => ['required', 'integer', Rule::exists('reseller_tiers', 'id')->whereNull('deleted_at')->where('is_active', true)],
             'notes' => ['nullable', 'string', 'max:5000'],
         ];
     }
