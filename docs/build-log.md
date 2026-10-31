@@ -3017,3 +3017,7 @@ The next CI run failed `backend-concurrency` on `CheckoutSettleWithVoucherConcur
 **Fix (two parts).** (1) Add `ohahastore.com` to the widget's hostnames in Cloudflare (a founder action; staged in the dashboard but not saved by Claude). (2) Code: `PlayerCheckClient` now shows "We couldn't verify you on this page. Please reload, or try again later." when Turnstile calls its error callback, instead of waiting forever; a later success clears it.
 
 **Verified.** Local storefront against a throwaway backend with one checker family, using Cloudflare's test site keys: the always-failing key shows the message with the button disabled (390 px); the always-passing key shows "Ready to check." and no message. Everything stopped and deleted afterwards.
+
+## 2026-10-31 — CHIP approved FPX and DuitNow QR (docs only)
+
+Recorded from the founder: the reply to CHIP (PRD §16 item 141(d)) was sent on 2026-10-29. CHIP answered that it is checking the documents, and that FPX and DuitNow QR may be used meanwhile; its other payment methods are still under review. The email is the founder's record outside the repo. PRD §14 (payment methods: FPX no longer "on only while CHIP reviews"; the stale "`www` becomes a redirect after the next release" line), §16 items 141, 114 (the CHIP gate) and 129 (the founder's choice between voucher-only and refund to the original payment method is now due). Still open in ADR-133: whether CHIP receives copies of reseller documents.
