@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\Reseller\PublicResellerPriceListService;
 use App\Support\StorefrontBrand;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 /**
  * ADR-091: the public Reseller Price List page's backend. Guest-callable
@@ -26,15 +27,17 @@ class PublicResellerPriceListController extends Controller
         private readonly PublicResellerPriceListService $service,
     ) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         if (! $this->brand->get()->is_owned) {
             // Same empty-array-means-off contract as MembershipController::
             // plans() — no 404 special case, the frontend just renders
             // "no page" for this shape.
-            return response()->json(['tiers' => [], 'games' => []]);
+            return response()->json(['tiers' => [], 'groups' => []]);
         }
 
-        return response()->json($this->service->build());
+        // ADR-091 2026-11-01, decision 6: the layout and sitemap only ask
+        // "is the page on", so they take the tiers without the rows.
+        return response()->json($request->boolean('summary') ? $this->service->summary() : $this->service->build());
     }
 }
