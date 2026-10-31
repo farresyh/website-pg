@@ -13,7 +13,7 @@ import BottomNav from "@/components/layout/BottomNav";
 import { getBranding } from "@/lib/branding";
 import { listPlans } from "@/lib/membership";
 import { listPlayerCheckFamilies } from "@/lib/player-check";
-import { getResellerPriceList } from "@/lib/reseller-price-list";
+import { getResellerPriceListEnabled } from "@/lib/reseller-price-list";
 import { getSeoSettings, jsonLdHtml } from "@/lib/seo";
 import { resolveSiteMeta } from "@/lib/seo-meta";
 import { getThemePreset, generateThemeCss } from "@/lib/theme-presets";
@@ -72,16 +72,15 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [branding, settings, plans, priceList, playerCheck, jokiCatalog] = await Promise.all([
+  const [branding, settings, plans, priceListEnabled, playerCheck, jokiCatalog] = await Promise.all([
     getBranding(),
     getSeoSettings(),
     listPlans(),
-    getResellerPriceList(),
+    getResellerPriceListEnabled(),
     listPlayerCheckFamilies(),
     getJokiCatalog(),
   ]);
   const membershipEnabled = plans.length > 0;
-  const priceListEnabled = priceList.tiers.length > 0;
   const checkIdEnabled = playerCheck.families.length > 0;
   // ADR-126 decision 2: the "Joki Rank" menu item, only where /joki answers.
   const jokiEnabled = jokiCatalog !== null;
