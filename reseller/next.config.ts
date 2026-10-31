@@ -25,9 +25,12 @@ const apiOrigin = process.env.NEXT_PUBLIC_API_URL
 // loosens dev/e2e, not the deployed policy.
 const isDev = process.env.NODE_ENV !== "production";
 
-const cspDirectives = [
+// ADR-133 PR 3b: the public reseller application loads Cloudflare Turnstile (a script and its
+// iframe). Only those pages get the host; the signed-in portal still loads no third-party script.
+const csp = (turnstile: boolean) => [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}${turnstile ? " https://challenges.cloudflare.com" : ""}`,
+  ...(turnstile ? ["frame-src https://challenges.cloudflare.com"] : []),
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data: blob: https://cdn.pekangame.space${apiOrigin ? ` ${apiOrigin}` : ""}`,
   "font-src 'self'",
@@ -52,13 +55,18 @@ const nextConfig: NextConfig = {
       {
         source: "/(.*)",
         headers: [
-          { key: "Content-Security-Policy", value: cspDirectives },
+          { key: "Content-Security-Policy", value: csp(false) },
           { key: "X-Content-Type-Options", value: "nosniff" },
           // PRD §16 item 110.
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
         ],
       },
+      // Later entries override the same key (Next's headers docs), so these win on the application pages.
+      ...["/apply", "/apply/:path*", "/onboard/:path*"].map((source) => ({
+        source,
+        headers: [{ key: "Content-Security-Policy", value: csp(true) }],
+      })),
     ];
   },
 };

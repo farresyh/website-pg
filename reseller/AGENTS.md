@@ -75,6 +75,14 @@ reseller-guard endpoint, not just a hidden nav tab.
   "Community" tier key (same value as `admin/`; verification runs
   client-side so it must be `NEXT_PUBLIC_`). See `admin/`'s
   `components/prime-provider.tsx` for why.
+- `NEXT_PUBLIC_TURNSTILE_SITE_KEY` — the Cloudflare Turnstile widget for
+  the public reseller application (ADR-133), the same site key as the
+  storefront's Game ID Checker. Without it the form says it cannot be sent.
+
+The app also serves the public reseller application (ADR-133) on the
+`onboarding.` host: `proxy.ts` serves only `/apply` and `/onboard/…` there
+and 404s them on the portal host. Locally, open
+`http://onboarding.localhost:3002/apply`.
 
 ## Build & Test
 
