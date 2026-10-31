@@ -992,10 +992,10 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   docs-site "Request access" now points to `onboarding.pekangame.space/apply`
   (the `partners@pekangame.space` mailbox does not exist, so the `/apply`
   closed-state message no longer names it); the storefront footer gets no
-  link (founder). Still open: whether the portal login page links to it, and
-  the PDPA contact in the two notices, which defaults to the same
-  `partners@pekangame.space` (`services.onboarding.privacy_contact`, env
-  `ONBOARDING_PRIVACY_CONTACT`): it must be an address that is read.
+  link (founder). The PDPA contact in the two notices is now
+  `business@pekangame.com` (founder, 2026-11-01; the default of
+  `services.onboarding.privacy_contact`, no env override on Forge). Still
+  open: whether the portal login page links to the application.
 - **129** Voucher-only refund policy. **Decided 2026-11-01 (founder):** no
   refund to the original payment method for a storefront order, only retry or a
   voucher; ADR-004 stays in force (its 2026-11-01 addendum). Owed by the
