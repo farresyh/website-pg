@@ -2976,3 +2976,20 @@ The next CI run failed `backend-concurrency` on `CheckoutSettleWithVoucherConcur
 **A test trap met again.** Sanctum keeps the first authenticated user for the rest of one test, so two portal requests as two users in one test both ran as the first: one affiliate per test.
 
 **Next.** PR 1b: the endpoints that expose this, the portal checklist, banners and empty states, the admin readiness column, and the approval email.
+
+## 2026-10-31 — Partner onboarding PR 1b: checklist, banners, empty states, admin Setup column, approval email (ADR-133)
+
+**Built.**
+- **Backend:** `GET /api/affiliate/onboarding` and `GET /api/reseller-portal/onboarding` (each behind its own account-type gate); a `readiness` summary on every row of the admin Affiliates and Resellers lists (one batch, no query per row; the platform's own brand has none); `PaymentsApprovedNotice`, an email to the affiliate when an admin approves a domain for payments (only on the move to approved; a mail failure never undoes it). The `order_channel` step now says which channels are set up (`api_key`, `whatsapp_group`).
+- **Portal (`reseller/`):** a collapsible "Get started" checklist (collapsed by the partner, remembered in `localStorage`, or by itself when every required step is done); non-dismissable banners for what costs money (no bank details, payments off, a reseller with no tier); the store badge split into "Ready to sell" and "Online, payments off"; one-button empty states for Orders; the WhatsApp bot's link state and instructions; a "Your first order" card (there is no partner sandbox); the DNS teardown deadline; the set-password page in English.
+- **Admin:** a "Setup" column on the Affiliates and Resellers lists.
+
+**Verified.** Backend tests red first, then green; full fast suite 3324/3324. Portal and admin lint, `node --test` (18 and 20) and build pass. A browser check on a throwaway backend (sqlite file in the scratchpad, API on :8000, portal :3002, admin :3000; all stopped and deleted afterwards): 44 checks across every state, mobile 390 px, contrast at least 4.5 in light and dark, and screenshots read by eye. The browser check found one thing the tests did not (an Optional step with a destination showed no link); fixed.
+
+**Traps met.**
+- I ran Pint over the whole of `app/` and it reformatted 25 untouched files (the repo has existing Pint failures; CI does not run it). Reverted with `git checkout` on every file that was not mine. Run Pint only on the files you changed.
+- A "queries do not grow with the rows" test must not compare equal counts: the first measured request pays one-off queries (settings cache). Warm it, then assert the larger set is not more than the smaller.
+- A set-password field with `minLength=8` stops the browser before the JS message appears, so a check of that message needs a long enough, mismatched pair.
+- Sanctum keeps the first authenticated user for the rest of a test (met again in PR 1a).
+
+**Next.** PR 2 (the tier-less top-up guard in `ResellerWalletTopupService::initiate()`, never `completeTopup()`; the admin create made to use `ResellerProvisioningService` with the tier required; wallet trace first), then PR 3 and PR 4.

@@ -93,10 +93,10 @@ function StepRow({ ownerType, step }: { ownerType: OwnerType; step: OnboardingSt
         {!done && <p className="mt-0.5 text-xs text-ink-muted">{copy.text}</p>}
         {step.key === "dns" && step.state === "todo" && step.detail && <DnsDeadline iso={step.detail} />}
       </div>
-      <div className="shrink-0">
+      <div className="flex shrink-0 items-center gap-2">
         {waiting && <Badge tone="warning">Waiting on us</Badge>}
         {step.state === "optional" && <Badge tone="neutral">Optional</Badge>}
-        {step.state === "todo" && copy.href && copy.cta && (
+        {(step.state === "todo" || step.state === "optional") && copy.href && copy.cta && (
           <Link href={copy.href} className={buttonClass("secondary", true)}>
             {copy.cta}
           </Link>
