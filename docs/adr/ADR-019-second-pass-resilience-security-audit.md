@@ -1,6 +1,6 @@
 # ADR-019: Second-pass resilience & security audit — reconciling ADR-014 against real code, docs restructure
 
-> **Standing (2026-10-09):** In force; cache deferral closed by ADR-077. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-01):** In force; cache deferral closed by ADR-077; item 111's public-signup trigger dropped (2026-11-01 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — 2026-07-27 (findings and sequencing discussed with the founder in a dedicated audit session; grilled on the "fix now vs. wait for deploy" split specifically, not per-item). **Partly revised:** the "no Redis, `database` cache driver" deferral was closed by [ADR-077](./ADR-077-storefront-read-path.md) (2026-09-07).
 
@@ -110,3 +110,8 @@ login, only wrote a log line, so a credential attack would go unseen.
 **Consequence to track.** If item 111 is reopened, the remaining
 questions are fail-open vs fail-closed when Cloudflare is down (a
 fail-closed admin login locks the founder out) and the E2E test keys.
+
+
+### 2026-11-01 addendum — the portal never opens to public signup
+
+The 2026-10-17 addendum's decision 3 gave Turnstile on the logins (PRD §16 item 111) two triggers: the first lockout alert that is not the founder, or the portal opening to public signup (item 13). The founder ruled the second out on 2026-11-01: the reseller application on `onboarding.pekangame.space` ([ADR-133](./ADR-133-partner-onboarding.md)) is the only way in, it carries its own Turnstile and throttles, and a portal login is made only when the admin approves. Item 111 now waits only on the first lockout alert that is not the founder.

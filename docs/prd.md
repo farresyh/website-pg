@@ -557,7 +557,7 @@ Two distinct creation paths, confirmed with the founder 2026-07-24 — not one f
 
 # 11. Proposed Features / Future Phases
 
-The scheduled roadmap lives in §16, group E ("New features: after the backlog"), each with its own ADR and grill: self-serve reseller signup (13), Marketing Campaigns (57), more languages and currencies (117), and others. Joki MLBB (114) is built and released, switched off, and waits on its launch gates (group D). Shipped features are tracked in §15, not here.
+The scheduled roadmap lives in §16, group E ("New features: after the backlog"), each with its own ADR and grill: Marketing Campaigns (57), more languages and currencies (117), and others. Joki MLBB (114) is built and released, switched off, and waits on its launch gates (group D). Shipped features are tracked in §15, not here.
 
 Unscheduled ideas, not on the backlog:
 
@@ -863,7 +863,7 @@ hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
 #385 Reports redesign, #376 Reseller API `max_price_sen` / Assistant = Reports /
 `r2_accounting`, #369 ADR-120 SEO/GEO, #362, #354, #346, #342, #332,
 #320 and the 2026-09-28 audit waves) are recorded release by release in
-`docs/build-log.md` (2026-10-15 onward) and `docs/build-log-archive.md`
+`docs/build-log.md` (2026-10-23 onward) and `docs/build-log-archive.md`
 (before that). This section keeps only the current state.
 
 **Infrastructure:**
@@ -874,7 +874,7 @@ hosts 308-redirect to it since 2026-10-08). `api.`, `reseller.`, `docs.`,
 - Cloudflare sits in front of `api.`.
 
 - **Per-feature-area status:** §15 below.
-- **Full chronological build record** (every session, what shipped, the gotchas): `docs/build-log.md` (entries before 2026-10-15 in `docs/build-log-archive.md`).
+- **Full chronological build record** (every session, what shipped, the gotchas): `docs/build-log.md` (entries before 2026-10-23 in `docs/build-log-archive.md`).
 - **Decision rationale** (Context → Decision → Rationale → Consequence): `docs/adr.md`.
 
 ---
@@ -960,7 +960,7 @@ git in the 2026-10-17 docs audit, and again after items 112 and 113 PR 1a
 and PR 1b on 2026-10-18. Items 124–128 added 2026-10-19 after the docs audit
 and the admin-loading investigation (#515, #516). Re-checked again
 2026-10-26 after releases #554 and #557 (items 131 and 132 closed, 114
-moved to group D). Re-verify before building.
+moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 closed, item 111's trigger narrowed). Re-verify before building.
 
 **A. Buildable now: code, no new design**
 (none: 143 closed, 149 and 148 built, 2026-10-30)
@@ -986,7 +986,14 @@ moved to group D). Re-verify before building.
   branded domain in the admin only after CHIP's written approval (`ohahastore.com`
   and its `www` were approved in the admin on 2026-10-30; CHIP's written approval is the founder's record outside the repo). The onboarding procedure, the written confirmations and
   any reseller documents live outside the repo (it is public). Extends items 24
-  and 104 (naming); item 129 stays on hold.
+  and 104 (naming); item 129's choice is now due (FPX and DuitNow QR approved, recorded 2026-10-31).
+- **153** Open the reseller application (ADR-133, released 2026-11-01). The
+  founder reads the notice text, tries Admin → Applications → "Invite
+  directly" on a test address, then turns on "Public applications open".
+  When it is on: the docs-site's "Request access" (`introduction.md`) still
+  says to email `partners@pekangame.space` and should point to
+  `onboarding.pekangame.space/apply`; the founder also chooses whether the
+  portal login page and the storefront footer link to it.
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
   `/api/health`, the OpenWA gateway and `/api/health/whatsapp` (third monitor
   added and alert-tested by the founder 2026-10-14).
@@ -1029,8 +1036,10 @@ moved to group D). Re-verify before building.
 - **108** Add affiliate custom domains to the Turnstile widget automatically
   (ADR-123), when ~5 affiliate domains are active.
 - **111** Turnstile on the admin and portal logins (ADR-019 2026-10-17
-  addendum), at the first "Account locked" alert that isn't the founder, or
-  when the portal opens to public signup (item 13).
+  addendum), at the first "Account locked" alert that isn't the founder. The
+  portal never opens to public signup (founder, 2026-11-01): the reseller
+  application on `onboarding.pekangame.space` is the only way in, it has its
+  own Turnstile, and a login is made only when the admin approves.
 - **104** Reseller wallet top-up KPIs (how often, how much), with item 28.
 - **105** Batch `Order::cashCompensationSen()`'s wallet-refund lookup, when the
   Customer Detail page is slow for a big reseller (Pulse > 500 ms).
@@ -1038,13 +1047,11 @@ moved to group D). Re-verify before building.
 - **152** Refresh the admin sandbox (`/middleware/sandbox`) for wallet and combo orders; do it with item 151, which shares `FakeSupplierAdapter` (its 21 tests pass as of 2026-10-31).
 
 **E. New features: after the backlog** (each needs its own ADR + grill)
-- **13** Self-serve reseller signup: designed with item 146 in [ADR-133](./adr/ADR-133-partner-onboarding.md) (a two-stage public application with KYC); built under 146.
 - **14** Assistant chat history.
 - **24** Wallet pending top-up resume/cancel.
 - **25** Portal "needs attention" aggregate.
 - **57** Marketing Campaigns (ADR-118, designed).
 - **94** Best-selling products per game in Reports.
-- **146** Affiliate and Reseller onboarding, designed 2026-10-31 in [ADR-133](./adr/ADR-133-partner-onboarding.md), **in progress: PR 1a (the backend foundation), PR 1b (the portal checklist, banners and empty states, the admin Setup column, the approval email) and PR 2 (the tier-less top-up guard, the admin create with a login and a required tier, Create internal account) built 2026-10-31**; PR 4 (a blank `max_markup_pct` opens no markup, ADR-061 2026-10-31 addendum) built 2026-10-31; PR 3a (the application backend) built 2026-11-01; PR 3b (the public forms) built 2026-11-01; PR 3c (the admin screen) built 2026-11-01, so every PR of ADR-133 is built; **released in #633 (2026-11-01)**: a computed readiness checklist and banners in the portal, plus the reseller KYC application (item 13). Build order is in the ADR: PR 1 the bank-details predicate, the shared reseller provisioning service and the readiness service with its checklist; PR 2 the top-up guard for a tier-less reseller (wallet trace first) and the admin create fix; PR 3 the public forms, admin screen and retention command; the `max_markup_pct` portal fix is its own PR. Settled 2026-10-31 (ADR-133 addendum): the document list (individuals accepted, tax number optional), 90-day retention after decline or closure, storage in a new private R2 bucket `pekangame-kyc`, the Turnstile hostname already covered. Settled 2026-11-01: recipients listed by class (closes the CHIP-copies question), the bucket and token exist. Founder owes: read the notice text before turning on the open switch; add `onboarding.pekangame.space` to the `pekangame-reseller` Vercel project with its DNS record, and `NEXT_PUBLIC_TURNSTILE_SITE_KEY` to that project; the Vercel domain, the site key and the box env are done (checked 2026-11-01). Left: read the notice text at `onboarding.pekangame.space/apply`, then turn on "Public applications open" in Admin → Applications. Optional: approve setting FixFast's internal reason in production so the list shows it as an internal account.
 - **150** Membership pitch to a non-member after a delivery (founder idea, 2026-10-30; design not started, needs its own ADR and grill). Detecting it is easy: `orders.pricing_basis` is `member` for a member order, so the pitch goes to a non-member order of a game with member pricing on a brand with membership on, and the saving on that order is computable server-side with `MembershipPricingService::calculateMemberPrice` (only the saving is shown, never cost or margin). Options, cheapest and safest first: (1) a banner on the order status page ("a member would have paid RM X for this order", with a link), which needs no consent and carries no ban risk; (2) one extra line inside the delivered receipt, not a second message; (3) a separate second WhatsApp message, only after an explicit marketing opt-in (for example replying `MEMBER`), with its own STOP and rate caps. Why the WhatsApp options wait: [ADR-116](./adr/ADR-116-customer-order-notifications-over-whatsapp.md) opts a number in for order updates only, a promotion needs its own consent (PDPA), and a customer's Report on the unofficial OpenWA number can ban it and with it the human support line. Why the whole item waits: on 2026-10-30 production had 42 real storefront orders from only 4 customer emails, 2 opted-in WhatsApp contacts and no active member. Build when there are real repeat customers (around ten active members, as for item 85). Recommended first step then: option 1.
 - **117** Storefront in more languages and currencies, to sell outside
   Malaysia. Long-term, not soon (founder, 2026-10-17).
@@ -1071,9 +1078,6 @@ moved to group D). Re-verify before building.
     `https://bot.pekangame.space/api/health` (founder, green). It catches the
     OpenWA process down, not a WhatsApp session that is disconnected while
     the process runs; item 95 covers that.
-
-13. **ADR-085 candidate** — self-serve reseller signup (payment risk, KYC, auto
-    tier-assignment). Needs its own ADR + grill; ADR-084 assumes invite-only.
 
 14. **ADR-087 candidate addendum** — persisted, multi-thread chat history for the
     LLM Report Assistant (`/admin/reports/assistant`): a ChatGPT/Gemini-style
@@ -1317,8 +1321,10 @@ moved to group D). Re-verify before building.
     admins, which is the signal. Turnstile Free's limits (20 widgets, 10
     hostnames each, unlimited challenges) don't block it: `admin.` and
     `reseller.` are covered by the existing widget's `pekangame.space`.
-    - **Trigger:** the first "Account locked" alert that isn't the founder,
-      or public portal signup (item 13).
+    - **Trigger:** the first "Account locked" alert that isn't the founder.
+      (Public portal signup was the second trigger; the founder ruled it out on
+      2026-11-01: the ADR-133 application, with its own Turnstile, is the only
+      way in.)
     - **For the grill then:** fail-open vs fail-closed when Cloudflare is
       down (fail-closed can lock the founder out of admin), E2E test keys,
       and whether checkout needs it too.
@@ -1419,8 +1425,10 @@ moved to group D). Re-verify before building.
     owed a refund under it. If the policy stays, build this before payments
     go live for real customers. The switch-over steps above apply either way.
 
-## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-15, `docs/build-log-archive.md`; why in `docs/adr.md`)
+## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-23, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **146** 2026-11-01: Affiliate and Reseller onboarding ([ADR-133](./adr/ADR-133-partner-onboarding.md) and its addenda), built in PRs #621–#632 and released in #633. The readiness checklist, banners and empty states; the tier-less top-up guard and the admin create with a login; the `max_markup_pct` fix (ADR-061 2026-10-31 addendum); the reseller application with KYC (backend, public forms on `onboarding.pekangame.space`, Admin → Applications, "Invite directly"). The public application switch ships off; the founder reads the notice text and tries "Invite directly" before turning it on. Status: §15 "Partner onboarding".
+- **13** 2026-11-01: self-serve reseller signup, closed into item 146. The public application with KYC is the way in; the portal itself never opens to public signup (founder, 2026-11-01).
 - **147** 2026-10-30: OhahaStore go-live, done by the founder. `ohahastore.com` and `www.ohahastore.com` are active with valid certificates, and payments were approved in the admin at 07:53 UTC (CHIP's written approval is the founder's record outside the repo). The `www` row becomes a redirect from the portal after the next release (item 148). Still open: OhahaStore has no bank details, so the monthly payout skips it (item 146 would force them). Details: ADR-060's 2026-10-30 addenda, build-log 2026-10-30.
 - **138** 2026-10-30: real-bank proof for release #589, closed. Seen on prod, read-only: an FPX order through the bank grid (`PG-SOOP26HC3ZXL`, RM13.32, paid and delivered; CHIP shows `paid`, not a test, one successful attempt at Maybank2u, whose code is in the grid) and a DuitNow QR order (`PG-L4RCBELJ9RE3`, RM25.70, paid and delivered; CHIP shows `paid`, not a test, method `dnqr`, one successful attempt). The **Test** action on `fpx` and `dnqr` stored `success` on 2026-10-29. No `FpxBankRedirect` revert is needed. Details: build-log 2026-10-30.
 - **148** 2026-10-30: a custom domain brings a `www` redirect twin (ADR-060's second 2026-10-30 addendum, Accepted). "Also add www" on the add-domain form and an "Add www" / "Redirect www here" action; a twin row (`redirects_to_domain_id`) that 308-redirects to the typed domain and is never served, canonical, primary, CORS-allowed or payment-approved. **Merged as #613, released in #618 (2026-10-30).** Owed after the release (founder): press "Redirect www here" on OhahaStore's Domains screen, then `curl -I https://www.ohahastore.com` should answer 308 to `ohahastore.com`. Details: build-log 2026-10-30.
