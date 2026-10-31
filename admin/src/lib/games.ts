@@ -98,6 +98,9 @@ export interface Game {
   /** ADR-075's catalog-code addendum (2026-09-04): the game segment of a reseller-facing product code (`{reseller_code}-{denomination-or-catalog_code}`, e.g. `MLMY-14`). Uppercase letters only, unique globally. Null = excluded from the Reseller API/Bot catalog, no effect on the storefront. */
   reseller_code?: string | null;
   category: string | null;
+  /** ADR-091 2026-11-01: display-only grouping for the public /price-list ("Mobile Legends" / "Malaysia"). Null on both = the game is its own group. */
+  family?: string | null;
+  region_label?: string | null;
   image_url?: string | null;
   banner_url?: string | null;
   is_active?: boolean;
@@ -169,6 +172,8 @@ export interface UpdateGameValues {
   slug: string;
   reseller_code?: string | null;
   category?: string | null;
+  family?: string | null;
+  region_label?: string | null;
   image_url?: string | null;
   banner_url?: string | null;
   is_active: boolean;

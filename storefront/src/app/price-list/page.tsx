@@ -2,10 +2,9 @@ import type { Metadata, ResolvingMetadata } from "next";
 import { canonicalMetadata } from "@/lib/seo";
 import { notFound } from "next/navigation";
 import SiteFooter from "@/components/layout/SiteFooter";
-import ResellerPriceListTable from "@/components/price-list/ResellerPriceListTable";
+import ResellerPriceListBrowser from "@/components/price-list/ResellerPriceListBrowser";
 import { getBranding } from "@/lib/branding";
 import { getResellerPriceList } from "@/lib/reseller-price-list";
-import { resolveWhatsappHref } from "@/lib/whatsapp";
 
 export async function generateMetadata(_props: unknown, parent: ResolvingMetadata): Promise<Metadata> {
   const branding = await getBranding();
@@ -25,13 +24,11 @@ export async function generateMetadata(_props: unknown, parent: ResolvingMetadat
  * convention `/membership` follows for its own kill switch).
  */
 export default async function ResellerPriceListPage() {
-  const [branding, list] = await Promise.all([getBranding(), getResellerPriceList()]);
+  const list = await getResellerPriceList();
 
   if (list.tiers.length === 0) {
     notFound();
   }
-
-  const whatsappHref = resolveWhatsappHref(branding);
 
   return (
     <>
@@ -46,24 +43,22 @@ export default async function ResellerPriceListPage() {
           </p>
 
           <div className="mt-8">
-            <ResellerPriceListTable list={list} />
+            <ResellerPriceListBrowser list={list} />
           </div>
 
           <div className="mt-8 flex flex-col items-start justify-between gap-4 rounded-lg border-2 border-ink bg-surface-container-highest p-6 neo sm:flex-row sm:items-center">
             <div>
               <h2 className="font-display text-lg font-bold text-on-surface">Want in on these rates?</h2>
               <p className="mt-1 text-sm text-on-surface-variant">
-                Reseller accounts are set up by our team. Reach out and we&apos;ll get you started.
+                Reseller accounts are approved by our team. Apply online and we&apos;ll reply by email with the next step.
               </p>
             </div>
-            {whatsappHref && (
+            {list.applyUrl && (
               <a
-                href={whatsappHref}
-                target="_blank"
-                rel="noopener noreferrer"
+                href={list.applyUrl}
                 className="shrink-0 rounded-lg border-2 border-ink bg-primary px-5 py-2.5 font-display text-sm font-bold text-on-primary neo-hover transition-all"
               >
-                Contact us on WhatsApp
+                Apply to become a reseller
               </a>
             )}
           </div>

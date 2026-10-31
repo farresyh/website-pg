@@ -732,6 +732,7 @@ export default function GamesPage() {
           onDelete={handleDeleteGame}
           game={editingGame}
           validatorProfiles={validatorProfiles}
+          familyOptions={[...new Set((games ?? []).map((g) => g.family).filter((f): f is string => !!f))]}
         />
         <EditPackageModal
           isOpen={editingPackage !== null}

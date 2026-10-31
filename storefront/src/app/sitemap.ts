@@ -1,7 +1,7 @@
 import { getJokiCatalog } from "@/lib/joki";
 import type { MetadataRoute } from "next";
 import { listGames } from "@/lib/catalog";
-import { getResellerPriceList } from "@/lib/reseller-price-list";
+import { getResellerPriceListEnabled } from "@/lib/reseller-price-list";
 import { getBranding } from "@/lib/branding";
 import { listPlayerCheckFamilies } from "@/lib/player-check";
 
@@ -21,10 +21,10 @@ export const dynamic = "force-dynamic";
  * brand's own canonical origin, never the platform's.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [branding, games, resellerPriceList, playerCheck, jokiCatalog] = await Promise.all([
+  const [branding, games, priceListEnabled, playerCheck, jokiCatalog] = await Promise.all([
     getBranding(),
     listGames(),
-    getResellerPriceList(),
+    getResellerPriceListEnabled(),
     listPlayerCheckFamilies(),
     getJokiCatalog(),
   ]);
@@ -46,7 +46,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // ADR-091: only listed when the page actually renders on this brand —
   // same "empty tiers = no page" signal as /price-list and SiteFooter.
-  if (resellerPriceList.tiers.length > 0) {
+  if (priceListEnabled) {
     staticRoutes.push({ url: `${origin}/price-list`, lastModified: new Date() });
   }
 

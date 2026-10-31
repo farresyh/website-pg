@@ -15,6 +15,8 @@ class Game extends Model
         'slug',
         'reseller_code',
         'category',
+        'family',
+        'region_label',
         'is_active',
         'sort_order',
         'image_url',
