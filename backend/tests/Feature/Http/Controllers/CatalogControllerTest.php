@@ -300,7 +300,7 @@ class CatalogControllerTest extends TestCase
         ]);
 
         $affiliate = Affiliate::query()->create([
-            'business_name' => 'Acme Resell', 'markup_pct' => 10, 'status' => 'active',
+            'business_name' => 'Acme Resell', 'markup_pct' => 10, 'max_markup_pct' => 30, 'status' => 'active',
         ]);
         $tier = AffiliateMembershipTier::query()->create([
             'name' => 'Silver', 'monthly_fee_sen' => 5000, 'markup_percent' => 20, 'is_active' => true, 'sort_order' => 1,

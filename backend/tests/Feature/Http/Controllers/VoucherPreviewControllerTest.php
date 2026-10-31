@@ -113,7 +113,7 @@ class VoucherPreviewControllerTest extends TestCase
             'is_active' => true, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A',
         ]);
 
-        $affiliate = Affiliate::query()->create(['business_name' => 'Acme Resell', 'markup_pct' => 10, 'status' => 'active']);
+        $affiliate = Affiliate::query()->create(['business_name' => 'Acme Resell', 'markup_pct' => 10, 'max_markup_pct' => 30, 'status' => 'active']);
         $tier = AffiliateMembershipTier::query()->create([
             'name' => 'Silver', 'monthly_fee_sen' => 5000, 'markup_percent' => 20, 'is_active' => true, 'sort_order' => 1,
         ]);

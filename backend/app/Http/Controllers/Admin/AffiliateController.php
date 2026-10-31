@@ -120,6 +120,7 @@ class AffiliateController extends Controller
             throw $this->ownedBrandHasNoTier();
         }
         $data['markup_pct'] = $isOwned ? 0 : $data['markup_pct'];
+        $this->assertMarkupWithinCeiling($isOwned, $data);
 
         $affiliate = DB::transaction(function () use ($data, $request, $isOwned, $ownedOnly) {
             $affiliate = Affiliate::query()->create([
@@ -184,6 +185,7 @@ class AffiliateController extends Controller
         // an audit row (the append-only history stays true).
         $oldMarkup = (float) $affiliate->markup_pct;
         $newMarkup = $isOwned ? 0.0 : (float) $data['markup_pct'];
+        $this->assertMarkupWithinCeiling($isOwned, $data);
 
         $affiliate->update([
             'business_name' => $data['business_name'],
@@ -228,6 +230,22 @@ class AffiliateController extends Controller
         }
 
         return response()->json($this->detailShape($affiliate->fresh()));
+    }
+
+    /**
+     * ADR-061 2026-10-31 addendum: a blank ceiling opens no markup, so a
+     * third-party brand without one must have 0 (`gte:markup_pct` holds it
+     * under a set ceiling). An owned brand's markup is forced to 0 anyway.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function assertMarkupWithinCeiling(bool $isOwned, array $data): void
+    {
+        if (! $isOwned && ($data['max_markup_pct'] ?? null) === null && (float) $data['markup_pct'] > 0) {
+            throw ValidationException::withMessages([
+                'markup_pct' => ['Set a max markup first: with no ceiling the brand cannot add a markup.'],
+            ]);
+        }
     }
 
     /** ADR-061 2026-10-30 addendum decision 5: a tier would not move any price of an owned brand. */

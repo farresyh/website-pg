@@ -148,6 +148,49 @@ class AffiliateControllerTest extends TestCase
         ])->assertUnprocessable();
     }
 
+    /** ADR-061 2026-10-31 addendum: no ceiling means no markup on a third-party brand. */
+    public function test_store_refuses_a_markup_on_a_third_party_brand_with_no_ceiling(): void
+    {
+        $this->actAsSuperAdmin();
+
+        $this->postJson('/api/affiliates', [
+            'business_name' => 'Open Shop',
+            'markup_pct' => 5,
+            'user_name' => 'X',
+            'user_email' => 'x@example.com',
+        ])->assertUnprocessable()->assertJsonValidationErrors('markup_pct');
+
+        $this->assertDatabaseMissing('affiliates', ['business_name' => 'Open Shop']);
+    }
+
+    public function test_update_refuses_a_markup_with_no_ceiling_but_not_on_an_owned_brand(): void
+    {
+        $this->actAsSuperAdmin();
+        $affiliate = $this->affiliate(['markup_pct' => 10, 'max_markup_pct' => 30]);
+
+        $this->putJson("/api/affiliates/{$affiliate->id}", [
+            'business_name' => $affiliate->business_name,
+            'markup_pct' => 10,
+            'max_markup_pct' => null,
+        ])->assertUnprocessable()->assertJsonValidationErrors('markup_pct');
+        $this->assertDatabaseHas('affiliates', ['id' => $affiliate->id, 'max_markup_pct' => 30]);
+
+        $this->putJson("/api/affiliates/{$affiliate->id}", [
+            'business_name' => $affiliate->business_name,
+            'markup_pct' => 0,
+            'max_markup_pct' => null,
+        ])->assertOk();
+
+        // An owned brand's markup is forced to 0, so a stale value in the form is not an error.
+        $this->putJson("/api/affiliates/{$affiliate->id}", [
+            'business_name' => $affiliate->business_name,
+            'markup_pct' => 10,
+            'max_markup_pct' => null,
+            'is_owned' => true,
+        ])->assertOk();
+        $this->assertDatabaseHas('affiliates', ['id' => $affiliate->id, 'markup_pct' => 0, 'is_owned' => true]);
+    }
+
     public function test_store_rolls_back_when_invite_send_fails(): void
     {
         $this->actAsSuperAdmin();
@@ -156,6 +199,7 @@ class AffiliateControllerTest extends TestCase
         $this->postJson('/api/affiliates', [
             'business_name' => 'Doomed Shop',
             'markup_pct' => 5,
+            'max_markup_pct' => 20,
             'user_name' => 'Y',
             'user_email' => 'y@example.com',
         ])->assertServerError();
@@ -327,6 +371,7 @@ class AffiliateControllerTest extends TestCase
         $this->postJson('/api/affiliates', [
             'business_name' => 'Third Party',
             'markup_pct' => 12,
+            'max_markup_pct' => 20,
             'user_name' => 'Rep',
             'user_email' => 'rep@example.com',
             'is_owned' => false,

@@ -154,7 +154,8 @@ class Adr061OwnedBrandPricingTest extends TestCase
     /**
      * Parity: for a brand that is NOT owned the seam must return exactly
      * what the old inline expressions did — `wholesaleTierMarkupPct()` and
-     * the raw markup (now clamped to its ceiling; a null ceiling is none).
+     * the raw markup (now clamped to its ceiling; a null ceiling opens no
+     * markup, 2026-10-31 addendum).
      */
     public function test_a_third_party_brand_resolves_exactly_as_the_old_inline_reads_did(): void
     {
@@ -166,7 +167,7 @@ class Adr061OwnedBrandPricingTest extends TestCase
             'no subscription' => [null, 10.0, 30.0, null, 10.0],
             'markup equals ceiling' => ['active', 30.0, 30.0, 20.0, 30.0],
             'markup above ceiling is clamped' => ['active', 10.0, 5.0, 20.0, 5.0],
-            'null ceiling is no ceiling' => ['active', 10.0, null, 20.0, 10.0],
+            'null ceiling opens no markup' => ['active', 10.0, null, 20.0, 0.0],
             'zero markup' => ['active', 0.0, 30.0, 20.0, 0.0],
         ];
 
@@ -269,14 +270,17 @@ class Adr061OwnedBrandPricingTest extends TestCase
         $this->assertSame('5.00', $order->affiliate_markup_pct);
     }
 
-    public function test_a_null_ceiling_charges_the_admin_set_markup(): void
+    /** ADR-061 2026-10-31 addendum: a stored markup under a null ceiling is never charged. */
+    public function test_a_null_ceiling_charges_no_brand_markup(): void
     {
         $this->brand(owned: false, max: null, markup: 10.0);
         ['game' => $game, 'package' => $package] = $this->gameAndPackage();
 
         $this->postJson('/api/checkout', $this->payload($game, $package), ['X-Storefront-Host' => self::HOST])->assertCreated();
 
-        $this->assertSame(1320, Order::query()->sole()->selling_price);
+        $order = Order::query()->sole();
+        $this->assertSame(1200, $order->selling_price);
+        $this->assertSame(0, $order->affiliate_profit);
     }
 
     /**

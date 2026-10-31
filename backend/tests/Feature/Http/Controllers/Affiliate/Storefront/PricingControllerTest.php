@@ -197,7 +197,8 @@ class PricingControllerTest extends TestCase
             ->assertJsonPath('wholesale_rate_active', false);
     }
 
-    public function test_show_does_not_clamp_a_markup_to_zero_when_there_is_no_ceiling(): void
+    /** ADR-061 2026-10-31 addendum: a null ceiling opens no markup, in the portal and at pricing alike. */
+    public function test_show_prices_a_null_ceiling_at_zero_markup(): void
     {
         $affiliate = $this->affiliate(['markup_pct' => 10, 'max_markup_pct' => null]);
 
@@ -205,7 +206,22 @@ class PricingControllerTest extends TestCase
             ->getJson('/api/affiliate/storefront/pricing')
             ->assertOk()
             ->assertJsonPath('is_owned', false)
-            ->assertJsonPath('effective_markup_pct', 10)
+            ->assertJsonPath('effective_markup_pct', 0)
             ->assertJsonPath('max_markup_pct', null);
+    }
+
+    public function test_update_with_a_null_ceiling_accepts_zero_and_refuses_any_markup(): void
+    {
+        $affiliate = $this->affiliate(['markup_pct' => 0, 'max_markup_pct' => null]);
+        $token = $this->tokenFor($affiliate);
+
+        $this->withToken($token)
+            ->putJson('/api/affiliate/storefront/pricing', ['markup_pct' => 0.5])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('markup_pct');
+
+        $this->withToken($token)
+            ->putJson('/api/affiliate/storefront/pricing', ['markup_pct' => 0])
+            ->assertOk();
     }
 }

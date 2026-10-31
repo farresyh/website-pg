@@ -49,7 +49,8 @@ class PricingController extends Controller
         }
 
         $new = round((float) $request->validated('markup_pct'), 2);
-        $max = (float) $affiliate->max_markup_pct;
+        // A null ceiling opens no markup (ADR-061 2026-10-31 addendum).
+        $max = (float) ($affiliate->max_markup_pct ?? 0);
 
         if ($new > $max) {
             return response()->json([
