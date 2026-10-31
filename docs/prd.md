@@ -935,7 +935,7 @@ for the 2026-09-17 audit that found two dark-mode token bugs).
 production on 2026-10-15 after release #449; items 98, 99, 106 and 107
 checked again on 2026-10-16, after release #469; 107 closed after release #472;
 106, 11, 96 and the payment state re-checked 2026-10-17 after release #476;
-every open item re-checked 2026-10-26 after release #557; item 133 closed 2026-10-27 after release #571; items 134 and 137 closed and 138–140 added 2026-10-29 after release #589, with the payment state re-checked on prod; 140 closed, 141 (ADR-131) released and 142–144 added 2026-10-29 after release #599; items 138, 147, 148 and 149 closed and 150 added 2026-10-30.** This list holds only **open** items. "Next up"
+every open item re-checked 2026-10-26 after release #557; item 133 closed 2026-10-27 after release #571; items 134 and 137 closed and 138–140 added 2026-10-29 after release #589, with the payment state re-checked on prod; 140 closed, 141 (ADR-131) released and 142–144 added 2026-10-29 after release #599; items 138, 147, 148 and 149 closed and 150 added 2026-10-30; items 13 and 146 designed in ADR-133 and 151 and 152 added 2026-10-31.** This list holds only **open** items. "Next up"
 is the one place they are sorted, one line each; "Details" holds each item's
 full text once, by number. Everything closed is one line under "Recently
 closed", pointing to where the full story lives (`docs/build-log.md` /
@@ -1025,15 +1025,17 @@ moved to group D). Re-verify before building.
 - **104** Reseller wallet top-up KPIs (how often, how much), with item 28.
 - **105** Batch `Order::cashCompensationSen()`'s wallet-refund lookup, when the
   Customer Detail page is slow for a big reseller (Pulse > 500 ms).
+- **151** A partner sandbox (a test-type reseller API key: orders flagged `is_test`, no Purchase Balance debit, `FakeSupplierAdapter` outcomes, webhook still sent), its own money-critical ADR (grill + code trace: wallet, ledger, reports, receipts, rate limits, bot) after item 146's PR 1 ships. The checklist's first-order step changes to "test in the sandbox, then order" when it exists ([ADR-133](./adr/ADR-133-partner-onboarding.md) "Not decided here"; the admin-only sandbox is [ADR-018](./adr/ADR-018-sandbox-test-orders.md)).
+- **152** Refresh the admin sandbox (`/middleware/sandbox`) for wallet and combo orders; do it with item 151, which shares `FakeSupplierAdapter` (its 21 tests pass as of 2026-10-31).
 
 **E. New features: after the backlog** (each needs its own ADR + grill)
-- **13** Self-serve reseller signup.
+- **13** Self-serve reseller signup: designed with item 146 in [ADR-133](./adr/ADR-133-partner-onboarding.md) (a two-stage public application with KYC); built under 146.
 - **14** Assistant chat history.
 - **24** Wallet pending top-up resume/cancel.
 - **25** Portal "needs attention" aggregate.
 - **57** Marketing Campaigns (ADR-118, designed).
 - **94** Best-selling products per game in Reports.
-- **146** Affiliate and Reseller onboarding (forced bank details, first-run steps). Founder has a reference video; needs its own ADR + grill.
+- **146** Affiliate and Reseller onboarding, designed 2026-10-31 in [ADR-133](./adr/ADR-133-partner-onboarding.md), **not built**: a computed readiness checklist and banners in the portal, plus the reseller KYC application (item 13). Build order is in the ADR: PR 1 the bank-details predicate, the shared reseller provisioning service and the readiness service with its checklist; PR 2 the top-up guard for a tier-less reseller (wallet trace first) and the admin create fix; PR 3 the public forms, admin screen and retention command; the `max_markup_pct` portal fix is its own PR. Founder owes: the CHIP document list, a lawyer's review of both bilingual notices, the post-closure retention period, the Turnstile widget hostname, and the private storage bucket check.
 - **150** Membership pitch to a non-member after a delivery (founder idea, 2026-10-30; design not started, needs its own ADR and grill). Detecting it is easy: `orders.pricing_basis` is `member` for a member order, so the pitch goes to a non-member order of a game with member pricing on a brand with membership on, and the saving on that order is computable server-side with `MembershipPricingService::calculateMemberPrice` (only the saving is shown, never cost or margin). Options, cheapest and safest first: (1) a banner on the order status page ("a member would have paid RM X for this order", with a link), which needs no consent and carries no ban risk; (2) one extra line inside the delivered receipt, not a second message; (3) a separate second WhatsApp message, only after an explicit marketing opt-in (for example replying `MEMBER`), with its own STOP and rate caps. Why the WhatsApp options wait: [ADR-116](./adr/ADR-116-customer-order-notifications-over-whatsapp.md) opts a number in for order updates only, a promotion needs its own consent (PDPA), and a customer's Report on the unofficial OpenWA number can ban it and with it the human support line. Why the whole item waits: on 2026-10-30 production had 42 real storefront orders from only 4 customer emails, 2 opted-in WhatsApp contacts and no active member. Build when there are real repeat customers (around ten active members, as for item 85). Recommended first step then: option 1.
 - **117** Storefront in more languages and currencies, to sell outside
   Malaysia. Long-term, not soon (founder, 2026-10-17).

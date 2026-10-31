@@ -2941,6 +2941,20 @@ The next CI run failed `backend-concurrency` on `CheckoutSettleWithVoucherConcur
 **Also fixed here: a concurrency flake that failed PR #616's CI** (a docs-only PR). `ResellerClosureConcurrencyTest::test_two_simultaneous_closures_refund_once` got outcomes `["", "closed:150000"]`: its helper command looked the reseller up with `findOrFail` at start, and when the other racer had already soft-deleted it (two booting processes on a loaded runner), the helper threw `ModelNotFoundException` and wrote nothing instead of a refusal. Money was never at risk (exactly one closure and one refund). The helper now treats an account that is already closed as a refusal (`refused:`), which is what a later attempt always was. The fix and the credentials change are in the same PR because both are test hygiene.
 
 
+## 2026-10-31 — Partner onboarding designed (ADR-133, PRD §16 items 13 and 146); nothing built
+
+**Request.** The founder asked for a docs and backlog audit, then to grill item 146 with the reference video (a UX-pattern video for a budget app: one question, a checklist that starts at 1 of 3, one-button empty states, one coach mark, a skip that remembers). Transcribed locally (the audio only repeats the on-screen text). It is a style reference, not a spec.
+
+**What the grill settled (four rounds, then a code stress test).** The founder widened the scope: a public reseller application with KYC (documents only **after** a first screening, so no identity document is held for applicants who will not be accepted), plus onboarding inside the portal. All decisions are in [ADR-133](./adr/ADR-133-partner-onboarding.md). Item 13 (self-serve reseller signup) is folded into item 146.
+
+**Facts found read-only (code, 2026-10-31).** No onboarding, first-run or readiness code exists. The dashboard's "Live" badge ignores `payments_approved_at`. Bank details are never forced and the admin cannot edit them; the "bank present" check is already copied in two places. A reseller with no tier cannot order but can still add balance; creating a reseller makes no login. The admin sandbox (ADR-018) is alive (21 tests pass) but admin-only; reseller paths never mention `is_test`. The Spatie backup is a SQL dump only, so documents would never be in it and deleted rows linger in older dumps.
+
+**Stress test (seven findings, all folded into the ADR).** One `Affiliate::hasBankDetails()` instead of a third copy; the tier guard goes in `ResellerWalletTopupService::initiate()` and never in `completeTopup()`; one `ResellerProvisioningService` for the application approval and the admin create; retention wording admits dump retention; host split in `proxy.ts`; an email of a closed account stays reserved; a single `PartnerApplicationService` with a row lock and a unique `reseller_id`.
+
+**PDPA research.** Notices must be Malay and English (section 7). The 2024 amendment adds breach notice, DPO thresholds (far above our size) and a new cross-border regime; the figures come from secondary sources and are marked to re-check. No NRIC guidance was found. The notice text is to be written with a lawyer.
+
+**Backlog.** PRD §16: item 13 points to 146; 146 carries the build order and the owed list; new group D items 151 (partner sandbox, its own money-critical ADR) and 152 (refresh the admin sandbox). **Not touched:** PRD §14 still says the OhahaStore `www` row "becomes a redirect after the next release"; item 148 is built and released, so that sentence needs a docs-audit fix.
+
 ## 2026-10-31 — Month-end CI failures: four tests built "last month" with `now()->subMonth()`
 
 **Found.** PR #619 (docs only) failed `backend-tests` (3 tests) and `backend-concurrency` (1), all around the affiliate payout and customer analytics. CI ran at 18:54 UTC on 2026-10-30, which is 02:54 on 31 October in Kuala Lumpur.
