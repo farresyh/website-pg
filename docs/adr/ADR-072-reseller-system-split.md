@@ -1,6 +1,6 @@
 # ADR-072: Reseller-system split — `Affiliate` (whitelabel) vs `Reseller` (prepaid wallet), full rename, shared portal architecture
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-01):** In force; decision 6 is extended by [ADR-133](./ADR-133-partner-onboarding.md): a reseller now applies through a public application with KYC first, and the account is still made only when the admin approves. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** BUILT + LIVE + PROD-VERIFIED end-to-end 2026-09-06 (the whole 072..076 family — rename, wallet, API channel, Bot channel — is code-complete and verified against real OpenWA + real CHIP; release PR #110). Original: Accepted (design) — 2026-09-04, grilled with the founder over six rounds via `/mattpocock-skills:grilling` before any code was written. First of a four-ADR family (072-075) from one grilled design, split by natural boundary — same convention as ADR-056..061. The "Build addendum" sections land as each PR in the phasing note (end of ADR-075) ships.
 
