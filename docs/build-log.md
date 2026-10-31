@@ -1469,3 +1469,11 @@ The founder asked whether the docs were current and free of contradictions. Read
 - **Founder decision (2026-11-01):** the portal never opens to public signup; the ADR-133 application is the only way in. Item 111's second trigger dropped (ADR-019 2026-11-01 addendum).
 - **Gaps:** `foundation-security.md` gained the public application endpoints (§4) and the KYC file handling (§7); the root `AGENTS.md` `reseller/` row names the onboarding host. New §16 item 153 holds opening the application, including the docs-site "Request access" text that still says to email.
 - **Housekeeping:** `build-log.md` entries 2026-10-15 → 2026-10-22 (64 entries) moved verbatim to `build-log-archive.md` ("Ninth archive move"); both headers, PRD §15/§16 pointers and the root `AGENTS.md` now say 2026-10-23.
+
+## 2026-11-01 — `/price-list` redesign designed (ADR-091 addendum, docs only)
+
+- **Complaint:** prospective resellers find the price list hard to read (one flat table, search only). Prod data: 674 rows, 36 game entries, 3 tiers; Mobile Legends alone about 360 rows.
+- **Findings from the trace:** no usable grouping exists (`category` is a genre, `reseller_code` has no convention, names are inconsistent); and the root layout plus `sitemap.ts` fetch and Zod-parse the whole price list on every root-layout render only to know "is the page on", so the redesign adds a `?summary=1` tiers-only response for them.
+- **Decided with the founder (mockup reviewed locally, desktop and 390px):** browse by game then region; two nullable display columns `games.family` and `games.region_label` instead of a `game_families` table (promote only when a per-title SEO page or per-title reports need one); swipeable single rows on phones; instant search from 2 characters with `useDeferredValue`; the WhatsApp button becomes the application link (`apply_url` from `services.onboarding.url`).
+- **Not built.** ADR-091's 2026-11-01 addendum is Proposed; PRD §16 item 154 is the line. Grill and the build come next (backend migration and service, admin modal, storefront, tests).
+- **Corrections to what was said in chat:** Mobile Legends has 10 regions and about 360 rows (not 11 and 340).

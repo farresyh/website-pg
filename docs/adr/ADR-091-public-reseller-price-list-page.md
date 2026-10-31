@@ -1,6 +1,6 @@
 # ADR-091: Public Reseller Price List page — a sales/acquisition surface on `is_owned` storefronts, admin-selected tiers
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-01):** In force; decisions 5 and 9 are revised by the 2026-11-01 addendum (Proposed, not built). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Context:**
 
@@ -37,3 +37,40 @@ Grilled over 3 rounds (`/mattpocock-skills:grilling`) plus a visual wireframe ar
 - **Decision 2's column order is now rendered in reverse of `sort_order`** — `PublicResellerPriceListService::build()` orders `orderByDesc('sort_order')->orderByDesc('id')` instead of ascending, so the cheapest tier sits rightmost (a "price rises as you scroll left" reading) rather than leftmost. `sort_order` itself is untouched and still governs every other tier-ordering surface (Wallet tiers table, portal picker) ascending, as before — this is a display-order flip on this one page's output, not a reinterpretation of the field.
 - **Decision 3's footer link is hidden** (`SiteFooter` no longer fetches/renders it) while the page itself stays fully live at `/price-list` — the "empty tiers = no page" auto-hide contract (`notFound()`, `sitemap.ts`) is unchanged, this only removes the on-site nav discovery path. Not gated on a new admin toggle; a straight code-level hide, reversible by restoring the removed block if the founder wants it back in nav.
 - Also fixed the same session: the table's mobile scroll affordance — a 3rd tier column could clip flush against the bordered scrollport with zero visual cue more existed. `ResellerPriceListTable` now shows a "swipe to see all N tiers" hint below the table on narrow viewports whenever more than 2 tiers are shown.
+
+### 2026-11-01 addendum: browse by game and region, an apply button, and a light "enabled" signal (revises decisions 5 and 9)
+
+> **Status: Proposed.** Design approved by the founder on 2026-11-01 against a local mockup (real prod prices, desktop and 390px). The grill and the money-free code trace below are done; build starts after the grill is cleared.
+
+**Context:**
+
+- Prospective resellers complained the page is hard to read. Prod today (2026-11-01): 674 package rows, 36 game entries, 3 tiers. Mobile Legends alone is 10 regions and about 360 rows, over half the page. Every row repeats the game name, and the only control is a search box.
+- Decision 5 chose "one page, search only, not a per-game picker". With the catalogue at this size that no longer reads well; the competitor pages the founder named group by game.
+- **The data has no usable grouping.** about 35 games; only three families span regions (Mobile Legends 10, Free Fire 6, Valorant 5), the rest stand alone. `games.category` is a genre (MOBA, Battle Royale, FPS), the wrong axis. `reseller_code` has no convention (`MLMY`, `FFG`, `PUBGG`, `RM`, `HSR`). Names are inconsistent ("Mobile legends Global", "Racing Master (SEA)"). Parsing any of them is the patchwork this addendum avoids.
+
+**Decision:**
+
+1. **Browse by game, then region** (revises decision 5). Game tiles with the game's image, then region pills for a multi-region family, then one table for the chosen region (5 to 83 rows). The first family and its first region are selected by default, so the page is never empty. State lives in the client: no `searchParams`, so the page stays cached, and the one fetch is unchanged. Nothing is paginated server-side.
+2. **Search stays**, across every group: it hides the tiles and shows matches grouped by game. It starts at 2 characters and uses React's `useDeferredValue` (no debounce timer, no network call per keystroke: the data is already in the browser). A one-letter query matches about 545 rows and was measured at 11 ms on desktop; the deferral protects older phones.
+3. **Grouping is two nullable display columns on `games`:** `family` (text, max 60) and `region_label` (text, max 40). Not a `game_families` table: three families do not justify a model, a migration and an admin screen, and the string columns can be promoted to a table later without losing anything. Rules: values are trimmed and single-spaced; families are matched case-insensitively; `region_label` is refused without a `family`; `(family, region_label)` is unique among games, so two "Malaysia" tabs cannot exist. A game with no family is its own group, named after the game; a family with no region label falls back to the game name. The admin sets both in `EditGameModal` beside Reseller Code, with an editable dropdown of the families that already exist (so "Mobile legends" cannot drift from "Mobile Legends"), and warns on a region without a family.
+4. **Order and image are derived, not stored:** families ordered by the lowest `sort_order` among their members, regions by `sort_order`, the tile image is the first member's `image_url`. No new ordering or image column.
+5. **Wire shape.** `tiers` unchanged (still reversed per the 2026-09-13 addendum), the flat `games` list replaced by `groups[] { family, image_url, games[] { name, region, packages[] { name, prices[] } } }`, and a new `apply_url`. The game name is sent once per game instead of once per row. The flat shape had one reader (the storefront, plus its tests); both change in the same PR. During the minutes between the backend deploy and the Vercel build, `/price-list` can answer not-found through `safeRead`'s fallback; nothing else reads `groups`.
+6. **A light "enabled" signal (found in the trace).** The root layout (`app/layout.tsx`) and `sitemap.ts` both call `getResellerPriceList()` and parse all 674 rows through Zod, on every root-layout render, only to compute `tiers.length > 0` for the bottom nav. Adding images and regions would make that heavier on every storefront page. Decision: `GET /api/catalog/reseller-price-list?summary=1` returns `tiers` only (the service skips `listAvailable()` and the per-row pricing), the layout and sitemap use a small `getResellerPriceListEnabled()`, and only `/price-list` fetches the full list. Same endpoint, same 30-second Next cache and `catalog` tag purge, no new cache key (decision 7 holds).
+7. **The call to action becomes the application** (revises decision 9). The WhatsApp button is replaced by "Apply to become a reseller", linking to `apply_url`: the backend builds it from `services.onboarding.url` (`ONBOARDING_URL`, already set on Forge for the applicant emails) plus `/apply`, so the storefront hardcodes no host and local dev works. The copy says accounts are approved by the team and the applicant gets an email. When "Public applications open" is off the button still shows and `/apply` explains the closure (the price list is cached; reading the switch there would add an invalidation path). `price-list/page.tsx` drops `resolveWhatsappHref`; the footer, the Joki page and `SiteConfigContext` still use it.
+8. **Phone layout.** One swipeable row of game tiles and one of region pills (a half-visible tile is the cue; the first mockup's 4-column grid pushed the first price two screens down), each package as a card with the three tier prices side by side, the table's header sticky on desktop. Desktop keeps a wrapping tile grid and wrapping pills.
+
+**Unchanged:** decision 1 (gating on `is_owned`), 2 and 3 (tier selection, empty means off), 4 (absolute prices only, no "save X%"), 6 (the price formula, so a displayed price still cannot drift from the charged one), 7 (no new cache layer), 8 (tier labels), 10 (page-level SEO, the sitemap entry). No price, cost or margin path is touched.
+
+**Trace (2026-11-01):**
+
+- **Readers of the endpoint:** `PublicResellerPriceListController` (via `StorefrontBrand::is_owned`), the storefront's `layout.tsx` (once per root layout render), `sitemap.ts`, `price-list/page.tsx`, `ResellerPriceListTable.tsx`, the backend test `PublicResellerPriceListControllerTest` and `RouteAccessTest`. No admin, portal, bot or docs-site reader.
+- **Writers of `games`:** `GameController::store` and `update` (through `UpdateGameRequest`), `SupplierProductController` (creates a game from a supplier product) and `JokiCatalog`. The new columns are nullable, so none of the creators must set them and a new game simply lands as its own group.
+- **Cache:** `GameController::update` already calls `forgetIndexCache()`, which clears `listAvailable()`'s 60-second key. `PublicResellerPriceListService` reads the game's `name`, `image_url` and the new columns from a fresh `Game` query, outside that cached listing, so an admin edit needs no new invalidation; the Next 30-second cache is the only delay.
+- **SEO** is per game (`/order/{slug}`, `GameSeoController`, ADR-029/042), not per title, and stays so. A per-title page would be a new ADR and is the trigger to promote `family` into a `game_families` table.
+
+**Consequence to track:**
+
+- Mockup: the founder-approved design lives outside the repo; the build must be compared against it at 390px and desktop with a live screenshot before it is called done (root `AGENTS.md`, step 6).
+- Production has no `family` yet: after the release the page shows every game as its own group until the admin fills the families. Fill Mobile Legends, Free Fire and Valorant first (about 21 games).
+- A future `games` column that is public-facing should ask the same "does this leak to `/price-list`?" question as `reseller_tiers` (see the consequence list above).
+
