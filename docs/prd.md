@@ -78,7 +78,7 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 - **Payment gateway: CHIP only** (`PaymentGatewayFactory` kept for a future multi-region second gateway — [ADR-022's 2026-09-01 addendum](./adr/ADR-022-multi-gateway-payment-strategy.md) removed Xendit; FPX proven live with real money; which methods are switched on: §14). Single company CHIP account; the platform collects 100% of every payment (including reseller storefronts) and the ledger does the split. **xenPlatform dropped entirely** — not deferred ([ADR-059](./adr/ADR-059-reseller-portal.md) decision 6, superseding ADR-001's addendum).
 - **Currency** assumed MYR as base, with dynamic exchange rate support for foreign-currency suppliers.
 - **Auth** Role middleware on the backend — frontend routing is convenience, not security. Admins use a Sanctum cookie session with opt-in MFA (AUTH-7, ADR-121); affiliate/reseller-portal users use bearer tokens.
-- **Refund policy**: no cash refunds (ADR-004), **being revised**: since 2026-10-22 the published Refund Policy (`/refund-policy`, founder's decision for CHIP's merchant review) offers an undelivered order a full refund to the original payment method within 7 working days, as an alternative to a voucher. The system path is not built yet (§16 item 129); until then a failed order resolves by retry-delivery or voucher.
+- **Refund policy**: no cash refunds (ADR-004). On 2026-10-22 the published Refund Policy (`/refund-policy`) was worded to offer a refund to the original payment method, for CHIP's merchant review; the founder withdrew that on 2026-11-01 (ADR-004 addendum): a failed storefront order resolves by retry-delivery or voucher only. The published text still has the old wording until the founder edits it (§16 item 129).
 - **Balance/financials**: ledger-based (ADR-002). No entity may expose or rely on a directly-mutated `balance` column as the source of truth.
 
 ---
@@ -178,7 +178,7 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 | **ORD-4** | System provides pagination with configurable per-page (10/25/50/100) | **MVP** |
 | **ORD-5** | Admin can export orders to CSV and Excel | **MVP** |
 | **ORD-6** | Admin can view order details: customer info, game/package, payment info, delivery attempts, supplier responses, status history timeline | **MVP** |
-| **ORD-7** | Admin can resolve an order via retry-delivery or voucher issuance only — **no cash refund action exists in the system** (ADR-004; being revised: refund to the original payment method, §16 item 129) | **MVP** |
+| **ORD-7** | Admin can resolve an order via retry-delivery or voucher issuance only — **no cash refund action exists in the system** (ADR-004) | **MVP** |
 | **ORD-8** | Every order generates a unique `reference_number` **before** the first supplier API call, and this same reference is reused on any retry of that same order — never regenerated | **MVP** |
 | **ORD-9** | Every monetary field (`cost_price`, `standard_selling_price`, `selling_price`, `transaction_fee`, `final_amount`, `platform_profit`, `affiliate_profit`) is always computed server-side at order-creation time from stored Package/Affiliate/Settings config, then snapshotted onto the Order — the system never accepts a client-submitted value for any of these fields. `transaction_fee` is computed on `selling_price − voucher_discount` (fee is charged on the post-voucher amount, not the original selling price). Renamed from `reseller_cost_price` 2026-08-29 ([ADR-027](./adr/ADR-027-vip-membership.md)) — the field is the platform owner's own guest/standard price, never reseller-specific; a real affiliate's own wholesale price comes from `affiliate_membership_tiers` instead (`PricingService::calculateForAffiliate()`, [ADR-056](./adr/ADR-056-reseller-wholesale-pricing-subscription-tiers.md); live in checkout via [ADR-060](./adr/ADR-060-multi-tenant-branded-storefront-custom-domain.md)) | **MVP** |
 | **ORD-10** | A scheduled reconciliation job polls supplier `check-status`-equivalent endpoints for any order left in an ambiguous/pending state beyond a threshold — the system never relies solely on a supplier webhook/callback for final order state | **MVP** |
@@ -425,7 +425,7 @@ Rank boosting: the customer picks a current and target MLBB rank, pays, and hand
 3. System marks `delivery_status = failed`. `payment_status` remains `paid` (needs resolution) — the customer's money was genuinely received; only delivery didn't complete.
 4. Admin sees it in the Orders Need Action KPI and pill.
 5. Admin reviews order details: supplier response, player ID validity, balance status.
-6. Admin resolves it by **(a) retry or resend delivery** (same or different supplier), or **(b) compensation**: a store-credit voucher, restoring the checkout voucher, or a refund to a reseller's own wallet. No cash-refund action exists in the system yet: the published Refund Policy promises a refund to the original payment method on request, and that path is §16 item 129.
+6. Admin resolves it by **(a) retry or resend delivery** (same or different supplier), or **(b) compensation**: a store-credit voucher, restoring the checkout voucher, or a refund to a reseller's own wallet. No cash-refund action exists in the system, and none will be built (ADR-004 addendum, 2026-11-01); the published Refund Policy's old wording is §16 item 129.
 7. Customer notified of the outcome.
 
 ## 7.3 Supplier Price Sync
@@ -974,7 +974,7 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   (a) the company details are filled on prod (checked 2026-10-29): receipts print
   them, read live; (b) deactivate the `fixfastapp.com`
   test affiliate (Affiliates → FixFast Demo → Deactivate; its domain already
-  cannot take a payment, and item 129's switch-over lists it too); (c) the
+  cannot take a payment); (c) the
   browser checks not done: the "Save Limits", "Close account" and
   domain-approval submits with an MFA admin (covered by backend tests; the
   storefront notice, the admin Approve button and the affiliate portal badge were seen on prod; the first domain approval, 2026-10-30, failed with "The approved field is required", a double-encoded body fixed in #607 and released in #608; the approval then succeeded the same day, 07:53 UTC, for `ohahastore.com` and `www.ohahastore.com`); (d) **done: sent by the founder on 2026-10-29**; CHIP answered that it is checking the documents and that FPX and DuitNow QR may be used meanwhile (other methods still in review; recorded 2026-10-31). The reply carried attachments (portal screenshots from
@@ -986,14 +986,27 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   branded domain in the admin only after CHIP's written approval (`ohahastore.com`
   and its `www` were approved in the admin on 2026-10-30; CHIP's written approval is the founder's record outside the repo). The onboarding procedure, the written confirmations and
   any reseller documents live outside the repo (it is public). Extends items 24
-  and 104 (naming); item 129's choice is now due (FPX and DuitNow QR approved, recorded 2026-10-31).
-- **153** Open the reseller application (ADR-133, released 2026-11-01). The
-  founder reads the notice text, tries Admin → Applications → "Invite
-  directly" on a test address, then turns on "Public applications open".
-  When it is on: the docs-site's "Request access" (`introduction.md`) still
-  says to email `partners@pekangame.space` and should point to
-  `onboarding.pekangame.space/apply`; the founder also chooses whether the
-  portal login page and the storefront footer link to it.
+  and 104 (naming); item 129's choice is made (voucher-only, 2026-11-01).
+- **153** Open the reseller application (ADR-133, released 2026-11-01).
+  **Done by the founder 2026-11-01:** "Public applications open" is on. The
+  docs-site "Request access" now points to `onboarding.pekangame.space/apply`
+  (the `partners@pekangame.space` mailbox does not exist, so the `/apply`
+  closed-state message no longer names it); the storefront footer gets no
+  link (founder). Still open: whether the portal login page links to it, and
+  the PDPA contact in the two notices, which defaults to the same
+  `partners@pekangame.space` (`services.onboarding.privacy_contact`, env
+  `ONBOARDING_PRIVACY_CONTACT`): it must be an address that is read.
+- **129** Voucher-only refund policy. **Decided 2026-11-01 (founder):** no
+  refund to the original payment method for a storefront order, only retry or a
+  voucher; ADR-004 stays in force (its 2026-11-01 addendum). Owed by the
+  founder, no code: edit the published Refund Policy (Admin → Settings →
+  Footer → Refund Policy content, shown at `/refund-policy`) back to
+  voucher-only. Until that is saved the live page still promises a refund to
+  the original payment method within 7 working days. CHIP reviewed that page,
+  and its other payment methods are still in review, so tell CHIP if it asks.
+  Checked read-only on prod 2026-11-01: 14 orders paid since 2026-10-22, all
+  delivered, so no refund is owed under the old wording. Closes when the text
+  is saved. The test affiliate deactivation is in item 141(b).
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
   `/api/health`, the OpenWA gateway and `/api/health/whatsapp` (third monitor
   added and alert-tested by the founder 2026-10-14).
@@ -1001,14 +1014,8 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
 **D. Waiting on a trigger: don't build early**
 - **114** Joki MLBB (ADR-126), built and released 2026-10-25 (#554),
   switched off, Epic up only. Launch gates: CHIP payments (FPX and DuitNow
-  QR approved by CHIP, recorded 2026-10-31; other methods still in review), item 129, the rank icons and the rates plus
+  QR approved by CHIP, recorded 2026-10-31; other methods still in review), item 129 (policy text edit), the rank icons and the rates plus
   the Grading Express price (founder, with the penjoki).
-- **129** Refund to the original payment method, on hold until CHIP answers
-  (founder, 2026-10-23). The founder plans to go back to voucher-only once
-  CHIP approves. Before payments go live for real customers, either the
-  published policy is voucher-only again or this is built. **Now due:**
-  CHIP approved FPX and DuitNow QR (recorded 2026-10-31), so the
-  founder's choice between the two is the next step.
 - **139** FPX bank-down status on the bank grid (ADR-130 decision 9), only
   if real payments show customers failing at a down bank. Advisory and
   fail-open from `fpxstatus.chip-in.asia`'s JSON feed; never a hard
@@ -1343,7 +1350,7 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
     own wipe ceiling (joki 30 days). There is an Admin → Joki page and a
     Dashboard card, joki is out of "Need Action", and `/orders` gets a
     type filter. Five PRs (ADR-126 addendum, "Consequence to track").
-    Launch gates (item 131 is done): CHIP payments, item 129, rank icons
+    Launch gates (item 131 is done): CHIP payments, item 129 (policy text edit), rank icons
     from the founder, and rates confirmed with the penjoki.
     **PR 1 (decisions 17, 18, 20, 22) built 2026-10-23, merged to
     `staging` via #533.** PR 2 is split in two: **2a** (Fixed basis,
@@ -1399,31 +1406,6 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
     cache stays out unless measurement demands it: stale data on money
     screens is a real risk.
 
-129. **Refund to the original payment method (founder, 2026-10-22) —
-    revises ADR-004, needs its grill and a code-trace pass.** CHIP's
-    merchant review for LWF Group Sdn. Bhd. asked for a refund policy that
-    allows a refund to the original payment method when a paid order is not
-    delivered. The founder decided: after retries fail, the customer chooses
-    a store voucher for the full amount (immediate) or a full refund to the
-    original payment method within 7 working days. A delivered order is not
-    refundable. The policy text is admin content (`/refund-policy`, item
-    above in §15 Settings). Not designed yet: how a refund is done (CHIP's
-    refund API or its dashboard) and recorded so that nothing silently
-    disagrees: order and delivery state, the Transaction Register, CHIP
-    settlement reconciliation (ADR-110), the cash equation (ADR-083), Reports
-    and the order page. A money-critical ADR: grill plus the code-trace pass
-    (root AGENTS.md). **Due before** payment methods are switched on for the
-    new account; until then no refund can be owed. At that switch, also:
-    move the CHIP credentials in `/middleware` to LWF Group's account, and
-    deactivate the test affiliate on `fixfastapp.com` (the CHIP reply says it
-    will be off before payments go live).
-    **On hold (founder, 2026-10-23):** the refund wording was published for
-    CHIP's review, and the founder intends to change the policy back to
-    voucher-only once CHIP approves. So the trigger is CHIP's answer. If
-    the policy changes back, ADR-004 stays as it is and this item closes,
-    but an order paid while the refund wording was published may still be
-    owed a refund under it. If the policy stays, build this before payments
-    go live for real customers. The switch-over steps above apply either way.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-23, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
