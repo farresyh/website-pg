@@ -3009,3 +3009,11 @@ The next CI run failed `backend-concurrency` on `CheckoutSettleWithVoucherConcur
 
 **Not done.** FixFast is not marked internal in production (a data write, the founder's call). Next: PR 3 (the public application, KYC, retention), then PR 4 (`max_markup_pct`).
 
+
+## 2026-10-31 — Game ID Checker: OhahaStore's checker stuck, and a message when Turnstile fails (ADR-123)
+
+**Found.** `https://ohahastore.com/check-id/mobile-legends` stayed on "Verifying you're human…" with Check ID disabled; the browser console showed Turnstile error `110200` (hostname not allowed). The widget "PekanGame Game ID Checker" lists only `fixfastapp.com`, `pekangame.com`, `pekangame.space`. ADR-123 already says every new affiliate domain must be added to the widget; it was missed when OhahaStore went live.
+
+**Fix (two parts).** (1) Add `ohahastore.com` to the widget's hostnames in Cloudflare (a founder action; staged in the dashboard but not saved by Claude). (2) Code: `PlayerCheckClient` now shows "We couldn't verify you on this page. Please reload, or try again later." when Turnstile calls its error callback, instead of waiting forever; a later success clears it.
+
+**Verified.** Local storefront against a throwaway backend with one checker family, using Cloudflare's test site keys: the always-failing key shows the message with the button disabled (390 px); the always-passing key shows "Ready to check." and no message. Everything stopped and deleted afterwards.
