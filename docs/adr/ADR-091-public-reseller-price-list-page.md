@@ -1,6 +1,6 @@
 # ADR-091: Public Reseller Price List page — a sales/acquisition surface on `is_owned` storefronts, admin-selected tiers
 
-> **Standing (2026-11-01):** In force; decisions 5 and 9 are revised by the 2026-11-01 addendum (Proposed, not built). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-01):** In force; decisions 5 and 9 are revised by the 2026-11-01 addendum (Accepted, built, not released). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Context:**
 
@@ -40,7 +40,7 @@ Grilled over 3 rounds (`/mattpocock-skills:grilling`) plus a visual wireframe ar
 
 ### 2026-11-01 addendum: browse by game and region, an apply button, and a light "enabled" signal (revises decisions 5 and 9)
 
-> **Status: Proposed.** Design approved by the founder on 2026-11-01 against a local mockup (real prod prices, desktop and 390px). The grill and the money-free code trace below are done; build starts after the grill is cleared.
+> **Status: Accepted, built 2026-11-01 (on `staging` once its PR merges, not released).** Design approved by the founder against a local mockup; grilled the same day (answers recorded below). Build status: [`prd.md` §15](../prd.md), item 154.
 
 **Context:**
 
@@ -71,6 +71,16 @@ Grilled over 3 rounds (`/mattpocock-skills:grilling`) plus a visual wireframe ar
 **Consequence to track:**
 
 - Mockup: the founder-approved design lives outside the repo; the build must be compared against it at 390px and desktop with a live screenshot before it is called done (root `AGENTS.md`, step 6).
-- Production has no `family` yet: after the release the page shows every game as its own group until the admin fills the families. Fill Mobile Legends, Free Fire and Valorant first (about 21 games).
+- Production has no `family` yet: after the release the page shows every game as its own group until the founder fills the families (about 24 games, PRD item 154).
 - A future `games` column that is public-facing should ask the same "does this leak to `/price-list`?" question as `reseller_tiers` (see the consequence list above).
+
+**Grill answers (founder, 2026-11-01):** (1) no backfill migration: the founder fills Family and Region by hand in the admin, to learn the process; (2) the family and region names are the short ones in PRD item 154 ("Mobile Legends", "Free Fire", "Valorant", "Genshin Impact", "Honkai Star Rail", "Rainbow Six Mobile"; Genshin, HSR and Rainbow Six get region "Malaysia" so another region can be added later); (3) tile order is the games' own order, changed with Reorder Games on `/admin/games`, no code; (4) the few minutes in which `/price-list` can answer not-found between the backend deploy and the Vercel build are accepted, no dual-shape release.
+
+**Built (2026-11-01), where it differs from or adds to the text above:**
+
+- `UpdateGameRequest` normalises both fields (trim, single spaces, blank to null), reuses the spelling an existing game already has for the same family (ignoring case; a game's own family can still be re-cased), refuses a region without a family and a second game with the same `(family, region)`. Test: `Adr091GameFamilyTest` (14 tests) plus the updated `PublicResellerPriceListControllerTest`.
+- The admin modal's "Price List Family" field is two inputs; the family input is a native `<input list>` with a `<datalist>` of the families already in use (no new component), and a region typed without a family shows a warning before saving.
+- The table header sticks at `top-[70px]`, the measured height of the site header; if that header changes height, change it with it (comment in `PriceRows.tsx`).
+- Checked in a browser against a throwaway backend seeded with the 674 real rows (not production): desktop and 390px, choosing, region pills, sticky header, search, no-match message, no horizontal overflow, the apply link, and the admin modal's prefill, suggestions and warning.
+- Not measured: the CPU saved by the layout no longer parsing the full list (a conclusion from the code, as stated in decision 6).
 

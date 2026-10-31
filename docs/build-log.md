@@ -1486,3 +1486,11 @@ The founder asked whether the docs were current and free of contradictions. Read
 - **Decided with the founder (mockup reviewed locally, desktop and 390px):** browse by game then region; two nullable display columns `games.family` and `games.region_label` instead of a `game_families` table (promote only when a per-title SEO page or per-title reports need one); swipeable single rows on phones; instant search from 2 characters with `useDeferredValue`; the WhatsApp button becomes the application link (`apply_url` from `services.onboarding.url`).
 - **Not built.** ADR-091's 2026-11-01 addendum is Proposed; PRD §16 item 154 is the line. Grill and the build come next (backend migration and service, admin modal, storefront, tests).
 - **Corrections to what was said in chat:** Mobile Legends has 10 regions and about 360 rows (not 11 and 340).
+
+## 2026-11-01 — `/price-list` grouped by game and region built (ADR-091 addendum, PRD item 154)
+
+- **Built on `feature/price-list-game-region-picker`** (merged to `staging` by its PR, not released): migration `2026_11_01_130000` (`games.family`, `games.region_label`, both nullable), `UpdateGameRequest` grouping rules, `PublicResellerPriceListService` (grouped `groups[]`, `summary()`, `apply_url` from `services.onboarding.url`), `?summary=1` on the controller; storefront `ResellerPriceListBrowser` + `PriceRows`, `getResellerPriceListEnabled()` for the root layout and sitemap, the apply button; admin "Price List Family" field in `EditGameModal`.
+- **Founder decisions (grill):** fill Family and Region by hand (no backfill migration), the short names in PRD item 154, order by Reorder Games, accept the short deploy window.
+- **Checks:** backend `php artisan test` 3,385 passed; Pint clean on the changed files; storefront `tsc`, `eslint`, `build`; admin `tsc`, `lint`, `build`; a browser check on a throwaway sqlite backend with the 674 real prod rows (desktop and 390px, admin modal); servers stopped and the sqlite deleted afterwards. The local dev DB was migrated with plain `php artisan migrate`.
+- **Gotcha:** `git rm` of the only file in `components/price-list/` removed the folder, so the next heredoc writes there failed until `mkdir -p`.
+- **Owed by the founder after the release:** fill Family and Region for the 24 games (item 154, group C).
