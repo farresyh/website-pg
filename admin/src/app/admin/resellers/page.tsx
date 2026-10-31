@@ -51,7 +51,6 @@ import { ApiError } from "@/lib/api-client";
 import { notify } from "@/components/ui/toast";
 import {
   listResellers,
-  createReseller,
   createInternalReseller,
   updateReseller,
   updateResellerStatus,
@@ -72,6 +71,7 @@ import ReadinessCell from "@/components/partners/ReadinessCell";
 import ResellerWebhookModal from "@/components/resellers/ResellerWebhookModal";
 import ResellerWhatsAppGroupsModal from "@/components/resellers/ResellerWhatsAppGroupsModal";
 import ResellerPortalUsersModal from "@/components/resellers/ResellerPortalUsersModal";
+import InviteApplicantModal from "@/components/partner-applications/InviteApplicantModal";
 
 function formatRm(sen: number): string {
   return `RM ${(sen / 100).toFixed(2)}`;
@@ -91,6 +91,7 @@ export default function ResellersPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ResellerRow | null>(null);
   const [internalForm, setInternalForm] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [tierFormOpen, setTierFormOpen] = useState(false);
   const [editingTier, setEditingTier] = useState<ResellerTier | null>(null);
   const [statusTarget, setStatusTarget] = useState<ResellerRow | null>(null);
@@ -146,12 +147,9 @@ export default function ResellersPage() {
       reseller_tier_id: values.reseller_tier_id,
       notes: values.notes,
     };
-    if (internalForm) {
-      await createInternalReseller({ ...create, reason: values.reason ?? "" });
-    } else {
-      await createReseller(create);
-    }
-    notify.success(internalForm ? "Internal account created, invite sent" : "Reseller created, invite sent");
+    // ADR-133 2026-11-01: a real reseller comes from an application (Invite directly); this form only makes internal accounts.
+    await createInternalReseller({ ...create, reason: values.reason ?? "" });
+    notify.success("Internal account created, invite sent");
     setFormOpen(false);
     setInternalForm(false);
     await refresh();
@@ -194,9 +192,9 @@ export default function ResellersPage() {
           <Button variant="outlined" onClick={() => { setEditing(null); setInternalForm(true); setFormOpen(true); }}>
             Create internal account
           </Button>
-          <Button onClick={() => { setEditing(null); setInternalForm(false); setFormOpen(true); }}>
+          <Button onClick={() => setInviteOpen(true)}>
             <PlusIcon />
-            Add Reseller
+            Invite directly
           </Button>
         </div>
       </div>
@@ -228,7 +226,9 @@ export default function ResellersPage() {
                         <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
                           {r.business_name}
                           {r.contact_name && <p className="text-theme-xs font-normal text-gray-500 dark:text-gray-400">{r.contact_name}</p>}
-                          {r.kyc === "none" ? (
+                          {r.kyc === "on_file" ? (
+                            <p className="text-theme-xs font-normal text-success-600 dark:text-success-400">KYC on file</p>
+                          ) : r.kyc === "none" ? (
                             <span title={r.internal_reason ?? undefined}>
                               <Tag severity="warn" className="mt-1">Internal · No KYC on file</Tag>
                             </span>
@@ -428,6 +428,16 @@ export default function ResellersPage() {
         editing={editing}
         tiers={tiers}
         internal={internalForm}
+      />
+
+      <InviteApplicantModal
+        isOpen={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        onInvited={(application) => {
+          setInviteOpen(false);
+          notify.success(`Invite sent to ${application.email}`);
+          router.push(`/admin/applications?application=${application.id}`);
+        }}
       />
 
       <ResellerTierFormModal

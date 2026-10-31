@@ -14,6 +14,7 @@ import { Cog as SettingsIcon } from "@primeicons/react/cog";
 import { ChartLine as ChartLineIcon } from "@primeicons/react/chart-line";
 import { ArrowCircleUp as TrendUpIcon } from "@primeicons/react/arrow-circle-up";
 import { Tag as TagIcon } from "@primeicons/react/tag";
+import { File as FileIcon } from "@primeicons/react/file";
 import { Wallet as WalletIcon } from "@primeicons/react/wallet";
 
 /**
@@ -80,6 +81,8 @@ const sections: PanelNavSection[] = [
     title: "Partners",
     items: [
       { kind: "link", name: "Resellers", href: "/admin/resellers", icon: <DollarLineIcon /> },
+      // ADR-133 decision 6: the public reseller application with KYC.
+      { kind: "link", name: "Applications", href: "/admin/applications", icon: <FileIcon /> },
       { kind: "link", name: "Affiliates", href: "/admin/affiliates", icon: <UserCircleIcon /> },
       // ADR-125 decision 60: manual suppliers as partners (WhatsApp group, SLA, on/off).
       { kind: "link", name: "Suppliers", href: "/admin/suppliers", icon: <BoxLineIcon /> },

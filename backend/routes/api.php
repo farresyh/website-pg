@@ -947,7 +947,8 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
 
         Route::prefix('resellers')->group(function () {
             Route::get('/', [ResellerController::class, 'index']);
-            Route::post('/', [ResellerController::class, 'store']);
+            // ADR-133 2026-11-01: a real reseller comes from an application (Invite directly or the
+            // public form); the plain create was removed. Test accounts use /internal.
             Route::post('/internal', [ResellerController::class, 'storeInternal'])->middleware('mfa.stepup');
             Route::get('/{reseller}', [ResellerController::class, 'show']);
             Route::put('/{reseller}', [ResellerController::class, 'update']);
