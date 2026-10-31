@@ -94,3 +94,16 @@ Facts the design rests on (read from code, 2026-10-31): the existing sandbox ([A
 - **The plain "Add Reseller" stays until PR 3,** now with the tier and the login required, because a real reseller in onboarding needs an account before the public application exists; their documents are collected outside the system. PR 3 decides whether it becomes "Invite directly".
 - **Existing accounts are not marked.** FixFast (the account given to CHIP) shows "KYC outside the system" until someone sets its reason; that is a production data write, for the founder to approve.
 
+### 2026-10-31 addendum — the founder's document list, the retention period, storage and the widget hostname
+
+Decided with the founder on 2026-10-31; revises decisions 8 and 9 and closes four "owed" items.
+
+- **Documents (revises decision 8).** The applicant says at stage 1 whether they apply as a **company** (registered with SSM) or an **individual** (not registered yet). An individual is now accepted: some resellers start before they register.
+  - Company: the SSM certificate; the business address (typed in the form, no proof document, since the SSM certificate already shows the registered address); the owner's name, address, phone and email; a bank statement for one or two months (transaction lines may be redacted); the tax identification number, **optional**. No identity card is asked of a company's owner.
+  - Individual: the identity card (front and back); the owner's name, address, phone and email; the bank statement; the tax identification number, optional.
+  - Dropped from the first list: the proof of business address document and the required tax number.
+- **Retention (revises decision 9, closes the owed post-closure period).** A declined application's rows and files are deleted 90 days after it was declined (unchanged). An approved reseller's documents and application data are deleted **90 days after the account is closed**. The ledger, orders, top-ups and receipts are never deleted by this; only the application and its documents. The same scheduled command does both, and the PDPA notices state both periods.
+- **Storage (closes the bucket check).** The platform's file storage is Cloudflare R2, not the Forge box. Documents go to a **new private bucket `pekangame-kyc`** in Asia-Pacific (APAC), with its own scoped token and its own disk (`r2_kyc`, the `r2_accounting` shape: no `url`, `throw` on), never a shared bucket, so a leaked token for one bucket cannot expose another. The founder creates the bucket and the token (a credential); local development uses the private local disk. The cross-border note in decision 10 names Cloudflare R2 (APAC).
+- **Turnstile hostname (closes the owed widget item).** The widget "PekanGame Game ID Checker" lists `pekangame.space`, and a widget hostname covers its subdomains (Cloudflare's documentation), so `onboarding.pekangame.space` needs no new entry. PR 3's browser check proves it on the real host.
+- **Still owed:** a lawyer's review of both bilingual notices (they now say individuals may apply and give the two 90-day periods); the `pekangame-kyc` bucket and its token; whether CHIP receives copies of the documents.
+
