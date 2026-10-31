@@ -6,6 +6,7 @@ use App\Models\LedgerEntry;
 use App\Models\PaymentMethod;
 use App\Models\PlatformSettings;
 use App\Models\Reseller;
+use App\Models\ResellerTier;
 use App\Models\WalletTopupAttempt;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
@@ -36,7 +37,7 @@ class PurchaseBalanceLimitsTest extends TestCase
 
     private function reseller(?int $capSen = null): Reseller
     {
-        $reseller = Reseller::query()->create(['business_name' => 'Limits Reseller', 'is_active' => true, 'balance_cap_sen' => $capSen]);
+        $reseller = Reseller::query()->create(['business_name' => 'Limits Reseller', 'is_active' => true, 'balance_cap_sen' => $capSen, 'reseller_tier_id' => ResellerTier::query()->create(['name' => 'Gold', 'markup_percent' => 5, 'is_active' => true, 'sort_order' => 1])->id]);
         app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
 
         return $reseller;

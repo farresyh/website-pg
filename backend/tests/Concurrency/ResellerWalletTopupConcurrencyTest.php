@@ -2,8 +2,10 @@
 
 namespace Tests\Concurrency;
 
+use App\Models\AdminUser;
 use App\Models\PaymentMethod;
 use App\Models\Reseller;
+use App\Models\ResellerTier;
 use App\Models\WalletTopupAttempt;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
@@ -35,7 +37,7 @@ class ResellerWalletTopupConcurrencyTest extends TestCase
             'is_active' => true, 'percentage_rate' => 0.0, 'flat_fee_sen' => 100,
         ]);
 
-        $reseller = Reseller::query()->create(['business_name' => 'Race Test Reseller', 'is_active' => true]);
+        $reseller = Reseller::query()->create(['business_name' => 'Race Test Reseller', 'is_active' => true, 'reseller_tier_id' => ResellerTier::query()->create(['name' => 'Gold', 'markup_percent' => 5, 'is_active' => true, 'sort_order' => 1])->id]);
         app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
 
         $resultFileA = tempnam(sys_get_temp_dir(), 'wallet_topup_test_');
@@ -92,8 +94,8 @@ class ResellerWalletTopupConcurrencyTest extends TestCase
             'channel_code' => 'fpx', 'label' => 'FPX', 'category' => 'fpx', 'gateway' => 'chip',
             'is_active' => true, 'percentage_rate' => 0.0, 'flat_fee_sen' => 100,
         ]);
-        $admin = \App\Models\AdminUser::factory()->superAdmin()->create();
-        $reseller = Reseller::query()->create(['business_name' => 'Cap Race', 'is_active' => true, 'balance_cap_sen' => 300_000]);
+        $admin = AdminUser::factory()->superAdmin()->create();
+        $reseller = Reseller::query()->create(['business_name' => 'Cap Race', 'is_active' => true, 'balance_cap_sen' => 300_000, 'reseller_tier_id' => ResellerTier::query()->create(['name' => 'Gold', 'markup_percent' => 5, 'is_active' => true, 'sort_order' => 1])->id]);
         app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
 
         $files = [tempnam(sys_get_temp_dir(), 'cap_race_'), tempnam(sys_get_temp_dir(), 'cap_race_')];

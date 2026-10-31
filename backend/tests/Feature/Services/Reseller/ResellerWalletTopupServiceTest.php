@@ -4,6 +4,7 @@ namespace Tests\Feature\Services\Reseller;
 
 use App\Models\PaymentMethod;
 use App\Models\Reseller;
+use App\Models\ResellerTier;
 use App\Models\WalletTopupAttempt;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
@@ -12,7 +13,9 @@ use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use App\Services\Reseller\InvalidWalletTopupAmountException;
+use App\Services\Reseller\NoResellerTierAssignedException;
 use App\Services\Reseller\PendingWalletTopupAlreadyExistsException;
+use App\Services\Reseller\ResellerWalletService;
 use App\Services\Reseller\ResellerWalletTopupService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use App\Services\Reseller\WalletTopupCheckoutFailedException;
@@ -34,9 +37,12 @@ class ResellerWalletTopupServiceTest extends TestCase
         $this->activeFpx();
     }
 
-    private function reseller(): Reseller
+    private function reseller(bool $withTier = true): Reseller
     {
-        $reseller = Reseller::query()->create(['business_name' => 'Wallet Reseller', 'is_active' => true]);
+        $tierId = $withTier
+            ? ResellerTier::query()->create(['name' => 'Gold', 'markup_percent' => 5, 'is_active' => true, 'sort_order' => 1])->id
+            : null;
+        $reseller = Reseller::query()->create(['business_name' => 'Wallet Reseller', 'is_active' => true, 'reseller_tier_id' => $tierId]);
         app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
 
         return $reseller;
@@ -147,5 +153,33 @@ class ResellerWalletTopupServiceTest extends TestCase
         } finally {
             $this->assertSame(WalletTopupAttemptStatus::Failed, WalletTopupAttempt::query()->firstOrFail()->status);
         }
+    }
+
+    /** ADR-133 decision 20: a reseller with no tier cannot order, so it cannot fund the account either. */
+    public function test_initiate_refuses_a_reseller_with_no_tier_before_any_gateway_call(): void
+    {
+        $this->bindGateway();
+        $reseller = $this->reseller(withTier: false);
+
+        try {
+            app(ResellerWalletTopupService::class)->initiate($reseller, 5000, 'fpx', []);
+            $this->fail('A tier-less reseller started a top-up.');
+        } catch (NoResellerTierAssignedException) {
+            $this->assertSame(0, WalletTopupAttempt::query()->count());
+        }
+    }
+
+    /** ADR-133 decision 20: the guard is at the start only; a top-up already paid always credits. */
+    public function test_a_pending_top_up_still_credits_after_the_tier_is_removed(): void
+    {
+        $this->bindGateway();
+        $reseller = $this->reseller();
+        $attempt = app(ResellerWalletTopupService::class)->initiate($reseller, 5000, 'fpx', []);
+
+        Reseller::query()->whereKey($reseller->id)->update(['reseller_tier_id' => null]);
+        app(ResellerWalletService::class)->completeTopup($attempt->fresh(), 100);
+
+        $this->assertSame(WalletTopupAttemptStatus::Paid, $attempt->fresh()->status);
+        $this->assertSame(5000, app(ResellerWalletService::class)->balance($reseller->fresh()));
     }
 }
