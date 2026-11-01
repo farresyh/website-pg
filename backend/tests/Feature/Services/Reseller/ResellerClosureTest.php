@@ -232,6 +232,8 @@ class ResellerClosureTest extends TestCase
     public function test_a_day_earlier_this_month_is_accepted_and_recorded(): void
     {
         $this->travelTo(now('Asia/Kuala_Lumpur')->startOfMonth()->addDays(10)->setTime(12, 0));
+        // The step-up from setUp is on the real clock; before the 11th the jump above is forward and expires it.
+        $this->actingAsSteppedUp($this->admin);
         $reseller = $this->funded(1_000);
         $day = now('Asia/Kuala_Lumpur')->subDays(3)->toDateString();
 
