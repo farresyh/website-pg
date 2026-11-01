@@ -61,7 +61,10 @@ Laravel-specific, loaded only when working inside `backend/`.
   email, never a direct `OpenWaClient` call. It owns scope, the master
   switch, opt-in, de-duplication (`customer_notifications.dedupe_key`),
   per-brand wording and pacing (the one-worker `whatsapp` lane). A new
-  customer-facing event is a new method there. Compare or send a phone
+  customer-facing event is a new method there. A recipient is a
+  `WhatsAppRecipient`: a phone, or the `@lid` chat when WhatsApp hides the
+  number (ADR-116 2026-11-01 addendum); receipt-class recipients come only
+  from `receiptRecipients()`. Compare or send a phone
   number only through `App\Support\PhoneNumber`, since stored
   `customer_phone` is raw customer input and is never rewritten. The one
   email exception is membership (OTP, receipt, renewal reminder): a member
