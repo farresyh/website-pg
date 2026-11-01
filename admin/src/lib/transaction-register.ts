@@ -40,6 +40,8 @@ export interface TransactionRegisterRow {
   gross_sen: number | null;
   fee_sen: number | null;
   cost_sen: number | null;
+  /** ADR-134 decision 13: the rate cost_sen is at; null on a row with no order cost. */
+  cost_rate?: "market" | "landed" | null;
   net_sen: number | null;
   amount_foreign: string | null;
   status: "active" | "voided";

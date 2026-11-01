@@ -172,14 +172,13 @@ final class FundedCostOfSales
     public function valuer(Collection $rows, string $lastDay): SupplierRowValuer
     {
         $supplierIds = $rows->pluck('supplier_id')->map(fn ($id) => (int) $id)->unique()->values();
-        // Up to the day before the pool opens, the cumulative average; from it, the pool (2026-10-25 addendum).
+        // Up to the day before the pool opens, the cumulative average; from it, the pool (2026-10-25 addendum), for every prepaid supplier (ADR-134 decision 3).
         $rateDay = min($lastDay, MovingAveragePool::OPENING_DAY);
-        $currencies = Supplier::query()->whereIn('id', $supplierIds)->pluck('currency', 'id');
+        $pooled = Supplier::query()->whereIn('id', $supplierIds)->pooled()->pluck('id')->all();
 
         return new SupplierRowValuer(
             rates: $supplierIds->mapWithKeys(fn (int $id) => [$id => $this->weightedAverageRate($id, $rateDay)])->all(),
-            pools: $supplierIds->reject(fn (int $id) => $currencies[$id] === 'MYR')
-                ->mapWithKeys(fn (int $id) => [$id => MovingAveragePool::replay($id, $this)])->all(),
+            pools: collect($pooled)->mapWithKeys(fn (int $id) => [$id => MovingAveragePool::replay($id, $this)])->all(),
         );
     }
 }

@@ -169,7 +169,7 @@ final class ReportService
         // ->count()); the latest-order row can't fold into a GROUP-less
         // aggregate, so it stays its own query — two, down from three.
         $totals = $this->scopedOrders($from, $toExclusive, $affiliateId)
-            ->selectRaw('COALESCE(SUM('.Order::netSalesSql().'), 0) as total_sales, COUNT(*) as orders_count')
+            ->selectRaw('COALESCE(SUM('.Order::netSalesSql().'), 0) as total_sales, COUNT(*) as orders_count, COALESCE(SUM(CASE WHEN cost_rate = ? THEN 1 ELSE 0 END), 0) as market_rate_orders', [Order::COST_RATE_MARKET])
             ->first();
         $totalSales = (int) $totals->total_sales;
         $ordersCount = (int) $totals->orders_count;
@@ -186,6 +186,8 @@ final class ReportService
             'platform_profit' => $profit['platform'],
             'affiliate_profit' => $profit['affiliate'],
             'margin_pct' => $totalSales > 0 ? round($profit['platform'] / $totalSales * 100, 2) : 0.0,
+            // ADR-134 decision 13: orders whose profit rests on the market mid-rate, not the deposit's landed cost; the page says so when any are in range.
+            'market_rate_orders' => (int) $totals->market_rate_orders,
             'avg_order_value' => $ordersCount > 0 ? (int) round($totalSales / $ordersCount) : 0,
             'latest_order' => $latest ? [
                 'id' => $latest->id,

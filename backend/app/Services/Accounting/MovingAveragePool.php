@@ -8,12 +8,14 @@ use App\Support\MalaysiaTime;
 use Illuminate\Support\Carbon;
 
 /**
- * ADR-083 2026-10-25 addendum (§16 item 132): a foreign-currency
- * supplier's deposits as a moving (perpetual) weighted average, IAS 2 /
- * MPERS 13. The pool holds the units left and their ringgit cost in sen:
- * a deposit adds its net units and its `amount_myr_sent`, and any other
- * row takes `round(pool_sen × units ÷ pool_units)`, so Σ costs taken +
- * the pool = Σ ringgit sent, to the sen.
+ * ADR-083 2026-10-25 addendum (§16 item 132): a prepaid supplier's
+ * deposits as a moving (perpetual) weighted average, IAS 2 / MPERS 13. The
+ * pool holds the units left and their ringgit cost in sen: a deposit adds
+ * its net units and its `amount_myr_sent + fee_myr` (ADR-134 decision 3),
+ * and any other row takes `round(units × average)` at the average set by
+ * the last deposit or adjustment (ADR-134 decision 2), so Σ costs taken +
+ * the pool = Σ ringgit sent, to the sen, and a drawdown costs exactly what
+ * `LandedCostRate` charged its order at delivery.
  *
  * Replayed on every read, never stored, so a transfer recorded late,
  * corrected or voided in an open month re-costs only open months
@@ -29,12 +31,20 @@ final class MovingAveragePool
 
     /**
      * @param  array<int, int|null>  $costs  ledger entry id => signed sen (null: no average to value it by yet)
+     * @param  ?float  $average  sen per unit set by the last deposit or adjustment; null before any (ADR-134 decision 2)
      */
     private function __construct(
         public readonly array $costs,
         public readonly float $units,
         public readonly int $sen,
+        public readonly ?float $average,
     ) {}
+
+    /** One unit count at an average, the same rounding for the pool and for an order's landed cost. */
+    public static function costAt(float $units, float $average): int
+    {
+        return (int) round($units * $average);
+    }
 
     public static function opensAt(): Carbon
     {
@@ -55,11 +65,12 @@ final class MovingAveragePool
             ->where('supplier_id', $supplierId)
             ->where('type', '!=', SupplierLedgerEntryType::Topup->value)
             ->whereNot(fn ($q) => $q->where('reference_type', 'supplier_transfer')->whereIn('reference_id', $voided))
-            ->get(['id', 'amount', 'created_at']);
+            ->get(['id', 'type', 'amount', 'created_at']);
 
         $events = [
-            ...$transfers->whereNull('voided_at')->map(fn (SupplierTransfer $t) => [$dayStart($t), 0, $t->id, (float) $t->netForeignReceived(), (int) $t->amount_myr_sent])->all(),
-            ...$rows->map(fn (SupplierLedgerEntry $r) => [$r->created_at, 1, $r->id, (float) $r->amount, null])->all(),
+            // From the opening a deposit carries its transfer fee: it is unit cost (ADR-134 decision 3). Before it, only the opening's units count.
+            ...$transfers->whereNull('voided_at')->map(fn (SupplierTransfer $t) => [$dayStart($t), 0, $t->id, (float) $t->netForeignReceived(), (int) $t->amount_myr_sent + (int) $t->fee_myr])->all(),
+            ...$rows->map(fn (SupplierLedgerEntry $r) => [$r->created_at, 1, $r->id, (float) $r->amount, $r->type === SupplierLedgerEntryType::OrderDrawdown->value])->all(),
         ];
         if ($until !== null) {
             $events = array_filter($events, fn (array $e) => $e[0] < $until);
@@ -74,27 +85,28 @@ final class MovingAveragePool
         $average = $rate === null ? null : $rate * 100;   // sen per unit
 
         $costs = [];
-        foreach ($events as [$at, $kind, $id, $amount, $myrSen]) {
+        foreach ($events as [$at, $kind, $id, $amount, $extra]) {
             if ($at < $opensAt) {
                 continue;
             }
 
             if ($kind === 0) {
                 $units += $amount;
-                $sen += $myrSen;
+                $sen += $extra;
             } else {
-                // An empty or negative pool takes the last known average (decision 6).
-                $cost = $units > 0 ? (int) round($sen * $amount / $units) : ($average === null ? null : (int) round($amount * $average));
+                // Every row takes units at the last set average, so an empty or negative pool needs no special case (decision 6).
+                $cost = $average === null ? null : self::costAt($amount, $average);
                 $costs[$id] = $cost;
                 $units += $amount;
                 $sen += $cost ?? 0;
             }
 
-            if ($units > 0) {
+            // Only a deposit or an adjustment sets the average; a drawdown's rounding stays in the pool until the next one (ADR-134 decision 2).
+            if (($kind === 0 || ! $extra) && $units > 0) {
                 $average = $sen / $units;
             }
         }
 
-        return new self($costs, $units, $sen);
+        return new self($costs, $units, $sen, $average);
     }
 }

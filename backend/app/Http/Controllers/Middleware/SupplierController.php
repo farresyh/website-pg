@@ -141,6 +141,12 @@ class SupplierController extends Controller
             throw ValidationException::withMessages(['currency' => ['A manual supplier is paid in MYR.']]);
         }
 
+        // ADR-134 decision 17: deposits and packages are counted in this currency; changing it would mix units in one pool.
+        if (array_key_exists('currency', $data) && $data['currency'] !== $supplier->currency
+            && ($supplier->transfers()->exists() || $supplier->packages()->exists())) {
+            throw ValidationException::withMessages(['currency' => ['This supplier already has transfers or packages in '.$supplier->currency.'; its currency can no longer change.']]);
+        }
+
         if ($configChanged) {
             $data['api_config'] = SupplierConfigSchema::normalizeConfig(
                 $supplier->driver,

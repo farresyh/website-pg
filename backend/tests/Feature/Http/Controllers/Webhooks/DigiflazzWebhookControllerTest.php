@@ -8,12 +8,12 @@ use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
 use App\Models\Package;
 use App\Models\Supplier;
+use App\Models\SupplierTransfer;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Supplier\SupplierOutcome;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -119,8 +119,9 @@ class DigiflazzWebhookControllerTest extends TestCase
 
     public function test_a_signed_sukses_callback_finalizes_the_pending_order_as_delivered(): void
     {
-        Http::fake(['open.er-api.com/*' => Http::response(['result' => 'success', 'rates' => ['MYR' => 0.000228]], 200)]);
         $order = $this->pendingOrder();
+        // ADR-134: the real cost is at what the deposit cost, 0.0239 sen a rupiah.
+        SupplierTransfer::query()->create(['transferred_on' => '2026-10-10', 'supplier_id' => $order->supplier_id, 'source_channel' => 'bank', 'amount_myr_sent' => 23900, 'fee_myr' => 0, 'currency' => 'IDR', 'amount_foreign_received' => '1000000']);
 
         $this->sendWebhook($this->suksesData($order))
             ->assertOk()
@@ -135,7 +136,8 @@ class DigiflazzWebhookControllerTest extends TestCase
         // (ADR-111), and platform profit is the residual against it.
         $this->assertSame('Sukses', $order->supplier_response['status']);
         $this->assertSame('SN-999888', $order->supplier_response['sn']);
-        $this->assertNotNull($order->real_cost_price_sen);
+        $this->assertSame(108, $order->real_cost_price_sen);   // Rp4,500 × 0.0239 = 107.55, half-up like the pool
+        $this->assertSame(Order::COST_RATE_LANDED, $order->cost_rate);
         $this->assertSame(1000 - $order->real_cost_price_sen, $order->platform_profit);
 
         $this->assertDatabaseHas('ledger_entries', [

@@ -956,6 +956,8 @@ class OrderController extends Controller
             // equals Platform Profit.
             'effective_cost_price' => $order->effectiveCostPriceSen(),
             'cost_basis' => $order->costBasis(),
+            // ADR-134 decision 13: the rate that cost is at — `market` (before ADR-134) or `landed` (what the deposit cost).
+            'cost_rate' => $order->cost_rate,
             // ADR-126 decisions 10, 16: the Joki card — what was bought, who
             // has it, every Assign and progress update, and the rank model
             // for the progress picker.

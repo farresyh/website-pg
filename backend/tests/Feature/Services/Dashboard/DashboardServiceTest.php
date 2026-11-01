@@ -10,10 +10,11 @@ use App\Models\PaymentMethod;
 use App\Models\Review;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
+use App\Models\SupplierTransfer;
 use App\Models\Withdrawal;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\CircuitBreaker\CircuitBreaker;
-use App\Services\Currency\CurrencyRateService;
+use App\Services\Currency\LandedCostRate;
 use App\Services\Dashboard\DashboardService;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\OpenWa\OpenWaSessionStatus;
@@ -42,7 +43,7 @@ class DashboardServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->dashboard = new DashboardService(new OpenWaSessionStatus, new CurrencyRateService, new SchedulerLiveness);
+        $this->dashboard = new DashboardService(new OpenWaSessionStatus, app(LandedCostRate::class), new SchedulerLiveness);
     }
 
     /**
@@ -138,15 +139,16 @@ class DashboardServiceTest extends TestCase
         $this->assertSame(250.5, $row['balance_myr_equivalent']);
     }
 
-    /** A foreign-currency supplier's equivalent goes through CurrencyRateService — real conversion, not a hardcoded RM label. */
+    /** ADR-134 decision 15: a foreign-currency balance is valued at what its deposit cost (the landed rate), not the market rate. */
     public function test_health_myr_equivalent_converts_a_foreign_currency_balance(): void
     {
         Http::fake(['open.er-api.com/*' => Http::response(['result' => 'success', 'rates' => ['MYR' => 0.000231]], 200)]);
-        Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz-'.uniqid(), 'currency' => 'IDR', 'balance' => 832672, 'api_config' => []]);
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz-'.uniqid(), 'currency' => 'IDR', 'balance' => 832672, 'api_config' => []]);
+        SupplierTransfer::query()->create(['transferred_on' => '2026-10-10', 'supplier_id' => $supplier->id, 'source_channel' => 'bank', 'amount_myr_sent' => 23900, 'fee_myr' => 0, 'currency' => 'IDR', 'amount_foreign_received' => '1000000']);
 
         $row = collect($this->dashboard->health()['suppliers'])->firstWhere('name', 'Digiflazz');
 
-        $this->assertSame(round(832672 * 0.000231, 2), $row['balance_myr_equivalent']);
+        $this->assertSame(round(832672 * 0.000239, 2), $row['balance_myr_equivalent']);
     }
 
     /** No live rate and nothing ever cached — never breaks the whole 60s-polled endpoint, just this one field. */

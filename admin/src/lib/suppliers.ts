@@ -84,6 +84,10 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     // ADR-015 2026-10-17 addendum: email admins when this supplier's prices
     // haven't synced for this many minutes. Blank = 90, 0 = off.
     { key: "price_sync_stale_alert_minutes", label: "Price-sync Stale Alert (minutes)", type: "text", placeholder: "90 (blank = 90; 0 = no alert)" },
+    // ADR-134 decision 16: a recorded transfer whose rate sits outside this band against that day's
+    // market rate must be confirmed before it saves (it prices the whole catalogue). Blank = −2 / +12.
+    { key: "transfer_spread_min_pct", label: "Transfer Spread Min %", type: "text", placeholder: "-2 (blank = -2)" },
+    { key: "transfer_spread_max_pct", label: "Transfer Spread Max %", type: "text", placeholder: "12 (blank = 12)" },
   ],
   digiflazz: [
     { key: "base_url", label: "Base URL", type: "text", placeholder: "https://api.digiflazz.com (no trailing slash)" },
@@ -107,6 +111,10 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     // ADR-015 2026-10-17 addendum: email admins when this supplier's prices
     // haven't synced for this many minutes. Blank = 90, 0 = off.
     { key: "price_sync_stale_alert_minutes", label: "Price-sync Stale Alert (minutes)", type: "text", placeholder: "90 (blank = 90; 0 = no alert)" },
+    // ADR-134 decision 16: a recorded transfer whose rate sits outside this band against that day's
+    // market rate must be confirmed before it saves (it prices the whole catalogue). Blank = −2 / +12.
+    { key: "transfer_spread_min_pct", label: "Transfer Spread Min %", type: "text", placeholder: "-2 (blank = -2)" },
+    { key: "transfer_spread_max_pct", label: "Transfer Spread Max %", type: "text", placeholder: "12 (blank = 12)" },
   ],
 };
 

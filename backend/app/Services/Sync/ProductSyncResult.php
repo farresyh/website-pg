@@ -17,9 +17,10 @@ use Illuminate\Support\Carbon;
 final class ProductSyncResult
 {
     /**
-     * @param  array{from: string, to: string, rate: float}|null  $fxRateUsed  ADR-033 addendum: null for a MYR
-     *                                                                         supplier (no conversion happened); the exact rate this run converted every non-MYR price with
-     *                                                                         otherwise — folded into PriceSyncRun.stats.fx_rates_used for the Price Sync Center's own display.
+     * @param  array{from: string, to: string, rate: float, source: string, market_rate: ?float, spread_pct: ?float}|null  $fxRateUsed
+     *                                                                                                                                  ADR-033 addendum, ADR-134 decision 15: null for an MYR supplier at face value; otherwise the
+     *                                                                                                                                  landed rate this run priced every item at, with the market rate and spread beside it —
+     *                                                                                                                                  folded into PriceSyncRun.stats.fx_rates_used for the Price Sync Center's own display.
      */
     public function __construct(
         public readonly int $total,

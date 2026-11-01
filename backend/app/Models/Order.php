@@ -29,6 +29,11 @@ class Order extends Model
     /** @use HasFactory<OrderFactory> */
     use HasFactory;
 
+    /** ADR-134 decision 13: what this order's cost and profit rest on — the market mid-rate (orders before ADR-134) or the deposit's landed cost. */
+    public const COST_RATE_MARKET = 'market';
+
+    public const COST_RATE_LANDED = 'landed';
+
     /** A declared property, so Eloquent's __set never turns it into a column. */
     private ?bool $isLoginOrderCache = null;
 
@@ -66,6 +71,7 @@ class Order extends Model
         'platform_profit',
         'affiliate_profit',
         'real_cost_price_sen',
+        'cost_rate',
         'profit_reconciled_flagged',
         'payment_status',
         'paid_at',
