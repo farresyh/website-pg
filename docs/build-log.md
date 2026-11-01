@@ -1545,3 +1545,8 @@ The founder asked whether the docs were current and free of contradictions. Read
 - **Tests:** `ChipUnsettledFeeTest` (fails on the old code: RM3 estimate), a `FinancialScenarioTest` for a ledger-fixing correction, DuitNow gross-up cases from the seven production settlements; full backend suite 3,409 passed; admin `tsc`, `lint`, `npm test`.
 - **Expected at the October close after release:** the bank accounts together on 31 Oct ≈ RM24,529.44 (cash-flow walk); the equation then shows ≈ −RM10.98, which is September's already-noted cutover gap (RM10.94, close #3) plus the 2 sen November gain/loss.
 - **Founder actions checked read-only on prod (2026-11-01, before merge):** CHIP settlement file uploaded (settlement #7, 13:25 MYT, matched; covers the payments paid out 31 Oct and 1 Nov); Digiflazz `drift_threshold` = 50000; Family/Region set on 21 active games (item 154 closed). October is not closed yet: close it only after this PR is released.
+
+## 2026-11-01 — Release #645 (month close CHIP fee)
+
+- **Released** `staging`→`main` at the founder's request: PR #645, merge `00d18b3a`, box release `81777464`, no migration. Ships #643 (docs) and #644 (month close CHIP fee, profit bridge, DuitNow gross-up). CI and `deploy` green; `/api/health` answered 503 for a few seconds while Horizon restarted, then all true.
+- **Next (founder):** close October on the Monthly Summary; tell resellers about the ~6.8% price rise.
