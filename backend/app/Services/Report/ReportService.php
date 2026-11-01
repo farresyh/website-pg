@@ -72,8 +72,11 @@ final class ReportService
      *   + affiliate_tier_fees + voucher_breakage − admin_issued_vouchers
      *   + supplier_manual_adjustments
      *   − cogs_funding_difference (funded cost above the order's own cost)
-     *   − manual_profit_corrections (ledger corrections, both sides: in owner
-     *     profit and commission, not in the accounts' revenue and cost)
+     *   + ledger_vs_order_figures (the accounts' order margin — revenue less
+     *     each order's cost and the affiliate commission — less owner profit;
+     *     0 unless the ledger and the orders' own figures disagree. Was the
+     *     sum of manual corrections, which double-counted a correction that
+     *     brought the ledger back to the order: 10 sen on order 15, 2026-11-01)
      *   = operating_profit + unexplained_difference
      *
      * `unexplained_difference` must be 0 and is always returned. An open
@@ -86,15 +89,6 @@ final class ReportService
         $lines = app(MonthlyAccountingSummaryService::class)->profitLines(Carbon::instance($from), Carbon::instance($toExclusive));
         $ownerProfit = $this->profitTotals($from, $toExclusive, null)['platform'];
 
-        $corrections = (int) LedgerEntry::query()
-            ->join('orders', fn ($join) => $join->on('orders.id', '=', 'ledger_entries.reference_id')->where('ledger_entries.reference_type', '=', 'order'))
-            ->where('ledger_entries.type', 'order_profit')
-            ->whereNotNull('ledger_entries.reason')
-            ->where('orders.is_test', false)
-            ->where('ledger_entries.created_at', '>=', $from)
-            ->where('ledger_entries.created_at', '<', $toExclusive)
-            ->sum('ledger_entries.amount');
-
         $rows = [
             'owner_profit' => $ownerProfit,
             'membership_revenue' => $lines['membership_revenue_sen'],
@@ -105,7 +99,7 @@ final class ReportService
             'admin_issued_vouchers' => -$lines['admin_issued_vouchers_sen'],
             'supplier_manual_adjustments' => $lines['supplier_manual_adjustments_sen'],
             'cogs_funding_difference' => -$lines['cogs_funding_difference_sen'],
-            'manual_profit_corrections' => -$corrections,
+            'ledger_vs_order_figures' => $lines['sales_revenue_sen'] - $lines['cogs_at_order_cost_sen'] - $lines['affiliate_commission_expense_sen'] - $ownerProfit,
         ];
 
         return [

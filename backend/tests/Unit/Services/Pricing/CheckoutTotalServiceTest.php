@@ -30,8 +30,8 @@ class CheckoutTotalServiceTest extends TestCase
         $this->assertSame(5000, $total->sellingPrice);
         $this->assertSame(1000, $total->voucherDiscount);
         $this->assertSame(4000, $total->feeBase);
-        $this->assertSame(166, $total->transactionFee);
-        $this->assertSame(4166, $total->finalAmount);
+        $this->assertSame(169, $total->transactionFee);   // CHIP's 1.9% + RM0.90 of the RM41.69 paid
+        $this->assertSame(4169, $total->finalAmount);
     }
 
     /**
@@ -50,8 +50,8 @@ class CheckoutTotalServiceTest extends TestCase
         );
 
         $this->assertSame(5000, $total->feeBase);
-        $this->assertSame(185, $total->transactionFee);
-        $this->assertSame(5185, $total->finalAmount);
+        $this->assertSame(189, $total->transactionFee);
+        $this->assertSame(5189, $total->finalAmount);
     }
 
     /**
@@ -112,9 +112,9 @@ class CheckoutTotalServiceTest extends TestCase
     }
 
     /**
-     * Rounding policy: fractional sen round half away from zero (i.e. 2.5
-     * rounds to 3, not 2) — this is a deliberate financial policy, not an
-     * accident of PHP's round() default. fee_base 100 * 2.5% = 2.5 exactly.
+     * Rounding policy: fractional sen round half away from zero — a
+     * deliberate financial policy, not an accident of PHP's round()
+     * default. 2.5% of the RM1.03 paid is 2.575, so 3.
      */
     public function test_rounds_fractional_sen_half_away_from_zero(): void
     {
@@ -128,5 +128,26 @@ class CheckoutTotalServiceTest extends TestCase
         );
 
         $this->assertSame(3, $total->transactionFee);
+    }
+
+    /**
+     * CHIP takes its percentage of what the customer pays, fee included, so
+     * the fee is grossed up. Production DuitNow settlements (1%, 2026-10):
+     * RM40.19 paid RM40.59 and CHIP took 41 sen where we had charged 40;
+     * RM25.45 → 26 not 25; RM40.74 → 41 either way.
+     */
+    public function test_a_percentage_fee_is_chips_cut_of_what_the_customer_pays(): void
+    {
+        $duitNow = new PaymentMethodFeeConfig(percentageRate: 1.0, flatFeeSen: 0);
+        $fee = fn (int $base) => (new CheckoutTotalService)->calculate(sellingPrice: $base, voucherDiscount: 0, fee: $duitNow)->transactionFee;
+
+        $this->assertSame([41, 26, 41, 4, 20], [$fee(4019), $fee(2545), $fee(4074), $fee(413), $fee(1990)]);
+    }
+
+    public function test_a_rate_of_100_percent_or_more_is_refused(): void
+    {
+        $this->expectException(InvalidPricingConfigException::class);
+
+        (new CheckoutTotalService)->calculate(sellingPrice: 100, voucherDiscount: 0, fee: new PaymentMethodFeeConfig(percentageRate: 100.0, flatFeeSen: 0));
     }
 }

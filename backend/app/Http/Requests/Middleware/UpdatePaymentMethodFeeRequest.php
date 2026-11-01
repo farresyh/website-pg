@@ -22,7 +22,8 @@ class UpdatePaymentMethodFeeRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'percentage_rate' => ['required', 'numeric', 'min:0', 'max:100'],
+            // lt:100: the fee is grossed up over (100 − rate) (ADR-024 2026-11-01 addendum).
+            'percentage_rate' => ['required', 'numeric', 'min:0', 'lt:100'],
             'flat_fee_sen' => ['required', 'integer', 'min:0'],
         ];
     }

@@ -98,7 +98,8 @@ export interface ReportProfitBridge {
   admin_issued_vouchers: number;
   supplier_manual_adjustments: number;
   cogs_funding_difference: number;
-  manual_profit_corrections: number;
+  /** The accounts' order margin less owner profit; 0 unless the ledger and the orders' own figures disagree. */
+  ledger_vs_order_figures: number;
   operating_profit: number;
   unexplained_difference: number;
 }
