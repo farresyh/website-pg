@@ -62,14 +62,20 @@ final class SupplierConfigSchema
         // CheckPriceSyncStalenessCommand emails admins once this supplier's
         // prices haven't synced for that long. Unlike the two above, absent
         // means the default (90), not off; 0 turns it off.
+        //
+        // ADR-134 decision 16 — `transfer_spread_min_pct` / `_max_pct`: the
+        // band a recorded transfer's rate may sit in against that day's
+        // market rate before the admin must confirm it. Absent = −2 / +12.
         'digiflazz' => [
             'category_whitelist' => 'list',
             'webhook_secret' => 'secret',
             'low_balance_threshold' => 'text',
             'drift_threshold' => 'text',
             'price_sync_stale_alert_minutes' => 'text',
+            'transfer_spread_min_pct' => 'text',
+            'transfer_spread_max_pct' => 'text',
         ],
-        'gamevion' => ['low_balance_threshold' => 'text', 'drift_threshold' => 'text', 'price_sync_stale_alert_minutes' => 'text'],
+        'gamevion' => ['low_balance_threshold' => 'text', 'drift_threshold' => 'text', 'price_sync_stale_alert_minutes' => 'text', 'transfer_spread_min_pct' => 'text', 'transfer_spread_max_pct' => 'text'],
         // ADR-125 decisions 2-3: a manual supplier's own settings. Absent
         // `reply_sla_minutes` means the default (Supplier::DEFAULT_MANUAL_SLA_MINUTES).
         'manual' => ['reply_sla_minutes' => 'text'],

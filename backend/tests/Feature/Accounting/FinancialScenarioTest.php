@@ -272,6 +272,37 @@ class FinancialScenarioTest extends TestCase
     }
 
     /**
+     * ADR-134 decisions 3, 6, 9–11: a pooled deposit's transfer fee is unit
+     * cost, never also a bank-fee expense, and every order's landed cost is
+     * exactly what COGS charges it, so the per-order and funded figures are
+     * one number and each close still leaves no gap.
+     */
+    public function test_pooled_transfer_fees_are_stock_cost_and_orders_cost_what_cogs_says(): void
+    {
+        $s = $this->scenario;
+        [$ffSmall, $ffMid] = $s->idrPackages;
+        $before = app(MonthlyAccountingSummaryService::class)->forPeriod(2026, 10);
+
+        $s->at('2026-10-21 09:00')->fundIdrSupplier(80_000, 3_500.0, 1_466);
+        $s->at('2026-10-22 15:00')->pay($s->storefrontOrder($ffMid));
+        $s->at('2026-10-27 12:00')->settleChip();
+        $october = $s->at('2026-11-05 10:00')->closeMonth(2026, 10);
+
+        $s->at('2026-11-06 09:00')->fundIdrSupplier(60_000, 3_900.0, 1_200);
+        $s->at('2026-11-10 15:00')->pay($s->storefrontOrder($ffSmall));
+        $s->at('2026-11-12 15:00')->pay($s->storefrontOrder($ffMid));
+        $s->at('2026-11-24 12:00')->settleChip();
+        $november = $s->at('2026-12-03 10:00')->closeMonth(2026, 11);
+
+        $this->assertSame(0, $october->gap_sen, json_encode($october->equation));
+        $this->assertSame(0, $november->gap_sen, json_encode($november->equation));
+        $this->assertSame($before['bank_transfer_fees_sen'], $october->profit_lines['bank_transfer_fees_sen']);
+        $this->assertSame($before['supplier_prepaid_topup_sen'] + 80_000 + 1_466, $october->profit_lines['supplier_prepaid_topup_sen']);
+        $this->assertSame(0, $november->profit_lines['cogs_funding_difference_sen']);
+        $this->assertSame(0, Order::query()->where('paid_at', '>=', '2026-10-01')->where('cost_rate', Order::COST_RATE_MARKET)->count());
+    }
+
+    /**
      * ADR-086 2026-10-25 addendum: one order, one place. A reseller-wallet
      * order carries the primary brand's affiliate_id but counts toward its
      * Reseller only, on every view that splits by Affiliate: Reports'

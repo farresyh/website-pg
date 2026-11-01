@@ -10,6 +10,11 @@ import { catalogCache, safeRead } from "@/lib/cache";
  * reads whatever `[]`-or-not shape comes back, same "empty means off"
  * contract `listPlans()` already uses for Membership). ADR-044:
  * schemas are the source of truth for the wire shape below.
+ *
+ * 2026-11-01 addendum: the list is grouped (family → game → package) and
+ * carries the apply link; the layout and sitemap, which only ask "is the
+ * page on", use `getResellerPriceListEnabled()` (tiers alone) so they never
+ * pull and parse every row on every page.
  */
 
 const ResellerPriceListTierWireSchema = z.object({
@@ -22,15 +27,32 @@ const ResellerPriceListPriceWireSchema = z.object({
   price_sen: z.number(),
 });
 
-const ResellerPriceListGameWireSchema = z.object({
-  game_name: z.string(),
-  package_name: z.string(),
+const ResellerPriceListPackageWireSchema = z.object({
+  name: z.string(),
   prices: z.array(ResellerPriceListPriceWireSchema),
+});
+
+const ResellerPriceListGameWireSchema = z.object({
+  name: z.string(),
+  region: z.string(),
+  packages: z.array(ResellerPriceListPackageWireSchema),
+});
+
+const ResellerPriceListGroupWireSchema = z.object({
+  family: z.string(),
+  image_url: z.string().nullable(),
+  games: z.array(ResellerPriceListGameWireSchema),
 });
 
 const ResellerPriceListWireSchema = z.object({
   tiers: z.array(ResellerPriceListTierWireSchema),
-  games: z.array(ResellerPriceListGameWireSchema),
+  groups: z.array(ResellerPriceListGroupWireSchema),
+  // Absent when the page is off (the backend answers tiers/groups empty).
+  apply_url: z.string().optional(),
+});
+
+const ResellerPriceListSummaryWireSchema = z.object({
+  tiers: z.array(ResellerPriceListTierWireSchema),
 });
 
 export interface ResellerPriceListTier {
@@ -38,17 +60,35 @@ export interface ResellerPriceListTier {
   name: string;
 }
 
-export interface ResellerPriceListRow {
-  gameName: string;
-  packageName: string;
-  /** RM, keyed by tier id — same tiers array/order as ResellerPriceList.tiers. */
+export interface ResellerPriceListPackage {
+  name: string;
+  /** RM, keyed by tier id: same tiers array/order as ResellerPriceList.tiers. */
   pricesRmByTierId: Record<number, number>;
+}
+
+export interface ResellerPriceListGame {
+  /** The game's full name ("Mobile Legends Malaysia"): what search matches. */
+  name: string;
+  /** The tab label inside its family ("Malaysia"); the game's name when it has none. */
+  region: string;
+  packages: ResellerPriceListPackage[];
+}
+
+/** One tile on the page: a family of regional games, or a single game on its own. */
+export interface ResellerPriceListGroup {
+  family: string;
+  imageUrl: string | null;
+  games: ResellerPriceListGame[];
 }
 
 export interface ResellerPriceList {
   tiers: ResellerPriceListTier[];
-  rows: ResellerPriceListRow[];
+  groups: ResellerPriceListGroup[];
+  /** Where "Apply to become a reseller" goes: the onboarding host, resolved by the backend. */
+  applyUrl: string | null;
 }
+
+const PATH = "/api/catalog/reseller-price-list";
 
 /**
  * `tiers: []` (no tier admin-marked `show_on_price_list`, or this brand
@@ -57,24 +97,49 @@ export interface ResellerPriceList {
  * already follows for its own kill switch.
  */
 export async function getResellerPriceList(): Promise<ResellerPriceList> {
-  const path = "/api/catalog/reseller-price-list";
-  const empty: ResellerPriceList = { tiers: [], rows: [] };
+  const empty: ResellerPriceList = { tiers: [], groups: [], applyUrl: null };
 
   return safeRead(
     "getResellerPriceList",
     async () => {
-      const raw = await apiFetch<unknown>(path, { next: catalogCache });
-      const wire = parseResponse(ResellerPriceListWireSchema, raw, "ResellerPriceListWire", path);
+      const raw = await apiFetch<unknown>(PATH, { next: catalogCache });
+      const wire = parseResponse(ResellerPriceListWireSchema, raw, "ResellerPriceListWire", PATH);
 
       return {
         tiers: wire.tiers,
-        rows: wire.games.map((game) => ({
-          gameName: game.game_name,
-          packageName: game.package_name,
-          pricesRmByTierId: Object.fromEntries(game.prices.map((p) => [p.tier_id, p.price_sen / 100])),
+        groups: wire.groups.map((group) => ({
+          family: group.family,
+          imageUrl: group.image_url,
+          games: group.games.map((game) => ({
+            name: game.name,
+            region: game.region,
+            packages: game.packages.map((pkg) => ({
+              name: pkg.name,
+              pricesRmByTierId: Object.fromEntries(pkg.prices.map((p) => [p.tier_id, p.price_sen / 100])),
+            })),
+          })),
         })),
+        applyUrl: wire.apply_url ?? null,
       };
     },
     empty,
+  );
+}
+
+/**
+ * Whether `/price-list` exists for this brand. The root layout (bottom nav)
+ * and the sitemap ask this on every render, so it takes the backend's
+ * tiers-only answer instead of the whole list.
+ */
+export async function getResellerPriceListEnabled(): Promise<boolean> {
+  const path = `${PATH}?summary=1`;
+
+  return safeRead(
+    "getResellerPriceListEnabled",
+    async () => {
+      const raw = await apiFetch<unknown>(path, { next: catalogCache });
+      return parseResponse(ResellerPriceListSummaryWireSchema, raw, "ResellerPriceListSummaryWire", path).tiers.length > 0;
+    },
+    false,
   );
 }

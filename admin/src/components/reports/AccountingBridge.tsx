@@ -38,7 +38,7 @@ export function AccountingBridge({ bridge }: { bridge: ReportAccountingBridge })
 }
 
 /**
- * ADR-127 decision 9 — walks owner profit (market rate, Reports) to the
+ * ADR-127 decision 9 — walks owner profit (Reports) to the
  * Monthly Summary's operating profit (accounts). Every line comes from the
  * backend; "Unexplained difference" must be 0.
  */
@@ -46,7 +46,7 @@ export function ProfitBridge({ bridge }: { bridge: ReportProfitBridge }) {
   const signed = (sen: number): "+" | "−" => (sen < 0 ? "−" : "+");
   const line = (label: string, sen: number, note?: string): BridgeLine => ({ sign: signed(sen), label, note, sen: Math.abs(sen) });
   const lines: BridgeLine[] = [
-    { sign: "", label: "Owner profit (market rate)", note: "Reports: the ledger profit of orders delivered in this range", sen: bridge.owner_profit, strong: true },
+    { sign: "", label: "Owner profit", note: "Reports: the ledger profit of orders delivered in this range", sen: bridge.owner_profit, strong: true },
     line("Membership fees", bridge.membership_revenue),
     line("Payment processing gain / loss", bridge.payment_processing_gain_loss, "Fees customers paid minus CHIP's fees, from settlement files"),
     line("Bank transfer fees", bridge.bank_transfer_fees),
@@ -54,7 +54,7 @@ export function ProfitBridge({ bridge }: { bridge: ReportProfitBridge }) {
     line("Voucher breakage", bridge.voucher_breakage, "Unspent balance of expired or revoked vouchers"),
     line("Admin-issued vouchers", bridge.admin_issued_vouchers),
     line("Supplier manual adjustments", bridge.supplier_manual_adjustments),
-    line("Funded cost above order cost", bridge.cogs_funding_difference, "What prepaid deposits actually cost, against the market rate"),
+    line("Order cost vs funded cost", bridge.cogs_funding_difference, "Older orders: the deposit's real cost against the market rate they were costed at. Newer orders: a transfer recorded late, corrected or voided"),
     line("Manual profit corrections", bridge.manual_profit_corrections, "In the ledger, not in the accounts' revenue and cost"),
     { sign: "=", label: "Operating profit (accounts)", note: "Matches Accounting › Monthly Summary", sen: bridge.operating_profit, strong: true },
   ];

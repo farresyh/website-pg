@@ -169,6 +169,8 @@ final class TransactionRegisterService
                 // ADR-094 decision 41: a partial delivery drew down only its delivered legs.
                 // §16 item 115: the cost its profit used (ADR-111), never the checkout estimate.
                 'cost_sen' => self::recognisedInPaidMonth($order) ? $order->effectiveCostPriceSen() : null,
+                // ADR-134 decision 13: the rate that cost is at, market before ADR-134, landed after.
+                'cost_rate' => self::recognisedInPaidMonth($order) ? $order->cost_rate : null,
                 'net_sen' => self::recognisedInPaidMonth($order) ? (int) ($realizedProfitByOrderId[$order->id] ?? 0) : 0,
                 'amount_foreign' => null,
                 'status' => 'active',
@@ -226,6 +228,7 @@ final class TransactionRegisterService
                 'gross_sen' => null,
                 'fee_sen' => null,
                 'cost_sen' => $order->effectiveCostPriceSen(),
+                'cost_rate' => $order->cost_rate,
                 'net_sen' => (int) ($realizedProfitByOrderId[$order->id] ?? 0),
                 'amount_foreign' => null,
                 'status' => 'active',

@@ -1,6 +1,6 @@
 # ADR-132: Affiliate monthly auto-payout — the system opens one withdrawal ticket per affiliate on the 1st; the manual request is removed
 
-> **Standing (2026-10-30):** Accepted (design). Revises [ADR-059](./ADR-059-reseller-portal.md) (59c: the affiliate no longer *requests* a withdrawal; the approve → complete flow and the maker-checker are unchanged) and uses [ADR-056](./ADR-056-reseller-wholesale-pricing-subscription-tiers.md)'s tier fee (the fee is reserved out of the payout). An owned brand never accrues a payable balance ([ADR-061](./ADR-061-every-storefront-is-a-reseller.md) 2026-10-30 addendum), so the payout never opens a ticket for it.
+> **Standing (2026-11-01):** In force. Revises [ADR-059](./ADR-059-reseller-portal.md) (59c: the affiliate no longer *requests* a withdrawal; the approve → complete flow and the maker-checker are unchanged) and uses [ADR-056](./ADR-056-reseller-wholesale-pricing-subscription-tiers.md)'s tier fee (the fee is reserved out of the payout). An owned brand never accrues a payable balance ([ADR-061](./ADR-061-every-storefront-is-a-reseller.md) 2026-10-30 addendum), so the payout never opens a ticket for it. The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-30. Grilled with the founder, then code-traced by three read-only reviewers, one per layer (creation and reserve; approve and accounting; portal, admin and hygiene). Their findings are folded into the decisions below.
 

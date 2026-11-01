@@ -137,7 +137,7 @@ class OrdersWorkbookTest extends TestCase
 
         // Two orders → data rows 2..3. Paid-only totals, matching Reports.
         $this->assertStringContainsString('SUMIFS(Orders!$P$2:$P$3,Orders!$I$2:$I$3,"paid")', html_entity_decode($xml));
-        $this->assertStringContainsString('SUM(Orders!$Y$2:$Y$3)', html_entity_decode($xml));
+        $this->assertStringContainsString('SUM(Orders!$Z$2:$Z$3)', html_entity_decode($xml));
     }
 
     /** User-typed text must never become a formula in an admin's spreadsheet. */

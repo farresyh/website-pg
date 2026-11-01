@@ -138,7 +138,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
                   in this app yet, and a hover title is enough for a
                   short 3-line explanation). */}
               <span
-                title="Real: the actual price the supplier charged for this delivery. Mixed: a combo order where some parts are real and some are still estimated. Estimated: the catalog price — either not delivered yet, or real-cost reconciliation is off."
+                title="Real: the supplier's own price for this delivery. Mixed: a combo order where some parts are real and some are still estimated. Estimated: the catalog price — either not delivered yet, or real-cost reconciliation is off. Converted to ringgit at what our supplier deposit cost (fees and exchange spread included); orders tagged Market rate, from before November 2026, used the market mid-rate and their profit reads high."
                 className="cursor-help text-ink-muted/60"
               >
                 <InfoCircle className="h-3 w-3" />
@@ -154,6 +154,8 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
               {order.cost_basis !== "estimated" && (
                 <Tag severity={costBasisTag.severity}>{costBasisTag.label}</Tag>
               )}
+              {/* ADR-134 decision 13: only the older basis is tagged; landed is the norm. */}
+              {order.cost_rate === "market" && <Tag severity="secondary">Market rate</Tag>}
             </dd>
           </div>
           {/* Standard Selling Price is the storefront's own guest/list price — meaningless for a wallet order, which is never priced off it (the reseller's own tier markup is, shown below instead). */}

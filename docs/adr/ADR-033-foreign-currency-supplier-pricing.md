@@ -1,6 +1,6 @@
 # ADR-033: Foreign-currency supplier pricing — FX-rate conversion at sync time (built 2026-08-25)
 
-> **Standing (2026-10-17):** In force; sync conversion uses one rate per run ([ADR-111](./ADR-111-real-cost-profit-reconciliation-at-delivery-time.md) 2026-10-14 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-01):** In force for the rate fetch and history; the market mid-rate is display-only, prices use the landed cost rate ([ADR-134](./ADR-134-landed-cost-rate.md), 2026-11-01 addendum); sync conversion uses one rate per run ([ADR-111](./ADR-111-real-cost-profit-reconciliation-at-delivery-time.md) 2026-10-14 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-08-24 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
 
@@ -38,3 +38,7 @@ The founder's earlier question — "rate berubah tiap hari, bukan patut fetch ik
 ### 2026-10-17 addendum — cross-reference only
 
 Docs audit. [ADR-111](./ADR-111-real-cost-profit-reconciliation-at-delivery-time.md)'s 2026-10-14 addendum changes this ADR's sync-time conversion: one FX rate is read per sync run (`convertToSenAt`), not one per package. The 2026-10-12 note above ("no change to this ADR's decisions") predates it.
+
+### 2026-11-01 addendum — the market mid-rate is display-only (ADR-134)
+
+[ADR-134](./ADR-134-landed-cost-rate.md) reverses this ADR's premise that an indicative midpoint is "fine for price estimation". The IDR is bought first, through a bank or Wise, at a worse rate: on 2026-11-01 the deposit pool cost +6.2% over the mid-rate (+6.8% with fees), so every price basis was set on a cost the company never paid. Price Sync now converts at the supplier's landed cost rate (the deposit pool, ADR-134 decisions 1–5), still rounding up (`ceil`). The rate fetch, cache, fallback, stale alert and FX history stay, for display beside the landed rate and the spread; an FX API outage no longer fails a sync.

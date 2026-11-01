@@ -500,10 +500,10 @@ export default function PriceSyncPage() {
                     )}
                   </p>
                 )}
-                {/* ADR-033 addendum decision 1/3: only ever non-empty once a real non-MYR supplier's sync runs. */}
+                {/* ADR-033 addendum decision 1/3: only ever non-empty once a real non-MYR supplier's sync runs. ADR-134 decision 15: the deposit's rate, with the market and the spread beside it. */}
                 {(shown.status === "success" || shown.status === "partial") && !!shown.stats?.fx_rates_used?.length && (
                   <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    Rate used: {shown.stats.fx_rates_used.map((r) => `1 ${r.from} = ${r.rate} ${r.to}`).join(", ")}
+                    Rate used: {shown.stats.fx_rates_used.map(describeRateUsed).join("; ")}
                   </p>
                 )}
               </>
@@ -749,4 +749,14 @@ export default function PriceSyncPage() {
       )}
     </div>
   );
+}
+
+type RateUsed = NonNullable<NonNullable<PriceSyncRun["stats"]>["fx_rates_used"]>[number];
+
+/** "1 IDR = 0.00023913 MYR, what the deposit cost (market 0.000224, +6.75%)"; a run before ADR-134 priced at the market rate. */
+function describeRateUsed(r: RateUsed): string {
+  const rate = `1 ${r.from} = ${Number(r.rate.toPrecision(5))} ${r.to}`;
+  if (r.source !== "deposit pool") return `${rate} (market rate)`;
+  if (r.market_rate == null || r.spread_pct == null) return `${rate}, what the deposit cost (market rate unavailable)`;
+  return `${rate}, what the deposit cost (market ${r.market_rate}, ${r.spread_pct >= 0 ? "+" : ""}${r.spread_pct.toFixed(2)}%)`;
 }

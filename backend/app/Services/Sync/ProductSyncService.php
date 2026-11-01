@@ -7,7 +7,9 @@ use App\Models\Supplier;
 use App\Models\SupplierProduct;
 use App\Services\Currency\CurrencyRateService;
 use App\Services\Currency\CurrencyRateUnavailableException;
+use App\Services\Currency\LandedCostRate;
 use App\Services\Supplier\SupplierAdapter;
+use App\Services\Supplier\SupplierPackageStatusService;
 use Illuminate\Support\Carbon;
 
 /**
@@ -20,7 +22,11 @@ use Illuminate\Support\Carbon;
  */
 final class ProductSyncService
 {
-    public function __construct(private readonly CurrencyRateService $currencyRates) {}
+    public function __construct(
+        private readonly CurrencyRateService $currencyRates,
+        private readonly LandedCostRate $landedCost,
+        private readonly SupplierPackageStatusService $packageStatus,
+    ) {}
 
     public function sync(Supplier $supplier, SupplierAdapter $adapter): ProductSyncResult
     {
@@ -38,31 +44,23 @@ final class ProductSyncService
 
         // ADR-033 decision 3: the single conversion boundary — every
         // downstream consumer (PackagePriceSyncService, PricingService,
-        // catalog, checkout) stays MYR-sen and is untouched. A supplier
-        // with no prior FX rate ever stored, on a day the live fetch
-        // also fails, surfaces as the same ProductSyncFailedException
-        // an adapter failure already produces — this run writes nothing,
-        // rather than silently mis-pricing every item.
-        $fxRateUsed = null;
-        $rate = 1.0;
+        // catalog, checkout) stays MYR-sen and is untouched. ADR-134: the
+        // rate is what the supplier's deposit cost (its landed cost rate),
+        // read once for the run; the market mid-rate is only shown beside
+        // it. A foreign supplier with no deposit has no cost to price by,
+        // so the run writes nothing rather than pricing at a guess.
+        $averageSen = $this->landedCost->averageSen($supplier);
 
-        if ($supplier->currency !== 'MYR') {
-            try {
-                $rate = $this->currencyRates->rate($supplier->currency, 'MYR');
-            } catch (CurrencyRateUnavailableException $e) {
-                throw new ProductSyncFailedException(
-                    "Supplier '{$supplier->slug}' product sync failed: {$e->getMessage()}",
-                    previous: $e,
-                );
-            }
+        if ($averageSen === null) {
+            // Its live prices would rest on a stale cost: stop selling them, under a reason only a funded run undoes (decision 4).
+            $this->packageStatus->deactivate($supplier, null, 'No deposit recorded for this supplier (ADR-134).', code: SupplierPackageStatusService::UNFUNDED);
 
-            $fxRateUsed = [
-                'from' => $supplier->currency,
-                'to' => 'MYR',
-                'rate' => $rate,
-                'source' => (string) config('services.fx_api.source', 'open.er-api.com'),
-            ];
+            throw new ProductSyncFailedException(
+                "Supplier '{$supplier->slug}' product sync failed: no deposit is recorded for it, so its {$supplier->currency} prices have no landed cost. Record a transfer first.",
+            );
         }
+
+        $fxRateUsed = $supplier->currency === 'MYR' && $averageSen === 100.0 ? null : $this->rateUsed($supplier, $averageSen / 100);
 
         $syncedAt = Carbon::now();
         $created = 0;
@@ -102,7 +100,7 @@ final class ProductSyncService
                     // even before its adapter was taught to set it).
                     'group_label' => $item->groupLabel ?? $item->category ?? '',
                     'type' => $item->type,
-                    'price_sen' => $this->currencyRates->convertToSenAt($item->price, $supplier->currency, $rate),
+                    'price_sen' => $this->landedCost->toCatalogSenAt($averageSen, $item->price),
                     // ADR-069 decision 10 — the supplier's pre-conversion
                     // figure, display-only. Adapter-set, no branching here.
                     'raw_price' => $item->rawPrice,
@@ -136,6 +134,32 @@ final class ProductSyncService
             syncedAt: $syncedAt,
             fxRateUsed: $fxRateUsed,
         );
+    }
+
+    /**
+     * ADR-134 decision 15: the rate every item was priced at, with the
+     * market mid-rate and the spread beside it for the Price Sync Center.
+     * The market rate is display-only, so an FX API outage leaves it null
+     * and the run goes on (decision 7).
+     *
+     * @return array{from: string, to: string, rate: float, source: string, market_rate: ?float, spread_pct: ?float}
+     */
+    private function rateUsed(Supplier $supplier, float $landed): array
+    {
+        try {
+            $market = $supplier->currency === 'MYR' ? 1.0 : $this->currencyRates->rate($supplier->currency, 'MYR');
+        } catch (CurrencyRateUnavailableException) {
+            $market = null;
+        }
+
+        return [
+            'from' => $supplier->currency,
+            'to' => 'MYR',
+            'rate' => $landed,
+            'source' => 'deposit pool',
+            'market_rate' => $market,
+            'spread_pct' => $market ? round(($landed / $market - 1) * 100, 2) : null,
+        ];
     }
 
     /**

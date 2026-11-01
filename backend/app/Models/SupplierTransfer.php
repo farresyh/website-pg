@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Accounting\MovingAveragePool;
 use App\Services\Accounting\PaidFrom;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use Illuminate\Database\Eloquent\Model;
@@ -90,6 +91,24 @@ class SupplierTransfer extends Model
         $fee = (float) ($this->supplier_fee ?? 0);
 
         return number_format($gross - $fee, 4, '.', '');
+    }
+
+    /**
+     * ADR-134 decision 3: the ringgit a transfer puts into its supplier's
+     * stock cost — its fee too, for a pooled (prepaid) supplier from the
+     * pool's opening. `MovingAveragePool` adds the same.
+     */
+    public static function costSen(Supplier $supplier, string $transferredOn, int $amountMyrSent, int $feeMyr): int
+    {
+        return $amountMyrSent + ($supplier->isPooled() && $transferredOn >= MovingAveragePool::OPENS_ON ? $feeMyr : 0);
+    }
+
+    /** MYR per unit actually usable at the supplier: the cost above over the net credit; null with no credit. */
+    public static function rateFor(Supplier $supplier, string $transferredOn, int $amountMyrSent, int $feeMyr, string $netForeignReceived): ?float
+    {
+        $net = (float) $netForeignReceived;
+
+        return $net > 0.0 ? (self::costSen($supplier, $transferredOn, $amountMyrSent, $feeMyr) / 100) / $net : null;
     }
 
     /**

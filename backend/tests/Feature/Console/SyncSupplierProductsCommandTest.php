@@ -4,6 +4,7 @@ namespace Tests\Feature\Console;
 
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
+use App\Models\SupplierTransfer;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierCatalogItem;
 use App\Services\Supplier\SupplierOrderRequest;
@@ -31,8 +32,7 @@ class SyncSupplierProductsCommandTest extends TestCase
             public function __construct(
                 private readonly bool $success,
                 private readonly array $items,
-            ) {
-            }
+            ) {}
 
             public function checkBalance(): SupplierResponse
             {
@@ -86,6 +86,7 @@ class SyncSupplierProductsCommandTest extends TestCase
         Http::fake(['open.er-api.com/*' => Http::response(['result' => 'success', 'rates' => ['MYR' => 0.000228]], 200)]);
         $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR', 'is_active' => true]);
         $digiflazz = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz-test', 'api_config' => [], 'currency' => 'IDR', 'is_active' => true]);
+        SupplierTransfer::query()->create(['transferred_on' => '2026-10-10', 'supplier_id' => $digiflazz->id, 'source_channel' => 'bank', 'amount_myr_sent' => 22800, 'fee_myr' => 0, 'currency' => 'IDR', 'amount_foreign_received' => '1000000']);
 
         $this->app->bind('supplier-adapter.gamevion', fn () => $this->fakeAdapter(true, [
             new SupplierCatalogItem('FFP5', 'Free Fire 5 Diamonds', 'Free Fire', 10.0, 'active'),

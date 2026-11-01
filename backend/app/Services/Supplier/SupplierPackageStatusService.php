@@ -22,15 +22,21 @@ use Illuminate\Validation\ValidationException;
  * a blanket false→true, since that could also re-activate a package Price
  * Sync deactivated for an unrelated reason (supplier_sync/price_anomaly),
  * bypassing ADR-025's swing-review safety net.
+ *
+ * ADR-134 decision 4: Price Sync uses the same pair, under its own reason
+ * `unfunded`, to stop selling a foreign-currency supplier with no deposit
+ * and to bring back exactly those packages once one is recorded.
  */
 final class SupplierPackageStatusService
 {
     public const REASON = 'supplier_issue';
 
+    public const UNFUNDED = 'unfunded';
+
     public function __construct(private readonly ComboPricingService $comboPricing) {}
 
     /** @return array{updated: int, updated_combos: int} */
-    public function deactivate(Supplier $supplier, int $adminUserId, ?string $reason, ?int $gameId = null): array
+    public function deactivate(Supplier $supplier, ?int $adminUserId, ?string $reason, ?int $gameId = null, string $code = self::REASON): array
     {
         $this->assertNotPool($supplier);
         $query = $this->packages($supplier, $gameId)->where('is_active', true);
@@ -38,8 +44,8 @@ final class SupplierPackageStatusService
         $gameIds = (clone $query)->distinct()->pluck('game_id')->all();
         $affectedComboCount = 0;
 
-        DB::transaction(function () use ($query, $packageIds, $adminUserId, $reason, &$affectedComboCount) {
-            $query->update(['is_active' => false, 'deactivated_reason' => self::REASON, 'deactivated_at' => now()]);
+        DB::transaction(function () use ($query, $packageIds, $adminUserId, $reason, $code, &$affectedComboCount) {
+            $query->update(['is_active' => false, 'deactivated_reason' => $code, 'deactivated_at' => now()]);
 
             $now = now();
             $rows = $packageIds->map(fn (int $packageId) => [
@@ -72,10 +78,12 @@ final class SupplierPackageStatusService
     }
 
     /** @return array{updated: int, updated_combos: int} */
-    public function reactivate(Supplier $supplier, int $adminUserId, ?int $gameId = null): array
+    /** @param  ?list<string>  $refs  only these supplier refs (Price Sync passes what its run saw active) */
+    public function reactivate(Supplier $supplier, ?int $adminUserId, ?int $gameId = null, string $code = self::REASON, ?array $refs = null): array
     {
         $this->assertNotPool($supplier);
-        $query = $this->packages($supplier, $gameId)->where('is_active', false)->where('deactivated_reason', self::REASON);
+        $query = $this->packages($supplier, $gameId)->where('is_active', false)->where('deactivated_reason', $code)
+            ->when($refs !== null, fn ($q) => $q->whereIn('supplier_package_ref', $refs));
         $packageIds = (clone $query)->pluck('id');
         $gameIds = (clone $query)->distinct()->pluck('game_id')->all();
         $affectedComboCount = 0;

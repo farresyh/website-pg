@@ -94,9 +94,9 @@ class SupplierControllerTest extends TestCase
         // ADR-046 decision 3: non-secret keys (base_url/sandbox) are
         // safe to expose so the Edit form can pre-fill them. ADR-069
         // decision 13 adds the optional low_balance_threshold (null
-        // until set); ADR-083 decision 6 adds drift_threshold likewise, ADR-015's 2026-10-17 addendum price_sync_stale_alert_minutes.
+        // until set); ADR-083 decision 6 adds drift_threshold likewise, ADR-015's 2026-10-17 addendum price_sync_stale_alert_minutes, ADR-134 the transfer spread band.
         $this->assertSame(
-            ['base_url' => 'https://api.gamevion.com', 'sandbox' => true, 'low_balance_threshold' => null, 'drift_threshold' => null, 'price_sync_stale_alert_minutes' => null],
+            ['base_url' => 'https://api.gamevion.com', 'sandbox' => true, 'low_balance_threshold' => null, 'drift_threshold' => null, 'price_sync_stale_alert_minutes' => null, 'transfer_spread_min_pct' => null, 'transfer_spread_max_pct' => null],
             $body['visible_config'],
         );
 

@@ -32,6 +32,8 @@ interface EditGameModalProps {
   game: Game | null;
   /** MUI-5 follow-up — profiles are created/managed at /middleware/validators; this screen only assigns one to a Game and toggles it on/off, per the founder's own catalog-vs-supplier-integration split. */
   validatorProfiles: PlayerValidatorProfile[];
+  /** ADR-091 2026-11-01: the families other games already use, offered as suggestions so a family is picked, not retyped. */
+  familyOptions: string[];
 }
 
 /** ADR-109 decision 2 — one line per note, split into a string array on save. */
@@ -66,12 +68,15 @@ function EditGameFields({
   onDelete,
   game,
   validatorProfiles,
+  familyOptions,
 }: Omit<EditGameModalProps, "isOpen" | "game"> & { game: Game }) {
   const [activeTab, setActiveTab] = useState<"basic" | "content">("basic");
   const [name, setName] = useState(game.name);
   const [slug, setSlug] = useState(game.slug);
   const [category, setCategory] = useState(game.category ?? "");
   const [resellerCode, setResellerCode] = useState(game.reseller_code ?? "");
+  const [family, setFamily] = useState(game.family ?? "");
+  const [regionLabel, setRegionLabel] = useState(game.region_label ?? "");
   const [imageUrl, setImageUrl] = useState(game.image_url ?? "");
   const [isActive, setIsActive] = useState(game.is_active ?? true);
   const [validatorProfileId, setValidatorProfileId] = useState(
@@ -100,6 +105,8 @@ function EditGameFields({
         slug,
         category: category || null,
         reseller_code: resellerCode || null,
+        family: family.trim() || null,
+        region_label: regionLabel.trim() || null,
         image_url: imageUrl || null,
         is_active: isActive,
         player_validator_profile_id: validatorProfileId ? Number(validatorProfileId) : null,
@@ -197,6 +204,41 @@ function EditGameFields({
                     Uppercase letters only. The game segment of a Reseller API/Bot product code (e.g. <code>MLMY-14</code>). Leave
                     blank to keep this game out of the Reseller catalog.
                   </p>
+                </div>
+                )}
+                {!loginGame && (
+                <div>
+                  <Label htmlFor="game_family">Price List Family (optional)</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      id="game_family"
+                      value={family}
+                      onChange={(e) => setFamily(e.target.value)}
+                      list="game_family_options"
+                      placeholder="e.g. Mobile Legends"
+                      maxLength={60}
+                    />
+                    <Input
+                      id="game_region_label"
+                      aria-label="Region"
+                      value={regionLabel}
+                      onChange={(e) => setRegionLabel(e.target.value)}
+                      placeholder="e.g. Malaysia"
+                      maxLength={40}
+                    />
+                  </div>
+                  <datalist id="game_family_options">
+                    {familyOptions.map((option) => (
+                      <option key={option} value={option} />
+                    ))}
+                  </datalist>
+                  <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    Groups this game with its regions on the public Reseller Price List: pick an existing family or type a new one, then
+                    the region tab. Leave both blank to show the game on its own.
+                  </p>
+                  {regionLabel.trim() && !family.trim() && (
+                    <p className="mt-1.5 text-xs text-danger-ink">A region needs a family.</p>
+                  )}
                 </div>
                 )}
                 <div>
@@ -350,7 +392,7 @@ function EditGameFields({
   );
 }
 
-export default function EditGameModal({ isOpen, onClose, onSubmit, onDelete, game, validatorProfiles }: EditGameModalProps) {
+export default function EditGameModal({ isOpen, onClose, onSubmit, onDelete, game, validatorProfiles, familyOptions }: EditGameModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -373,6 +415,7 @@ export default function EditGameModal({ isOpen, onClose, onSubmit, onDelete, gam
                   onDelete={onDelete}
                   game={game}
                   validatorProfiles={validatorProfiles}
+                  familyOptions={familyOptions}
                 />
               )}
             </DialogContent>

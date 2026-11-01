@@ -112,7 +112,7 @@ export default function ApplyPage() {
     return (
       <Panel title="Applications are closed">
         <p className="p-5 text-sm text-ink-muted">
-          We are not taking reseller applications right now. Please check back later, or email partners@pekangame.space.
+          We are not taking reseller applications right now. Please check back later.
         </p>
       </Panel>
     );

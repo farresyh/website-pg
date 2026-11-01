@@ -33,6 +33,8 @@ class CorrectSupplierTransferRequest extends FormRequest
             'amount_myr_sent' => ['sometimes', 'integer', 'min:1'],
             'fee_myr' => ['sometimes', 'integer', 'min:0'],
             'reference_no' => ['sometimes', 'nullable', 'string', 'max:255'],
+            // ADR-134 decision 16: set after the admin confirms a rate outside the supplier's spread band.
+            'confirm_spread' => ['sometimes', 'boolean'],
             'receipt' => ['sometimes', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
             'reason' => ['required', 'string', 'max:1000'],
         ];

@@ -219,7 +219,7 @@ export default function CustomerDetailPage() {
             </p>
           </div>
           <div className="rounded-xl bg-purple-50 p-4 text-center dark:bg-purple-500/10">
-            <p className="text-theme-xs text-gray-500 dark:text-gray-400">System Profit</p>
+            <p className="text-theme-xs text-gray-500 dark:text-gray-400" title="The ledger profit of this customer's orders. Orders from before November 2026 were costed at the market rate and read high (ADR-134); the Monthly Summary has the exact business figure.">System Profit</p>
             <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">
               {formatRm(detail.profit_analysis.system_profit)}
             </p>

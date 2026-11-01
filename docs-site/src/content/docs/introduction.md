@@ -27,9 +27,10 @@ Every endpoint path in this documentation (`/v1/balance`, `/v1/orders`, …) is
 relative to that base. There is no separate sandbox host — contact PekanGame if
 you need test credentials.
 
-## Access is invite-only
+## Access is by application
 
-There is no public sign-up form. PekanGame:
+You cannot sign yourself up: you apply and PekanGame reviews your application.
+If it is approved, PekanGame:
 
 1. Creates your reseller account and sets your pricing.
 2. Issues your first API key (a `pgrk_` token, shown once).
@@ -40,8 +41,9 @@ There is no public sign-up form. PekanGame:
 
 ### Request access
 
-Email **partners@pekangame.space** with your business name, the platform you
-sell through, and your expected monthly volume.
+Apply at **[onboarding.pekangame.space/apply](https://onboarding.pekangame.space/apply)**
+with your business name, the platform you sell through, and your expected
+monthly volume. PekanGame will email you the next step.
 
 ## What is out of scope
 

@@ -9,7 +9,7 @@ use App\Models\OrderResendAttempt;
 use App\Models\Package;
 use App\Models\Supplier;
 use App\Services\Accounting\SupplierFundingService;
-use App\Services\Currency\CurrencyRateService;
+use App\Services\Currency\LandedCostRate;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Fulfillment\OrderResendService;
 use App\Services\Ledger\LedgerService;
@@ -49,7 +49,7 @@ class ResendOrderDeliveryJobTest extends TestCase
                 new LedgerService,
                 new VoucherService(new LedgerService),
                 new SupplierFundingService,
-                new CurrencyRateService,
+                app(LandedCostRate::class),
             ),
         );
     }

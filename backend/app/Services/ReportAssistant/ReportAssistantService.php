@@ -74,6 +74,13 @@ final class ReportAssistantService
             placed; the real supplier charge at delivery can differ and is already reflected in
             platform_profit — never treat cost_price as what the order actually cost. Use
             llm_report_catalog for today's cost)
+          - cost_rate, 'market' or 'landed': what the order's cost and profit rest on. 'landed'
+            (from 2026-11) = what the supplier deposit really cost, transfer fees and the bank's
+            exchange spread included. 'market' (older orders) = the market mid-rate, which
+            understated a foreign-currency supplier's cost (about 6% for Digiflazz in October 2026),
+            so their platform_profit is higher than what was really earned. When a period mixes
+            both, say so; the exact month figure is the Monthly Accounting Summary's operating
+            profit, not a sum of platform_profit
           - transaction_fee, voucher_discount (sen)
           - affiliate_markup_pct, wholesale_markup_pct (percent, whichever channel applied)
           - final_amount (what the customer paid, sen, before any wallet refund)
@@ -82,7 +89,9 @@ final class ReportAssistantService
           - normal_selling_price (member order's counterfactual standard price, sen; null for standard orders)
           - selling_price (sen)
           - platform_profit, affiliate_profit (earned, from the ledger, sen; 0 if not yet delivered
-            or failed — already net of affiliate share, vouchers, real cost and combo legs)
+            or failed — already net of affiliate share, vouchers and combo legs, and of the real
+            supplier cost on the order's cost_rate; never of CHIP fees, bank transfer fees or
+            business expenses)
           Use the Reports page's definitions, so answers match it:
             sales/revenue = SUM(net_sales) over every row, failed orders included (a failed
             retail order's money is kept as store credit; a refunded wallet order nets to 0);

@@ -92,7 +92,7 @@ final class SupplierFundingService
                 'currency' => $currency,
                 'amount_foreign_received' => $amountForeignReceived,
                 'supplier_fee' => $supplierFee,
-                'effective_rate' => $this->effectiveRate($amountMyrSent, $netForeignReceived),
+                'effective_rate' => $this->effectiveRate($supplier, $transferredOn, $amountMyrSent, $feeMyr, $netForeignReceived),
                 'receipt_path' => $receiptPath,
                 'reference_no' => $referenceNo,
                 'created_by' => $adminUserId,
@@ -300,10 +300,19 @@ final class SupplierFundingService
                 // `FundedCostOfSales::weightedAverageRate()`
                 // always recomputes fresh from `amount_myr_sent` directly,
                 // never reads this stored column.
-                if (array_key_exists('amount_myr_sent', $updates)) {
-                    $newRate = $this->effectiveRate((int) $updates['amount_myr_sent'], $locked->netForeignReceived());
-                    $diff['effective_rate'] = [$locked->effective_rate, $newRate];
-                    $updates['effective_rate'] = $newRate;
+                // ADR-134: a pooled transfer's rate carries its fee, and whether it is pooled turns on its date, so all three move it.
+                if (array_intersect_key($updates, array_flip(['amount_myr_sent', 'fee_myr', 'transferred_on'])) !== []) {
+                    $newRate = $this->effectiveRate(
+                        $locked->supplier,
+                        Carbon::parse($updates['transferred_on'] ?? $locked->transferred_on)->toDateString(),
+                        (int) ($updates['amount_myr_sent'] ?? $locked->amount_myr_sent),
+                        (int) ($updates['fee_myr'] ?? $locked->fee_myr),
+                        $locked->netForeignReceived(),
+                    );
+                    if ($newRate !== $locked->effective_rate) {
+                        $diff['effective_rate'] = [$locked->effective_rate, $newRate];
+                        $updates['effective_rate'] = $newRate;
+                    }
                 }
 
                 if ($diff === []) {
@@ -460,14 +469,10 @@ final class SupplierFundingService
      * would silently understate the real cost by exactly the
      * supplier's own cut.
      */
-    private function effectiveRate(int $amountMyrSent, string $netForeignReceived): ?string
+    private function effectiveRate(Supplier $supplier, string $transferredOn, int $amountMyrSent, int $feeMyr, string $netForeignReceived): ?string
     {
-        $foreign = (float) $netForeignReceived;
+        $rate = SupplierTransfer::rateFor($supplier, $transferredOn, $amountMyrSent, $feeMyr, $netForeignReceived);
 
-        if ($foreign <= 0.0) {
-            return null;
-        }
-
-        return number_format(($amountMyrSent / 100) / $foreign, 8, '.', '');
+        return $rate === null ? null : number_format($rate, 8, '.', '');
     }
 }

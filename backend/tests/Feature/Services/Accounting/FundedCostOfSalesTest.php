@@ -177,7 +177,7 @@ class FundedCostOfSalesTest extends TestCase
         $this->assertSame(0, $october['cogs_sen']);
         $this->assertSame(2400, $october['drawdowns_not_in_cogs_sen']);
 
-        app(OrderSettlementService::class)->settle($order, AdminUser::factory()->create(['role' => 'admin'])->id);
+        $this->settleInOctober($order);
 
         $october = $this->summary(2026, 10);
         $this->assertSame(2400, $october['cogs_sen']);

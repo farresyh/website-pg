@@ -41,6 +41,8 @@ class StoreSupplierTransferRequest extends FormRequest
             'amount_foreign_received' => ['required', 'numeric', 'min:0.0001'],
             'supplier_fee' => ['nullable', 'numeric', 'min:0'],
             'reference_no' => ['nullable', 'string', 'max:191'],
+            // ADR-134 decision 16: set after the admin confirms a rate outside the supplier's spread band.
+            'confirm_spread' => ['sometimes', 'boolean'],
             'receipt' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
         ];
     }

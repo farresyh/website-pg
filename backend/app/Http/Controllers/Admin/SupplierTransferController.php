@@ -11,6 +11,7 @@ use App\Models\Supplier;
 use App\Models\SupplierTransfer;
 use App\Services\Accounting\PaidFrom;
 use App\Services\Accounting\SupplierFundingService;
+use App\Services\Accounting\TransferSpread;
 use App\Services\Report\ReportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,7 +27,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class SupplierTransferController extends Controller
 {
-    public function __construct(private readonly SupplierFundingService $funding) {}
+    public function __construct(
+        private readonly SupplierFundingService $funding,
+        private readonly TransferSpread $spread,
+    ) {}
 
     /**
      * ADR-083 2026-09-28 addendum: `from`/`to` (`Y-m-d`) + `status`
@@ -57,6 +61,14 @@ class SupplierTransferController extends Controller
     public function store(StoreSupplierTransferRequest $request, Supplier $supplier): JsonResponse
     {
         $data = $request->validated();
+
+        $this->spread->assertConfirmedIfOutside($this->spread->measure(
+            $supplier,
+            $data['transferred_on'],
+            $data['amount_myr_sent'],
+            $data['fee_myr'] ?? 0,
+            number_format((float) $data['amount_foreign_received'] - (float) ($data['supplier_fee'] ?? 0), 4, '.', ''),
+        ), (bool) ($data['confirm_spread'] ?? false));
 
         $transfer = $this->funding->recordTransfer(
             $supplier,
@@ -158,7 +170,18 @@ class SupplierTransferController extends Controller
     {
         $data = $request->validated();
         $reason = $data['reason'];
-        unset($data['reason'], $data['receipt']);
+        $confirmed = (bool) ($data['confirm_spread'] ?? false);
+        unset($data['reason'], $data['receipt'], $data['confirm_spread']);
+
+        if (array_intersect_key($data, array_flip(['amount_myr_sent', 'fee_myr', 'transferred_on'])) !== []) {
+            $this->spread->assertConfirmedIfOutside($this->spread->measure(
+                $supplierTransfer->supplier,
+                $data['transferred_on'] ?? $supplierTransfer->transferred_on->toDateString(),
+                (int) ($data['amount_myr_sent'] ?? $supplierTransfer->amount_myr_sent),
+                (int) ($data['fee_myr'] ?? $supplierTransfer->fee_myr),
+                $supplierTransfer->netForeignReceived(),
+            ), $confirmed);
+        }
 
         $correction = $this->funding->recordCorrection(
             $supplierTransfer,

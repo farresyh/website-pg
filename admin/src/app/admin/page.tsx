@@ -28,6 +28,7 @@ import {
   getReportSummary,
   getReportTrend,
   getTopGames,
+  marketRateNote,
   type PercentChange,
   type ReportFilters,
 } from "@/lib/reports";
@@ -239,7 +240,7 @@ function Briefing({
               <KpiCard lead label="Sales" value={formatRm(s.total_sales)} change={s.compare?.changes.total_sales} previousLabel={prev} sub={s.orders_count === 0 ? emptyText : undefined} />
             </div>
             <div className="max-sm:col-span-2 [&>*]:h-full">
-              <KpiCard lead label="Owner profit (market rate)" value={formatRm(s.platform_profit)} change={s.compare?.changes.platform_profit} previousLabel={prev} />
+              <KpiCard lead label="Owner profit" value={formatRm(s.platform_profit)} change={s.compare?.changes.platform_profit} previousLabel={prev} note={marketRateNote(s)} />
             </div>
             <KpiCard label="Orders" value={s.orders_count.toLocaleString()} change={s.compare?.changes.orders_count} previousLabel={prev} />
             <KpiCard

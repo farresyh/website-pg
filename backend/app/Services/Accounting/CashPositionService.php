@@ -106,8 +106,9 @@ final class CashPositionService
 
     /**
      * Each supplier's balance in its own currency as of the month end, in MYR
-     * at the month-end blended rate; from October 2026, a foreign-currency
-     * supplier's at its moving-average pool (2026-10-25 addendum). A top-up counts from the day the money
+     * at the month-end blended rate; from October 2026, a prepaid
+     * supplier's at its moving-average pool (2026-10-25 addendum; any
+     * currency since ADR-134 decision 3). A top-up counts from the day the money
      * left the bank (`transferred_on`, decision 15), every other movement
      * from when it was recorded. ADR-125 decision 20: split by sign per
      * supplier before summing, so a pay-after supplier's debt is a payable
@@ -128,7 +129,7 @@ final class CashPositionService
             ->get();
 
         $pooled = $toExclusive > MovingAveragePool::opensAt()
-            ? Supplier::query()->whereIn('id', $balances->pluck('supplier_id'))->where('currency', '!=', 'MYR')->pluck('id')->all()
+            ? Supplier::query()->whereIn('id', $balances->pluck('supplier_id'))->pooled()->pluck('id')->all()
             : [];
 
         // ponytail: a foreign-currency supplier with no transfer by the month end has no rate; its balance is then only drawdowns, valued at 0.

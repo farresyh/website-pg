@@ -55,8 +55,19 @@ trait PartialComboOrders
     /** Settled: voucher 2000 (5000 cash × 0.4), platform profit (5000 − 2000) − 2400 = 600. */
     protected function settledPartialComboOrder(array $overrides = []): Order
     {
-        $order = $this->partialComboOrder($overrides);
+        return $this->settleInOctober($this->partialComboOrder($overrides));
+    }
+
+    /**
+     * Settling recognises the order now (`LedgerService` sets `recognised_at`),
+     * so the clock is held inside the fixture's month; on a real clock every
+     * assertion on October broke on 2026-11-01.
+     */
+    protected function settleInOctober(Order $order): Order
+    {
+        $this->travelTo('2026-10-20 04:00:00');
         app(OrderSettlementService::class)->settle($order, AdminUser::factory()->create(['role' => 'admin'])->id);
+        $this->travelBack();
 
         return $order->fresh();
     }

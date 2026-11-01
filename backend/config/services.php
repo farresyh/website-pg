@@ -339,7 +339,7 @@ return [
     // portal app on its own host. Links in the applicant emails point here.
     'onboarding' => [
         'url' => env('ONBOARDING_URL', 'http://onboarding.localhost:3002'),
-        'privacy_contact' => env('ONBOARDING_PRIVACY_CONTACT', 'partners@pekangame.space'),
+        'privacy_contact' => env('ONBOARDING_PRIVACY_CONTACT', 'business@pekangame.com'),
     ],
 
     // ADR-021 (PAY-3) — ReconcilePendingPaymentsCommand's own thresholds.

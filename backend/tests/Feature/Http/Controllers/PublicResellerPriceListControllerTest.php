@@ -69,7 +69,7 @@ class PublicResellerPriceListControllerTest extends TestCase
         $response = $this->getJson('/api/catalog/reseller-price-list');
 
         $response->assertOk();
-        $this->assertSame(['tiers' => [], 'games' => []], $response->json());
+        $this->assertSame(['tiers' => [], 'groups' => []], $response->json());
     }
 
     public function test_hidden_on_a_non_owned_affiliate_brand_even_with_tiers_configured(): void
@@ -89,7 +89,7 @@ class PublicResellerPriceListControllerTest extends TestCase
         $response = $this->getJson('/api/catalog/reseller-price-list', ['X-Storefront-Host' => 'solozstore.my']);
 
         $response->assertOk();
-        $this->assertSame(['tiers' => [], 'games' => []], $response->json());
+        $this->assertSame(['tiers' => [], 'groups' => []], $response->json());
     }
 
     /**
@@ -158,7 +158,7 @@ class PublicResellerPriceListControllerTest extends TestCase
         // (int) round(1000 * 1.05) == 1050 — same formula
         // OrderPricingResolver::resolveResellerWallet() charges at real
         // order time.
-        $this->assertSame(1050, $response->json('games.0.prices.0.price_sen'));
+        $this->assertSame(1050, $response->json('groups.0.games.0.packages.0.prices.0.price_sen'));
     }
 
     public function test_never_exposes_cost_price_or_internal_ids(): void
@@ -170,8 +170,11 @@ class PublicResellerPriceListControllerTest extends TestCase
         $response = $this->getJson('/api/catalog/reseller-price-list');
 
         $response->assertOk();
-        $game = $response->json('games.0');
-        $this->assertSame(['game_name', 'package_name', 'prices'], array_keys($game));
-        $this->assertSame(['tier_id', 'price_sen'], array_keys($game['prices'][0]));
+        $group = $response->json('groups.0');
+        $this->assertSame(['family', 'image_url', 'games'], array_keys($group));
+        $this->assertSame(['name', 'region', 'packages'], array_keys($group['games'][0]));
+        $package = $group['games'][0]['packages'][0];
+        $this->assertSame(['name', 'prices'], array_keys($package));
+        $this->assertSame(['tier_id', 'price_sen'], array_keys($package['prices'][0]));
     }
 }

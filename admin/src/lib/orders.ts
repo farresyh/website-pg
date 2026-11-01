@@ -235,6 +235,8 @@ export interface OrderDetail extends OrderListItem {
   // real-cost-reconciliation flag was off at delivery time).
   effective_cost_price: number;
   cost_basis: "real" | "mixed" | "estimated";
+  // ADR-134 decision 13: the rate that cost is at — "landed" (what the supplier deposit cost) or "market" (orders before ADR-134, which read high).
+  cost_rate: "market" | "landed";
 }
 
 export interface OrderPage {

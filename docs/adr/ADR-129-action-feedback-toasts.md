@@ -1,6 +1,6 @@
 # ADR-129: Action feedback (toasts) across admin, middleware and the partner portal
 
-> **Standing (2026-10-27):** Accepted (design). One PrimeReact headless toaster, one shared `components/ui/toast.tsx` wrapper generated into the portal, a toast-vs-inline policy, and a promise-driven success that can never fire before the server answers. Extends the [ADR-104](./ADR-104-admin-panel-visual-redesign.md) / [ADR-128](./ADR-128-partner-portal-visual-system.md) design system and shared kit. Build and live status: [`prd.md` §15](../prd.md); open work: §16 item 136. The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-01):** In force. One PrimeReact headless toaster, one shared `components/ui/toast.tsx` wrapper generated into the portal, a toast-vs-inline policy, and a promise-driven success that can never fire before the server answers. Extends the [ADR-104](./ADR-104-admin-panel-visual-redesign.md) / [ADR-128](./ADR-128-partner-portal-visual-system.md) design system and shared kit. Build and live status: [`prd.md` §15](../prd.md); open work: §16 item 136. The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-27. Reviewed with the founder in conversation (the plan plus a Claude code review, reconciled against the repo), then this ADR was written before any build.
 

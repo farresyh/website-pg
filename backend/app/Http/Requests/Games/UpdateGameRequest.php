@@ -41,6 +41,11 @@ use Illuminate\Validation\Validator;
  * `credential_max_days`: ADR-126 2026-10-23 addendum, decision 22 — a
  * login game's own wipe ceiling; a change moves its unwiped logins.
  *
+ * `family` / `region_label`: ADR-091 2026-11-01 addendum, decision 3 —
+ * display-only grouping for /price-list. Trimmed and single-spaced; a
+ * family reuses the spelling another game already has (matched ignoring
+ * case); a region needs a family; no two games share both.
+ *
  * `member_pricing_enabled`: ADR-125 decision 7. A login game is held to
  * GameFulfilmentRule::loginGameSettings() (decisions 5/33/46).
  */
@@ -49,6 +54,30 @@ class UpdateGameRequest extends FormRequest
     public function authorize(): bool
     {
         return true;
+    }
+
+    /** ADR-091 2026-11-01, decision 3: tidy the grouping fields before validating. */
+    protected function prepareForValidation(): void
+    {
+        $merge = [];
+        foreach (['family', 'region_label'] as $field) {
+            if ($this->has($field)) {
+                $value = $this->input($field);
+                $merge[$field] = is_string($value) ? (trim((string) preg_replace('/\s+/', ' ', $value)) ?: null) : $value;
+            }
+        }
+
+        if (is_string($merge['family'] ?? null)) {
+            $existing = Game::query()
+                ->whereKeyNot($this->route('game')?->getKey())
+                ->whereRaw('LOWER(family) = ?', [mb_strtolower($merge['family'])])
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->value('family');
+            $merge['family'] = $existing ?? $merge['family'];
+        }
+
+        $this->merge($merge);
     }
 
     /**
@@ -71,6 +100,8 @@ class UpdateGameRequest extends FormRequest
                 Rule::unique('games', 'reseller_code')->ignore($this->route('game')),
             ],
             'category' => ['nullable', 'string', 'max:255'],
+            'family' => ['nullable', 'string', 'max:60'],
+            'region_label' => ['nullable', 'string', 'max:40'],
             'image_url' => ['nullable', 'string', 'max:2048'],
             'banner_url' => ['nullable', 'string', 'max:2048'],
             'description' => ['nullable', 'string', 'max:2000'],
@@ -93,6 +124,8 @@ class UpdateGameRequest extends FormRequest
             /** @var Game $game */
             $game = $this->route('game');
 
+            $this->validateGrouping($validator, $game);
+
             if ($validator->errors()->isNotEmpty() || ! $game->isLoginGame()) {
                 return;
             }
@@ -101,5 +134,32 @@ class UpdateGameRequest extends FormRequest
                 $validator->errors()->add($field, $message);
             }
         });
+    }
+
+    /** ADR-091 2026-11-01, decision 3: a region needs a family, and `(family, region)` is unique among games. */
+    private function validateGrouping(Validator $validator, Game $game): void
+    {
+        $family = $this->input('family', $game->family);
+        $region = $this->input('region_label', $game->region_label);
+
+        if ($region !== null && $family === null) {
+            $validator->errors()->add('region_label', 'A region needs a family.');
+
+            return;
+        }
+
+        if ($family === null || $region === null) {
+            return;
+        }
+
+        $taken = Game::query()
+            ->whereKeyNot($game->getKey())
+            ->whereRaw('LOWER(family) = ?', [mb_strtolower((string) $family)])
+            ->whereRaw('LOWER(region_label) = ?', [mb_strtolower((string) $region)])
+            ->exists();
+
+        if ($taken) {
+            $validator->errors()->add('region_label', 'Another game in this family already has this region.');
+        }
     }
 }

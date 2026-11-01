@@ -6,7 +6,6 @@ use App\Models\BudgetEnvelopePosting;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\PaymentSettlement;
-use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\Voucher;
@@ -14,6 +13,7 @@ use App\Models\VoucherRedemption;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Report\ReportService;
 use App\Support\MalaysiaTime;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 
 /**
@@ -323,32 +323,44 @@ final class MonthlyAccountingSummaryService
      * Capital sent to suppliers, split by funding mode (ADR-127 PR E): a
      * prepaid supplier's is a top-up (an asset), a pay-after supplier's
      * (a penjoki, a manual supplier) settles what we owe it. Neither is
-     * profit and loss; the bank fee for both is `bankTransferFees()`.
+     * profit and loss. A pooled transfer's fee is part of the top-up, as
+     * it is part of the stock's cost (ADR-134 decision 9); every other fee
+     * is `bankTransferFees()`.
      */
     private function supplierTransfersSent(Carbon $from, Carbon $toExclusive, bool $payAfter): int
     {
-        return (int) SupplierTransfer::query()
-            ->whereNull('voided_at')
-            ->whereHas('supplier', fn ($q) => $payAfter
-                ? $q->where('funding_mode', Supplier::FUNDING_PAY_AFTER)
-                : $q->where('funding_mode', '!=', Supplier::FUNDING_PAY_AFTER))
-            ->where('transferred_on', '>=', $from->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
-            ->where('transferred_on', '<', $toExclusive->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
-            ->sum('amount_myr_sent');
+        $transfers = $this->transfersIn($from, $toExclusive)
+            ->whereHas('supplier', fn ($q) => $payAfter ? $q->whereNot(fn ($q) => $q->pooled()) : $q->pooled());
+
+        return (int) (clone $transfers)->sum('amount_myr_sent') + ($payAfter ? 0 : (int) $this->pooledFee($transfers)->sum('fee_myr'));
     }
 
     /**
      * 2026-09-30 audit fix — split out of `supplierPrepaidTopup()`: our
      * own Wise/Airwallex fee for sending capital to a supplier, a real
-     * bank-charge expense distinct from the capital movement itself.
+     * bank-charge expense distinct from the capital movement itself. Since
+     * ADR-134 decision 9, only a fee that is not in a pool's unit cost: a
+     * pay-after supplier's, or one sent before the pool opened.
      */
     private function bankTransferFees(Carbon $from, Carbon $toExclusive): int
     {
-        return (int) SupplierTransfer::query()
+        $all = $this->transfersIn($from, $toExclusive);
+
+        return (int) (clone $all)->sum('fee_myr') - (int) $this->pooledFee($all->whereHas('supplier', fn ($q) => $q->pooled()))->sum('fee_myr');
+    }
+
+    private function transfersIn(Carbon $from, Carbon $toExclusive): Builder
+    {
+        return SupplierTransfer::query()
             ->whereNull('voided_at')
             ->where('transferred_on', '>=', $from->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
-            ->where('transferred_on', '<', $toExclusive->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
-            ->sum('fee_myr');
+            ->where('transferred_on', '<', $toExclusive->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString());
+    }
+
+    /** The transfers whose fee `MovingAveragePool` puts in unit cost: from its opening on. */
+    private function pooledFee(Builder $transfers): Builder
+    {
+        return (clone $transfers)->where('transferred_on', '>=', MovingAveragePool::OPENS_ON);
     }
 
     /**
