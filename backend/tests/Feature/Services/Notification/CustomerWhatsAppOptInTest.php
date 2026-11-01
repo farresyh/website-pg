@@ -11,9 +11,11 @@ use App\Models\PlatformSettings;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Models\WhatsappContact;
+use App\Services\Notification\CustomerNotificationService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -269,6 +271,136 @@ class CustomerWhatsAppOptInTest extends TestCase
         $this->inbound("order {$order->order_number}", data: ['from' => '12345@lid', 'senderPhone' => self::ORDER_PHONE]);
 
         $this->assertSame(self::ORDER_PHONE, CustomerNotification::query()->sole()->phone);
+    }
+
+    private const LID_CHAT = '234767895240796@lid';
+
+    private function markDelivered(Order $order): void
+    {
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+        $order->update(['delivery_status' => DeliveryStatus::NeedsReview->value]);
+        $this->postJson("/api/orders/{$order->id}/mark-delivered", ['supplier_ref' => 'X1', 'supplier_price' => 4.75, 'note' => 'resent'])->assertOk();
+    }
+
+    /** @return Collection<int, CustomerNotification> */
+    private function receipts(Order $order)
+    {
+        return CustomerNotification::query()->where('order_id', $order->id)->where('event', 'delivered_receipt')->get();
+    }
+
+    /** ADR-116 2026-11-01 addendum, found on PG-WSEZAO6R4TGU: a privacy id with no resolvable phone was ignored. */
+    public function test_a_privacy_id_with_no_phone_gets_the_status_card_in_its_own_chat(): void
+    {
+        $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value]);
+
+        $this->inbound($order->order_number, data: ['from' => self::LID_CHAT, 'chatId' => self::LID_CHAT]);
+
+        $card = CustomerNotification::query()->sole();
+        $this->assertSame('status_card', $card->event);
+        $this->assertSame(self::LID_CHAT, $card->chat_id);
+        $this->assertNull($card->phone);
+        $this->assertSame('queued', $card->status);
+        $this->assertSame(self::LID_CHAT, WhatsappContact::query()->sole()->chat_id);
+    }
+
+    public function test_a_privacy_id_that_asked_about_the_order_gets_its_receipt(): void
+    {
+        $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value, 'supplier_id' => null]);
+        $this->inbound("order {$order->order_number}", data: ['from' => self::LID_CHAT]);
+
+        $this->markDelivered($order);
+
+        $receipt = $this->receipts($order)->sole();
+        $this->assertSame(self::LID_CHAT, $receipt->chat_id);
+        $this->assertStringContainsString('Reply STOP', $receipt->message);
+    }
+
+    public function test_a_different_number_that_asked_about_the_order_gets_its_receipt(): void
+    {
+        $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value, 'supplier_id' => null]);
+        $this->inbound("order {$order->order_number}", from: '60199998888');
+
+        $this->markDelivered($order);
+
+        $this->assertSame('60199998888', $this->receipts($order)->sole()->phone);
+    }
+
+    public function test_every_follower_gets_one_receipt_and_a_replayed_event_sends_none_again(): void
+    {
+        $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value, 'supplier_id' => null]);
+        $this->inbound("order {$order->order_number}", data: ['from' => self::LID_CHAT]);
+        $this->inbound("order {$order->order_number}", data: ['from' => self::LID_CHAT]);
+        $this->inbound("order {$order->order_number}", from: '60199998888');
+
+        $this->markDelivered($order);
+        app(CustomerNotificationService::class)->orderDelivered($order->id);
+
+        $receipts = $this->receipts($order);
+        $this->assertCount(2, $receipts);
+        $this->assertEqualsCanonicalizing([self::LID_CHAT, '60199998888'], $receipts->map(fn ($r) => $r->chat_id ?? $r->phone)->all());
+    }
+
+    public function test_an_opted_in_checkout_number_alone_gets_the_receipt_so_nobody_gets_it_twice(): void
+    {
+        $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value, 'supplier_id' => null]);
+        $this->inbound('Hi');
+        $this->inbound("order {$order->order_number}");
+        $this->inbound("order {$order->order_number}", data: ['from' => self::LID_CHAT]);
+
+        $this->markDelivered($order);
+
+        $this->assertSame(self::ORDER_PHONE, $this->receipts($order)->sole()->phone);
+    }
+
+    /** Stress-test finding L1: the checkout number's STOP must not be bypassed through a follower chat. */
+    public function test_a_checkout_number_that_said_stop_silences_every_follower(): void
+    {
+        $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value, 'supplier_id' => null]);
+        $this->inbound('STOP');
+        $this->inbound("order {$order->order_number}", data: ['from' => self::LID_CHAT]);
+
+        $this->markDelivered($order);
+
+        $this->assertCount(0, $this->receipts($order));
+    }
+
+    public function test_stop_and_start_work_for_a_privacy_id(): void
+    {
+        $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value, 'supplier_id' => null]);
+        $this->inbound("order {$order->order_number}", data: ['from' => self::LID_CHAT]);
+        $this->inbound('stop', data: ['from' => self::LID_CHAT]);
+
+        $stop = CustomerNotification::query()->where('event', 'stop_reply')->sole();
+        $this->assertSame(self::LID_CHAT, $stop->chat_id);
+        $this->markDelivered($order);
+        $this->assertCount(0, $this->receipts($order));
+
+        $this->inbound('START', data: ['from' => self::LID_CHAT]);
+        $this->assertNull(WhatsappContact::query()->sole()->opted_out_at);
+    }
+
+    /** Stress-test finding L2: one person seen first as a privacy id, later with a resolved phone. STOP wins. */
+    public function test_a_privacy_id_that_said_stop_keeps_the_stop_once_its_phone_resolves(): void
+    {
+        $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value, 'supplier_id' => null]);
+        $this->inbound('STOP', data: ['from' => self::LID_CHAT]);
+        $this->inbound("order {$order->order_number}", data: ['from' => self::LID_CHAT, 'senderPhone' => self::ORDER_PHONE]);
+
+        $contact = WhatsappContact::query()->sole();
+        $this->assertSame(self::ORDER_PHONE, $contact->phone);
+        $this->assertSame(self::LID_CHAT, $contact->chat_id);
+
+        $this->markDelivered($order);
+        $this->assertCount(0, $this->receipts($order));
+    }
+
+    public function test_two_rows_for_one_person_mean_stop_wins(): void
+    {
+        WhatsappContact::query()->create(['phone' => self::ORDER_PHONE, 'opted_in_at' => now(), 'opt_in_source' => 'message']);
+        WhatsappContact::query()->create(['chat_id' => self::LID_CHAT, 'opted_in_at' => now(), 'opt_in_source' => 'message', 'opted_out_at' => now()]);
+
+        $this->assertFalse(WhatsappContact::receivesReceipts(self::ORDER_PHONE, self::LID_CHAT));
+        $this->assertTrue(WhatsappContact::receivesReceipts(self::ORDER_PHONE, null));
     }
 
     /** Found in the first live test: a message skipped while the switch was off could never be sent later. */

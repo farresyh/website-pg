@@ -5,21 +5,24 @@ namespace App\Services\Notification;
 use App\Models\Order;
 use App\Models\WhatsappContact;
 use App\Support\PhoneNumber;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Log;
 
 /**
- * ADR-116 decision 5 and its 2026-09-30 addendum: a direct message to the
- * customer-support number.
- * - `STOP` opts the number out of receipts; `START` opts it back in.
+ * ADR-116 decision 5 and its 2026-09-30 and 2026-11-01 addenda: a direct
+ * message to the customer-support number.
+ * - `STOP` opts the sender out of receipts; `START` opts it back in.
  * - Any message carrying an order number (`PG-…`), whichever button
- *   prefilled it or typed by hand, opts the number in and gets that order's
- *   status card back, or a "not found" reply for a mistyped number. Messaging
- *   with an order number is the opt-in, since what we need to know is that
- *   this number wrote to us first.
+ *   prefilled it or typed by hand, opts the sender in and gets that order's
+ *   status card back, or a "not found" reply for a mistyped number. That
+ *   status card row also makes the chat a follower of the order
+ *   (CustomerNotificationService::receiptRecipients()).
  * - An order-number message never undoes a STOP; only START does. Otherwise
  *   a customer who said STOP and later chats with support would get receipts
  *   they turned off.
  *
+ * The sender is its phone when WhatsApp gives one, else its privacy-id chat
+ * (`…@lid`): a hidden number is answered in its own chat, never ignored.
  * Anything else is a normal support chat and is left alone.
  */
 final class CustomerWhatsAppInboundService
@@ -36,21 +39,25 @@ final class CustomerWhatsAppInboundService
         $text = trim((string) ($data['body'] ?? $data['text'] ?? ''));
         $messageId = (string) ($data['id'] ?? $data['messageId'] ?? '');
         $phone = $this->senderPhone($data);
+        $lidChat = $this->senderLidChat($data);
 
-        if ($phone === null || $messageId === '' || $text === '') {
+        if ($messageId === '' || $text === '') {
             return;
         }
 
-        if (strcasecmp($text, 'STOP') === 0) {
-            $this->contact($phone)->update(['opted_out_at' => now()]);
-            $this->notifications->stopReply($phone, $messageId);
+        if ($phone === null && $lidChat === null) {
+            Log::warning('Customer WhatsApp: inbound message with no phone and no privacy-id chat, ignored', ['from' => $data['from'] ?? null]);
 
             return;
         }
 
-        if (strcasecmp($text, 'START') === 0) {
-            $this->contact($phone)->update(['opted_out_at' => null]);
-            $this->notifications->startReply($phone, $messageId);
+        $to = $phone !== null ? WhatsAppRecipient::phone($phone) : new WhatsAppRecipient(null, $lidChat);
+
+        if (strcasecmp($text, 'STOP') === 0 || strcasecmp($text, 'START') === 0) {
+            $stop = strcasecmp($text, 'STOP') === 0;
+            $this->rememberSender($phone, $lidChat);
+            WhatsappContact::matching($phone, $lidChat)->update(['opted_out_at' => $stop ? now() : null]);
+            $stop ? $this->notifications->stopReply($to, $messageId) : $this->notifications->startReply($to, $messageId);
 
             return;
         }
@@ -59,27 +66,47 @@ final class CustomerWhatsAppInboundService
             return;
         }
 
-        $this->contact($phone);
+        $this->rememberSender($phone, $lidChat);
 
         // Usually a typo. Order numbers are random per purchase, so saying "not
         // found" gives away nothing guessable (founder's call, ADR-116 addendum).
         $orderNumber = strtoupper($match[0]);
         $order = Order::query()->where('order_number', $orderNumber)->first();
         if ($order === null) {
-            $this->notifications->orderNotFound($orderNumber, $phone, $messageId);
+            $this->notifications->orderNotFound($orderNumber, $to, $messageId);
 
             return;
         }
 
-        $this->notifications->orderStatusCard($order, $phone, $messageId);
+        $this->notifications->orderStatusCard($order, $to, $messageId);
     }
 
-    private function contact(string $phone): WhatsappContact
+    /**
+     * One row per sender. When a message carries both a phone and a privacy
+     * id, both are stored on the one row that matches. Two rows that already
+     * exist (the same person seen first one way, then the other) are left
+     * apart: WhatsappContact reads STOP on either as STOP.
+     */
+    private function rememberSender(?string $phone, ?string $lidChat): void
     {
-        return WhatsappContact::query()->firstOrCreate(
-            ['phone' => $phone],
-            ['opted_in_at' => now(), 'opt_in_source' => 'message'],
-        );
+        $rows = WhatsappContact::matching($phone, $lidChat)->get();
+
+        if ($rows->isEmpty()) {
+            try {
+                WhatsappContact::query()->create(['phone' => $phone, 'chat_id' => $lidChat, 'opted_in_at' => now(), 'opt_in_source' => 'message']);
+            } catch (UniqueConstraintViolationException) {
+                // A concurrent webhook for the same sender created it first.
+            }
+
+            return;
+        }
+
+        if ($rows->count() === 1) {
+            $row = $rows->first();
+            $row->phone ??= $phone;
+            $row->chat_id ??= $lidChat;
+            $row->save();
+        }
     }
 
     /** @param  array<string, mixed>  $data */
@@ -94,8 +121,7 @@ final class CustomerWhatsAppInboundService
 
     /**
      * OpenWA gives `from` as `<digits>@c.us`. For a WhatsApp privacy id (`@lid`)
-     * it adds a best-effort `senderPhone` instead. No usable phone means the
-     * message is ignored: there is no number to opt in or reply to.
+     * it adds a best-effort `senderPhone` instead, often null for a stranger.
      *
      * @param  array<string, mixed>  $data
      */
@@ -108,12 +134,14 @@ final class CustomerWhatsAppInboundService
             $candidate = substr($from, 0, -5);
         }
 
-        $phone = PhoneNumber::normalize(is_string($candidate) ? $candidate : null);
+        return PhoneNumber::normalize(is_string($candidate) ? $candidate : null);
+    }
 
-        if ($phone === null) {
-            Log::info('Customer WhatsApp: inbound message with no usable phone, ignored');
-        }
+    /** @param  array<string, mixed>  $data */
+    private function senderLidChat(array $data): ?string
+    {
+        $from = (string) ($data['from'] ?? $data['chatId'] ?? '');
 
-        return $phone;
+        return preg_match('/^\d+@lid$/', $from) === 1 ? $from : null;
     }
 }
