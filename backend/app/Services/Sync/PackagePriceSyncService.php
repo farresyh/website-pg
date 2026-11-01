@@ -10,6 +10,7 @@ use App\Models\SupplierProduct;
 use App\Services\Pricing\ComboPricingService;
 use App\Services\Pricing\PackageCostService;
 use App\Services\Pricing\PackageMarkupService;
+use App\Services\Supplier\SupplierPackageStatusService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -53,6 +54,7 @@ final class PackagePriceSyncService
         private readonly PackageMarkupService $markup,
         private readonly ComboPricingService $comboPricing,
         private readonly PackageCostService $packageCost,
+        private readonly SupplierPackageStatusService $packageStatus,
     ) {}
 
     public function apply(Supplier $supplier, Carbon $syncedAt, ?int $priceSyncRunId): PackagePriceSyncResult
@@ -121,6 +123,10 @@ final class PackagePriceSyncService
             }
         }
 
+        // ADR-134 decision 4: this run priced the supplier from a deposit, so the packages stopped for having none sell again — now, at the cost just applied, and only those the supplier still lists as active.
+        $sellable = $supplierProducts->filter(fn (SupplierProduct $p) => $p->status_raw === 'active' && $p->last_synced_at?->timestamp === $syncedAt->timestamp)->keys()->all();
+        $affectedGameIds = [...$affectedGameIds, ...$this->reactivateUnfunded($supplier, $sellable)];
+
         return new PackagePriceSyncResult(
             priceChanged: $priceChanged,
             deactivated: $deactivated,
@@ -128,6 +134,23 @@ final class PackagePriceSyncService
             floorRejected: $floorRejected,
             anomaliesFlagged: $anomaliesFlagged,
         );
+    }
+
+    /**
+     * @param  list<string>  $refs
+     * @return list<int> the games whose packages came back
+     */
+    private function reactivateUnfunded(Supplier $supplier, array $refs): array
+    {
+        $gameIds = Package::query()->where('supplier_id', $supplier->id)->where('is_active', false)
+            ->where('deactivated_reason', SupplierPackageStatusService::UNFUNDED)->whereIn('supplier_package_ref', $refs)
+            ->distinct()->pluck('game_id')->all();
+
+        if ($gameIds !== []) {
+            $this->packageStatus->reactivate($supplier, null, code: SupplierPackageStatusService::UNFUNDED, refs: $refs);
+        }
+
+        return $gameIds;
     }
 
     /**

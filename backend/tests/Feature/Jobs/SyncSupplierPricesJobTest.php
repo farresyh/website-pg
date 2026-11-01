@@ -516,4 +516,59 @@ class SyncSupplierPricesJobTest extends TestCase
         $this->assertFalse($package->fresh()->is_active);
         $this->assertSame(0, PackageReactivationLog::query()->count());
     }
+
+    private function runJob(): PriceSyncRun
+    {
+        $run = PriceSyncRun::query()->create(['status' => 'queued']);
+        (new SyncSupplierPricesJob($run))->handle(
+            app(ProductSyncService::class),
+            app(PackagePriceSyncService::class),
+            app(SupplierAdapterFactory::class),
+            app(PendingReactivationAutoApprover::class),
+        );
+
+        return $run->refresh();
+    }
+
+    /**
+     * ADR-134 decision 4: a foreign supplier with no deposit stops selling,
+     * and once a deposit is recorded exactly those packages come back, at
+     * the landed cost — not one the admin switched off, nor one the
+     * supplier no longer lists.
+     */
+    public function test_an_unfunded_suppliers_packages_stop_selling_until_a_deposit_is_recorded(): void
+    {
+        Http::fake(['open.er-api.com/*' => Http::response(['result' => 'success', 'rates' => ['MYR' => 0.000228]], 200)]);
+        $digiflazz = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz-test', 'api_config' => self::FAKE_CONFIG, 'currency' => 'IDR']);
+        $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
+        $package = fn (string $ref, bool $active = true, ?string $reason = null) => Package::query()->create([
+            'game_id' => $game->id, 'name' => $ref, 'cost_price' => 73, 'standard_selling_price' => 84, 'markup_percent' => 15,
+            'supplier_id' => $digiflazz->id, 'supplier_package_ref' => $ref, 'is_active' => $active, 'deactivated_reason' => $reason,
+        ]);
+        $selling = $package('xld10');
+        $gone = $package('xld20');
+        $adminOff = $package('xld30', false, 'admin');
+
+        $this->bindFakeAdapter(true, [
+            new SupplierCatalogItem('xld10', '10', 'Mobile Legends', 3200.0, 'active'),
+            new SupplierCatalogItem('xld20', '20', 'Mobile Legends', 6400.0, 'active'),
+            new SupplierCatalogItem('xld30', '30', 'Mobile Legends', 9600.0, 'active'),
+        ], 'digiflazz-test');
+
+        $this->assertSame('failed', $this->runJob()->status);
+        $this->assertSame([false, 'unfunded'], [$selling->fresh()->is_active, $selling->fresh()->deactivated_reason]);
+        $this->assertSame('unfunded', $gone->fresh()->deactivated_reason);
+        $this->assertSame('admin', $adminOff->fresh()->deactivated_reason);
+
+        SupplierTransfer::query()->create(['transferred_on' => '2026-10-10', 'supplier_id' => $digiflazz->id, 'source_channel' => 'bank', 'amount_myr_sent' => 23900, 'fee_myr' => 0, 'currency' => 'IDR', 'amount_foreign_received' => '1000000']);
+        $this->bindFakeAdapter(true, [
+            new SupplierCatalogItem('xld10', '10', 'Mobile Legends', 3200.0, 'active'),
+            new SupplierCatalogItem('xld30', '30', 'Mobile Legends', 9600.0, 'active'),
+        ], 'digiflazz-test');
+
+        $this->assertSame('success', $this->runJob()->status);
+        $this->assertSame([true, null, 77], [$selling->fresh()->is_active, $selling->fresh()->deactivated_reason, $selling->fresh()->cost_price]);
+        $this->assertFalse($gone->fresh()->is_active);
+        $this->assertSame([false, 'admin'], [$adminOff->fresh()->is_active, $adminOff->fresh()->deactivated_reason]);
+    }
 }

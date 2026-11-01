@@ -9,6 +9,7 @@ use App\Services\Currency\CurrencyRateService;
 use App\Services\Currency\CurrencyRateUnavailableException;
 use App\Services\Currency\LandedCostRate;
 use App\Services\Supplier\SupplierAdapter;
+use App\Services\Supplier\SupplierPackageStatusService;
 use Illuminate\Support\Carbon;
 
 /**
@@ -24,6 +25,7 @@ final class ProductSyncService
     public function __construct(
         private readonly CurrencyRateService $currencyRates,
         private readonly LandedCostRate $landedCost,
+        private readonly SupplierPackageStatusService $packageStatus,
     ) {}
 
     public function sync(Supplier $supplier, SupplierAdapter $adapter): ProductSyncResult
@@ -50,6 +52,9 @@ final class ProductSyncService
         $averageSen = $this->landedCost->averageSen($supplier);
 
         if ($averageSen === null) {
+            // Its live prices would rest on a stale cost: stop selling them, under a reason only a funded run undoes (decision 4).
+            $this->packageStatus->deactivate($supplier, null, 'No deposit recorded for this supplier (ADR-134).', code: SupplierPackageStatusService::UNFUNDED);
+
             throw new ProductSyncFailedException(
                 "Supplier '{$supplier->slug}' product sync failed: no deposit is recorded for it, so its {$supplier->currency} prices have no landed cost. Record a transfer first.",
             );
