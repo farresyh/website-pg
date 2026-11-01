@@ -1,6 +1,6 @@
 # ADR-106: Durable delivery-attempt audit record — every fulfillment attempt gets its own immutable row, not just resends
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-02):** In force; the 2026-11-02 addendum replaces the Price Diff column with a derived "Cost vs checkout" and decides the leg-level comparison deferred in the 2026-09-21 addendum (decision 5). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — grilled (`/mattpocock-skills:grilling`) 2026-09-17, same session and same order (`PG-KWKBUHNDMKQT`/order 15) as ADR-105, at the founder's explicit request to grill it immediately rather than defer, so the investigation's context wouldn't be lost. **Built 2026-09-18, merged to `staging`** (PR #237, bundled with ADR-107, after ADR-107) — every decision built exactly as accepted, no revisions. See the build addendum at the end of this entry.
 
@@ -60,3 +60,30 @@ Decision 6 of the 2026-09-21 addendum ("Admin-facing Leg History UI is deferred"
 - **Not retroactive:** only orders made after `cf44991` (2026-09-21) have leg rows. Production had 2 combo orders on 2026-10-12 (ids 7 and 28), both older, so each leg shows "no attempts recorded".
 - **Left alone:** decision 5 (leg-level `price_diff_sen` reconciliation) is still ADR-107's domain.
 
+
+### 2026-11-02 addendum — "Cost vs checkout" replaces the Price Diff column; the leg-level comparison is decided
+
+Grilled 2026-11-02 (two rounds plus a stress test against code and read-only production), sparked by the founder reading PG-PJCFSQQQHKB8's Delivery Logs: the supplier charged IDR 8,349 on the resend against IDR 8,226 quoted on the failed first attempt, yet Price Diff showed RM 0.00. Revises decision 5 of the 2026-09-21 addendum; [ADR-105](./ADR-105-order-resend-profit-recompute-correctness.md)'s 2026-10-06 decision 13 (what `price_diff_sen` stores) is unchanged.
+
+**Context.**
+- `price_diff_sen` is the catalog cost of the package sent minus the cost assigned before that resend (ADR-105 decision 13). It was designed before [ADR-111](./ADR-111-real-cost-profit-reconciliation-at-delivery-time.md) captured the supplier's real charge, and ADR-111 never revisited it. A same-package resend whose supplier raised the price shows 0; a package swap shows the catalog gap, not what was paid (PG-WSEZAO6R4TGU: +8 catalog, +7 real).
+- Money was never wrong. Read-only on 2026-11-02, all 57 delivered production orders had ledger platform profit equal to `orders.platform_profit`, and all 41 non-combo orders with a real cost satisfied `selling_price − real_cost_price_sen − affiliate_profit`. No report, ledger or accounting path reads `price_diff_sen`; costs come from `Order::effectiveCostPriceSen()`.
+- The resend modal labelled the package's catalog cost "Live cost (this package now)". It is the last price sync's figure; the supplier's charge is known only from its delivery response.
+
+**Decision.**
+1. **The Delivery Logs column is "Cost vs checkout"**: the delivered unit's cost minus its checkout cost, shown on the attempt row that delivered the unit, "—" on every other row. A unit is the order, or a combo leg in its own history.
+2. **Derived, not stored.** A unit is delivered once and its cost already has one home: `Order::effectiveCostPriceSen()` with `costBasis()` for an order, `order_delivery_legs.real_cost_price_sen` for a leg. The checkout cost is the unit's `initial` attempt row. `Order::costVsCheckout()` returns one entry per delivered unit; the admin and sandbox order detail responses carry it as `cost_vs_checkout`. No column, no write at the six real-cost write sites, no backfill.
+3. **The delivering row is the unit's latest `success` attempt.** For a manual supplier that is the `manual_confirm` row (the admin's confirmation that set the cost), not the resolved `initial` post to the supplier group.
+4. **A figure resting on the catalog cost is labelled "(catalog)"**: orders delivered before ADR-111. A leg without a real cost shows nothing, because its catalog cost at delivery is kept nowhere. A unit with no `initial` row (created before this ADR's 2026-09-18 build) shows nothing.
+5. **A leg's checkout cost is its first attempt's cost.** `recordLegAttempt()` reads the component's catalog cost at that moment, minutes after payment; no checkout snapshot exists per leg.
+6. **`price_diff_sen` keeps its meaning and is no longer displayed.** It stays the audit of the estimate an admin acted on.
+7. **The resend modal labels its figures as estimates**: "Estimated cost (catalog, from the last price sync)", "Estimated platform profit", and the loss warning (and `ResendImpact::LOSS_MESSAGE`) say "catalog cost". No sync time is shown: `supplier_products.last_synced_at` is when the price was seen, but a package's cost can stay older when a price change is held for review, and a manual supplier has no sync.
+
+**Rejected.**
+- *A `real_cost_price_sen` column on every attempt row* (the grill's first answer). The stress test found it needs a special case for manual suppliers (two success rows per delivery), has no pending row to stamp on a manual Failed → Delivered correction, and `ManualDeliveryService::confirmDelivered()` writes its `manual_confirm` row outside the finalize transaction, so the copy could disagree with the order. A second home for one fact is what ADR-111's own addendum removed.
+- *A live supplier price in the modal.* `SupplierAdapter` has no single-product price call, only the whole catalog; the largest real-vs-catalog gap on the 11 successful production resends was 3 sen.
+- *A safety margin on the loss warning.* No data to set it; a real-cost loss is still recorded and flagged after delivery (ADR-111 decision 7).
+
+**Consequence to track.**
+- Two pre-ADR-106 orders with a resend (PG-KWKBUHNDMKQT, PG-YEQQQIJR0MYM) have no `initial` row and now show "—" where they showed their catalog diff. Their `price_diff_sen` rows are kept.
+- If a unit can ever be delivered twice, "latest success" stops naming one delivery and this needs revisiting.

@@ -1027,6 +1027,8 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   first Monthly Summary fallback on a combo leg (0 in October 2026). A leg
   already carries `real_cost_price_sen` (ADR-111, filled at reconcile, null on
   5 of 8 delivered legs on prod 2026-11-01), which the fallback reads first.
+  The same column would let Delivery Logs show "Cost vs checkout" for a leg
+  with no real cost (ADR-106 2026-11-02 addendum, decision 4).
 - **81** Month-end pack and the open accounting policies (vouchers by
   reason, transfer fees in inventory cost), when an accountant is engaged.
 - **4** Bot-host resize, when capacity calls for it.
