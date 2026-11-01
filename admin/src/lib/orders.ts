@@ -237,6 +237,17 @@ export interface OrderDetail extends OrderListItem {
   cost_basis: "real" | "mixed" | "estimated";
   // ADR-134 decision 13: the rate that cost is at — "landed" (what the supplier deposit cost) or "market" (orders before ADR-134, which read high).
   cost_rate: "market" | "landed";
+  // ADR-106 2026-11-02 addendum: Delivery Logs' "Cost vs checkout", one
+  // entry per delivered unit (the order, or a combo leg), keyed to the
+  // attempt row that delivered it. Absent on older API shapes.
+  cost_vs_checkout?: CostVsCheckout[];
+}
+
+export interface CostVsCheckout {
+  attempt_id: number;
+  order_delivery_leg_id: number | null;
+  cost_vs_checkout_sen: number;
+  cost_basis: "real" | "mixed" | "estimated";
 }
 
 export interface OrderPage {

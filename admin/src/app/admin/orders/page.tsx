@@ -797,7 +797,7 @@ function OrdersPageInner() {
         <CustomerLoginCard key={selected.id} orderId={selected.id} login={selected.customer_login} canManage={session?.role === "super_admin"} />
 
         {/* ADR-094 decision 12: empty/no-op for every ordinary order — only a combo order has legs to show. */}
-        <ComboLegBreakdown legs={selected.delivery_legs} attempts={selected.resend_attempts} />
+        <ComboLegBreakdown legs={selected.delivery_legs} attempts={selected.resend_attempts} costVsCheckout={selected.cost_vs_checkout} />
 
         {/* ADR-017 decision #4: chronological delivery history (initial + resends) */}
         <DeliveryLogsTable order={selected} attempts={selected.resend_attempts} />

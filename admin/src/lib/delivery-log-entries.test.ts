@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildDeliveryLogEntries, groupLegAttempts, legAttemptLabel } from "./delivery-log-entries.ts";
+import { buildDeliveryLogEntries, groupLegAttempts, legAttemptLabel, costVsCheckoutByAttempt } from "./delivery-log-entries.ts";
 import type { OrderDetail, OrderResendAttempt } from "./orders.ts";
 
 const order = { delivery_status: "delivered", paid_at: "2026-09-22T00:00:00Z", created_at: "2026-09-22T00:00:00Z", supplier_response: null, package: { name: "Combo" } } as unknown as OrderDetail;
@@ -43,4 +43,20 @@ test("every leg's attempts are grouped under it, oldest first", () => {
   assert.deepEqual(byLeg.get(2)!.map((a) => a.id), [2, 4]);
   assert.equal(legAttemptLabel("retry"), "Retry");
   assert.equal(legAttemptLabel("initial"), "First attempt");
+});
+
+// ADR-106 2026-11-02 addendum: the backend's per-unit "Cost vs checkout"
+// lands on the attempt row that delivered the unit, and nowhere else.
+test("cost vs checkout sits on the delivering row only", () => {
+  const initial: OrderResendAttempt = { ...legAttempt(10, 1), order_delivery_leg_id: null, outcome: "failed" };
+  const resend: OrderResendAttempt = { ...initial, id: 11, attempt_type: "resend", outcome: "success", price_diff_sen: 8 };
+  const detail = { ...comboOrder([resend, initial]), cost_vs_checkout: [{ attempt_id: 11, order_delivery_leg_id: null, cost_vs_checkout_sen: 7, cost_basis: "real" }] } as OrderDetail;
+  const entries = buildDeliveryLogEntries(detail);
+  assert.deepEqual(entries.map((e) => e.costVsCheckout), [null, { sen: 7, basis: "real" }]);
+  assert.deepEqual(costVsCheckoutByAttempt(detail.cost_vs_checkout).get(11), { sen: 7, basis: "real" });
+});
+
+test("no backend figure means no figure, never the old catalog diff", () => {
+  const resend: OrderResendAttempt = { ...legAttempt(11, 1), order_delivery_leg_id: null, attempt_type: "resend", price_diff_sen: 8 };
+  assert.deepEqual(buildDeliveryLogEntries(comboOrder([resend])).map((e) => e.costVsCheckout), [null, null]);
 });
