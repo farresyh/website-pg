@@ -262,6 +262,27 @@ class Adr126JokiProgressTest extends TestCase
         $this->assertSame(CustomerNotification::STATUS_SKIPPED, $queued->fresh()->status);
     }
 
+    /** ADR-116 2026-11-01 addendum: a privacy-id chat that asked about the order follows it, STOP included. */
+    public function test_a_privacy_id_chat_that_asked_about_the_order_gets_the_update_until_it_stops(): void
+    {
+        $chat = '234767895240796@lid';
+        WhatsappContact::query()->create(['chat_id' => $chat, 'opted_in_at' => now(), 'opt_in_source' => 'message']);
+        CustomerNotification::query()->create([
+            'session' => CustomerNotification::SESSION_CUSTOMER_SUPPORT, 'event' => 'status_card', 'dedupe_key' => 'status_card:message:m1',
+            'order_id' => $this->order->id, 'chat_id' => $chat, 'message' => 'card', 'status' => CustomerNotification::STATUS_SENT,
+        ]);
+
+        $this->record(['tier_id' => $this->tierId('Epic'), 'division' => 3, 'stars' => 2]);
+        $this->sendText($first = $this->progressMessages()->sole());
+        $this->assertSame($chat, $first->chat_id);
+
+        $this->record(['tier_id' => $this->tierId('Epic'), 'division' => 2, 'stars' => 1]);
+        $queued = $this->progressMessages()->last();
+        WhatsappContact::query()->update(['opted_out_at' => now()]);
+
+        $this->assertNull($this->sendText($queued));
+    }
+
     // --- Track Order -----------------------------------------------------------
 
     public function test_track_order_shows_the_climb_and_the_current_rank(): void

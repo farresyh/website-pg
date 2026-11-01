@@ -12,6 +12,9 @@ const figtree = localFont({ src: "./fonts/figtree-latin.woff2", weight: "300 900
 export const metadata: Metadata = {
   title: "PekanGame Partner",
   description: "Orders and account tools for PekanGame affiliate and reseller partners.",
+  // PRD §16 item 153 (founder, 2026-11-01): the portal is never in search results.
+  // Applicants arrive through /apply on the onboarding host, never a portal link.
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({
