@@ -55,7 +55,7 @@ export function ProfitBridge({ bridge }: { bridge: ReportProfitBridge }) {
     line("Admin-issued vouchers", bridge.admin_issued_vouchers),
     line("Supplier manual adjustments", bridge.supplier_manual_adjustments),
     line("Order cost vs funded cost", bridge.cogs_funding_difference, "Older orders: the deposit's real cost against the market rate they were costed at. Newer orders: a transfer recorded late, corrected or voided"),
-    line("Manual profit corrections", bridge.manual_profit_corrections, "In the ledger, not in the accounts' revenue and cost"),
+    line("Ledger profit vs order figures", bridge.ledger_vs_order_figures, "Normally 0: profit the ledger holds that the orders' own price and cost don't show, or the reverse"),
     { sign: "=", label: "Operating profit (accounts)", note: "Matches Accounting › Monthly Summary", sen: bridge.operating_profit, strong: true },
   ];
 

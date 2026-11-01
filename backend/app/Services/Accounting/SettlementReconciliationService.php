@@ -309,7 +309,7 @@ final class SettlementReconciliationService
      * *other* transactions entirely absent from this file, not a
      * disagreement about one that's actually in it).
      *
-     * @return array<int, array{reference: string, amount_sen: int}>
+     * @return array<int, array{reference: string, amount_sen: int, fee_sen: int}>
      */
     public function paidButNotSettled(Carbon $dateFrom, Carbon $dateTo): array
     {
@@ -327,7 +327,7 @@ final class SettlementReconciliationService
      * settlement's `settled_on` is a KL date). The month close's "CHIP paid
      * but not settled" asset.
      *
-     * @return array<int, array{reference: string, amount_sen: int}>
+     * @return array<int, array{reference: string, amount_sen: int, fee_sen: int}>
      */
     public function paidButNotSettledBefore(Carbon $toExclusive): array
     {
@@ -337,8 +337,15 @@ final class SettlementReconciliationService
     }
 
     /**
+     * `fee_sen` is the processing fee the customer paid with the payment,
+     * the same figure settlement matching compares CHIP's against
+     * (`resolveMatch()`'s `fee`). Until a payment's settlement file lands,
+     * the books assume CHIP takes exactly that; the difference is the
+     * payment processing gain/loss of the month the file lands in. So the
+     * month close nets this, not a flat estimate, and its equation closes.
+     *
      * @param  list<string>  $settledRefs
-     * @return array<int, array{reference: string, amount_sen: int}>
+     * @return array<int, array{reference: string, amount_sen: int, fee_sen: int}>
      */
     private function unsettled(?CarbonInterface $from, CarbonInterface $toExclusive, array $settledRefs): array
     {
@@ -347,23 +354,25 @@ final class SettlementReconciliationService
             ->where('payment_status', PaymentStatus::Paid->value)
             ->where('is_test', false)
             ->when($from, fn ($q) => $q->where('paid_at', '>=', $from))->where('paid_at', '<', $toExclusive)
+            // A voucher-covered order never reached CHIP (no payment_ref); said here, not left to SQL's NULL NOT IN.
+            ->whereNotNull('payment_ref')
             ->whereNotIn('payment_ref', $settledRefs)
-            ->get(['order_number', 'final_amount'])
-            ->map(fn (Order $o) => ['reference' => $o->order_number, 'amount_sen' => $o->final_amount]);
+            ->get(['order_number', 'final_amount', 'transaction_fee'])
+            ->map(fn (Order $o) => ['reference' => $o->order_number, 'amount_sen' => $o->final_amount, 'fee_sen' => (int) $o->transaction_fee]);
 
         $memberships = MembershipCheckoutAttempt::query()
             ->where('status', MembershipCheckoutAttemptStatus::Paid->value)
             ->whereHas('feeRecord', fn ($q) => $q->when($from, fn ($q) => $q->where('created_at', '>=', $from))->where('created_at', '<', $toExclusive))
             ->whereNotIn('payment_ref', $settledRefs)
-            ->get(['subscription_number', 'total_charged_sen'])
-            ->map(fn (MembershipCheckoutAttempt $m) => ['reference' => $m->subscription_number, 'amount_sen' => $m->total_charged_sen]);
+            ->get(['subscription_number', 'total_charged_sen', 'fee_sen'])
+            ->map(fn (MembershipCheckoutAttempt $m) => ['reference' => $m->subscription_number, 'amount_sen' => $m->total_charged_sen, 'fee_sen' => $m->total_charged_sen - $m->fee_sen]);
 
         $walletTopups = WalletTopupAttempt::query()
             ->where('status', WalletTopupAttemptStatus::Paid->value)
             ->whereHas('ledgerCredit', fn ($q) => $q->when($from, fn ($q) => $q->where('created_at', '>=', $from))->where('created_at', '<', $toExclusive))
             ->whereNotIn('chip_payment_ref', $settledRefs)
-            ->get(['reference', 'total_charged_sen'])
-            ->map(fn (WalletTopupAttempt $w) => ['reference' => $w->reference, 'amount_sen' => $w->total_charged_sen]);
+            ->get(['reference', 'total_charged_sen', 'amount_sen'])
+            ->map(fn (WalletTopupAttempt $w) => ['reference' => $w->reference, 'amount_sen' => $w->total_charged_sen, 'fee_sen' => $w->total_charged_sen - $w->amount_sen]);
 
         return $orders->concat($memberships)->concat($walletTopups)->values()->all();
     }

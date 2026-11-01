@@ -30,9 +30,6 @@ use Illuminate\Support\Carbon;
  */
 final class CashPositionService
 {
-    /** Decision 13: CHIP's fee for a payment not yet settled is estimated at RM1. */
-    public const ESTIMATED_CHIP_FEE_SEN = 100;
-
     public function __construct(
         private readonly FundedCostOfSales $costOfSales,
         private readonly SettlementReconciliationService $settlements,
@@ -53,7 +50,8 @@ final class CashPositionService
         return [
             'assets' => [
                 'supplier_prepaid_sen' => $suppliers['prepaid'],
-                'chip_unsettled_net_sen' => (int) array_sum(array_column($unsettled, 'amount_sen')) - count($unsettled) * self::ESTIMATED_CHIP_FEE_SEN,
+                // Each payment less the processing fee its customer paid: what the books assume CHIP takes until its settlement file lands (was a flat RM1 estimate).
+                'chip_unsettled_net_sen' => (int) collect($unsettled)->sum(fn (array $p) => $p['amount_sen'] - $p['fee_sen']),
             ],
             'claims' => [
                 'envelopes_sen' => $this->envelopes($lastDay) + $pendingAllocationSen,

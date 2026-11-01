@@ -41,7 +41,7 @@ export function CashEquationTable({ position, cashAccountsSen }: Props) {
           <p className="mb-1 text-theme-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">What the company holds</p>
           <Row label="Cash accounts (as entered at the close)" sen={cashAccountsSen} />
           <Row label="Supplier prepaid balance (month-end rate)" sen={assets.supplier_prepaid_sen} />
-          <Row label={`CHIP paid, not settled yet (${position.chip_unsettled_count}, less RM1 fee each)`} sen={assets.chip_unsettled_net_sen} />
+          <Row label={`CHIP paid, not settled yet (${position.chip_unsettled_count}, less the fee each customer paid)`} sen={assets.chip_unsettled_net_sen} />
         </div>
         <div>
           <p className="mb-1 text-theme-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">What it owes or has set aside</p>
