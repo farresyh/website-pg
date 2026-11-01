@@ -190,7 +190,7 @@ function ResendDeliveryFields({ onClose, onResent, order, sandbox }: Omit<Resend
       <p className="mb-5 text-sm text-ink-muted">
         Defaults to resending the same package this order already has — change the selection below only if you want to
         deliver a different package from the same game (<span className="font-medium">{order.game?.name ?? "—"}</span>).
-        Any live cost difference is absorbed by the platform and recorded, never re-charged to the customer.
+        Any cost difference is absorbed by the platform and recorded at the supplier&apos;s real charge, never re-charged to the customer.
       </p>
 
       {error && (
@@ -218,8 +218,8 @@ function ResendDeliveryFields({ onClose, onResent, order, sandbox }: Omit<Resend
         // from ADR-102's "unlikely to help" warning below: this one is
         // about money, not futility, so it gets its own copy and tone.
         <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
-          This resend would record a platform loss of {formatRm(Math.abs(impact.platform_profit))} — live cost now exceeds
-          what was actually collected for this order. Provide a reason below to proceed anyway and accept the loss.
+          This resend would record a platform loss of {formatRm(Math.abs(impact.platform_profit))} — this package&apos;s catalog cost
+          now exceeds what was actually collected for this order. Provide a reason below to proceed anyway and accept the loss.
         </p>
       )}
       {order.resend_unsafe_to_override && (
@@ -259,7 +259,8 @@ function ResendDeliveryFields({ onClose, onResent, order, sandbox }: Omit<Resend
         {selectedPackage && impact && !blockedReason && (
           // ADR-105 2026-10-06 decisions 9-10 — the backend's figures:
           // the affiliate's share stays as checkout set it, the
-          // platform takes what is left after this package's live cost.
+          // platform takes what is left after this package's catalog cost (an
+          // estimate; the real charge is known only after delivery).
           <div className="rounded-lg bg-subtle px-3 py-2 text-sm space-y-1">
             <div className="flex justify-between text-ink-muted">
               {/* ADR-105 2026-10-06 decision 13 — a resend moves cost_price to the package it sent. */}
@@ -267,7 +268,7 @@ function ResendDeliveryFields({ onClose, onResent, order, sandbox }: Omit<Resend
               <span>{formatRm(order.cost_price)}</span>
             </div>
             <div className="flex justify-between text-ink-muted">
-              <span>Live cost (this package now)</span>
+              <span>Estimated cost (catalog, from the last price sync)</span>
               <span>{formatRm(impact.cost_price)}</span>
             </div>
             {impact.affiliate_profit !== 0 && (
@@ -279,7 +280,7 @@ function ResendDeliveryFields({ onClose, onResent, order, sandbox }: Omit<Resend
             <div
               className={`flex justify-between font-medium ${impact.platform_profit < 0 ? "text-error-600 dark:text-error-400" : "text-ink"}`}
             >
-              <span>Platform profit (this attempt)</span>
+              <span>Estimated platform profit (this attempt)</span>
               <span>{impact.platform_profit < 0 ? formatRm(impact.platform_profit) : `+${formatRm(impact.platform_profit)}`}</span>
             </div>
             <div
