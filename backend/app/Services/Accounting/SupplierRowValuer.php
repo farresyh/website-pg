@@ -7,15 +7,16 @@ use Illuminate\Support\Collection;
 
 /**
  * Supplier ledger rows in sen, signed like their amounts, built by
- * `FundedCostOfSales::valuer()`. A foreign-currency row from the pool's
- * opening on costs what the pool gave it; any other row, its units at the
- * supplier's rate (1.0 for MYR), rounded once per supplier.
+ * `FundedCostOfSales::valuer()`. A prepaid supplier's row from the pool's
+ * opening on costs what the pool gave it (ADR-134 decision 3); any other
+ * row, its units at the supplier's rate (1.0 for MYR), rounded once per
+ * supplier.
  */
 final class SupplierRowValuer
 {
     /**
      * @param  array<int, float|null>  $rates  supplier_id => MYR per unit
-     * @param  array<int, MovingAveragePool>  $pools  supplier_id => pool, foreign-currency suppliers only
+     * @param  array<int, MovingAveragePool>  $pools  supplier_id => pool, prepaid suppliers only
      */
     public function __construct(private readonly array $rates, private readonly array $pools) {}
 

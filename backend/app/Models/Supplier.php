@@ -128,6 +128,22 @@ class Supplier extends Model
     }
 
     /**
+     * ADR-134 decision 3: a prepaid supplier, of any currency, is costed by
+     * its deposit pool (`MovingAveragePool`), its transfer fees included. A
+     * pay-after supplier is paid for what was already delivered, so it stays
+     * at face value and its fees stay an expense.
+     */
+    public function isPooled(): bool
+    {
+        return ! $this->isPayAfter();
+    }
+
+    public function scopePooled(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q->where('driver', '!=', self::DRIVER_MANUAL)->orWhere('funding_mode', '!=', self::FUNDING_PAY_AFTER)->orWhereNull('funding_mode'));
+    }
+
+    /**
      * ADR-125 decisions 10 and 18: the balance a person should see, in the
      * supplier's currency. An API supplier's is the polled `balance`
      * (null until first polled); a manual supplier has nothing to poll,
