@@ -1038,8 +1038,8 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
 - **156** Verify a WhatsApp privacy id against the checkout number (ADR-116
   2026-11-01 addendum decision 7), when OpenWA exposes a phone → `@lid`
   lookup. Then a follower `@lid` whose id matches the checkout number's opts
-  that number in for later orders. Never patch OpenWA on the box; the founder
-  files the upstream request (draft handed over 2026-11-01).
+  that number in for later orders. Never patch OpenWA on the box. Upstream
+  request filed by the founder 2026-11-01: rmyndharis/OpenWA#1969; watch it.
 - **114** Joki MLBB (ADR-126), built and released 2026-10-25 (#554),
   switched off, Epic up only. Launch gates: CHIP payments (FPX and DuitNow
   QR approved by CHIP, recorded 2026-10-31; other methods still in review), item 129 (policy text edit), the rank icons and the rates plus
