@@ -964,7 +964,19 @@ and the admin-loading investigation (#515, #516). Re-checked again
 moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 closed, item 111's trigger narrowed). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-(none: 143 closed, 149 and 148 built, 2026-10-30)
+- **155** Landed cost rate ([ADR-134](./adr/ADR-134-landed-cost-rate.md),
+  designed 2026-11-01). Price Sync and per-order real cost use the supplier's
+  deposit pool (incl. prepaid transfer fees from 2026-10-01), not the market
+  mid-rate. Found by the 2026-11-01 read-only audit: the pool cost +6.2% over
+  market (+6.8% with fees), so every reseller tier and membership Tier 2 sold
+  below true cost and every profit screen except the Monthly Summary
+  overstated profit (all-time RM212.03 shown, ~RM106.73 true). Build test-first
+  in one PR: the `LandedCostRate` service at the two seams, `cost_basis` on
+  orders, the fee fold with `bankTransferFees()` scoped, the cache keyed on a
+  funding version, the unfunded-supplier block, the transfer spread guard, the
+  currency lock, and the readers and labels of ADR-134 decisions 13–15. After
+  release: the founder sets Digiflazz's `drift_threshold` (Rp50,000) in
+  Middleware.
 
 **B. Needs a short grill / ADR addendum first**
 (none: 149 grilled 2026-10-30, now in A)
@@ -1202,7 +1214,10 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
     `paid_at` (paid-but-undelivered at month end shown as a liability; now
     done by item 131 / ADR-127 on 2026-10-25, ahead of the accountant because Joki needed it),
     vouchers treated by reason (compensation = liability, promotion =
-    revenue reduction), and whether transfer fees belong in inventory cost.
+    revenue reduction), and whether transfer fees belong in inventory cost
+    (decided ahead of the accountant by ADR-134 on 2026-11-01: a prepaid
+    supplier's fee is unit cost from 2026-10-01; the accountant may confirm or
+    revert it).
     Storing the CHIP file and dated folders went to item 120.
     - The founder's goal (2026-10-10): the accounting pages are a record
       kept so that each month one download hands the outside accountant
