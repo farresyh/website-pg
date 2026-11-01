@@ -1,0 +1,81 @@
+# ADR-134: Landed cost rate — price and cost every supplier unit at what the deposit actually cost, not at the market mid-rate
+
+> **Standing (2026-11-01):** In force. Revises [ADR-033](./ADR-033-foreign-currency-supplier-pricing.md) (the market mid-rate becomes display-only), [ADR-111](./ADR-111-real-cost-profit-reconciliation-at-delivery-time.md) decisions 2 and 6 (real cost at the landed rate), [ADR-083](./ADR-083-internal-accounting-financial-reconciliation.md) decision 4 of the 2026-10-17 addendum, Q5 and decision 7 of the 2026-10-25 addendum (a prepaid transfer fee is unit cost), and [ADR-125](./ADR-125-login-top-up-manual-supplier.md) decision 30 (an MYR prepaid supplier is pooled too). Closes the transfer-fee question of PRD §16 item 81 (the accountant may still confirm or revert it). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+
+**Status:** Accepted (design), 2026-11-01. Grilled with the founder in Malay in three rounds (Q1–Q13), then stress-tested against the code and production data by three read-only forks (pricing; fulfilment, ledger and pool; accounting and readers). Their findings are folded into the decisions below. Nothing is built.
+
+## Context
+
+The founder asked whether the cost the admin shows (for example RM0.93 for 14 Diamonds) is what a unit really costs, given that Digiflazz is funded by MYR→IDR transfers through Maybank or Wise. A read-only audit of production on 2026-11-01 found it is not:
+
+- **Price Sync converts at the market mid-rate with no buffer.** `ProductSyncService.php:51` reads open.er-api (0.000224 MYR/IDR on 2026-10-31), `CurrencyRateService::convertToSenAt()` applies `ceil(raw × rate × 100)`, and `PackagePriceSyncService` copies it into `packages.cost_price`. All 1,037 active Digiflazz packages matched that exactly. ADR-033 chose the mid-rate because it is "fine for price estimation"; that premise is wrong, because the IDR is bought first, with real ringgit, at a worse rate.
+- **The deposit really cost more.** The moving-average pool (ADR-083 2026-10-25) held Rp18,081,822 at 430,169 sen: 0.0002379 MYR/IDR, **+6.2% over market**, and about **+6.8%** with the October bank fees. Maybank's two October transfers carried a ~6.25% spread inside the rate plus RM14.66–14.68 each (RM351.35 over market on RM5,154). Wise's three September transfers had ~0% spread and fixed fees (RM28.16 on RM715).
+- **Every price basis inherits the gap**, because every basis reads `packages.cost_price`. At true cost, every reseller tier (1–5%) sold below cost on all 1,037 packages, membership plan "Tier 2" (70% discount, 4.5% markup) too, and standard/affiliate 15% made ~7%, not 13%.
+- **Per-order profit inherits it too.** `OrderFulfillmentService::captureRealCostSen()` converts the supplier's real IDR price at the market rate (ADR-111), so `platform_profit`, the Dashboard, Reports (all tabs), Order detail, Customer detail, the Orders export and the Report Assistant overstate profit. Only the Monthly Accounting Summary costs at funded cost. All-time owner profit shown RM212.03 against ~RM106.73 true; October RM204.98 shown against RM106.93 operating profit.
+- **The history is already recorded exactly** in the Monthly Summary's "Deposit rate vs market rate" line (September RM1.25, October RM88.61) plus the bank-fee line. RM251.36 of the premium sits in the unsold balance and reaches COGS as it sells.
+
+The founder will keep using Maybank for the first two to three months, and asked for one solid fix rather than per-channel patches, with the loss tracked from the start rather than hidden.
+
+## Decision
+
+### The rate
+
+1. **One landed cost rate per supplier, from its deposits.** The rate is the moving-average pool's average (ADR-083 2026-10-25): ringgit paid ÷ units still held. Not FIFO (Q1): the total cost over a deposit's life is identical, but under FIFO the price would jump mid-day when an old layer runs out; the average moves only when the founder deposits, and accounting already uses it. Not market × a panel buffer: a buffer is a guess that goes silently wrong when the channel or the bank's spread changes.
+2. **The rate is the pool's average right after the last rate-changing event** — a deposit, a correction, a void or a manual adjustment — exposed by `MovingAveragePool` as a public property. Not a live `sen ÷ units`: each drawdown is rounded to the sen, so as the pool nears empty the residual dominates and the ratio drifts (and divides by zero at 0). The last-event average is also ADR-083 decision 6's "last known average" for an empty or negative pool.
+3. **A prepaid transfer fee is unit cost (Q3, Q11).** For a prepaid supplier, a transfer dated on or after `MovingAveragePool::OPENS_ON` (1 October 2026) adds `amount_myr_sent + fee_myr` to the pool's sen. IAS 2.10–2.11 / MPERS 13.5–13.6 include costs directly attributable to the purchase; a fee paid only to buy supplier credit is one. IFRIC 22 fixes the prepayment's rate and is silent on transaction costs. It is a policy choice an accountant may revisit (PRD §16 item 81).
+   - **`weightedAverageRate()` stays fee-exclusive.** It values the 30 September opening, September's COGS and the pre-October cash position. Adding the fee there would move closed September (stress test A, G1). Only post-opening deposit events in `replay()` take the fee.
+   - **The rule is currency-blind.** A prepaid MYR supplier is pooled like an IDR one: its rate is (ringgit sent + fee) ÷ credit received, 1.0 when it has no transfer (a ringgit unit carries no currency risk). A **pay-after** supplier (`Supplier::isPayAfter()`; today Gamevion Manual and Joki) stays 1.0 and its transfer fees stay an expense: paying a debt buys no stock. Production impact today: none (Gamevion, the only MYR prepaid supplier, has never been funded).
+4. **A foreign-currency supplier with no landed rate is not sellable (Q5, Q10).** Never funded, or every transfer voided: its packages are hidden from every catalogue and refused at checkout, by one check on the landed-rate service, and its Price Sync run fails with a plain message. Packages keep their active flag, so they sell again as soon as a deposit is recorded. A funded pool that is momentarily empty uses the last-event average (decision 2).
+
+### Where the rate is used — two seams, one service
+
+5. **One `LandedCostRate` service** owns `rate(Supplier)` and `toSen(Supplier, raw, rounding)`. It is called from exactly the two places the market rate enters today (both verified to be the only IDR conversions in the backend):
+   - **Price Sync** (`ProductSyncService.php:51/105`): catalog cost = raw × landed rate, rounded **up** (`ceil`, ADR-033's margin cushion). Every basis — standard, member, affiliate tier, reseller tier, combos, the reseller API, the public price list, resend impact, combo settlement — reads `packages.cost_price` and so moves with it; none needs its own change.
+   - **Delivery** (`captureRealCostSen()`, five call sites in `OrderFulfillmentService` plus Mark Delivered): per-order real cost = raw × landed rate, rounded **half-up** (`round`), the pool's own rounding. With `ceil`, 11 of October's 26 drawdowns would read 1 sen above the pool's replay; with `round`, 0 (stress test F, G1). The method takes the supplier, not a currency; every caller already holds it.
+6. **Per-order profit is stored at the landed cost (Q2).** `platform_profit = selling_price − landed real cost − affiliate_profit` (ADR-111's identity, new input). Every per-order screen then agrees with the Monthly Summary. ADR-083 2026-10-17 decision 4 kept per-order screens at market because funded cost then moved until month end; the moving pool (2026-10-25) fixes a drawdown's cost when it is drawn, so that reason is gone.
+7. **The market rate becomes display-only.** Price Sync stops failing when the FX API is down; it prices from the pool and records the spread as unavailable. The rate fetch, cache, fallback and history (ADR-033) stay for display.
+
+### Cache and scale
+
+8. **The landed rate is cached, keyed on a funding version, never explicitly invalidated.** The key includes the supplier and a cheap fingerprint of what moves the rate: `max(supplier_transfers.updated_at)`, the transfer count, and the max id of non-drawdown ledger rows (adjustments, void reversals). One indexed query reads the version; a new version misses and replays once. This needs no `Cache::forget` in the write path, so a replay racing a committing transfer cannot cache a stale rate, and a write that bypasses `SupplierFundingService` is still seen. Without it, a replay of every transfer and ledger row would run inside each delivery's row lock (O(n): seconds at 100k rows).
+
+### Accounting
+
+9. **No fee is counted twice.** `MonthlyAccountingSummaryService::bankTransferFees()` sums only fees that are not pooled: pay-after suppliers' fees and any transfer dated before 1 October 2026. The prepaid top-up line (`supplier_prepaid_topup_sen`) becomes `amount_myr_sent + fee_myr` for pooled transfers, so the figure copied into the external SaaS matches what COGS later carries. The cash equation's "ringgit sent" includes pooled fees.
+10. **September does not move.** It has no transfer on or after the opening, its fees stay in its bank-fee line (RM21.06), and the opening stays at the fee-free cumulative average. A test holds September's profit lines and close #3's drift at 0.
+11. **October, recomputed on production data under these rules (stress test A):** pool 432,398 sen (rate 0.0239134), COGS 175,216 sen (+705: the 16 drawdowns of 30–31 October), bank-fee line 0 (both October fees are pooled), operating profit **RM129.22** (from RM106.93). The +RM22.29 is the October fees now sitting in the unsold balance; they reach COGS as it sells. The cash identity closes to the sen (Δpool 2,229 = fees 2,934 − Δcosts 705).
+
+### History, labels and readers
+
+12. **Old orders are not rewritten (Q4).** The ledger is append-only (ADR-002), September is closed, and a correction row is dated when made (ADR-083 2026-10-18), so 46 corrections would land in November. The loss from day one is already exact in the Monthly Summary.
+13. **Every order records its cost basis (Q12).** A `cost_basis` column on `orders` (`market` | `landed`), written with the real cost at delivery; existing rows default to `market`. It is a label, not money. Reports, the Orders export, the Transaction Register, Customer detail and the Report Assistant's `llm_report_orders` view read it; trend charts and period comparisons mark the cutover rather than show a step as a performance drop. Deriving the basis from a release date would mislabel an order paid before release and delivered after it with no supplier price.
+14. **The bridge line gets a basis-neutral name** ("Order cost vs funded cost"), meaning: for `market` orders, deposit rate vs market rate; for `landed` orders, a transfer recorded late, corrected or voided after orders used it (Q6). A deposit counts from the start of its `transferred_on` day, so any deposit day with earlier orders produces a residual; the founder accepts it and records transfers the same day.
+15. **Displays (Q8):** the Price Sync Center shows, per run, the market rate, the landed rate and the spread %; the Dashboard values supplier balances at the landed rate (`DashboardService.php:376`); the stored `supplier_transfers.effective_rate` includes the fee for a pooled transfer, so the transfers page and the pool agree; the Report Assistant's prompt stops claiming `platform_profit` is net of the market-rate "real cost" and explains `cost_basis`. Labels that say "(market rate)" go.
+
+### Guards
+
+16. **A mistyped transfer cannot silently reprice the catalogue (Q9).** Recording or correcting a transfer shows its rate against the day's market rate and the spread %. Outside a band set in Middleware (suggested −2% to +12%), the admin must confirm before it saves. The 50% swing guard (ADR-025) still catches gross errors at sync time.
+17. **A supplier's currency is locked** once it has a transfer or a package (`UpdateSupplierRequest`, today only manual suppliers are guarded). Changing it would mix units in one pool.
+18. **The deposit-drift alert is switched on (Q13).** `Supplier::fundingDrift()` already compares the polled Digiflazz balance with the ledger and feeds the Dashboard Health chip; it is off because Digiflazz has no `api_config.drift_threshold`. The founder sets Rp50,000 in Middleware after release. On 2026-11-01 polled, ledger and pool units all equal Rp18,081,822. A transfer not yet recorded shows as polled > ledger at the next poll.
+
+### Proof
+
+19. **Tests, red first:**
+   - `FinancialScenarioTest`: an IDR supplier with a fee on a deposit before the opening (stays an expense) and after it (pooled); each month ringgit sent incl. pooled fees = COGS + drawdowns not in COGS + corrections + pool; every close gap 0; September's lines unchanged.
+   - Per-order landed cost summed over a month equals replayed COGS exactly when every transfer was recorded before its orders.
+   - A never-funded foreign supplier's packages are not sellable; a funded-then-empty pool uses the last-event average; an MYR prepaid supplier with no transfer is 1.0; a pay-after supplier is 1.0 and its fee stays an expense.
+   - The cache returns the new rate after a transfer, correction and void without any explicit invalidation.
+
+## Rationale
+
+The market rate was the only wrong input, and it enters at two places. Replacing it there with the rate the company actually paid fixes every price basis and every profit screen at once, so there is nothing to patch per channel. The rate comes from facts the founder already records (transfers) and updates itself: on Maybank, prices carry Maybank's cost; on Wise, they fall back by themselves. Pricing and accounting then share one number, so the screens and the Monthly Summary can no longer disagree, and any difference that remains is a named line with a known cause.
+
+## Consequence to track
+
+- **Release day:** every Digiflazz cost rises ~6.8% at the first sync (median +6.76%, range 5.1–9.1%, stress test P). Minimum margin on sale afterwards: standard and affiliate 12.8%, member 50% 6.9%, member 70% 4.2%, reseller 5% 4.6% down to reseller 1% 0.7%; no package or combo below cost on any basis. Customer, affiliate and reseller prices rise with it; an affiliate's earnings per order rise in ringgit (its markup is a % of the wholesale base). The founder tells resellers directly and may lower the storefront markup from the panel the same day.
+- **Orders in flight at release:** an order checked out at market cost and delivered after release has its profit reduced to the landed cost; one whose drift is over RM1 and over 1% is flagged by ADR-111's check. Expected; record in build-log.
+- **Deposits step prices.** The two October deposits moved the average 0.023255 → 0.023716 → 0.023790 within two days; prices would have stepped ~2% then ~0.3%.
+- **A pending price change approved after a deposit** applies the pre-deposit cost; the next sync corrects it.
+- **Manual prepaid supplier (none today):** if one is ever created, its admin-typed agreed cost should already be the landed cost; a fee on its transfers would otherwise show in the bridge line.
+- **Constructor change:** `OrderFulfillmentService` takes the landed-rate service; the positional constructions in `SandboxOrderController`, four `Console/Commands/Testing/*` commands and five test fixtures change in the same PR.
+- **Accountant (PRD §16 item 81):** capitalising prepaid transfer fees is a policy choice. If an accountant reverts it, an addendum moves pooled fees back to the bank-fee line; prices then need a separate decision.
