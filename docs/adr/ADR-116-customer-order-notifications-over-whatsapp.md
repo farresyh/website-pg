@@ -1,6 +1,6 @@
 # ADR-116: Customer order notifications over WhatsApp (OpenWA), not email — closes audit M-11
 
-> **Standing (2026-10-30):** In force; decision 8's phone normalisation extended for a Malaysian mobile typed without its leading 0 (2026-10-30 addendum); send queue generalised to (session, chat) by [ADR-125](./ADR-125-login-top-up-manual-supplier.md); a joki progress message is queued with an earliest send time and worded at send time ([ADR-126](./ADR-126-joki-mlbb.md), 2026-10-23). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-01):** In force; decision 8's phone normalisation extended for a Malaysian mobile typed without its leading 0 (2026-10-30 addendum); the WhatsApp chat (an `@lid` too) is the identity and a chat that sends an order number follows that order (2026-11-01 addendum); send queue generalised to (session, chat) by [ADR-125](./ADR-125-login-top-up-manual-supplier.md); a joki progress message is queued with an earliest send time and worded at send time ([ADR-126](./ADR-126-joki-mlbb.md), 2026-10-23). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — grilled (`/mattpocock-skills:grilling`) with the founder 2026-09-30, five rounds. **PR-B1 (#323) and PR-B2 (#324) both built 2026-09-30** and released `staging`→`main` the same day (#325). The switch is ON and was live-tested by the founder. Read the two addenda at the end of this entry before building on it:
 - The **build addendum's items 1–2 are superseded** by the **post-live-test addendum**: the order number is the opt-in, and there is one timeline status card.
@@ -213,3 +213,27 @@ a risk at this volume. Removing it also closes the retry hole.
 
 **Not done:** warning the customer at checkout, and any change for numbers that start with other digits (landlines and other countries stay as before). The fix does not run backwards: PG-L4RCBELJ9RE3 did not get its receipt (the founder was advised to tell the customer by hand).
 
+
+### 2026-11-01 addendum — the WhatsApp chat is the identity; a chat that asks about an order follows it (revises decisions 5 and 9, build addendum 2)
+
+**Status:** Accepted — grilled with the founder 2026-11-01 (two rounds) and stress-tested against code and production the same day.
+
+**Found in production.** Order PG-WSEZAO6R4TGU (OhahaStore, DuitNow, paid, failed at the supplier, delivered after an admin Resend). The customer sent the order number to the CS number and got no status card, and after the Resend no receipt. The sender arrived as a WhatsApp privacy id (`234…@lid`) and OpenWA could not resolve a phone (`RESOLVE_LID_TO_PHONE` is on; WhatsApp does not reveal the number of a stranger). Build addendum 2 ignored a message with no usable phone, silently (an `info` log, below prod's `warning` level), so the checkout phone never opted in and `orderDelivered()` wrote no row. Scale (read-only, OpenWA DB): 4 distinct `@lid` senders since 2026-09-25, 2 of them on 2026-11-01, 1 message with an order number. The same gap already exists for a customer who writes from a number other than the checkout one: their opt-in lands on that number, and the receipt looks up the checkout number.
+
+**What WhatsApp allows (checked in OpenWA v0.25.0 and Baileys 7.0.0-rc14 on the box, and upstream v0.27.0).** `@lid` → phone: only when the gateway already holds the mapping. Phone → `@lid`: Baileys can ask WhatsApp (`lidMapping.getLIDForPN`), but OpenWA calls it only inside a send and exposes no endpoint. Sending to an `@lid` chat works (11 staff replies to `@lid` chats in the OpenWA DB). OpenWA types an `@lid` chat as `kind: individual`. The CS API key has no chat restriction.
+
+**Decisions.**
+1. **Inbound identity is the sender's chat.** A direct message on the CS session is handled when it carries a usable phone (`@c.us`, or OpenWA's `senderPhone`) **or** an `@lid` chat id. Replies (status card, not-found, STOP/START) go to that chat. Nothing is ignored for lack of a phone.
+2. **A chat that sends an order number follows that order.** The followers of an order are the chats its `status_card` rows (CS session) were sent to. The row already records "we answered this chat about this order", so there is no new table. Consequence: a future pruning of `customer_notifications` must keep `status_card` rows of undelivered orders, or followers are lost (pinned by a test).
+3. **One receipt per recipient, chosen in one place.** For the Delivered receipt and joki progress:
+   - if the checkout phone has **ever** contacted us (a contact row, opted in or out), it alone decides: it gets the message when opted in, and nobody does when it said STOP;
+   - otherwise every follower chat that has not said STOP gets it. There is no cap on followers (founder: order numbers are random; revisit if an order gathers many).
+   This replaces "one receipt per order" (decision 4's unique index) with one per recipient: a follower's dedupe key carries its chat id, so a retried webhook or event still never double-sends. The receipt holds what the status card holds, and the status card already goes to whoever sends the order number (post-live-test addendum), so no new data is exposed.
+4. **Vouchers are unchanged:** still to the checkout phone only, cold. A voucher code is money and must not reach someone who merely knows the order number.
+5. **A contact is a phone, an `@lid` chat, or both.** `whatsapp_contacts.phone` becomes nullable and gains a unique nullable `chat_id`. STOP/START work for an `@lid` chat. When a message carries both (an `@lid` chat with a resolved `senderPhone`) both are stored on the phone's row. Rows are never merged; when a phone and a chat each have a row, **STOP wins**: either one opted out means no receipt.
+6. **Admin order page:** a row sent to an `@lid` chat shows "WhatsApp chat (number hidden)" with the id in small text.
+7. **No local patch to OpenWA.** A phone → `@lid` lookup endpoint is asked for upstream (draft prepared for the founder to file). When it exists, a follower `@lid` can be checked against the checkout phone and that phone opted in for later orders; until then the follower rule covers the order the customer asked about.
+
+**Not done.** No backfill: PG-WSEZAO6R4TGU's customer was answered by hand (founder). No email fallback. A customer who writes only as `@lid` and never sends an order number still gets nothing automatic (there is no order to follow).
+
+**Consequence to track.** WhatsApp usernames (phone optional) are rolling out; Baileys does not expose them yet (OpenWA issue #642). The chat-as-identity rule is what keeps working when the phone disappears; revisit when Baileys ships usernames.
