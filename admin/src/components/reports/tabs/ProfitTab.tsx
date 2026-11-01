@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react";
-import { getAccountingBridge, getGameBreakdown, getReportSummary, getReportTrend } from "@/lib/reports";
+import { getAccountingBridge, getGameBreakdown, getReportSummary, getReportTrend, marketRateNote } from "@/lib/reports";
 import { ProfitBridge } from "../AccountingBridge";
 import { type TrendBucket, autoBucket, bucketRows, marginPct } from "@/lib/report-buckets";
 import { KpiCard, Pending, ReportCard, SegmentedControl, previousLabelOf, useReport, type ReportTabProps } from "../ReportKit";
@@ -45,7 +45,7 @@ export function ProfitTab(props: ReportTabProps) {
   return (
     <div>
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard lead label="Owner profit (market rate)" value={s ? formatRm(s.platform_profit) : "—"} sub={rangeIncludesToday ? "Recognised on delivery, so today can still move" : "Recognised on delivered orders"} change={cmp?.changes.platform_profit} previousLabel={previousLabel} />
+        <KpiCard lead label="Owner profit" value={s ? formatRm(s.platform_profit) : "—"} sub={rangeIncludesToday ? "Recognised on delivery, so today can still move" : "Recognised on delivered orders"} change={cmp?.changes.platform_profit} previousLabel={previousLabel} note={marketRateNote(s)} />
         <KpiCard label="Margin" value={s ? `${s.margin_pct.toFixed(2)}%` : "—"} sub="Owner profit ÷ paid sales" change={cmp?.changes.margin_pct} previousLabel={previousLabel} />
         <KpiCard label="Affiliate profit" value={s ? formatRm(s.affiliate_profit) : "—"} sub="Earned by affiliates" change={cmp?.changes.affiliate_profit} previousLabel={previousLabel} />
         <KpiCard

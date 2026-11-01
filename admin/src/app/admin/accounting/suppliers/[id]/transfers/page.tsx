@@ -28,6 +28,7 @@ import {
   voidSupplierTransfer,
   correctSupplierTransfer,
   downloadSupplierTransferReceipt,
+  spreadConfirmation,
   type SupplierFundingLedger,
   type SupplierTransfer,
   type CorrectSupplierTransferValues,
@@ -86,6 +87,8 @@ export default function SupplierFundingHistoryPage() {
   const [editReceipt, setEditReceipt] = useState<File | null>(null);
   const [correcting, setCorrecting] = useState(false);
   const [correctionError, setCorrectionError] = useState<string | null>(null);
+  // ADR-134 decision 16: set once the backend has warned that the corrected rate is far from the market; the next Save confirms it.
+  const [spreadConfirmed, setSpreadConfirmed] = useState(false);
 
   function refresh(p: number) {
     return getSupplierTransfers(supplierId, {
@@ -125,6 +128,7 @@ export default function SupplierFundingHistoryPage() {
 
   function openCorrection(transfer: SupplierTransfer) {
     setCorrectingId((current) => (current === transfer.id ? null : transfer.id));
+    setSpreadConfirmed(false);
     setCorrectionMode("adjust");
     setCorrectionAmount("");
     setCorrectionReason("");
@@ -160,7 +164,7 @@ export default function SupplierFundingHistoryPage() {
         }
         await adjustSupplierTransfer(transfer.id, correctionAmount, correctionReason.trim());
       } else {
-        const values: CorrectSupplierTransferValues = { reason: correctionReason.trim() };
+        const values: CorrectSupplierTransferValues = { reason: correctionReason.trim(), confirm_spread: spreadConfirmed };
         let hasChange = false;
 
         if (editTransferredOn && editTransferredOn !== transfer.transferred_on) {
@@ -206,7 +210,13 @@ export default function SupplierFundingHistoryPage() {
       setCorrectingId(null);
       await refresh(page);
     } catch (err) {
-      notify.stickyError("Correction failed", err instanceof ApiError ? err.message : "Something went wrong.");
+      const spread = spreadConfirmation(err);
+      if (spread) {
+        setCorrectionError(`${spread} Press Save again to confirm.`);
+        setSpreadConfirmed(true);
+      } else {
+        notify.stickyError("Correction failed", err instanceof ApiError ? err.message : "Something went wrong.");
+      }
     } finally {
       setCorrecting(false);
     }

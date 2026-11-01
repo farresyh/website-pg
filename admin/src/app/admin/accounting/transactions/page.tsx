@@ -201,7 +201,7 @@ export default function TransactionRegisterPage() {
                     <DataTableTHeadCell className={TH}>Description</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Gross</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Fee</DataTableTHeadCell>
-                    <DataTableTHeadCell className={TH} title="The supplier price at the market rate on delivery day. The Monthly Summary's COGS is at the deposit's funded rate; its bridge lines tie the two.">Cost (delivery rate)</DataTableTHeadCell>
+                    <DataTableTHeadCell className={TH} title="The cost the order's profit used: the supplier's price at what our deposit cost (ADR-134). Rows marked (market) are older orders costed at the market mid-rate; the Monthly Summary's bridge ties them to COGS.">Cost</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Net</DataTableTHeadCell>
                     <DataTableTHeadCell className={TH}>Foreign amount</DataTableTHeadCell>
                   </DataTableTHeadRow>
@@ -225,7 +225,7 @@ export default function TransactionRegisterPage() {
                         </DataTableCell>
                         <DataTableCell className={`${TD} ${isVoided ? "line-through" : ""}`}>{formatRm(r.gross_sen)}</DataTableCell>
                         <DataTableCell className={`${TD} ${isVoided ? "line-through" : ""}`}>{formatRm(r.fee_sen)}</DataTableCell>
-                        <DataTableCell className={TD}>{formatRm(r.cost_sen)}</DataTableCell>
+                        <DataTableCell className={TD}>{formatRm(r.cost_sen)}{r.cost_rate === "market" && <span className="ml-1 text-theme-xs text-ink-muted">(market)</span>}</DataTableCell>
                         <DataTableCell className="px-5 py-4">
                           <span className={isVoided ? "text-ink-subtle line-through" : "text-theme-sm text-gray-500 dark:text-gray-400"}>
                             {formatRm(r.net_sen)}

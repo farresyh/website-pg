@@ -31,7 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
 import { notify } from "@/components/ui/toast";
-import { getSupplierTransfers, recordSupplierTransfer, type SupplierFundingLedger } from "@/lib/supplier-transfers";
+import { getSupplierTransfers, recordSupplierTransfer, spreadConfirmation, type SupplierFundingLedger } from "@/lib/supplier-transfers";
 import type { Supplier } from "@/lib/suppliers";
 import { todayInKL } from "@/lib/date-range";
 
@@ -52,6 +52,8 @@ function formatForeign(amount: string, currency: string): string {
 function Content({ supplier }: Omit<Props, "isOpen" | "onClose">) {
   const [ledger, setLedger] = useState<SupplierFundingLedger | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // ADR-134 decision 16: the backend's "this rate is far from the market" message, until the admin confirms or edits.
+  const [spreadWarning, setSpreadWarning] = useState<string | null>(null);
   const [transferredOn, setTransferredOn] = useState(todayInKL());
   const [sourceChannel, setSourceChannel] = useState<"wise" | "airwallex" | "bank">("wise");
   const [paidBy, setPaidBy] = useState("");
@@ -74,9 +76,10 @@ function Content({ supplier }: Omit<Props, "isOpen" | "onClose">) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supplier.id]);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.SyntheticEvent, confirmSpread = false) {
     e.preventDefault();
     setError(null);
+    setSpreadWarning(null);
 
     const amountSen = Math.round(parseFloat(amountMyr) * 100);
     const feeSen = feeMyr ? Math.round(parseFloat(feeMyr) * 100) : 0;
@@ -102,6 +105,7 @@ function Content({ supplier }: Omit<Props, "isOpen" | "onClose">) {
         supplier_fee: supplierFee || null,
         reference_no: referenceNo || null,
         receipt,
+        confirm_spread: confirmSpread,
       });
       setAmountMyr("");
       setFeeMyr("");
@@ -113,7 +117,9 @@ function Content({ supplier }: Omit<Props, "isOpen" | "onClose">) {
       notify.success("Transfer recorded");
       await refresh();
     } catch (err) {
-      notify.stickyError("Transfer failed", err instanceof ApiError ? err.message : "Something went wrong.");
+      const spread = spreadConfirmation(err);
+      if (spread) setSpreadWarning(spread);
+      else notify.stickyError("Transfer failed", err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {
       setSubmitting(false);
     }
@@ -234,6 +240,14 @@ function Content({ supplier }: Omit<Props, "isOpen" | "onClose">) {
             />
           </div>
         </div>
+        {spreadWarning && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-warning-surface px-3 py-2 text-theme-sm text-warning-ink" role="alert">
+            <span>{spreadWarning}</span>
+            <Button type="button" size="small" disabled={submitting} onClick={(e: React.MouseEvent) => handleSubmit(e, true)}>
+              Confirm and save
+            </Button>
+          </div>
+        )}
         <div className="flex justify-end">
           <Button type="submit" size="small" disabled={submitting}>
             {submitting ? "Recording…" : "Record Transfer"}

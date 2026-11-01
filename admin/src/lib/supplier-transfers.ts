@@ -1,4 +1,4 @@
-import { apiFetch, apiUpload, apiDownload } from "@/lib/api-client";
+import { ApiError, apiFetch, apiUpload, apiDownload } from "@/lib/api-client";
 
 
 /**
@@ -121,6 +121,8 @@ export interface RecordSupplierTransferValues {
   supplier_fee?: string | null;
   reference_no?: string | null;
   receipt?: File | null;
+  /** ADR-134 decision 16: set after the admin confirms a rate outside the supplier's spread band. */
+  confirm_spread?: boolean;
 }
 
 export function recordSupplierTransfer(supplierId: number, values: RecordSupplierTransferValues) {
@@ -135,6 +137,7 @@ export function recordSupplierTransfer(supplierId: number, values: RecordSupplie
   if (values.supplier_fee) formData.append("supplier_fee", values.supplier_fee);
   if (values.reference_no) formData.append("reference_no", values.reference_no);
   if (values.receipt) formData.append("receipt", values.receipt);
+  if (values.confirm_spread) formData.append("confirm_spread", "1");
 
   return apiUpload<{ transfer: SupplierTransfer; ledger_balance: string }>(
     `/api/accounting/suppliers/${supplierId}/transfers`,
@@ -179,6 +182,8 @@ export interface CorrectSupplierTransferValues {
   reference_no?: string;
   receipt?: File | null;
   reason: string;
+  /** ADR-134 decision 16: set after the admin confirms a rate outside the supplier's spread band. */
+  confirm_spread?: boolean;
 }
 
 export function correctSupplierTransfer(transferId: number, values: CorrectSupplierTransferValues) {
@@ -191,6 +196,7 @@ export function correctSupplierTransfer(transferId: number, values: CorrectSuppl
   if (values.reference_no !== undefined) formData.append("reference_no", values.reference_no);
   if (values.receipt) formData.append("receipt", values.receipt);
   formData.append("reason", values.reason);
+  if (values.confirm_spread) formData.append("confirm_spread", "1");
 
   return apiUpload<{ transfer: SupplierTransfer; correction: SupplierTransferCorrection }>(
     `/api/accounting/supplier-transfers/${transferId}/correct`,
@@ -205,4 +211,16 @@ export function correctSupplierTransfer(transferId: number, values: CorrectSuppl
  */
 export async function downloadSupplierTransferReceipt(transferId: number, filename: string): Promise<void> {
   await apiDownload(`/api/accounting/supplier-transfers/${transferId}/receipt`, filename);
+}
+
+/**
+ * ADR-134 decision 16: a transfer whose rate is far from that day's market
+ * rate is refused until confirmed, because it now prices the whole
+ * catalogue. Returns the backend's message (what to check), or null for any
+ * other error.
+ */
+export function spreadConfirmation(err: unknown): string | null {
+  if (!(err instanceof ApiError) || err.status !== 422) return null;
+  const errors = err.payload?.errors as Record<string, string[] | undefined> | undefined;
+  return errors?.confirm_spread?.[0] ?? null;
 }

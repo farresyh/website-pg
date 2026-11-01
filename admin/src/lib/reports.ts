@@ -26,6 +26,8 @@ export interface ReportSummary {
   affiliate_profit: number;
   margin_pct: number;
   avg_order_value: number;
+  /** ADR-134 decision 13: orders in range whose profit rests on the market mid-rate, not the deposit's landed cost. */
+  market_rate_orders: number;
   latest_order: {
     id: number;
     order_number: string;
@@ -375,4 +377,11 @@ export async function exportReport(
   });
 
   await apiDownload(`/api/reports/export${query}`, `sales-report.${format}`);
+}
+
+/** ADR-134 decision 13: said under owner profit while the range holds orders costed before the landed rate. */
+export function marketRateNote(s: ReportSummary | null | undefined): string | undefined {
+  const n = s?.market_rate_orders ?? 0;
+  if (n === 0) return undefined;
+  return `${n.toLocaleString()} older order${n === 1 ? "" : "s"} costed at the market rate, which reads high. The Monthly Summary has the exact figure.`;
 }

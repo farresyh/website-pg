@@ -29,7 +29,8 @@ export interface PriceSyncRun {
     // this shipped, same convention as floor_rejected/price_anomalies
     // above — empty (not absent) on any run that touched only MYR
     // suppliers.
-    fx_rates_used?: Array<{ from: string; to: string; rate: number; source: string }>;
+    // ADR-134 decision 15: `rate` is the landed rate every item was priced at (source "deposit pool"); market_rate/spread_pct sit beside it. Runs before ADR-134 carry the market rate in `rate` and neither extra field.
+    fx_rates_used?: Array<{ from: string; to: string; rate: number; source: string; market_rate?: number | null; spread_pct?: number | null }>;
     // ADR-015 2026-10-17 addendum: absent on runs recorded before it.
     failed_suppliers?: Array<{ slug: string; error: string }>;
   } | null;
