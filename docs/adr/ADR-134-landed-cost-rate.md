@@ -72,6 +72,7 @@ The market rate was the only wrong input, and it enters at two places. Replacing
 
 ## Consequence to track
 
+- **October is closed only after this is released (founder, 2026-11-01).** Closing it first would snapshot RM106.93 and report drift once the fee fold makes the live figure RM129.22.
 - **Release day:** every Digiflazz cost rises ~6.8% at the first sync (median +6.76%, range 5.1–9.1%, stress test P). Minimum margin on sale afterwards: standard and affiliate 12.8%, member 50% 6.9%, member 70% 4.2%, reseller 5% 4.6% down to reseller 1% 0.7%; no package or combo below cost on any basis. Customer, affiliate and reseller prices rise with it; an affiliate's earnings per order rise in ringgit (its markup is a % of the wholesale base). The founder tells resellers directly and may lower the storefront markup from the panel the same day.
 - **Orders in flight at release:** an order checked out at market cost and delivered after release has its profit reduced to the landed cost; one whose drift is over RM1 and over 1% is flagged by ADR-111's check. Expected; record in build-log.
 - **Deposits step prices.** The two October deposits moved the average 0.023255 → 0.023716 → 0.023790 within two days; prices would have stepped ~2% then ~0.3%.
