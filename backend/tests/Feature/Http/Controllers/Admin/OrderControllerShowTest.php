@@ -77,6 +77,28 @@ class OrderControllerShowTest extends TestCase
         $response->assertJsonPath('cost_basis', 'real');
     }
 
+    /** ADR-106 2026-11-02 addendum: Delivery Logs' "Cost vs checkout" comes from the backend, keyed to the delivering attempt. */
+    public function test_show_reports_cost_vs_checkout_on_the_delivering_attempt(): void
+    {
+        $order = $this->order([
+            'cost_price' => 900, 'selling_price' => 1000, 'affiliate_profit' => 0,
+            'real_cost_price_sen' => 850, 'platform_profit' => 150,
+            'delivery_status' => DeliveryStatus::Delivered->value,
+        ]);
+        $initial = OrderResendAttempt::query()->create([
+            'order_id' => $order->id, 'attempt_type' => 'initial', 'cost_price_sen' => 900,
+            'standard_selling_price_sen' => 1000, 'outcome' => 'success',
+        ]);
+        $this->actingAsAdmin();
+
+        $response = $this->getJson("/api/orders/{$order->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('cost_vs_checkout', [[
+            'attempt_id' => $initial->id, 'order_delivery_leg_id' => null, 'cost_vs_checkout_sen' => -50, 'cost_basis' => 'real',
+        ]]);
+    }
+
     /**
      * ADR-094 decision 12/9 (Phase 4): the admin detail screen's leg
      * breakdown + Issue Voucher gating, for a genuine partial-delivery
