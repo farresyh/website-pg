@@ -78,7 +78,7 @@ The proposed system is a **greenfield multi-tenant-ready game top-up platform** 
 - **Payment gateway: CHIP only** (`PaymentGatewayFactory` kept for a future multi-region second gateway — [ADR-022's 2026-09-01 addendum](./adr/ADR-022-multi-gateway-payment-strategy.md) removed Xendit; FPX proven live with real money; which methods are switched on: §14). Single company CHIP account; the platform collects 100% of every payment (including reseller storefronts) and the ledger does the split. **xenPlatform dropped entirely** — not deferred ([ADR-059](./adr/ADR-059-reseller-portal.md) decision 6, superseding ADR-001's addendum).
 - **Currency** assumed MYR as base, with dynamic exchange rate support for foreign-currency suppliers.
 - **Auth** Role middleware on the backend — frontend routing is convenience, not security. Admins use a Sanctum cookie session with opt-in MFA (AUTH-7, ADR-121); affiliate/reseller-portal users use bearer tokens.
-- **Refund policy**: no cash refunds (ADR-004). On 2026-10-22 the published Refund Policy (`/refund-policy`) was worded to offer a refund to the original payment method, for CHIP's merchant review; the founder withdrew that on 2026-11-01 (ADR-004 addendum): a failed storefront order resolves by retry-delivery or voucher only. The published text still has the old wording until the founder edits it (§16 item 129).
+- **Refund policy**: no cash refunds (ADR-004). On 2026-10-22 the published Refund Policy (`/refund-policy`) was worded to offer a refund to the original payment method, for CHIP's merchant review; the founder withdrew that on 2026-11-01 (ADR-004 addendum): a failed storefront order resolves by retry-delivery or voucher only. The published text was changed to voucher-only on 2026-11-01 (§16 item 129, closed).
 - **Balance/financials**: ledger-based (ADR-002). No entity may expose or rely on a directly-mutated `balance` column as the source of truth.
 
 ---
@@ -425,7 +425,7 @@ Rank boosting: the customer picks a current and target MLBB rank, pays, and hand
 3. System marks `delivery_status = failed`. `payment_status` remains `paid` (needs resolution) — the customer's money was genuinely received; only delivery didn't complete.
 4. Admin sees it in the Orders Need Action KPI and pill.
 5. Admin reviews order details: supplier response, player ID validity, balance status.
-6. Admin resolves it by **(a) retry or resend delivery** (same or different supplier), or **(b) compensation**: a store-credit voucher, restoring the checkout voucher, or a refund to a reseller's own wallet. No cash-refund action exists in the system, and none will be built (ADR-004 addendum, 2026-11-01); the published Refund Policy's old wording is §16 item 129.
+6. Admin resolves it by **(a) retry or resend delivery** (same or different supplier), or **(b) compensation**: a store-credit voucher, restoring the checkout voucher, or a refund to a reseller's own wallet. No cash-refund action exists in the system, and none will be built (ADR-004 addendum, 2026-11-01); the published Refund Policy was changed to voucher-only on 2026-11-01 (§16 item 129, closed).
 7. Customer notified of the outcome.
 
 ## 7.3 Supplier Price Sync
@@ -804,7 +804,7 @@ off with Epic up only. It ships #529–#553:
 - the item 130 fix (#531), so an unreachable supplier no longer aborts the
   daily balance sweep;
 - Joki MLBB, PR 1–5 and Epic-up (#533–#536, #538–#540, #552). It ships
-  **switched off**, gated by §16 item 114. PR 1 also changes Login Top-up:
+  **switched off** by the global Joki switch, which the founder opens when they choose. PR 1 also changes Login Top-up:
   the post key carries the supplier, Delivered/Failed re-check it, the stale
   clock is explicit, and each login has its own wipe ceiling;
 - ADR-127 (§16 item 131, #543–#549): revenue, cost and profit by
@@ -922,7 +922,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Reseller Price List (ADR-091, `/price-list`) | 🟢 Live (released 2026-11-01 in #642; families filled, item 154 closed). Browse by game then region (one region's table at a time, swipeable tiles and pills on a phone, search from 2 characters), an "Apply to become a reseller" button (the onboarding link from `ONBOARDING_URL`), grouping from two nullable display columns `games.family` / `games.region_label` set in the admin game modal, and a tiers-only `?summary=1` so the root layout and sitemap stop parsing every row. Family and region set on 21 games (Mobile Legends, Free Fire, Valorant); single-region games stay their own tile | ADR-091 |
 | Game ID Checker (ADR-123) | ✅ Live 2026-10-16 via #472 — `/check-id` + `/check-id/<slug>` for the five families (Mobile Legends, Free Fire, Genshin Impact, Honkai Star Rail, Zenless Zone Zero), Turnstile (widget "PekanGame Game ID Checker"), 5/min + 30/hour per IP, 200/hour provider budget, RedxGame only (MLBB: Redx → UniPlay since #583, released 2026-10-29, ADR-123 2026-10-28 addendum), `public_player_checks`; in the sitemap and `llms.txt` on the primary brand, `noindex` on affiliates. Mobile More drawer; header highlight follows the page. A new affiliate custom domain must be added to the widget by hand until §16 item 108 | ADR-123 |
 | Customer Login (ADR-124) | 🟢 Live, verified on prod 2026-10-23 with the first real Login Top-up order (FPX-paid Roblox, `.done` in the supplier group; build-log 2026-10-23). Built 2026-10-18 (§16 item 112), released via #514 — `order_credentials` (encrypted secrets, out of DB dumps), `app:wipe-order-credentials` every 15 min (critical heartbeat), super_admin reveal/replace behind MFA step-up with a per-admin hourly limit and a `credential_reveals` audit (pruned after a year), Settings → Customer Login Policy (G, H, D, reveal limit, consent text), Order Detail "Customer Login" card. **2026-10-18 (ADR-125 PR 1b-i, §16 item 113), backend only, released via #514:** checkout writes the login with the order; the identifier is masked on every customer and affiliate surface; a resend's identifier correction is audited (`identifier`). **1b-ii:** the storefront login form with the consent box (the text the order snapshots); an admin-replaced password is no longer trimmed **2026-10-19 (ADR-125 PR 2a, released via #514):** the second reader is the supplier's short link `/s/<token>` (hash-only `supplier_login_links`, Pending attempt only, each reveal a `credential_reveals` row with actor supplier) **2026-10-23 (ADR-126 PR 1, item 114), released 2026-10-25 via #554:** each login stores its ceiling (`secrets_expire_at`): the game's own "keep login at most" days (Edit Game, login games), else D. Changing either moves the unwiped logins; the supplier link expires with the login | ADR-124, ADR-125 |
-| Joki MLBB (ADR-126) | 🟡 Released 2026-10-25 (#554), switched off and not sellable yet. PR 1 (#533): shared manual-order seams (post key per supplier, supplier re-check, explicit stale clock, per-login wipe ceiling). PR 2a (#534): `Fixed` basis, assignment pool, Assign under lock with audit, payout locks, joki game hidden, `not.joki` gate. PR 2b (#535): rank model and draft rates, pricing rule (Grading guarantees Mythic 15★), joki through the one checkout, `joki_orders` snapshot, `/api/joki/catalog` + `/quote`, `JokiCatalog::ensure()`. PR 3 (#536): `.progress` and the admin progress update, Track Order climb and current rank, paced WhatsApp progress. PR 4a: admin backend (`JokiBoard`, `/api/joki-admin/*`, F4 with "needs voucher" on the Joki card, `/orders` type filter, penjoki creation). PR 4b: Admin → Joki (Orders, Penjoki, Settings), Order Detail Joki card, Dashboard card, `/orders` type select, brand "Sell Joki", penjoki on supplier create. PR 4a/4b merged (#538, #539). PR 5 (#540): `/joki` page with the rank calculator, Joki Rank menu, sitemap, voucher preview priced like checkout, e2e golden path. Offered from Epic up (#552, 2026-10-25, ADR-126 addendum). All released 2026-10-25 via #554. Launch gates: §16 item 114 | ADR-126 |
+| Joki MLBB (ADR-126) | 🟡 Released 2026-10-25 (#554), switched off and not sellable yet. PR 1 (#533): shared manual-order seams (post key per supplier, supplier re-check, explicit stale clock, per-login wipe ceiling). PR 2a (#534): `Fixed` basis, assignment pool, Assign under lock with audit, payout locks, joki game hidden, `not.joki` gate. PR 2b (#535): rank model and draft rates, pricing rule (Grading guarantees Mythic 15★), joki through the one checkout, `joki_orders` snapshot, `/api/joki/catalog` + `/quote`, `JokiCatalog::ensure()`. PR 3 (#536): `.progress` and the admin progress update, Track Order climb and current rank, paced WhatsApp progress. PR 4a: admin backend (`JokiBoard`, `/api/joki-admin/*`, F4 with "needs voucher" on the Joki card, `/orders` type filter, penjoki creation). PR 4b: Admin → Joki (Orders, Penjoki, Settings), Order Detail Joki card, Dashboard card, `/orders` type select, brand "Sell Joki", penjoki on supplier create. PR 4a/4b merged (#538, #539). PR 5 (#540): `/joki` page with the rank calculator, Joki Rank menu, sitemap, voucher preview priced like checkout, e2e golden path. Offered from Epic up (#552, 2026-10-25, ADR-126 addendum). All released 2026-10-25 via #554. No launch gate is left; the founder turns the global Joki switch on when they choose (item 114 closed 2026-11-01) | ADR-126 |
 | Partner portal UI (ADR-128) | 🟢 Live — released 2026-10-27 (#571). Layer 1: the ADR-104 tokens generated into `reseller/` (`scripts/sync-shared-files.mjs`, CI drift check), the "PekanGame Partner" shell (grouped navigation, nude account block, support contacts from the primary brand's branding, trust footer), both Dashboards, Orders, Order detail, Wallet, Earnings, Withdrawal, the settings pages, Login and Set password. Shared-token fixes that also reach the admin: dark `on-cyan` and `focus-ring` follow the artifact (admin primary buttons in dark mode were 2.09:1), and JetBrains Mono is now loaded in both apps. **The one shared component kit (ADR-128 2026-10-26 addendum, #567 + #568, live via #571):** the admin kit moved onto the semantic tokens (Button severities resolved to the `-surface`/`-ink` badge pairs, touch targets `min-h-11 sm:min-h-9`), then generated into `reseller/src/components/ui/` and the portal's hand-rolled `ui.tsx` deleted in favour of it; status buttons are soft `-surface`/`-ink` pairs (2026-10-27 addendum). Reviewed page by page before release (build-log 2026-10-27). Layer 2 is items 24 and 25 **2026-10-29 (via #599):** the wallet screen is `/balance`, "Purchase Balance". | ADR-128, ADR-104, ADR-112, 131 |
 | Partner onboarding (ADR-133, §16 item 146) | 🟢 Live in prod since release #633 (2026-11-01); the public application switch is **off**: PR 1a (one bank, payments-approval and paid-order predicate, `ResellerProvisioningService`, `PartnerReadinessService`) and PR 1b (a checklist, banners, empty states and bot status in the portal, a Setup column on the admin Affiliates and Resellers lists, the payments-approved email, set-password in English). PR 2 (#623, 2026-10-31): a reseller with no tier cannot add balance, the admin create makes the login and requires an active tier, "Create internal account" with a reason and step-up. PR 4 (2026-10-31, branch `fix/max-markup-pct-null-no-ceiling`): a blank markup ceiling now opens no markup everywhere (pricing, portal, admin), ADR-061 2026-10-31 addendum. PR 3a (2026-11-01, branch `feature/partner-onboarding-pr3a-applications`): the application backend: `partner_applications` and its documents, `PartnerApplicationService` (every status change under a row lock, approval through `ResellerProvisioningService`), the public stage-1 and stage-2 endpoints behind a "Public applications open" switch (off) and Turnstile, the admin API with 5-minute signed file links and a view log, the bilingual notices (recipients by class), the daily retention command. PR 3b (2026-11-01, branch `feature/partner-onboarding-pr3b-public-forms`): the public forms `/apply`, `/apply/verify` and `/onboard/[token]` in the portal app, served only on the `onboarding.` host (404 on the portal host, noindex), Turnstile allowed only on those pages; browser-checked end to end. PR 3c (2026-11-01, branch `feature/partner-onboarding-pr3c-admin-screen`): Admin → Partners → Applications (status tabs, detail cards, document links with a view log, send link, approve with a tier, decline, delete data, the open switch); "Add Reseller" replaced by "Invite directly" and the plain create route removed. Released in #633 | ADR-133 |
 | Internal Accounting (supplier funding ledger + CHIP settlement recon) | 🟢 Live — PR-1 built 2026-09-11: `supplier_transfers`/`supplier_ledger_entries` (append-only, foreign-currency), Record Supplier Transfer UI (`/admin/accounting`), `ORDER_DRAWDOWN` capture (Digiflazz webhook + Gamevion sync response — a `Gagal` after `Pending` writes no `REFUND`, grilled), drift check + amber chip on Dashboard Health (watches only a supplier with `api_config.drift_threshold` set; DigiFlazz set to 50000 by the founder on 2026-11-01), Transaction Register + CSV export. **2026-09-15 addendum built:** `supplier_fee` field (the supplier's own deposit-side cut, e.g. Digiflazz's flat IDR fee — ledger now credits net, not gross) + Adjust/Void correction actions (never edits/deletes the append-only ledger, always a new `MANUAL_ADJUSTMENT` entry). **PR-2 built 2026-09-19 (ADR-110 PR-B)** — CHIP `.xlsx` settlement reconciliation (`payment_settlements` + `chip_settled_transactions` dedup guard) + Monthly Accounting Summary screen, verified against a real PekanGame CHIP settlement file. **2026-10-08 (ADR-083 addendum, live via #376):** neutral "Affiliate tier fees (from earnings, no cash)" line, also in the Envelope Ledger's rough P&L. **2026-10-10 (ADR-083 addendum, §16 item 78) PR-1 (#390), live via #393:** Envelope Ledger postings with typed lines (funding loan/share capital, transfer, expense, director-paid expense, repayment, distribution), per-director loan balances, whole-posting void, zero-balance archive; `supplier_transfers.transferred_on`; `LedgerEntry` append-only guard. **PR-2 (#391), live via #393:** month close on the Monthly Summary (exact operating-profit allocation per KL month from September 2026, prior-month drift carried forward, reopen of the latest close only), "where is the money" cash equation with a cash-account snapshot and gap note, operating profit + new lines (voucher breakage, admin-issued vouchers, supplier corrections, envelope expenses), FX rate as of month end; the manual "Allocate Monthly Profit" and the platform "Request Withdrawal" are gone. **2026-10-11 (ADR-083 addendum, item 75), live via #406 (2026-10-12):** the Monthly Summary's issued-voucher lines are split into "Admin-issued vouchers (no order)" (a profit cost) and "Failed-order store credit issued" (information only); a merge result is in neither. **2026-10-17 (ADR-083 addendum, items 115 and 121), live via #495:** COGS at funded cost with a bridge to the per-order cost and a drawdowns-not-in-COGS line; operating profit unchanged. **2026-10-18 (ADR-083 addendum, item 123), live via #500:** a manual order-profit correction is its own Transaction Register row (`order_profit_correction`, dated when made); the order row keeps the original credit. **2026-10-18 (ADR-083 addendum, item 120), live via #500:** the original CHIP settlement file is kept and downloadable, a file with nothing new is refused, old settlements can attach their original, and receipts are filed by accounting month and never orphaned or deleted. **2026-10-18 (ADR-125 PR 1a, §16 item 113), released via #514:** an MYR supplier's rate is 1.0 everywhere (COGS, supplier corrections, month-end position); the cash position splits each supplier's balance into the prepaid asset and a new `supplier_payable_sen` (owed to a pay-after supplier; the gap is unchanged); a sandbox order never writes a supplier drawdown **2026-10-24 (ADR-127, #543–#546, released 2026-10-25 via #554):** revenue/COGS/commission by `recognised_at`; Cash Position, wallet line, breakage and the Register read dated facts only, so a closed month cannot move (`FinancialScenarioTest` invariant 2); `AccountingPeriod::assertOpen` refuses dated writes into a closed month; CHIP `paid_on`/fee recorded and the fee shown on Settlements; membership revenue from the ledger. **ADR-127 PR E (#549, released 2026-10-25):** the Monthly Summary splits "Supplier payments — pay-after" (paying a penjoki or manual supplier what is owed) from "Supplier prepaid — top-up". **§16 item 132 (released 2026-10-25, #554):** from 1 October 2026 a foreign-currency supplier is costed at a moving weighted average (`MovingAveragePool`), so every ringgit sent is a cost in some month or still in the prepaid balance. **2026-11-01 (ADR-083 second 2026-11-01 addendum and ADR-024 addendum, #644, released via #645):** the month close nets each unsettled CHIP payment's customer-paid fee (no RM1 estimate); the profit bridge's "ledger profit vs order figures" replaces the double-counting "manual profit corrections" line; the DuitNow fee is grossed up to CHIP's 1% of the total. | ADR-083, ADR-110 |
@@ -949,7 +949,7 @@ for the 2026-09-17 audit that found two dark-mode token bugs).
 production on 2026-10-15 after release #449; items 98, 99, 106 and 107
 checked again on 2026-10-16, after release #469; 107 closed after release #472;
 106, 11, 96 and the payment state re-checked 2026-10-17 after release #476;
-every open item re-checked 2026-10-26 after release #557; item 133 closed 2026-10-27 after release #571; items 134 and 137 closed and 138–140 added 2026-10-29 after release #589, with the payment state re-checked on prod; 140 closed, 141 (ADR-131) released and 142–144 added 2026-10-29 after release #599; items 138, 147, 148 and 149 closed and 150 added 2026-10-30; items 13 and 146 designed in ADR-133 and 151 and 152 added 2026-10-31; item 154 added and closed, 153 closed and 156 and 157 added 2026-11-01.** This list holds only **open** items. "Next up"
+every open item re-checked 2026-10-26 after release #557; item 133 closed 2026-10-27 after release #571; items 134 and 137 closed and 138–140 added 2026-10-29 after release #589, with the payment state re-checked on prod; 140 closed, 141 (ADR-131) released and 142–144 added 2026-10-29 after release #599; items 138, 147, 148 and 149 closed and 150 added 2026-10-30; items 13 and 146 designed in ADR-133 and 151 and 152 added 2026-10-31; item 154 added and closed, 153 closed and 156 and 157 added 2026-11-01; items 55, 74 and 114 closed and items 108 and 122 corrected after the group D audit, and items 129 and 141 closed, the same day; group E sorted the same day (24 and 94 to B, 57 and 150 to D, 14 and 25 closed, 117 parked).** This list holds only **open** items. "Next up"
 is the one place they are sorted, one line each; "Details" holds each item's
 full text once, by number. Everything closed is one line under "Recently
 closed", pointing to where the full story lives (`docs/build-log.md` /
@@ -973,7 +973,14 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
 (none: 155 released 2026-11-01, now in C)
 
 **B. Needs a short grill / ADR addendum first**
-(none: 149 grilled 2026-10-30, now in A)
+- **24** Reseller Purchase Balance: resume or cancel a pending top-up. Today
+  one active top-up per reseller, 30 minutes, and a second attempt gets a 422
+  with no way to cancel or continue in the portal. Needs its own ADR and a
+  gateway/webhook review; never a client-only button (Details). Moved here
+  2026-11-01: reseller onboarding (ADR-133) is open, so partners will hit it.
+- **94** Best-selling products per game in Reports (founder, 2026-10-13). Needs
+  an ADR-104 addendum and a short grill; the open question is whether to
+  snapshot a product key on the order at checkout (Details).
 
 **C. Founder actions (no code)**
 - **155** Landed cost rate ([ADR-134](./adr/ADR-134-landed-cost-rate.md)),
@@ -992,38 +999,6 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   orders, the fee fold with `bankTransferFees()` scoped, the cache keyed on a
   funding version, the unfunded-supplier block, the transfer spread guard, the
   currency lock, and the readers and labels of ADR-134 decisions 13–15.
-- **141** CHIP activation conditions (ADR-131), **released 2026-10-29 in #599**; the
-  code is complete. What was owed is the founder's, then one reply to CHIP:
-  (a) the company details are filled on prod (checked 2026-10-29): receipts print
-  them, read live; (b) deactivate the `fixfastapp.com`
-  test affiliate (Affiliates → FixFast Demo → Deactivate; its domain already
-  cannot take a payment); (c) the
-  browser checks not done: the "Save Limits", "Close account" and
-  domain-approval submits with an MFA admin (covered by backend tests; the
-  storefront notice, the admin Approve button and the affiliate portal badge were seen on prod; the first domain approval, 2026-10-30, failed with "The approved field is required", a double-encoded body fixed in #607 and released in #608; the approval then succeeded the same day, 07:53 UTC, for `ohahastore.com` and `www.ohahastore.com`); (d) **done: sent by the founder on 2026-10-29**; CHIP answered that it is checking the documents and that FPX and DuitNow QR may be used meanwhile (other methods still in review; recorded 2026-10-31). The reply carried attachments (portal screenshots from
-  the FixFast test reseller, a receipt, the onboarding procedure PDF). Agreed
-  wording: no officially onboarded resellers and one in onboarding; a failed
-  reseller order returns to the Purchase Balance (the balance is that order's
-  payment source) and unused balance is refunded to the original payer only on
-  closure; `ohahastore.com` submitted as the first affiliate domain; (e) approve a
-  branded domain in the admin only after CHIP's written approval (`ohahastore.com`
-  and its `www` were approved in the admin on 2026-10-30; CHIP's written approval is the founder's record outside the repo). The onboarding procedure, the written confirmations and
-  any reseller documents live outside the repo (it is public). Extends items 24
-  and 104 (naming); item 129's choice is made (voucher-only, 2026-11-01).
-- **129** Voucher-only refund policy. **Decided 2026-11-01 (founder):** no
-  refund to the original payment method for a storefront order, only retry or a
-  voucher; ADR-004 stays in force (its 2026-11-01 addendum). Owed by the
-  founder, no code: edit the published Refund Policy (Admin → Settings →
-  Footer → Refund Policy content, shown at `/refund-policy`) back to
-  voucher-only. Until that is saved the live page still promises a refund
-  (re-read 2026-11-01 on `pekangame.com/refund-policy`, text last saved
-  2026-10-31: "you are entitled to your money back", a choice of a voucher or
-  a refund, "Refunds are only paid to the original payment method"). The
-  reseller-balance lines stay true. CHIP reviewed that page,
-  and its other payment methods are still in review, so tell CHIP if it asks.
-  Checked read-only on prod 2026-11-01: 14 orders paid since 2026-10-22, all
-  delivered, so no refund is owed under the old wording. Closes when the text
-  is saved. The test affiliate deactivation is in item 141(b).
 - **157** OpenWA after the v0.27.0 upgrade (2026-11-01, build-log). After a
   few clean days, delete `~/OpenWA-v0.25.0` and
   `~/openwa-backups/openwa-v0.25.0-20261101-1051.tar.gz` on the box (a prod
@@ -1040,10 +1015,6 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   lookup. Then a follower `@lid` whose id matches the checkout number's opts
   that number in for later orders. Never patch OpenWA on the box. Upstream
   request filed by the founder 2026-11-01: rmyndharis/OpenWA#1969; watch it.
-- **114** Joki MLBB (ADR-126), built and released 2026-10-25 (#554),
-  switched off, Epic up only. Launch gates: CHIP payments (FPX and DuitNow
-  QR approved by CHIP, recorded 2026-10-31; other methods still in review), item 129 (policy text edit), the rank icons and the rates plus
-  the Grading Express price (founder, with the penjoki).
 - **139** FPX bank-down status on the bank grid (ADR-130 decision 9), only
   if real payments show customers failing at a down bank. Advisory and
   fail-open from `fpxstatus.chip-in.asia`'s JSON feed; never a hard
@@ -1053,23 +1024,23 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   closed 2026-10-22).
 - **122** Store each combo leg's cost at delivery (`order_delivery_legs.cost_sen`),
   so a leg with no drawdown isn't costed at today's catalog in COGS; at the
-  first Monthly Summary fallback on a combo leg.
+  first Monthly Summary fallback on a combo leg (0 in October 2026). A leg
+  already carries `real_cost_price_sen` (ADR-111, filled at reconcile, null on
+  5 of 8 delivered legs on prod 2026-11-01), which the fallback reads first.
 - **81** Month-end pack and the open accounting policies (vouchers by
   reason, transfer fees in inventory cost), when an accountant is engaged.
 - **4** Bot-host resize, when capacity calls for it.
 - **28** Supplier buffer forecast plus a low-balance email alert (ADR-115),
   two weeks after launch (payments back on for real customers).
-- **55** Test-order flag, with item 28.
 - **59** OpenWA engine switch, with item 4 (Baileys stays until then, ADR-075
   2026-10-10 addendum).
-- **74** Ask the external reviewer, before the first non-zero affiliate tier
-  fee.
 - **83** Give back an admin voucher's ledger debit on revoke/expiry, with the
   first admin-issued voucher.
 - **85** Membership renewal reminder on WhatsApp (designed), at 10 active members
   or when members don't renew despite the email.
 - **108** Add affiliate custom domains to the Turnstile widget automatically
-  (ADR-123), when ~5 affiliate domains are active.
+  (ADR-123), when ~5 affiliate domains are active, or when the manual step
+  is tiresome. Missed once: `ohahastore.com` (2026-10-31), added by hand.
 - **111** Turnstile on the admin and portal logins (ADR-019 2026-10-17
   addendum), at the first "Account locked" alert that isn't the founder. The
   portal never opens to public signup (founder, 2026-11-01): the reseller
@@ -1079,17 +1050,12 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
 - **105** Batch `Order::cashCompensationSen()`'s wallet-refund lookup, when the
   Customer Detail page is slow for a big reseller (Pulse > 500 ms).
 - **151** A partner sandbox (a test-type reseller API key: orders flagged `is_test`, no Purchase Balance debit, `FakeSupplierAdapter` outcomes, webhook still sent), its own money-critical ADR (grill + code trace: wallet, ledger, reports, receipts, rate limits, bot) after item 146's PR 1 ships. The checklist's first-order step changes to "test in the sandbox, then order" when it exists ([ADR-133](./adr/ADR-133-partner-onboarding.md) "Not decided here"; the admin-only sandbox is [ADR-018](./adr/ADR-018-sandbox-test-orders.md)).
+- **57** Marketing Campaigns ([ADR-118](./adr/ADR-118-marketing-campaigns.md) plus its 2026-10-02 review addendum R1–R16), fully designed and grilled; build when a real KOL partnership is ready. Before building, confirm R14's contra-revenue treatment with the external reviewer (no accountant yet, item 81).
+- **150** Membership pitch to a non-member after a delivery (founder idea, 2026-10-30; design not started, needs its own ADR and grill). Detecting it is easy: `orders.pricing_basis` is `member` for a member order, so the pitch goes to a non-member order of a game with member pricing on a brand with membership on, and the saving on that order is computable server-side with `MembershipPricingService::calculateMemberPrice` (only the saving is shown, never cost or margin). Options, cheapest and safest first: (1) a banner on the order status page ("a member would have paid RM X for this order", with a link), which needs no consent and carries no ban risk; (2) one extra line inside the delivered receipt, not a second message; (3) a separate second WhatsApp message, only after an explicit marketing opt-in (for example replying `MEMBER`), with its own STOP and rate caps. Why the WhatsApp options wait: [ADR-116](./adr/ADR-116-customer-order-notifications-over-whatsapp.md) opts a number in for order updates only, a promotion needs its own consent (PDPA), and a customer's Report on the unofficial OpenWA number can ban it and with it the human support line. Why the whole item waits: on 2026-10-30 production had 42 real storefront orders from only 4 customer emails, 2 opted-in WhatsApp contacts and no active member. Build when there are real repeat customers (around ten active members, as for item 85; 1 active member on 2026-11-01). Recommended first step then: option 1.
 - **152** Refresh the admin sandbox (`/middleware/sandbox`) for wallet and combo orders; do it with item 151, which shares `FakeSupplierAdapter` (its 21 tests pass as of 2026-10-31).
 
 **E. New features: after the backlog** (each needs its own ADR + grill)
-- **14** Assistant chat history.
-- **24** Wallet pending top-up resume/cancel.
-- **25** Portal "needs attention" aggregate.
-- **57** Marketing Campaigns (ADR-118, designed).
-- **94** Best-selling products per game in Reports.
-- **150** Membership pitch to a non-member after a delivery (founder idea, 2026-10-30; design not started, needs its own ADR and grill). Detecting it is easy: `orders.pricing_basis` is `member` for a member order, so the pitch goes to a non-member order of a game with member pricing on a brand with membership on, and the saving on that order is computable server-side with `MembershipPricingService::calculateMemberPrice` (only the saving is shown, never cost or margin). Options, cheapest and safest first: (1) a banner on the order status page ("a member would have paid RM X for this order", with a link), which needs no consent and carries no ban risk; (2) one extra line inside the delivered receipt, not a second message; (3) a separate second WhatsApp message, only after an explicit marketing opt-in (for example replying `MEMBER`), with its own STOP and rate caps. Why the WhatsApp options wait: [ADR-116](./adr/ADR-116-customer-order-notifications-over-whatsapp.md) opts a number in for order updates only, a promotion needs its own consent (PDPA), and a customer's Report on the unofficial OpenWA number can ban it and with it the human support line. Why the whole item waits: on 2026-10-30 production had 42 real storefront orders from only 4 customer emails, 2 opted-in WhatsApp contacts and no active member. Build when there are real repeat customers (around ten active members, as for item 85). Recommended first step then: option 1.
-- **117** Storefront in more languages and currencies, to sell outside
-  Malaysia. Long-term, not soon (founder, 2026-10-17).
+(none: sorted 2026-11-01. 24 and 94 are in B, 57 and 150 in D, 14 and 25 closed, 117 parked)
 
 ## Details
 
@@ -1114,33 +1080,12 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
     OpenWA process down, not a WhatsApp session that is disconnected while
     the process runs; item 95 covers that.
 
-14. **ADR-087 candidate addendum** — persisted, multi-thread chat history for the
-    LLM Report Assistant (`/admin/reports/assistant`): a ChatGPT/Gemini-style
-    sidebar (new chat, switch between past threads, delete a thread), the
-    assistant still remembering a past thread's context when reopened. Reverses
-    ADR-087 decision 7 ("session-scoped only, never persisted to the database
-    long-term") — needs its own grill before building, not a trivial addition:
-    open questions include retention policy for old threads (vs. the existing
-    90-day audit log, which stays regardless and serves a different, compliance
-    purpose), per-admin thread isolation, and DB/endpoint shape (list/create/
-    delete thread, fetch a thread's messages). Raised by the founder 2026-09-12;
-    not a system-load concern either way — Gemini's own per-message cost already
-    scales with resent history length today, persisting it doesn't add API cost,
-    only cheap DB storage for a handful of `super_admin` accounts.
-
 24. **Reseller wallet pending top-up recovery/cancellation UX — design not
     started.** The current one-active-top-up/30-minute rule and second-attempt
     `422` remain correct money-safety behavior, but the portal does not yet
     offer a tenant-scoped read/resume/cancel path. Requires a new ADR and
     gateway/webhook review before any backend or payment-state change; do not
     solve this with a client-only button.
-
-25. **Cross-order portal “needs attention” aggregate — design not started.**
-    Dashboard recent orders are intentionally bounded and cannot prove a
-    global exception count. A reliable count needs a backend aggregate with
-    explicit payment/delivery/compensation semantics and a versioned API
-    contract; never sum the current paginated page in the browser. Requires a
-    separate ADR before implementation.
 
 28. **Supplier balance comfortable-buffer forecast — [ADR-115](./adr/ADR-115-supplier-balance-comfortable-buffer-forecast.md),
     fully designed + grilled, build deliberately parked.** Digiflazz-only,
@@ -1161,22 +1106,6 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
     founder), so the Dashboard "low balance" chip and the log warning work;
     with the balance at IDR 2,285,108 that day the chip shows until the
     balance passes the threshold.
-
-55. **Test/internal order flag — grilled 2026-09-30, deliberately parked**
-    (ADR-083 2026-09-30 second addendum, `docs/adr.md`). The founder's own
-    self-purchases on the live storefront count as real "Sales revenue" —
-    real gap, but no urgent trigger to build: at ~30 orders ever, manually
-    remembering which were self-testing still works, and the platform's own
-    operating model (founder hand-types one journal into the external SaaS
-    monthly, auditor only at year-end) already gives a natural correction
-    point. **Not** every current order is the founder's own testing — a real
-    reseller's real customer order (e.g. Naeem Industries) sits in the same
-    table, so any future build here needs per-order judgment, never a
-    blanket assumption or an email-based auto-detect. Same trigger as item 28 (ADR-115):
-    two weeks after launch — revisit together. **2026-10-10:** kept out of the ADR-083 Envelope Ledger addendum
-    (item 78), to follow it as its own addendum. Whether an order can be
-    tagged after its month is closed now depends on that addendum's
-    decision 12.
 
 57. **Marketing Campaigns — [ADR-118](./adr/ADR-118-marketing-campaigns.md), fully designed + grilled + stress-tested,
     build deliberately parked.** New `Campaign`→`PromoCode` family for paying KOLs/influencers
@@ -1201,12 +1130,6 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
     resize. Before any switch, check whether OpenWA can set the engine per session
     (`ENGINE_TYPE` is global, so a switch would also move `customer-support`), and
     plan the QR re-pairing of both numbers.
-
-74. **Ask the external reviewer before the first non-zero affiliate tier
-    fee** (ADR-083 2026-10-08 addendum). The Monthly Summary shows the fee
-    as a neutral line; the reviewer decides whether it is revenue or a
-    reduction of commission expense, and whether it needs an e-Invoice to
-    the affiliate. Both tiers are RM0 today (1 entry ever, RM0.00).
 
 81. **Month-end pack for the external accountant — waiting on an
     accountant (founder, 2026-10-17).** The founder has no accountant yet.
@@ -1338,7 +1261,9 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
     `0x4AAAAAAFYZZNQMJTpU31qh`) only renders on hostnames listed on it. On
     2026-10-16 it lists 3 of its 10: `pekangame.com`, `pekangame.space`,
     `fixfastapp.com` (the one active affiliate domain); subdomains are
-    covered. Until this is built, a new affiliate custom domain must be
+    covered. **Update 2026-11-01:** the widget now also needs `ohahastore.com`
+    (miss found 2026-10-31, error 110200; added by the founder, checker works),
+    so 4 hostnames of 10. Until this is built, a new affiliate custom domain must be
     added to the widget by hand in the Cloudflare dashboard, or the checker
     on that domain shows a Turnstile error (fails closed; checkout is
     unaffected).
@@ -1367,64 +1292,15 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
       down (fail-closed can lock the founder out of admin), E2E test keys,
       and whether checkout needs it too.
 
-114. **Joki MLBB (ADR-126; re-traced and re-grilled 2026-10-23).** The
-    2026-10-23 addendum replaces the earlier summary here. Joki follows the
-    Membership pattern (`joki_enabled` only on an owned brand, plus a global
-    switch), and the game is hidden from every catalog. Rank model, rates,
-    route packages and payout share (default 100%, snapshotted) are all
-    set in the panel, in whole RM. `PricingBasis::Fixed` locks the cost:
-    resend keeps it, Bulk Markup skips joki, and Retry returns the order to
-    the pool. New orders wait on an explicit pool supplier. Assign happens
-    in the admin under a lock, with an audit row. The post key gains the
-    supplier, Delivered re-checks the supplier, and the stale clock is
-    explicit (`manual_activity_at`, SLA max 3 days). Each login keeps its
-    own wipe ceiling (joki 30 days). There is an Admin → Joki page and a
-    Dashboard card, joki is out of "Need Action", and `/orders` gets a
-    type filter. Five PRs (ADR-126 addendum, "Consequence to track").
-    Launch gates (item 131 is done): CHIP payments, item 129 (policy text edit), rank icons
-    from the founder, and rates confirmed with the penjoki.
-    **PR 1 (decisions 17, 18, 20, 22) built 2026-10-23, merged to
-    `staging` via #533.** PR 2 is split in two: **2a** (Fixed basis,
-    pool, Assign, payout locks, hidden game, F1) built 2026-10-23;
-    **2b** built 2026-10-23 (rank model and draft rates,
-    `JokiPricingService`, joki checkout and preview through the one
-    checkout, `joki_orders`, `/api/joki/catalog` + `/quote`, the joki
-    switches, `JokiCatalog::ensure()`). **PR 3** built 2026-10-23
-    (`.progress` and the admin progress update, Track Order climb and
-    current rank, paced WhatsApp progress to opted-in customers). All
-    four merged to `staging` (#533–#536). **PR 4a** built
-    2026-10-24 (the admin backend: `JokiBoard`, `/api/joki-admin/*`, joki
-    out of Need Action and the Manual Queue with a "needs voucher" count
-    on the Joki card, the `/orders` type filter, penjoki creation).
-    **PR 4b** built 2026-10-24 (Admin → Joki with Orders, Penjoki and
-    Settings; Assign and progress on Order Detail; Record payment; the
-    Dashboard card; the `/orders` type select; "Sell Joki" in the brand
-    form; the penjoki tick on supplier create). PR 4a and 4b merged to
-    `staging` via #538 and #539. **PR 5** built 2026-10-24
-    (the `/joki` page with the interactive rank calculator, the "Joki
-    Rank" menu and sitemap entry, the voucher preview priced like
-    checkout, a joki e2e golden path), merged via #540. Every planned PR
-    is released (2026-10-25, #554); what remains is the launch
-    gates. Founder to set the
-    Grading Express price, confirm the rates, and supply the rank icons.
-    2026-10-25: joki is offered from Epic up; the four lower tiers are
-    removed (ADR-126 2026-10-25 addendum, #552, released via #554).
-
-117. **Expansion outside Malaysia: languages and currencies (founder,
-    2026-10-17).** The storefront is English-only and prices are MYR-only
-    (CHIP, a Malaysian gateway, is the one payment gateway;
-    `PaymentGatewayFactory` stays for a second, regional gateway). The
-    founder wants more languages together with more currencies when the
-    business expands abroad, not soon. Needs its own ADR and grill:
-    display currency vs charge currency, FX source, which gateway per
-    region, per-brand language, and how ledger and reports stay in MYR.
-
 122. **Store each combo leg's cost at delivery (`order_delivery_legs.cost_sen`)** —
     `FundedCostOfSales`'s leg-level fallback (a combo leg with no drawdown)
     still uses today's catalog cost, because no per-leg cost is stored at
     delivery. Prod has none as of 2026-10-17. Store `cost_sen` on each leg
     at delivery or settlement when `FundedCostOfSales` first falls back on a
     combo leg in the Monthly Summary (ADR-083 2026-10-17 addendum).
+    **Checked 2026-11-01 on prod:** October's `cogs_fallback_order_count` is 0; the
+    8 delivered legs hold `real_cost_price_sen` on 3 and null on 5, and the
+    fallback reads that column before today's catalog cost.
 
 128. **Shared admin loading skeleton (2026-10-19; item 124 closed 2026-10-22, now the founder's call).**
     The admin has no skeletons: 53 plain "Loading…" texts across 44 files,
@@ -1439,6 +1315,14 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
 
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-23, `docs/build-log-archive.md`; why in `docs/adr.md`)
+
+- **14** 2026-11-01: assistant chat history, closed as not needed (founder). It would serve a handful of `super_admin` accounts and reverse ADR-087 decision 7 (no stored conversations). Reopen only if the founder keeps losing a past assistant conversation; it needs its own grill (retention, per-admin isolation, the thread endpoints).
+- **25** 2026-11-01: the portal "needs attention" aggregate, closed as not needed (founder). Only 2 resellers on prod and a failed order already shows in the orders list. Reopen when a real partner reports not seeing a failed order; it needs a backend aggregate with explicit payment, delivery and compensation semantics and its own ADR, never a sum of the paginated page in the browser.
+- **129** 2026-11-01: voucher-only Refund Policy, closed (founder). The text was saved and read live on `pekangame.com/refund-policy` the same evening: a store voucher for the part not delivered, no refund to the original payment method for a storefront order, a membership that could not be activated fixed or given a voucher, and the reseller-balance lines unchanged. ADR-004 stays in force (its 2026-11-01 addendum).
+- **141** 2026-11-01: CHIP activation conditions (ADR-131, released in #599), closed (founder). Done: the company details on prod; the reply to CHIP sent 2026-10-29 (CHIP then allowed FPX and DuitNow QR); OhahaStore's domain approved and a real purchase works. FixFast Demo stays active by the founder's choice (a test affiliate whose domain cannot take a payment; ADR-061's "rename or remove the Owned Brand tier after it is deactivated" stays conditional on that). The "Save Limits" and "Close account" browser checks were not seen live; backend tests cover them.
+- **114** 2026-11-01: Joki MLBB (ADR-126), built and released 2026-10-25 (#554), closed as a backlog item (founder). Gates checked read-only on prod: FPX and DuitNow QR approved by CHIP; rank icons set on all three tiers (Epic, Legend, Mythic); rates set (Epic and Legend RM2 / RM3, Mythic RM4 / RM5); the Grading Express price is the founder's own choice (RM39, same as Grading). The last gate, the Refund Policy text (item 129), is closed; the founder turns the global switch on (`joki_settings.is_enabled`, 0 on 2026-11-01) when they choose. The PR-by-PR build record is in build-log 2026-10-23 to 2026-10-25 and the ADR-126 addenda.
+- **55** 2026-11-01: test/internal order flag, dropped (founder). Every order counts as sales revenue, because the platform does receive the diamonds or top-up (ADR-083 2026-11-01 addendum). `orders.is_test` stays for sandbox orders only.
+- **74** 2026-11-01: ask the reviewer before a non-zero affiliate tier fee, dropped (founder): the fee stays RM0 on purpose. The neutral "Affiliate tier fees" line in the Monthly Summary stays. Reopen if a fee above RM0 is ever set (ADR-083 2026-11-01 addendum). Whether a Purchase Balance deposit needs an e-Invoice (ADR-131) stays with item 81.
 
 - **153** 2026-11-01: the reseller application is open (founder). No link from the portal login page (founder): applicants arrive through the docs-site "Request access" and the `/price-list` "Apply" button; the whole portal is now `noindex` (build-log 2026-11-01).
 - **154** 2026-11-01: Price List Family and Region filled by the founder after release #642. Checked read-only: 21 of 38 active games grouped (Mobile Legends 10 regions, Free Fire 6, Valorant 5). Genshin Impact, Honkai Star Rail and Rainbow Six Mobile have one region each and stay their own tile (founder).
@@ -1520,6 +1404,13 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
 - **Older closed items** (1–3, 5, 7, 8, 12, 15–54 except those open above, 60–63): moved verbatim to `docs/build-log-archive.md`, "PRD narrative moved 2026-10-12". Numbers stay stable. Items closed 2026-10-08 → 10-12 (79, 80, 69, 66 history view, 75, 76, 77, 6 part, 78, 9, 65, 27, 56, 70/68/67): moved verbatim to `docs/build-log-archive.md`, "PRD §16 closed items moved 2026-10-16".
 
 ## Parked by founder decision — not scheduled
+
+- **117 Storefront in more languages and currencies** (founder, 2026-10-17;
+  parked 2026-11-01). The storefront is English-only and prices are MYR-only
+  (CHIP is the one gateway; `PaymentGatewayFactory` stays for a second,
+  regional one). Wanted when the business expands abroad, not soon. Needs its
+  own ADR and grill: display vs charge currency, FX source, gateway per
+  region, per-brand language, and how ledger and reports stay in MYR.
 
 - **66 Combo edit-composition.** A combo is never edited: to change one,
   create a new combo and deactivate the old one (the founder's workflow

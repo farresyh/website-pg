@@ -1580,3 +1580,17 @@ The founder asked whether the docs were current and free of contradictions. Read
 - **Released** `staging`→`main` at the founder's request; the founder merged #649 (the auto-mode classifier blocked Claude's merge as a production deploy). Merge `4c7d85ae`, box release `81783529`, CI and `deploy` green, Vercel ×4 `success`.
 - **Verified read-only:** migration `[57] Ran`; MySQL `whatsapp_contacts` has `phone` nullable and the `chat_id` unique index, 3 contacts kept; `/api/health` all true; `/api/health/whatsapp` both `ready`; 0 Laravel errors since the deploy; `<meta name="robots" content="noindex, nofollow">` on the portal login.
 - **Still to see:** the first real `@lid` customer who sends an order number (status card into the `@lid` chat, then the receipt on Delivered). PG-WSEZAO6R4TGU was answered by hand; no backfill.
+
+## 2026-11-01 — Group D backlog audit against code and production (docs only)
+
+- **Why.** The founder suspected some group D items were already done but not recorded. Checked every item against `origin/main` code and read-only against production.
+- **Nothing found built and unrecorded.** The checks that came back:
+  - Items 83, 85, 104, 4, 59 and 122 had not reached their triggers. Production 2026-11-01: 0 vouchers without an order (the 5 vouchers are order compensation, no ledger debit); 1 active member; 3 wallet top-ups; load 1.1 on 2 cores with about 1.8 GB available, engine still Baileys; October `cogs_fallback_order_count` 0.
+  - Items 139, 151, 152, 156, 128, 105 and 81 have no code written. Item 111's "Account locked" trigger was not checked.
+- **Corrected.** Item 108 (the checker miss on `ohahastore.com` on 2026-10-31 was the trigger, fixed by hand) and item 122 (a leg already has `real_cost_price_sen`, null on 5 of 8 delivered legs).
+- **Closed by the founder.** Item 55 (every order is sales revenue) and item 74 (the tier fee stays RM0): ADR-083 third 2026-11-01 addendum. Item 114 (Joki): gates checked on prod, rank icons and rates are set, the Grading Express price is the founder's own choice; only the Refund Policy text (item 129) is left, then the global switch (`joki_settings.is_enabled`, 0).
+- **Refund Policy, read on the live page.** The refund choice line was already removed, but "entitled to your money back" and "Refunds are only paid to the original payment method" remain, with a dangling "or". Replacement text was given to the founder in the session; saving it closes item 129.
+- **Process.** For the code read, Claude detached the checkout to `origin/main` and went back to `staging` at once; no file changed. Prod reads were SELECTs and one read-only service call (`FundedCostOfSales::forPeriod`), no writes.
+- **Later the same day (founder).** The Refund Policy text was saved and checked live, so item 129 is closed. Item 141 (CHIP activation conditions) is closed too: OhahaStore is approved and can take a real purchase, and FixFast Demo stays active on purpose. Joki has no gate left; the founder opens the global switch when they choose.
+- **Group E sorted (founder agreed).** 24 (pending top-up resume/cancel) and 94 (best-selling products) moved to B; 57 (Marketing Campaigns) and 150 (membership pitch) to D with their triggers; 117 (languages and currencies) parked; 14 (assistant chat history) and 25 (portal needs-attention aggregate) closed as not needed. Nothing in E was built (code checked).
+
