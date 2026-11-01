@@ -971,7 +971,7 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   market (+6.8% with fees), so every reseller tier and membership Tier 2 sold
   below true cost and every profit screen except the Monthly Summary
   overstated profit (all-time RM212.03 shown, ~RM106.73 true). Build test-first
-  in one PR: the `LandedCostRate` service at the two seams, `cost_basis` on
+  in one PR: the `LandedCostRate` service at the two seams, `cost_rate` on
   orders, the fee fold with `bankTransferFees()` scoped, the cache keyed on a
   funding version, the unfunded-supplier block, the transfer spread guard, the
   currency lock, and the readers and labels of ADR-134 decisions 13–15. After

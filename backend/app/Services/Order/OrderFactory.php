@@ -104,7 +104,7 @@ final class OrderFactory
                 'markup_percent' => $draft->pricing->markupPercent,
                 'normal_selling_price' => $draft->pricing->normalSellingPriceSen,
                 'cost_price' => $draft->pricing->costPriceSen,
-                'cost_basis' => Order::COST_BASIS_LANDED,
+                'cost_rate' => Order::COST_RATE_LANDED,
                 'standard_selling_price' => $draft->pricing->standardSellingPriceSen,
                 'affiliate_markup_pct' => $draft->affiliateMarkupPct,
                 'wholesale_markup_pct' => $draft->pricing->wholesaleMarkupPct,

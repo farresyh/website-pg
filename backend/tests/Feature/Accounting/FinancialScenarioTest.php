@@ -299,7 +299,7 @@ class FinancialScenarioTest extends TestCase
         $this->assertSame($before['bank_transfer_fees_sen'], $october->profit_lines['bank_transfer_fees_sen']);
         $this->assertSame($before['supplier_prepaid_topup_sen'] + 80_000 + 1_466, $october->profit_lines['supplier_prepaid_topup_sen']);
         $this->assertSame(0, $november->profit_lines['cogs_funding_difference_sen']);
-        $this->assertSame(0, Order::query()->where('paid_at', '>=', '2026-10-01')->where('cost_basis', Order::COST_BASIS_MARKET)->count());
+        $this->assertSame(0, Order::query()->where('paid_at', '>=', '2026-10-01')->where('cost_rate', Order::COST_RATE_MARKET)->count());
     }
 
     /**

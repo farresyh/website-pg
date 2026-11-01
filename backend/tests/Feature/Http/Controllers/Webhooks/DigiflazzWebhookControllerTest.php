@@ -137,7 +137,7 @@ class DigiflazzWebhookControllerTest extends TestCase
         $this->assertSame('Sukses', $order->supplier_response['status']);
         $this->assertSame('SN-999888', $order->supplier_response['sn']);
         $this->assertSame(108, $order->real_cost_price_sen);   // Rp4,500 × 0.0239 = 107.55, half-up like the pool
-        $this->assertSame(Order::COST_BASIS_LANDED, $order->cost_basis);
+        $this->assertSame(Order::COST_RATE_LANDED, $order->cost_rate);
         $this->assertSame(1000 - $order->real_cost_price_sen, $order->platform_profit);
 
         $this->assertDatabaseHas('ledger_entries', [

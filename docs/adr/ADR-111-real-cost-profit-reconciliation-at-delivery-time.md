@@ -74,4 +74,4 @@ No stored price moves: within a 24h cache TTL, the rates were already equal in p
 
 ### 2026-11-01 addendum — real cost at the landed rate (ADR-134)
 
-Decisions 2 and 6 are revised by [ADR-134](./ADR-134-landed-cost-rate.md) decisions 5–6. The supplier's real per-transaction price is converted at the supplier's landed cost rate (its deposit pool), not the market rate, and rounded half-up like the pool, so per-order profit matches funded COGS. `captureRealCostSen()` takes the supplier instead of a currency. Each order records `cost_basis` (`market` before the change, `landed` after). Decision 3's identity and decision 7's drift flag are unchanged.
+Decisions 2 and 6 are revised by [ADR-134](./ADR-134-landed-cost-rate.md) decisions 5–6. The supplier's real per-transaction price is converted at the supplier's landed cost rate (its deposit pool), not the market rate, and rounded half-up like the pool, so per-order profit matches funded COGS. `captureRealCostSen()` takes the supplier instead of a currency. Each order records `cost_rate` (`market` before the change, `landed` after). Decision 3's identity and decision 7's drift flag are unchanged.

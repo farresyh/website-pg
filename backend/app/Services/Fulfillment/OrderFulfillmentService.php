@@ -1659,7 +1659,7 @@ final class OrderFulfillmentService
      * else that same call is already updating (decision 2's "no extra
      * query, no extra transaction").
      *
-     * @return array{platform_profit: int, profit_reconciled_flagged: bool, cost_basis: string}
+     * @return array{platform_profit: int, profit_reconciled_flagged: bool, cost_rate: string}
      */
     private function reconcileRealCostProfit(Order $locked, int $realCostPriceSen): array
     {
@@ -1679,7 +1679,7 @@ final class OrderFulfillmentService
             'platform_profit' => $reconciledProfit,
             'profit_reconciled_flagged' => $flagged,
             // The profit now rests on a landed cost, whatever the checkout estimate was (ADR-134 decision 13).
-            'cost_basis' => Order::COST_BASIS_LANDED,
+            'cost_rate' => Order::COST_RATE_LANDED,
         ];
     }
 

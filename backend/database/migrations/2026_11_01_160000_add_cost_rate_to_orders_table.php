@@ -16,14 +16,14 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('orders', function (Blueprint $table) {
-            $table->string('cost_basis', 8)->default('market')->after('real_cost_price_sen');
+            $table->string('cost_rate', 8)->default('market')->after('real_cost_price_sen');
         });
     }
 
     public function down(): void
     {
         Schema::table('orders', function (Blueprint $table) {
-            $table->dropColumn('cost_basis');
+            $table->dropColumn('cost_rate');
         });
     }
 };

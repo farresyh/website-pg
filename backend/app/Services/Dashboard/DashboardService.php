@@ -14,8 +14,7 @@ use App\Models\WhatsAppPendingLink;
 use App\Models\Withdrawal;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\CircuitBreaker\CircuitBreaker;
-use App\Services\Currency\CurrencyRateService;
-use App\Services\Currency\CurrencyRateUnavailableException;
+use App\Services\Currency\LandedCostRate;
 use App\Services\Joki\JokiBoard;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\OpenWa\OpenWaSessionStatus;
@@ -51,7 +50,7 @@ final class DashboardService
 
     public function __construct(
         private readonly OpenWaSessionStatus $openWaSessionStatus,
-        private readonly CurrencyRateService $currencyRates,
+        private readonly LandedCostRate $landedCost,
         private readonly SchedulerLiveness $schedulerLiveness,
     ) {}
 
@@ -125,7 +124,8 @@ final class DashboardService
                 // is IDR, not MYR). `balance_myr_equivalent` is a
                 // display-only convenience for comparing suppliers
                 // at a glance — `balance`/`currency` stay the real,
-                // receipt/dashboard-verifiable figures.
+                // receipt/dashboard-verifiable figures. At the landed
+                // rate since ADR-134: what the balance cost.
                 'currency' => $supplier->currency,
                 'balance_myr_equivalent' => $this->balanceInMyr($supplier),
                 'low_balance' => $lowBalance,
@@ -368,14 +368,9 @@ final class DashboardService
             return null;
         }
 
-        if ($supplier->currency === 'MYR') {
-            return $balance;
-        }
+        // ADR-134 decision 15: what that balance cost us (its landed rate), not what it would fetch at the market rate.
+        $averageSen = $this->landedCost->averageSen($supplier);
 
-        try {
-            return round($balance * $this->currencyRates->rate($supplier->currency, 'MYR'), 2);
-        } catch (CurrencyRateUnavailableException) {
-            return null;
-        }
+        return $averageSen === null ? null : round($balance * $averageSen / 100, 2);
     }
 }
