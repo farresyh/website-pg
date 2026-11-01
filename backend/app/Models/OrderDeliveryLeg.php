@@ -29,8 +29,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  *
  * ADR-111 decision 2: `real_cost_price_sen` is the OTHER cost figure —
  * the supplier's own real per-transaction price this specific leg
- * actually delivered at (converted via `CurrencyRateService::
- * convertToSen()`), captured once the leg reaches Delivered. Distinct
+ * actually delivered at (converted at the supplier's landed cost rate,
+ * `LandedCostRate`, since ADR-134), captured once the leg reaches Delivered. Distinct
  * from `componentPackage->cost_price` (a catalog snapshot); null until
  * delivered, or if the FX rate was genuinely unavailable at that moment.
  */

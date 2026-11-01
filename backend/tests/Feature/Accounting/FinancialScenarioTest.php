@@ -637,6 +637,29 @@ class FinancialScenarioTest extends TestCase
         $this->assertSame(0, app(ReportService::class)->profitBridge(...self::month(2026, 10))['unexplained_difference']);
     }
 
+    /**
+     * Prod order 15: the ledger was over-credited (37 sen for a 27-sen
+     * order), then a reasoned −10 correction brought it back to the order's
+     * own figures. The bridge used to add every reasoned correction back,
+     * showing 10 sen unexplained; it now measures the ledger against the
+     * orders' figures directly, so a correction that fixes the ledger walks
+     * to nothing and one that the order doesn't show (above) still walks.
+     */
+    public function test_a_correction_that_fixes_the_ledger_leaves_nothing_unexplained(): void
+    {
+        $septemberOrder = app(RecognisedRevenue::class)->recognisedOrders(...MonthlyAccountingSummaryService::monthBounds(2026, 9))->first();
+        // The order's own cost turns out 10 sen higher than the profit the ledger was credited with (order 15's resend formula bug).
+        $costColumn = $septemberOrder->real_cost_price_sen !== null ? 'real_cost_price_sen' : 'cost_price';
+        $septemberOrder->forceFill([$costColumn => $septemberOrder->{$costColumn} + 10, 'platform_profit' => $septemberOrder->platform_profit - 10])->save();
+        $this->scenario->at('2026-09-28 10:00');
+        app(LedgerService::class)->credit(LedgerOwnerType::Platform, null, -10, 'order_profit', 'order', $septemberOrder->id, $this->scenario->admin->id, 'Scenario: resend over-credited the ledger');
+
+        $bridge = app(ReportService::class)->profitBridge(...self::month(2026, 9));
+
+        $this->assertSame(0, $bridge['ledger_vs_order_figures']);
+        $this->assertSame(0, $bridge['unexplained_difference']);
+    }
+
     /** ADR-127 decision 9: owner profit (market rate) walks to operating profit (accounts) with nothing unexplained. */
     public function test_the_profit_bridge_explains_every_month(): void
     {

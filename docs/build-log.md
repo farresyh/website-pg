@@ -1521,3 +1521,27 @@ The founder asked whether the docs were current and free of contradictions. Read
 - **Checks:** backend `php artisan test` 3,405 passed (new: `LandedCostRateTest`, `TransferSpreadGuardTest`, the unfunded job test, a `FinancialScenarioTest` that fails on the old code with the October fee counted twice); admin `tsc`, `lint`, `npm test`, `build`; local dev DB migrated (`php artisan migrate`).
 - **Gotcha:** running Pint on whole directories reformatted ~47 untouched files; reverted before push. Run it on the changed files only.
 - **Owed after release:** close October only after this is live (ADR-134); set Digiflazz's `drift_threshold` (Rp50,000) in Middleware; tell resellers about the ~6.8% price rise.
+
+## 2026-11-01 — Release #642: landed cost rate live, audited on prod (read-only)
+
+- **Release** (`staging`→`main`, founder's request): merged `d327e932`; CI and `deploy` green; box release `81771668` at `d327e93`; migrations `2026_11_01_160000`/`160100`/`160200` `[56] Ran`; `/up` 200.
+- **Production data written by the release (migration `restate_pooled_transfer_effective_rate`, display column only):** transfer #6 `effective_rate` 0.00023900 → 0.00024634, #7 0.00023800 → 0.00023870 (fee now in the rate). Idempotent; no money column touched.
+- **Before → after (read-only, same queries):** 14 Diamonds cost 93 → 99 sen, selling 107 → 114 (storefront API shows RM1.14, member RM1.03); 23 Tokens 101 → 108; total cost of the 1,111 active Digiflazz packages 14,304,784 → 15,276,971 sen (+6.80%). October operating profit 10,693 → 12,922 sen, bank-fee line 2,934 → 0, prepaid top-up 547,625 → 550,559 (fees included), COGS 174,511 → 175,216. September 464 sen live = close #3's 464.
+- **First Price Sync after deploy** (run 3081, 05:00 UTC): `fx_rates_used` = deposit pool 0.00023913371 MYR/IDR, market 0.000224, spread +6.76%; 1,399 prices changed, 0 anomalies, 0 failed suppliers, no `unfunded` deactivation.
+- **Audit:** every active Digiflazz package's cost equals `ceil(raw × landed)`, 0 below the landed cost; 68 active combos equal Σ(quantity × component cost); minimum margin on sale against landed cost: standard 12.2%, member Tier 1 6.25%, Tier 2 3.75%, reseller A 4.26%, S 2.7%, SS 2.17%, SSS 1.37%, Supreme 0% (the smallest packages, where `round(cost × 1.01)` equals the cost: no loss, no profit). Cash position October: supplier prepaid 432,398 sen (as replayed before the release). Dashboard Digiflazz balance RM4,322.90 at the landed rate. Reports summary: 56 market-rate orders in range, so the note shows. No order in flight at the deploy; all 72 orders are `cost_rate = market` until the first new one.
+- **Gotcha:** a combo check summing component costs without the pivot quantity reported 26 mismatches; with quantities, 0.
+- **Owed by the founder:** CHIP settlements 25–31 October, then close October; Digiflazz `drift_threshold` 50000; tell resellers; item 154's 24 games.
+
+## 2026-11-01 — Money sweep after the founder spotted the CHIP fee estimate
+
+- **Trigger (founder):** the October close showed "CHIP paid, not settled yet … less RM1 fee each" although the settlement file was uploaded. It was right that 13 payments of 31 Oct were still in transit (CHIP paid them out on 1 Nov), but the flat RM1 fee was wrong for DuitNow (~1%): RM13 deducted against RM8.58 the customers paid (CHIP took RM8.56).
+- **Sweep (two read-only forks):** (1) every estimate and fallback in the money paths; (2) every Monthly Summary line and the October position recomputed from raw tables. Result: every Sep and Oct Monthly Summary line matched to the sen; the October cash-flow walk closes to 2 sen once September's documented cutover gap is counted.
+- **Fixed (branch `fix/close-actual-chip-fees`):**
+  - The CHIP-in-transit asset nets each payment's customer-paid fee (no RM1 estimate); a voucher-covered order is excluded explicitly (ADR-083 second 2026-11-01 addendum).
+  - The profit bridge's "manual profit corrections" line, which double-counted order 15's −10 sen correction (10 sen "unexplained" for September and all time since 2026-09-20; found in the first audit and not fixed then), is replaced by "ledger profit vs order figures" (same addendum).
+  - DuitNow fee grossed up to what CHIP takes of the total (we absorbed ~1 sen on many orders; 2 sen in October) — ADR-024 2026-11-01 addendum; `percentage_rate` must be below 100.
+  - `OrderDeliveryLeg` docblock no longer names the market-rate converter.
+- **Left as designed:** a settlement batch's gain/loss sits in the month of its last day; a combo leg with no drawdown falls back to today's catalog cost (item 122, none in production).
+- **Tests:** `ChipUnsettledFeeTest` (fails on the old code: RM3 estimate), a `FinancialScenarioTest` for a ledger-fixing correction, DuitNow gross-up cases from the seven production settlements; full backend suite 3,409 passed; admin `tsc`, `lint`, `npm test`.
+- **Expected at the October close after release:** the bank accounts together on 31 Oct ≈ RM24,529.44 (cash-flow walk); the equation then shows ≈ −RM10.98, which is September's already-noted cutover gap (RM10.94, close #3) plus the 2 sen November gain/loss.
+- **Founder actions checked read-only on prod (2026-11-01, before merge):** CHIP settlement file uploaded (settlement #7, 13:25 MYT, matched; covers the payments paid out 31 Oct and 1 Nov); Digiflazz `drift_threshold` = 50000; Family/Region set on 21 active games (item 154 closed). October is not closed yet: close it only after this PR is released.

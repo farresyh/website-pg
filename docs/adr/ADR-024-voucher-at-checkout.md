@@ -1,6 +1,6 @@
 # ADR-024: Voucher-at-Checkout — redemption timing, wallet model, and admin visibility (built 2026-08-14)
 
-> **Standing (2026-10-24):** In force; a restore and a revoke are dated facts and a revoke is locked ([ADR-127](./ADR-127-financial-truth-dated-facts.md), 2026-10-24 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-01):** In force; a percentage fee is grossed up to what CHIP takes (2026-11-01 addendum); a restore and a revoke are dated facts and a revoke is locked ([ADR-127](./ADR-127-financial-truth-dated-facts.md), 2026-10-24 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-08-13 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
 
@@ -185,3 +185,7 @@ The full-cover path (M-6) already failed closed on the voucher, but still decrem
 
 - A restore writes `voucher_redemptions.restored_at`. A revoke goes through `VoucherService::revoke()`, which locks the voucher like a redemption does and writes `vouchers.revoked_at`. Before this, a revoke was an unlocked status flip with no date.
 - Every past-period reader rebuilds a balance with `Voucher::balanceAsOf()`. A revoked voucher holds nothing after its revoke. Its unspent balance is income of the revoke month, on the breakage line.
+
+### 2026-11-01 addendum — a percentage fee is grossed up to what CHIP takes
+
+Decision 4 took the transaction fee as `percentage × feeBase`. CHIP takes its percentage of what the customer pays, fee included, so on DuitNow (1%) we charged a sen short on many orders and absorbed it (production settlements: RM40.19 → we charged 40 sen, CHIP took 41; RM25.45 → 25 vs 26; 2 sen over October). The customer still pays the gateway's fee, now the fee CHIP will actually take: `fee = (feeBase × rate + 100 × flat) ÷ (100 − rate)`, checked against CHIP's own rounding on the total (`CheckoutTotalService::grossedUpFee`). Reproduces all seven production DuitNow settlements. A flat-only fee (FPX) is unchanged; voucher full-cover still charges no fee. `percentage_rate` must now be below 100 (`lt:100`). One seam: checkout, membership and wallet top-up all price their fee through `CheckoutTotalService`.
