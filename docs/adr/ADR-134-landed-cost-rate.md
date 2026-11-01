@@ -2,7 +2,7 @@
 
 > **Standing (2026-11-01):** In force. Revises [ADR-033](./ADR-033-foreign-currency-supplier-pricing.md) (the market mid-rate becomes display-only), [ADR-111](./ADR-111-real-cost-profit-reconciliation-at-delivery-time.md) decisions 2 and 6 (real cost at the landed rate), [ADR-083](./ADR-083-internal-accounting-financial-reconciliation.md) decision 4 of the 2026-10-17 addendum, Q5 and decision 7 of the 2026-10-25 addendum (a prepaid transfer fee is unit cost), and [ADR-125](./ADR-125-login-top-up-manual-supplier.md) decision 30 (an MYR prepaid supplier is pooled too). Closes the transfer-fee question of PRD §16 item 81 (the accountant may still confirm or revert it). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
-**Status:** Accepted (design), 2026-11-01. Grilled with the founder in Malay in three rounds (Q1–Q13), then stress-tested against the code and production data by three read-only forks (pricing; fulfilment, ledger and pool; accounting and readers). Their findings are folded into the decisions below. Nothing is built.
+**Status:** Accepted (design), 2026-11-01. Grilled with the founder in Malay in three rounds (Q1–Q13), then stress-tested against the code and production data by three read-only forks (pricing; fulfilment, ledger and pool; accounting and readers). Their findings are folded into the decisions below. Decisions 2, 4 and 13 were refined during the build (recorded in place, 2026-11-01).
 
 ## Context
 

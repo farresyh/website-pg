@@ -1494,3 +1494,30 @@ The founder asked whether the docs were current and free of contradictions. Read
 - **Checks:** backend `php artisan test` 3,385 passed; Pint clean on the changed files; storefront `tsc`, `eslint`, `build`; admin `tsc`, `lint`, `build`; a browser check on a throwaway sqlite backend with the 674 real prod rows (desktop and 390px, admin modal); servers stopped and the sqlite deleted afterwards. The local dev DB was migrated with plain `php artisan migrate`.
 - **Gotcha:** `git rm` of the only file in `components/price-list/` removed the folder, so the next heredoc writes there failed until `mkdir -p`.
 - **Owed by the founder after the release:** fill Family and Region for the 24 games (item 154, group C).
+
+## 2026-11-01 — Money audit: every cost was at the market mid-rate (read-only)
+
+- **Question (founder):** is the cost the admin shows (RM0.93 for 14 Diamonds) what a unit really costs, given Digiflazz is funded by MYR→IDR transfers through Maybank or Wise?
+- **Answer, from prod (SELECT and read-only tinker only, three forks plus own checks):** no. Price Sync converted at open.er-api's mid-rate (0.000224) with no buffer, and so did the per-order real cost (ADR-111). The deposit pool held Rp18,081,822 at 430,169 sen: +6.2% over market, about +6.8% with the bank fees. Maybank's two October transfers carried a ~6.25% spread inside the rate (RM351.35 over market on RM5,154); Wise's three September ones had ~0% spread and fixed fees (RM28.16 on RM715).
+- **What it cost:** at the true cost every reseller tier (1–5%) and membership "Tier 2" (70% discount) sold below cost on all 1,037 active Digiflazz packages; standard and affiliate 15% made ~7%, not 13%. All-time owner profit shown RM212.03 against ~RM106.73 true (four reseller orders, #19, #46, #49, #50, lost money). October: Reports RM204.98, Monthly Summary operating profit RM106.93; after expenses September −RM187.66 and October −RM150.96. RM251.36 of premium sat in the unsold balance. The Monthly Accounting Summary was already exact; every other profit screen read the market rate.
+- **Clean:** no duplicate drawdown, the polled Digiflazz balance equals the ledger to the rupiah, CHIP fees are a pass-through, failed reseller orders were refunded with no drawdown, September's close used funded cost.
+- **Not related:** order PG-JUVJ8EVJOAKG failed twice on seller `HOK_GB_23_PG2` with rc 54 "Nomor Tujuan Salah" and succeeded on `HOK_GB_23_PG1`; we never send a price to Digiflazz, so a supplier price rise cannot fail an order.
+- **Decided:** ADR-134 (grilled Q1–Q13, stress-tested by three forks), PRD §16 item 155.
+
+## 2026-11-01 — Two date-dependent tests broke on staging (#640)
+
+- `PartialComboOrders::settledPartialComboOrder()` settled at `now()`, and settling sets `recognised_at`, so three assertions on October failed once the clock reached November; `ResellerClosureTest`'s forward jump to the 11th expired the setUp step-up. Both hold the clock now. Every PR's `backend-tests` was red until #640 merged (it was the cause of #639's first red run).
+
+## 2026-11-01 — Landed cost rate built (ADR-134, PRD item 155)
+
+- **Built on `fix/landed-cost-rate`** (stacked on the ADR PR #639), not released:
+  - `LandedCostRate` (the pool's average after the last deposit or adjustment, cached on a fingerprint of the transfers and adjustments) at the two seams: Price Sync's catalog cost (`ceil`) and delivery's real cost (half-up, the pool's own rounding).
+  - `MovingAveragePool`: a pooled transfer's fee is unit cost from 2026-10-01; every row is costed at the last-event average; every prepaid supplier is pooled whatever its currency, pay-after stays at face value. `bankTransferFees()` keeps only fees not in a pool; the prepaid top-up line carries the pooled fee.
+  - An unfunded foreign supplier's packages go off under `deactivated_reason = 'unfunded'` (ADR-046's status service) and come back on the first funded run, only those the supplier still lists.
+  - `orders.cost_rate` (`market` default, `landed` from `OrderFactory` and from a delivery that re-costs an older order); in the order detail, Transaction Register, Orders export, the Report Assistant view and prompt, and a market-rate note under owner profit.
+  - Transfer spread guard (Middleware band, default −2% to +12%), the stored `effective_rate` with the pooled fee (migration restates the October rows), supplier currency lock, Dashboard supplier balance at the landed rate, Price Sync Center shows landed, market and spread.
+- **Changed during the build (founder):** Q10's "hidden and refused at checkout" became the deactivate-with-reason mechanism, because `is_active` is read in about fifteen places and there is no shared "sellable" check. The column is `cost_rate`, not `cost_basis`: `Order::costBasis()` (ADR-111, real / mixed / estimated) already exists and the order API already returns `cost_basis`.
+- **Read-only prod replay of the new pool:** rate 0.00023913 MYR/IDR (+6.75% over 0.000224), October drawdown cost +705 sen (the 16 drawdowns of 30–31 October; the stress test predicted the same), 14 Diamonds 93 → 99 sen.
+- **Checks:** backend `php artisan test` 3,405 passed (new: `LandedCostRateTest`, `TransferSpreadGuardTest`, the unfunded job test, a `FinancialScenarioTest` that fails on the old code with the October fee counted twice); admin `tsc`, `lint`, `npm test`, `build`; local dev DB migrated (`php artisan migrate`).
+- **Gotcha:** running Pint on whole directories reformatted ~47 untouched files; reverted before push. Run it on the changed files only.
+- **Owed after release:** close October only after this is live (ADR-134); set Digiflazz's `drift_threshold` (Rp50,000) in Middleware; tell resellers about the ~6.8% price rise.
