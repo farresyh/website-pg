@@ -70,10 +70,13 @@ class SandboxOrderController extends Controller
     {
         $this->assertIsSandboxOrder($order);
 
-        return response()->json($order->load([
+        $order->load([
             'game', 'package', 'supplier', 'affiliate',
             'resendAttempts' => fn ($query) => $query->with('package:id,name')->latest(),
-        ]));
+        ]);
+
+        // ADR-106 2026-11-02 addendum: the same Delivery Logs figure as the admin detail.
+        return response()->json([...$order->toArray(), 'cost_vs_checkout' => $order->costVsCheckout()]);
     }
 
     /**

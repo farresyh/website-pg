@@ -47,10 +47,7 @@ import { Verified } from "@primeicons/react/verified";
 import { Code } from "@primeicons/react/code";
 import type { OrderDetail, OrderResendAttempt } from "@/lib/orders";
 import { buildDeliveryLogEntries, type DeliveryLogEntry } from "@/lib/delivery-log-entries";
-
-function formatRm(sen: number): string {
-  return `RM ${(sen / 100).toFixed(2)}`;
-}
+import CostVsCheckoutText from "./CostVsCheckoutText";
 
 function getOutcomeSeverity(outcome: string): "success" | "danger" | "warn" | "info" | "review" {
   switch (outcome) {
@@ -113,7 +110,9 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
                       <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Date & Time</DataTableTHeadCell>
                       <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Event</DataTableTHeadCell>
                       <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Package & SKU</DataTableTHeadCell>
-                      <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Price Diff</DataTableTHeadCell>
+                      <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">
+                        <span title="What the supplier really charged for the delivery, minus the cost expected at checkout. Shown on the attempt that delivered.">Cost vs checkout</span>
+                      </DataTableTHeadCell>
                       <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Outcome</DataTableTHeadCell>
                       <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Note / Reason</DataTableTHeadCell>
                       <DataTableTHeadCell className="px-3 py-2 text-end text-theme-xs font-medium text-ink-muted">Details</DataTableTHeadCell>
@@ -153,22 +152,7 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
                           </DataTableCell>
 
                           <DataTableCell className="px-3 py-3 text-theme-sm whitespace-nowrap">
-                            {entry.priceDiffSen === null ? (
-                              <span className="text-ink-subtle">—</span>
-                            ) : (
-                              <span
-                                className={
-                                  entry.priceDiffSen > 0
-                                    ? "font-medium text-error-600 dark:text-error-400"
-                                    : entry.priceDiffSen < 0
-                                      ? "font-medium text-success-600 dark:text-success-400"
-                                      : "text-ink-muted"
-                                }
-                              >
-                                {entry.priceDiffSen > 0 ? "+" : ""}
-                                {formatRm(entry.priceDiffSen)}
-                              </span>
-                            )}
+                            <CostVsCheckoutText figure={entry.costVsCheckout} />
                           </DataTableCell>
 
                           <DataTableCell className="px-3 py-3 text-theme-sm">

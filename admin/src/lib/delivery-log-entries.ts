@@ -1,4 +1,10 @@
-import type { OrderDetail, OrderResendAttempt } from "./orders.ts";
+import type { CostVsCheckout, OrderDetail, OrderResendAttempt } from "./orders.ts";
+
+/** ADR-106 2026-11-02 addendum: a delivered unit's real cost against its checkout cost, and which cost it rests on. */
+export interface CostVsCheckoutFigure {
+  sen: number;
+  basis: CostVsCheckout["cost_basis"];
+}
 
 export interface DeliveryLogEntry {
   id: string;
@@ -7,7 +13,7 @@ export interface DeliveryLogEntry {
   typeLabel: string;
   packageName: string;
   sku: string;
-  priceDiffSen: number | null;
+  costVsCheckout: CostVsCheckoutFigure | null;
   outcome: string;
   triggeredBy: string | null;
   note: string | null;
@@ -42,7 +48,17 @@ export function legAttemptLabel(attemptType: OrderResendAttempt["attempt_type"])
   return attemptType === "initial" ? "First attempt" : "Retry";
 }
 
+/**
+ * The backend's per-unit figures keyed by the attempt row that delivered
+ * the unit, for the order-level log and each combo leg's history alike.
+ * Every other row shows none: it moved no money.
+ */
+export function costVsCheckoutByAttempt(figures: CostVsCheckout[] = []): Map<number, CostVsCheckoutFigure> {
+  return new Map(figures.map((c) => [c.attempt_id, { sen: c.cost_vs_checkout_sen, basis: c.cost_basis }]));
+}
+
 export function buildDeliveryLogEntries(order: OrderDetail | undefined, attempts: OrderResendAttempt[] = []): DeliveryLogEntry[] {
+  const costByAttempt = costVsCheckoutByAttempt(order?.cost_vs_checkout);
   const resendList = (order?.resend_attempts ?? attempts ?? []).filter((a) => a.order_delivery_leg_id == null);
   // ADR-106 decision 5: a real durable row, once one exists for this
   // order — at most one 'initial' row can ever exist (fulfill()'s own
@@ -64,7 +80,7 @@ export function buildDeliveryLogEntries(order: OrderDetail | undefined, attempts
       typeLabel: "Initial Delivery",
       packageName: initialAttempt.package?.name ?? order?.package?.name ?? "—",
       sku: initialAttempt.package?.supplier_package_ref ?? order?.supplier_product_ref ?? "—",
-      priceDiffSen: null,
+      costVsCheckout: costByAttempt.get(initialAttempt.id) ?? null,
       outcome: initialAttempt.outcome,
       triggeredBy: initialAttempt.triggered_by ?? "System (Auto)",
       note: initialAttempt.note ?? deriveNoteFromResponse(initialAttempt.supplier_response) ?? "Initial checkout fulfillment",
@@ -99,7 +115,7 @@ export function buildDeliveryLogEntries(order: OrderDetail | undefined, attempts
       typeLabel: "Initial Delivery",
       packageName: order.package?.name ?? "—",
       sku: order.supplier_product_ref ?? order.package?.supplier_package_ref ?? "—",
-      priceDiffSen: null,
+      costVsCheckout: null,
       outcome: initialOutcome,
       triggeredBy: "System (Auto)",
       note: hasResends ? "Original response not retained — superseded by a later resend." : (initialNote ?? "Initial checkout fulfillment"),
@@ -118,7 +134,7 @@ export function buildDeliveryLogEntries(order: OrderDetail | undefined, attempts
       typeLabel: attempt.attempt_type === "manual_confirm" ? "Manual Confirmation" : "Resend Delivery",
       packageName: attempt.package?.name ?? order?.package?.name ?? "—",
       sku: attempt.package?.supplier_package_ref ?? order?.supplier_product_ref ?? "—",
-      priceDiffSen: attempt.price_diff_sen,
+      costVsCheckout: costByAttempt.get(attempt.id) ?? null,
       outcome: attempt.outcome,
       triggeredBy: attempt.triggered_by ?? "Admin",
       note: attemptNote ?? "—",

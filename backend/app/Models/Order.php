@@ -330,6 +330,53 @@ class Order extends Model
     }
 
     /**
+     * ADR-106 2026-11-02 addendum: what each delivered unit (the order, or
+     * a combo leg) cost against what it was expected to cost at checkout,
+     * placed on the attempt row that delivered it. Derived, never stored:
+     * a unit is delivered once, its cost already has one home
+     * (effectiveCostPriceSen() / the leg's real cost) and its checkout cost
+     * is its `initial` attempt row. A leg with no real cost reports
+     * nothing, since its catalog cost at delivery is kept nowhere.
+     *
+     * @return list<array{attempt_id: int, order_delivery_leg_id: int|null, cost_vs_checkout_sen: int, cost_basis: string}>
+     */
+    public function costVsCheckout(): array
+    {
+        $attempts = $this->resendAttempts->sortBy('id');
+
+        if ($this->deliveryLegs->isEmpty()) {
+            $rows = $this->delivery_status === DeliveryStatus::Delivered
+                ? [self::costVsCheckoutRow($attempts->whereNull('order_delivery_leg_id'), null, $this->effectiveCostPriceSen(), $this->costBasis())]
+                : [];
+        } else {
+            $rows = $this->deliveryLegs
+                ->filter(fn (OrderDeliveryLeg $leg) => $leg->status === DeliveryStatus::Delivered && $leg->real_cost_price_sen !== null)
+                ->map(fn (OrderDeliveryLeg $leg) => self::costVsCheckoutRow($attempts->where('order_delivery_leg_id', $leg->id), $leg->id, $leg->real_cost_price_sen, 'real'))
+                ->all();
+        }
+
+        return array_values(array_filter($rows));
+    }
+
+    /** @param  Collection<int, OrderResendAttempt>  $unitAttempts  one unit's attempts, oldest first */
+    private static function costVsCheckoutRow(Collection $unitAttempts, ?int $legId, int $costSen, string $basis): ?array
+    {
+        $checkout = $unitAttempts->firstWhere('attempt_type', 'initial');
+        $delivering = $unitAttempts->where('outcome', 'success')->last();
+
+        if ($checkout === null || $delivering === null) {
+            return null;
+        }
+
+        return [
+            'attempt_id' => $delivering->id,
+            'order_delivery_leg_id' => $legId,
+            'cost_vs_checkout_sen' => $costSen - $checkout->cost_price_sen,
+            'cost_basis' => $basis,
+        ];
+    }
+
+    /**
      * @return array{cost: int, basis: string}
      */
     private function costReconciliation(): array

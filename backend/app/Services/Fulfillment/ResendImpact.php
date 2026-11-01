@@ -12,7 +12,7 @@ use Illuminate\Validation\ValidationException;
  */
 final readonly class ResendImpact
 {
-    public const LOSS_MESSAGE = 'This resend would result in a loss — live cost now exceeds what was actually collected for this order. Provide an override reason to proceed anyway and accept the loss.';
+    public const LOSS_MESSAGE = 'This resend would result in a loss — the package\'s catalog cost now exceeds what was actually collected for this order. Provide an override reason to proceed anyway and accept the loss.';
 
     public function __construct(
         public int $costPriceSen,
