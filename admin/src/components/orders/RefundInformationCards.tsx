@@ -225,7 +225,20 @@ export default function RefundInformationCards({ order }: { order: OrderDetail }
               value: <Tag severity={NOTIFICATION_STATUS_SEVERITY[n.status]}>{n.status}</Tag>,
             },
             // ADR-125 decision 53: a supplier post goes to the group, not a phone.
-            n.session === "bot" ? { label: "Group", value: n.chat_id ?? "—" } : { label: "Phone", value: n.phone ?? "—" },
+            n.session === "bot"
+              ? { label: "Group", value: n.chat_id ?? "—" }
+              : n.phone === null && n.chat_id !== null
+                ? // ADR-116 2026-11-01 addendum: the customer wrote from a WhatsApp privacy id, so WhatsApp hides the number.
+                  {
+                    label: "Phone",
+                    value: (
+                      <span>
+                        WhatsApp chat (number hidden)
+                        <span className="block font-mono text-xs text-ink-muted">{n.chat_id}</span>
+                      </span>
+                    ),
+                  }
+                : { label: "Phone", value: n.phone ?? "—" },
             {
               label: n.status === "sent" ? "Sent" : "Note",
               value: n.status === "sent" && n.sent_at ? new Date(n.sent_at).toLocaleString() : (n.error ?? "Waiting to send"),

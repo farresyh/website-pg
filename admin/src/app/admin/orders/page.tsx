@@ -878,13 +878,15 @@ function OrdersPageInner() {
           className="h-11 w-full max-w-sm rounded-lg border border-gray-300 px-4 py-2.5 text-sm shadow-theme-xs focus:border-cyan-600 focus:outline-hidden focus:ring-3 focus:ring-focus-ring/10 dark:border-gray-700 dark:bg-gray-900 dark:text-ink"
         />
         {/* ADR-104: underline-tab style, not a filled pill — same values/
-            labels/onClick as before, matching the artifact's FilterBar. */}
-        <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800">
+            labels/onClick as before, matching the artifact's FilterBar.
+            Scrolls inside its own row: nine tabs are wider than a phone, and
+            on desktop than the main column, and pushed the whole page sideways. */}
+        <div className="flex max-w-full gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-800">
           {STATUS_FILTERS.map((f) => (
             <button
               key={f.value}
               onClick={() => setStatus(f.value)}
-              className={`border-b-2 px-3 py-1.5 text-sm font-medium ${
+              className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-1.5 text-sm font-medium ${
                 status === f.value
                   ? "border-cyan-600 text-cyan-ink"
                   : "border-transparent text-ink-muted hover:text-ink"

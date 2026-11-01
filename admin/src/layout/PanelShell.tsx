@@ -33,7 +33,10 @@ export default function PanelShell({
     <div className="min-h-screen xl:flex">
       {sidebar}
       <Backdrop />
-      <div className={`flex-1 transition-all duration-300 ease-in-out ${mainContentMargin}`}>
+      {/* min-w-0: a flex item never shrinks below its content, so one wide
+          element (the orders status tabs) pushed the whole page past the
+          viewport at xl. Wide content scrolls inside its own container. */}
+      <div className={`min-w-0 flex-1 transition-all duration-300 ease-in-out ${mainContentMargin}`}>
         <AppHeader title={headerTitle} />
         <div className="mx-auto max-w-(--breakpoint-2xl) p-4 md:p-6">{children}</div>
       </div>
