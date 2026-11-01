@@ -12,7 +12,7 @@ use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
 use App\Services\Accounting\SupplierFundingService;
-use App\Services\Currency\CurrencyRateService;
+use App\Services\Currency\LandedCostRate;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Fulfillment\OrderResendService;
 use App\Services\Ledger\LedgerService;
@@ -171,7 +171,7 @@ class SandboxOrderController extends Controller
             app(LedgerService::class),
             app(VoucherService::class),
             app(SupplierFundingService::class),
-            app(CurrencyRateService::class),
+            app(LandedCostRate::class),
         );
 
         $resend = new OrderResendService($fulfillment);

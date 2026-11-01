@@ -12,7 +12,7 @@ use App\Models\Supplier;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Services\Accounting\SupplierFundingService;
-use App\Services\Currency\CurrencyRateService;
+use App\Services\Currency\LandedCostRate;
 use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Ledger\LedgerService;
@@ -91,7 +91,7 @@ class OrderFulfillmentServiceTest extends TestCase
             new LedgerService,
             new VoucherService(new LedgerService),
             new SupplierFundingService,
-            new CurrencyRateService,
+            app(LandedCostRate::class),
         );
 
         $result = $service->fulfill($order);

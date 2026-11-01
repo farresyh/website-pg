@@ -5,7 +5,7 @@ namespace Tests\Support;
 use App\Models\Order;
 use App\Models\Supplier;
 use App\Services\Accounting\SupplierFundingService;
-use App\Services\Currency\CurrencyRateService;
+use App\Services\Currency\LandedCostRate;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
@@ -44,7 +44,7 @@ trait OrderFulfillmentFixtures
             new LedgerService,
             new VoucherService(new LedgerService),
             new SupplierFundingService,
-            new CurrencyRateService,
+            app(LandedCostRate::class),
         );
     }
 

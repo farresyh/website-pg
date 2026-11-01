@@ -6,9 +6,9 @@ use App\Jobs\CheckSupplierDeliveryJob;
 use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
 use App\Models\OrderResendAttempt;
+use App\Models\Supplier;
 use App\Services\Accounting\SupplierFundingService;
-use App\Services\Currency\CurrencyRateService;
-use App\Services\Currency\CurrencyRateUnavailableException;
+use App\Services\Currency\LandedCostRate;
 use App\Services\Ledger\LedgerService;
 use App\Services\Notification\CustomerNotificationService;
 use App\Services\Order\DeliveryStatus;
@@ -54,7 +54,7 @@ final class OrderFulfillmentService
         private readonly LedgerService $ledger,
         private readonly VoucherService $vouchers,
         private readonly SupplierFundingService $supplierFunding,
-        private readonly CurrencyRateService $currencyRates,
+        private readonly LandedCostRate $landedCost,
     ) {}
 
     /**
@@ -328,7 +328,7 @@ final class OrderFulfillmentService
                 // as the biggest latent one — a plain successful delivery
                 // (first attempt or retry) never reconciled platform_profit
                 // against anything beyond the checkout-time catalog estimate.
-                $realCostPriceSen = $this->captureRealCostSen($result->data, $locked->supplier->currency);
+                $realCostPriceSen = $this->captureRealCostSen($result->data, $locked->supplier);
 
                 $updateData = [
                     'supplier_ref' => $result->data['supplier_ref'] ?? null,
@@ -712,7 +712,7 @@ final class OrderFulfillmentService
                 // own capture; no order-level platform_profit recompute
                 // here (that's resolveComboOutcome()'s job, once every
                 // leg has settled).
-                $realLegCostPriceSen = $this->captureRealCostSen($result->data, $component->supplier->currency);
+                $realLegCostPriceSen = $this->captureRealCostSen($result->data, $component->supplier);
 
                 $lockedLeg->update([
                     'status' => DeliveryStatus::Delivered->value,
@@ -1003,7 +1003,7 @@ final class OrderFulfillmentService
                 // whose real price only ever arrives via webhook/poll.
                 $realLegCostPriceSen = $this->captureRealCostSen(
                     is_array($supplierResponse) ? $supplierResponse : null,
-                    $lockedLeg->supplier->currency,
+                    $lockedLeg->supplier,
                 );
 
                 $lockedLeg->update([
@@ -1129,7 +1129,7 @@ final class OrderFulfillmentService
                 // reconcile poll), never at the initial Pending response.
                 $realCostPriceSen = $this->captureRealCostSen(
                     is_array($supplierResponse) ? $supplierResponse : null,
-                    $locked->supplier->currency,
+                    $locked->supplier,
                 );
 
                 $updateData = [
@@ -1441,7 +1441,7 @@ final class OrderFulfillmentService
             ];
             $realCostPriceSen = $locked->supplier === null
                 ? null
-                : $this->captureRealCostSen($supplierResponse, $locked->supplier->currency);
+                : $this->captureRealCostSen($supplierResponse, $locked->supplier);
 
             $updateData = [
                 'supplier_ref' => $supplierRef,
@@ -1588,17 +1588,6 @@ final class OrderFulfillmentService
     }
 
     /**
-     * ADR-111 decision 2/6: converts the supplier's own real
-     * per-transaction price (`$resultData['price']`, when present) into
-     * MYR sen via the shared `CurrencyRateService::convertToSen()`
-     * boundary. Returns null — never throws, never blocks delivery —
-     * both when no price was reported and when the FX rate is
-     * genuinely unavailable (no live fetch ever succeeded AND nothing
-     * was ever stored for that pair); the caller's own reconciliation
-     * step already treats a null real cost as "fall back to today's
-     * existing catalog-cost behavior for this one delivery."
-     */
-    /**
      * ADR-102 addendum (2026-09-29): recorded on the order (and so on the
      * ADR-106 attempt row) wherever an ambiguous outcome was auto-parked
      * at Pending instead of NeedsReview — the audit trail for decision 8.
@@ -1628,22 +1617,31 @@ final class OrderFulfillmentService
         CheckSupplierDeliveryJob::dispatch($order)->delay(now()->addMinutes(self::RECOVERY_POLL_DELAY_MINUTES));
     }
 
-    private function captureRealCostSen(?array $resultData, string $currency): ?int
+    /**
+     * ADR-111 decision 2/6, ADR-134 decisions 5–6: converts the supplier's
+     * own real per-transaction price (`$resultData['price']`, when present)
+     * into MYR sen at the supplier's landed cost rate — what its deposit
+     * cost — rounded like the pool, so this order's cost is the cost its
+     * drawdown gets in COGS. Returns null — never throws, never blocks
+     * delivery — when no price was reported or the supplier has no
+     * deposit; the caller then keeps the checkout cost for this delivery.
+     */
+    private function captureRealCostSen(?array $resultData, Supplier $supplier): ?int
     {
         if (! isset($resultData['price'])) {
             return null;
         }
 
-        try {
-            return $this->currencyRates->convertToSen((float) $resultData['price'], $currency);
-        } catch (CurrencyRateUnavailableException $e) {
-            Log::warning('Real-cost reconciliation: FX rate unavailable, falling back to catalog cost for this delivery', [
-                'currency' => $currency,
-                'exception' => $e->getMessage(),
-            ]);
+        $sen = $this->landedCost->toCostSen($supplier, (float) $resultData['price']);
 
-            return null;
+        if ($sen === null) {
+            // A foreign supplier with no recorded deposit can't be priced (ADR-134 decision 4); the order keeps its checkout cost.
+            Log::warning('Real-cost reconciliation: no landed cost rate for this supplier, falling back to catalog cost for this delivery', [
+                'supplier_id' => $supplier->id,
+            ]);
         }
+
+        return $sen;
     }
 
     /**
@@ -1661,7 +1659,7 @@ final class OrderFulfillmentService
      * else that same call is already updating (decision 2's "no extra
      * query, no extra transaction").
      *
-     * @return array{platform_profit: int, profit_reconciled_flagged: bool}
+     * @return array{platform_profit: int, profit_reconciled_flagged: bool, cost_basis: string}
      */
     private function reconcileRealCostProfit(Order $locked, int $realCostPriceSen): array
     {
@@ -1680,6 +1678,8 @@ final class OrderFulfillmentService
         return [
             'platform_profit' => $reconciledProfit,
             'profit_reconciled_flagged' => $flagged,
+            // The profit now rests on a landed cost, whatever the checkout estimate was (ADR-134 decision 13).
+            'cost_basis' => Order::COST_BASIS_LANDED,
         ];
     }
 

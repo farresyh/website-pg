@@ -8,6 +8,7 @@ use App\Models\Package;
 use App\Models\PackageReactivationLog;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
+use App\Models\SupplierTransfer;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierCatalogItem;
@@ -239,6 +240,8 @@ class SyncSupplierPricesJobTest extends TestCase
     {
         $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR']);
         $digiflazz = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz-test', 'api_config' => self::FAKE_CONFIG, 'currency' => 'IDR']);
+        // ADR-134: priced at its deposit — funded here at the market rate, so the figures below are unchanged.
+        SupplierTransfer::query()->create(['transferred_on' => '2026-10-10', 'supplier_id' => $digiflazz->id, 'source_channel' => 'bank', 'amount_myr_sent' => 22800, 'fee_myr' => 0, 'currency' => 'IDR', 'amount_foreign_received' => '1000000']);
 
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
         Package::query()->create([
@@ -288,6 +291,8 @@ class SyncSupplierPricesJobTest extends TestCase
     {
         $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR']);
         $digiflazz = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz-test', 'api_config' => self::FAKE_CONFIG, 'currency' => 'IDR']);
+        // ADR-134: priced at its deposit — funded here at the market rate, so the figures below are unchanged.
+        SupplierTransfer::query()->create(['transferred_on' => '2026-10-10', 'supplier_id' => $digiflazz->id, 'source_channel' => 'bank', 'amount_myr_sent' => 22800, 'fee_myr' => 0, 'currency' => 'IDR', 'amount_foreign_received' => '1000000']);
 
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends']);
         Package::query()->create([
@@ -317,10 +322,10 @@ class SyncSupplierPricesJobTest extends TestCase
         );
 
         $run->refresh();
-        $this->assertSame(
-            [['from' => 'IDR', 'to' => 'MYR', 'rate' => 0.000228, 'source' => 'open.er-api.com']],
-            $run->stats['fx_rates_used'],
-        );
+        $this->assertCount(1, $run->stats['fx_rates_used']);
+        $used = $run->stats['fx_rates_used'][0];
+        $this->assertEquals(['IDR', 'MYR', 'deposit pool', 0.000228, 0.0], [$used['from'], $used['to'], $used['source'], $used['market_rate'], $used['spread_pct']]);
+        $this->assertEqualsWithDelta(0.000228, $used['rate'], 1e-12);
     }
 
     public function test_job_records_an_empty_fx_rates_used_array_when_every_supplier_is_myr(): void
