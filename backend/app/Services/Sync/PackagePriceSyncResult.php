@@ -11,8 +11,8 @@ final class PackagePriceSyncResult
 {
     /**
      * @param  int[]  $affectedGameIds  distinct Game ids whose
-     *                                  packages() listing changed — GameController cache
-     *                                  invalidation keys off this, not off every package.
+     *         packages() listing changed — GameController cache
+     *         invalidation keys off this, not off every package.
      */
     public function __construct(
         public readonly int $priceChanged,
@@ -20,5 +20,6 @@ final class PackagePriceSyncResult
         public readonly array $affectedGameIds,
         public readonly int $floorRejected = 0,
         public readonly int $anomaliesFlagged = 0,
-    ) {}
+    ) {
+    }
 }

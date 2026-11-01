@@ -4,4 +4,6 @@ namespace App\Services\Sync;
 
 use RuntimeException;
 
-final class ProductSyncFailedException extends RuntimeException {}
+final class ProductSyncFailedException extends RuntimeException
+{
+}
