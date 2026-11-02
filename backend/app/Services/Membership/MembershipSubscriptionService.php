@@ -5,6 +5,7 @@ namespace App\Services\Membership;
 use App\Models\MembershipCheckoutAttempt;
 use App\Models\MembershipPlan;
 use App\Models\PaymentMethod;
+use App\Services\Payment\AttemptPaymentOutcome;
 use App\Services\Payment\PaymentCustomer;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Payment\PaymentRequest;
@@ -125,6 +126,33 @@ final class MembershipSubscriptionService
      * webhook and the reconcile sweep can both run this for the same
      * attempt without doubling anything.
      */
+    /**
+     * ADR-135 decision 11: the one place a gateway's "paid" answer about a
+     * membership attempt is applied. The CHIP webhook, the reconcile sweep
+     * and Re-check with CHIP all call this; the amount check lives here.
+     */
+    public function applyPaid(MembershipCheckoutAttempt $attempt, ?int $amountSen, ?int $gatewayFeeSen): AttemptPaymentOutcome
+    {
+        if ($attempt->status === MembershipCheckoutAttemptStatus::Paid) {
+            return AttemptPaymentOutcome::AlreadyProcessed;
+        }
+
+        // Defense-in-depth: a mismatch (a missing amount included) never activates.
+        if ($amountSen !== $attempt->total_charged_sen) {
+            Log::error('Membership paid answer rejected: amount mismatch', [
+                'subscription_number' => $attempt->subscription_number,
+                'expected_sen' => $attempt->total_charged_sen,
+                'received_sen' => $amountSen,
+            ]);
+
+            return AttemptPaymentOutcome::AmountMismatch;
+        }
+
+        $this->completePaidAttempt($attempt, $gatewayFeeSen);
+
+        return AttemptPaymentOutcome::Applied;
+    }
+
     /** @param  int|null  $gatewayFeeSen  the fee CHIP reported (ADR-127 F2) */
     public function completePaidAttempt(MembershipCheckoutAttempt $attempt, ?int $gatewayFeeSen = null): void
     {

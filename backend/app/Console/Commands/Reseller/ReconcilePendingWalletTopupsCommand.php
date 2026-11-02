@@ -6,6 +6,7 @@ use App\Models\PaymentMethod;
 use App\Models\ResellerBotWalletTopup;
 use App\Models\WalletTopupAttempt;
 use App\Services\Order\PaymentStatus;
+use App\Services\Payment\AttemptPaymentOutcome;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Reseller\Bot\ResellerBotWalletTopupNotifier;
 use App\Services\Reseller\ResellerWalletService;
@@ -141,21 +142,12 @@ class ReconcilePendingWalletTopupsCommand extends Command
 
     private function recover(WalletTopupAttempt $attempt, ResellerWalletService $wallets, mixed $amountSen, ?int $feeSen = null): void
     {
-        // Defense-in-depth, same as the sibling commands' own recover():
-        // a mismatch (a missing amount included) is enough not to
-        // silently credit the wallet.
-        if ($amountSen !== $attempt->total_charged_sen) {
-            Log::error('Wallet top-up reconciliation: amount mismatch, refusing to credit', [
-                'expected_sen' => $attempt->total_charged_sen,
-                'received_sen' => $amountSen,
-            ]);
+        // ADR-135 decision 11: the amount check and the credit live in the one seam.
+        $outcome = $wallets->applyPaid($attempt, is_int($amountSen) ? $amountSen : null, $feeSen);
 
-            return;
+        if ($outcome === AttemptPaymentOutcome::Applied || $outcome === AttemptPaymentOutcome::AppliedToClosedAccount) {
+            Log::info('Wallet top-up reconciliation: recovered a stuck-pending top-up');
         }
-
-        $wallets->completeTopup($attempt, $feeSen);
-
-        Log::info('Wallet top-up reconciliation: recovered a stuck-pending top-up');
     }
 
     private function expireIfPastWindow(WalletTopupAttempt $attempt): void
