@@ -376,7 +376,8 @@ final class CustomerNotificationService
         );
     }
 
-    private function inScope(Order $order): bool
+    /** Storefront orders only: never a reseller-wallet or `is_test` order. */
+    public function inScope(Order $order): bool
     {
         return $order->wallet_reseller_id === null && ! $order->is_test;
     }
