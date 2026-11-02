@@ -1014,6 +1014,10 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   added and alert-tested by the founder 2026-10-14).
 
 **D. Waiting on a trigger: don't build early**
+- **159** OpenWA dashboard chat list after a restart (ADR-075 2026-11-02
+  addendum): one-to-one chats reappear only on their next message; no data is
+  lost. Upstream request filed by the founder 2026-11-02:
+  rmyndharis/OpenWA#1978; watch it and take the release that ships it.
 - **139** FPX bank-down status on the bank grid (ADR-130 decision 9), only
   if real payments show customers failing at a down bank. Advisory and
   fail-open from `fpxstatus.chip-in.asia`'s JSON feed; never a hard
