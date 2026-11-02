@@ -851,6 +851,8 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         // stay ABOVE the {settlement} route below, or "transactions" gets
         // bound as a {settlement} id.
         Route::get('/settlements/transactions', [PaymentSettlementController::class, 'transactions']);
+        // ADR-135 decision 13 — Re-check with CHIP for a settled payment not paid here.
+        Route::post('/settlements/transactions/{chipSettledTransaction}/recheck', [PaymentSettlementController::class, 'recheck'])->middleware('mfa.stepup');
         Route::get('/settlements/{settlement}', [PaymentSettlementController::class, 'show']);
         Route::patch('/settlements/{settlement}', [PaymentSettlementController::class, 'update']);
         // §16 item 120 — the kept original .xlsx; attach is only for a settlement uploaded before files were kept.

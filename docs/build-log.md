@@ -1647,3 +1647,24 @@ The founder asked whether the docs were current and free of contradictions. Read
 - The portal's "One payment at a time" note and the docs-site wallet page mention `.batalbaki`.
 
 **Checked.** Backend full suite passing, with the new `ResellerBotBatalBakiTest` (every reply text pinned at a fixed MYT time) and parser and exception tests; portal `tsc` and lint pass.
+
+## 2026-11-02 — ADR-135 PR 4: settled but not paid here, and Re-check with CHIP
+
+**What.** Built ADR-135 decisions 12 and 13. This closes PRD §16 item 24.
+- `SettlementReconciliationService::settledButUnpaid()` lists a settlement's transactions that CHIP paid out but whose order, membership or top-up here is not paid. It is a join per record type, worked out on each view of `GET /accounting/settlements/{id}` (`settled_but_unpaid`). Nothing is stored and the settlement's `status` is unchanged.
+- `POST /accounting/settlements/transactions/{id}/recheck` (super_admin, `mfa.stepup`, added to the pinned step-up list) runs the new `SettlementRecheckService`. It asks CHIP and, on Paid, hands the answer to the record's own paid seam: `OrderPaymentOutcomeService::applyPaid()`, or the membership or top-up `applyPaid()` from PR 1. It answers with one outcome and a sentence: applied; sent to Needs Review (a failed order); credited to a closed reseller ("refund the payer"); already paid; amount mismatch; not paid at CHIP; or CHIP unreachable (502). An unmatched row is a 422.
+- Admin, on the CHIP Settlements detail screen: a red banner explains the rows and says not to credit by hand. Each such row gets a "settled but not paid here" tag and a Re-check with CHIP button. The result shows as a toast (success, or sticky when nothing was recorded), then the screen re-reads.
+- ADR-135 got a build addendum: Re-check calls the order's `applyPaid()` directly rather than `reconcileOrder()`, so it can report the order's outcome.
+
+**Gotchas.**
+- In Playwright, `text=Re-check with CHIP` matched the banner sentence before the button, and `text=Confirm` matched the step-up dialog title. Use `button:has-text(...)`.
+- TOTP refuses a code already used in the same 30-second window, so a scripted second login needs a 31-second wait.
+- The admin was checked on `localhost:3013` against a throwaway API on `:8010` (`ADMIN_URL` and `SANCTUM_STATEFUL_DOMAINS` set to `:3013`, so the cookie session works). The founder's dev servers on `:3000` and `:8000` stayed up. The admin was rebuilt with its default env afterwards.
+
+**Checked.**
+- Backend: full suite passes (3490 tests), with the new `SettlementRecheckTest` covering each outcome, the step-up gate and the role gate.
+- Admin: `tsc`, lint and tests (22) pass.
+- Browser (throwaway backend, `APP_ENV=e2e`, an MFA admin):
+  - The tagged row and banner render.
+  - Re-check → 403 `mfa_step_up_required` → step-up dialog → retried → 200 with a sticky toast. The e2e fake gateway reports no amount, so the outcome is `amount_mismatch`.
+  - Once the top-up was paid by its seam, the banner and button were gone and the row showed a normal green tag (dark mode).

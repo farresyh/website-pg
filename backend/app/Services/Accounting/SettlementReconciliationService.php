@@ -296,6 +296,30 @@ final class SettlementReconciliationService
     }
 
     /**
+     * ADR-135 decision 12: the other direction of paidButNotSettled(). This
+     * settlement's transactions that CHIP paid out but whose record here is
+     * not paid (a lost webhook after the attempt ended, say). Worked out on
+     * every view, never stored: the settlement's `status` is written once at
+     * upload and would stay stale after Re-check with CHIP fixed the record.
+     *
+     * @return list<int> `chip_settled_transactions.id`
+     */
+    public function settledButUnpaid(PaymentSettlement $settlement): array
+    {
+        $unpaid = fn (ChipTransactionMatchType $type, string $table, string $statusColumn) => ChipSettledTransaction::query()
+            ->where('payment_settlement_id', $settlement->id)
+            ->where('matched_type', $type->value)
+            ->join($table, "{$table}.id", '=', 'chip_settled_transactions.matched_id')
+            ->where("{$table}.{$statusColumn}", '!=', 'paid')
+            ->pluck('chip_settled_transactions.id');
+
+        return $unpaid(ChipTransactionMatchType::Order, 'orders', 'payment_status')
+            ->concat($unpaid(ChipTransactionMatchType::MembershipCheckoutAttempt, 'membership_checkout_attempts', 'status'))
+            ->concat($unpaid(ChipTransactionMatchType::WalletTopupAttempt, 'wallet_topup_attempts', 'status'))
+            ->sort()->values()->all();
+    }
+
+    /**
      * ADR-083 decision 7's "our-record-paid-but-not-settled" exception —
      * a CHIP-paid record in this window whose `transaction_id` has never
      * appeared in ANY settlement upload to date, not just this one.

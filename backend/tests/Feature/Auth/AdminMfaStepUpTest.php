@@ -39,6 +39,7 @@ class AdminMfaStepUpTest extends TestCase
             'DELETE api/partner-applications/{partnerApplication} mfa.stepup',
             'PATCH api/admin-users/{admin_user}/status mfa.stepup',
             'PATCH api/withdrawals/{withdrawal}/approve mfa.stepup',
+            'POST api/accounting/settlements/transactions/{chipSettledTransaction}/recheck mfa.stepup',
             'POST api/admin-users mfa.stepup',
             'POST api/mfa/recovery-codes mfa.stepup',
             'POST api/middleware/suppliers mfa.stepup',

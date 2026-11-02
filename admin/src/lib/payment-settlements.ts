@@ -78,7 +78,20 @@ export function getPaymentSettlement(id: number, transactionsPage = 1) {
     settlement: PaymentSettlement;
     transactions: Paginated<ChipSettledTransaction>;
     paid_but_not_settled: PaidButNotSettledRow[];
+    /** ADR-135 decision 12: ids of this settlement's transactions whose record here is not paid, worked out live. */
+    settled_but_unpaid: number[];
   }>(`/api/accounting/settlements/${id}?page=${transactionsPage}`);
+}
+
+/** ADR-135 decision 13: what Re-check with CHIP did. `applied`, `flagged_for_review` and `already_paid` mean the record is paid now. */
+export interface SettlementRecheckResult {
+  outcome: "applied" | "applied_to_closed_account" | "flagged_for_review" | "already_paid" | "amount_mismatch" | "not_paid_at_chip" | "chip_unreachable";
+  message: string;
+}
+
+/** ADR-135 decision 13: asks CHIP and records the payment through the record's own paid seam (super_admin, step-up). */
+export function recheckSettledTransaction(transactionId: number) {
+  return apiFetch<SettlementRecheckResult>(`/api/accounting/settlements/transactions/${transactionId}/recheck`, { method: "POST" });
 }
 
 export function uploadPaymentSettlement(file: File) {
