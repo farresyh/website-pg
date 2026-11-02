@@ -1,6 +1,6 @@
 # ADR-077: Storefront read-path — Redis cache cutover, eviction policy, invalidation fan-out, propagation freshness
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-03):** In force; the storefront backstop TTL is 300s (60s for hero slides) since the 2026-11-03 addendum. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-09-07, grilled with the founder over three rounds via `/mattpocock-skills:grilling` before any code was written; this entry is that shared understanding. No code in this ADR — the "Build addendum" sections land as each PR ships. Paired with ADR-078 (custom-domain gaps), split from the same session's diagnosis by natural boundary.
 
@@ -81,3 +81,16 @@ Two background audits plus a live read of Laravel Pulse (`/pulse`, 7-day window,
 ### 2026-10-14 addendum — price sync timeout closed
 
 The "Horizon supervisor-*timeout*" concern parked in PR-3 above (price sync 46s against a 60s budget) is closed. Price sync had reached 54.5s by 2026-10-14. `supervisor-price-sync` now runs on `redis-long` with a 300s timeout, and `supervisor-backups` moved with it (ADR-039 2026-10-14 addendum, PRD §16 item 97).
+
+### 2026-11-03 addendum — the storefront backstop TTL goes from 30s to 300s (revises decision 9's backstop value)
+
+**Context (read-only prod health check, 2026-11-03).** Pulse, 7 days: 56,724 API requests over 500 ms, nearly all public catalog reads the storefront makes when its Data Cache entry expires (`/api/catalog/branding` 5,199, `reseller-price-list` 7,731 with a max of 8 s, `games` 4,653, …), p50 647 ms, p99 3.1 s, rising from ~3k to ~12k a day since 2026-10-30. They arrive 3–5 in the same second: one page render re-reads ~8 endpoints at once on the 2-CPU box. The database is not the cause (`select 1` ~2 ms, the primary-affiliate query ~3 ms); the backend's own 60 s `Cache::remember` misses about half the time because a read comes every 1–2 minutes. Customers mostly do not wait on these (stale-while-revalidate serves the cached page), but the CPU they burn competes with checkout and webhooks in a burst.
+
+**Trace.** Every storefront-cached read was checked against its writers: catalog and packages (Price Sync and admin, `forgetIndexCache` → `NextRevalidation::purge()`), branding, SEO, FAQs, reviews, redirects, payment methods (each `forgetCache()`), membership plans (`forgetPackagesCacheForMembership`), reseller price list and tiers, joki catalog. All purge. The one read whose answer changes with no save is the hero slides' `starts_at`/`ends_at` window. Prod has `services.next.revalidate_url` and the secret set, and `PurgeNextCatalogCache` runs (Horizon).
+
+**Decision.**
+1. `catalogCache.revalidate` 30 → **300 s**. Freshness after an admin save still comes from the purge webhook, as decision 9 intended; 300 s is how long a missed webhook can leave a page stale (display only: ORD-9 recomputes every charge).
+2. Hero slides read through a new `scheduledCatalogCache` at **60 s**, so a scheduled slide still starts and ends within a minute.
+3. The backend's own 60 s TTLs are unchanged, so no backend read gets staler.
+
+**Consequence to track.** Pulse's `slow_request` count for `/api/catalog/*` should fall several-fold within a day of release; if a page ever shows an edit late, check `PurgeNextCatalogCache` in Horizon first.

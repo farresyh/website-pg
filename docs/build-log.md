@@ -1686,3 +1686,13 @@ The founder asked whether the docs were current and free of contradictions. Read
 **Checked (read-only).** Process cwd `/home/forge/openwa-deploy/releases/v0.27.1`; both sessions `ready` at 15:29 UTC; `/api/health/whatsapp` ok; `GET /contacts/6582751992/lid` with the CS key → 200 with an `@lid`. `OpenWaClient::sendNow()` already retries a non-2xx, so 0.27.1's `409` on a send cut off by a reconnect (not sent) retries like the old `503`. `backup.sh` follows symlinks; first nightly OpenWA backup after the move (03:37 MYT) still to be seen.
 
 **Seen, not changed.** `MESSAGE_RETENTION_DAYS=90` carried over in `shared/.env` (set 2026-10-25, item 96): 1,703 messages, the oldest 2026-09-25, so the first prune is around 2026-12-24; `openwa.sqlite` 43 MB.
+
+## 2026-11-03 — Prod health check (read-only) and the storefront backstop TTL (ADR-077 addendum)
+
+**Health check (Pulse and Horizon, 7 days; box metrics live).** All 9 Horizon supervisors running, no pending jobs, wait 0; 0 failed jobs in 14 days (18 old rows, all September). Box: load ~0.2 on 2 CPUs, 2.1 GB available, swap 571 MB resident but `si/so` 0, disk 16%. Redis 2.7 MB of 256 MB, no evictions. MySQL `select 1` ~2 ms. Price Sync peak 78 s (timeout 300). Exceptions: 3 Reverb broadcasts failing at Price Sync time, 3 PDO connection drops on 2026-11-01 16:50 UTC (recovered), 1 Plunk send. The API's nginx access log is off (Forge default), so Pulse is the only per-endpoint record.
+
+**Findings acted on.**
+- `default` has one worker that also sends reseller bot replies (up to 6.5 s each): the item 156 lookup moved to its own lower-priority lane in #664 (ADR-116 decision 7a).
+- Public catalog reads: 56,724 over 500 ms in 7 days, in bursts of 3–5 per second, driven by the storefront's 30 s Data Cache backstop (ADR-077 2026-11-03 addendum). `catalogCache.revalidate` 30 → 300 s; hero slides keep 60 s through `scheduledCatalogCache` (their schedule changes with no save). Every other cached read's writers were traced to a purge; prod's revalidate URL and secret are set.
+
+**Checked.** Storefront `tsc`, eslint and `next build` pass. The effect is to be read in Pulse a day after release.
