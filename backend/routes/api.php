@@ -457,7 +457,11 @@ Route::prefix('affiliate')->group(function () {
 // exclusively the API (PR-E)/Bot (PR-F) channels.
 Route::prefix('reseller-portal')->middleware(['auth:affiliate', 'account.type:reseller'])->group(function () {
     Route::get('/wallet', [ResellerPortalWalletController::class, 'show']);
-    Route::post('/wallet/topup', [ResellerPortalWalletController::class, 'topup']);
+    // ADR-135 decision 9: every call reaches CHIP, so each route has its own
+    // bucket, matching the bot's 5 per minute for `.topupbaki`.
+    Route::post('/wallet/topup', [ResellerPortalWalletController::class, 'topup'])->middleware('throttle:5,1,reseller-topup');
+    Route::post('/wallet/topup/{reference}/resume', [ResellerPortalWalletController::class, 'resume'])->middleware('throttle:10,1,reseller-topup-resume');
+    Route::post('/wallet/topup/{reference}/cancel', [ResellerPortalWalletController::class, 'cancel'])->middleware('throttle:5,1,reseller-topup-cancel');
     Route::get('/wallet/receipts/{number}', [ResellerPortalWalletReceiptController::class, 'show']);
 
     Route::get('/orders', [ResellerPortalOrderController::class, 'index']);

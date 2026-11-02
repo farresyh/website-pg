@@ -251,4 +251,50 @@ class ReconcilePendingWalletTopupsCommandTest extends TestCase
 
         $this->assertNull($row->fresh()->notified_at);
     }
+
+    // --- ADR-135 decision 10: re-check top-ups that ended in the last 24 hours ---
+
+    private function ended(string $status, int $endedHoursAgo, ?string $chipRef = 'chip-ended'): WalletTopupAttempt
+    {
+        $attempt = $this->stalePending(['status' => $status, 'chip_payment_ref' => $chipRef]);
+        $attempt->forceFill(['updated_at' => now()->subHours($endedHoursAgo)])->saveQuietly();
+
+        return $attempt;
+    }
+
+    /** A payment that landed after the attempt ended, its webhook lost, is credited within the sweep. */
+    public function test_a_recently_ended_top_up_chip_says_is_paid_is_credited(): void
+    {
+        $failed = $this->ended(WalletTopupAttemptStatus::Failed->value, 2);
+        $expired = $this->ended(WalletTopupAttemptStatus::Expired->value, 23);
+        $this->bindGateway('paid', 5100);
+
+        $this->artisan('app:reconcile-pending-wallet-topups')->assertSuccessful();
+
+        $this->assertSame(WalletTopupAttemptStatus::Paid, $failed->fresh()->status);
+        $this->assertSame(WalletTopupAttemptStatus::Paid, $expired->fresh()->status);
+        $this->assertSame(5000, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $failed->reseller_id));
+    }
+
+    public function test_an_ended_top_up_older_than_a_day_or_with_no_purchase_is_not_asked_about(): void
+    {
+        $old = $this->ended(WalletTopupAttemptStatus::Failed->value, 25);
+        $noPurchase = $this->ended(WalletTopupAttemptStatus::Failed->value, 1, chipRef: null);
+        $this->bindGateway('paid', 5100);
+
+        $this->artisan('app:reconcile-pending-wallet-topups')->assertSuccessful();
+
+        $this->assertSame(WalletTopupAttemptStatus::Failed, $old->fresh()->status);
+        $this->assertSame(WalletTopupAttemptStatus::Failed, $noPurchase->fresh()->status);
+    }
+
+    public function test_a_recently_ended_top_up_still_unpaid_at_chip_is_left_as_it_is(): void
+    {
+        $failed = $this->ended(WalletTopupAttemptStatus::Failed->value, 2);
+        $this->bindGateway('error', null);
+
+        $this->artisan('app:reconcile-pending-wallet-topups')->assertSuccessful();
+
+        $this->assertSame(WalletTopupAttemptStatus::Failed, $failed->fresh()->status);
+    }
 }
