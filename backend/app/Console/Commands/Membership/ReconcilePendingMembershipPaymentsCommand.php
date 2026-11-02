@@ -7,6 +7,7 @@ use App\Models\PaymentMethod;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Membership\MembershipSubscriptionService;
 use App\Services\Order\PaymentStatus;
+use App\Services\Payment\AttemptPaymentOutcome;
 use App\Services\Payment\PaymentGatewayFactory;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -99,21 +100,10 @@ class ReconcilePendingMembershipPaymentsCommand extends Command
 
     private function recover(MembershipCheckoutAttempt $attempt, MembershipSubscriptionService $subscriptions, mixed $amountSen, ?int $feeSen = null): void
     {
-        // Defense-in-depth, same as ReconcilePendingPaymentsCommand's own
-        // recover(): a mismatch (a missing amount included) is enough not
-        // to silently activate a membership.
-        if ($amountSen !== $attempt->total_charged_sen) {
-            Log::error('Membership reconciliation: amount mismatch, refusing to activate', [
-                'expected_sen' => $attempt->total_charged_sen,
-                'received_sen' => $amountSen,
-            ]);
-
-            return;
+        // ADR-135 decision 11: the amount check and the activation live in the one seam.
+        if ($subscriptions->applyPaid($attempt, is_int($amountSen) ? $amountSen : null, $feeSen) === AttemptPaymentOutcome::Applied) {
+            Log::info('Membership reconciliation: recovered a stuck-pending subscription');
         }
-
-        $subscriptions->completePaidAttempt($attempt, $feeSen);
-
-        Log::info('Membership reconciliation: recovered a stuck-pending subscription');
     }
 
     private function expireIfStale(MembershipCheckoutAttempt $attempt, int $expireAfterHours, ?string $reason): void
