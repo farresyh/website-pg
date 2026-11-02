@@ -125,3 +125,12 @@ Revised 2026-11-02 after the stress test (three read-only reviews: payment state
 - A `mark_as_paid` on a cancelled purchase is a merchant action. The founder should never use it for a top-up. If it is used anyway, the webhook, then decision 10, then decision 12 catch it.
 - Pre-existing, not in this ADR: `createPayment()` is a POST that retries on a connection error, so CHIP could hold two purchases under one reference while only one link is stored. The orphan was never handed out, so no one can pay it. Recorded here so it is not rediscovered as new.
 - Not built: cancelling a storefront order's or a membership's pending purchase. A guest just starts a new one, and nothing is blocked.
+
+### 2026-11-02 addendum — what the build changed
+
+Recorded while building PRs 1–4 (#655, #656, #657, and PR 4). Every decision above stands, except where noted here.
+
+- **Decision 13, orders:** Re-check calls `OrderPaymentOutcomeService::applyPaid()` directly, not `PaymentReconciliationService::reconcileOrder()`. That is the seam `reconcileOrder()` itself calls on Paid, with the same lock and the same Paid-after-Failed → NeedsReview branch. Calling it directly lets Re-check report the order's own outcome (sent for delivery, sent to Needs Review, amount mismatch) without changing `reconcileOrder()`'s return. All three record types now take the same path: ask CHIP, and on Paid hand the answer to the type's `applyPaid()`.
+- **Decision 13, gateway:** Re-check always asks CHIP. A settlement row is a CHIP payment by definition, so the gateway is not looked up per record.
+- **Decision 13, route:** the route is in `AdminMfaStepUpTest`'s pinned set of step-up routes.
+- **Decision 8a, wording:** a `.batalbaki` that races the webhook or reconcile and finds the top-up already ended gets its own reply: "…sudah tamat dan tidak boleh dibayar lagi". A pending top-up with no link, hit by `.topupbaki` again, gets decision 1's "sedang disediakan" text; until now it got "Gagal memulakan". The pending-top-up exception's message, shown in the portal toast, is now reseller-facing.
