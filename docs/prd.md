@@ -1056,7 +1056,14 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
 - **152** Refresh the admin sandbox (`/middleware/sandbox`) for wallet and combo orders; do it with item 151, which shares `FakeSupplierAdapter` (its 21 tests pass as of 2026-10-31).
 
 **E. New features: after the backlog** (each needs its own ADR + grill)
-(none: sorted 2026-11-01. 24 and 94 are in B, 57 and 150 in D, 14 and 25 closed, 117 parked)
+- **158** Customer-support auto-reply bot that answers with knowledge of the
+  business (founder, 2026-11-02; design not started, own ADR + grill). The
+  study it needs is how staff message customers and how customers reply and
+  ask. Today the only record is OpenWA's raw `messages` table, kept 90 days
+  (`MESSAGE_RETENTION_DAYS=90`, set 2026-10-25 for PDPA): the oldest rows
+  (2026-09-25) start being pruned around **2026-12-24**. Decide before then
+  how the study data is kept (a masked export outside the public repo, a
+  longer window, or labelled conversations stored in Laravel).
 
 ## Details
 
