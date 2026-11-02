@@ -552,6 +552,10 @@ class AppServiceProvider extends ServiceProvider
             }
         });
 
+        // ADR-116 2026-11-03 addendum: OpenWA @lid lookups are WhatsApp contact
+        // queries; a steady 20 a minute keeps a burst from looking like a scrape.
+        RateLimiter::for('whatsapp-lookup', fn () => Limit::perMinute(20));
+
         // ADR-027's 2026-08-29 addendum, decision 26: OTP requests are
         // rate-limited per email address (not just per IP, unlike every
         // other `throttle:` route in this app — the abuse case here is

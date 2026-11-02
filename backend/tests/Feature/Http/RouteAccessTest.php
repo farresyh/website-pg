@@ -187,6 +187,7 @@ class RouteAccessTest extends TestCase
             'GET api/reports/breakdown/delivery-by-game',
             'GET api/reports/breakdown/games',
             'GET api/reports/breakdown/payment-methods',
+            'GET api/reports/breakdown/products',
             'GET api/reports/breakdown/resellers',
             'GET api/reports/busy-hours',
             'GET api/reports/daily-breakdown',

@@ -579,6 +579,7 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::get('/daily-breakdown', [ReportController::class, 'dailyBreakdown']);
         Route::get('/top-games', [ReportController::class, 'topGames']);
         Route::get('/breakdown/games', [ReportController::class, 'gameBreakdown']);
+        Route::get('/breakdown/products', [ReportController::class, 'productBreakdown']);
         Route::get('/breakdown/payment-methods', [ReportController::class, 'paymentMethodBreakdown']);
         Route::get('/breakdown/affiliates', [ReportController::class, 'affiliateBreakdown']);
         Route::get('/breakdown/resellers', [ReportController::class, 'resellerBreakdown']);

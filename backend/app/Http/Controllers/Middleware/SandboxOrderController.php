@@ -120,6 +120,8 @@ class SandboxOrderController extends Controller
             'server_id' => $request->validated('server_id'),
             'game_id' => $game->id,
             'package_id' => $package->id,
+            'product_key' => $package->productKey(),
+            'product_name' => $package->name,
             'supplier_id' => $package->supplier_id,
             'supplier_product_ref' => $package->supplier_package_ref,
             'affiliate_id' => $affiliate->id,

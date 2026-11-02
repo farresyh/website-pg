@@ -1668,3 +1668,55 @@ The founder asked whether the docs were current and free of contradictions. Read
   - The tagged row and banner render.
   - Re-check → 403 `mfa_step_up_required` → step-up dialog → retried → 200 with a sticky toast. The e2e fake gateway reports no amount, so the outcome is `amount_mismatch`.
   - Once the top-up was paid by its seam, the banner and button were gone and the row showed a normal green tag (dark mode).
+
+## 2026-11-02 — Release #660 (`staging` → `main`)
+
+**What.** Released at the founder's request: #650–#659 (#653 Delivery Logs "Cost vs checkout"; ADR-135 in full, #654–#658; docs). Merge `a88a0709`; CI all green including `deploy`; box release `81876889` at `a88a070`.
+
+**Checked (read-only, prod).** Migration `2026_11_02_120000_add_ended_notified_at_to_reseller_bot_wallet_topups_table` Ran; `/api/health` 200; `/api/health/whatsapp` both sessions `ready`.
+
+**Also checked (read-only) for item 156.** OpenWA on the box is v0.27.0; the phone → `@lid` lookup the founder asked for upstream (rmyndharis/OpenWA#1969) shipped in v0.27.1 (`GET /api/sessions/{sessionId}/contacts/{number}/lid`, needs an OPERATOR key not restricted to chats). The Customer Support key is `operator` with no `allowedChats`, so no key change is needed.
+
+## 2026-11-02 — OpenWA v0.27.1, and releases plus shared data (ADR-114 addendum)
+
+**What.** Upgraded OpenWA 0.27.0 → 0.27.1 (adds the phone → `@lid` lookup asked for in rmyndharis/OpenWA#1969, PRD §16 item 156) and moved it to the layout in ADR-114's 2026-11-02 addendum: `~/openwa-deploy/releases/{v0.27.0,v0.27.1}`, state in `~/openwa-deploy/shared/{data,.env}` symlinked into each, `~/OpenWA` → `releases/v0.27.1`.
+
+**Steps.** Claude built v0.27.1 in `releases/` (with `nice`, ~10 min, log `~/openwa-v0.27.1-build.log`). The founder stopped the daemon in Forge. The swap was run by the founder (auto mode blocks Claude's remote shell writes): tar of `data` + `.env` to `~/openwa-backups/openwa-v0.27.0-20261102.tar.gz` (29 MB), move both to `shared/`, move the old install to `releases/v0.27.0`, symlinks. The founder started the daemon; down ~15:20–15:29 UTC.
+
+**Checked (read-only).** Process cwd `/home/forge/openwa-deploy/releases/v0.27.1`; both sessions `ready` at 15:29 UTC; `/api/health/whatsapp` ok; `GET /contacts/6582751992/lid` with the CS key → 200 with an `@lid`. `OpenWaClient::sendNow()` already retries a non-2xx, so 0.27.1's `409` on a send cut off by a reconnect (not sent) retries like the old `503`. `backup.sh` follows symlinks; first nightly OpenWA backup after the move (03:37 MYT) still to be seen.
+
+**Seen, not changed.** `MESSAGE_RETENTION_DAYS=90` carried over in `shared/.env` (set 2026-10-25, item 96): 1,703 messages, the oldest 2026-09-25, so the first prune is around 2026-12-24; `openwa.sqlite` 43 MB.
+
+## 2026-11-03 — Item 156: tie a privacy-id chat to the checkout phone (ADR-116 addendum)
+
+**What.** Built the ADR-116 2026-11-03 addendum (founder's design: the panel's checkout phone is the truth).
+- `CustomerWhatsAppInboundService`: an `@lid` sender with no phone that sends an in-scope order number queues `VerifyWhatsAppLidJob` (own `whatsapp-lookup` queue served by `supervisor-default` after `default`, unique per chat for 10 min, 20 lookups/min limiter, 3 failures or 1 hour) unless that phone and chat are already tied. The job calls `verifyLid()`: `OpenWaClient::customerSupport()->lidForPhone()` (new; `GET /contacts/{number}/lid`, throws on a non-2xx so the job retries) and ties only on an exact match.
+- The tie runs in one transaction with the matching rows locked: the phone's row is kept, other rows for the phone or chat are deleted first (both columns unique), STOP on either wins, the earlier opt-in is kept; a phone tied to an older chat takes the new one. New rows get `opt_in_source = lid_match`. No migration.
+- `CustomerNotificationService::inScope()` is public (the check reuses it). Admin order detail: each notification row carries `verified_phone`; the card shows "WhatsApp chat · verified as <phone>".
+
+**Why the lane.** A read-only prod health check the same day (Pulse/Horizon, 7 days) found `default` has one worker that also sends reseller bot replies (up to 6.5 s each); lookups there would queue ahead of resellers during a burst.
+
+**Checked.** `CustomerWhatsAppLidTieTest` (12: lane, one job per chat, rate limit, dispatch and its skips, match and a later order's receipt to the phone, mismatch and `lid: null`, `503` throws, merge with STOP, an older lid replaced, idempotent, admin field), red first; full backend suite 3,502 passing; admin `tsc` and eslint clean. The lookup itself was proved on prod 2026-11-02 (CS key, 200 with an `@lid`). The admin label was not seen in a browser (one string change).
+
+## 2026-11-03 — Prod health check (read-only) and the storefront backstop TTL (ADR-077 addendum)
+
+**Health check (Pulse and Horizon, 7 days; box metrics live).** All 9 Horizon supervisors running, no pending jobs, wait 0; 0 failed jobs in 14 days (18 old rows, all September). Box: load ~0.2 on 2 CPUs, 2.1 GB available, swap 571 MB resident but `si/so` 0, disk 16%. Redis 2.7 MB of 256 MB, no evictions. MySQL `select 1` ~2 ms. Price Sync peak 78 s (timeout 300). Exceptions: 3 Reverb broadcasts failing at Price Sync time, 3 PDO connection drops on 2026-11-01 16:50 UTC (recovered), 1 Plunk send. The API's nginx access log is off (Forge default), so Pulse is the only per-endpoint record.
+
+**Findings acted on.**
+- `default` has one worker that also sends reseller bot replies (up to 6.5 s each): the item 156 lookup moved to its own lower-priority lane in #664 (ADR-116 decision 7a).
+- Public catalog reads: 56,724 over 500 ms in 7 days, in bursts of 3–5 per second, driven by the storefront's 30 s Data Cache backstop (ADR-077 2026-11-03 addendum). `catalogCache.revalidate` 30 → 300 s; hero slides keep 60 s through `scheduledCatalogCache` (their schedule changes with no save). Every other cached read's writers were traced to a purge; prod's revalidate URL and secret are set.
+
+**Checked.** Storefront `tsc`, eslint and `next build` pass. The effect is to be read in Pulse a day after release.
+
+## 2026-11-03 — Item 94: best-selling products per game in Reports (ADR-104 addendum)
+
+**What.** Built the ADR-104 2026-11-03 addendum (design delegated by the founder).
+- `Package::productKey()` (`{game}:d:{denomination}`, else `:c:{catalog_code}`, else `:p:{id}`) is the one definition of a product. `CatalogController::dedupByDenomination` now groups by it (129 catalog tests unchanged).
+- `orders.product_key` and `orders.product_name`, written by `OrderFactory` (every channel) and the sandbox, never rewritten. The migration backfills existing orders from the order-level `initial` attempt's package, else `orders.package_id` (a missing package gives `:p:{id}` and no name). Prod at design time: 5 of 59 orders had been resend-swapped, 11 pre-2026-09-18 orders had no `initial` row, 1 bought package no longer exists.
+- `GET /reports/breakdown/products` (`ReportService::productBreakdown`, the Games tab's scope and ledger profit rollup); the Games tab has a "Best-selling products" card (product, game, sales, % of game, orders, owner and affiliate profit; 10 per page) narrowed by the game filter. `RouteAccessTest` pin updated.
+
+**Checked.** `BestSellingProductsTest` (5, red first: key cases, factory snapshot surviving a swap, idempotent backfill with a swap and a deleted package, grouping of a combo and a native package of the same amount with share and profit, unknown name); full backend suite passing; admin `tsc` and eslint; local dev DB migrated with plain `migrate` (1,593 of 1,593 orders keyed); the card seen in a browser (Playwright, light and dark, filter empty state) against the local API.
+
+## 2026-11-03 — Docs audit at session end
+
+Checked every doc this session touched against `origin/main..origin/staging` and production. Fixed: PRD §14 headline date and a "Waiting on `staging`" paragraph (#661–#666, one migration `add_product_key_to_orders_table`, no env change); PRD §10 OpenWA row (it still said v0.27.0; now v0.27.1 on the releases-plus-shared layout, and the `@lid` lookup); PRD §16 header (156 and 94 built, 158 and 159 added); a glossary entry for **Product (Reports)**; ADR-071's "30s TTL" given a pointer to ADR-077's 2026-11-03 addendum. Still to verify after the next release: Pulse's catalog `slow_request` count, the first nightly OpenWA backup on the new layout (due 19:37 UTC 2026-11-02; not run at 17:49 UTC), the first `@lid` tie in production, and the `product_key` backfill on prod's orders.

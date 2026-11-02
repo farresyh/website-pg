@@ -5,6 +5,7 @@ namespace App\Services\Order;
 use App\Models\JokiOrder;
 use App\Models\Order;
 use App\Models\OrderCredential;
+use App\Models\Package;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
@@ -80,6 +81,9 @@ final class OrderFactory
 
     private function insert(OrderDraft $draft): Order
     {
+        // ADR-104 2026-11-03 addendum: what the customer bought, frozen here.
+        $package = $draft->packageId !== null ? Package::query()->find($draft->packageId) : null;
+
         try {
             return Order::query()->create([
                 'order_number' => $this->orderNumbers->generate(),
@@ -93,6 +97,8 @@ final class OrderFactory
                 'server_id' => $draft->serverId,
                 'game_id' => $draft->gameId,
                 'package_id' => $draft->packageId,
+                'product_key' => $package?->productKey(),
+                'product_name' => $package?->name,
                 'supplier_id' => $draft->supplierId,
                 'supplier_product_ref' => $draft->supplierProductRef,
                 'affiliate_id' => $draft->affiliateId,

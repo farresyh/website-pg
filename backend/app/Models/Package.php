@@ -48,6 +48,28 @@ class Package extends Model
         'combo_override_price' => 'integer',
     ];
 
+    /**
+     * ADR-104 2026-11-03 addendum: what counts as one product, for the
+     * storefront (ADR-034's dedup: the same denomination, else the same
+     * catalog code, else the package alone) and for Reports. Orders keep a
+     * snapshot of it (`orders.product_key`), so never change the format.
+     */
+    public function productKey(): string
+    {
+        return self::productKeyFor($this->game_id === null ? null : (int) $this->game_id, $this->denomination === null ? null : (int) $this->denomination, $this->catalog_code, $this->id);
+    }
+
+    public static function productKeyFor(?int $gameId, ?int $denomination, ?string $catalogCode, ?int $packageId): string
+    {
+        $game = $gameId ?? 0;
+
+        return match (true) {
+            $denomination !== null => "{$game}:d:{$denomination}",
+            $catalogCode !== null => "{$game}:c:{$catalogCode}",
+            default => "{$game}:p:".($packageId ?? 0),
+        };
+    }
+
     public function game(): BelongsTo
     {
         return $this->belongsTo(Game::class);

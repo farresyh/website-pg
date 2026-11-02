@@ -2,10 +2,13 @@
 
 namespace App\Services\Notification;
 
+use App\Jobs\VerifyWhatsAppLidJob;
 use App\Models\Order;
 use App\Models\WhatsappContact;
+use App\Services\OpenWa\OpenWaClient;
 use App\Support\PhoneNumber;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -23,6 +26,8 @@ use Illuminate\Support\Facades\Log;
  *
  * The sender is its phone when WhatsApp gives one, else its privacy-id chat
  * (`…@lid`): a hidden number is answered in its own chat, never ignored.
+ * Such a chat that sends an order number is checked against the order's
+ * checkout phone and tied to it on a match (2026-11-03 addendum).
  * Anything else is a normal support chat and is left alone.
  */
 final class CustomerWhatsAppInboundService
@@ -79,6 +84,71 @@ final class CustomerWhatsAppInboundService
         }
 
         $this->notifications->orderStatusCard($order, $to, $messageId);
+
+        if ($phone === null && $lidChat !== null) {
+            $this->queueLidCheck($order, $lidChat);
+        }
+    }
+
+    /**
+     * ADR-116 2026-11-03 addendum decision 1: called by VerifyWhatsAppLidJob.
+     * The checkout phone is the truth: only OpenWA saying that phone's `@lid`
+     * is this chat ties them. Throws when OpenWA does not answer (the job retries).
+     */
+    public function verifyLid(int $orderId, string $lidChat): void
+    {
+        $order = Order::query()->find($orderId);
+        $checkout = $order !== null && $this->notifications->inScope($order) ? PhoneNumber::normalize($order->customer_phone) : null;
+
+        if ($checkout === null || OpenWaClient::customerSupport()->lidForPhone($checkout) !== $lidChat) {
+            return;
+        }
+
+        $this->tie($checkout, $lidChat);
+    }
+
+    private function queueLidCheck(Order $order, string $lidChat): void
+    {
+        $checkout = PhoneNumber::normalize($order->customer_phone);
+
+        if ($checkout === null || ! $this->notifications->inScope($order)
+            || WhatsappContact::query()->where('phone', $checkout)->where('chat_id', $lidChat)->exists()) {
+            return;
+        }
+
+        VerifyWhatsAppLidJob::dispatch($order->id, $lidChat);
+    }
+
+    /**
+     * Decisions 2–4: one row holds both. The phone's row is kept; any other
+     * row for this phone or chat is folded into it and deleted first (both
+     * columns are unique). STOP on either wins; the earlier opt-in is kept.
+     * A phone tied to an older chat takes this one.
+     */
+    private function tie(string $phone, string $lidChat): void
+    {
+        DB::transaction(function () use ($phone, $lidChat) {
+            $rows = WhatsappContact::matching($phone, $lidChat)->lockForUpdate()->get();
+
+            if ($rows->isEmpty()) {
+                WhatsappContact::query()->create(['phone' => $phone, 'chat_id' => $lidChat, 'opted_in_at' => now(), 'opt_in_source' => 'lid_match']);
+
+                return;
+            }
+
+            $keep = $rows->firstWhere('phone', $phone) ?? $rows->first();
+            $others = $rows->reject(fn (WhatsappContact $row) => $row->is($keep));
+
+            $keep->opted_out_at ??= $others->pluck('opted_out_at')->filter()->min();
+            $keep->opted_in_at = $rows->pluck('opted_in_at')->min();
+            $others->each->delete();
+
+            $keep->phone = $phone;
+            $keep->chat_id = $lidChat;
+            $keep->save();
+        });
+
+        Log::info('Customer WhatsApp: privacy-id chat tied to the checkout phone', ['chat_id' => $lidChat]);
     }
 
     /**

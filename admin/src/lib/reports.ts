@@ -196,6 +196,19 @@ export interface ReportGameRow {
   pct_of_sales: number;
 }
 
+/** ADR-104 2026-11-03 addendum: one product as the storefront shows it, from the order's snapshot. */
+export interface ReportProductRow {
+  product_key: string;
+  game_id: number | null;
+  game_name: string;
+  product_name: string;
+  sales: number;
+  orders_count: number;
+  platform_profit: number;
+  affiliate_profit: number;
+  pct_of_game_sales: number;
+}
+
 export interface ReportPaymentMethodRow {
   payment_method: string;
   sales: number;
@@ -324,6 +337,11 @@ export function getTopGames(filters: ReportFilters, limit = 5, compare?: Compare
 export function getGameBreakdown(filters: ReportFilters) {
   const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
   return apiFetch<{ games: ReportGameRow[] }>(`/api/reports/breakdown/games${query}`);
+}
+
+export function getProductBreakdown(filters: ReportFilters) {
+  const query = buildQuery({ from: filters.from, to: filters.to, affiliate_id: filters.affiliateId });
+  return apiFetch<{ products: ReportProductRow[] }>(`/api/reports/breakdown/products${query}`);
 }
 
 export function getPaymentMethodBreakdown(filters: ReportFilters) {
