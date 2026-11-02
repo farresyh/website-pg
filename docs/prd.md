@@ -975,6 +975,11 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
 (none: 155 released 2026-11-01, now in C)
 
 **B. Needs a short grill / ADR addendum first**
+- **156** Verify a WhatsApp privacy id against the checkout number (ADR-116
+  2026-11-01 addendum decision 7). **Trigger met 2026-11-02:** OpenWA v0.27.1
+  (live on the box) has `GET /api/sessions/{id}/contacts/{number}/lid`
+  (rmyndharis/OpenWA#1969); the CS key (`operator`, no chat restriction)
+  answers it. Needs an ADR-116 addendum and a short grill before the build.
 - **94** Best-selling products per game in Reports (founder, 2026-10-13). Needs
   an ADR-104 addendum and a short grill; the open question is whether to
   snapshot a product key on the order at checkout (Details).
@@ -996,22 +1001,19 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   orders, the fee fold with `bankTransferFees()` scoped, the cache keyed on a
   funding version, the unfunded-supplier block, the transfer spread guard, the
   currency lock, and the readers and labels of ADR-134 decisions 13–15.
-- **157** OpenWA after the v0.27.0 upgrade (2026-11-01, build-log). After a
-  few clean days, delete `~/OpenWA-v0.25.0` and
-  `~/openwa-backups/openwa-v0.25.0-20261101-1051.tar.gz` on the box (a prod
-  write: founder's go-ahead). Optional: set `API_KEY_PEPPER` (new boot
-  warning); it changes how OpenWA hashes API keys, so both keys (Laravel's
-  bot and CS) must be re-issued in the same window.
+- **157** OpenWA cleanup after the 2026-11-02 move to `~/openwa-deploy` (ADR-114
+  2026-11-02 addendum; v0.27.1 live). After a few clean days and a passing
+  nightly OpenWA backup, delete `~/OpenWA-v0.25.0`,
+  `~/openwa-backups/openwa-v0.25.0-20261101-1051.tar.gz` and the two
+  `~/openwa-v0.27.*-build.log` files on the box (a prod write: founder's go-ahead).
+  Keep `releases/v0.27.0` as the rollback. Optional: set `API_KEY_PEPPER`
+  (boot warning); it changes how OpenWA hashes API keys, so both keys
+  (Laravel's bot and CS) must be re-issued in the same window.
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
   `/api/health`, the OpenWA gateway and `/api/health/whatsapp` (third monitor
   added and alert-tested by the founder 2026-10-14).
 
 **D. Waiting on a trigger: don't build early**
-- **156** Verify a WhatsApp privacy id against the checkout number (ADR-116
-  2026-11-01 addendum decision 7), when OpenWA exposes a phone → `@lid`
-  lookup. Then a follower `@lid` whose id matches the checkout number's opts
-  that number in for later orders. Never patch OpenWA on the box. Upstream
-  request filed by the founder 2026-11-01: rmyndharis/OpenWA#1969; watch it.
 - **139** FPX bank-down status on the bank grid (ADR-130 decision 9), only
   if real payments show customers failing at a down bank. Advisory and
   fail-open from `fpxstatus.chip-in.asia`'s JSON feed; never a hard
