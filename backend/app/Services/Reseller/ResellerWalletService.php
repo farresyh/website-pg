@@ -306,6 +306,26 @@ final class ResellerWalletService
     }
 
     /**
+     * ADR-135 decision 8b: the one place a pending top-up ends unpaid, the
+     * counterpart of completeTopup(). Every writer (the gateway-call failure,
+     * failPendingIfFinal, cancel, the webhook, reconcile) comes here. The
+     * conditional move out of `pending` loses safely to a Paid that committed
+     * first; only the winner tells a `.topupbaki` group.
+     */
+    public function markEnded(WalletTopupAttempt $attempt, WalletTopupEndCause $cause): bool
+    {
+        if (! $attempt->leavePending($cause->status())) {
+            return false;
+        }
+
+        Log::info('Wallet top-up ended unpaid', ['wallet_topup_reference' => $attempt->reference, 'cause' => $cause->value]);
+
+        $this->botNotifier->notifyEnded($attempt, $cause);
+
+        return true;
+    }
+
+    /**
      * @param  int|null  $gatewayFeeSen  the fee CHIP reported (ADR-127 F2)
      * @return bool whether this call credited (false: already paid)
      */

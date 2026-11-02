@@ -11,6 +11,7 @@ use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Reseller\Bot\ResellerBotWalletTopupNotifier;
 use App\Services\Reseller\ResellerWalletService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
+use App\Services\Reseller\WalletTopupEndCause;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -107,7 +108,7 @@ class ReconcilePendingWalletTopupsCommand extends Command
         // membership's ensureCheckoutUrl()) — all a background sweep can
         // safely do is expire it once the hard window passes.
         if ($attempt->chip_payment_ref === null) {
-            $this->expireIfPastWindow($attempt);
+            $this->expireIfPastWindow($attempt, $wallets);
 
             return;
         }
@@ -135,8 +136,8 @@ class ReconcilePendingWalletTopupsCommand extends Command
 
         match ($payment->status) {
             PaymentStatus::Paid => $this->recover($attempt, $wallets, $amountSen, $payment->data['fee_sen'] ?? null),
-            PaymentStatus::Failed => $attempt->leavePending(WalletTopupAttemptStatus::Failed),
-            default => $this->expireIfPastWindow($attempt),
+            PaymentStatus::Failed => $wallets->markEnded($attempt, WalletTopupEndCause::fromGateway($payment)),
+            default => $this->expireIfPastWindow($attempt, $wallets),
         };
     }
 
@@ -150,10 +151,10 @@ class ReconcilePendingWalletTopupsCommand extends Command
         }
     }
 
-    private function expireIfPastWindow(WalletTopupAttempt $attempt): void
+    private function expireIfPastWindow(WalletTopupAttempt $attempt, ResellerWalletService $wallets): void
     {
         if ($attempt->expires_at->isPast()) {
-            $attempt->leavePending(WalletTopupAttemptStatus::Expired);
+            $wallets->markEnded($attempt, WalletTopupEndCause::Expired);
 
             Log::info('Wallet top-up reconciliation: expired an abandoned attempt', [
                 'expires_at' => $attempt->expires_at->toIso8601String(),

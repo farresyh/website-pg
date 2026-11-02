@@ -10,6 +10,7 @@ use App\Models\WalletTopupAttempt;
 use App\Services\Order\DeliveryStatus;
 use App\Services\PlayerValidation\PlayerValidationResult;
 use App\Services\Reseller\ResellerWalletTopupService;
+use App\Services\Reseller\WalletTopupEndCause;
 use Illuminate\Support\Collection;
 
 /**
@@ -297,6 +298,22 @@ final class ResellerBotReplyFormatter
             "「 BAKI DITAMBAH 」\n\n"
             .'Baki Pembelian anda sekarang: RM'.self::formatSen($balanceSen)
         );
+    }
+
+    /** ADR-135 decision 8a: pushed when a `.topupbaki` top-up fails at the bank or runs out of time. */
+    public static function topupEnded(WalletTopupAttempt $attempt, WalletTopupEndCause $cause): string
+    {
+        $what = $cause === WalletTopupEndCause::Expired ? 'telah tamat tempoh' : 'tidak berjaya';
+
+        return 'Tambah baki RM'.self::formatSen($attempt->amount_sen).' (Ref '.$attempt->reference.") {$what}. "
+            .'Anda boleh cuba semula dengan .topupbaki';
+    }
+
+    /** ADR-135 decision 8a: a `.topupbaki` top-up cancelled from the portal; the group still holds its link. */
+    public static function topupCancelledViaPortal(WalletTopupAttempt $attempt): string
+    {
+        return 'Tambah baki RM'.self::formatSen($attempt->amount_sen).' (Ref '.$attempt->reference.') telah dibatalkan melalui portal. '
+            .'Link lama tidak boleh dibayar lagi.';
     }
 
     /** ADR-076 PR-H decision 5 — below-minimum amount, replied without a wasted CHIP call. */

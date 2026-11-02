@@ -145,8 +145,14 @@ final class ResellerWalletTopupService
 
         $gatewayName = PaymentMethod::query()->where('channel_code', $pending->channel_code)->value('gateway');
 
-        if ($gatewayName !== null && $this->gateways->make($gatewayName)->getPayment($pending->chip_payment_ref)->isFinalFailure()) {
-            $pending->leavePending(WalletTopupAttemptStatus::Failed);
+        if ($gatewayName === null) {
+            return;
+        }
+
+        $answer = $this->gateways->make($gatewayName)->getPayment($pending->chip_payment_ref);
+
+        if ($answer->isFinalFailure()) {
+            $this->wallets->markEnded($pending, WalletTopupEndCause::fromGateway($answer));
         }
     }
 
@@ -180,7 +186,7 @@ final class ResellerWalletTopupService
         if (! $payment->success) {
             // S3-style — no attempt is ever left `pending` with no CHIP
             // purchase behind it.
-            $attempt->leavePending(WalletTopupAttemptStatus::Failed);
+            $this->wallets->markEnded($attempt, WalletTopupEndCause::CheckoutFailed);
 
             Log::warning('Wallet top-up gateway call failed', [
                 'reference' => $attempt->reference,
