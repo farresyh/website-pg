@@ -1698,6 +1698,16 @@ The founder asked whether the docs were current and free of contradictions. Read
 
 **Checked.** `CustomerWhatsAppLidTieTest` (12: lane, one job per chat, rate limit, dispatch and its skips, match and a later order's receipt to the phone, mismatch and `lid: null`, `503` throws, merge with STOP, an older lid replaced, idempotent, admin field), red first; full backend suite 3,502 passing; admin `tsc` and eslint clean. The lookup itself was proved on prod 2026-11-02 (CS key, 200 with an `@lid`). The admin label was not seen in a browser (one string change).
 
+## 2026-11-03 — Prod health check (read-only) and the storefront backstop TTL (ADR-077 addendum)
+
+**Health check (Pulse and Horizon, 7 days; box metrics live).** All 9 Horizon supervisors running, no pending jobs, wait 0; 0 failed jobs in 14 days (18 old rows, all September). Box: load ~0.2 on 2 CPUs, 2.1 GB available, swap 571 MB resident but `si/so` 0, disk 16%. Redis 2.7 MB of 256 MB, no evictions. MySQL `select 1` ~2 ms. Price Sync peak 78 s (timeout 300). Exceptions: 3 Reverb broadcasts failing at Price Sync time, 3 PDO connection drops on 2026-11-01 16:50 UTC (recovered), 1 Plunk send. The API's nginx access log is off (Forge default), so Pulse is the only per-endpoint record.
+
+**Findings acted on.**
+- `default` has one worker that also sends reseller bot replies (up to 6.5 s each): the item 156 lookup moved to its own lower-priority lane in #664 (ADR-116 decision 7a).
+- Public catalog reads: 56,724 over 500 ms in 7 days, in bursts of 3–5 per second, driven by the storefront's 30 s Data Cache backstop (ADR-077 2026-11-03 addendum). `catalogCache.revalidate` 30 → 300 s; hero slides keep 60 s through `scheduledCatalogCache` (their schedule changes with no save). Every other cached read's writers were traced to a purge; prod's revalidate URL and secret are set.
+
+**Checked.** Storefront `tsc`, eslint and `next build` pass. The effect is to be read in Pulse a day after release.
+
 ## 2026-11-03 — Item 94: best-selling products per game in Reports (ADR-104 addendum)
 
 **What.** Built the ADR-104 2026-11-03 addendum (design delegated by the founder).

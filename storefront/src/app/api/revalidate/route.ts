@@ -6,8 +6,8 @@ import { CATALOG_TAG } from "@/lib/cache";
  * branding / hero / payment mutation (Laravel `NextRevalidation::purge()`,
  * dispatched next to every `forgetCache()`), purging the `catalog` tag
  * so a price or content change shows on the storefront within seconds
- * rather than waiting out the 30s Data-Cache TTL. The TTL stays as the
- * backstop if this call is ever missed.
+ * rather than waiting out the Data-Cache TTL (`catalogCache`, 300s). The
+ * TTL stays as the backstop if this call is ever missed.
  *
  * Auth is a shared secret header, mirroring how the backend's own
  * webhook endpoints authenticate (a signature / secret, not a session).
