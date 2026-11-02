@@ -388,9 +388,12 @@ return [
         // framework jobs and any package job. Without this supervisor
         // those sit unprocessed forever with no error. tries=3/timeout=60
         // mirror supervisor-orders — the safe general default.
+        // `whatsapp-lookup` (ADR-116 2026-11-03 addendum) is served only when
+        // `default` is empty, so a burst of @lid checks never delays a
+        // reseller bot reply.
         'supervisor-default' => [
             'connection' => 'redis',
-            'queue' => ['default'],
+            'queue' => ['default', 'whatsapp-lookup'],
             'balance' => 'off',
             'maxProcesses' => 1,
             'maxTime' => 0,

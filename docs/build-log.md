@@ -1687,6 +1687,17 @@ The founder asked whether the docs were current and free of contradictions. Read
 
 **Seen, not changed.** `MESSAGE_RETENTION_DAYS=90` carried over in `shared/.env` (set 2026-10-25, item 96): 1,703 messages, the oldest 2026-09-25, so the first prune is around 2026-12-24; `openwa.sqlite` 43 MB.
 
+## 2026-11-03 — Item 156: tie a privacy-id chat to the checkout phone (ADR-116 addendum)
+
+**What.** Built the ADR-116 2026-11-03 addendum (founder's design: the panel's checkout phone is the truth).
+- `CustomerWhatsAppInboundService`: an `@lid` sender with no phone that sends an in-scope order number queues `VerifyWhatsAppLidJob` (own `whatsapp-lookup` queue served by `supervisor-default` after `default`, unique per chat for 10 min, 20 lookups/min limiter, 3 failures or 1 hour) unless that phone and chat are already tied. The job calls `verifyLid()`: `OpenWaClient::customerSupport()->lidForPhone()` (new; `GET /contacts/{number}/lid`, throws on a non-2xx so the job retries) and ties only on an exact match.
+- The tie runs in one transaction with the matching rows locked: the phone's row is kept, other rows for the phone or chat are deleted first (both columns unique), STOP on either wins, the earlier opt-in is kept; a phone tied to an older chat takes the new one. New rows get `opt_in_source = lid_match`. No migration.
+- `CustomerNotificationService::inScope()` is public (the check reuses it). Admin order detail: each notification row carries `verified_phone`; the card shows "WhatsApp chat · verified as <phone>".
+
+**Why the lane.** A read-only prod health check the same day (Pulse/Horizon, 7 days) found `default` has one worker that also sends reseller bot replies (up to 6.5 s each); lookups there would queue ahead of resellers during a burst.
+
+**Checked.** `CustomerWhatsAppLidTieTest` (12: lane, one job per chat, rate limit, dispatch and its skips, match and a later order's receipt to the phone, mismatch and `lid: null`, `503` throws, merge with STOP, an older lid replaced, idempotent, admin field), red first; full backend suite 3,502 passing; admin `tsc` and eslint clean. The lookup itself was proved on prod 2026-11-02 (CS key, 200 with an `@lid`). The admin label was not seen in a browser (one string change).
+
 ## 2026-11-03 — Prod health check (read-only) and the storefront backstop TTL (ADR-077 addendum)
 
 **Health check (Pulse and Horizon, 7 days; box metrics live).** All 9 Horizon supervisors running, no pending jobs, wait 0; 0 failed jobs in 14 days (18 old rows, all September). Box: load ~0.2 on 2 CPUs, 2.1 GB available, swap 571 MB resident but `si/so` 0, disk 16%. Redis 2.7 MB of 256 MB, no evictions. MySQL `select 1` ~2 ms. Price Sync peak 78 s (timeout 300). Exceptions: 3 Reverb broadcasts failing at Price Sync time, 3 PDO connection drops on 2026-11-01 16:50 UTC (recovered), 1 Plunk send. The API's nginx access log is off (Forge default), so Pulse is the only per-endpoint record.

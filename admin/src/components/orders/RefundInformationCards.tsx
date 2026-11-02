@@ -233,7 +233,7 @@ export default function RefundInformationCards({ order }: { order: OrderDetail }
                     label: "Phone",
                     value: (
                       <span>
-                        WhatsApp chat (number hidden)
+                        {n.verified_phone ? `WhatsApp chat · verified as ${n.verified_phone}` : "WhatsApp chat (number hidden)"}
                         <span className="block font-mono text-xs text-ink-muted">{n.chat_id}</span>
                       </span>
                     ),
