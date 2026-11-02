@@ -1,6 +1,6 @@
 # ADR-114: Production infra split off DigitalOcean's shared team — droplet + managed MySQL rebuilt into a new DO team (`LWF Group Sdn Bhd`)
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-02):** In force; OpenWA runs from `~/openwa-deploy/releases/<tag>` with shared data (2026-11-02 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted & built — core cutover live and real-checkout-verified 2026-09-25. OpenWA bot channel migration completed the same day (see 2026-09-25 addendum below) — both pieces of this ADR are now fully live.
 
@@ -152,3 +152,15 @@ with incoming messages: the phones get notifications again.
 briefly after each reply. Untested, and it only matters if the founder
 notices it. The new `.env.bak-20261017` holds secrets like the other two;
 remove it with them under PRD §16 item 96.
+
+### 2026-11-02 addendum — OpenWA runs from releases plus a shared data folder
+
+**Context.** OpenWA was upgraded by building a sibling folder, copying `data/` (55 MB: Baileys auth, both SQLite files, media) and `.env` into it, and swapping folder names. Every upgrade copied live WhatsApp state by hand, and old folders piled up in `~` (`OpenWA-v0.25.0` plus tarballs). OpenWA ships a release every few days.
+
+**Decision (founder, 2026-11-02).** The same shape Forge gives the API:
+- `~/openwa-deploy/releases/<tag>/` holds code only (clone at the tag, `npm ci`, dashboard `npm ci`, `npm run build:all`).
+- `~/openwa-deploy/shared/data/` and `~/openwa-deploy/shared/.env` hold all state, once. Each release has `data` and `.env` symlinked to them. Only `data/` and `.env` hold state (checked with `git status --ignored` on the old install).
+- `~/OpenWA` is a symlink to the live release, so the Forge daemon (`directory=/home/forge/OpenWA/`) and Laravel's `OPENWA_INSTALL_DIR` stay unchanged.
+- **Upgrade:** build the new release; founder stops the daemon; tar `shared/data` + `shared/.env` to `~/openwa-backups/`; repoint `~/OpenWA`; founder starts the daemon. **Rollback:** repoint the symlink, unless the new release migrated OpenWA's database, in which case restore that tarball too. Keep two releases.
+
+**Checked.** OpenWA's `scripts/backup.sh` follows symlinks (`cp -pRH`, `find -H`, SQLite paths opened through the link) and fails when the archive misses a required member, so the nightly backup (ADR-039) keeps working; the first nightly run after the change is the proof.

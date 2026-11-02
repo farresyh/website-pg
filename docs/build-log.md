@@ -1668,3 +1668,21 @@ The founder asked whether the docs were current and free of contradictions. Read
   - The tagged row and banner render.
   - Re-check → 403 `mfa_step_up_required` → step-up dialog → retried → 200 with a sticky toast. The e2e fake gateway reports no amount, so the outcome is `amount_mismatch`.
   - Once the top-up was paid by its seam, the banner and button were gone and the row showed a normal green tag (dark mode).
+
+## 2026-11-02 — Release #660 (`staging` → `main`)
+
+**What.** Released at the founder's request: #650–#659 (#653 Delivery Logs "Cost vs checkout"; ADR-135 in full, #654–#658; docs). Merge `a88a0709`; CI all green including `deploy`; box release `81876889` at `a88a070`.
+
+**Checked (read-only, prod).** Migration `2026_11_02_120000_add_ended_notified_at_to_reseller_bot_wallet_topups_table` Ran; `/api/health` 200; `/api/health/whatsapp` both sessions `ready`.
+
+**Also checked (read-only) for item 156.** OpenWA on the box is v0.27.0; the phone → `@lid` lookup the founder asked for upstream (rmyndharis/OpenWA#1969) shipped in v0.27.1 (`GET /api/sessions/{sessionId}/contacts/{number}/lid`, needs an OPERATOR key not restricted to chats). The Customer Support key is `operator` with no `allowedChats`, so no key change is needed.
+
+## 2026-11-02 — OpenWA v0.27.1, and releases plus shared data (ADR-114 addendum)
+
+**What.** Upgraded OpenWA 0.27.0 → 0.27.1 (adds the phone → `@lid` lookup asked for in rmyndharis/OpenWA#1969, PRD §16 item 156) and moved it to the layout in ADR-114's 2026-11-02 addendum: `~/openwa-deploy/releases/{v0.27.0,v0.27.1}`, state in `~/openwa-deploy/shared/{data,.env}` symlinked into each, `~/OpenWA` → `releases/v0.27.1`.
+
+**Steps.** Claude built v0.27.1 in `releases/` (with `nice`, ~10 min, log `~/openwa-v0.27.1-build.log`). The founder stopped the daemon in Forge. The swap was run by the founder (auto mode blocks Claude's remote shell writes): tar of `data` + `.env` to `~/openwa-backups/openwa-v0.27.0-20261102.tar.gz` (29 MB), move both to `shared/`, move the old install to `releases/v0.27.0`, symlinks. The founder started the daemon; down ~15:20–15:29 UTC.
+
+**Checked (read-only).** Process cwd `/home/forge/openwa-deploy/releases/v0.27.1`; both sessions `ready` at 15:29 UTC; `/api/health/whatsapp` ok; `GET /contacts/6582751992/lid` with the CS key → 200 with an `@lid`. `OpenWaClient::sendNow()` already retries a non-2xx, so 0.27.1's `409` on a send cut off by a reconnect (not sent) retries like the old `503`. `backup.sh` follows symlinks; first nightly OpenWA backup after the move (03:37 MYT) still to be seen.
+
+**Seen, not changed.** `MESSAGE_RETENTION_DAYS=90` carried over in `shared/.env` (set 2026-10-25, item 96): 1,703 messages, the oldest 2026-09-25, so the first prune is around 2026-12-24; `openwa.sqlite` 43 MB.
