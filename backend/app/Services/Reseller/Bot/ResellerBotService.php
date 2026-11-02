@@ -11,7 +11,6 @@ use App\Models\Reseller;
 use App\Models\ResellerBotCommandLog;
 use App\Models\ResellerBotOrderNotification;
 use App\Models\ResellerBotWalletTopup;
-use App\Models\WalletTopupAttempt;
 use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\Ledger\InsufficientBalanceException;
 use App\Services\OpenWa\OpenWaClient;
@@ -31,8 +30,9 @@ use App\Services\Reseller\ResellerOrderPlacementService;
 use App\Services\Reseller\ResellerWalletService;
 use App\Services\Reseller\ResellerWalletTopupService;
 use App\Services\Reseller\WalletBalanceCapExceededException;
-use App\Services\Reseller\WalletTopupAttemptStatus;
+use App\Services\Reseller\WalletTopupCancelOutcome;
 use App\Services\Reseller\WalletTopupCheckoutFailedException;
+use App\Services\Reseller\WalletTopupEndCause;
 use App\Services\Reseller\WalletTopupOverMaximumException;
 use App\Services\WhatsApp\WhatsAppGroupService;
 use Illuminate\Support\Facades\Log;
@@ -144,6 +144,14 @@ final class ResellerBotService
             return;
         }
 
+        // ADR-135 decision 8: each `.batalbaki` makes two CHIP calls (cancel, re-read).
+        if ($command->type === ResellerBotCommandType::BatalBaki
+            && ! RateLimiter::attempt("reseller-bot-batalbaki:{$reseller->id}", 5, fn () => true, 60)) {
+            $this->openWa->sendText($whatsappGroupId, 'Terlalu banyak permintaan batal baki. Sila cuba sebentar lagi.');
+
+            return;
+        }
+
         $reply = match ($command->type) {
             ResellerBotCommandType::ListGames => $this->handleListGames(),
             ResellerBotCommandType::ListGamePackages => $this->handleListGamePackages($reseller, $command, $whatsappGroupId),
@@ -153,6 +161,7 @@ final class ResellerBotService
             ResellerBotCommandType::CheckId => $this->handleCheckId($reseller, $command, $whatsappGroupId),
             ResellerBotCommandType::Info => ResellerBotReplyFormatter::commandList(),
             ResellerBotCommandType::TopupBaki => $this->handleTopupBaki($reseller, $command, $whatsappGroupId),
+            ResellerBotCommandType::BatalBaki => $this->handleBatalBaki($reseller, $command, $whatsappGroupId),
             ResellerBotCommandType::Unrecognized => $this->handleUnrecognized($reseller, $command, $whatsappGroupId),
         };
 
@@ -544,7 +553,7 @@ final class ResellerBotService
 
     private function handleBalance(Reseller $reseller): string
     {
-        return ResellerBotReplyFormatter::balance($this->wallet->balance($reseller));
+        return ResellerBotReplyFormatter::balance($this->wallet->balance($reseller), $this->topups->currentPending($reseller));
     }
 
     /**
@@ -612,19 +621,13 @@ final class ResellerBotService
         } catch (InvalidWalletTopupAmountException) {
             // Defensive — the pre-check above already covers this.
             return ResellerBotReplyFormatter::topupBelowMinimum();
-        } catch (PendingWalletTopupAlreadyExistsException) {
+        } catch (PendingWalletTopupAlreadyExistsException $e) {
             // ADR-076 PR-H decision 3 — hand back the existing attempt's
-            // own link rather than a plain rejection.
-            $pending = WalletTopupAttempt::query()
-                ->where('reseller_id', $reseller->id)
-                ->where('status', WalletTopupAttemptStatus::Pending->value)
-                ->where('expires_at', '>', now())
-                ->latest('id')
-                ->first();
-
-            return $pending?->checkout_url !== null
-                ? ResellerBotReplyFormatter::topupAlreadyPending($pending)
-                : ResellerBotReplyFormatter::topupCheckoutFailed();
+            // own link rather than a plain rejection. ADR-135 decision 4:
+            // the attempt the wallet lock found, not a second query.
+            return $e->attempt->checkout_url !== null
+                ? ResellerBotReplyFormatter::topupAlreadyPending($e->attempt)
+                : ResellerBotReplyFormatter::topupBeingSetUp($e->attempt);
         } catch (WalletTopupCheckoutFailedException) {
             $this->logFailure($reseller, $groupId, $command->raw, 'topup_checkout_failed');
 
@@ -643,6 +646,36 @@ final class ResellerBotService
         );
 
         return ResellerBotReplyFormatter::topupInitiated($attempt);
+    }
+
+    /**
+     * ADR-135 decision 8: cancel this reseller's one pending top-up through the
+     * portal's own cancel, so CHIP's re-read answer decides. Allowed for a
+     * deactivated reseller: it only reduces exposure.
+     */
+    private function handleBatalBaki(Reseller $reseller, ResellerBotCommand $command, string $groupId): string
+    {
+        $pending = $this->topups->currentPending($reseller);
+
+        if ($pending === null) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'topup_cancel_none');
+
+            return ResellerBotReplyFormatter::topupNoneToCancel();
+        }
+
+        $outcome = $this->topups->cancel($reseller, $pending->reference, WalletTopupEndCause::BotCancel);
+
+        if ($outcome === WalletTopupCancelOutcome::InFlight) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'topup_cancel_in_flight');
+        }
+
+        return match ($outcome) {
+            WalletTopupCancelOutcome::Cancelled => ResellerBotReplyFormatter::topupCancelled($pending),
+            WalletTopupCancelOutcome::AlreadyPaid => ResellerBotReplyFormatter::topupCancelAlreadyPaid($pending),
+            WalletTopupCancelOutcome::AlreadyEnded => ResellerBotReplyFormatter::topupCancelAlreadyEnded($pending),
+            WalletTopupCancelOutcome::InFlight => ResellerBotReplyFormatter::topupCancelInFlight($pending),
+            WalletTopupCancelOutcome::NoPurchaseYet => ResellerBotReplyFormatter::topupBeingSetUp($pending),
+        };
     }
 
     private function logFailure(Reseller $reseller, string $groupId, string $raw, string $reason): void

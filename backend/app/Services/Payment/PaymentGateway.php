@@ -20,6 +20,14 @@ interface PaymentGateway
     public function getPayment(string $paymentRequestId): PaymentResponse;
 
     /**
+     * ADR-135 decision 7: make a still-payable purchase unpayable. The
+     * caller never reads meaning from this answer: it re-reads with
+     * getPayment() and acts on that, so "already cancelled" and "already
+     * paid" refusals land in the same decision.
+     */
+    public function cancelPayment(string $paymentRequestId): PaymentResponse;
+
+    /**
      * Takes the whole incoming webhook Request, not a pre-extracted
      * header value — a gateway verifies authenticity by whatever means
      * its own scheme dictates (CHIP: an RSA signature over the raw

@@ -6,10 +6,12 @@ use App\Models\PaymentMethod;
 use App\Models\ResellerBotWalletTopup;
 use App\Models\WalletTopupAttempt;
 use App\Services\Order\PaymentStatus;
+use App\Services\Payment\AttemptPaymentOutcome;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Reseller\Bot\ResellerBotWalletTopupNotifier;
 use App\Services\Reseller\ResellerWalletService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
+use App\Services\Reseller\WalletTopupEndCause;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -67,9 +69,42 @@ class ReconcilePendingWalletTopupsCommand extends Command
             $this->reconcile($attempt, $gatewayFactory, $wallets);
         }
 
+        $this->recheckRecentlyEnded($gatewayFactory, $wallets);
+
         $this->notifyMissedBotTopups($botNotifier);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * ADR-135 decision 10: the webhook credits a payment that lands after an
+     * attempt ended (cancelled, failed, expired), but this sweep otherwise only
+     * looks at `pending`. So a late payment whose webhook was lost would wait
+     * for the month-end settlement. Ask CHIP once more about every attempt that
+     * ended in the last day and had a purchase; a paid one goes through the
+     * same paid seam as the webhook.
+     *
+     * ponytail: re-asks each ended attempt on every run for 24 h (one CHIP GET
+     * per attempt per run). Fine at today's volume; past a few hundred ended
+     * top-ups a day, re-check once at ~1 h and once at ~24 h instead.
+     */
+    private function recheckRecentlyEnded(PaymentGatewayFactory $gatewayFactory, ResellerWalletService $wallets): void
+    {
+        $ended = WalletTopupAttempt::query()
+            ->whereIn('status', [WalletTopupAttemptStatus::Failed->value, WalletTopupAttemptStatus::Expired->value])
+            ->whereNotNull('chip_payment_ref')
+            ->where('updated_at', '>=', now()->subDay())
+            ->get();
+
+        foreach ($ended as $attempt) {
+            $gatewayName = PaymentMethod::query()->where('channel_code', $attempt->channel_code)->value('gateway');
+            $payment = $gatewayName === null ? null : $gatewayFactory->make($gatewayName)->getPayment($attempt->chip_payment_ref);
+
+            if ($payment?->success && $payment->status === PaymentStatus::Paid) {
+                Log::warning('Wallet top-up reconciliation: a top-up that had ended was paid', ['wallet_topup_reference' => $attempt->reference]);
+                $this->recover($attempt, $wallets, $payment->data['amount_sen'] ?? null, $payment->data['fee_sen'] ?? null);
+            }
+        }
     }
 
     private function notifyMissedBotTopups(ResellerBotWalletTopupNotifier $botNotifier): void
@@ -106,7 +141,7 @@ class ReconcilePendingWalletTopupsCommand extends Command
         // membership's ensureCheckoutUrl()) — all a background sweep can
         // safely do is expire it once the hard window passes.
         if ($attempt->chip_payment_ref === null) {
-            $this->expireIfPastWindow($attempt);
+            $this->expireIfPastWindow($attempt, $wallets);
 
             return;
         }
@@ -134,34 +169,25 @@ class ReconcilePendingWalletTopupsCommand extends Command
 
         match ($payment->status) {
             PaymentStatus::Paid => $this->recover($attempt, $wallets, $amountSen, $payment->data['fee_sen'] ?? null),
-            PaymentStatus::Failed => $attempt->leavePending(WalletTopupAttemptStatus::Failed),
-            default => $this->expireIfPastWindow($attempt),
+            PaymentStatus::Failed => $wallets->markEnded($attempt, WalletTopupEndCause::fromGateway($payment)),
+            default => $this->expireIfPastWindow($attempt, $wallets),
         };
     }
 
     private function recover(WalletTopupAttempt $attempt, ResellerWalletService $wallets, mixed $amountSen, ?int $feeSen = null): void
     {
-        // Defense-in-depth, same as the sibling commands' own recover():
-        // a mismatch (a missing amount included) is enough not to
-        // silently credit the wallet.
-        if ($amountSen !== $attempt->total_charged_sen) {
-            Log::error('Wallet top-up reconciliation: amount mismatch, refusing to credit', [
-                'expected_sen' => $attempt->total_charged_sen,
-                'received_sen' => $amountSen,
-            ]);
+        // ADR-135 decision 11: the amount check and the credit live in the one seam.
+        $outcome = $wallets->applyPaid($attempt, is_int($amountSen) ? $amountSen : null, $feeSen);
 
-            return;
+        if ($outcome === AttemptPaymentOutcome::Applied || $outcome === AttemptPaymentOutcome::AppliedToClosedAccount) {
+            Log::info('Wallet top-up reconciliation: recovered a stuck-pending top-up');
         }
-
-        $wallets->completeTopup($attempt, $feeSen);
-
-        Log::info('Wallet top-up reconciliation: recovered a stuck-pending top-up');
     }
 
-    private function expireIfPastWindow(WalletTopupAttempt $attempt): void
+    private function expireIfPastWindow(WalletTopupAttempt $attempt, ResellerWalletService $wallets): void
     {
         if ($attempt->expires_at->isPast()) {
-            $attempt->leavePending(WalletTopupAttemptStatus::Expired);
+            $wallets->markEnded($attempt, WalletTopupEndCause::Expired);
 
             Log::info('Wallet top-up reconciliation: expired an abandoned attempt', [
                 'expires_at' => $attempt->expires_at->toIso8601String(),

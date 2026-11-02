@@ -7,6 +7,7 @@ use App\Http\Requests\Admin\UpdatePaymentSettlementRequest;
 use App\Http\Requests\Admin\UploadPaymentSettlementRequest;
 use App\Models\ChipSettledTransaction;
 use App\Models\PaymentSettlement;
+use App\Services\Accounting\SettlementRecheckService;
 use App\Services\Accounting\SettlementReconciliationService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -35,7 +36,7 @@ class PaymentSettlementController extends Controller
     }
 
     /**
-     * `paid_but_not_settled` is recomputed live on every view (never
+     * `paid_but_not_settled` and `settled_but_unpaid` are recomputed live on every view (never
      * stored) — see `SettlementReconciliationService::paidButNotSettled()`'s
      * own doc comment for why a snapshot frozen at upload time would go
      * stale.
@@ -48,7 +49,16 @@ class PaymentSettlementController extends Controller
             'settlement' => $settlement,
             'transactions' => $settlement->transactions()->orderByDesc('settled_on')->paginate($perPage)->withQueryString(),
             'paid_but_not_settled' => $this->reconciliation->paidButNotSettled($settlement->date_from, $settlement->date_to),
+            'settled_but_unpaid' => $this->reconciliation->settledButUnpaid($settlement),
         ]);
+    }
+
+    /** ADR-135 decision 13: Re-check with CHIP, through the record's own paid seam. */
+    public function recheck(ChipSettledTransaction $chipSettledTransaction, SettlementRecheckService $recheck): JsonResponse
+    {
+        $result = $recheck->recheck($chipSettledTransaction);
+
+        return response()->json($result, $result['outcome'] === 'chip_unreachable' ? 502 : 200);
     }
 
     /**

@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { getClientSession } from "@/lib/session";
 import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
+import { notify } from "@/components/ui/toast";
 import {
   type PaymentSettlement,
   type ChipSettledTransaction,
@@ -29,6 +30,7 @@ import {
   getPaymentSettlement,
   downloadSettlementFile,
   attachSettlementFile,
+  recheckSettledTransaction,
 } from "@/lib/payment-settlements";
 
 const TH = "px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400";
@@ -47,6 +49,9 @@ export default function PaymentSettlementDetailPage() {
   const [settlement, setSettlement] = useState<PaymentSettlement | null>(null);
   const [transactions, setTransactions] = useState<Paginated<ChipSettledTransaction> | null>(null);
   const [paidButNotSettled, setPaidButNotSettled] = useState<PaidButNotSettledRow[]>([]);
+  const [settledButUnpaid, setSettledButUnpaid] = useState<number[]>([]);
+  const [rechecking, setRechecking] = useState<number | null>(null);
+  const [reload, setReload] = useState(0);
   const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -63,10 +68,27 @@ export default function PaymentSettlementDetailPage() {
         setSettlement(res.settlement);
         setTransactions(res.transactions);
         setPaidButNotSettled(res.paid_but_not_settled);
+        setSettledButUnpaid(res.settled_but_unpaid);
       })
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load this settlement."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settlementId, page]);
+  }, [settlementId, page, reload]);
+
+  // ADR-135 decision 13: the record's own paid seam decides; the list is re-read after.
+  async function recheck(transactionId: number) {
+    setRechecking(transactionId);
+    try {
+      const result = await recheckSettledTransaction(transactionId);
+      const paidNow = result.outcome === "applied" || result.outcome === "flagged_for_review" || result.outcome === "already_paid";
+      if (paidNow) notify.success("Re-checked with CHIP", result.message);
+      else notify.stickyError("Re-checked with CHIP", result.message);
+      setReload((n) => n + 1);
+    } catch (err: unknown) {
+      notify.stickyError("Re-check with CHIP failed", err instanceof ApiError ? err.message : "Could not re-check this payment.");
+    } finally {
+      setRechecking(null);
+    }
+  }
 
   async function attach(file: File) {
     setAttaching(true);
@@ -155,6 +177,20 @@ export default function PaymentSettlementDetailPage() {
         </div>
       )}
 
+      {settledButUnpaid.length > 0 && (
+        <div className="mb-6 rounded-lg bg-error-50 p-4 text-theme-sm dark:bg-error-500/15">
+          <p className="font-medium text-error-600 dark:text-error-400">
+            {settledButUnpaid.length} settled by CHIP but not paid here
+          </p>
+          <p className="mt-1 text-error-600 dark:text-error-400">
+            CHIP paid these out, but the order, membership or top-up here is not marked paid (usually a payment
+            that arrived after it had ended, with its webhook lost). Use Re-check with CHIP on each tagged row: it
+            records the payment the same way the webhook would. Don&apos;t credit the balance by hand, or a late
+            webhook would credit it twice.
+          </p>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
           <DataTable data={transactions.data} dataKey="id">
@@ -181,6 +217,15 @@ export default function PaymentSettlementDetailPage() {
                         <DataTableCell className="px-5 py-4">
                           {t.matched_type === null ? (
                             <Tag severity="warn">unmatched</Tag>
+                          ) : settledButUnpaid.includes(t.id) ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Tag severity="danger">
+                                {t.matched_type.replace(/_/g, " ")} #{t.matched_id} — settled but not paid here
+                              </Tag>
+                              <Button size="small" variant="outlined" disabled={rechecking !== null} onClick={() => void recheck(t.id)}>
+                                {rechecking === t.id ? "Checking…" : "Re-check with CHIP"}
+                              </Button>
+                            </div>
                           ) : grossMismatch ? (
                             <Tag severity="danger">
                               {t.matched_type.replace(/_/g, " ")} #{t.matched_id} — gross {rm(t.local_gross_sen ?? 0)} vs file {rm(t.amount_sen)}

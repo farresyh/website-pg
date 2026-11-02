@@ -1574,3 +1574,97 @@ The founder asked whether the docs were current and free of contradictions. Read
 
 - **Fixed in the docs:** PRD §15 said #614 and #615 were "merged to `staging`, not released" (both live via #618); §14 said storefront orders were still mostly the founder's tests and OhahaStore had one order (read-only: 21 paid storefront orders since 2026-10-22 from 15 emails; OhahaStore 18 paid); item 129 described a "7 working days" promise the live page no longer has (it still offers a refund, re-read on `pekangame.com/refund-policy`); §10 OpenWA row now v0.27.0 and the `@lid` reply; §15 Internal Accounting gained the #644 fix; `backend/AGENTS.md` names `WhatsAppRecipient` and `receiptRecipients()`.
 - **Checked and still true:** every ADR file has its index row, last-addendum dates and Standing words match the banners (scripted, 134 of 134); the ruleset requires the eight checks AGENTS.md lists; Digiflazz is the only funded supplier (Gamevion balance 0, no delivery); Sentry unset (item 11); October not closed (item 155); FixFast Demo still active (item 141(b)); applications open with none received; joki switched off (item 114).
+
+## 2026-11-01 — Release #649 (WhatsApp `@lid` follow, admin orders overflow, portal noindex)
+
+- **Released** `staging`→`main` at the founder's request; the founder merged #649 (the auto-mode classifier blocked Claude's merge as a production deploy). Merge `4c7d85ae`, box release `81783529`, CI and `deploy` green, Vercel ×4 `success`.
+- **Verified read-only:** migration `[57] Ran`; MySQL `whatsapp_contacts` has `phone` nullable and the `chat_id` unique index, 3 contacts kept; `/api/health` all true; `/api/health/whatsapp` both `ready`; 0 Laravel errors since the deploy; `<meta name="robots" content="noindex, nofollow">` on the portal login.
+- **Still to see:** the first real `@lid` customer who sends an order number (status card into the `@lid` chat, then the receipt on Delivered). PG-WSEZAO6R4TGU was answered by hand; no backfill.
+
+## 2026-11-01 — Group D backlog audit against code and production (docs only)
+
+- **Why.** The founder suspected some group D items were already done but not recorded. Checked every item against `origin/main` code and read-only against production.
+- **Nothing found built and unrecorded.** The checks that came back:
+  - Items 83, 85, 104, 4, 59 and 122 had not reached their triggers. Production 2026-11-01: 0 vouchers without an order (the 5 vouchers are order compensation, no ledger debit); 1 active member; 3 wallet top-ups; load 1.1 on 2 cores with about 1.8 GB available, engine still Baileys; October `cogs_fallback_order_count` 0.
+  - Items 139, 151, 152, 156, 128, 105 and 81 have no code written. Item 111's "Account locked" trigger was not checked.
+- **Corrected.** Item 108 (the checker miss on `ohahastore.com` on 2026-10-31 was the trigger, fixed by hand) and item 122 (a leg already has `real_cost_price_sen`, null on 5 of 8 delivered legs).
+- **Closed by the founder.** Item 55 (every order is sales revenue) and item 74 (the tier fee stays RM0): ADR-083 third 2026-11-01 addendum. Item 114 (Joki): gates checked on prod, rank icons and rates are set, the Grading Express price is the founder's own choice; only the Refund Policy text (item 129) is left, then the global switch (`joki_settings.is_enabled`, 0).
+- **Refund Policy, read on the live page.** The refund choice line was already removed, but "entitled to your money back" and "Refunds are only paid to the original payment method" remain, with a dangling "or". Replacement text was given to the founder in the session; saving it closes item 129.
+- **Process.** For the code read, Claude detached the checkout to `origin/main` and went back to `staging` at once; no file changed. Prod reads were SELECTs and one read-only service call (`FundedCostOfSales::forPeriod`), no writes.
+- **Later the same day (founder).** The Refund Policy text was saved and checked live, so item 129 is closed. Item 141 (CHIP activation conditions) is closed too: OhahaStore is approved and can take a real purchase, and FixFast Demo stays active on purpose. Joki has no gate left; the founder opens the global switch when they choose.
+- **Group E sorted (founder agreed).** 24 (pending top-up resume/cancel) and 94 (best-selling products) moved to B; 57 (Marketing Campaigns) and 150 (membership pitch) to D with their triggers; 117 (languages and currencies) parked; 14 (assistant chat history) and 25 (portal needs-attention aggregate) closed as not needed. Nothing in E was built (code checked).
+
+
+## 2026-11-02 — Delivery Logs "Cost vs checkout" (ADR-106 addendum, PR #653)
+
+- **Why.** The founder read PG-PJCFSQQQHKB8: the resend's supplier charge was IDR 8,349 against IDR 8,226 quoted on the failed first attempt, yet Price Diff showed RM 0.00. Price Diff (`price_diff_sen`) compares catalog costs, designed before ADR-111 captured real cost. The founder's first suspicion, that PG-WSEZAO6R4TGU (sold at RM3.27 while package 811 was RM3.36) was mispriced, was a resend from package 810 to 811. The selling price stays frozen by design (ADR-017).
+- **Money checked first, read-only on prod.** All 57 delivered orders: ledger platform profit = `orders.platform_profit`. All 41 non-combo orders with a real cost: `selling − real cost − affiliate` holds. The 13 without a real cost were delivered 15–19 Sep, before ADR-111 (22 Sep). Nothing in reports, ledger or accounting reads `price_diff_sen`. The same session confirmed the DuitNow fee was 3 sen short in total on 3 orders (PG-LOLDO4JJLUIS, PG-QUTSHIVWOKGH, PG-L4RCBELJ9RE3), all before the gross-up released in #649. Since then the charged fee equals CHIP's on every order.
+- **Shipped (on `staging` once #653 merges).** `Order::costVsCheckout()` (derived per delivered unit, keyed to the delivering attempt), the `cost_vs_checkout` field on admin and sandbox detail, the Delivery Logs column renamed and moved to it, and combo leg histories showing it. The resend modal now labels its figures as catalog estimates.
+- **Stress test changed the design.** The grill first chose a `real_cost_price_sen` column on every attempt row. Reading the six real-cost write sites showed: a manual delivery has two success rows; a manual Failed → Delivered correction has no pending row to stamp; `ManualDeliveryService::confirmDelivered()` writes `manual_confirm` outside the finalize transaction. A unit is delivered once and its cost already has one home, so the figure is derived instead. The modal shows no sync time either: `last_synced_at` can be newer than a package cost held for review.
+- **Verified.** Backend 3426 tests; admin `tsc`, lint, 22 tests, build. A local browser check on a throwaway order (removed afterwards; dev DB back to its baseline) showed +RM 0.07 on the delivering resend and "—" elsewhere, plus the modal labels. The same logic, run read-only on prod, gives PG-WSEZAO6R4TGU +7 (catalog said +8) and PG-PJCFSQQQHKB8 +3 (catalog said 0).
+- **Known gap.** PG-KWKBUHNDMKQT and PG-YEQQQIJR0MYM (17 Sep, before ADR-106's `initial` rows) now show "—" instead of their catalog diff.
+
+## 2026-11-02 — ADR-135 PR 1: one paid seam per attempt type (refactor, no behaviour change)
+
+**What.** `ResellerWalletService::applyPaid()` and `MembershipSubscriptionService::applyPaid()` are now the one place a gateway's "paid" answer about a top-up or a membership attempt is applied, with the amount check inside and a shared `AttemptPaymentOutcome` (Applied, AppliedToClosedAccount, AlreadyProcessed, AmountMismatch). The CHIP webhook's two attempt branches and both reconcile commands call it; each used to keep its own copy of the amount check (ADR-135 decision 11, mirroring item 63's `OrderPaymentOutcomeService`). `completeTopup()` now returns whether it credited. The webhook's replies (200 ok / already processed, 409 amount mismatch) are unchanged.
+
+**Why.** ADR-135's Re-check with CHIP (PR 4) needs the same seam; without it, it would have been a third copy.
+
+**Checked.** New `AttemptApplyPaidTest` (6 tests, red first); full suite 3,432 passing; the top-up and membership webhook-vs-reconcile concurrency proofs pass on MySQL. Noted in passing: `completePaidAttempt()` takes no lock, which is safe because `recordFeePaid()` deduplicates on `idempotency_key` (its concurrency test covers it).
+
+## 2026-11-02 — ADR-135 PR 2: resume or cancel a pending top-up from the portal
+
+**What.** Built ADR-135 decisions 1, 2, 5–7, 8b, 9 and 10:
+- **Gateway.** `PaymentGateway::cancelPayment()` (`ChipGateway`: `POST /purchases/{id}/cancel/`). `PaymentResponse::endedByExpiry()`. `FakePaymentGateway` remembers cancelled ids. All 27 test doubles implement the new method.
+- **One ended seam.** `ResellerWalletService::markEnded()` is now the only writer that ends a pending top-up unpaid; its five old writers route through it. `WalletTopupEndCause` names both the status (expiry → `expired`, anything else → `failed`) and the WhatsApp group message.
+  - A `.topupbaki` group is told once when its top-up fails, expires or is cancelled from the portal.
+  - The guard is a new `reseller_bot_wallet_topups.ended_notified_at` column (additive migration).
+- **Portal.**
+  - `ResellerWalletTopupService::currentPending()` is a database read, exposed as `pending_topup` on `GET /reseller-portal/wallet`.
+  - `resume()` verifies the link with CHIP first.
+  - `cancel()` asks CHIP to cancel, then acts only on CHIP's re-read answer, and never credits.
+  - New routes `POST /wallet/topup/{reference}/resume` and `/cancel`. `/wallet/topup` itself was unthrottled until now; all three got their own rate limits.
+  - The Balance page shows a "Payment waiting" card (Pay now, or Cancel with a confirm step) in place of the Add Balance form.
+- **Reconcile.** Also re-asks CHIP about top-ups that ended in the last 24 hours (a `ponytail:` note gives the volume ceiling).
+
+**Gotchas.**
+- Next 16 refuses a second `next dev` in the same folder. The browser check used `next build` + `next start` on `:3012`, with the throwaway API on `:8010` and `RESELLER_PORTAL_URL` set for CORS. The founder's dev servers stayed up.
+- `npx prettier` reformats whole files in this repo (it does not use Prettier). Reverted, and the edits were re-applied by hand.
+- A test that logs a second reseller in needs `auth()->forgetGuards()`, because Sanctum otherwise keeps the first user.
+
+**Checked.**
+- Backend: full suite passing; new tests in `WalletTopupEndedTest`, `WalletTopupCancelResumeTest`, `WalletControllerTest` and `ReconcilePendingWalletTopupsCommandTest`, plus the ChipGateway cancel and expiry tests.
+- Portal: `tsc`, lint, tests and build all pass.
+- Browser (throwaway backend, `APP_ENV=e2e`): start a top-up → card → Pay now → Cancel → confirm → form back, in light, dark and 390 px, with no sideways scroll.
+
+## 2026-11-02 — ADR-135 PR 3: `.batalbaki` and the bot replies a group-only reseller needs
+
+**What.** Built ADR-135 decisions 4, 8 and 8a, so a reseller who uses only the WhatsApp group can see and end a pending top-up the way the portal can:
+- **`.batalbaki`** (no argument; a reseller has at most one pending top-up) runs the portal's own `cancel()`, so CHIP's re-read answer decides. One reply per outcome: cancelled, already paid, being processed by the bank, nothing pending, still being set up (with its end time), or already ended. It gets its own 5-per-minute limit and is allowed for a deactivated reseller. Failures log `topup_cancel_none` and `topup_cancel_in_flight`.
+- **`.topupbaki` replies** now say when the link ends ("Link tamat pada HH:MM", MYT) and how to cancel. Sent again while a top-up is pending, the reply names that top-up's end time and offers `.batalbaki`. A pending top-up with no link gets "sedang disediakan … tamat sendiri pada HH:MM" (it used to get a misleading "Gagal memulakan").
+- **`.baki`** adds one line for a pending top-up (a database read, like the portal card). The command list names `.batalbaki`.
+- **`PendingWalletTopupAlreadyExistsException`** carries the attempt the wallet lock found, so the bot's second query is gone. Its message, which the portal shows as a toast, was an internal "Reseller #N already has a pending top-up attempt (#M)"; it is now plain English for the reseller.
+- The portal's "One payment at a time" note and the docs-site wallet page mention `.batalbaki`.
+
+**Checked.** Backend full suite passing, with the new `ResellerBotBatalBakiTest` (every reply text pinned at a fixed MYT time) and parser and exception tests; portal `tsc` and lint pass.
+
+## 2026-11-02 — ADR-135 PR 4: settled but not paid here, and Re-check with CHIP
+
+**What.** Built ADR-135 decisions 12 and 13. This closes PRD §16 item 24.
+- `SettlementReconciliationService::settledButUnpaid()` lists a settlement's transactions that CHIP paid out but whose order, membership or top-up here is not paid. It is a join per record type, worked out on each view of `GET /accounting/settlements/{id}` (`settled_but_unpaid`). Nothing is stored and the settlement's `status` is unchanged.
+- `POST /accounting/settlements/transactions/{id}/recheck` (super_admin, `mfa.stepup`, added to the pinned step-up list) runs the new `SettlementRecheckService`. It asks CHIP and, on Paid, hands the answer to the record's own paid seam: `OrderPaymentOutcomeService::applyPaid()`, or the membership or top-up `applyPaid()` from PR 1. It answers with one outcome and a sentence: applied; sent to Needs Review (a failed order); credited to a closed reseller ("refund the payer"); already paid; amount mismatch; not paid at CHIP; or CHIP unreachable (502). An unmatched row is a 422.
+- Admin, on the CHIP Settlements detail screen: a red banner explains the rows and says not to credit by hand. Each such row gets a "settled but not paid here" tag and a Re-check with CHIP button. The result shows as a toast (success, or sticky when nothing was recorded), then the screen re-reads.
+- ADR-135 got a build addendum: Re-check calls the order's `applyPaid()` directly rather than `reconcileOrder()`, so it can report the order's outcome.
+
+**Gotchas.**
+- In Playwright, `text=Re-check with CHIP` matched the banner sentence before the button, and `text=Confirm` matched the step-up dialog title. Use `button:has-text(...)`.
+- TOTP refuses a code already used in the same 30-second window, so a scripted second login needs a 31-second wait.
+- The admin was checked on `localhost:3013` against a throwaway API on `:8010` (`ADMIN_URL` and `SANCTUM_STATEFUL_DOMAINS` set to `:3013`, so the cookie session works). The founder's dev servers on `:3000` and `:8000` stayed up. The admin was rebuilt with its default env afterwards.
+
+**Checked.**
+- Backend: full suite passes (3490 tests), with the new `SettlementRecheckTest` covering each outcome, the step-up gate and the role gate.
+- Admin: `tsc`, lint and tests (22) pass.
+- Browser (throwaway backend, `APP_ENV=e2e`, an MFA admin):
+  - The tagged row and banner render.
+  - Re-check → 403 `mfa_step_up_required` → step-up dialog → retried → 200 with a sticky toast. The e2e fake gateway reports no amount, so the outcome is `amount_mismatch`.
+  - Once the top-up was paid by its seam, the banner and button were gone and the row showed a normal green tag (dark mode).

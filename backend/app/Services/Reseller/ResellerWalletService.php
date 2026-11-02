@@ -12,6 +12,7 @@ use App\Models\WalletTopupReceipt;
 use App\Services\Accounting\AccountingFileStore;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Services\Payment\AttemptPaymentOutcome;
 use App\Services\Reseller\Bot\ResellerBotWalletTopupNotifier;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -271,11 +272,67 @@ final class ResellerWalletService
      * transaction for the common already-processed case); the actual
      * guard is the re-read under lockForUpdate() inside the transaction.
      */
-    /** @param  int|null  $gatewayFeeSen  the fee CHIP reported (ADR-127 F2) */
-    public function completeTopup(WalletTopupAttempt $attempt, ?int $gatewayFeeSen = null): void
+    /**
+     * ADR-135 decision 11: the one place a gateway's "paid" answer about a
+     * top-up is applied. The CHIP webhook, the reconcile sweep and Re-check
+     * with CHIP all call this; the amount check lives here, not in callers.
+     * A late payment on a failed or expired attempt is still credited.
+     */
+    public function applyPaid(WalletTopupAttempt $attempt, ?int $amountSen, ?int $gatewayFeeSen): AttemptPaymentOutcome
     {
         if ($attempt->status === WalletTopupAttemptStatus::Paid) {
-            return;
+            return AttemptPaymentOutcome::AlreadyProcessed;
+        }
+
+        // Defense-in-depth: chip_payment_ref already binds the answer to one
+        // fixed-amount purchase; a mismatch (a missing amount included) never credits.
+        if ($amountSen !== $attempt->total_charged_sen) {
+            Log::error('Wallet top-up paid answer rejected: amount mismatch', [
+                'wallet_topup_reference' => $attempt->reference,
+                'expected_sen' => $attempt->total_charged_sen,
+                'received_sen' => $amountSen,
+            ]);
+
+            return AttemptPaymentOutcome::AmountMismatch;
+        }
+
+        if (! $this->completeTopup($attempt, $gatewayFeeSen)) {
+            return AttemptPaymentOutcome::AlreadyProcessed;
+        }
+
+        return Reseller::onlyTrashed()->whereKey($attempt->reseller_id)->exists()
+            ? AttemptPaymentOutcome::AppliedToClosedAccount
+            : AttemptPaymentOutcome::Applied;
+    }
+
+    /**
+     * ADR-135 decision 8b: the one place a pending top-up ends unpaid, the
+     * counterpart of completeTopup(). Every writer (the gateway-call failure,
+     * failPendingIfFinal, cancel, the webhook, reconcile) comes here. The
+     * conditional move out of `pending` loses safely to a Paid that committed
+     * first; only the winner tells a `.topupbaki` group.
+     */
+    public function markEnded(WalletTopupAttempt $attempt, WalletTopupEndCause $cause): bool
+    {
+        if (! $attempt->leavePending($cause->status())) {
+            return false;
+        }
+
+        Log::info('Wallet top-up ended unpaid', ['wallet_topup_reference' => $attempt->reference, 'cause' => $cause->value]);
+
+        $this->botNotifier->notifyEnded($attempt, $cause);
+
+        return true;
+    }
+
+    /**
+     * @param  int|null  $gatewayFeeSen  the fee CHIP reported (ADR-127 F2)
+     * @return bool whether this call credited (false: already paid)
+     */
+    public function completeTopup(WalletTopupAttempt $attempt, ?int $gatewayFeeSen = null): bool
+    {
+        if ($attempt->status === WalletTopupAttemptStatus::Paid) {
+            return false;
         }
 
         $credited = DB::transaction(function () use ($attempt, $gatewayFeeSen) {
@@ -300,7 +357,7 @@ final class ResellerWalletService
         });
 
         if (! $credited) {
-            return;
+            return false;
         }
 
         $attempt->refresh();
@@ -322,5 +379,7 @@ final class ResellerWalletService
         // (a `reseller_bot_wallet_topups` row exists); `notified_at`
         // guards a webhook redelivery.
         $this->botNotifier->notifyPaid($attempt);
+
+        return true;
     }
 }

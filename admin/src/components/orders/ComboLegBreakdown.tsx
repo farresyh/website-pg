@@ -20,8 +20,9 @@ import {
   DataTableCell,
 } from "@/components/ui/datatable";
 import { Tag } from "@/components/ui/tag";
-import type { OrderDeliveryLeg, OrderResendAttempt } from "@/lib/orders";
-import { groupLegAttempts, legAttemptLabel } from "@/lib/delivery-log-entries";
+import type { CostVsCheckout, OrderDeliveryLeg, OrderResendAttempt } from "@/lib/orders";
+import { costVsCheckoutByAttempt, groupLegAttempts, legAttemptLabel } from "@/lib/delivery-log-entries";
+import CostVsCheckoutText from "./CostVsCheckoutText";
 
 function severityFor(status: OrderDeliveryLeg["status"]): "success" | "danger" | "warn" | "info" | "review" {
   switch (status) {
@@ -48,10 +49,19 @@ function attemptDetail(a: OrderResendAttempt): string | null {
   return null;
 }
 
-export default function ComboLegBreakdown({ legs, attempts = [] }: { legs: OrderDeliveryLeg[]; attempts?: OrderResendAttempt[] }) {
+export default function ComboLegBreakdown({
+  legs,
+  attempts = [],
+  costVsCheckout,
+}: {
+  legs: OrderDeliveryLeg[];
+  attempts?: OrderResendAttempt[];
+  costVsCheckout?: CostVsCheckout[];
+}) {
   if (legs.length === 0) return null;
 
   const byLeg = groupLegAttempts(attempts);
+  const costByAttempt = costVsCheckoutByAttempt(costVsCheckout);
 
   return (
     <div className="mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-surface dark:border-gray-800">
@@ -130,6 +140,11 @@ export default function ComboLegBreakdown({ legs, attempts = [] }: { legs: Order
                     <li key={a.id} className="text-theme-xs text-ink-muted">
                       <span className="text-ink">{new Date(a.created_at).toLocaleString()}</span> · {legAttemptLabel(a.attempt_type)} · {a.triggered_by ?? "System (Auto)"} ·{" "}
                       <Tag dot severity={severityFor(a.outcome === "success" ? "delivered" : a.outcome === "pending" ? "pending" : "failed")}>{a.outcome}</Tag>
+                      {costByAttempt.has(a.id) && (
+                        <>
+                          {" "}· Cost vs checkout <CostVsCheckoutText figure={costByAttempt.get(a.id)!} />
+                        </>
+                      )}
                       {attemptDetail(a) && <div className="mt-0.5">{attemptDetail(a)}</div>}
                       {a.supplier_response && (
                         <details className="mt-1">

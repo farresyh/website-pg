@@ -82,6 +82,11 @@ class ResellerWalletTopupServiceTest extends TestCase
                 return PaymentResponse::success(['payment_request_id' => $paymentRequestId], status: null);
             }
 
+            public function cancelPayment(string $paymentRequestId): PaymentResponse
+            {
+                return $this->getPayment($paymentRequestId);
+            }
+
             public function verifyWebhookSignature(Request $request): bool
             {
                 throw new RuntimeException('not used');
@@ -123,10 +128,16 @@ class ResellerWalletTopupServiceTest extends TestCase
     {
         $this->bindGateway();
         $reseller = $this->reseller();
-        app(ResellerWalletTopupService::class)->initiate($reseller, 5000, 'fpx', []);
+        $first = app(ResellerWalletTopupService::class)->initiate($reseller, 5000, 'fpx', []);
 
-        $this->expectException(PendingWalletTopupAlreadyExistsException::class);
-        app(ResellerWalletTopupService::class)->initiate($reseller, 5000, 'fpx', []);
+        try {
+            app(ResellerWalletTopupService::class)->initiate($reseller, 5000, 'fpx', []);
+            $this->fail('A second pending top-up was allowed.');
+        } catch (PendingWalletTopupAlreadyExistsException $e) {
+            // ADR-135 decision 4: the attempt the lock found, for the bot to render.
+            $this->assertSame($first->id, $e->attempt->id);
+            $this->assertStringNotContainsString('#', $e->getMessage());
+        }
     }
 
     public function test_initiate_allows_a_new_attempt_once_the_previous_one_expired(): void

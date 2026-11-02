@@ -84,6 +84,11 @@ class WalletControllerTest extends TestCase
                 );
             }
 
+            public function cancelPayment(string $paymentRequestId): PaymentResponse
+            {
+                return $this->getPayment($paymentRequestId);
+            }
+
             public function verifyWebhookSignature(Request $request): bool
             {
                 throw new RuntimeException('not used');
@@ -236,5 +241,102 @@ class WalletControllerTest extends TestCase
             ->assertJsonPath('message', 'Your account has no pricing set up yet, so you cannot add balance. Contact PekanGame to set it up.');
 
         $this->assertSame(0, WalletTopupAttempt::query()->count());
+    }
+
+    // --- ADR-135: the pending card, resume and cancel ---
+
+    private function startTopup(string $token): string
+    {
+        return $this->withToken($token)->postJson('/api/reseller-portal/wallet/topup', ['amount_sen' => 5000, 'channel_code' => 'fpx'])
+            ->assertCreated()->json('reference');
+    }
+
+    /** Decision 1: the card comes from GET /wallet, a database read with no link in it. */
+    public function test_show_carries_the_pending_top_up_without_its_link(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $token = $this->tokenFor($this->reseller());
+        $this->withToken($token)->getJson('/api/reseller-portal/wallet')->assertOk()->assertJsonPath('pending_topup', null);
+        $reference = $this->startTopup($token);
+
+        $this->withToken($token)->getJson('/api/reseller-portal/wallet')
+            ->assertOk()
+            ->assertJsonPath('pending_topup.reference', $reference)
+            ->assertJsonPath('pending_topup.amount_sen', 5000)
+            ->assertJsonPath('pending_topup.total_charged_sen', 5100)
+            ->assertJsonPath('pending_topup.has_link', true)
+            ->assertJsonMissingPath('pending_topup.checkout_url');
+    }
+
+    public function test_resume_returns_the_link_and_a_dead_one_is_refused(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $token = $this->tokenFor($this->reseller());
+        $reference = $this->startTopup($token);
+
+        $this->withToken($token)->postJson("/api/reseller-portal/wallet/topup/{$reference}/resume")
+            ->assertOk()->assertJsonPath('checkout_url', 'https://gate.chip-in.asia/p/'.$reference);
+
+        $this->bindGateway([WalletTopupAttempt::query()->firstOrFail()->chip_payment_ref]);
+        $this->withToken($token)->postJson("/api/reseller-portal/wallet/topup/{$reference}/resume")->assertConflict();
+        $this->assertSame(WalletTopupAttemptStatus::Failed, WalletTopupAttempt::query()->firstOrFail()->status);
+    }
+
+    public function test_cancel_ends_the_top_up_and_unblocks_a_new_one(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $token = $this->tokenFor($this->reseller());
+        $reference = $this->startTopup($token);
+        $this->bindGateway([WalletTopupAttempt::query()->firstOrFail()->chip_payment_ref]);
+
+        $this->withToken($token)->postJson("/api/reseller-portal/wallet/topup/{$reference}/cancel")
+            ->assertOk()->assertJsonPath('outcome', 'cancelled');
+
+        $this->withToken($token)->getJson('/api/reseller-portal/wallet')->assertJsonPath('pending_topup', null);
+        $this->startTopup($token);
+    }
+
+    /** A purchase CHIP still takes payment for is not cancelled here (the double says "still open"). */
+    public function test_cancel_of_a_payment_still_in_progress_is_refused(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $token = $this->tokenFor($this->reseller());
+        $reference = $this->startTopup($token);
+
+        $this->withToken($token)->postJson("/api/reseller-portal/wallet/topup/{$reference}/cancel")
+            ->assertStatus(409)->assertJsonPath('outcome', 'in_flight');
+
+        $this->assertSame(WalletTopupAttemptStatus::Pending, WalletTopupAttempt::query()->firstOrFail()->status);
+    }
+
+    public function test_another_resellers_top_up_is_not_found(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $reference = $this->startTopup($this->tokenFor($this->reseller()));
+        $stranger = $this->tokenFor($this->reseller());
+        $this->app['auth']->forgetGuards(); // Sanctum otherwise keeps the first user for the whole test
+
+        $this->withToken($stranger)->postJson("/api/reseller-portal/wallet/topup/{$reference}/cancel")->assertNotFound();
+        $this->withToken($stranger)->postJson("/api/reseller-portal/wallet/topup/{$reference}/resume")->assertNotFound();
+    }
+
+    /** Decision 9: every call reaches CHIP, so each route has its own limit. */
+    public function test_cancel_is_rate_limited(): void
+    {
+        $this->activeFpx();
+        $this->bindGateway();
+        $token = $this->tokenFor($this->reseller());
+        $reference = $this->startTopup($token);
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->withToken($token)->postJson("/api/reseller-portal/wallet/topup/{$reference}/cancel")->assertStatus(409);
+        }
+
+        $this->withToken($token)->postJson("/api/reseller-portal/wallet/topup/{$reference}/cancel")->assertTooManyRequests();
     }
 }

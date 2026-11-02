@@ -108,6 +108,13 @@ class ResellerBotCommandParserTest extends TestCase
         $this->assertSame(ResellerBotCommandType::Unrecognized, $command->type);
     }
 
+    /** ADR-135 decision 8: no argument, a reseller has at most one pending top-up. */
+    public function test_parses_batalbaki_with_or_without_trailing_words(): void
+    {
+        $this->assertSame(ResellerBotCommandType::BatalBaki, $this->parser->parse('.batalbaki')->type);
+        $this->assertSame(ResellerBotCommandType::BatalBaki, $this->parser->parse('.BATALBAKI 100')->type);
+    }
+
     /** ADR-097 2026-10-05 addendum, decision 32 — never dropped silently. */
     public function test_a_second_order_line_is_flagged_as_extra_arguments(): void
     {

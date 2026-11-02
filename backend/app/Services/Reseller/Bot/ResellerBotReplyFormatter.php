@@ -10,6 +10,7 @@ use App\Models\WalletTopupAttempt;
 use App\Services\Order\DeliveryStatus;
 use App\Services\PlayerValidation\PlayerValidationResult;
 use App\Services\Reseller\ResellerWalletTopupService;
+use App\Services\Reseller\WalletTopupEndCause;
 use Illuminate\Support\Collection;
 
 /**
@@ -251,9 +252,12 @@ final class ResellerBotReplyFormatter
         return 'Semakan ID tidak tersedia buat masa ini. Sila cuba sebentar lagi.';
     }
 
-    public static function balance(int $sen): string
+    /** ADR-135 decision 8a: a pending top-up is shown with the balance, as on the portal. */
+    public static function balance(int $sen, ?WalletTopupAttempt $pending = null): string
     {
-        return 'Baki Pembelian anda: RM'.self::formatSen($sen);
+        return 'Baki Pembelian anda: RM'.self::formatSen($sen)
+            .($pending === null ? '' : "\nTambah baki belum dibayar: RM".self::formatSen($pending->amount_sen)
+                .' (Ref '.$pending->reference.', tamat '.ResellerWalletTopupService::expiryLabel($pending).'). Taip .batalbaki untuk batal.');
     }
 
     /**
@@ -269,25 +273,60 @@ final class ResellerBotReplyFormatter
             .'Caj       : RM'.self::formatSen($attempt->total_charged_sen)." (termasuk fi bank)\n"
             .'Ref       : '.$attempt->reference."\n\n"
             .$attempt->checkout_url."\n\n"
-            .'Klik untuk bayar, link sah selama 30 minit.'
+            .'Klik untuk bayar. Link tamat pada '.ResellerWalletTopupService::expiryLabel($attempt).".\n"
+            .'Nak batal? Taip .batalbaki'
         );
     }
 
     /**
      * ADR-076 PR-H decision 3 — a reseller who already has a pending
      * attempt gets that attempt's own link back, not a plain rejection,
-     * so a lost first message is always self-recoverable.
+     * so a lost first message is always self-recoverable. ADR-135
+     * decision 8a adds its end time and the way out (`.batalbaki`).
      */
     public static function topupAlreadyPending(WalletTopupAttempt $attempt): string
     {
         return self::wrap(
             "「 TAMBAH BAKI PEMBELIAN 」\n\n"
-            ."Anda sudah ada satu pembayaran tambah baki yang belum dibayar.\n"
+            .'Anda masih ada satu tambah baki yang belum dibayar (tamat '.ResellerWalletTopupService::expiryLabel($attempt).").\n"
             .'Jumlah    : RM'.self::formatSen($attempt->amount_sen)."\n"
             .'Ref       : '.$attempt->reference."\n\n"
             .$attempt->checkout_url."\n\n"
-            .'Klik untuk bayar, atau tunggu ia tamat tempoh sebelum buat yang baharu.'
+            .'Bayar guna link di atas, atau taip .batalbaki untuk batal dan buat yang baharu.'
         );
+    }
+
+    /** ADR-135 decision 1: a pending top-up whose CHIP link was never recorded; it ends by itself. */
+    public static function topupBeingSetUp(WalletTopupAttempt $attempt): string
+    {
+        return self::topupLabel($attempt).' sedang disediakan dan akan tamat sendiri pada '.ResellerWalletTopupService::expiryLabel($attempt).'.';
+    }
+
+    /** ADR-135 decision 8a: the `.batalbaki` replies, one per cancel outcome. */
+    public static function topupCancelled(WalletTopupAttempt $attempt): string
+    {
+        return self::topupLabel($attempt).' telah dibatalkan. Link lama tidak boleh dibayar lagi. Anda boleh buat .topupbaki yang baharu.';
+    }
+
+    public static function topupCancelAlreadyPaid(WalletTopupAttempt $attempt): string
+    {
+        return self::topupLabel($attempt).' sudah dibayar, jadi tidak boleh dibatalkan. Baki anda akan dikemas kini sebentar lagi.';
+    }
+
+    public static function topupCancelInFlight(WalletTopupAttempt $attempt): string
+    {
+        return self::topupLabel($attempt).' sedang diproses oleh bank. Tunggu sehingga selesai, kemudian semak dengan .baki.';
+    }
+
+    /** The top-up ended (reconcile or the webhook got there first) between the read and the cancel. */
+    public static function topupCancelAlreadyEnded(WalletTopupAttempt $attempt): string
+    {
+        return self::topupLabel($attempt).' sudah tamat dan tidak boleh dibayar lagi. Anda boleh buat .topupbaki yang baharu.';
+    }
+
+    public static function topupNoneToCancel(): string
+    {
+        return 'Tiada tambah baki yang belum dibayar.';
     }
 
     /** ADR-076 PR-H decision 2 — message 2, sent once the CHIP webhook confirms payment. */
@@ -297,6 +336,22 @@ final class ResellerBotReplyFormatter
             "「 BAKI DITAMBAH 」\n\n"
             .'Baki Pembelian anda sekarang: RM'.self::formatSen($balanceSen)
         );
+    }
+
+    /** ADR-135 decision 8a: pushed when a `.topupbaki` top-up fails at the bank or runs out of time. */
+    public static function topupEnded(WalletTopupAttempt $attempt, WalletTopupEndCause $cause): string
+    {
+        $what = $cause === WalletTopupEndCause::Expired ? 'telah tamat tempoh' : 'tidak berjaya';
+
+        return self::topupLabel($attempt)." {$what}. "
+            .'Anda boleh cuba semula dengan .topupbaki';
+    }
+
+    /** ADR-135 decision 8a: a `.topupbaki` top-up cancelled from the portal; the group still holds its link. */
+    public static function topupCancelledViaPortal(WalletTopupAttempt $attempt): string
+    {
+        return self::topupLabel($attempt).' telah dibatalkan melalui portal. '
+            .'Link lama tidak boleh dibayar lagi.';
     }
 
     /** ADR-076 PR-H decision 5 — below-minimum amount, replied without a wasted CHIP call. */
@@ -349,7 +404,8 @@ final class ResellerBotReplyFormatter
             .".trackorder {no_order} — semak status order\n"
             .".checkid {kod} {userId} [{serverId}] — semak ID pemain\n"
             .".baki — semak Baki Pembelian\n"
-            .'.topupbaki {jumlah} — tambah Baki Pembelian (RM)'
+            .".topupbaki {jumlah} — tambah Baki Pembelian (RM)\n"
+            .'.batalbaki — batal tambah baki yang belum dibayar'
         );
     }
 
@@ -459,6 +515,11 @@ final class ResellerBotReplyFormatter
             'partially_delivered' => 'Sebahagian Berjaya',
             default => ucfirst($status),
         };
+    }
+
+    private static function topupLabel(WalletTopupAttempt $attempt): string
+    {
+        return 'Tambah baki RM'.self::formatSen($attempt->amount_sen).' (Ref '.$attempt->reference.')';
     }
 
     private static function wrap(string $body): string

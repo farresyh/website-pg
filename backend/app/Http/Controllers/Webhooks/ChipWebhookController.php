@@ -9,6 +9,7 @@ use App\Models\WalletTopupAttempt;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Membership\MembershipSubscriptionService;
 use App\Services\Order\PaymentStatus;
+use App\Services\Payment\AttemptPaymentOutcome;
 use App\Services\Payment\OrderPaymentOutcome;
 use App\Services\Payment\OrderPaymentOutcomeService;
 use App\Services\Payment\PaymentGateway;
@@ -16,6 +17,7 @@ use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Payment\PaymentWebhookEvent;
 use App\Services\Reseller\ResellerWalletService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
+use App\Services\Reseller\WalletTopupEndCause;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -152,18 +154,7 @@ class ChipWebhookController extends Controller
             return response()->json(['message' => 'acknowledged']);
         }
 
-        if ($event->amountSen !== $attempt->total_charged_sen) {
-            Log::error('Rejected CHIP webhook: membership amount mismatch', [
-                'expected_sen' => $attempt->total_charged_sen,
-                'received_sen' => $event->amountSen,
-            ]);
-
-            return response()->json(['message' => 'amount mismatch'], 409);
-        }
-
-        $this->subscriptions->completePaidAttempt($attempt, $event->feeSen);
-
-        return response()->json(['message' => 'ok']);
+        return $this->attemptPaidResponse($this->subscriptions->applyPaid($attempt, $event->amountSen, $event->feeSen));
     }
 
     /**
@@ -189,23 +180,23 @@ class ChipWebhookController extends Controller
 
         if ($event->status !== PaymentStatus::Paid) {
             if ($event->status === PaymentStatus::Failed) {
-                $attempt->leavePending(WalletTopupAttemptStatus::Failed);
+                // ADR-135 decision 8b: the one ended seam (status + the group's message).
+                $this->wallets->markEnded($attempt, WalletTopupEndCause::BankFailed);
             }
 
             return response()->json(['message' => 'acknowledged']);
         }
 
-        if ($event->amountSen !== $attempt->total_charged_sen) {
-            Log::error('Rejected CHIP webhook: wallet top-up amount mismatch', [
-                'expected_sen' => $attempt->total_charged_sen,
-                'received_sen' => $event->amountSen,
-            ]);
+        return $this->attemptPaidResponse($this->wallets->applyPaid($attempt, $event->amountSen, $event->feeSen));
+    }
 
-            return response()->json(['message' => 'amount mismatch'], 409);
-        }
-
-        $this->wallets->completeTopup($attempt, $event->feeSen);
-
-        return response()->json(['message' => 'ok']);
+    /** ADR-135 decision 11: the attempt's own seam decided; this only maps it to CHIP's reply. */
+    private function attemptPaidResponse(AttemptPaymentOutcome $outcome): JsonResponse
+    {
+        return match ($outcome) {
+            AttemptPaymentOutcome::AmountMismatch => response()->json(['message' => 'amount mismatch'], 409),
+            AttemptPaymentOutcome::AlreadyProcessed => response()->json(['message' => 'already processed']),
+            AttemptPaymentOutcome::Applied, AttemptPaymentOutcome::AppliedToClosedAccount => response()->json(['message' => 'ok']),
+        };
     }
 }

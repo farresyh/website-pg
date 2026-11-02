@@ -22,6 +22,7 @@ import { PaymentMark, PoweredByChip } from "@/components/shell/PaymentMark";
 import { AmountField, StepsCard } from "@/components/money/MoneyForm";
 import LedgerTable from "@/components/money/LedgerTable";
 import FpxBankGrid, { HAS_FPX_BANKS } from "@/components/money/FpxBankGrid";
+import PendingTopupCard from "@/components/money/PendingTopupCard";
 
 const FPX_CHANNEL = "fpx";
 const QUICK = ["50", "100", "200", "500", "1000"].map((v) => ({ label: `RM ${Number(v).toLocaleString("en-MY")}`, value: v }));
@@ -37,6 +38,8 @@ export default function BalancePage() {
   const [bankCode, setBankCode] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [page, setPage] = useState(1);
+  // ADR-135: bumped to re-read the wallet after a cancel, or after the server says a top-up is pending.
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     const session = getClientSession();
@@ -52,7 +55,7 @@ export default function BalancePage() {
     return () => {
       cancelled = true;
     };
-  }, [page]);
+  }, [page, reload]);
 
   useEffect(() => {
     listPaymentChannels()
@@ -100,6 +103,8 @@ export default function BalancePage() {
       notify.stickyError("Could not add balance", "The payment provider did not return a checkout link. Please try again.");
     } catch (err) {
       notify.stickyError("Could not add balance", err instanceof ApiError ? err.message : "Could not start the payment.");
+      // ADR-135 decision 3: a 422 can mean a top-up is already pending (perhaps from the WhatsApp bot); GET /wallet shows it.
+      if (err instanceof ApiError && err.status === 422) setReload((n) => n + 1);
     } finally {
       setSubmitting(false);
     }
@@ -152,6 +157,10 @@ export default function BalancePage() {
           )}
         </div>
         <Panel className="xl:col-start-2 xl:row-span-2 xl:row-start-1">
+          {wallet?.pending_topup ? (
+            <PendingTopupCard topup={wallet.pending_topup} onChanged={() => setReload((n) => n + 1)} />
+          ) : (
+            <>
           <CardHead
             title="Add Balance"
             description={
@@ -241,6 +250,8 @@ export default function BalancePage() {
               Payments processed by <PoweredByChip />
             </p>
           </form>
+            </>
+          )}
         </Panel>
         <div className="flex flex-col gap-4 xl:col-start-1">
           <StepsCard
@@ -248,7 +259,7 @@ export default function BalancePage() {
             steps={[
               { title: "Pay on a secure payment page", body: "You leave PekanGame to pay with your bank. PekanGame never sees your banking login." },
               { title: "Your balance updates by itself", body: "As soon as CHIP confirms the payment. A Payment Receipt then appears in your balance history." },
-              { title: "One payment at a time", body: "An unpaid payment closes after 30 minutes, then you can start another." },
+              { title: "One payment at a time", body: "An unpaid payment closes after 30 minutes. To start another sooner, cancel it here or send .batalbaki in your WhatsApp group." },
             ]}
           />
           <StepsCard

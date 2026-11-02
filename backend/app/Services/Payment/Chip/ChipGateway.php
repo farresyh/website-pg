@@ -196,6 +196,19 @@ final class ChipGateway implements PaymentGateway
         return PaymentResponse::success($normalized, status: $this->mapPurchaseStatus($normalized['status'] ?? ''));
     }
 
+    public function cancelPayment(string $paymentRequestId): PaymentResponse
+    {
+        $response = $this->client()->post("/purchases/{$paymentRequestId}/cancel/");
+
+        if ($failure = $this->failureFrom($response)) {
+            return $failure;
+        }
+
+        $normalized = $this->normalizePurchase($response->json());
+
+        return PaymentResponse::success($normalized, status: $this->mapPurchaseStatus($normalized['status'] ?? ''));
+    }
+
     public function verifyWebhookSignature(Request $request): bool
     {
         $signature = $request->header('X-Signature');
@@ -412,6 +425,8 @@ final class ChipGateway implements PaymentGateway
             // after an `error`, and later turns `expired`).
             'failure_is_final' => in_array($body['status'] ?? '', ['cancelled', 'expired', 'overdue', 'blocked'], true)
                 || (($body['status'] ?? '') === 'error' && ($body['purchase']['single_attempt'] ?? false) === true),
+            // ADR-135 decision 6: past `.due` (`due_strict` makes it `expired`).
+            'ended_by_expiry' => in_array($body['status'] ?? '', ['expired', 'overdue'], true),
             // ADR-127 F1/F2: when CHIP accepted the payment (Unix time) and
             // the fee it charged; `payment` is null until the purchase is paid.
             'paid_on' => isset($body['payment']['paid_on']) ? (int) $body['payment']['paid_on'] : null,

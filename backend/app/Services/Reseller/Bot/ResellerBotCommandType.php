@@ -16,5 +16,6 @@ enum ResellerBotCommandType
     case CheckId;          // .checkid {reseller_code} {playerId} [{serverId}]
     case Info;             // .info
     case TopupBaki;        // .topupbaki {amount} — ADR-076 PR-H
+    case BatalBaki;        // .batalbaki — ADR-135 decision 8
     case Unrecognized;
 }
