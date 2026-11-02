@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { getGameBreakdown, getReportSummary } from "@/lib/reports";
+import { getGameBreakdown, getProductBreakdown, getReportSummary } from "@/lib/reports";
 import { Input } from "@/components/ui/input";
 import { GameIcon, KpiCard, Pending, ReportCard, ReportTable, ShareBar, previousLabelOf, useReport, type ReportTabProps } from "../ReportKit";
 import { formatRm } from "../format";
@@ -10,6 +10,7 @@ export function GamesTab(props: ReportTabProps) {
   const { filters, compare } = props;
   const summary = useReport(props, () => getReportSummary(filters, compare));
   const games = useReport(props, () => getGameBreakdown(filters));
+  const products = useReport(props, () => getProductBreakdown(filters));
   const [query, setQuery] = useState("");
 
   const s = summary.data;
@@ -19,6 +20,7 @@ export function GamesTab(props: ReportTabProps) {
   const mostProfitable = rows?.reduce<(typeof rows)[number] | undefined>((best, g) => (g.platform_profit > (best?.platform_profit ?? 0) ? g : best), undefined);
   const visible = rows?.filter((g) => g.game_name.toLowerCase().includes(query.trim().toLowerCase()));
   const filtered = visible !== undefined && rows !== undefined && visible.length !== rows.length;
+  const visibleProducts = products.data?.products.filter((p) => p.game_name.toLowerCase().includes(query.trim().toLowerCase()));
 
   return (
     <div>
@@ -63,6 +65,41 @@ export function GamesTab(props: ReportTabProps) {
           />
         ) : (
           <Pending error={games.error ?? summary.error} className="p-6" />
+        )}
+      </ReportCard>
+
+      {/* ADR-104 2026-11-03 addendum (PRD item 94): grouped as the storefront shows products, so a combo and a package of the same amount are one row. */}
+      <ReportCard
+        flush
+        className="mt-6"
+        title="Best-selling products"
+        subtitle="What customers bought, by game. Follows the game filter above."
+      >
+        {visibleProducts ? (
+          <ReportTable
+            rows={visibleProducts}
+            rowKey={(r) => r.product_key}
+            empty={query.trim() ? "No product matches this filter." : undefined}
+            columns={[
+              {
+                key: "product",
+                header: "Product",
+                render: (r) => (
+                  <span className="flex flex-col">
+                    <span className="font-medium">{r.product_name}</span>
+                    <span className="text-xs text-ink-muted">{r.game_name}</span>
+                  </span>
+                ),
+              },
+              { key: "sales", header: "Sales", align: "right", render: (r) => <span className="font-semibold">{formatRm(r.sales)}</span> },
+              { key: "share", header: "% of game", align: "right", render: (r) => <span className="inline-flex items-center gap-2"><ShareBar pct={r.pct_of_game_sales} />{r.pct_of_game_sales.toFixed(1)}%</span> },
+              { key: "orders", header: "Orders", align: "right", render: (r) => r.orders_count },
+              { key: "owner", header: "Owner profit", align: "right", render: (r) => <span className={r.platform_profit === 0 ? "text-ink-muted" : r.platform_profit < 0 ? "text-danger-ink" : ""}>{formatRm(r.platform_profit)}</span> },
+              { key: "affiliate", header: "Affiliate profit", align: "right", render: (r) => <span className={r.affiliate_profit === 0 ? "text-ink-muted" : ""}>{formatRm(r.affiliate_profit)}</span> },
+            ]}
+          />
+        ) : (
+          <Pending error={products.error} className="p-6" />
         )}
       </ReportCard>
     </div>
