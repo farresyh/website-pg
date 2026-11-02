@@ -18,10 +18,12 @@ class ResellerBotWalletTopup extends Model
         'wallet_topup_attempt_id',
         'whatsapp_group_id',
         'notified_at',
+        'ended_notified_at',
     ];
 
     protected $casts = [
         'notified_at' => 'datetime',
+        'ended_notified_at' => 'datetime',
     ];
 
     public function reseller(): BelongsTo

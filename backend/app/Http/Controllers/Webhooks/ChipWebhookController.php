@@ -17,6 +17,7 @@ use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Payment\PaymentWebhookEvent;
 use App\Services\Reseller\ResellerWalletService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
+use App\Services\Reseller\WalletTopupEndCause;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -179,7 +180,8 @@ class ChipWebhookController extends Controller
 
         if ($event->status !== PaymentStatus::Paid) {
             if ($event->status === PaymentStatus::Failed) {
-                $attempt->leavePending(WalletTopupAttemptStatus::Failed);
+                // ADR-135 decision 8b: the one ended seam (status + the group's message).
+                $this->wallets->markEnded($attempt, WalletTopupEndCause::BankFailed);
             }
 
             return response()->json(['message' => 'acknowledged']);

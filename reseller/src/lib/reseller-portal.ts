@@ -19,10 +19,22 @@ export interface BalanceLimits {
   headroom_sen: number;
 }
 
+/** ADR-135 decision 1: the one unpaid top-up, read from the database (no link: resume gives it). */
+export interface PendingTopup {
+  reference: string;
+  amount_sen: number;
+  total_charged_sen: number;
+  channel_code: string;
+  expires_at: string;
+  /** False while CHIP's purchase is still being set up (no Pay or Cancel then). */
+  has_link: boolean;
+}
+
 export interface WalletResponse {
   balance: number;
   entries: Paginated<LedgerEntry & { receipt_name: string | null; receipt_number?: string | null }>;
   limits: BalanceLimits;
+  pending_topup: PendingTopup | null;
 }
 
 export function getWallet(token: string, page = 1) {
@@ -55,6 +67,16 @@ export function topupWallet(token: string, amountSen: number, channelCode: strin
     // ADR-130: the bank picked on our page; FPX only, the backend refuses it elsewhere.
     body: { amount_sen: amountSen, channel_code: channelCode, fpx_bank_code: fpxBankCode ?? undefined },
   });
+}
+
+/** ADR-135 decision 2: the stored link, verified with CHIP first; a 409 means it can no longer be paid. */
+export function resumeTopup(token: string, reference: string) {
+  return apiFetch<{ checkout_url: string }>(`/api/reseller-portal/wallet/topup/${encodeURIComponent(reference)}/resume`, { method: "POST", token });
+}
+
+/** ADR-135 decision 5: decided by CHIP; any outcome but `cancelled` comes back as a 409 with its message. */
+export function cancelTopup(token: string, reference: string) {
+  return apiFetch<{ outcome: "cancelled"; message: string }>(`/api/reseller-portal/wallet/topup/${encodeURIComponent(reference)}/cancel`, { method: "POST", token });
 }
 
 export interface ResellerProfile {

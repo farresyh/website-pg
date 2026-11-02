@@ -83,6 +83,11 @@ class MembershipSubscriptionControllerTest extends TestCase
                 return PaymentResponse::success(['payment_request_id' => $paymentRequestId], status: null);
             }
 
+            public function cancelPayment(string $paymentRequestId): PaymentResponse
+            {
+                return $this->getPayment($paymentRequestId);
+            }
+
             public function verifyWebhookSignature(Request $request): bool
             {
                 throw new RuntimeException('not used');
@@ -232,6 +237,11 @@ class MembershipSubscriptionControllerTest extends TestCase
             public function getPayment(string $paymentRequestId): PaymentResponse
             {
                 return PaymentResponse::success(['payment_request_id' => $paymentRequestId], status: null);
+            }
+
+            public function cancelPayment(string $paymentRequestId): PaymentResponse
+            {
+                return $this->getPayment($paymentRequestId);
             }
 
             public function verifyWebhookSignature(Request $request): bool
@@ -507,6 +517,11 @@ class MembershipSubscriptionControllerTest extends TestCase
                     ['payment_request_id' => $paymentRequestId, 'failure_is_final' => $ended],
                     status: $ended ? PaymentStatus::Failed : null,
                 );
+            }
+
+            public function cancelPayment(string $paymentRequestId): PaymentResponse
+            {
+                return $this->getPayment($paymentRequestId);
             }
 
             public function verifyWebhookSignature(Request $request): bool

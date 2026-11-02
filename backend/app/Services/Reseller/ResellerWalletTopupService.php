@@ -7,11 +7,15 @@ use App\Models\PaymentMethod;
 use App\Models\Reseller;
 use App\Models\WalletTopupAttempt;
 use App\Services\Ledger\LedgerOwnerType;
+use App\Services\Order\PaymentStatus;
 use App\Services\Payment\PaymentCustomer;
+use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\Payment\PaymentRequest;
 use App\Services\Pricing\CheckoutTotalService;
 use App\Services\Pricing\PaymentMethodFeeResolver;
+use App\Support\MalaysiaTime;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -100,11 +104,7 @@ final class ResellerWalletTopupService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            $existingPending = WalletTopupAttempt::query()
-                ->where('reseller_id', $reseller->id)
-                ->where('status', WalletTopupAttemptStatus::Pending->value)
-                ->where('expires_at', '>', now())
-                ->first();
+            $existingPending = self::livePending($reseller)->first();
 
             if ($existingPending !== null) {
                 throw new PendingWalletTopupAlreadyExistsException(
@@ -130,23 +130,145 @@ final class ResellerWalletTopupService
         return $this->requestPayment($attempt, $paymentMethod->gateway, $channelProperties);
     }
 
-    private function failPendingIfFinal(Reseller $reseller): void
+    /**
+     * ADR-135 decision 1: the reseller's live pending top-up, with or without a
+     * link. A database read only: it runs on every portal balance and dashboard
+     * load and the bot's `.baki`, so it never waits on CHIP.
+     */
+    public function currentPending(Reseller $reseller): ?WalletTopupAttempt
     {
-        $pending = WalletTopupAttempt::query()
-            ->where('reseller_id', $reseller->id)
-            ->where('status', WalletTopupAttemptStatus::Pending->value)
-            ->where('expires_at', '>', now())
-            ->whereNotNull('chip_payment_ref')
-            ->first();
+        return self::livePending($reseller)->latest('id')->first();
+    }
 
-        if ($pending === null) {
-            return;
+    /**
+     * ADR-135 decision 2: the stored link, verified with CHIP first, so a dead
+     * link is never handed out (ADR-110 2026-10-29).
+     *
+     * @throws WalletTopupNotPayableException
+     */
+    public function resume(Reseller $reseller, string $reference): string
+    {
+        $attempt = $this->ownAttempt($reseller, $reference);
+
+        if ($attempt->status !== WalletTopupAttemptStatus::Pending || $attempt->expires_at->isPast()) {
+            throw new WalletTopupNotPayableException('This top-up has ended. Start a new one.');
         }
 
-        $gatewayName = PaymentMethod::query()->where('channel_code', $pending->channel_code)->value('gateway');
+        if ($attempt->checkout_url === null || $attempt->chip_payment_ref === null) {
+            throw new WalletTopupNotPayableException('This top-up is still being set up and expires by itself at '.$this->expiryLabel($attempt).'.');
+        }
 
-        if ($gatewayName !== null && $this->gateways->make($gatewayName)->getPayment($pending->chip_payment_ref)->isFinalFailure()) {
-            $pending->leavePending(WalletTopupAttemptStatus::Failed);
+        $answer = $this->gatewayFor($attempt)?->getPayment($attempt->chip_payment_ref);
+
+        if ($answer?->isFinalFailure()) {
+            $this->wallets->markEnded($attempt, WalletTopupEndCause::fromGateway($answer));
+
+            throw new WalletTopupNotPayableException('This top-up has ended. Start a new one.');
+        }
+
+        if ($answer?->status === PaymentStatus::Paid) {
+            throw new WalletTopupNotPayableException('This top-up is already paid. Your balance will show shortly.');
+        }
+
+        return $attempt->checkout_url;
+    }
+
+    /**
+     * ADR-135 decision 5: cancel is decided by CHIP, never locally. Asks CHIP to
+     * cancel (outside any lock), then re-reads the purchase and acts only on that
+     * answer. Never credits: a paid purchase is left to the webhook and reconcile.
+     */
+    public function cancel(Reseller $reseller, string $reference, WalletTopupEndCause $cause): WalletTopupCancelOutcome
+    {
+        $attempt = $this->ownAttempt($reseller, $reference);
+
+        if ($attempt->status !== WalletTopupAttemptStatus::Pending) {
+            return $this->outcomeOf($attempt);
+        }
+
+        if ($attempt->chip_payment_ref === null) {
+            return WalletTopupCancelOutcome::NoPurchaseYet;
+        }
+
+        $gateway = $this->gatewayFor($attempt);
+
+        if ($gateway === null) {
+            return WalletTopupCancelOutcome::InFlight;
+        }
+
+        // The answer is not read: CHIP's 400 for "already cancelled" or
+        // "already paid" lands in the same decision as a 200.
+        $gateway->cancelPayment($attempt->chip_payment_ref);
+        $answer = $gateway->getPayment($attempt->chip_payment_ref);
+
+        if ($answer->status === PaymentStatus::Paid) {
+            return WalletTopupCancelOutcome::AlreadyPaid;
+        }
+
+        if (! $answer->isFinalFailure()) {
+            return WalletTopupCancelOutcome::InFlight;
+        }
+
+        $ended = $this->wallets->markEnded($attempt, $answer->endedByExpiry() ? WalletTopupEndCause::Expired : $cause);
+
+        if (! $ended) {
+            // The webhook, reconcile or a second cancel got there first.
+            return $this->outcomeOf($attempt->fresh());
+        }
+
+        Log::info('Wallet top-up cancelled by reseller', [
+            'reseller_id' => $reseller->id,
+            'wallet_topup_reference' => $attempt->reference,
+            'cause' => $cause->value,
+        ]);
+
+        return WalletTopupCancelOutcome::Cancelled;
+    }
+
+    private function outcomeOf(WalletTopupAttempt $attempt): WalletTopupCancelOutcome
+    {
+        return $attempt->status === WalletTopupAttemptStatus::Paid
+            ? WalletTopupCancelOutcome::AlreadyPaid
+            : WalletTopupCancelOutcome::AlreadyEnded;
+    }
+
+    /** Another reseller's reference is a 404, never a hint that it exists. */
+    private function ownAttempt(Reseller $reseller, string $reference): WalletTopupAttempt
+    {
+        return WalletTopupAttempt::query()
+            ->where('reseller_id', $reseller->id)
+            ->where('reference', $reference)
+            ->firstOrFail();
+    }
+
+    /** @return Builder<WalletTopupAttempt> */
+    private static function livePending(Reseller $reseller): Builder
+    {
+        return WalletTopupAttempt::query()
+            ->where('reseller_id', $reseller->id)
+            ->where('status', WalletTopupAttemptStatus::Pending->value)
+            ->where('expires_at', '>', now());
+    }
+
+    private function gatewayFor(WalletTopupAttempt $attempt): ?PaymentGateway
+    {
+        $gatewayName = PaymentMethod::query()->where('channel_code', $attempt->channel_code)->value('gateway');
+
+        return $gatewayName === null ? null : $this->gateways->make($gatewayName);
+    }
+
+    public function expiryLabel(WalletTopupAttempt $attempt): string
+    {
+        return $attempt->expires_at->copy()->setTimezone(MalaysiaTime::TIMEZONE)->format('H:i');
+    }
+
+    private function failPendingIfFinal(Reseller $reseller): void
+    {
+        $pending = self::livePending($reseller)->whereNotNull('chip_payment_ref')->first();
+        $answer = $pending === null ? null : $this->gatewayFor($pending)?->getPayment($pending->chip_payment_ref);
+
+        if ($answer?->isFinalFailure()) {
+            $this->wallets->markEnded($pending, WalletTopupEndCause::fromGateway($answer));
         }
     }
 
@@ -180,7 +302,7 @@ final class ResellerWalletTopupService
         if (! $payment->success) {
             // S3-style — no attempt is ever left `pending` with no CHIP
             // purchase behind it.
-            $attempt->leavePending(WalletTopupAttemptStatus::Failed);
+            $this->wallets->markEnded($attempt, WalletTopupEndCause::CheckoutFailed);
 
             Log::warning('Wallet top-up gateway call failed', [
                 'reference' => $attempt->reference,

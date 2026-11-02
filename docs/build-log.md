@@ -1611,3 +1611,28 @@ The founder asked whether the docs were current and free of contradictions. Read
 **Why.** ADR-135's Re-check with CHIP (PR 4) needs the same seam; without it, it would have been a third copy.
 
 **Checked.** New `AttemptApplyPaidTest` (6 tests, red first); full suite 3,432 passing; the top-up and membership webhook-vs-reconcile concurrency proofs pass on MySQL. Noted in passing: `completePaidAttempt()` takes no lock, which is safe because `recordFeePaid()` deduplicates on `idempotency_key` (its concurrency test covers it).
+
+## 2026-11-02 — ADR-135 PR 2: resume or cancel a pending top-up from the portal
+
+**What.** Built ADR-135 decisions 1, 2, 5–7, 8b, 9 and 10:
+- **Gateway.** `PaymentGateway::cancelPayment()` (`ChipGateway`: `POST /purchases/{id}/cancel/`). `PaymentResponse::endedByExpiry()`. `FakePaymentGateway` remembers cancelled ids. All 27 test doubles implement the new method.
+- **One ended seam.** `ResellerWalletService::markEnded()` is now the only writer that ends a pending top-up unpaid; its five old writers route through it. `WalletTopupEndCause` names both the status (expiry → `expired`, anything else → `failed`) and the WhatsApp group message.
+  - A `.topupbaki` group is told once when its top-up fails, expires or is cancelled from the portal.
+  - The guard is a new `reseller_bot_wallet_topups.ended_notified_at` column (additive migration).
+- **Portal.**
+  - `ResellerWalletTopupService::currentPending()` is a database read, exposed as `pending_topup` on `GET /reseller-portal/wallet`.
+  - `resume()` verifies the link with CHIP first.
+  - `cancel()` asks CHIP to cancel, then acts only on CHIP's re-read answer, and never credits.
+  - New routes `POST /wallet/topup/{reference}/resume` and `/cancel`. `/wallet/topup` itself was unthrottled until now; all three got their own rate limits.
+  - The Balance page shows a "Payment waiting" card (Pay now, or Cancel with a confirm step) in place of the Add Balance form.
+- **Reconcile.** Also re-asks CHIP about top-ups that ended in the last 24 hours (a `ponytail:` note gives the volume ceiling).
+
+**Gotchas.**
+- Next 16 refuses a second `next dev` in the same folder. The browser check used `next build` + `next start` on `:3012`, with the throwaway API on `:8010` and `RESELLER_PORTAL_URL` set for CORS. The founder's dev servers stayed up.
+- `npx prettier` reformats whole files in this repo (it does not use Prettier). Reverted, and the edits were re-applied by hand.
+- A test that logs a second reseller in needs `auth()->forgetGuards()`, because Sanctum otherwise keeps the first user.
+
+**Checked.**
+- Backend: full suite passing; new tests in `WalletTopupEndedTest`, `WalletTopupCancelResumeTest`, `WalletControllerTest` and `ReconcilePendingWalletTopupsCommandTest`, plus the ChipGateway cancel and expiry tests.
+- Portal: `tsc`, lint, tests and build all pass.
+- Browser (throwaway backend, `APP_ENV=e2e`): start a top-up → card → Pay now → Cancel → confirm → form back, in light, dark and 390 px, with no sideways scroll.

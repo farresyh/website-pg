@@ -228,6 +228,44 @@ class ChipGatewayTest extends TestCase
         $this->assertSame($expected, $result->isFinalFailure());
     }
 
+    /** @return array<string, array{0: string, 1: bool}> */
+    public static function expiryCases(): array
+    {
+        return ['expired' => ['expired', true], 'overdue' => ['overdue', true], 'cancelled' => ['cancelled', false], 'blocked' => ['blocked', false], 'paid' => ['paid', false]];
+    }
+
+    /** ADR-135 decision 6: `expired`/`overdue` end by expiry; every other final failure is a failure. */
+    #[DataProvider('expiryCases')]
+    public function test_get_payment_says_whether_a_purchase_ended_by_expiry(string $status, bool $expected): void
+    {
+        Http::fake(['gate.chip-in.asia/*' => Http::response(['id' => 'p-1', 'status' => $status, 'purchase' => ['total' => 100]], 200)]);
+
+        $this->assertSame($expected, $this->gateway()->getPayment('p-1')->endedByExpiry());
+    }
+
+    /** ADR-135 decision 7: POST /purchases/{id}/cancel/ (probed in test mode 2026-11-02). */
+    public function test_cancel_payment_posts_to_the_cancel_endpoint_and_normalises_the_answer(): void
+    {
+        Http::fake(['gate.chip-in.asia/api/v1/purchases/p-1/cancel/' => Http::response(['id' => 'p-1', 'status' => 'cancelled', 'purchase' => ['total' => 100]], 200)]);
+
+        $result = $this->gateway()->cancelPayment('p-1');
+
+        $this->assertTrue($result->success);
+        $this->assertTrue($result->isFinalFailure());
+        Http::assertSent(fn ($request) => $request->method() === 'POST' && str_ends_with($request->url(), '/purchases/p-1/cancel/'));
+    }
+
+    /** CHIP's 400 for a purchase that can no longer be paid (already paid or cancelled). */
+    public function test_cancel_payment_reports_chips_refusal_as_a_failure(): void
+    {
+        Http::fake(['gate.chip-in.asia/*' => Http::response(['__all__' => [['message' => 'Only purchases that can be paid for can be canceled.', 'code' => 'purchase_cancel_wrong_status']]], 400)]);
+
+        $result = $this->gateway()->cancelPayment('p-1');
+
+        $this->assertFalse($result->success);
+        $this->assertSame('400', $result->errorCode);
+    }
+
     public function test_create_payment_omits_success_callback_when_no_callback_url_is_configured(): void
     {
         Http::fake([

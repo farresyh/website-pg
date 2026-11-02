@@ -8,6 +8,7 @@ use App\Services\Payment\PaymentRequest;
 use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * ADR-023 decision #6 — the payment-layer counterpart to
@@ -30,6 +31,8 @@ use Illuminate\Http\Request;
  */
 final class FakePaymentGateway implements PaymentGateway
 {
+    private const CANCELLED_KEY = 'e2e-payment-gateway.cancelled.';
+
     public function createPayment(PaymentRequest $request): PaymentResponse
     {
         $paymentRequestId = 'e2e-purchase-'.$request->referenceId;
@@ -49,10 +52,27 @@ final class FakePaymentGateway implements PaymentGateway
 
     public function getPayment(string $paymentRequestId): PaymentResponse
     {
+        // ADR-135 decision 7: a purchase cancelled here stays cancelled, so an
+        // e2e cancel is not reported as "already paid".
+        if (Cache::has(self::CANCELLED_KEY.$paymentRequestId)) {
+            return PaymentResponse::success([
+                'payment_request_id' => $paymentRequestId,
+                'status' => 'cancelled',
+                'failure_is_final' => true,
+            ], status: PaymentStatus::Failed);
+        }
+
         return PaymentResponse::success([
             'payment_request_id' => $paymentRequestId,
             'status' => 'paid',
         ], status: PaymentStatus::Paid);
+    }
+
+    public function cancelPayment(string $paymentRequestId): PaymentResponse
+    {
+        Cache::put(self::CANCELLED_KEY.$paymentRequestId, true, now()->addDay());
+
+        return $this->getPayment($paymentRequestId);
     }
 
     /** e2e never delivers a signed callback — the spec POSTs the body directly. */
