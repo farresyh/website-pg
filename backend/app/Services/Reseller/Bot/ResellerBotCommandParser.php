@@ -14,6 +14,8 @@ namespace App\Services\Reseller\Bot;
  * `.checkid {code} {playerId} [{serverId}]` (same shape as `.order`,
  * minus a product code), and the argument-less `.info`. ADR-076 PR-H
  * adds `.topupbaki {amount}` (amount in RM, e.g. `.topupbaki 50`).
+ * ADR-135 decision 8 adds the argument-less `.batalbaki`; a trailing
+ * word is ignored, since a reseller has at most one pending top-up.
  *
  * ADR-097 2026-10-05 addendum, decision 32: a token past
  * `{code} {userId} {serverId}` on `.order`/`.checkid` sets
@@ -50,6 +52,8 @@ final class ResellerBotCommandParser
             '.topupbaki' => isset($parts[1])
                 ? new ResellerBotCommand(ResellerBotCommandType::TopupBaki, $raw, amount: $parts[1])
                 : new ResellerBotCommand(ResellerBotCommandType::Unrecognized, $raw),
+
+            '.batalbaki' => new ResellerBotCommand(ResellerBotCommandType::BatalBaki, $raw),
 
             '.order' => isset($parts[1], $parts[2])
                 ? new ResellerBotCommand(
