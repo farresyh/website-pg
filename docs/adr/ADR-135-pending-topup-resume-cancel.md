@@ -66,6 +66,29 @@ Revised 2026-11-02 after the stress test (three read-only reviews: payment state
    - Unlike `.topupbaki`, it is **allowed for a deactivated reseller**. Cancelling only reduces exposure, and closure is blocked while a top-up is pending (`ResellerClosureService`), so blocking it would keep a payable link alive on the account being wound down.
    - Any member of the linked group may issue it: the same trust as `.topupbaki` and `.order` (the bot resolves the reseller from the group, not the sender).
    - Help text gets the line, and failures log `topup_cancel_none` and `topup_cancel_in_flight`.
+8a. **A group-only reseller sees everything a portal reseller sees** (founder, 2026-11-02). Some resellers will use only the WhatsApp group, so every state change has a bot message. The wording below is the reference text; the build may tidy it but not drop facts.
+   - `.topupbaki` reply: the existing message, with "Link tamat pada HH:MM" (MYT, from `expires_at`) and "Nak batal? Taip .batalbaki".
+   - Already pending (`.topupbaki` again): "Anda masih ada satu tambah baki yang belum dibayar (tamat HH:MM)", the amount, the reference and the link, then "Bayar guna link di atas, atau taip .batalbaki untuk batal dan buat yang baharu". A pending row with no link gets decision 1's "sedang disediakan, tamat sendiri pada HH:MM".
+   - `.baki`: the balance, plus one line when `currentPending()` returns a row: "Tambah baki belum dibayar: RMx (Ref …, tamat HH:MM). Taip .batalbaki untuk batal." It is a database read, like the portal card.
+   - `.batalbaki`, one reply per decision 5 outcome:
+     - cancelled: "…telah dibatalkan. Link lama tidak boleh dibayar lagi. Anda boleh buat .topupbaki yang baharu."
+     - already paid: "…sudah dibayar, jadi tidak boleh dibatalkan. Baki anda akan dikemas kini sebentar lagi."
+     - in flight: "…sedang diproses oleh bank. Tunggu sehingga selesai, kemudian semak dengan .baki."
+     - none pending: "Tiada tambah baki yang belum dibayar."
+     - no link: "…sedang disediakan dan akan tamat sendiri pada HH:MM."
+   - Help text (`commandList()`): adds `.batalbaki — batal tambah baki yang belum dibayar`.
+   - **Pushed to the group, for a top-up started in the group only** (a `reseller_bot_wallet_topups` row exists):
+     - cancelled from the portal: "Tambah baki RMx (Ref …) telah dibatalkan melalui portal."
+     - failed at the bank or expired: "Tambah baki RMx (Ref …) tidak berjaya / tamat tempoh. Anda boleh cuba semula dengan .topupbaki."
+     - Because CHIP sends no failure callback, this arrives when reconcile (or the next `.topupbaki` / resume) finds it: up to about 15 minutes late. A cancel made with `.batalbaki` gets no push, because its own reply already says it.
+     - If a payment still lands after the attempt ended (decision 10), the existing "BAKI DITAMBAH" follows. Both messages are true.
+8b. **One ended seam, like the one paid seam.** Today four writers move an attempt out of `pending` to failed or expired:
+   - `failPendingIfFinal()`
+   - the webhook's failure branch
+   - reconcile
+   - the gateway-call failure in `requestPayment()`
+
+   They will all call `ResellerWalletTopupService::markEnded(attempt, status, cause)`. It does the conditional `leavePending()` (decision 6 picks the status) and, only when it won, tells `ResellerBotWalletTopupNotifier::notifyEnded()`. That mirrors `completeTopup()` calling `notifyPaid()`. `notifyEnded()` locks the tracking row and sends once, guarded by a new nullable `reseller_bot_wallet_topups.ended_notified_at` (an additive migration), through the same queued `OpenWaClient::sendText()` → `SendResellerBotReplyJob` path. The cause (`portal_cancel`, `bot_cancel`, `bank_failed`, `expired`) picks the wording, and `bot_cancel` sends nothing. No writer sends a WhatsApp message itself.
 9. **The portal's top-up routes get named limits.** Resume and cancel each make CHIP calls, and `/wallet/topup` is unthrottled today, so a script can mint unlimited CHIP purchases (pre-existing; the bot caps the same action at 5 per minute). `POST /wallet/topup`, `/resume` and `/cancel` get `throttle:N,1,name` limits matching the bot. The pending card replaces the Add Balance form inside its `Panel`, built from the `components/ui` kit (ADR-038; a new primitive goes in the admin kit, then `sync-shared-files.mjs`).
 
 ### The backstops behind a cancel
@@ -85,19 +108,19 @@ Revised 2026-11-02 after the stress test (three read-only reviews: payment state
 14. Tests come first: the cancel outcomes (cancelled, paid, in flight, CHIP error, no purchase id, another reseller's attempt, lost race), a cancel racing a paid webhook (Paid wins), the 24-hour re-check, each `applyPaid` outcome, and `settledButUnpaid()` per type.
     - **PR 1:** the paid seams (decision 11). A refactor with no behaviour change, proved by the existing webhook and reconcile tests.
     - **PR 2:** the gateway method, `currentPending()`, resume, cancel, the status function, throttles, the portal card, and the 24-hour re-check.
-    - **PR 3:** `.batalbaki`.
+    - **PR 3:** `.batalbaki`, the bot replies and pushes of decision 8a, and the ended seam of decision 8b (its migration). The ended seam can move into PR 2 if the build finds the portal cancel needs it first.
     - **PR 4:** `settledButUnpaid()` and Re-check.
 
 ## Rationale
 
-- **Every reader and writer routes through one seam:** current pending (decision 1), the dead status (decision 6), the paid outcome per type (decision 11), and the settlement check (decision 12). The two copies the trace found (the bot's pending query and the amount checks) are removed rather than joined by a third.
+- **Every reader and writer routes through one seam:** current pending (decision 1), the dead status (decision 6), the ended notice (decision 8b), the paid outcome per type (decision 11), and the settlement check (decision 12). The two copies the trace found (the bot's pending query and the amount checks) are removed rather than joined by a third.
 - **CHIP decides a cancel, because the danger is a link that stays payable.** Re-reading after the call makes the outcome depend on CHIP's state, not its error wording, and that holds for the cases the probe could not create.
 - **Page loads never wait on CHIP.** A read is a database read; CHIP is asked only when someone acts.
 - **The backstop chain is closed end to end:** the webhook, then reconcile (now including 24 hours after an attempt ends), then the month-end settlement (now flagging money we never recorded, live, with a one-click fix through the same seams).
 
 ## Consequence to track
 
-- PRD §16 item 24 closes when this is built. The portal's 422 for a pending top-up becomes a card.
+- PRD §16 item 24 closes when this is built. The portal's 422 for a pending top-up becomes a card, and a group-only reseller gets the same facts in the group (decision 8a).
 - A Re-check credit is dated when the Re-check runs: a top-up's accounting date is its ledger credit (ADR-127 F5), while an order takes CHIP's `paid_on`. The Monthly Summary's processing gain/loss counts our fee on an unpaid matched row until it is fixed. Both are small, and both are correct once the row is fixed.
 - A `mark_as_paid` on a cancelled purchase is a merchant action. The founder should never use it for a top-up. If it is used anyway, the webhook, then decision 10, then decision 12 catch it.
 - Pre-existing, not in this ADR: `createPayment()` is a POST that retries on a connection error, so CHIP could hold two purchases under one reference while only one link is stored. The orphan was never handed out, so no one can pay it. Recorded here so it is not rediscovered as new.
