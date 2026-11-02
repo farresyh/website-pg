@@ -546,6 +546,56 @@ final class ReportService
     }
 
     /**
+     * ADR-104 2026-11-03 addendum (PRD §16 item 94): the Games tab's
+     * best-selling products. Same scope and profit rollup as
+     * gameBreakdown(), grouped by the product snapshotted on each order
+     * (`orders.product_key`, Package::productKey()), so a resend swap or a
+     * renamed, deleted or recreated package never moves a sale. The name is
+     * the one on the product's latest order in the period.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function productBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
+    {
+        $groupExpr = "COALESCE(orders.product_key, '')";
+        $sales = $this->salesByGroup($this->scopedOrders($from, $toExclusive, $affiliateId), $groupExpr);
+        $profit = $this->profitByGroup($from, $toExclusive, $affiliateId, $groupExpr);
+        $names = $this->scopedOrders($from, $toExclusive, $affiliateId)
+            ->orderByDesc('orders.id')
+            ->get(['orders.product_key', 'orders.product_name'])
+            ->unique('product_key')
+            ->pluck('product_name', 'product_key');
+
+        $gameOf = fn (string $key) => (int) strtok($key, ':');
+        $gameSales = $sales->groupBy(fn ($row, $key) => $gameOf((string) $key))->map(fn ($rows) => (int) $rows->sum('sales'));
+        $games = Game::query()->whereIn('id', $gameSales->keys()->reject(fn ($id) => $id === 0))->pluck('name', 'id');
+
+        $rows = [];
+
+        foreach ($sales as $key => $row) {
+            $key = (string) $key;
+            $gameId = $gameOf($key);
+            $gameTotal = $gameSales->get($gameId, 0);
+
+            $rows[] = [
+                'product_key' => $key,
+                'game_id' => $gameId ?: null,
+                'game_name' => $games[$gameId] ?? 'Unknown Game',
+                'product_name' => $names[$key] ?? 'Unknown product',
+                'sales' => (int) $row->sales,
+                'orders_count' => (int) $row->orders_count,
+                'platform_profit' => $profit->get($key)['platform'] ?? 0,
+                'affiliate_profit' => $profit->get($key)['affiliate'] ?? 0,
+                'pct_of_game_sales' => $gameTotal > 0 ? round($row->sales / $gameTotal * 100, 2) : 0.0,
+            ];
+        }
+
+        usort($rows, fn (array $a, array $b) => $b['sales'] <=> $a['sales']);
+
+        return $rows;
+    }
+
+    /**
      * Payment Methods tab — sales/order share only (mirrors the
      * reference's "Sales by Payment Channel" panel), no profit split:
      * the payment channel a customer picked has no bearing on profit

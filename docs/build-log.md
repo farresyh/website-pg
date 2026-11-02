@@ -1707,3 +1707,12 @@ The founder asked whether the docs were current and free of contradictions. Read
 - Public catalog reads: 56,724 over 500 ms in 7 days, in bursts of 3–5 per second, driven by the storefront's 30 s Data Cache backstop (ADR-077 2026-11-03 addendum). `catalogCache.revalidate` 30 → 300 s; hero slides keep 60 s through `scheduledCatalogCache` (their schedule changes with no save). Every other cached read's writers were traced to a purge; prod's revalidate URL and secret are set.
 
 **Checked.** Storefront `tsc`, eslint and `next build` pass. The effect is to be read in Pulse a day after release.
+
+## 2026-11-03 — Item 94: best-selling products per game in Reports (ADR-104 addendum)
+
+**What.** Built the ADR-104 2026-11-03 addendum (design delegated by the founder).
+- `Package::productKey()` (`{game}:d:{denomination}`, else `:c:{catalog_code}`, else `:p:{id}`) is the one definition of a product. `CatalogController::dedupByDenomination` now groups by it (129 catalog tests unchanged).
+- `orders.product_key` and `orders.product_name`, written by `OrderFactory` (every channel) and the sandbox, never rewritten. The migration backfills existing orders from the order-level `initial` attempt's package, else `orders.package_id` (a missing package gives `:p:{id}` and no name). Prod at design time: 5 of 59 orders had been resend-swapped, 11 pre-2026-09-18 orders had no `initial` row, 1 bought package no longer exists.
+- `GET /reports/breakdown/products` (`ReportService::productBreakdown`, the Games tab's scope and ledger profit rollup); the Games tab has a "Best-selling products" card (product, game, sales, % of game, orders, owner and affiliate profit; 10 per page) narrowed by the game filter. `RouteAccessTest` pin updated.
+
+**Checked.** `BestSellingProductsTest` (5, red first: key cases, factory snapshot surviving a swap, idempotent backfill with a swap and a deleted package, grouping of a combo and a native package of the same amount with share and profit, unknown name); full backend suite passing; admin `tsc` and eslint; local dev DB migrated with plain `migrate` (1,593 of 1,593 orders keyed); the card seen in a browser (Playwright, light and dark, filter empty state) against the local API.

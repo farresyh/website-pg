@@ -350,24 +350,13 @@ class CatalogController extends Controller
      */
     private function dedupByDenomination($packages)
     {
-        [$withDenomination, $rest] = $packages->partition(
-            fn (Package $package) => $package->denomination !== null,
-        );
-        [$withCatalogCode, $withoutEither] = $rest->partition(
-            fn (Package $package) => $package->catalog_code !== null,
-        );
-
-        $cheapestPerDenomination = $withDenomination
-            ->groupBy('denomination')
-            ->map(fn ($group) => $this->cheapestInGroup($group));
-
-        $cheapestPerCatalogCode = $withCatalogCode
-            ->groupBy('catalog_code')
-            ->map(fn ($group) => $this->cheapestInGroup($group));
-
-        return $withoutEither
-            ->concat($cheapestPerDenomination->values())
-            ->concat($cheapestPerCatalogCode->values())
+        // ADR-104 2026-11-03 addendum: Package::productKey() is the one
+        // definition of "the same product" (denomination, else catalog
+        // code, else the package alone), shared with Reports.
+        return $packages
+            ->groupBy(fn (Package $package) => $package->productKey())
+            ->map(fn ($group) => $this->cheapestInGroup($group))
+            ->values()
             ->sortBy([
                 // ADR-034 follow-up (founder feedback, 2026-08-25):
                 // smallest denomination first reads as cheapest-first
