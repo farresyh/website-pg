@@ -120,6 +120,8 @@ export interface CustomerNotification {
   session: "customer_support" | "bot";
   phone: string | null;
   chat_id: string | null;
+  // ADR-116 2026-11-03 addendum: the checkout phone this `@lid` chat was verified as, if tied.
+  verified_phone?: string | null;
   status: "queued" | "sent" | "failed" | "skipped";
   attempts: number;
   error: string | null;
