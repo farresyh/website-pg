@@ -105,6 +105,11 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
                 return PaymentResponse::success(['status' => $this->status, 'amount_sen' => 1100], status: $status);
             }
 
+            public function cancelPayment(string $paymentRequestId): PaymentResponse
+            {
+                return $this->getPayment($paymentRequestId);
+            }
+
             public function verifyWebhookSignature(Request $request): bool
             {
                 throw new RuntimeException('not used in this test');
@@ -252,6 +257,11 @@ class ReconcilePendingPaymentsCommandTest extends TestCase
             public function getPayment(string $paymentRequestId): PaymentResponse
             {
                 return PaymentResponse::success(['status' => 'paid', 'amount_sen' => 1], status: PaymentStatus::Paid);
+            }
+
+            public function cancelPayment(string $paymentRequestId): PaymentResponse
+            {
+                return $this->getPayment($paymentRequestId);
             }
 
             public function verifyWebhookSignature(Request $request): bool

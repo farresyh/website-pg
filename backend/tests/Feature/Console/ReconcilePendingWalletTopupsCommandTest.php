@@ -95,6 +95,11 @@ class ReconcilePendingWalletTopupsCommandTest extends TestCase
                 return PaymentResponse::success($data, status: $status);
             }
 
+            public function cancelPayment(string $paymentRequestId): PaymentResponse
+            {
+                return $this->getPayment($paymentRequestId);
+            }
+
             public function verifyWebhookSignature(Request $request): bool
             {
                 throw new RuntimeException('not used');

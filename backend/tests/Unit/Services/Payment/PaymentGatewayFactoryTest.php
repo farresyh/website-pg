@@ -80,6 +80,11 @@ class PaymentGatewayFactoryTest extends TestCase
                 return PaymentResponse::success([]);
             }
 
+            public function cancelPayment(string $paymentRequestId): PaymentResponse
+            {
+                return $this->getPayment($paymentRequestId);
+            }
+
             public function verifyWebhookSignature(Request $request): bool
             {
                 return true;

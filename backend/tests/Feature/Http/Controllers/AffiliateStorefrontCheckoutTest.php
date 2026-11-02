@@ -71,6 +71,11 @@ class AffiliateStorefrontCheckoutTest extends TestCase
                 ]);
             }
 
+            public function cancelPayment(string $paymentRequestId): PaymentResponse
+            {
+                return $this->getPayment($paymentRequestId);
+            }
+
             public function verifyWebhookSignature(Request $request): bool
             {
                 throw new RuntimeException('not used');
@@ -211,6 +216,11 @@ class AffiliateStorefrontCheckoutTest extends TestCase
                     'payment_request_id' => $paymentRequestId,
                     'actions' => ['desktop_web_checkout_url' => 'https://gate.chip-in.asia/p/x'],
                 ]);
+            }
+
+            public function cancelPayment(string $paymentRequestId): PaymentResponse
+            {
+                return $this->getPayment($paymentRequestId);
             }
 
             public function verifyWebhookSignature(Request $request): bool

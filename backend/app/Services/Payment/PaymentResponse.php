@@ -50,6 +50,16 @@ final class PaymentResponse
             && ($this->data['failure_is_final'] ?? false) === true;
     }
 
+    /**
+     * ADR-135 decision 6: the purchase ended because its time ran out
+     * (`ended_by_expiry`), as opposed to a cancel, a bank failure or a
+     * fraud block. Names an ended attempt Expired rather than Failed.
+     */
+    public function endedByExpiry(): bool
+    {
+        return $this->isFinalFailure() && ($this->data['ended_by_expiry'] ?? false) === true;
+    }
+
     public static function failure(string $errorCode, string $errorMessage): self
     {
         return new self(false, null, null, $errorCode, $errorMessage);
