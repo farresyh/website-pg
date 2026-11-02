@@ -109,6 +109,16 @@ class ReportController extends Controller
         ]);
     }
 
+    /** ADR-104 2026-11-03 addendum: best-selling products per game. */
+    public function productBreakdown(Request $request): JsonResponse
+    {
+        [$from, $toExclusive] = $this->rangeFromRequest($request);
+
+        return response()->json([
+            'products' => $this->reports->productBreakdown($from, $toExclusive, $this->affiliateId($request)),
+        ]);
+    }
+
     public function paymentMethodBreakdown(Request $request): JsonResponse
     {
         [$from, $toExclusive] = $this->rangeFromRequest($request);

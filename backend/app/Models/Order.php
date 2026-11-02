@@ -50,6 +50,8 @@ class Order extends Model
         'server_id',
         'game_id',
         'package_id',
+        'product_key',
+        'product_name',
         'supplier_id',
         'supplier_product_ref',
         'affiliate_id',
