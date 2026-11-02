@@ -2,7 +2,7 @@
 
 > **Standing (2026-11-02):** Proposed. Extends [ADR-073](./ADR-073-reseller-wallet.md) (PR-G decision 8, one pending top-up per reseller), [ADR-076](./ADR-076-reseller-bot-v2.md) (PR-H decision 3, the bot hands back the pending link) and [ADR-110](./ADR-110-chip-integration-hardening.md) (the 2026-10-29 "a dead link is never handed out" rule; PR-B settlement matching). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
-**Status:** Proposed, 2026-11-02; Accepted only after the stress test (one read-only review per layer) and its findings are folded in. Money-critical (Purchase Balance). Grilled with the founder in Malay (bot cancel, resume bank, settlement gap, remedy), with a code-trace pass over every writer and reader of `wallet_topup_attempts.status` (initiate, webhook, reconcile, bot, portal, receipts, register, closure, settlement) and a CHIP test-mode probe. The founder delegated the purely technical points (decision 8). PRD §16 item 24.
+**Status:** Proposed, 2026-11-02; Accepted only after the stress test (one read-only review per layer) and its findings are folded in. Money-critical (Purchase Balance). Grilled with the founder in Malay (bot cancel, resume bank, settlement gap, remedy), with a code-trace pass over every writer and reader of `wallet_topup_attempts.status` and a CHIP test-mode probe, then stress-tested by three read-only reviews (payment state and races; settlement and accounting; surfaces and readers) whose findings are folded into the decisions below. The founder delegated the purely technical points. PRD §16 item 24.
 
 ## Context
 
@@ -39,41 +39,66 @@ The last row matters. A cancelled purchase can still become `paid` by a **mercha
 
 ## Decision
 
-1. **One seam answers "what is this reseller's pending top-up".** A new `ResellerWalletTopupService::currentPending(Reseller): ?WalletTopupAttempt` first runs the existing `failPendingIfFinal()`, then returns the live pending attempt. That is a `pending` row with `expires_at` in the future and a `checkout_url`.
-   - The portal's `GET /wallet` returns it as `pending_topup` (reference, amount, total charged, channel, expires at, plain checkout URL).
-   - The 422 body carries the same object.
-   - The bot's `PendingWalletTopupAlreadyExistsException` handler calls it, and its own duplicate query is deleted.
-   - From then on the two channels cannot drift, and a dead link is never handed out (ADR-110 2026-10-29).
-2. **Resume is just that link.** No new payment state and no new CHIP purchase. The portal shows a "Pending top-up" card with Pay now and Cancel. The FPX bank pre-selection of ADR-130 is not re-applied on resume: CHIP's page shows the bank grid. A bank chosen at the start lives only in that response. (Founder, 2026-11-02.)
-3. **Cancel is decided by CHIP, never locally.** `ResellerWalletTopupService::cancel(Reseller, WalletTopupAttempt)`:
-   1. The attempt is loaded tenant-scoped (the reseller's own, `pending`). Anything else is a 404 or 409.
-   2. With no `chip_payment_ref` (the create response was lost), it refuses: "this top-up will expire by itself by HH:MM". There is no CHIP purchase to cancel, and the reconcile sweep already expires it.
-   3. It calls the gateway's cancel **outside any lock** (the ADR-110 rule: no CHIP call while the wallet mutex is held), then **re-reads the purchase with `getPayment()` and acts only on that answer**. The cancel response is never parsed for meaning, so a 400 for "already cancelled", "already paid" or "error" all land in one decision:
-      - final failure (`failure_is_final`: `cancelled`, `expired`, `overdue`, `blocked`, or single-attempt `error`): `leavePending(Failed)`. The conditional update loses safely to a Paid that committed first.
-      - `paid`: no local write. The reseller is told the payment already went through and the balance appears shortly. Crediting stays with the webhook and reconcile, the two existing paths with the amount check; the cancel path never credits.
-      - anything else (`pending_*`, `hold`, a CHIP error): refuse ("the payment is being processed at your bank, wait for it to finish"). The attempt stays `pending` and reconcile settles it as today.
-   4. It is logged with the reseller id and reference ("cancelled by reseller").
-4. **The gateway seam gains `cancelPayment(string $paymentRequestId): PaymentResponse`.** It is a real capability of the gateway; `ChipGateway` implements it with `POST /purchases/{id}/cancel/` and `FakePaymentGateway` mirrors it. ADR-001's thin-seam rule is kept: one method, normalised like `getPayment()`.
-5. **No new attempt status.** A cancelled attempt is `failed`, like every other attempt whose CHIP purchase died; `ChipGateway` already maps `cancelled` to Failed. Receipts, the transaction register, closure and settlement already read `failed`, so nothing downstream changes. The reason lives in the log.
-6. **The bot gets the same cancel** as `.batalbaki` (no argument: it cancels the group's reseller's current pending top-up), through decision 3's method, with a Malay reply per outcome. It needs no argument because a reseller can never have two pending top-ups (ADR-073 PR-G decision 8): a `.topupbaki 150` while `.topupbaki 100` is pending is refused with the RM100 link, so `.batalbaki` always means that one. The reply names the amount and reference it cancelled. (Founder, 2026-11-02.)
-7. **A settled payment whose local record is not paid is a variance** (closes the gap found above, for all three record types). `resolveMatch()` also reports whether the matched record is paid (order `payment_status = paid`, attempt `status = paid`). An unpaid match marks the settlement `variance`, and the detail screen tags the row "settled but not paid here". For a top-up, the row has a **Re-check with CHIP** action (super_admin, `mfa.stepup`): it calls `getPayment()` and, only when CHIP says `paid` with the amount equal to `total_charged_sen`, runs `ResellerWalletService::completeTopup()`, the same locked, once-only seam the webhook and reconcile use. A late webhook then finds the attempt `paid` and does nothing. The admin's manual wallet credit is **not** the remedy: it is not tied to the attempt, so a webhook arriving later would credit the same payment twice (founder, 2026-11-02). An order or a membership row is flagged only; its remedy stays as today (a voucher, ADR-004). The month-end close is the last safety net behind the webhook and reconcile, so it must not report a clean match on money this platform never credited.
+Revised 2026-11-02 after the stress test (three read-only reviews: payment state and races; settlement and accounting; surfaces and readers). The founder's choices from the grill are marked; the rest are technical points the founder delegated.
 
-8. **Technical points settled in the trace** (delegated by the founder):
-   - The portal route is `POST /reseller-portal/wallet/topup/{reference}/cancel`, throttled like the top-up route, and scoped by the token's reseller (another reseller's reference is a 404).
-   - `.batalbaki` uses `.topupbaki`'s group-to-reseller resolution, its deactivated-reseller check and its own rate limit (`reseller-bot-batalbaki:{id}`, 5 per minute), since every call reaches CHIP.
-   - Tests come first: the cancel outcomes table (cancelled, paid, in-flight, CHIP error, no purchase id, another reseller's attempt), a cancel racing a paid webhook (the Paid write wins, the cancel leaves nothing), and the settlement variance on an unpaid match for all three record types.
-   - Build order: PR 1 the gateway method, `currentPending()`, `cancel()`, portal endpoint and UI; PR 2 `.batalbaki`; PR 3 the settlement variance and Re-check action.
+### Reading and resuming
+
+1. **One seam answers "what is this reseller's pending top-up", and it never calls CHIP.** `ResellerWalletTopupService::currentPending(Reseller): ?WalletTopupAttempt` is a database read: the `pending` row whose `expires_at` is in the future, **with or without a link**. `GET /reseller-portal/wallet` returns it as `pending_topup` (reference, amount, total charged, channel, expires at, and whether a link exists). It runs on every balance and dashboard load, so a CHIP call there would put CHIP's 10-second timeout and retries on each page view (stress test). A row with no link (the create response was lost) shows "Setting up, expires HH:MM" with no buttons. Without it, `initiate()` would block the reseller with nothing on screen.
+2. **Resume verifies only when asked.** `POST /reseller-portal/wallet/topup/{reference}/resume` runs the existing `failPendingIfFinal()` for that attempt and returns the live link, or "this top-up has ended, start a new one". That keeps ADR-110's 2026-10-29 rule (a dead link is never handed out) without a CHIP call per page load. No new payment state and no new CHIP purchase. The link is the stored plain URL and CHIP's page shows the bank grid. A bank picked at the start is not re-applied (founder).
+3. **The 422 stays plain text.** The portal's `ApiError` keeps only the message, so a `pending_topup` in the 422 body would be dropped. On a 422 from `/wallet/topup` the page re-fetches `GET /wallet` and shows the card. `GET /wallet` is the one source.
+4. **The bot renders the attempt the lock already found.** `PendingWalletTopupAlreadyExistsException` carries the attempt that `initiate()` found under the wallet mutex, and `ResellerBotService` renders it. Its duplicate query is deleted, and no second CHIP call is made (`initiate()` has already run `failPendingIfFinal()`).
+
+### Cancelling
+
+5. **Cancel is decided by CHIP, never locally.** `ResellerWalletTopupService::cancel(Reseller, WalletTopupAttempt)`:
+   1. The attempt is loaded tenant-scoped (the reseller's own, `pending`). Another reseller's reference is a 404.
+   2. With no `chip_payment_ref`, it refuses: "this top-up will expire by itself at HH:MM". There is no CHIP purchase to cancel, and reconcile already expires it.
+   3. It calls `cancelPayment()` **outside any lock** (the ADR-110 rule), then **re-reads with `getPayment()` and acts only on that answer**. The cancel's own response is never parsed, so CHIP's 400 for "already cancelled" or "already paid" lands in the same decision:
+      - final failure: the attempt leaves `pending` with the status from decision 6.
+      - `paid`: no local write. "The payment already went through; your balance will show shortly." The cancel path never credits.
+      - anything else (`pending_*`, `hold`, a CHIP or network error): refuse ("the payment is being processed, wait for it to finish"). The row stays `pending` and reconcile settles it.
+   4. When `leavePending()` returns false (the webhook, reconcile or a second cancel got there first), it re-reads the row and reports what it actually is.
+   5. It logs the reseller id, the reference and "cancelled by reseller".
+6. **One function names a dead attempt's status.** `expired` and `overdue` become `expired`; `cancelled`, `blocked` and single-attempt `error` become `failed`. `failPendingIfFinal()` and `cancel()` both use it, so the same CHIP state never gets two labels. No new status: every reader filters on `paid` or `pending` only (receipts, the transaction register, settlement, closure), no admin screen lists attempts, and portal history shows ledger rows. A `cancelled` label would change nothing anyone sees.
+7. **The gateway seam gains `cancelPayment(string $paymentRequestId): PaymentResponse`.** `ChipGateway` implements it with `POST /purchases/{id}/cancel/`, normalised like `getPayment()`. A retried POST is harmless, because the cancel is idempotent and the re-read decides. `FakePaymentGateway` remembers cancelled ids and reports them as `cancelled`; today its `getPayment()` always says paid, which would make every e2e cancel say "already paid". PR 1 updates every class that implements or mocks `PaymentGateway`: the 4 `app/Console/Commands/Testing` commands, `PaymentGatewayFactoryTest`, `CheckoutControllerFixtures`, `Adr094ComboConsumingChannelsTest` and `CheckoutControllerFpxBankTest`. Otherwise they fail to load.
+8. **The bot gets `.batalbaki`** (founder), with no argument. A reseller can never have two pending top-ups (ADR-073 PR-G decision 8): a `.topupbaki 150` while `.topupbaki 100` is pending is refused with the RM100 link. So `.batalbaki` always means that one, and the reply names its amount and reference.
+   - It goes through decision 5 with its own rate limit (`reseller-bot-batalbaki:{id}`, 5 per minute).
+   - Unlike `.topupbaki`, it is **allowed for a deactivated reseller**. Cancelling only reduces exposure, and closure is blocked while a top-up is pending (`ResellerClosureService`), so blocking it would keep a payable link alive on the account being wound down.
+   - Any member of the linked group may issue it: the same trust as `.topupbaki` and `.order` (the bot resolves the reseller from the group, not the sender).
+   - Help text gets the line, and failures log `topup_cancel_none` and `topup_cancel_in_flight`.
+9. **The portal's top-up routes get named limits.** Resume and cancel each make CHIP calls, and `/wallet/topup` is unthrottled today, so a script can mint unlimited CHIP purchases (pre-existing; the bot caps the same action at 5 per minute). `POST /wallet/topup`, `/resume` and `/cancel` get `throttle:N,1,name` limits matching the bot. The pending card replaces the Add Balance form inside its `Panel`, built from the `components/ui` kit (ADR-038; a new primitive goes in the admin kit, then `sync-shared-files.mjs`).
+
+### The backstops behind a cancel
+
+10. **Reconcile also re-checks recently ended attempts.** The webhook credits a paid event even on a `failed` or `expired` attempt, but `ReconcilePendingWalletTopupsCommand` sweeps only `pending`. Without this, a payment that lands after the attempt ended, with its webhook lost, waits for the month-end settlement. That could happen after a merchant `mark_as_paid` (probed), or a bank payment CHIP settles after the cancel (not producible in test mode). The sweep also asks CHIP about attempts that left `pending` in the last 24 hours and have a `chip_payment_ref`. Paid goes through the same paid seam (decision 11). This adds no new state.
+11. **One paid seam per attempt type, with the amount check inside.** Today the top-up amount check is copied in the webhook and in reconcile, and the membership one likewise (orders were moved to `OrderPaymentOutcomeService::applyPaid` in item 63). New `applyPaid(attempt, amountSen, feeSen)` methods for top-ups and memberships mirror the order seam. Each returns an outcome (credited, already paid, amount mismatch, credited to a closed account), and the webhook, reconcile and the Re-check action all call it. No caller writes its own copy.
+12. **A settled payment whose local record is not paid is shown live, not stored.** A new `SettlementReconciliationService::settledButUnpaid()` joins `chip_settled_transactions` to each record type and returns those not paid. It is worked out on every view, like the existing `paidButNotSettled()`. The settlement's stored `status` is not changed, because it is written once at upload and would stay "variance" after the record was fixed. No migration. The detail screen tags those rows "settled but not paid here".
+13. **Re-check with CHIP fixes it through the record's own paid seam, for all three types** (founder chose the action for top-ups; the stress test found the same seam already exists for orders). It is `POST /accounting/settlements/transactions/{chipSettledTransaction}/recheck`, super_admin plus `mfa.stepup`. It calls `getPayment()` and routes by type:
+    - order → `PaymentReconciliationService::reconcileOrder()` (Paid after Failed becomes `paid` plus NeedsReview under the order lock)
+    - membership → its `applyPaid`
+    - top-up → its `applyPaid`
+
+    It shows the outcome, including "credited to a closed account: refund the payer" (ADR-131 decision 6). Idempotency comes from the seams (locked, once only). The admin's manual wallet credit is **not** the remedy: it is not tied to the attempt, so a webhook arriving later would credit the same payment twice (founder). A voucher is not the remedy for an order either: a voucher answers a failed delivery, not a payment we never recorded.
+
+### Build order
+
+14. Tests come first: the cancel outcomes (cancelled, paid, in flight, CHIP error, no purchase id, another reseller's attempt, lost race), a cancel racing a paid webhook (Paid wins), the 24-hour re-check, each `applyPaid` outcome, and `settledButUnpaid()` per type.
+    - **PR 1:** the paid seams (decision 11). A refactor with no behaviour change, proved by the existing webhook and reconcile tests.
+    - **PR 2:** the gateway method, `currentPending()`, resume, cancel, the status function, throttles, the portal card, and the 24-hour re-check.
+    - **PR 3:** `.batalbaki`.
+    - **PR 4:** `settledButUnpaid()` and Re-check.
 
 ## Rationale
 
-- **One seam for "current pending" and one for "cancel"** follows the rule that every reader routes through one place. The bot's existing copy is the drift this removes.
-- **CHIP decides, because the danger is a link that stays payable.** Re-reading after the call makes the outcome depend on CHIP's state, not on CHIP's error wording. That holds for the cases the probe could not create (a payment in flight at the bank).
-- **The cancel path never credits.** Crediting already has two guarded paths with an amount check. A third would be a copy to drift (the item 63 lesson).
-- **Reusing `failed`** leaves every existing reader of the status (receipts, the transaction register, closure, settlement) unchanged for a label none of them would treat differently.
-- **Decision 7 sits in this ADR** because this design leans on the backstop chain (webhook, then reconcile, then the month-end settlement), and the trace showed the last link reports clean on unpaid money. Fixing it in `resolveMatch()`, the one place every settlement row goes through, covers orders and memberships too.
+- **Every reader and writer routes through one seam:** current pending (decision 1), the dead status (decision 6), the paid outcome per type (decision 11), and the settlement check (decision 12). The two copies the trace found (the bot's pending query and the amount checks) are removed rather than joined by a third.
+- **CHIP decides a cancel, because the danger is a link that stays payable.** Re-reading after the call makes the outcome depend on CHIP's state, not its error wording, and that holds for the cases the probe could not create.
+- **Page loads never wait on CHIP.** A read is a database read; CHIP is asked only when someone acts.
+- **The backstop chain is closed end to end:** the webhook, then reconcile (now including 24 hours after an attempt ends), then the month-end settlement (now flagging money we never recorded, live, with a one-click fix through the same seams).
 
 ## Consequence to track
 
-- PRD §16 item 24 closes when this is built. The portal's 422 for a pending top-up becomes a card, not an error.
-- A `mark_as_paid` on a cancelled purchase is a merchant action. The founder should never use it for a top-up. If it is used anyway, the webhook credits it, and decision 7 flags it at the month end if the webhook was lost.
-- Not built: cancelling a storefront order's or a membership's pending purchase. A guest just starts a new order and the old one expires, so nothing is blocked.
+- PRD §16 item 24 closes when this is built. The portal's 422 for a pending top-up becomes a card.
+- A Re-check credit is dated when the Re-check runs: a top-up's accounting date is its ledger credit (ADR-127 F5), while an order takes CHIP's `paid_on`. The Monthly Summary's processing gain/loss counts our fee on an unpaid matched row until it is fixed. Both are small, and both are correct once the row is fixed.
+- A `mark_as_paid` on a cancelled purchase is a merchant action. The founder should never use it for a top-up. If it is used anyway, the webhook, then decision 10, then decision 12 catch it.
+- Pre-existing, not in this ADR: `createPayment()` is a POST that retries on a connection error, so CHIP could hold two purchases under one reference while only one link is stored. The orphan was never handed out, so no one can pay it. Recorded here so it is not rediscovered as new.
+- Not built: cancelling a storefront order's or a membership's pending purchase. A guest just starts a new one, and nothing is blocked.
