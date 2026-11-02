@@ -1697,3 +1697,12 @@ The founder asked whether the docs were current and free of contradictions. Read
 **Why the lane.** A read-only prod health check the same day (Pulse/Horizon, 7 days) found `default` has one worker that also sends reseller bot replies (up to 6.5 s each); lookups there would queue ahead of resellers during a burst.
 
 **Checked.** `CustomerWhatsAppLidTieTest` (12: lane, one job per chat, rate limit, dispatch and its skips, match and a later order's receipt to the phone, mismatch and `lid: null`, `503` throws, merge with STOP, an older lid replaced, idempotent, admin field), red first; full backend suite 3,502 passing; admin `tsc` and eslint clean. The lookup itself was proved on prod 2026-11-02 (CS key, 200 with an `@lid`). The admin label was not seen in a browser (one string change).
+
+## 2026-11-03 — Item 94: best-selling products per game in Reports (ADR-104 addendum)
+
+**What.** Built the ADR-104 2026-11-03 addendum (design delegated by the founder).
+- `Package::productKey()` (`{game}:d:{denomination}`, else `:c:{catalog_code}`, else `:p:{id}`) is the one definition of a product. `CatalogController::dedupByDenomination` now groups by it (129 catalog tests unchanged).
+- `orders.product_key` and `orders.product_name`, written by `OrderFactory` (every channel) and the sandbox, never rewritten. The migration backfills existing orders from the order-level `initial` attempt's package, else `orders.package_id` (a missing package gives `:p:{id}` and no name). Prod at design time: 5 of 59 orders had been resend-swapped, 11 pre-2026-09-18 orders had no `initial` row, 1 bought package no longer exists.
+- `GET /reports/breakdown/products` (`ReportService::productBreakdown`, the Games tab's scope and ledger profit rollup); the Games tab has a "Best-selling products" card (product, game, sales, % of game, orders, owner and affiliate profit) narrowed by the game filter. `RouteAccessTest` pin updated.
+
+**Checked.** `BestSellingProductsTest` (5, red first: key cases, factory snapshot surviving a swap, idempotent backfill with a swap and a deleted package, grouping of a combo and a native package of the same amount with share and profit, unknown name); full backend suite passing; admin `tsc` and eslint; local dev DB migrated with plain `migrate` (1,593 of 1,593 orders keyed); the card seen in a browser (Playwright, light and dark, filter empty state) against the local API.
