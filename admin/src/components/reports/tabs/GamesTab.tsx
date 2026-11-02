@@ -79,6 +79,7 @@ export function GamesTab(props: ReportTabProps) {
           <ReportTable
             rows={visibleProducts}
             rowKey={(r) => r.product_key}
+            pageSize={10}
             empty={query.trim() ? "No product matches this filter." : undefined}
             columns={[
               {
