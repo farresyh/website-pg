@@ -8,8 +8,9 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * ADR-116 decision 5 and its 2026-11-01 addendum: one WhatsApp sender's
  * opt-in state, keyed by phone, by privacy-id chat (`…@lid`), or both.
- * Written only by CustomerWhatsAppInboundService. Rows are never merged:
- * when a phone and a chat each have a row, STOP on either wins.
+ * Written only by CustomerWhatsAppInboundService. Rows are merged only when
+ * OpenWA proves the chat is the phone (2026-11-03 addendum); otherwise, when a
+ * phone and a chat each have a row, STOP on either wins.
  */
 class WhatsappContact extends Model
 {

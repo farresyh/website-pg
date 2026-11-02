@@ -96,6 +96,34 @@ final class OpenWaClient
     }
 
     /**
+     * ADR-116 2026-11-03 addendum: the `@lid` WhatsApp holds for a phone,
+     * asked without sending anything (OpenWA ≥ 0.27.1, OPERATOR key). Null
+     * when WhatsApp has none. Throws when OpenWA does not answer (a `503` is
+     * an unanswered query, never "no lid"), so the caller's job retries.
+     */
+    public function lidForPhone(string $phone): ?string
+    {
+        if ($this->sessionId === null || $this->apiKey === null) {
+            throw new RuntimeException('OpenWaClient: session_id/api_key not configured');
+        }
+
+        $response = Http::baseUrl($this->baseUrl)
+            ->withToken($this->apiKey)
+            ->acceptJson()
+            ->timeout($this->timeoutSeconds)
+            ->connectTimeout($this->connectTimeoutSeconds)
+            ->get("/api/sessions/{$this->sessionId}/contacts/{$phone}/lid");
+
+        if ($response->failed()) {
+            throw new RuntimeException("OpenWaClient: lid lookup failed with status {$response->status()}");
+        }
+
+        $lid = $response->json('lid');
+
+        return is_string($lid) && $lid !== '' ? $lid : null;
+    }
+
+    /**
      * The actual HTTP call — `SendResellerBotReplyJob` and
      * `SendCustomerWhatsAppJob` call this. Throws on failure (unlike
      * `sendText()`) so the job's queue retry kicks in. A pacing refusal

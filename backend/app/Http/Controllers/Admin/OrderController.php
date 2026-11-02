@@ -16,6 +16,7 @@ use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\OrderCredential;
 use App\Models\Package;
+use App\Models\WhatsappContact;
 use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderFulfillmentService;
@@ -880,6 +881,11 @@ class OrderController extends Controller
         // §16 item 84: the Refund cards show `display_status` (expiry is `expires_at` alone).
         $order->voucher?->append('display_status');
         $order->paidWithVoucher?->append('display_status');
+
+        // ADR-116 2026-11-03 addendum decision 8: a chat now tied to a phone shows it.
+        $chatIds = $order->customerNotifications->pluck('chat_id')->filter()->unique();
+        $verified = $chatIds->isEmpty() ? collect() : WhatsappContact::query()->whereIn('chat_id', $chatIds)->whereNotNull('phone')->pluck('phone', 'chat_id');
+        $order->customerNotifications->each(fn ($row) => $row->setAttribute('verified_phone', $row->chat_id !== null ? $verified->get($row->chat_id) : null));
 
         return response()->json([
             ...$order->toArray(),
