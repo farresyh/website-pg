@@ -1685,4 +1685,4 @@ The founder asked whether the docs were current and free of contradictions. Read
 
 **Checked (read-only).** Process cwd `/home/forge/openwa-deploy/releases/v0.27.1`; both sessions `ready` at 15:29 UTC; `/api/health/whatsapp` ok; `GET /contacts/6582751992/lid` with the CS key → 200 with an `@lid`. `OpenWaClient::sendNow()` already retries a non-2xx, so 0.27.1's `409` on a send cut off by a reconnect (not sent) retries like the old `503`. `backup.sh` follows symlinks; first nightly OpenWA backup after the move (03:37 MYT) still to be seen.
 
-**Seen, not changed.** `MESSAGE_RETENTION_DAYS` is present but empty in OpenWA's `.env`, so `messages` is kept forever (1,703 rows, `openwa.sqlite` 43 MB).
+**Seen, not changed.** `MESSAGE_RETENTION_DAYS=90` carried over in `shared/.env` (set 2026-10-25, item 96): 1,703 messages, the oldest 2026-09-25, so the first prune is around 2026-12-24; `openwa.sqlite` 43 MB.
