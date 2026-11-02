@@ -128,7 +128,7 @@ Revised 2026-11-02 after the stress test (three read-only reviews: payment state
 
 ### 2026-11-02 addendum — what the build changed
 
-Recorded while building PRs 1–4 (#655, #656, #657, and PR 4). Every decision above stands, except where noted here.
+Recorded while building PRs 1–4 (#655, #656, #657, #658). Every decision above stands, except where noted here.
 
 - **Decision 13, orders:** Re-check calls `OrderPaymentOutcomeService::applyPaid()` directly, not `PaymentReconciliationService::reconcileOrder()`. That is the seam `reconcileOrder()` itself calls on Paid, with the same lock and the same Paid-after-Failed → NeedsReview branch. Calling it directly lets Re-check report the order's own outcome (sent for delivery, sent to Needs Review, amount mismatch) without changing `reconcileOrder()`'s return. All three record types now take the same path: ask CHIP, and on Paid hand the answer to the type's `applyPaid()`.
 - **Decision 13, gateway:** Re-check always asks CHIP. A settlement row is a CHIP payment by definition, so the gateway is not looked up per record.
