@@ -1720,3 +1720,11 @@ The founder asked whether the docs were current and free of contradictions. Read
 ## 2026-11-03 — Docs audit at session end
 
 Checked every doc this session touched against `origin/main..origin/staging` and production. Fixed: PRD §14 headline date and a "Waiting on `staging`" paragraph (#661–#666, one migration `add_product_key_to_orders_table`, no env change); PRD §10 OpenWA row (it still said v0.27.0; now v0.27.1 on the releases-plus-shared layout, and the `@lid` lookup); PRD §16 header (156 and 94 built, 158 and 159 added); a glossary entry for **Product (Reports)**; ADR-071's "30s TTL" given a pointer to ADR-077's 2026-11-03 addendum. Still to verify after the next release: Pulse's catalog `slow_request` count, the first nightly OpenWA backup on the new layout (due 19:37 UTC 2026-11-02; not run at 17:49 UTC), the first `@lid` tie in production, and the `product_key` backfill on prod's orders.
+
+## 2026-11-03 — Release #668 (`staging` → `main`)
+
+**What.** Released at the founder's request: #661–#667 (#664 item 156 `@lid` tie; #665 storefront catalog backstop 300 s; #666 item 94 best-selling products; docs and `scripts/openwa-upgrade.sh`). Merge `6a28239e`; CI all green including `deploy`; box release `81896833` at `6a28239`.
+
+**Checked (read-only, prod).** Migration `2026_11_03_120000_add_product_key_to_orders_table` Ran; 91 orders, 0 without `product_key`; `/api/health` ok (database, queue, horizon, scheduler); `/api/health/whatsapp` both sessions `ready`.
+
+**Still to check.** The first nightly OpenWA backup on the releases-plus-shared layout (19:37 UTC 2026-11-02; at release the box clock read 18:33 UTC, so it had not run yet; the last `openwa` `BackupRun` is #76, 2026-11-01, success, restore test passed). A day later: Pulse catalog `slow_request` drop (ADR-077 addendum) and the first `@lid` tie (log `privacy-id chat tied`).
