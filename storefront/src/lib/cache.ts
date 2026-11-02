@@ -10,8 +10,13 @@ import { unstable_rethrow } from "next/navigation";
  * layer up. ADR-077 PR-3 decision 9 switched that purge from SWR
  * (`"max"`) to immediate expiry (`{ expire: 0 }`) so the next request
  * after a purge is a blocking cache-miss and comes back fresh (was
- * "must refresh 2–3 times"); this 30s TTL (was 60s) is now purely a
- * failure backstop for a webhook that never arrived.
+ * "must refresh 2–3 times"); the TTL is purely a failure backstop for a
+ * webhook that never arrived. ADR-077 2026-11-03 addendum: 30s → 300s.
+ * At 30s every page view past the window re-read ~8 endpoints at once, and
+ * on the 2-CPU API box half of those reads took over 500ms (Pulse, 7 days
+ * to 2026-11-02) for data that only changes on an admin save, which purges.
+ * Data that changes with time and no save (a hero slide's schedule) keeps
+ * a short TTL: `scheduledCatalogCache`.
  *
  * ADR-060 PR-3: the `X-Storefront-Host` header + `__brand` query param
  * (lib/api-client.ts) partition every cached read per brand; the coarse
@@ -30,7 +35,13 @@ import { unstable_rethrow } from "next/navigation";
 export const CATALOG_TAG = "catalog";
 
 export const catalogCache: { revalidate: number; tags: string[] } = {
-  revalidate: 30,
+  revalidate: 300,
+  tags: [CATALOG_TAG],
+};
+
+/** A read whose answer moves with the clock (hero slides' `starts_at`/`ends_at`): no save purges it. */
+export const scheduledCatalogCache: { revalidate: number; tags: string[] } = {
+  revalidate: 60,
   tags: [CATALOG_TAG],
 };
 
