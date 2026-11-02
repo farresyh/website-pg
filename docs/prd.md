@@ -976,11 +976,10 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
 - **24** Reseller Purchase Balance: resume or cancel a pending top-up. Today
   one active top-up per reseller, 30 minutes, and a second attempt gets a 422
   with no way to cancel or continue in the portal. Designed 2026-11-02 in
-  [ADR-135](./adr/ADR-135-pending-topup-resume-cancel.md) (Proposed:
-  CHIP's cancel endpoint probed in test mode, grilled, code-traced; stress
-  test before Accepted). Three
-  PRs: portal resume/cancel, bot `.batalbaki`, and a settlement variance for a
-  settled payment on an unpaid record (with a Re-check with CHIP action).
+  [ADR-135](./adr/ADR-135-pending-topup-resume-cancel.md) (Accepted:
+  CHIP's cancel endpoint probed in test mode, grilled, stress-tested). Four
+  PRs: one paid seam per attempt type; portal resume/cancel; bot `.batalbaki`
+  with group messages; settled-but-unpaid shown live with Re-check with CHIP.
 - **94** Best-selling products per game in Reports (founder, 2026-10-13). Needs
   an ADR-104 addendum and a short grill; the open question is whether to
   snapshot a product key on the order at checkout (Details).
