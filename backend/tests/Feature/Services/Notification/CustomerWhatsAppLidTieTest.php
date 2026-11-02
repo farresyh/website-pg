@@ -14,8 +14,10 @@ use App\Services\Notification\WhatsAppRecipient;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use RuntimeException;
@@ -112,7 +114,7 @@ class CustomerWhatsAppLidTieTest extends TestCase
 
         $this->inbound("order {$order->order_number}", ['from' => self::LID]);
 
-        Queue::assertPushedOn('default', VerifyWhatsAppLidJob::class, fn ($job) => $job->orderId === $order->id && $job->lidChat === self::LID);
+        Queue::assertPushedOn('whatsapp-lookup', VerifyWhatsAppLidJob::class, fn ($job) => $job->orderId === $order->id && $job->lidChat === self::LID);
     }
 
     public function test_no_check_for_a_phone_sender_a_resolved_phone_a_test_order_or_an_already_tied_chat(): void
@@ -224,5 +226,32 @@ class CustomerWhatsAppLidTieTest extends TestCase
 
         $this->assertSame(self::LID, $row['chat_id']);
         $this->assertSame(self::PHONE, $row['verified_phone']);
+    }
+
+    /** A burst at an event must not hold up reseller bot replies, which share the one `default` worker. */
+    public function test_the_check_runs_on_its_own_lane_behind_default(): void
+    {
+        $this->assertSame('whatsapp-lookup', (new VerifyWhatsAppLidJob(1, self::LID))->queue);
+        $this->assertSame(['default', 'whatsapp-lookup'], config('horizon.defaults.supervisor-default.queue'));
+    }
+
+    public function test_repeat_messages_from_one_chat_queue_one_check(): void
+    {
+        $order = $this->order();
+
+        $this->inbound("order {$order->order_number}", ['from' => self::LID]);
+        $this->inbound("tolong check {$order->order_number}", ['from' => self::LID]);
+
+        Queue::assertPushed(VerifyWhatsAppLidJob::class, 1);
+    }
+
+    public function test_lookups_are_rate_limited_so_a_burst_waits_instead_of_flooding_whatsapp(): void
+    {
+        $middleware = collect((new VerifyWhatsAppLidJob(1, self::LID))->middleware());
+
+        $this->assertTrue($middleware->contains(fn ($m) => $m instanceof RateLimited));
+        $limit = RateLimiter::limiter('whatsapp-lookup')(new VerifyWhatsAppLidJob(1, self::LID));
+        $this->assertSame(20, $limit->maxAttempts);
+        $this->assertSame(60, $limit->decaySeconds);
     }
 }

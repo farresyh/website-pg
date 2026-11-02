@@ -251,7 +251,8 @@ a risk at this volume. Removing it also closes the retry hole.
 4. **If the phone is already tied to a different `@lid`,** the newest lookup wins (a number that changed hands); STOP state is kept.
 5. **Only an order number can tie.** A chat that writes without one has nothing to compare against and stays as today. No manual "tie" button in the admin (not built now).
 6. **Vouchers unchanged:** still to the checkout phone only. A tied chat is the same account, so it receives them there.
-7. **Lookup failure** (OpenWA down, `503`, timeout): the job retries a few times on the `default` queue, then gives up silently; the next order-number message tries again. The webhook never waits on the lookup.
+7. **Lookup failure** (OpenWA down, `503`, timeout): the job retries (3 failures, at most an hour), then gives up silently; the next order-number message tries again. The webhook never waits on the lookup.
+7a. **Built for a burst** (founder's question, 2026-11-03: an event where many customers send order numbers at once). The job runs on its own `whatsapp-lookup` queue, which the one `supervisor-default` worker serves only after `default` (where reseller bot replies run), so a burst never delays a reseller; one job per chat for 10 minutes (`ShouldBeUnique`); at most 20 lookups a minute (a `whatsapp-lookup` rate limiter), the rest waiting their turn, so WhatsApp never sees a flood of contact queries. No new Horizon process.
 8. **Admin:** a notification row sent to an `@lid` chat that is now tied shows "WhatsApp chat · verified as <phone>" instead of "number hidden".
 
 **Known ceiling.** A joki order tied mid-play switches its recipient key from the chat to the phone, so the progress interval can restart once (at most one extra message).
