@@ -1,6 +1,6 @@
 # ADR-071: Storefront perceived-performance — loading states, prefetchable routes, tag-based revalidation, and mobile buy-flow layout fixes
 
-> **Standing (2026-10-17):** In force; SWR `'max'` dropped by [ADR-077](./ADR-077-storefront-read-path.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-03):** In force; SWR `'max'` dropped by [ADR-077](./ADR-077-storefront-read-path.md), and its backstop TTL is 300s since ADR-077's 2026-11-03 addendum. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — 2026-09-03 (grilled with the founder over four rounds via `/mattpocock-skills:grilling` before any code was written; this entry is that shared understanding). Built across PR0–PR3 off `staging`.
 
@@ -100,7 +100,7 @@ Fix: Project Settings → Functions → Function Region on all 3 projects, unche
 1. Every route with a `page.tsx` has a matched `loading.tsx`. New ones: `/` (`HomeSkeleton`); `/price-list`, `/check-id`, `/check-id/[slug]`, `/membership` and the three legal pages (`ContentPageSkeletons.tsx`). `/membership`'s own `<Suspense>` text fallback now uses the same form skeleton.
 2. The root `app/loading.tsx` is the home skeleton. It is also the fallback for any route without its own, but the guard below means that only happens for an exempted route.
 3. **`storefront/scripts/check-loading-boundaries.mjs` runs in CI** (storefront job). It fails when a `page.tsx` has no `loading.tsx` beside it, unless the route is in its `EXEMPT` map with a reason (today only `/store-unavailable`, a sync page that never suspends). This replaces the unbuilt progress bar as the catch-all: a guard that fails the build instead of a generic indicator.
-4. Not changed: the Data Cache (30s TTL + tag purge, ADR-077), and the client Router Cache, which stays at its default (`staleTimes` not raised). Raising it would make back/forward navigation instant but could show a price up to that long after a purge, which is the "must refresh 2–3 times" symptom ADR-077 removed. The charged price is safe either way (ORD-9).
+4. Not changed: the Data Cache (30s TTL + tag purge, ADR-077; 300s, hero slides 60s, since ADR-077's 2026-11-03 addendum), and the client Router Cache, which stays at its default (`staleTimes` not raised). Raising it would make back/forward navigation instant but could show a price up to that long after a purge, which is the "must refresh 2–3 times" symptom ADR-077 removed. The charged price is safe either way (ORD-9).
 
 **Rationale.** The premise behind "no skeleton needed" was a fact about rendering mode, and ADR-060 silently changed it. A CI check pins the outcome (no frozen navigation) regardless of each route's rendering mode, so a future change to the brand resolution or a new route can't reintroduce the freeze unnoticed. No grill: no money path, no new behaviour beyond decision 1's own intent.
 
