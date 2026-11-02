@@ -1636,3 +1636,14 @@ The founder asked whether the docs were current and free of contradictions. Read
 - Backend: full suite passing; new tests in `WalletTopupEndedTest`, `WalletTopupCancelResumeTest`, `WalletControllerTest` and `ReconcilePendingWalletTopupsCommandTest`, plus the ChipGateway cancel and expiry tests.
 - Portal: `tsc`, lint, tests and build all pass.
 - Browser (throwaway backend, `APP_ENV=e2e`): start a top-up → card → Pay now → Cancel → confirm → form back, in light, dark and 390 px, with no sideways scroll.
+
+## 2026-11-02 — ADR-135 PR 3: `.batalbaki` and the bot replies a group-only reseller needs
+
+**What.** Built ADR-135 decisions 4, 8 and 8a, so a reseller who uses only the WhatsApp group can see and end a pending top-up the way the portal can:
+- **`.batalbaki`** (no argument; a reseller has at most one pending top-up) runs the portal's own `cancel()`, so CHIP's re-read answer decides. One reply per outcome: cancelled, already paid, being processed by the bank, nothing pending, still being set up (with its end time), or already ended. It gets its own 5-per-minute limit and is allowed for a deactivated reseller. Failures log `topup_cancel_none` and `topup_cancel_in_flight`.
+- **`.topupbaki` replies** now say when the link ends ("Link tamat pada HH:MM", MYT) and how to cancel. Sent again while a top-up is pending, the reply names that top-up's end time and offers `.batalbaki`. A pending top-up with no link gets "sedang disediakan … tamat sendiri pada HH:MM" (it used to get a misleading "Gagal memulakan").
+- **`.baki`** adds one line for a pending top-up (a database read, like the portal card). The command list names `.batalbaki`.
+- **`PendingWalletTopupAlreadyExistsException`** carries the attempt the wallet lock found, so the bot's second query is gone. Its message, which the portal shows as a toast, was an internal "Reseller #N already has a pending top-up attempt (#M)"; it is now plain English for the reseller.
+- The portal's "One payment at a time" note and the docs-site wallet page mention `.batalbaki`.
+
+**Checked.** Backend full suite passing, with the new `ResellerBotBatalBakiTest` (every reply text pinned at a fixed MYT time) and parser and exception tests; portal `tsc` and lint pass.

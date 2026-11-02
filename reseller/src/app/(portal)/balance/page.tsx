@@ -259,7 +259,7 @@ export default function BalancePage() {
             steps={[
               { title: "Pay on a secure payment page", body: "You leave PekanGame to pay with your bank. PekanGame never sees your banking login." },
               { title: "Your balance updates by itself", body: "As soon as CHIP confirms the payment. A Payment Receipt then appears in your balance history." },
-              { title: "One payment at a time", body: "An unpaid payment closes after 30 minutes. To start another sooner, cancel it here." },
+              { title: "One payment at a time", body: "An unpaid payment closes after 30 minutes. To start another sooner, cancel it here or send .batalbaki in your WhatsApp group." },
             ]}
           />
           <StepsCard

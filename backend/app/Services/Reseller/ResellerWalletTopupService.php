@@ -107,9 +107,7 @@ final class ResellerWalletTopupService
             $existingPending = self::livePending($reseller)->first();
 
             if ($existingPending !== null) {
-                throw new PendingWalletTopupAlreadyExistsException(
-                    "Reseller #{$reseller->id} already has a pending top-up attempt (#{$existingPending->id}).",
-                );
+                throw new PendingWalletTopupAlreadyExistsException($existingPending);
             }
 
             // ADR-131 decision 5: the per-top-up maximum and the balance cap, under the
@@ -155,7 +153,7 @@ final class ResellerWalletTopupService
         }
 
         if ($attempt->checkout_url === null || $attempt->chip_payment_ref === null) {
-            throw new WalletTopupNotPayableException('This top-up is still being set up and expires by itself at '.$this->expiryLabel($attempt).'.');
+            throw new WalletTopupNotPayableException('This top-up is still being set up and expires by itself at '.self::expiryLabel($attempt).'.');
         }
 
         $answer = $this->gatewayFor($attempt)?->getPayment($attempt->chip_payment_ref);
@@ -257,7 +255,8 @@ final class ResellerWalletTopupService
         return $gatewayName === null ? null : $this->gateways->make($gatewayName);
     }
 
-    public function expiryLabel(WalletTopupAttempt $attempt): string
+    /** The attempt's end time as the reseller reads it: MYT, H:i. */
+    public static function expiryLabel(WalletTopupAttempt $attempt): string
     {
         return $attempt->expires_at->copy()->setTimezone(MalaysiaTime::TIMEZONE)->format('H:i');
     }
