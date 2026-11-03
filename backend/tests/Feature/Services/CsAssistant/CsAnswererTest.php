@@ -142,6 +142,23 @@ class CsAnswererTest extends TestCase
         $this->assertSame(['link: pekangame.com'], $guard->violations('Tengok pekangame.com', 'ohahastore.com'));
     }
 
+    public function test_a_model_that_keeps_calling_tools_must_answer_on_the_last_call(): void
+    {
+        $fake = $this->fake([
+            FakeChatModel::call('game_info', ['game' => 'a']),
+            FakeChatModel::call('game_info', ['game' => 'b']),
+            FakeChatModel::call('game_info', ['game' => 'c']),
+            FakeChatModel::json(['action' => 'reply', 'reply' => 'Boleh tengok kat laman kami ya', 'category' => 'other', 'entry_ids' => []]),
+        ]);
+
+        $draft = $this->draft(['ada game baru?']);
+
+        $this->assertSame('reply', $draft['action']);
+        $this->assertSame(4, $draft['calls']);
+        $this->assertNotSame([], $fake->requests[2]->tools);
+        $this->assertSame([], $fake->requests[3]->tools);
+    }
+
     public function test_a_model_error_or_bad_json_becomes_a_handover(): void
     {
         $this->fake([new ChatModelException('timeout'), new ChatResponse('not json', [], 10, 5)]);

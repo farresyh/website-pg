@@ -45,7 +45,7 @@ class RunCsEvalCaseJob implements ShouldQueue
         if ($draft['error'] !== null) {
             $notes[] = 'error: '.$draft['error'];
         }
-        if ($draft['action'] !== $case->expected_action) {
+        if ($case->expected_action !== 'any' && $draft['action'] !== $case->expected_action) {
             $notes[] = "expected {$case->expected_action}, got {$draft['action']}".($draft['handover_reason'] ? " ({$draft['handover_reason']})" : '');
         } elseif ($case->expected_reason !== null && $draft['handover_reason'] !== $case->expected_reason) {
             $notes[] = "expected reason {$case->expected_reason}, got {$draft['handover_reason']}";

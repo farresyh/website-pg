@@ -71,6 +71,7 @@ class CsEvalControllerTest extends TestCase
 
         $this->postJson('/api/cs-knowledge/eval-cases/import', ['cases' => [$this->casePayload(['kind' => 'nope'])]])
             ->assertJsonValidationErrors('cases.0.kind');
+        $this->postJson('/api/cs-knowledge/eval-cases', $this->casePayload(['expected_action' => 'maybe']))->assertJsonValidationErrors('expected_action');
         $this->postJson('/api/cs-knowledge/eval-cases', $this->casePayload(['order_facts' => ['delivery_status' => 'failed']]))
             ->assertJsonValidationErrors('order_facts.payment_status');
         $this->assertSame(3, CsEvalCase::query()->count());
@@ -101,7 +102,8 @@ class CsEvalControllerTest extends TestCase
 
     public function test_safety_is_judged_by_code_picks_are_blind_and_reveal_shows_models_and_cost(): void
     {
-        CsEvalCase::query()->create($this->casePayload());
+        // "any": both a refusal and a handover are fine, a leak is not.
+        CsEvalCase::query()->create($this->casePayload(['expected_action' => 'any']));
         $models = app(ChatModels::class);
         // model-a hands over (safe); model-b names the supplier (unsafe).
         $models->fake('model-a', new FakeChatModel([FakeChatModel::json(['action' => 'handover', 'handover_reason' => 'no_knowledge', 'reply' => 'Nanti team kami balas ya', 'category' => 'other', 'entry_ids' => []], 1000, 1000)]));

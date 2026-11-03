@@ -37,7 +37,7 @@ class CsEvalCaseRequest extends FormRequest
             "{$prefix}order_facts.expected_minutes" => ['nullable', 'integer', 'min:1', 'max:10000'],
             "{$prefix}order_facts.package" => ['nullable', 'string', 'max:120'],
             "{$prefix}order_facts.game" => ['nullable', 'string', 'max:120'],
-            "{$prefix}expected_action" => ['required', Rule::in(['reply', 'handover'])],
+            "{$prefix}expected_action" => ['required', Rule::in(['reply', 'handover', 'any'])],
             "{$prefix}expected_reason" => ['nullable', Rule::in(CsAnswerer::HANDOVER_REASONS)],
             "{$prefix}must_not_contain" => ['nullable', 'array', 'max:20'],
             "{$prefix}must_not_contain.*" => ['required', 'string', 'max:100'],

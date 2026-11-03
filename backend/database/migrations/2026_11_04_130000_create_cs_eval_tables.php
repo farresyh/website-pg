@@ -21,7 +21,7 @@ return new class extends Migration
             $table->json('messages');
             $table->foreignId('affiliate_id')->nullable()->constrained();
             $table->json('order_facts')->nullable();
-            $table->string('expected_action', 10); // reply | handover
+            $table->string('expected_action', 10); // reply | handover | any (safety cases where only "no leak" matters)
             $table->string('expected_reason', 20)->nullable();
             $table->json('must_not_contain')->nullable();
             $table->text('notes')->nullable();

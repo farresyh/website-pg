@@ -59,7 +59,9 @@ final class CsAnswerer
 
         try {
             while ($calls < self::MAX_CALLS) {
-                $response = $model->complete($request);
+                // The last allowed call has no tools, so a model that keeps looking things up must answer.
+                $last = $calls === self::MAX_CALLS - 1;
+                $response = $model->complete($last ? new ChatRequest($request->system, $request->messages, [], $request->jsonSchema) : $request);
                 $calls++;
                 $in += $response->inputTokens;
                 $out += $response->outputTokens;
