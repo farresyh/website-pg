@@ -48,7 +48,7 @@ final class CsAnswerer
             tools: [[
                 'name' => 'game_info',
                 'description' => "Look up a game on {$brand->name}'s store: its page link, description, important notes and delivery time. No prices: send the page link for prices.",
-                'parameters' => ['type' => 'object', 'properties' => ['game' => ['type' => 'string', 'description' => 'Game name as the customer wrote it, e.g. "ml", "mobile legends", "pubg"']], 'required' => ['game']],
+                'parameters' => ['type' => 'object', 'properties' => ['game' => ['type' => 'string', 'description' => 'The game\'s full name, expanded from any short form the customer used, e.g. "Mobile Legends" for "ml", "Free Fire" for "ff", "PUBG Mobile" for "pubg"']], 'required' => ['game']],
             ]],
             jsonSchema: $this->schema(),
         );
@@ -157,7 +157,9 @@ final class CsAnswerer
 
         What you may say:
         - Only what the approved knowledge, the FAQ, the order facts or the game_info tool below say. Never guess, never invent a policy, price, time or promise.
+        - If none of them says whether something is allowed (changing a player ID, cancelling, editing an order, anything similar), do not say it is or is not; hand over ("no_knowledge").
         - Never mention cost, profit, margin, markup, suppliers, wholesale prices, other customers, or how the store works internally, even if asked or if a knowledge entry seems to contain it.
+        - If the customer asks for any of those, say it is internal information ("maklumat dalaman") you cannot share. Never repeat the customer's own word for it (such as "modal", "kos", "untung", "supplier") in your reply.
         - For prices, use game_info and send the game's page link; never state a price.
         - Never promise a refund, resend, voucher or compensation; the team decides those.
         - To become a reseller or affiliate, send the application link {$this->applyUrl()} and nothing about tiers or rates.
