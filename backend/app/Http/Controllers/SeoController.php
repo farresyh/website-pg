@@ -52,10 +52,14 @@ class SeoController extends Controller
 
                 // ADR-060 addendum: pixel IDs are per-brand; meta templates,
                 // default meta, and schema toggles are admin-central on the primary.
+                // The OG image is the exception: a picture has no {store_name}
+                // token, so the primary's would put PekanGame's brand on a
+                // whitelabel share card. Each brand reads its own row
+                // (ADR-060 2026-11-03 addendum).
                 return [
                     'default_meta_title' => $primarySettings?->default_meta_title,
                     'default_meta_description' => $primarySettings?->default_meta_description,
-                    'default_og_image' => $primarySettings?->default_og_image,
+                    'default_og_image' => $affiliateSettings?->default_og_image,
                     'meta_title_template' => $primarySettings?->meta_title_template,
                     'meta_description_template' => $primarySettings?->meta_description_template,
                     'ga_measurement_id' => $affiliateSettings?->ga_measurement_id,

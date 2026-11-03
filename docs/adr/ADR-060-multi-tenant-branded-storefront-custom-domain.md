@@ -411,3 +411,11 @@ Adding `www.ohahastore.com` as a second domain in the portal (the guide's advice
 - **Not built, on purpose:** a console command for the OhahaStore conversion (the portal action is the path, decision 7); a reminder for a twin; an apex-to-`www` direction.
 - **Verified:** backend fast suite (3,278 passed), `tsc`, `eslint` and the `node --test` suites for the admin and the portal, no API-spec drift (`scramble:export` against a migrated database), the migration on real MySQL 8.4 (`SHOW CREATE TABLE`: one explicit index reused by the foreign key, `ON DELETE CASCADE`), and a real browser on a throwaway backend (add with and without the option, "Add www", converting a hand-added `www.` row, the cap counter at 3 of 5 with three twins present, and the admin detail without an approval control on a twin).
 
+
+### 2026-11-03 addendum — the default OG image is per brand
+
+The absorb addendum keeps meta templates, OG image and schema toggles admin-central on the primary, and the public `/api/catalog/seo/settings` served the primary's `default_og_image` to every brand. A template carries `{store_name}`; a picture cannot, so a PekanGame share card would have appeared on every whitelabel storefront's links. Found before any image was set (all three brands `NULL` on prod, 2026-11-03).
+
+- `default_og_image` is now read from the resolved brand's own `affiliate_seo_settings` row. The admin SEO Settings page still edits only the primary's row, so an affiliate storefront has no default share image (as before); a game page keeps the game's own `seo_og_image`, which is game art, not brand art.
+- Still admin-authored, not an affiliate field (the founder's 2026-08-31 rule stands). An editor for an affiliate's image is a later item, PRD §16 item 160.
+- Image spec for whoever makes one: 1200 × 630, PNG or JPG under ~300 KB, logo and text inside the central ~1000 × 520.
