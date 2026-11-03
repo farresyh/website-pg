@@ -161,3 +161,16 @@ Staff write casual Malay ("boss", "bang", "jap", "mksudnya", stretched letters, 
 - **Production writes this design needs**, each with the founder's go-ahead when its PR ships: the CS webhook's `message.sent` event and personal-chat filter (PR 1); `tesseract-ocr` on the box (PR 4, founder via the DigitalOcean console).
 - **Founder actions:** the lawyer's review and the Privacy Policy line before PR 3 (decision 31); look at one real CHIP receipt email for the `PG-` reference (decision 34); register the CS Staff group (PR 4).
 - **Separate from this ADR:** the Report Assistant's `gemini-flash-latest` alias follows Gemini Flash, whose price doubles on 2027-01-01 (Google's pricing page, read 2026-11-03).
+
+### 2026-11-03 addendum — PR 1 build notes (no AI)
+
+Settled while building PR 1, test-first; nothing here changes a decision above.
+
+1. **Nothing raw is stored.** `cs_messages` keeps text already masked by `CsTextRedactor` (emails, phone-like and 5+ digit runs, voucher codes; order numbers moved to `order_numbers` first). The chat is `chat_hash`, an HMAC of the chat id with the app key, never the phone or privacy id. Our own sends (`sender = system`) keep no text at all: it is in `customer_notifications`, linked by `customer_notification_id`.
+2. **Retention of `cs_messages`.** Since its rows are masked, they fall under decision 30's 2-year rule, not the 90-day raw rule (which stays OpenWA's own). PR 1 has no prune; PR 2 adds it with the distilled pairs.
+3. **Message ids.** Ids are compared by their last `_` segment (whatsapp-web.js `true_<chat>_<id>`, Baileys bare `<id>`; production CS history holds bare ids). `customer_notifications.wa_message_id` stores what `send-text` returns.
+4. **Classification lane.** `ClassifyCsOutgoingMessageJob` runs on `whatsapp-lookup` (served by `supervisor-default` after `default`), 10 seconds after the event, up to 6 tries while one of our sends to the chat is in flight; after the last try it counts as staff.
+5. **No OpenWA-side filter.** Decision 19's personal-chat webhook filter is not set: the docs do not say whether a message-field condition also drops `session.status`, which the WhatsApp health check needs. Laravel already ignores group, channel and broadcast chats, so the only production change is adding `message.sent` to the CS webhook's events.
+6. **History import** is `php artisan cs:import-history --since=2026-09-25`: read-only against OpenWA (`GET /messages`, fixed `until`, offset pages), re-runnable, outgoing rows classified by chat and exact text within 2 minutes of a recorded send (history has no stored ids).
+7. **Channels, status updates and broadcast lists are never kept or answered.** `CsMessageRecorder` keeps only `kind: individual` chats whose id is a phone or privacy id (`@c.us`, `@lid`), so a channel (`@newsletter`), `status@broadcast` and a broadcast list are dropped both ways, with or without `kind` (test-locked). ADR-116's handler already ignored them. Production CS history on 2026-11-03 held none. For PR 4: on Baileys a message received through a contact's broadcast list arrives filed under that contact's own chat (`kind: individual`, OpenWA docs 6.4.16), so a store's promotional blast can look like a personal message; the assistant must not answer messages that are promotions (decision 25's per-chat cap is the backstop).
+
