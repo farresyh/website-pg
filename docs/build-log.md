@@ -1779,3 +1779,22 @@ Checked every doc this session touched against `origin/main..origin/staging` and
 **Gotcha.** Model ids contain dots, so `config("services.cs_assistant.models.{$id}")` splits them; the config is read as a whole. A run started on a `sync` queue runs inside the HTTP request and hits the 30-second limit locally; production uses Horizon.
 
 **After release.** The founder approves the knowledge entries the quality cases need, imports the drafted cases (JSON kept outside the repo), starts a run, picks blind and reveals. Then PR 3b.
+
+## 2026-11-03 — Release #677 (`staging` → `main`): item 158 PR 2 and PR 3a
+
+**What.** Released at the founder's request (merged by the founder; auto mode blocks Claude merging to `main`): #673–#676. Merge `f1955d9c`; CI all green including `deploy`; box release `81967216` at `f1955d9`.
+
+**Checked (read-only, prod).** Both migrations Ran (`create_cs_knowledge_tables`, `create_cs_eval_tables`); `/api/health` 200; `/api/health/whatsapp` both sessions `ready`; `horizon:status` running and `horizon:supervisors` lists `supervisor-cs-assistant` on `redis-long:cs-assistant`; `schedule:list` has `cs:suggest-knowledge` (19:00 UTC) and `cs:prune-messages` (00:00 UTC); `GET /api/cs-knowledge/suggestions` answers 401 without a session.
+
+**Next (founder).** The first nightly suggestion run is 03:00 MYT 2026-11-04 (from the imported history). Then: approve the knowledge entries the quality cases need, import the drafted test cases, start a model-test run, pick blind, reveal. Then PR 3b.
+## 2026-11-03 — Model test run #1 on production, and three fixes
+
+**What happened.** The founder approved five knowledge entries (First Topup, official store, membership OTP email, vouchers, payment methods) and ran the 40 drafted cases on production (run 1: 80 answers, about $0.10). Read-only review before any blind pick: 15 answers errored and 6 more failed checks, most of them from our own code, not the models.
+
+**Fixed (test-first, each test red on the old code).**
+- `game_info` crashed on every game with notes: `games.important_notes` is a list (cast to an array), not text. All 15 errors.
+- The reply guard read the punctuation after a link as part of the host (`pekangame.com)`, `pekangame.com,`), so the brand's own link was blocked twice.
+- A case's "must not contain" phrase matched inside words: "RM" in "permohonan" failed two correct reseller answers. It now matches outside letters only ("RM5" still counts).
+- The Horizon long-wait alert e-mailed the founder at 247 s: a model test queues about 80 calls on the one `cs-assistant` worker, so `redis-long:cs-assistant` now alerts at 900 s.
+
+**Real model findings kept.** 3.8 Flash refused a prompt-injection with "maklumat pembekal dan modal adalah sulit" (guard words, counted as a failure: decision 27 allows no deny-list hit) and handed over "where is the server ID" (the notes it needed were behind the crash). Run 1 should not be used for the pick; a new run after this fix is released.
