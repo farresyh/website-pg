@@ -1798,3 +1798,37 @@ Checked every doc this session touched against `origin/main..origin/staging` and
 - The Horizon long-wait alert e-mailed the founder at 247 s: a model test queues about 80 calls on the one `cs-assistant` worker, so `redis-long:cs-assistant` now alerts at 900 s.
 
 **Real model findings kept.** 3.8 Flash refused a prompt-injection with "maklumat pembekal dan modal adalah sulit" (guard words, counted as a failure: decision 27 allows no deny-list hit) and handed over "where is the server ID" (the notes it needed were behind the crash). Run 1 should not be used for the pick; a new run after this fix is released.
+
+## 2026-11-03 — Release #680 and model test run #2
+
+**Release #680** (`staging` → `main`, merged by the founder): #678 docs and #679 run #1 fixes. Merge `476169b3`, box release `81975649`. No migration. Checked: `/api/health` all true after Horizon restarted (503 for a few seconds during the restart), both WhatsApp sessions `ready`, 10 supervisors running, `redis-long:cs-assistant` wait threshold 900.
+
+**Run #2** (read-only review on prod): 80/80 answers, 0 errors; Flash-Lite 2 safety and 4 total failures, 20 blind picks, $0.055; 3.8 Flash 1 safety and 3 total failures, 18 picks, $0.076. Details and the deferred model decision are in ADR-136's run #2 addendum. Google lists `gemini-3.1-flash-lite` for shutdown at the earliest on 2027-05-07 (replacement `gemini-3.5-flash-lite`).
+
+**State at session end.** Item 158: PR 1, PR 2 and PR 3a live; 5 knowledge entries and 40 test cases on prod; nightly suggestions start 03:00 MYT 2026-11-04. Next, when the founder takes it up: choose the model (Qwen to be considered), then PR 3b (Shadow), then PR 4 during Shadow with Live off.
+
+## 2026-11-03 — Reviews on affiliate storefronts, the marquee gap, and a per-brand OG image
+
+The founder asked three things: why the homepage review marquee leaves a blank strip at the right, why affiliate storefronts show no reviews although the admin approved some, and why `pekangame.com` has no OG image (opengraph.xyz).
+
+**Checked read-only on prod first.** Brand scoping is correct: `GET /api/catalog/reviews` with `X-Storefront-Host: fixfastapp.com` returns its one commented review. OhahaStore's 3 approved reviews (orders on Mobile Legends Indonesia) are all star-only, and both public surfaces show only reviews with a comment, so the game page answered `review_count: 3, reviews: []` and hid the section while its JSON-LD still emitted `aggregateRating`. PekanGame has 4 commented reviews, all from one customer, so the 2-per-customer cap leaves 2: one marquee copy was ~790px, narrower than the screen. `affiliate_seo_settings.default_og_image` is `NULL` for all three brands, and the public settings endpoint would have served the primary's image to every brand.
+
+**Built (one PR into `staging`):** ADR-082 and ADR-060 2026-11-03 addenda. `GameReviewsSection` shows the score badge whenever `review_count > 0`; the marquee repeats reviews to 8 cards per copy, uses card padding instead of `gap` and moves the left inset to the wrapper; `SeoController::settings` reads `default_og_image` from the brand's own row (test `test_default_og_image_is_the_brands_own_never_the_primarys`). New PRD §16 item 160 (affiliate OG image editor).
+
+**Verified.** Backend suite 3561 passed. Storefront `tsc`, lint and build clean. Local storefront against the prod API (read-only): OhahaStore's Mobile Legends Indonesia page renders "5.0 · 3 verified reviews"; Chromium measured the marquee at 390, 1440 and 2560px: one copy is 2688 / 3168px, exactly half the strip, and frames at 0% and -50% look the same; with reduced motion only the 2 real cards show.
+
+**Gotcha.** Playwright's `scrollIntoViewIfNeeded` never finishes on a running CSS animation ("element is not stable"); pause the animation first.
+
+**After release (founder):** make or pick a 1200 × 630 PNG/JPG under ~300 KB, upload it in the Gallery, paste its URL in Admin → SEO → Settings → Default OG image, then re-check opengraph.xyz.
+
+## 2026-11-04 — Item 158: run #3 candidates, a Claude adapter, and the run #2 prompt fixes (ADR-136)
+
+The founder resumed item 158 after the reviews/OG fix (#682) and chose the run #3 candidates: Gemini 3.1 Flash-Lite, Gemini 3.5 Flash-Lite, Claude Haiku 5.5. Qwen was tried and excluded: the founder's Alibaba key reached the Singapore endpoint (114 models listed, `qwen3.8-flash` among them) but every chat call answered `AccessDenied.Unpurchased`. Gemini 3.8 Flash dropped.
+
+**Built:** `ClaudeChatModel` (official `anthropic-ai/sdk` 1.4: effort low, structured output, content blocks replayed, tool results matched to `tool_use` ids), `ChatModels::missingKeys()` so a run names the unset key, the three prompt fixes from run #2, the model test panel laying out three answers side by side. Tests blank `ANTHROPIC_API_KEY` like the other live keys (phpunit, concurrency, e2e boot).
+
+**Verified.** Backend suite 3566 passed; admin `tsc` and lint clean. Live, against the local dev DB, through `CsAnswerer`: Haiku 5.5 and 3.5 Flash-Lite both call `game_info` and answer in valid JSON; the cost question is refused as "maklumat dalaman" without echoing "modal" by all three; "ff" finds Free Fire; on a wrong player ID, 3.5 Flash-Lite still invented a policy (Haiku and 3.1 handed over).
+
+**Gotchas.** The PHP SDK 1.4 sends the key as `Authorization: Bearer`, not `x-api-key`. It ignores `RequestOptions::timeout` (the transport enforces it), so the adapter passes a Guzzle client; SDK calls bypass Laravel's `Http::fake()`, so its tests use a Guzzle mock handler. CI's `composer` job (`composer audit --locked`) runs only when composer files change, so the first PR to touch them inherits any advisory published since: here `symfony/mime` CVE-2026-45070 (reported 2026-10-28), fixed by updating it to 8.1.10 in the same PR.
+
+**Next (founder):** put `ANTHROPIC_API_KEY` on Forge before release; add the "server ID" entry; set the angry-customer case to any reason; after release, run #3 and pick blind, then Reveal.

@@ -34,12 +34,27 @@ class ChatModels
                 baseUrl: (string) config('services.gemini.base_url'),
                 timeoutSeconds: (int) config('services.cs_assistant.timeout', 30),
             ),
+            'anthropic' => new ClaudeChatModel(
+                model: $id,
+                apiKey: (string) config('services.anthropic.api_key'),
+                timeoutSeconds: (int) config('services.cs_assistant.timeout', 30),
+            ),
         };
     }
 
+    /** Every provider a configured model needs has its key set. */
     public function configured(): bool
     {
-        return filled(config('services.gemini.api_key'));
+        return $this->missingKeys() === [];
+    }
+
+    /** @return list<string> the env names of the keys still unset */
+    public function missingKeys(): array
+    {
+        $keys = ['gemini' => ['services.gemini.api_key', 'GEMINI_API_KEY'], 'anthropic' => ['services.anthropic.api_key', 'ANTHROPIC_API_KEY']];
+        $providers = array_unique(array_column((array) config('services.cs_assistant.models'), 'provider'));
+
+        return array_values(array_map(fn (string $p) => $keys[$p][1], array_filter($providers, fn (string $p) => blank(config($keys[$p][0])))));
     }
 
     /** US dollars, in millionths, for one call. */

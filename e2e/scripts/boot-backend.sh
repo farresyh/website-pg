@@ -40,6 +40,7 @@ export CHIP_BRAND_ID=""
 export GAMEVION_API_KEY=""
 export GAMEVION_BEARER_TOKEN=""
 export GEMINI_API_KEY=""
+export ANTHROPIC_API_KEY=""
 export SUPPLIER_PROXY_URL=""
 export DB_CONNECTION=sqlite
 export DB_DATABASE="$ROOT_DIR/backend/database/e2e.sqlite"
