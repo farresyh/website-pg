@@ -57,6 +57,8 @@ class TaskSchedule
         'reseller-whatsapp-pending-link-pruning',
         'reseller-bot-command-log-pruning',
         'partner-application-pruning',
+        'cs-knowledge-suggestions',
+        'cs-message-pruning',
         'stale-cache-pruning',
         'affiliate-domain-status-sync',
         'horizon-snapshot',
@@ -194,6 +196,19 @@ class TaskSchedule
         $schedule->command('app:prune-partner-applications')
             ->daily()
             ->name('partner-application-pruning')
+            ->withoutOverlapping($overlap);
+
+        // ADR-136 decision 10 (PR 2): finished CS chats become knowledge
+        // suggestions; 19:00 UTC = 03:00 MYT, after staff hours end.
+        $schedule->command('cs:suggest-knowledge')
+            ->dailyAt('19:00')
+            ->name('cs-knowledge-suggestions')
+            ->withoutOverlapping($overlap);
+
+        // ADR-136 decision 30: masked CS messages and suggestions kept 2 years.
+        $schedule->command('cs:prune-messages')
+            ->daily()
+            ->name('cs-message-pruning')
             ->withoutOverlapping($overlap);
 
         // ADR-077 decision 3 — the `database` cache store has no lazy-sweep for

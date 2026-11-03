@@ -1738,3 +1738,44 @@ Checked every doc this session touched against `origin/main..origin/staging` and
 **Gotchas.** SQLite does not honour `\_` in `LIKE` without an `ESCAPE` clause, so the id suffix match uses a plain `%_<id>`. The OpenWA-side personal-chat filter was left out (its effect on `session.status` is undocumented); Laravel filters instead.
 
 **After release (prod writes, founder's go-ahead):** add `message.sent` to the CS webhook's events, then run `php artisan cs:import-history --since=2026-09-25` once and check the counts.
+
+## 2026-11-03 — Release #672 (`staging` → `main`) and item 158 PR 1 switched on
+
+**What.** Released at the founder's request: #669–#671 (item 158 PR 1, ADR-136). Merge `7f3d7924`; CI all green including `deploy`; box release `81934218` at `7f3d792`.
+
+**Checked (read-only, prod).** Migration `2026_11_03_140000_create_cs_messages_table` Ran; `customer_notifications.wa_message_id` present; `/api/health` ok; both WhatsApp sessions `ready`.
+
+**Production writes, with the founder.**
+- CS webhook `5bc373e3…` events, edited by the founder in the OpenWA dashboard. Before: `message.received`, `session.status`. After (read back through the API): `message.received`, `session.status`, `message.sent`; filters still null, URL and retry unchanged. The reseller-bot webhook `efa62d48…` unchanged.
+- `php artisan cs:import-history --since=2026-09-25`, run by the founder: "Read 1271 messages since 2026-09-25; kept 192 new personal-chat messages." Read back: 101 customer (10 without text, 19 with an order number), 22 system (equal to the 22 CS notifications ever sent), 69 staff (none matching a system template: staff replies, founder tests, B2B outreach), 20 chats, 2026-09-25 to 2026-11-03. Masking: 0 bodies with a 6+ digit run, an `@`, or `PG-`.
+- Live check: a customer test message at 06:23:00 UTC was recorded 1 second later; a reply typed on the CS phone at 06:23:20 arrived as `message.sent` and was recorded as staff 11 seconds later. No failed classify jobs.
+
+**Still to check.** A receipt or status card sent after this release should be recorded as system through `wa_message_id` (only the text-and-time path has been seen, in the import).
+
+## 2026-11-03 — Item 157 OpenWA cleanup and the first system-classified receipt
+
+**Checked first (read-only, prod).** Nightly OpenWA backups #74, #76 and #78 (31 Oct, 1 and 2 Nov 19:37 UTC, the last one on the releases-plus-shared layout): `success`, restore test passed. `~/OpenWA` → `openwa-deploy/releases/v0.27.1`; the running daemon's working directory is `releases/v0.27.1`; nothing in `openwa-deploy/shared` or the crontab names `OpenWA-v0.25.0`.
+
+**Production write, run by the founder.** `rm -rf ~/OpenWA-v0.25.0` (1,022 MB) and `rm -f ~/openwa-backups/openwa-v0.25.0-20261101-1051.tar.gz ~/openwa-v0.27.0-build.log ~/openwa-v0.27.1-build.log`. After: `~` holds only `OpenWA` (symlink), `openwa-backups` (now just `openwa-v0.27.0-20261102.tar.gz`) and `openwa-deploy` (releases `v0.27.0`, `v0.27.1`); disk 12 G → 11 G used of 77 G; `/api/health` 200 and `/api/health/whatsapp` both sessions `ready`. `API_KEY_PEPPER` left unset (only a boot warning; setting it would force both OpenWA keys to be re-issued). Item 157 closed.
+
+**Item 158 PR 1, last check passed.** A customer sent an order number to the CS number at 09:16:38 UTC (`cs_messages` #200, customer, order number kept); the status card sent back at 09:16:47 was stored as `customer_notifications` #25 with its `wa_message_id`, and the matching `message.sent` became `cs_messages` #201, sender `system`, `customer_notification_id` 25: classified by the stored id, not by text and time.
+
+## 2026-11-03 — Item 158 PR 2: CS knowledge book and admin review (ADR-136, no AI)
+
+**What.** Test-first (23 new tests; full suite 3,544 green). Migration `2026_11_04_120000_create_cs_knowledge_tables` (`cs_knowledge_entries`, `cs_knowledge_suggestions`, `cs_ignored_chats`). `CsKnowledgeSuggester` + `cs:suggest-knowledge` (daily 19:00 UTC, ROUTINE) pairs each finished chat's customer question with the staff answer that followed; `cs:prune-messages` (daily, ROUTINE) keeps masked messages and suggestions 2 years. `Admin\CsKnowledgeController` (super_admin) and the admin page `/admin/cs-knowledge` (PrimeReact kit, laid out like `/admin/applications`), nav under Customers. ADR-136 2026-11-03 PR 2 build notes addendum.
+
+**Why without AI.** The founder chose to keep the model out of PR 2: the pairing is the input any model would need anyway, and the model is chosen once, in PR 3. The same session confirmed decision 31 is met (lawyer's OK; the Privacy Policy AI line read live on `pekangame.com/privacy` and `ohahastore.com/privacy`).
+
+**Checked.** Backend suite; admin `tsc`, eslint and unit tests; a browser run against a throwaway sqlite backend (three seeded chats → three suggestions; Approve as new, Ignore chat, Merge, the All suggestions and Knowledge tabs; no page overflow at 390 px). Found and fixed in that run: switching tabs briefly showed the previous tab's rows (state now cleared on switch), and the question/answer columns were too narrow on mobile.
+
+**After release.** The first nightly run at 03:00 MYT turns the imported history (since 2026-09-25) into suggestions; expect founder and staff test chats among them (use Ignore chat).
+
+## 2026-11-03 — Item 158 PR 3a: the model test (ADR-136)
+
+**What.** Test-first (15 new tests; full suite 3,559 green). `App\Services\Llm` (`ChatModel`, `GeminiChatModel`, `FakeChatModel`, `ChatModels` resolver with per-model prices); `CsAnswerer`, `CsOrderSituation`, `CsReplyGuard`, `CsGameInfo`; migration `2026_11_04_130000_create_cs_eval_tables`; `RunCsEvalCaseJob` on the new `cs-assistant` lane (`supervisor-cs-assistant`); `Admin\CsEvalController`; admin tabs Test cases and Model test. ADR-136 PR 3a build notes addendum (Gemini only; no prices, the brand's page link instead; split into 3a/3b).
+
+**Checked.** Admin `tsc`, eslint, unit tests (the colour-token test caught a `warning-700` that has no token). A live smoke run against Gemini with synthetic messages (no customer data) on a throwaway sqlite backend: both models took the tool and JSON schema; 4 cases × 2 models through the real admin UI (import, run, blind pick, Reveal), cost about $0.01. Seen and fixed: the guard compared `localhost:3001` with a port; Flash-Lite looped on `game_info` until the call limit (the last call now has no tools). Flash-Lite also wrote "pembekal" (supplier) in a refusal, caught by the guard, and said "1–3 minit" without a source: both are what the test is for.
+
+**Gotcha.** Model ids contain dots, so `config("services.cs_assistant.models.{$id}")` splits them; the config is read as a whole. A run started on a `sync` queue runs inside the HTTP request and hits the 30-second limit locally; production uses Horizon.
+
+**After release.** The founder approves the knowledge entries the quality cases need, imports the drafted cases (JSON kept outside the repo), starts a run, picks blind and reveals. Then PR 3b.

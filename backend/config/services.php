@@ -164,6 +164,25 @@ return [
     ],
 
     /**
+     * ADR-136 decisions 12 and 28: the models the customer-support assistant
+     * is tested on, with their list prices (US dollars per 1M tokens; output
+     * includes thinking). Read from Google AI Studio's pricing page on
+     * 2026-11-03; Gemini 3.8 Flash doubles to 1.50 / 7.50 on 2027-01-01.
+     * Uses the Gemini key above, which must be on the paid tier (no training
+     * on inputs).
+     */
+    'cs_assistant' => [
+        'timeout' => (int) env('CS_ASSISTANT_TIMEOUT_SECONDS', 30),
+        // Decision 7 defaults; become panel settings with the Shadow switch (PR 3b).
+        'reassure_minutes' => 15,
+        'handover_minutes' => 30,
+        'models' => [
+            'gemini-3.1-flash-lite' => ['provider' => 'gemini', 'input_usd_per_m' => 0.25, 'output_usd_per_m' => 1.50],
+            'gemini-3.8-flash' => ['provider' => 'gemini', 'input_usd_per_m' => 0.75, 'output_usd_per_m' => 3.75],
+        ],
+    ],
+
+    /**
      * ADR-071 PR2 — the storefront's Next.js `catalog` Data-Cache tag is
      * purged on any catalog/SEO/branding/hero/payment mutation by
      * POSTing to its `/api/revalidate` route (mirroring this backend's
