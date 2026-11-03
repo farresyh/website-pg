@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Webhooks;
 
 use App\Http\Controllers\Controller;
 use App\Models\WhatsAppGroup;
+use App\Services\CsAssistant\CsMessageRecorder;
 use App\Services\Notification\CustomerWhatsAppInboundService;
 use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Reseller\Bot\ResellerBotService;
@@ -42,7 +43,15 @@ class OpenWaWebhookController extends Controller
         private readonly WhatsAppGroupService $groups,
         private readonly OpenWaSessionStatus $sessionStatus,
         private readonly CustomerWhatsAppInboundService $customerInbound,
+        private readonly CsMessageRecorder $csMessages,
     ) {}
+
+    /** @param  array<string, mixed>  $data */
+    private function csInbound(array $data): void
+    {
+        $this->customerInbound->handle($data);
+        $this->csMessages->recordInbound($data);
+    }
 
     public function handle(Request $request): JsonResponse
     {
@@ -72,11 +81,15 @@ class OpenWaWebhookController extends Controller
         // reseller bot. Its direct messages go to the opt-in/STOP handler
         // only. An envelope with no sessionId (older OpenWA) is treated as the
         // bot, as before.
+        // ADR-136 decisions 8 and 19: its personal-chat messages, both ways,
+        // are also kept (masked) for the support assistant to learn from.
         $csSessionId = config('services.openwa.cs_session_id');
         if ($csSessionId !== null && $request->input('sessionId') === $csSessionId) {
+            $data = (array) $request->input('data', []);
             match ($event) {
                 'session.status' => $this->recordStatus($request, OpenWaSessionStatus::CUSTOMER_SUPPORT),
-                'message.received' => $this->customerInbound->handle((array) $request->input('data', [])),
+                'message.received' => $this->csInbound($data),
+                'message.sent' => $this->csMessages->queueOutbound($data),
                 default => null,
             };
 
