@@ -1728,3 +1728,13 @@ Checked every doc this session touched against `origin/main..origin/staging` and
 **Checked (read-only, prod).** Migration `2026_11_03_120000_add_product_key_to_orders_table` Ran; 91 orders, 0 without `product_key`; `/api/health` ok (database, queue, horizon, scheduler); `/api/health/whatsapp` both sessions `ready`.
 
 **Still to check.** The first nightly OpenWA backup on the releases-plus-shared layout (19:37 UTC 2026-11-02; at release the box clock read 18:33 UTC, so it had not run yet; the last `openwa` `BackupRun` is #76, 2026-11-01, success, restore test passed). A day later: Pulse catalog `slow_request` drop (ADR-077 addendum) and the first `@lid` tie (log `privacy-id chat tied`).
+
+## 2026-11-03 — Item 158 PR 1: keep the CS chats, masked (ADR-136, no AI)
+
+**What.** Test-first (13 new tests; full suite 3,520 green). New `cs_messages` (masked text, `chat_hash`, `order_numbers`, `sender` customer/staff/system, `source` webhook/import) and `customer_notifications.wa_message_id`. `CsMessageRecorder` (the one writer), `CsTextRedactor`, `CsSenderClassifier` (our send by stored id, else same chat and exact text within 2 minutes, else wait while one of our sends is in flight, else staff), `ClassifyCsOutgoingMessageJob` on `whatsapp-lookup`. The webhook now handles the CS session's `message.sent`; `OpenWaClient::sendNow()` returns OpenWA's message id and `SendCustomerWhatsAppJob` stores it. `cs:import-history` copies the CS history (read-only against OpenWA). ADR-136 2026-11-03 PR 1 build notes addendum.
+
+**Why.** OpenWA prunes messages older than 90 days from around 2026-12-24; the assistant's learning needs these conversations, and PR 4's staff takeover needs staff replies told from our own receipts.
+
+**Gotchas.** SQLite does not honour `\_` in `LIKE` without an `ESCAPE` clause, so the id suffix match uses a plain `%_<id>`. The OpenWA-side personal-chat filter was left out (its effect on `session.status` is undocumented); Laravel filters instead.
+
+**After release (prod writes, founder's go-ahead):** add `message.sent` to the CS webhook's events, then run `php artisan cs:import-history --since=2026-09-25` once and check the counts.
