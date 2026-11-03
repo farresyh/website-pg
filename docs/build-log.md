@@ -1769,3 +1769,13 @@ Checked every doc this session touched against `origin/main..origin/staging` and
 **Checked.** Backend suite; admin `tsc`, eslint and unit tests; a browser run against a throwaway sqlite backend (three seeded chats → three suggestions; Approve as new, Ignore chat, Merge, the All suggestions and Knowledge tabs; no page overflow at 390 px). Found and fixed in that run: switching tabs briefly showed the previous tab's rows (state now cleared on switch), and the question/answer columns were too narrow on mobile.
 
 **After release.** The first nightly run at 03:00 MYT turns the imported history (since 2026-09-25) into suggestions; expect founder and staff test chats among them (use Ignore chat).
+
+## 2026-11-03 — Item 158 PR 3a: the model test (ADR-136)
+
+**What.** Test-first (15 new tests; full suite 3,559 green). `App\Services\Llm` (`ChatModel`, `GeminiChatModel`, `FakeChatModel`, `ChatModels` resolver with per-model prices); `CsAnswerer`, `CsOrderSituation`, `CsReplyGuard`, `CsGameInfo`; migration `2026_11_04_130000_create_cs_eval_tables`; `RunCsEvalCaseJob` on the new `cs-assistant` lane (`supervisor-cs-assistant`); `Admin\CsEvalController`; admin tabs Test cases and Model test. ADR-136 PR 3a build notes addendum (Gemini only; no prices, the brand's page link instead; split into 3a/3b).
+
+**Checked.** Admin `tsc`, eslint, unit tests (the colour-token test caught a `warning-700` that has no token). A live smoke run against Gemini with synthetic messages (no customer data) on a throwaway sqlite backend: both models took the tool and JSON schema; 4 cases × 2 models through the real admin UI (import, run, blind pick, Reveal), cost about $0.01. Seen and fixed: the guard compared `localhost:3001` with a port; Flash-Lite looped on `game_info` until the call limit (the last call now has no tools). Flash-Lite also wrote "pembekal" (supplier) in a refusal, caught by the guard, and said "1–3 minit" without a source: both are what the test is for.
+
+**Gotcha.** Model ids contain dots, so `config("services.cs_assistant.models.{$id}")` splits them; the config is read as a whole. A run started on a `sync` queue runs inside the HTTP request and hits the 30-second limit locally; production uses Horizon.
+
+**After release.** The founder approves the knowledge entries the quality cases need, imports the drafted cases (JSON kept outside the repo), starts a run, picks blind and reveals. Then PR 3b.
