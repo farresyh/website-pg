@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Webhooks;
 use App\Http\Controllers\Controller;
 use App\Models\WhatsAppGroup;
 use App\Services\CsAssistant\CsMessageRecorder;
+use App\Services\CsAssistant\Shadow\CsShadowDrafter;
 use App\Services\Notification\CustomerWhatsAppInboundService;
 use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Reseller\Bot\ResellerBotService;
@@ -44,13 +45,19 @@ class OpenWaWebhookController extends Controller
         private readonly OpenWaSessionStatus $sessionStatus,
         private readonly CustomerWhatsAppInboundService $customerInbound,
         private readonly CsMessageRecorder $csMessages,
+        private readonly CsShadowDrafter $csShadow,
     ) {}
 
     /** @param  array<string, mixed>  $data */
     private function csInbound(array $data): void
     {
         $this->customerInbound->handle($data);
-        $this->csMessages->recordInbound($data);
+        $message = $this->csMessages->recordInbound($data);
+
+        // ADR-136 decision 33: the assistant's one entry point, after ADR-116's own work.
+        if ($message !== null) {
+            $this->csShadow->onCustomerMessage($message);
+        }
     }
 
     public function handle(Request $request): JsonResponse

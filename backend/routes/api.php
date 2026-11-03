@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\BudgetEnvelopeController;
 use App\Http\Controllers\Admin\CrawlerRuleController;
 use App\Http\Controllers\Admin\CsEvalController;
 use App\Http\Controllers\Admin\CsKnowledgeController;
+use App\Http\Controllers\Admin\CsShadowController;
 use App\Http\Controllers\Admin\CustomerAnalyticsController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FaqController;
@@ -623,6 +624,12 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::get('/eval-runs/{run}', [CsEvalController::class, 'showRun']);
         Route::post('/eval-runs/{run}/results/{result}/pick', [CsEvalController::class, 'pick']);
         Route::post('/eval-runs/{run}/reveal', [CsEvalController::class, 'reveal']);
+        // ADR-136 PR 3b: settings, Shadow drafts and their grades.
+        Route::get('/assistant-settings', [CsShadowController::class, 'settings']);
+        Route::put('/assistant-settings', [CsShadowController::class, 'updateSettings']);
+        Route::get('/shadow-drafts', [CsShadowController::class, 'drafts']);
+        Route::patch('/shadow-drafts/{draft}/grade', [CsShadowController::class, 'grade']);
+        Route::get('/shadow-accuracy', [CsShadowController::class, 'accuracy']);
     });
 
     Route::middleware('admin.role:super_admin')->prefix('reports/assistant')->group(function () {
