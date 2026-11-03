@@ -1751,3 +1751,11 @@ Checked every doc this session touched against `origin/main..origin/staging` and
 - Live check: a customer test message at 06:23:00 UTC was recorded 1 second later; a reply typed on the CS phone at 06:23:20 arrived as `message.sent` and was recorded as staff 11 seconds later. No failed classify jobs.
 
 **Still to check.** A receipt or status card sent after this release should be recorded as system through `wa_message_id` (only the text-and-time path has been seen, in the import).
+
+## 2026-11-03 — Item 157 OpenWA cleanup and the first system-classified receipt
+
+**Checked first (read-only, prod).** Nightly OpenWA backups #74, #76 and #78 (31 Oct, 1 and 2 Nov 19:37 UTC, the last one on the releases-plus-shared layout): `success`, restore test passed. `~/OpenWA` → `openwa-deploy/releases/v0.27.1`; the running daemon's working directory is `releases/v0.27.1`; nothing in `openwa-deploy/shared` or the crontab names `OpenWA-v0.25.0`.
+
+**Production write, run by the founder.** `rm -rf ~/OpenWA-v0.25.0` (1,022 MB) and `rm -f ~/openwa-backups/openwa-v0.25.0-20261101-1051.tar.gz ~/openwa-v0.27.0-build.log ~/openwa-v0.27.1-build.log`. After: `~` holds only `OpenWA` (symlink), `openwa-backups` (now just `openwa-v0.27.0-20261102.tar.gz`) and `openwa-deploy` (releases `v0.27.0`, `v0.27.1`); disk 12 G → 11 G used of 77 G; `/api/health` 200 and `/api/health/whatsapp` both sessions `ready`. `API_KEY_PEPPER` left unset (only a boot warning; setting it would force both OpenWA keys to be re-issued). Item 157 closed.
+
+**Item 158 PR 1, last check passed.** A customer sent an order number to the CS number at 09:16:38 UTC (`cs_messages` #200, customer, order number kept); the status card sent back at 09:16:47 was stored as `customer_notifications` #25 with its `wa_message_id`, and the matching `message.sent` became `cs_messages` #201, sender `system`, `customer_notification_id` 25: classified by the stored id, not by text and time.
