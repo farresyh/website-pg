@@ -38,6 +38,7 @@ class CustomerNotification extends Model
         'attempts',
         'error',
         'sent_at',
+        'wa_message_id',
     ];
 
     protected $casts = [

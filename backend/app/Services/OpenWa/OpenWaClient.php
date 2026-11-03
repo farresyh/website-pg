@@ -130,8 +130,11 @@ final class OpenWaClient
      * throws `OpenWaPacingLimitedException` (ADR-116), which is not a failure,
      * and a number not on WhatsApp throws `OpenWaRecipientNotOnWhatsAppException`,
      * which the jobs fail on at once (PRD §16 item 96).
+     *
+     * Returns OpenWA's message id (ADR-136 decision 33: it tells our own sends
+     * from staff messages), null if the gateway gave none.
      */
-    public function sendNow(string $chatId, string $text): void
+    public function sendNow(string $chatId, string $text): ?string
     {
         if ($this->sessionId === null || $this->apiKey === null) {
             throw new RuntimeException('OpenWaClient: session_id/api_key not configured');
@@ -164,5 +167,39 @@ final class OpenWaClient
         if ($response->failed()) {
             throw new RuntimeException("OpenWaClient: send-text failed with status {$response->status()}");
         }
+
+        $messageId = $response->json('messageId');
+
+        return is_string($messageId) && $messageId !== '' ? $messageId : null;
+    }
+
+    /**
+     * ADR-136 decision 19: one page of this session's stored message history
+     * (`GET /api/sessions/{id}/messages`), read-only, for the history import.
+     * Throws when OpenWA does not answer.
+     *
+     * @param  array<string, scalar>  $query
+     * @return list<array<string, mixed>>
+     */
+    public function messages(array $query): array
+    {
+        if ($this->sessionId === null || $this->apiKey === null) {
+            throw new RuntimeException('OpenWaClient: session_id/api_key not configured');
+        }
+
+        $response = Http::baseUrl($this->baseUrl)
+            ->withToken($this->apiKey)
+            ->acceptJson()
+            ->timeout($this->timeoutSeconds)
+            ->connectTimeout($this->connectTimeoutSeconds)
+            ->get("/api/sessions/{$this->sessionId}/messages", $query);
+
+        if ($response->failed()) {
+            throw new RuntimeException("OpenWaClient: messages list failed with status {$response->status()}");
+        }
+
+        $messages = $response->json('messages');
+
+        return is_array($messages) ? array_values(array_filter($messages, 'is_array')) : [];
     }
 }
