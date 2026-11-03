@@ -196,4 +196,32 @@ class SeoControllerTest extends TestCase
         $this->assertSame('PekanGame — Top Up', $response->json('default_meta_title'));
         $this->assertSame('FIXFAST_FB_PIXEL', $response->json('fb_pixel_id'));
     }
+    /**
+     * An OG image is a picture, not a {store_name} template: the primary's
+     * PekanGame-branded image must never be served on a whitelabel brand.
+     */
+    public function test_default_og_image_is_the_brands_own_never_the_primarys(): void
+    {
+        $primary = $this->primaryAffiliate();
+        AffiliateSeoSettings::query()->create([
+            'affiliate_id' => $primary->id,
+            'default_og_image' => 'https://cdn.example/pekangame-og.png',
+        ]);
+
+        $withOwn = Affiliate::query()->create(['business_name' => 'FixFast', 'is_primary' => null, 'status' => 'active', 'markup_pct' => 0]);
+        AffiliateSeoSettings::query()->create(['affiliate_id' => $withOwn->id, 'default_og_image' => 'https://cdn.example/fixfast-og.png']);
+        $withoutOwn = Affiliate::query()->create(['business_name' => 'Ohaha', 'is_primary' => null, 'status' => 'active', 'markup_pct' => 0]);
+
+        foreach ([[$withOwn, 'fixfastapp.com'], [$withoutOwn, 'ohahastore.com']] as [$affiliate, $host]) {
+            \App\Models\AffiliateDomain::query()->create([
+                'affiliate_id' => $affiliate->id,
+                'hostname' => $host,
+                'status' => \App\Services\Affiliate\AffiliateDomainStatus::Active,
+            ]);
+        }
+
+        $this->assertSame('https://cdn.example/pekangame-og.png', $this->getJson('/api/catalog/seo/settings')->json('default_og_image'));
+        $this->assertSame('https://cdn.example/fixfast-og.png', $this->withHeaders(['X-Storefront-Host' => 'fixfastapp.com'])->getJson('/api/catalog/seo/settings')->json('default_og_image'));
+        $this->assertNull($this->withHeaders(['X-Storefront-Host' => 'ohahastore.com'])->getJson('/api/catalog/seo/settings')->json('default_og_image'));
+    }
 }
