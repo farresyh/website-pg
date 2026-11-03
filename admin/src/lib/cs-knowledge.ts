@@ -28,6 +28,11 @@ export interface Suggestion {
   id: number;
   question: string;
   answer: string;
+  // PR 3b: the model's reviewable rewrite (null until the nightly run writes it).
+  ai_question: string | null;
+  ai_answer: string | null;
+  ai_category: Category | null;
+  ai_entry_id: number | null;
   order_numbers: string[] | null;
   affiliate_id: number | null;
   affiliate: { id: number; business_name: string } | null;

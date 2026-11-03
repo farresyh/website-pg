@@ -29,6 +29,8 @@ import EntryFormModal, { type Option } from "@/components/cs-knowledge/EntryForm
 import MergeSuggestionModal from "@/components/cs-knowledge/MergeSuggestionModal";
 import EvalCasesPanel from "@/components/cs-knowledge/EvalCasesPanel";
 import ModelTestPanel from "@/components/cs-knowledge/ModelTestPanel";
+import ShadowPanel from "@/components/cs-knowledge/ShadowPanel";
+import AssistantSettingsPanel from "@/components/cs-knowledge/AssistantSettingsPanel";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
 import { listAffiliates } from "@/lib/affiliates";
@@ -56,7 +58,9 @@ type Tab =
   | { kind: "suggestions"; status: SuggestionStatus | "all" }
   | { kind: "entries"; status: EntryStatus }
   | { kind: "cases"; status?: undefined }
-  | { kind: "model-test"; status?: undefined };
+  | { kind: "model-test"; status?: undefined }
+  | { kind: "shadow"; status?: undefined }
+  | { kind: "settings"; status?: undefined };
 
 const TABS: { tab: Tab; label: string }[] = [
   { tab: { kind: "suggestions", status: "pending" }, label: "To review" },
@@ -66,6 +70,9 @@ const TABS: { tab: Tab; label: string }[] = [
   // ADR-136 decision 28 (PR 3a): the model test.
   { tab: { kind: "cases" }, label: "Test cases" },
   { tab: { kind: "model-test" }, label: "Model test" },
+  // ADR-136 PR 3b: Shadow drafts and the assistant's settings.
+  { tab: { kind: "shadow" }, label: "Shadow" },
+  { tab: { kind: "settings" }, label: "Settings" },
 ];
 
 const SUGGESTION_STATUS: Record<SuggestionStatus, { label: string; severity: "success" | "warn" | "danger" | "secondary" | "info" }> = {
@@ -102,7 +109,7 @@ export default function CsKnowledgePage() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    if (tab.kind === "cases" || tab.kind === "model-test") return Promise.resolve();
+    if (tab.kind !== "suggestions" && tab.kind !== "entries") return Promise.resolve();
     const request =
       tab.kind === "suggestions"
         ? listSuggestions(tab.status, pageNumber).then((p) => {
@@ -207,6 +214,8 @@ export default function CsKnowledgePage() {
 
       {tab.kind === "cases" && <EvalCasesPanel />}
       {tab.kind === "model-test" && <ModelTestPanel />}
+      {tab.kind === "shadow" && <ShadowPanel />}
+      {tab.kind === "settings" && <AssistantSettingsPanel />}
 
       {(tab.kind === "suggestions" || tab.kind === "entries") && (
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-surface dark:border-gray-800">
@@ -231,8 +240,15 @@ export default function CsKnowledgePage() {
                       const busy = busyId === s.id;
                       return (
                         <DataTableRow key={s.id}>
-                          <DataTableCell className="min-w-[200px] max-w-xs px-5 py-4 align-top text-theme-sm whitespace-pre-line text-ink">{s.question}</DataTableCell>
-                          <DataTableCell className="min-w-[200px] max-w-xs px-5 py-4 align-top text-theme-sm whitespace-pre-line text-ink-muted">{s.answer}</DataTableCell>
+                          <DataTableCell className="min-w-[200px] max-w-xs px-5 py-4 align-top text-theme-sm whitespace-pre-line text-ink">
+                            {s.question}
+                            {s.ai_question && <p className="mt-2 text-theme-xs text-cyan-ink">Suggested: {s.ai_question}</p>}
+                          </DataTableCell>
+                          <DataTableCell className="min-w-[200px] max-w-xs px-5 py-4 align-top text-theme-sm whitespace-pre-line text-ink-muted">
+                            {s.answer}
+                            {s.ai_answer && <p className="mt-2 text-theme-xs text-cyan-ink">Suggested: {s.ai_answer}</p>}
+                            {s.ai_entry_id && <p className="mt-1 text-theme-xs text-ink-subtle">Looks like entry #{s.ai_entry_id}: consider Merge.</p>}
+                          </DataTableCell>
                           <DataTableCell className="px-5 py-4 align-top text-theme-sm text-ink-muted">{s.affiliate?.business_name ?? "Unknown"}</DataTableCell>
                           <DataTableCell className="px-5 py-4 align-top text-theme-sm text-ink-muted">{new Date(s.asked_at).toLocaleString()}</DataTableCell>
                           <DataTableCell className="px-5 py-4 align-top text-theme-sm">
@@ -379,7 +395,12 @@ export default function CsKnowledgePage() {
           editing?.mode === "edit"
             ? editing.entry
             : editing?.mode === "approve"
-              ? { ...BLANK, questions: [editing.suggestion.question.split("\n")[0] ?? ""], answer: editing.suggestion.answer }
+              ? {
+                  ...BLANK,
+                  category: editing.suggestion.ai_category ?? BLANK.category,
+                  questions: [editing.suggestion.ai_question ?? editing.suggestion.question.split("\n")[0] ?? ""],
+                  answer: editing.suggestion.ai_answer ?? editing.suggestion.answer,
+                }
               : BLANK
         }
         source={editing?.mode === "approve" ? { question: editing.suggestion.question, answer: editing.suggestion.answer } : undefined}
