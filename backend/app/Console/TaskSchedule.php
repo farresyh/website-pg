@@ -58,6 +58,7 @@ class TaskSchedule
         'reseller-bot-command-log-pruning',
         'partner-application-pruning',
         'cs-knowledge-suggestions',
+        'cs-shadow-judging',
         'cs-message-pruning',
         'stale-cache-pruning',
         'affiliate-domain-status-sync',
@@ -203,6 +204,13 @@ class TaskSchedule
         $schedule->command('cs:suggest-knowledge')
             ->dailyAt('19:00')
             ->name('cs-knowledge-suggestions')
+            ->withoutOverlapping($overlap);
+
+        // ADR-136 decision 18 (PR 3b): Shadow drafts graded against staff's
+        // replies, after the day's chats have ended (19:30 UTC = 03:30 MYT).
+        $schedule->command('cs:judge-drafts')
+            ->dailyAt('19:30')
+            ->name('cs-shadow-judging')
             ->withoutOverlapping($overlap);
 
         // ADR-136 decision 30: masked CS messages and suggestions kept 2 years.

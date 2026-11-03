@@ -5,8 +5,6 @@ namespace App\Services\CsAssistant;
 use App\Models\CsIgnoredChat;
 use App\Models\CsKnowledgeSuggestion;
 use App\Models\CsMessage;
-use App\Models\CustomerNotification;
-use App\Models\Order;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
@@ -122,40 +120,12 @@ final class CsKnowledgeSuggester
                 'question' => collect($question)->map(fn (CsMessage $m) => filled($m->body) ? $m->body : "[{$m->type}]")->implode("\n"),
                 'answer' => collect($answer)->filter(fn (CsMessage $m) => filled($m->body))->pluck('body')->implode("\n"),
                 'order_numbers' => $orderNumbers ?: null,
-                'affiliate_id' => $this->brand($orderNumbers, $chat, $question[0]),
+                'affiliate_id' => CsChatContext::brand($orderNumbers, $chat, $question[0]),
                 'asked_at' => $question[0]->sent_at,
                 'status' => CsKnowledgeSuggestion::STATUS_PENDING,
             ],
         );
 
         return $suggestion->wasRecentlyCreated;
-    }
-
-    /**
-     * Decision 9: the order's own brand, else that of our latest send to the
-     * chat before the question, else unknown (null).
-     *
-     * @param  list<string>  $orderNumbers
-     * @param  Collection<int, CsMessage>  $chat
-     */
-    private function brand(array $orderNumbers, Collection $chat, CsMessage $first): ?int
-    {
-        if ($orderNumbers !== []) {
-            $id = Order::query()->whereIn('order_number', $orderNumbers)->value('affiliate_id');
-            if ($id !== null) {
-                return $id;
-            }
-        }
-
-        $send = $chat->filter(fn (CsMessage $m) => $m->customer_notification_id !== null && $m->sent_at->lte($first->sent_at))->last()
-            ?? $chat->firstWhere('customer_notification_id', '!=', null);
-
-        if ($send === null) {
-            return null;
-        }
-
-        return Order::query()
-            ->whereKey(CustomerNotification::query()->whereKey($send->customer_notification_id)->value('order_id'))
-            ->value('affiliate_id');
     }
 }
