@@ -1829,6 +1829,6 @@ The founder resumed item 158 after the reviews/OG fix (#682) and chose the run #
 
 **Verified.** Backend suite 3566 passed; admin `tsc` and lint clean. Live, against the local dev DB, through `CsAnswerer`: Haiku 5.5 and 3.5 Flash-Lite both call `game_info` and answer in valid JSON; the cost question is refused as "maklumat dalaman" without echoing "modal" by all three; "ff" finds Free Fire; on a wrong player ID, 3.5 Flash-Lite still invented a policy (Haiku and 3.1 handed over).
 
-**Gotchas.** The PHP SDK 1.4 sends the key as `Authorization: Bearer`, not `x-api-key`. It ignores `RequestOptions::timeout` (the transport enforces it), so the adapter passes a Guzzle client; SDK calls bypass Laravel's `Http::fake()`, so its tests use a Guzzle mock handler.
+**Gotchas.** The PHP SDK 1.4 sends the key as `Authorization: Bearer`, not `x-api-key`. It ignores `RequestOptions::timeout` (the transport enforces it), so the adapter passes a Guzzle client; SDK calls bypass Laravel's `Http::fake()`, so its tests use a Guzzle mock handler. CI's `composer` job (`composer audit --locked`) runs only when composer files change, so the first PR to touch them inherits any advisory published since: here `symfony/mime` CVE-2026-45070 (reported 2026-10-28), fixed by updating it to 8.1.10 in the same PR.
 
 **Next (founder):** put `ANTHROPIC_API_KEY` on Forge before release; add the "server ID" entry; set the angry-customer case to any reason; after release, run #3 and pick blind, then Reveal.
