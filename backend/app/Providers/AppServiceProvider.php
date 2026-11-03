@@ -27,6 +27,7 @@ use App\Services\Affiliate\Domain\NullDomainProvider;
 use App\Services\Affiliate\Domain\VercelDomainProvider;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Fraud\CheckoutVelocityGuard;
+use App\Services\Llm\ChatModels;
 use App\Services\Membership\PlunkMailer;
 use App\Services\OpenWa\OpenWaClient;
 use App\Services\Payment\Chip\ChipCredentialResolver;
@@ -256,6 +257,8 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(PaymentGatewayFactory::class);
+        // ADR-136 decision 33: one resolver, so a test's fake model sticks.
+        $this->app->singleton(ChatModels::class);
 
         $this->app->bind(PaymentGateway::class, fn ($app) => $app->make('payment-gateway.chip'));
 

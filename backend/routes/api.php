@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\AffiliateMembershipTierController;
 use App\Http\Controllers\Admin\BlacklistController;
 use App\Http\Controllers\Admin\BudgetEnvelopeController;
 use App\Http\Controllers\Admin\CrawlerRuleController;
+use App\Http\Controllers\Admin\CsEvalController;
 use App\Http\Controllers\Admin\CsKnowledgeController;
 use App\Http\Controllers\Admin\CustomerAnalyticsController;
 use App\Http\Controllers\Admin\DashboardController;
@@ -611,6 +612,17 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::patch('/entries/{entry}', [CsKnowledgeController::class, 'update']);
         Route::patch('/entries/{entry}/archive', [CsKnowledgeController::class, 'archive']);
         Route::patch('/entries/{entry}/restore', [CsKnowledgeController::class, 'restore']);
+
+        // ADR-136 decision 28 (PR 3a): the model test.
+        Route::get('/eval-cases', [CsEvalController::class, 'cases']);
+        Route::post('/eval-cases', [CsEvalController::class, 'storeCase']);
+        Route::post('/eval-cases/import', [CsEvalController::class, 'importCases']);
+        Route::patch('/eval-cases/{case}', [CsEvalController::class, 'updateCase']);
+        Route::get('/eval-runs', [CsEvalController::class, 'runs']);
+        Route::post('/eval-runs', [CsEvalController::class, 'startRun']);
+        Route::get('/eval-runs/{run}', [CsEvalController::class, 'showRun']);
+        Route::post('/eval-runs/{run}/results/{result}/pick', [CsEvalController::class, 'pick']);
+        Route::post('/eval-runs/{run}/reveal', [CsEvalController::class, 'reveal']);
     });
 
     Route::middleware('admin.role:super_admin')->prefix('reports/assistant')->group(function () {
