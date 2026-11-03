@@ -100,6 +100,20 @@ class CsMessageCaptureTest extends TestCase
         $this->assertSame(0, CsMessage::query()->count());
     }
 
+    public function test_channels_status_updates_and_broadcast_lists_are_not_kept_either_way(): void
+    {
+        $this->event('message.received', $this->message('channel post', ['kind' => 'channel', 'chatId' => '1203630@newsletter', 'from' => '1203630@newsletter']));
+        $this->event('message.received', $this->message('status', ['kind' => 'status', 'chatId' => 'status@broadcast', 'from' => 'status@broadcast']));
+        $this->event('message.received', $this->message('list', ['kind' => 'broadcast', 'chatId' => '1700000000@broadcast', 'from' => '1700000000@broadcast']));
+        // An older payload with no `kind` is judged by the chat id alone.
+        $this->event('message.received', array_diff_key($this->message('channel post', ['chatId' => '1203630@newsletter', 'from' => '1203630@newsletter']), ['kind' => true]));
+        // A post or reply we make in a channel is not a support message either.
+        $this->event('message.sent', $this->message('our channel post', ['kind' => 'channel', 'chatId' => '1203630@newsletter', 'fromMe' => true]));
+
+        $this->assertSame(0, CsMessage::query()->count());
+        Queue::assertNotPushed(ClassifyCsOutgoingMessageJob::class);
+    }
+
     public function test_a_redelivered_event_is_kept_once(): void
     {
         $message = $this->message('hello');
