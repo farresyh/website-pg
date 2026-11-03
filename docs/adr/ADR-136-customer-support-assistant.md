@@ -2,7 +2,7 @@
 
 > **Standing (2026-11-03):** Proposed. Extends [ADR-116](./ADR-116-customer-order-notifications-over-whatsapp.md) (the CS session, opt-in, status card, STOP/START) and [ADR-075](./ADR-075-reseller-bot-channel.md) (OpenWA). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
-**Status:** Proposed, 2026-11-03. Decisions 1–16 were made with the founder in Malay on 2026-11-03. Still open before Accepted: knowledge storage and retrieval, the model choice from the comparison test (decision 12), and a grill plus stress test of the whole design. PRD §16 item 158.
+**Status:** Proposed, 2026-11-03. Decisions 1–20 were made with the founder in Malay on 2026-11-03. Still open before Accepted: the model choice from the comparison test (decision 12), and a grill plus stress test of the whole design. PRD §16 item 158.
 
 ## Context
 
@@ -94,6 +94,23 @@ Staff write casual Malay ("boss", "bang", "jap", "mksudnya", stretched letters, 
 14. **Check First Topup before handing over a "Delivered but not received" order** (refines decision 6b): when the delivered package is a first-topup bonus package, the assistant explains the once-per-account bonus and how to check it in game first, and hands over only if the customer still says it did not arrive. In the data, 3 of 4 such complaints were this.
 15. **Approved guide images.** A knowledge entry may carry an approved image the assistant sends with its answer (for example the in-game first-recharge check). Images a customer sends are read only to understand the question, never as proof of payment.
 16. **Chats the assistant never enters:** the founder's and staff's own numbers (a panel list), chats whose first message was sent by staff (outbound B2B outreach and its replies), and chats under staff takeover (decision 11). A question about becoming a reseller or affiliate is answered with the official application link (`onboarding.pekangame.space/apply`, ADR-133), never with tier details.
+17. **Knowledge: only public data and approved entries reach the model.** Sources, all read at answer time:
+   - `cs_knowledge_entries` (new): category, question variants, answer, brand scope (all or one affiliate), game scope, optional guide image, valid-until, status, approved by and at, use count. Only approved rows are read, filtered by brand.
+   - `cs_knowledge_suggestions` (new, separate): the model never reads it.
+   - The FAQ table (`faqs`, 5 rows, English, one set for every brand), read directly, not copied; the assistant answers in the customer's language and brand voice, so the table is not changed.
+   - Game info and prices through a `game_info(game)` tool that returns exactly what that brand's storefront catalog shows (description, important notes, delivery badge, selling price); never cost.
+   - Order status from Laravel only (decision 13).
+
+   Retrieval: no vector store while approved entries plus FAQ fit in a cached prompt. Past about 150 entries (or about 20K tokens), add embeddings in a JSON column with similarity in PHP (production MySQL 8.4 has no vector type).
+18. **How shadow mode works.** Each customer message is stored (`cs_messages`); a queued job writes a draft to `cs_bot_drafts` (the message it answers, the draft text or a handover with its reason, category, the knowledge entries used, model, tokens, cost) and sends nothing. Staff messages in the same chat until the customer writes again (at most 2 hours) are joined as the staff answer. Each night a judging call grades each pair: same meaning, partly right, different, correct handover, or should have handed over. A super_admin page shows customer message, draft, staff answer and grade side by side, and the super_admin can overrule a grade; per-category accuracy comes from these. A draft with no staff answer is not counted; a staff answer that is only an image is "unclear" for the admin. Drafts follow the 90-day retention. Drafts are not shown to staff live (that would make the measurement meaningless); reconsider after go-live.
+19. **OpenWA integration** (from the v0.27.1 docs and API spec, read 2026-11-03):
+   - The CS webhook subscribes to `message.sent` as well and gets a pre-dispatch filter for personal chats only (`isGroup is false`), keeping the 1,019 group messages away from Laravel. On Baileys every `fromMe` message, including one typed on the phone, is emitted as `message.sent`. Changing the webhook is a production write (founder's go-ahead at build time), followed by a live check that a phone-typed message arrives.
+   - Laravel stops discarding `fromMe` for CS personal chats (`CustomerWhatsAppInboundService`) and tells its own sends (message ids recorded when sent) from staff messages.
+   - History since 2026-09-25 is imported read-only through `GET /messages` before OpenWA's first prune (decision 8).
+   - Customer images over 1 MiB are not inlined in the webhook; Laravel fetches them through `GET /messages/{chatId}/{messageId}/media`. Guide images go out through `send-image`.
+   - OpenWA's own `automation_rules` stay empty: a keyword rule would answer alongside the assistant.
+   - Not used: chat labels (the CS number is ordinary WhatsApp, not Business); the Chatwoot adapter (a helpdesk server to run and a new way of working for staff; the natural upgrade if staff outgrow the phone); OpenWA's MCP server (it would expose raw, unmasked chats of every session).
+20. **AI-assisted review reads Laravel's masked data, not OpenWA.** The founder and Claude Code review suggestions and propose entries from the masked `cs_*` tables (read-only SSH today). A small Laravel-side MCP exposing only masked review data (suggestions, entries, shadow accuracy, propose an edit) is the later option when review becomes frequent. Approval stays in the admin panel.
 
 ## Rationale
 
@@ -105,7 +122,6 @@ Staff write casual Malay ("boss", "bang", "jap", "mksudnya", stretched letters, 
 
 ## Not decided yet (before Accepted)
 
-- **Knowledge storage and retrieval:** where approved entries live, how they are searched, and how FAQ and game data are kept in sync.
 - **The model:** the result of decision 12's comparison test.
 - **Grill and stress test** of the whole design, including adversarial prompts (a customer trying to extract cost or supplier names) and the order of checks with ADR-116's existing CS handling (order matcher, status card, STOP/START, opt-in).
 
