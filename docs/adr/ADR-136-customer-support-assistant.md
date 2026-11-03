@@ -2,7 +2,7 @@
 
 > **Standing (2026-11-03):** Proposed. Extends [ADR-116](./ADR-116-customer-order-notifications-over-whatsapp.md) (the CS session, opt-in, status card, STOP/START) and [ADR-075](./ADR-075-reseller-bot-channel.md) (OpenWA). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
-**Status:** Proposed, 2026-11-03. Decisions 1–9 were made with the founder in Malay on 2026-11-03. Still open before Accepted: the model and provider (PDPA, what leaves the platform), how the assistant sits inside the ADR-116 message flow, and a grill plus stress test of the whole design. PRD §16 item 158.
+**Status:** Proposed, 2026-11-03. Decisions 1–16 were made with the founder in Malay on 2026-11-03. Still open before Accepted: knowledge storage and retrieval, the model choice from the comparison test (decision 12), and a grill plus stress test of the whole design. PRD §16 item 158.
 
 ## Context
 
@@ -40,6 +40,19 @@ The CS session's outgoing personal messages mix our automated sends (status card
 
 Every order over 30 minutes needed 1–3 admin resends. No order in the data finished by itself after 30 minutes. No paid order was stuck in Pending or Processing at the time of the check.
 
+**What customers actually ask (CS personal chats since 2026-09-25, read masked on 2026-11-03).** About 8 real customer conversations; the rest are staff and founder tests, automated sends, and staff's outbound B2B outreach to other stores and their replies. By frequency:
+
+| Pattern | Conversations | How staff answered |
+| --- | --- | --- |
+| "Didn't get 500 diamonds": the MLBB **First Topup** bonus (250+250, 50+50) only applies once per account | 4 | Explained the once-per-account rule with a screenshot of how to check in game (the + next to diamonds, the red "first recharge" mark) |
+| Order failed but paid | 3 | "Kejap kita check", resend, "dah masuk" |
+| Paid, not in yet / "is this an official store?" | 1–2 | Confirmed the player ID, then checked |
+| Becoming a reseller / wholesale prices (in English) | 1 | Price-list link and the tier count |
+| Membership OTP email not received | 1 | "Check spam" |
+| Using a voucher for another package | 1 | "Boleh guna voucher untuk beli baru" |
+
+Staff write casual Malay ("boss", "bang", "jap", "mksudnya", stretched letters, short bursts); customers use dialect and short forms ("hok", "xde", "fhm") and often send screenshots. One staff reply to a prospective reseller included internal pricing plans, the kind of text decision 2 keeps out of the knowledge.
+
 **Order numbers carry no brand.** `OrderNumberService` makes `PG-` plus 12 random characters. The brand appears only in the Contact Support prefill text ("Salam support {storeName}, saya perlukan bantuan untuk order PG-…"), which the customer can edit.
 
 ## Decision
@@ -70,20 +83,31 @@ Every order over 30 minutes needed 1–3 admin resends. No order in the data fin
    - The privacy notice gains a line about this use.
    - It must be running before 2026-12-24, when OpenWA's first prune starts.
 9. **The brand comes from the order, not the message text.** With an order number, the brand is the order's own (`affiliate_id`), looked up in the database; the prefill text is never trusted. Without an order number, the brand is that number's most recent order's brand (`whatsapp_contacts`), else PekanGame. Answers, sign-off and knowledge are that brand's. Per ADR-116 decision 6, an affiliate storefront's footer links to the affiliate's own support number, so most pre-sale questions from affiliate customers never reach the CS number.
+10. **The learning loop.** Every night the system reads each finished CS conversation (masked) and writes **knowledge suggestions**: the customer's question (generalised), the staff answer with internal facts removed, category, game, brand, and how many times a similar question was asked. A similar question to an existing entry becomes "update entry X", not a new one. A **super_admin** approves, edits and approves, merges into an existing entry, or rejects each suggestion on an admin "CS knowledge" page; review happens whenever convenient (expected 2–5 suggestions a week at today's volume). A weekly view lists the most-asked unanswered questions, bot answers followed by a request for a human (weak answers), entries never used, and the share of messages the assistant resolved alone. The model is never retrained; only the approved knowledge grows.
+11. **Three-position mode switch, per-category live switches, automatic staff takeover** (panel settings, super_admin, the ADR-116 switch pattern):
+   - **Off** (default, and the emergency stop): the assistant does nothing; staff handle everything; collection (decision 8) and suggestions (decision 10) keep running.
+   - **Shadow:** the assistant drafts an answer for every customer message but never sends it; each night drafts are compared with what staff actually replied, giving an accuracy per category ("18 of 20 right for First Topup"). Mismatches feed decision 10. At least 2–4 weeks before any category goes live.
+   - **Live:** the assistant replies, only in categories switched live; every other category stays in shadow and is handed to staff.
+   - **Staff takeover:** when staff send a message in a chat (phone or OpenWA dashboard), the assistant stays silent in that chat for a panel-set period (default 12 hours) after staff's last message. A message the assistant sent is recorded on our side, so staff messages are the outgoing ones we did not send (to verify at build: that OpenWA's webhook delivers messages typed on the phone).
+12. **Model chosen by a comparison test, not a price table.** Candidates: Claude Haiku 5.5, Gemini 3.1 Flash-Lite, Gemini 3.8 Flash, Qwen3.8-Flash (Alibaba Cloud International, Singapore region), each able to read images. A test set of about 40 cases (about 10 rewritten from the real patterns above, masked; about 30 synthetic: dialect and short forms, attempts to extract cost or suppliers, "are you a bot?", failed and late orders, screenshots) kept outside the repo. The cheapest model that passes every safety case and answers most naturally wins. Excluded: DeepSeek's own API (data stored in China, inputs may be used for training, no published retention). Only paid tiers that do not train on inputs; the chosen provider's data terms are re-checked at build time.
+13. **What leaves the platform:** the customer's message with phone numbers, emails, names and player IDs replaced by placeholders, the relevant knowledge entries, the brand name, and an image the customer sent. Never: the phone number, cost, supplier, other orders, or the full chat history. Order status is looked up by Laravel, never by the model. If the provider is down or slow, the assistant stays silent and the chat is left to staff. A PDPA review (cross-border transfer, the privacy-notice line of decision 8) by the same lawyer as ADR-133's notices is a condition before Live, not before build.
+14. **Check First Topup before handing over a "Delivered but not received" order** (refines decision 6b): when the delivered package is a first-topup bonus package, the assistant explains the once-per-account bonus and how to check it in game first, and hands over only if the customer still says it did not arrive. In the data, 3 of 4 such complaints were this.
+15. **Approved guide images.** A knowledge entry may carry an approved image the assistant sends with its answer (for example the in-game first-recharge check). Images a customer sends are read only to understand the question, never as proof of payment.
+16. **Chats the assistant never enters:** the founder's and staff's own numbers (a panel list), chats whose first message was sent by staff (outbound B2B outreach and its replies), and chats under staff takeover (decision 11). A question about becoming a reseller or affiliate is answered with the official application link (`onboarding.pekangame.space/apply`, ADR-133), never with tier details.
 
 ## Rationale
 
 - **Approval-gated learning (decision 2)** keeps the "grows over time" goal without letting a single bad reply spread. The study data (decision 8) is tiny today (about 98 incoming personal messages from about 15 chats in 39 days), so an auto-learning model would learn from almost nothing. Approved entries are a corpus that improves with each admin review.
 - **Honest identity (decision 5):** a customer who feels deceived is the one who taps Report, and Reports are what ban an unofficial number. Natural tone is what makes it feel human; denying being a bot adds risk and no value.
 - **30 minutes (decision 7)** is where the production data turns: 92% of orders arrive within it, and every one past it needed an admin. 15 minutes covers the "baru 5–10 minit" complaints the founder sees, without involving staff.
+- **Shadow mode and per-category switches (decision 11)** let the assistant learn from the real conversations without a customer ever seeing an unproven answer, and go live one proven category at a time; Off stays one click away.
 - **The brand from the database (decision 9):** the order number has no brand, and the prefill text is customer-editable.
 
 ## Not decided yet (before Accepted)
 
-- **Model and provider:** which LLM (Gemini is already used for ADR-087), what customer text leaves the platform, data-processing terms, PDPA cross-border transfer, cost per message, and fallback when the provider is down.
-- **Placement in the ADR-116 flow:** the order matcher, status card, STOP/START and opt-in run first; when the assistant answers and when it stays silent; how ADR-116 decision 5 ("Contact Support message = no auto-reply") changes; how staff see a handover and take over (and how the assistant stays quiet while a human is in the conversation); rate caps and pacing under OpenWA's anti-ban rules.
-- **Knowledge storage and retrieval:** where approved entries live, how they are searched, and how game and FAQ data are kept in sync.
-- **Grill and stress test** of the whole design, including adversarial prompts (a customer trying to extract cost or supplier names).
+- **Knowledge storage and retrieval:** where approved entries live, how they are searched, and how FAQ and game data are kept in sync.
+- **The model:** the result of decision 12's comparison test.
+- **Grill and stress test** of the whole design, including adversarial prompts (a customer trying to extract cost or supplier names) and the order of checks with ADR-116's existing CS handling (order matcher, status card, STOP/START, opt-in).
 
 ## Consequence to track
 
