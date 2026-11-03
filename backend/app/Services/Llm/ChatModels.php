@@ -13,10 +13,15 @@ class ChatModels
     /** @var array<string, ChatModel> */
     private array $fakes = [];
 
-    /** @return list<string> */
+    /** @return list<string> the model test's candidates (decision 28) */
     public function ids(): array
     {
-        return array_keys((array) config('services.cs_assistant.models'));
+        return array_keys(array_filter((array) config('services.cs_assistant.models'), fn (array $m) => $m['candidate'] ?? true));
+    }
+
+    public function has(string $id): bool
+    {
+        return $this->price($id) !== null;
     }
 
     public function make(string $id): ChatModel
@@ -42,19 +47,22 @@ class ChatModels
         };
     }
 
-    /** Every provider a configured model needs has its key set. */
-    public function configured(): bool
+    /** Every provider the given models (default: the test candidates) need has its key set. */
+    public function configured(?array $ids = null): bool
     {
-        return $this->missingKeys() === [];
+        return $this->missingKeys($ids) === [];
     }
 
-    /** @return list<string> the env names of the keys still unset */
-    public function missingKeys(): array
+    /**
+     * @param  list<string>|null  $ids  default: the test candidates
+     * @return list<string> the env names of the keys still unset
+     */
+    public function missingKeys(?array $ids = null): array
     {
         $keys = ['gemini' => ['services.gemini.api_key', 'GEMINI_API_KEY'], 'anthropic' => ['services.anthropic.api_key', 'ANTHROPIC_API_KEY']];
-        $providers = array_unique(array_column((array) config('services.cs_assistant.models'), 'provider'));
+        $providers = array_unique(array_map(fn (string $id) => $this->price($id)['provider'] ?? '', $ids ?? $this->ids()));
 
-        return array_values(array_map(fn (string $p) => $keys[$p][1], array_filter($providers, fn (string $p) => blank(config($keys[$p][0])))));
+        return array_values(array_map(fn (string $p) => $keys[$p][1], array_filter($providers, fn (string $p) => isset($keys[$p]) && blank(config($keys[$p][0])))));
     }
 
     /** US dollars, in millionths, for one call. */

@@ -35,6 +35,12 @@ class CsKnowledgeSuggestion extends Model
         'first_message_id',
         'question',
         'answer',
+        'ai_question',
+        'ai_answer',
+        'ai_category',
+        'ai_entry_id',
+        'ai_cost_usd_micros',
+        'ai_written_at',
         'order_numbers',
         'affiliate_id',
         'asked_at',
@@ -52,6 +58,8 @@ class CsKnowledgeSuggestion extends Model
             'order_numbers' => 'array',
             'asked_at' => 'datetime',
             'reviewed_at' => 'datetime',
+            'ai_written_at' => 'datetime',
+            'ai_entry_id' => 'integer',
         ];
     }
 
