@@ -1779,3 +1779,11 @@ Checked every doc this session touched against `origin/main..origin/staging` and
 **Gotcha.** Model ids contain dots, so `config("services.cs_assistant.models.{$id}")` splits them; the config is read as a whole. A run started on a `sync` queue runs inside the HTTP request and hits the 30-second limit locally; production uses Horizon.
 
 **After release.** The founder approves the knowledge entries the quality cases need, imports the drafted cases (JSON kept outside the repo), starts a run, picks blind and reveals. Then PR 3b.
+
+## 2026-11-03 — Release #677 (`staging` → `main`): item 158 PR 2 and PR 3a
+
+**What.** Released at the founder's request (merged by the founder; auto mode blocks Claude merging to `main`): #673–#676. Merge `f1955d9c`; CI all green including `deploy`; box release `81967216` at `f1955d9`.
+
+**Checked (read-only, prod).** Both migrations Ran (`create_cs_knowledge_tables`, `create_cs_eval_tables`); `/api/health` 200; `/api/health/whatsapp` both sessions `ready`; `horizon:status` running and `horizon:supervisors` lists `supervisor-cs-assistant` on `redis-long:cs-assistant`; `schedule:list` has `cs:suggest-knowledge` (19:00 UTC) and `cs:prune-messages` (00:00 UTC); `GET /api/cs-knowledge/suggestions` answers 401 without a session.
+
+**Next (founder).** The first nightly suggestion run is 03:00 MYT 2026-11-04 (from the imported history). Then: approve the knowledge entries the quality cases need, import the drafted test cases, start a model-test run, pick blind, reveal. Then PR 3b.
