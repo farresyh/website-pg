@@ -1832,3 +1832,11 @@ The founder resumed item 158 after the reviews/OG fix (#682) and chose the run #
 **Gotchas.** The PHP SDK 1.4 sends the key as `Authorization: Bearer`, not `x-api-key`. It ignores `RequestOptions::timeout` (the transport enforces it), so the adapter passes a Guzzle client; SDK calls bypass Laravel's `Http::fake()`, so its tests use a Guzzle mock handler. CI's `composer` job (`composer audit --locked`) runs only when composer files change, so the first PR to touch them inherits any advisory published since: here `symfony/mime` CVE-2026-45070 (reported 2026-10-28), fixed by updating it to 8.1.10 in the same PR.
 
 **Next (founder):** put `ANTHROPIC_API_KEY` on Forge before release; add the "server ID" entry; set the angry-customer case to any reason; after release, run #3 and pick blind, then Reveal.
+
+## 2026-11-04 — Release #684 (`staging` → `main`)
+
+Shipped #681, #682 and #683 at the founder's request. Merge `8a18f435`; the CI `deploy` job reported success about two minutes before the box switched to release `82001662`, so a check run right after the job still saw the old release (`81975649`). Wait for `current` to point at the new release before checking. No migration. `ANTHROPIC_API_KEY` set on Forge by the founder.
+
+Checked read-only: `/api/health` all true; both WhatsApp sessions `ready`; Horizon with `supervisor-cs-assistant`; on the box `ChatModels::missingKeys()` is empty and the candidates are `gemini-3.1-flash-lite`, `gemini-3.5-flash-lite` and `claude-haiku-5-5`; the Anthropic SDK loads. Live storefront: OhahaStore's Mobile Legends Indonesia page shows the "verified reviews" badge; the PekanGame marquee renders its repeated cards. `default_og_image` is still null on every brand (the founder sets PekanGame's next).
+
+Next: the founder adds the "server ID" entry, sets the angry-customer case to any reason, runs model test #3, picks blind and reveals; then PR 3b (Shadow).
