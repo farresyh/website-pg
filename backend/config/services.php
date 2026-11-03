@@ -166,11 +166,17 @@ return [
     /**
      * ADR-136 decisions 12 and 28: the models the customer-support assistant
      * is tested on, with their list prices (US dollars per 1M tokens; output
-     * includes thinking). Read from Google AI Studio's pricing page on
-     * 2026-11-03; Gemini 3.8 Flash doubles to 1.50 / 7.50 on 2027-01-01.
-     * Uses the Gemini key above, which must be on the paid tier (no training
-     * on inputs).
+     * includes thinking). Gemini prices from Google AI Studio's pricing page,
+     * 2026-11-03; Claude Haiku 5.5's from Anthropic's list price (prompts up
+     * to 100K tokens; ours are far smaller). Run #3 candidates (ADR-136
+     * 2026-11-04 addendum): 3.8 Flash dropped, 3.5 Flash-Lite and Haiku added.
+     * Gemini uses the key above (paid tier: no training on inputs); Claude
+     * uses `anthropic.api_key` (the API does not train on inputs).
      */
+    'anthropic' => [
+        'api_key' => env('ANTHROPIC_API_KEY'),
+    ],
+
     'cs_assistant' => [
         'timeout' => (int) env('CS_ASSISTANT_TIMEOUT_SECONDS', 30),
         // Decision 7 defaults; become panel settings with the Shadow switch (PR 3b).
@@ -178,7 +184,8 @@ return [
         'handover_minutes' => 30,
         'models' => [
             'gemini-3.1-flash-lite' => ['provider' => 'gemini', 'input_usd_per_m' => 0.25, 'output_usd_per_m' => 1.50],
-            'gemini-3.8-flash' => ['provider' => 'gemini', 'input_usd_per_m' => 0.75, 'output_usd_per_m' => 3.75],
+            'gemini-3.5-flash-lite' => ['provider' => 'gemini', 'input_usd_per_m' => 0.30, 'output_usd_per_m' => 2.50],
+            'claude-haiku-5-5' => ['provider' => 'anthropic', 'input_usd_per_m' => 0.10, 'output_usd_per_m' => 0.50],
         ],
     ],
 

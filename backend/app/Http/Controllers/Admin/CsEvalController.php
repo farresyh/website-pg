@@ -67,7 +67,7 @@ class CsEvalController extends Controller
     public function startRun(Request $request, ChatModels $models): JsonResponse
     {
         if (! $models->configured()) {
-            throw ValidationException::withMessages(['models' => ['The Gemini API key is not set on this server.']]);
+            throw ValidationException::withMessages(['models' => ['Not set on this server: '.implode(', ', $models->missingKeys()).'.']]);
         }
 
         $cases = CsEvalCase::query()->where('is_active', true)->orderBy('id')->pluck('id');
