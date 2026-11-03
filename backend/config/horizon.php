@@ -103,6 +103,8 @@ return [
         // K-4: combo's supervisor runs on `redis-long` — the waits key is
         // connection-scoped, so `redis:orders-combo` would never match.
         'redis-long:orders-combo' => 60,
+        // ADR-136: a model test queues ~80 calls on one worker; minutes of wait are normal there.
+        'redis-long:cs-assistant' => 900,
         'redis:price-sync' => 300,
         'redis:backups' => 300,
         'redis:supplier-request-logs' => 300,

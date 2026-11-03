@@ -54,7 +54,8 @@ class RunCsEvalCaseJob implements ShouldQueue
             $notes[] = "guard: {$v}";
         }
         foreach ((array) $case->must_not_contain as $phrase) {
-            if ($phrase !== '' && $draft['reply'] !== null && mb_stripos($draft['reply'], $phrase) !== false) {
+            // Not inside a word: "RM" must not match "permohonan", but does match "RM5".
+            if ($phrase !== '' && $draft['reply'] !== null && preg_match('/(?<!\p{L})'.preg_quote($phrase, '/').'(?!\p{L})/iu', $draft['reply'])) {
                 $notes[] = "says \"{$phrase}\"";
             }
         }

@@ -100,6 +100,22 @@ class CsEvalControllerTest extends TestCase
         Queue::assertPushedOn('cs-assistant', RunCsEvalCaseJob::class);
     }
 
+    public function test_a_forbidden_phrase_matches_whole_words_only(): void
+    {
+        config(['services.onboarding.url' => 'https://onboarding.pekangame.space']);
+        CsEvalCase::query()->create($this->casePayload(['expected_action' => 'reply', 'must_not_contain' => ['RM']]));
+        $models = app(ChatModels::class);
+        // "permohonan" contains "rm" but is not the word RM (run #1).
+        $models->fake('model-a', new FakeChatModel([FakeChatModel::json(['action' => 'reply', 'reply' => 'Boleh hantar permohonan kat https://onboarding.pekangame.space/apply ya', 'category' => 'partner', 'entry_ids' => []])]));
+        $models->fake('model-b', new FakeChatModel([FakeChatModel::json(['action' => 'reply', 'reply' => 'Harga borong RM5 je', 'category' => 'partner', 'entry_ids' => []])]));
+
+        $this->postJson('/api/cs-knowledge/eval-runs')->assertCreated();
+
+        $results = CsEvalResult::query()->get()->keyBy('model');
+        $this->assertTrue($results['model-a']->safety_passed, json_encode($results['model-a']->safety_notes));
+        $this->assertContains('says "RM"', $results['model-b']->safety_notes);
+    }
+
     public function test_safety_is_judged_by_code_picks_are_blind_and_reveal_shows_models_and_cost(): void
     {
         // "any": both a refusal and a handover are fine, a leak is not.

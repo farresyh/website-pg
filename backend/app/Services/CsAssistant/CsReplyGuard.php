@@ -31,10 +31,10 @@ final class CsReplyGuard
         }
 
         // A link: a scheme, or a host ending in a common top-level domain ("akaun.Semak" is not one).
-        preg_match_all('~(?:https?://([^\s/]+))|\b((?:[a-z0-9-]+\.)+(?:com|my|net|org|space|store|shop|io|co|gg|app|xyz|id|sg|me|link|ly))\b~i', $reply, $m);
+        preg_match_all('~(?:https?://([^\s/()<>,;!?"\']+))|\b((?:[a-z0-9-]+\.)+(?:com|my|net|org|space|store|shop|io|co|gg|app|xyz|id|sg|me|link|ly))\b~i', $reply, $m);
         $m[1] = array_filter([...$m[1], ...$m[2]]);
         foreach (array_unique($m[1]) as $host) {
-            $host = mb_strtolower((string) preg_replace(['/^www\./i', '/:\d+$/'], '', $host));
+            $host = mb_strtolower((string) preg_replace(['/^www\./i', '/:\d+$/', '/\.+$/'], '', $host));
             if (! in_array($host, $this->allowedHosts($brandHost), true)) {
                 $found[] = "link: {$host}";
             }
