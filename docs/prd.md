@@ -954,7 +954,7 @@ for the 2026-09-17 audit that found two dark-mode token bugs).
 production on 2026-10-15 after release #449; items 98, 99, 106 and 107
 checked again on 2026-10-16, after release #469; 107 closed after release #472;
 106, 11, 96 and the payment state re-checked 2026-10-17 after release #476;
-every open item re-checked 2026-10-26 after release #557; item 133 closed 2026-10-27 after release #571; items 134 and 137 closed and 138–140 added 2026-10-29 after release #589, with the payment state re-checked on prod; 140 closed, 141 (ADR-131) released and 142–144 added 2026-10-29 after release #599; items 138, 147, 148 and 149 closed and 150 added 2026-10-30; items 13 and 146 designed in ADR-133 and 151 and 152 added 2026-10-31; item 154 added and closed, 153 closed and 156 and 157 added 2026-11-01; items 55, 74 and 114 closed and items 108 and 122 corrected after the group D audit, and items 129 and 141 closed, the same day; group E sorted the same day (24 and 94 to B, 57 and 150 to D, 14 and 25 closed, 117 parked); items 156 and 94 built and items 158 and 159 added 2026-11-03.** This list holds only **open** items. "Next up"
+every open item re-checked 2026-10-26 after release #557; item 133 closed 2026-10-27 after release #571; items 134 and 137 closed and 138–140 added 2026-10-29 after release #589, with the payment state re-checked on prod; 140 closed, 141 (ADR-131) released and 142–144 added 2026-10-29 after release #599; items 138, 147, 148 and 149 closed and 150 added 2026-10-30; items 13 and 146 designed in ADR-133 and 151 and 152 added 2026-10-31; item 154 added and closed, 153 closed and 156 and 157 added 2026-11-01; items 55, 74 and 114 closed and items 108 and 122 corrected after the group D audit, and items 129 and 141 closed, the same day; group E sorted the same day (24 and 94 to B, 57 and 150 to D, 14 and 25 closed, 117 parked); items 156 and 94 built and items 158 and 159 added 2026-11-03; 158 designed (ADR-136) and moved to A the same day.** This list holds only **open** items. "Next up"
 is the one place they are sorted, one line each; "Details" holds each item's
 full text once, by number. Everything closed is one line under "Recently
 closed", pointing to where the full story lives (`docs/build-log.md` /
@@ -975,7 +975,14 @@ and the admin-loading investigation (#515, #516). Re-checked again
 moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 closed, item 111's trigger narrowed). Re-verify before building.
 
 **A. Buildable now: code, no new design**
-(none: 155 released 2026-11-01, now in C)
+- **158** Customer-support assistant on the CS number ([ADR-136](./adr/ADR-136-customer-support-assistant.md),
+  Accepted 2026-11-03 after the grill and a stress test; design only, nothing built).
+  Build in four PRs (decision 32): PR 1 (no AI) stores CS personal chats, imports
+  history since 2026-09-25 and reads staff replies through `message.sent`, and
+  **must be released before OpenWA's first 90-day prune around 2026-12-24**;
+  PR 2 knowledge and admin review; PR 3 model test and Shadow (after the
+  lawyer's review of the Privacy Policy line, decision 31); PR 4 Live, CS Staff
+  group, safety limits and local OCR.
 
 **B. Needs a short grill / ADR addendum first**
 (none: 156 and 94 built 2026-11-03)
@@ -1056,14 +1063,7 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
 - **152** Refresh the admin sandbox (`/middleware/sandbox`) for wallet and combo orders; do it with item 151, which shares `FakeSupplierAdapter` (its 21 tests pass as of 2026-10-31).
 
 **E. New features: after the backlog** (each needs its own ADR + grill)
-- **158** Customer-support auto-reply bot that answers with knowledge of the
-  business (founder, 2026-11-02; design not started, own ADR + grill). The
-  study it needs is how staff message customers and how customers reply and
-  ask. Today the only record is OpenWA's raw `messages` table, kept 90 days
-  (`MESSAGE_RETENTION_DAYS=90`, set 2026-10-25 for PDPA): the oldest rows
-  (2026-09-25) start being pruned around **2026-12-24**. Decide before then
-  how the study data is kept (a masked export outside the public repo, a
-  longer window, or labelled conversations stored in Laravel).
+(none: 158 designed in ADR-136 on 2026-11-03, now in A)
 
 ## Details
 
