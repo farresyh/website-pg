@@ -298,6 +298,11 @@
     animation: none;
     width: auto;
     flex-wrap: wrap;
+    row-gap: 1rem;
+  }
+
+  .animate-marquee [data-marquee-repeat] {
+    display: none;
   }
 }
 
