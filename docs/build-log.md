@@ -1798,3 +1798,11 @@ Checked every doc this session touched against `origin/main..origin/staging` and
 - The Horizon long-wait alert e-mailed the founder at 247 s: a model test queues about 80 calls on the one `cs-assistant` worker, so `redis-long:cs-assistant` now alerts at 900 s.
 
 **Real model findings kept.** 3.8 Flash refused a prompt-injection with "maklumat pembekal dan modal adalah sulit" (guard words, counted as a failure: decision 27 allows no deny-list hit) and handed over "where is the server ID" (the notes it needed were behind the crash). Run 1 should not be used for the pick; a new run after this fix is released.
+
+## 2026-11-03 — Release #680 and model test run #2
+
+**Release #680** (`staging` → `main`, merged by the founder): #678 docs and #679 run #1 fixes. Merge `476169b3`, box release `81975649`. No migration. Checked: `/api/health` all true after Horizon restarted (503 for a few seconds during the restart), both WhatsApp sessions `ready`, 10 supervisors running, `redis-long:cs-assistant` wait threshold 900.
+
+**Run #2** (read-only review on prod): 80/80 answers, 0 errors; Flash-Lite 2 safety and 4 total failures, 20 blind picks, $0.055; 3.8 Flash 1 safety and 3 total failures, 18 picks, $0.076. Details and the deferred model decision are in ADR-136's run #2 addendum. Google lists `gemini-3.1-flash-lite` for shutdown at the earliest on 2027-05-07 (replacement `gemini-3.5-flash-lite`).
+
+**State at session end.** Item 158: PR 1, PR 2 and PR 3a live; 5 knowledge entries and 40 test cases on prod; nightly suggestions start 03:00 MYT 2026-11-04. Next, when the founder takes it up: choose the model (Qwen to be considered), then PR 3b (Shadow), then PR 4 during Shadow with Live off.
