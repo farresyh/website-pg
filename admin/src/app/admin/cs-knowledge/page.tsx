@@ -27,6 +27,8 @@ import { Plus as PlusIcon } from "@primeicons/react/plus";
 import { StatusText } from "@/components/orders/StatusText";
 import EntryFormModal, { type Option } from "@/components/cs-knowledge/EntryFormModal";
 import MergeSuggestionModal from "@/components/cs-knowledge/MergeSuggestionModal";
+import EvalCasesPanel from "@/components/cs-knowledge/EvalCasesPanel";
+import ModelTestPanel from "@/components/cs-knowledge/ModelTestPanel";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
 import { listAffiliates } from "@/lib/affiliates";
@@ -50,13 +52,20 @@ import {
   type SuggestionStatus,
 } from "@/lib/cs-knowledge";
 
-type Tab = { kind: "suggestions"; status: SuggestionStatus | "all" } | { kind: "entries"; status: EntryStatus };
+type Tab =
+  | { kind: "suggestions"; status: SuggestionStatus | "all" }
+  | { kind: "entries"; status: EntryStatus }
+  | { kind: "cases"; status?: undefined }
+  | { kind: "model-test"; status?: undefined };
 
 const TABS: { tab: Tab; label: string }[] = [
   { tab: { kind: "suggestions", status: "pending" }, label: "To review" },
   { tab: { kind: "suggestions", status: "all" }, label: "All suggestions" },
   { tab: { kind: "entries", status: "approved" }, label: "Knowledge" },
   { tab: { kind: "entries", status: "archived" }, label: "Archived" },
+  // ADR-136 decision 28 (PR 3a): the model test.
+  { tab: { kind: "cases" }, label: "Test cases" },
+  { tab: { kind: "model-test" }, label: "Model test" },
 ];
 
 const SUGGESTION_STATUS: Record<SuggestionStatus, { label: string; severity: "success" | "warn" | "danger" | "secondary" | "info" }> = {
@@ -93,6 +102,7 @@ export default function CsKnowledgePage() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
+    if (tab.kind === "cases" || tab.kind === "model-test") return Promise.resolve();
     const request =
       tab.kind === "suggestions"
         ? listSuggestions(tab.status, pageNumber).then((p) => {
@@ -195,6 +205,10 @@ export default function CsKnowledgePage() {
         })}
       </div>
 
+      {tab.kind === "cases" && <EvalCasesPanel />}
+      {tab.kind === "model-test" && <ModelTestPanel />}
+
+      {(tab.kind === "suggestions" || tab.kind === "entries") && (
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-surface dark:border-gray-800">
         <div className="max-w-full overflow-x-auto">
           {tab.kind === "suggestions" ? (
@@ -339,6 +353,7 @@ export default function CsKnowledgePage() {
           {!loaded && !error && <p className="p-6 text-center text-sm text-ink-muted">Loading…</p>}
         </div>
       </div>
+      )}
 
       {meta && meta.last_page > 1 && (
         <div className="mt-4 flex items-center justify-between text-sm text-ink-muted">

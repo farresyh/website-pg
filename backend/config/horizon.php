@@ -380,6 +380,23 @@ return [
             'timeout' => 30,
             'nice' => 0,
         ],
+        // ADR-136 decision 33: customer-support model calls (the model test
+        // now, Shadow drafts later) on their own lane, so a slow AI call never
+        // holds up receipts on `whatsapp`. A draft is up to four model calls
+        // of up to 30 s each, so it pops on `redis-long` (retry_after 330),
+        // like supervisor-orders-combo. One worker: a model test is 80 calls.
+        'supervisor-cs-assistant' => [
+            'connection' => 'redis-long',
+            'queue' => ['cs-assistant'],
+            'balance' => 'off',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 1,
+            'timeout' => 150,
+            'nice' => 0,
+        ],
         // The catch-all. Every job/listener above names its own queue via
         // onQueue()/broadcastQueue()/$queue, but a class that forgets to
         // (SendMembershipReceiptJob did — its receipt emails silently had
@@ -415,6 +432,7 @@ return [
             'supervisor-supplier-request-logs' => ['maxProcesses' => 1],
             'supervisor-reseller-webhooks' => ['maxProcesses' => 1],
             'supervisor-whatsapp' => ['maxProcesses' => 1],
+            'supervisor-cs-assistant' => ['maxProcesses' => 1],
             'supervisor-default' => ['maxProcesses' => 1],
         ],
 
@@ -427,6 +445,7 @@ return [
             'supervisor-supplier-request-logs' => ['maxProcesses' => 1],
             'supervisor-reseller-webhooks' => ['maxProcesses' => 1],
             'supervisor-whatsapp' => ['maxProcesses' => 1],
+            'supervisor-cs-assistant' => ['maxProcesses' => 1],
             'supervisor-default' => ['maxProcesses' => 1],
         ],
     ],
