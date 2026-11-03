@@ -2,6 +2,8 @@
 
 namespace App\Services\CsAssistant;
 
+use App\Models\CsAssistantSettings;
+
 /**
  * ADR-136 decisions 6 and 7, in code rather than in the prompt: what an
  * order's state means for the reply. A forced handover is applied by
@@ -25,8 +27,9 @@ final readonly class CsOrderSituation
      */
     public static function of(array $facts): self
     {
-        $reassure = (int) config('services.cs_assistant.reassure_minutes', 15);
-        $limit = (int) ($facts['expected_minutes'] ?? config('services.cs_assistant.handover_minutes', 30));
+        $settings = CsAssistantSettings::current();
+        $reassure = $settings->reassure_minutes;
+        $limit = (int) ($facts['expected_minutes'] ?? $settings->handover_minutes);
         $minutes = (int) ($facts['minutes_since_paid'] ?? 0);
 
         if ($facts['payment_status'] !== 'paid') {

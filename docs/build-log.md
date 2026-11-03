@@ -1832,3 +1832,25 @@ The founder resumed item 158 after the reviews/OG fix (#682) and chose the run #
 **Gotchas.** The PHP SDK 1.4 sends the key as `Authorization: Bearer`, not `x-api-key`. It ignores `RequestOptions::timeout` (the transport enforces it), so the adapter passes a Guzzle client; SDK calls bypass Laravel's `Http::fake()`, so its tests use a Guzzle mock handler. CI's `composer` job (`composer audit --locked`) runs only when composer files change, so the first PR to touch them inherits any advisory published since: here `symfony/mime` CVE-2026-45070 (reported 2026-10-28), fixed by updating it to 8.1.10 in the same PR.
 
 **Next (founder):** put `ANTHROPIC_API_KEY` on Forge before release; add the "server ID" entry; set the angry-customer case to any reason; after release, run #3 and pick blind, then Reveal.
+
+## 2026-11-04 — Release #684 (`staging` → `main`)
+
+Shipped #681, #682 and #683 at the founder's request. Merge `8a18f435`; the CI `deploy` job reported success about two minutes before the box switched to release `82001662`, so a check run right after the job still saw the old release (`81975649`). Wait for `current` to point at the new release before checking. No migration. `ANTHROPIC_API_KEY` set on Forge by the founder.
+
+Checked read-only: `/api/health` all true; both WhatsApp sessions `ready`; Horizon with `supervisor-cs-assistant`; on the box `ChatModels::missingKeys()` is empty and the candidates are `gemini-3.1-flash-lite`, `gemini-3.5-flash-lite` and `claude-haiku-5-5`; the Anthropic SDK loads. Live storefront: OhahaStore's Mobile Legends Indonesia page shows the "verified reviews" badge; the PekanGame marquee renders its repeated cards. `default_og_image` is still null on every brand (the founder sets PekanGame's next).
+
+Next: the founder adds the "server ID" entry, sets the angry-customer case to any reason, runs model test #3, picks blind and reveals; then PR 3b (Shadow).
+
+## 2026-11-04 — Item 158: Haiku 5.5 chosen; PR 3b (Shadow) built (ADR-136)
+
+Run #3 on prod (founder ran and revealed it): Haiku 5.5 15 picks / 2 safety fails / $0.019, 3.1 Flash-Lite 15 / 1 / $0.064, 3.5 Flash-Lite 10 / 0 (but 3 over-cautious handovers) / $0.046. All safety fails were refusals that named the topic, caught by the guard. Founder chose Haiku; the refusal is now one fixed sentence (live: 8/8 on the leak prompts). Before the run the founder approved knowledge #6 (MLBB Server ID) and #7 (Genshin/HSR zone) and set the angry-customer case to any reason; checked read-only on prod.
+
+**Built (one PR, one migration `2026_11_05_120000_create_cs_shadow_tables`):** `cs_assistant_settings`, `cs_bot_drafts`, `ai_*` columns on suggestions; `CsShadowDrafter` (from the webhook, delayed job per message, one draft per burst), `CsChatContext` (brand and order facts, now shared with the suggester), `CsShadowJudge` + `cs:judge-drafts` (19:30 UTC), `CsSuggestionWriter`, `CsSpend` (daily cap switches Off); admin Shadow and Settings tabs; drafts pruned at 90 days.
+
+**Stress test findings fixed in the build:** no per-game delivery time exists, so manual games get one panel limit (180 min); a burst that is only an order number is left to the status card; the model price list doubled as the test-candidate list, so a `candidate` flag keeps the judge out of runs; the brand lookup had a second copy coming, so it moved to one class.
+
+**Verified.** Backend suite 3583 passed; admin `tsc`, lint and unit tests clean. Browser (throwaway sqlite backend, local admin): Settings saves (PUT 200, mode Shadow); the Shadow tab shows accuracy and drafts beside staff replies with the overrule select; at 390px loaded directly, no sideways scroll on the page, Shadow or Settings tabs. Live on the throwaway DB: Haiku drafted, Sonnet graded through structured output with a sensible note; one draft plus its grade cost about 0.3 sen.
+
+**Gotcha.** In a throwaway DB, sample drafts seeded with `last_message_id` 1–3 collide with the first real `cs_messages` ids, so the drafter's "already drafted" check returns early; seed drafts with ids no message will have.
+
+**After release (founder):** switch Settings → Mode to Shadow. First drafts appear as customers write; first grades the night after.

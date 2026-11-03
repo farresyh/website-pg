@@ -18,17 +18,20 @@ final class CsMessageRecorder
     /** Seconds before an outgoing message is classified: the webhook can beat our send's response. */
     public const CLASSIFY_DELAY_SECONDS = 10;
 
-    /** @param  array<string, mixed>  $data  OpenWA `message.received` data */
-    public function recordInbound(array $data): void
+    /**
+     * @param  array<string, mixed>  $data  OpenWA `message.received` data
+     * @return CsMessage|null the stored row, or null when it was skipped or already kept
+     */
+    public function recordInbound(array $data): ?CsMessage
     {
         $chatId = $this->chatId($data, 'from');
         $id = $this->messageId($data);
 
         if ($chatId === null || $id === null || ($data['fromMe'] ?? false) === true) {
-            return;
+            return null;
         }
 
-        $this->store($chatId, $id, 'in', CsMessage::SENDER_CUSTOMER, $this->type($data), $this->body($data), $this->at($data), null, CsMessage::SOURCE_WEBHOOK);
+        return $this->store($chatId, $id, 'in', CsMessage::SENDER_CUSTOMER, $this->type($data), $this->body($data), $this->at($data), null, CsMessage::SOURCE_WEBHOOK);
     }
 
     /** @param  array<string, mixed>  $data  OpenWA `message.sent` data */
@@ -67,13 +70,13 @@ final class CsMessageRecorder
         $at = $this->at($data);
 
         if ($incoming) {
-            return $this->store($chatId, $id, 'in', CsMessage::SENDER_CUSTOMER, $this->type($data), $body, $at, null, CsMessage::SOURCE_IMPORT);
+            return $this->store($chatId, $id, 'in', CsMessage::SENDER_CUSTOMER, $this->type($data), $body, $at, null, CsMessage::SOURCE_IMPORT) !== null;
         }
 
         $verdict = $classifier->classify($chatId, $id, $body, $at);
         $sender = $verdict['sender'] === CsSenderClassifier::WAIT ? CsMessage::SENDER_STAFF : $verdict['sender'];
 
-        return $this->store($chatId, $id, 'out', $sender, $this->type($data), $body, $at, $verdict['notification_id'], CsMessage::SOURCE_IMPORT);
+        return $this->store($chatId, $id, 'out', $sender, $this->type($data), $body, $at, $verdict['notification_id'], CsMessage::SOURCE_IMPORT) !== null;
     }
 
     /** A keyed hash, so a stored row never holds the phone or privacy id. */
@@ -82,16 +85,16 @@ final class CsMessageRecorder
         return hash_hmac('sha256', strtolower($chatId), (string) config('app.key'));
     }
 
-    private function store(string $chatId, string $id, string $direction, string $sender, string $type, ?string $body, CarbonInterface $at, ?int $notificationId, string $source): bool
+    private function store(string $chatId, string $id, string $direction, string $sender, string $type, ?string $body, CarbonInterface $at, ?int $notificationId, string $source): ?CsMessage
     {
         if (CsMessage::query()->where('wa_message_id', $id)->exists()) {
-            return false;
+            return null;
         }
 
         $orders = $body === null ? [] : CsTextRedactor::orderNumbers($body);
 
         try {
-            CsMessage::query()->create([
+            return CsMessage::query()->create([
                 'wa_message_id' => $id,
                 'chat_hash' => self::chatHash($chatId),
                 'direction' => $direction,
@@ -105,10 +108,8 @@ final class CsMessageRecorder
                 'sent_at' => $at,
             ]);
         } catch (UniqueConstraintViolationException) {
-            return false; // a concurrent delivery of the same message stored it first
+            return null; // a concurrent delivery of the same message stored it first
         }
-
-        return true;
     }
 
     /**

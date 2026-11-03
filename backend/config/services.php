@@ -179,14 +179,16 @@ return [
 
     'cs_assistant' => [
         'timeout' => (int) env('CS_ASSISTANT_TIMEOUT_SECONDS', 30),
-        // Decision 7 defaults; become panel settings with the Shadow switch (PR 3b).
-        'reassure_minutes' => 15,
-        'handover_minutes' => 30,
+        // Every model the assistant may call, with its price. `candidate` = asked in a model test run;
+        // the judge (Sonnet, PR 3b) is priced here but never a test candidate.
         'models' => [
-            'gemini-3.1-flash-lite' => ['provider' => 'gemini', 'input_usd_per_m' => 0.25, 'output_usd_per_m' => 1.50],
-            'gemini-3.5-flash-lite' => ['provider' => 'gemini', 'input_usd_per_m' => 0.30, 'output_usd_per_m' => 2.50],
-            'claude-haiku-5-5' => ['provider' => 'anthropic', 'input_usd_per_m' => 0.10, 'output_usd_per_m' => 0.50],
+            'gemini-3.1-flash-lite' => ['provider' => 'gemini', 'input_usd_per_m' => 0.25, 'output_usd_per_m' => 1.50, 'candidate' => true],
+            'gemini-3.5-flash-lite' => ['provider' => 'gemini', 'input_usd_per_m' => 0.30, 'output_usd_per_m' => 2.50, 'candidate' => true],
+            'claude-haiku-5-5' => ['provider' => 'anthropic', 'input_usd_per_m' => 0.10, 'output_usd_per_m' => 0.50, 'candidate' => true],
+            'claude-sonnet-5-5' => ['provider' => 'anthropic', 'input_usd_per_m' => 2.00, 'output_usd_per_m' => 10.00, 'candidate' => false],
         ],
+        // USD to MYR for the daily cost cap only (decision 25); a cap, not accounting.
+        'usd_to_myr' => (float) env('CS_ASSISTANT_USD_TO_MYR', 4.5),
     ],
 
     /**
