@@ -1820,3 +1820,15 @@ The founder asked three things: why the homepage review marquee leaves a blank s
 **Gotcha.** Playwright's `scrollIntoViewIfNeeded` never finishes on a running CSS animation ("element is not stable"); pause the animation first.
 
 **After release (founder):** make or pick a 1200 × 630 PNG/JPG under ~300 KB, upload it in the Gallery, paste its URL in Admin → SEO → Settings → Default OG image, then re-check opengraph.xyz.
+
+## 2026-11-04 — Item 158: run #3 candidates, a Claude adapter, and the run #2 prompt fixes (ADR-136)
+
+The founder resumed item 158 after the reviews/OG fix (#682) and chose the run #3 candidates: Gemini 3.1 Flash-Lite, Gemini 3.5 Flash-Lite, Claude Haiku 5.5. Qwen was tried and excluded: the founder's Alibaba key reached the Singapore endpoint (114 models listed, `qwen3.8-flash` among them) but every chat call answered `AccessDenied.Unpurchased`. Gemini 3.8 Flash dropped.
+
+**Built:** `ClaudeChatModel` (official `anthropic-ai/sdk` 1.4: effort low, structured output, content blocks replayed, tool results matched to `tool_use` ids), `ChatModels::missingKeys()` so a run names the unset key, the three prompt fixes from run #2, the model test panel laying out three answers side by side. Tests blank `ANTHROPIC_API_KEY` like the other live keys (phpunit, concurrency, e2e boot).
+
+**Verified.** Backend suite 3566 passed; admin `tsc` and lint clean. Live, against the local dev DB, through `CsAnswerer`: Haiku 5.5 and 3.5 Flash-Lite both call `game_info` and answer in valid JSON; the cost question is refused as "maklumat dalaman" without echoing "modal" by all three; "ff" finds Free Fire; on a wrong player ID, 3.5 Flash-Lite still invented a policy (Haiku and 3.1 handed over).
+
+**Gotchas.** The PHP SDK 1.4 sends the key as `Authorization: Bearer`, not `x-api-key`. It ignores `RequestOptions::timeout` (the transport enforces it), so the adapter passes a Guzzle client; SDK calls bypass Laravel's `Http::fake()`, so its tests use a Guzzle mock handler.
+
+**Next (founder):** put `ANTHROPIC_API_KEY` on Forge before release; add the "server ID" entry; set the angry-customer case to any reason; after release, run #3 and pick blind, then Reveal.
