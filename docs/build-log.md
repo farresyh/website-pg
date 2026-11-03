@@ -1738,3 +1738,16 @@ Checked every doc this session touched against `origin/main..origin/staging` and
 **Gotchas.** SQLite does not honour `\_` in `LIKE` without an `ESCAPE` clause, so the id suffix match uses a plain `%_<id>`. The OpenWA-side personal-chat filter was left out (its effect on `session.status` is undocumented); Laravel filters instead.
 
 **After release (prod writes, founder's go-ahead):** add `message.sent` to the CS webhook's events, then run `php artisan cs:import-history --since=2026-09-25` once and check the counts.
+
+## 2026-11-03 — Release #672 (`staging` → `main`) and item 158 PR 1 switched on
+
+**What.** Released at the founder's request: #669–#671 (item 158 PR 1, ADR-136). Merge `7f3d7924`; CI all green including `deploy`; box release `81934218` at `7f3d792`.
+
+**Checked (read-only, prod).** Migration `2026_11_03_140000_create_cs_messages_table` Ran; `customer_notifications.wa_message_id` present; `/api/health` ok; both WhatsApp sessions `ready`.
+
+**Production writes, with the founder.**
+- CS webhook `5bc373e3…` events, edited by the founder in the OpenWA dashboard. Before: `message.received`, `session.status`. After (read back through the API): `message.received`, `session.status`, `message.sent`; filters still null, URL and retry unchanged. The reseller-bot webhook `efa62d48…` unchanged.
+- `php artisan cs:import-history --since=2026-09-25`, run by the founder: "Read 1271 messages since 2026-09-25; kept 192 new personal-chat messages." Read back: 101 customer (10 without text, 19 with an order number), 22 system (equal to the 22 CS notifications ever sent), 69 staff (none matching a system template: staff replies, founder tests, B2B outreach), 20 chats, 2026-09-25 to 2026-11-03. Masking: 0 bodies with a 6+ digit run, an `@`, or `PG-`.
+- Live check: a customer test message at 06:23:00 UTC was recorded 1 second later; a reply typed on the CS phone at 06:23:20 arrived as `message.sent` and was recorded as staff 11 seconds later. No failed classify jobs.
+
+**Still to check.** A receipt or status card sent after this release should be recorded as system through `wa_message_id` (only the text-and-time path has been seen, in the import).
