@@ -124,7 +124,7 @@ export default function ModelTestPanel() {
         </div>
       </div>
 
-      {!configured && <p className="mb-4 rounded-lg bg-warning-50 px-4 py-3 text-sm text-warning-600 dark:bg-warning-500/15 dark:text-warning-400">The Gemini API key is not set on this server, so no run can start.</p>}
+      {!configured && <p className="mb-4 rounded-lg bg-warning-50 px-4 py-3 text-sm text-warning-600 dark:bg-warning-500/15 dark:text-warning-400">An API key for one of the test models (Gemini or Claude) is not set on this server, so no run can start.</p>}
 
       {run?.summary && (
         <div className="mb-6 overflow-x-auto rounded-2xl border border-gray-200 bg-surface dark:border-gray-800">
@@ -179,7 +179,7 @@ export default function ModelTestPanel() {
                 </p>
               )}
             </div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
               {answers.map((a) => (
                 <div
                   key={a.id}
