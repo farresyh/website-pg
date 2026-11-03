@@ -1759,3 +1759,13 @@ Checked every doc this session touched against `origin/main..origin/staging` and
 **Production write, run by the founder.** `rm -rf ~/OpenWA-v0.25.0` (1,022 MB) and `rm -f ~/openwa-backups/openwa-v0.25.0-20261101-1051.tar.gz ~/openwa-v0.27.0-build.log ~/openwa-v0.27.1-build.log`. After: `~` holds only `OpenWA` (symlink), `openwa-backups` (now just `openwa-v0.27.0-20261102.tar.gz`) and `openwa-deploy` (releases `v0.27.0`, `v0.27.1`); disk 12 G → 11 G used of 77 G; `/api/health` 200 and `/api/health/whatsapp` both sessions `ready`. `API_KEY_PEPPER` left unset (only a boot warning; setting it would force both OpenWA keys to be re-issued). Item 157 closed.
 
 **Item 158 PR 1, last check passed.** A customer sent an order number to the CS number at 09:16:38 UTC (`cs_messages` #200, customer, order number kept); the status card sent back at 09:16:47 was stored as `customer_notifications` #25 with its `wa_message_id`, and the matching `message.sent` became `cs_messages` #201, sender `system`, `customer_notification_id` 25: classified by the stored id, not by text and time.
+
+## 2026-11-03 — Item 158 PR 2: CS knowledge book and admin review (ADR-136, no AI)
+
+**What.** Test-first (23 new tests; full suite 3,544 green). Migration `2026_11_04_120000_create_cs_knowledge_tables` (`cs_knowledge_entries`, `cs_knowledge_suggestions`, `cs_ignored_chats`). `CsKnowledgeSuggester` + `cs:suggest-knowledge` (daily 19:00 UTC, ROUTINE) pairs each finished chat's customer question with the staff answer that followed; `cs:prune-messages` (daily, ROUTINE) keeps masked messages and suggestions 2 years. `Admin\CsKnowledgeController` (super_admin) and the admin page `/admin/cs-knowledge` (PrimeReact kit, laid out like `/admin/applications`), nav under Customers. ADR-136 2026-11-03 PR 2 build notes addendum.
+
+**Why without AI.** The founder chose to keep the model out of PR 2: the pairing is the input any model would need anyway, and the model is chosen once, in PR 3. The same session confirmed decision 31 is met (lawyer's OK; the Privacy Policy AI line read live on `pekangame.com/privacy` and `ohahastore.com/privacy`).
+
+**Checked.** Backend suite; admin `tsc`, eslint and unit tests; a browser run against a throwaway sqlite backend (three seeded chats → three suggestions; Approve as new, Ignore chat, Merge, the All suggestions and Knowledge tabs; no page overflow at 390 px). Found and fixed in that run: switching tabs briefly showed the previous tab's rows (state now cleared on switch), and the question/answer columns were too narrow on mobile.
+
+**After release.** The first nightly run at 03:00 MYT turns the imported history (since 2026-09-25) into suggestions; expect founder and staff test chats among them (use Ignore chat).
