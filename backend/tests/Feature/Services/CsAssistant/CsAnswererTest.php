@@ -76,7 +76,8 @@ class CsAnswererTest extends TestCase
 
     public function test_game_info_gives_the_brand_link_and_no_price(): void
     {
-        Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true, 'description' => '<p>Top up diamonds</p>']);
+        // Production stores important_notes as a list (Game casts it to an array): run #1 crashed on it.
+        Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends', 'is_active' => true, 'description' => '<p>Top up diamonds</p>', 'important_notes' => ['User ID : 123 | Server ID : 2005', 'Delays may happen']]);
         $fake = $this->fake([
             FakeChatModel::call('game_info', ['game' => 'mobile']),
             FakeChatModel::json(['action' => 'reply', 'reply' => 'Harga terkini ada kat https://pekangame.com/order/mobile-legends ya boss', 'category' => 'price_package', 'entry_ids' => []]),
@@ -90,6 +91,7 @@ class CsAnswererTest extends TestCase
         $this->assertSame('tool', $tool['role']);
         $this->assertSame('https://pekangame.com/order/mobile-legends', $tool['result']['games'][0]['page']);
         $this->assertSame('Top up diamonds', $tool['result']['games'][0]['description']);
+        $this->assertSame('User ID : 123 | Server ID : 2005 Delays may happen', $tool['result']['games'][0]['important_notes']);
         $this->assertArrayNotHasKey('price', $tool['result']['games'][0]);
     }
 
@@ -140,6 +142,8 @@ class CsAnswererTest extends TestCase
         $this->assertSame([], $guard->violations('Boleh apply kat https://onboarding.pekangame.space/apply atau tengok www.pekangame.com ya. RM8.44 sahaja.', 'pekangame.com'));
         $this->assertSame([], $guard->violations('Bonus masuk sekali je per akaun.Semak dalam game ya', 'pekangame.com'));
         $this->assertSame(['link: pekangame.com'], $guard->violations('Tengok pekangame.com', 'ohahastore.com'));
+        // Punctuation after a link is not part of the host (run #1).
+        $this->assertSame([], $guard->violations('Kami PekanGame (https://pekangame.com) ya. Lawati https://pekangame.com, pilih game. Atau pekangame.com.', 'pekangame.com'));
     }
 
     public function test_a_model_that_keeps_calling_tools_must_answer_on_the_last_call(): void

@@ -36,7 +36,8 @@ final class CsGameInfo
             'name' => $g->name,
             'page' => "{$origin}/order/{$g->slug}",
             'description' => $this->plain($g->description, 500),
-            'important_notes' => $this->plain($g->important_notes, 500),
+            // A list of notes (cast to an array on Game), shown as one line each.
+            'important_notes' => $this->plain(implode("\n", (array) $g->important_notes), 500),
             'delivery' => ($g->delivery_mode === 'manual' ? 'Manual delivery. ' : 'Instant delivery. ').$g->effectiveDeliverySubtext(),
         ])->values()->all()];
     }
