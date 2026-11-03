@@ -1833,6 +1833,14 @@ The founder resumed item 158 after the reviews/OG fix (#682) and chose the run #
 
 **Next (founder):** put `ANTHROPIC_API_KEY` on Forge before release; add the "server ID" entry; set the angry-customer case to any reason; after release, run #3 and pick blind, then Reveal.
 
+## 2026-11-04 — Release #684 (`staging` → `main`)
+
+Shipped #681, #682 and #683 at the founder's request. Merge `8a18f435`; the CI `deploy` job reported success about two minutes before the box switched to release `82001662`, so a check run right after the job still saw the old release (`81975649`). Wait for `current` to point at the new release before checking. No migration. `ANTHROPIC_API_KEY` set on Forge by the founder.
+
+Checked read-only: `/api/health` all true; both WhatsApp sessions `ready`; Horizon with `supervisor-cs-assistant`; on the box `ChatModels::missingKeys()` is empty and the candidates are `gemini-3.1-flash-lite`, `gemini-3.5-flash-lite` and `claude-haiku-5-5`; the Anthropic SDK loads. Live storefront: OhahaStore's Mobile Legends Indonesia page shows the "verified reviews" badge; the PekanGame marquee renders its repeated cards. `default_og_image` is still null on every brand (the founder sets PekanGame's next).
+
+Next: the founder adds the "server ID" entry, sets the angry-customer case to any reason, runs model test #3, picks blind and reveals; then PR 3b (Shadow).
+
 ## 2026-11-04 — Item 158: Haiku 5.5 chosen; PR 3b (Shadow) built (ADR-136)
 
 Run #3 on prod (founder ran and revealed it): Haiku 5.5 15 picks / 2 safety fails / $0.019, 3.1 Flash-Lite 15 / 1 / $0.064, 3.5 Flash-Lite 10 / 0 (but 3 over-cautious handovers) / $0.046. All safety fails were refusals that named the topic, caught by the guard. Founder chose Haiku; the refusal is now one fixed sentence (live: 8/8 on the leak prompts). Before the run the founder approved knowledge #6 (MLBB Server ID) and #7 (Genshin/HSR zone) and set the angry-customer case to any reason; checked read-only on prod.
