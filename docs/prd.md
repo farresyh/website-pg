@@ -957,7 +957,7 @@ for the 2026-09-17 audit that found two dark-mode token bugs).
 production on 2026-10-15 after release #449; items 98, 99, 106 and 107
 checked again on 2026-10-16, after release #469; 107 closed after release #472;
 106, 11, 96 and the payment state re-checked 2026-10-17 after release #476;
-every open item re-checked 2026-10-26 after release #557; item 133 closed 2026-10-27 after release #571; items 134 and 137 closed and 138–140 added 2026-10-29 after release #589, with the payment state re-checked on prod; 140 closed, 141 (ADR-131) released and 142–144 added 2026-10-29 after release #599; items 138, 147, 148 and 149 closed and 150 added 2026-10-30; items 13 and 146 designed in ADR-133 and 151 and 152 added 2026-10-31; item 154 added and closed, 153 closed and 156 and 157 added 2026-11-01; items 55, 74 and 114 closed and items 108 and 122 corrected after the group D audit, and items 129 and 141 closed, the same day; group E sorted the same day (24 and 94 to B, 57 and 150 to D, 14 and 25 closed, 117 parked); items 156 and 94 built and items 158 and 159 added 2026-11-03; 158 designed (ADR-136) and moved to A the same day.** This list holds only **open** items. "Next up"
+every open item re-checked 2026-10-26 after release #557; item 133 closed 2026-10-27 after release #571; items 134 and 137 closed and 138–140 added 2026-10-29 after release #589, with the payment state re-checked on prod; 140 closed, 141 (ADR-131) released and 142–144 added 2026-10-29 after release #599; items 138, 147, 148 and 149 closed and 150 added 2026-10-30; items 13 and 146 designed in ADR-133 and 151 and 152 added 2026-10-31; item 154 added and closed, 153 closed and 156 and 157 added 2026-11-01; items 55, 74 and 114 closed and items 108 and 122 corrected after the group D audit, and items 129 and 141 closed, the same day; group E sorted the same day (24 and 94 to B, 57 and 150 to D, 14 and 25 closed, 117 parked); items 156 and 94 built and items 158 and 159 added 2026-11-03; 158 designed (ADR-136) and moved to A the same day; 157 closed the same day.** This list holds only **open** items. "Next up"
 is the one place they are sorted, one line each; "Details" holds each item's
 full text once, by number. Everything closed is one line under "Recently
 closed", pointing to where the full story lives (`docs/build-log.md` /
@@ -1007,14 +1007,6 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   orders, the fee fold with `bankTransferFees()` scoped, the cache keyed on a
   funding version, the unfunded-supplier block, the transfer spread guard, the
   currency lock, and the readers and labels of ADR-134 decisions 13–15.
-- **157** OpenWA cleanup after the 2026-11-02 move to `~/openwa-deploy` (ADR-114
-  2026-11-02 addendum; v0.27.1 live). After a few clean days and a passing
-  nightly OpenWA backup, delete `~/OpenWA-v0.25.0`,
-  `~/openwa-backups/openwa-v0.25.0-20261101-1051.tar.gz` and the two
-  `~/openwa-v0.27.*-build.log` files on the box (a prod write: founder's go-ahead).
-  Keep `releases/v0.27.0` as the rollback. Optional: set `API_KEY_PEPPER`
-  (boot warning); it changes how OpenWA hashes API keys, so both keys
-  (Laravel's bot and CS) must be re-issued in the same window.
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
   `/api/health`, the OpenWA gateway and `/api/health/whatsapp` (third monitor
   added and alert-tested by the founder 2026-10-14).
@@ -1303,6 +1295,7 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-23, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **157** 2026-11-03: OpenWA cleanup after the move to `~/openwa-deploy` (ADR-114 2026-11-02 addendum). After three passing nightly OpenWA backups (31 Oct, 1 and 2 Nov, restore test passed), the founder deleted `~/OpenWA-v0.25.0`, its pre-upgrade tarball and the two build logs; `releases/v0.27.0` stays as the rollback. `API_KEY_PEPPER` left unset: it only clears a boot warning and would force both OpenWA keys to be re-issued.
 - **94** 2026-11-03: best-selling products per game in Reports ([ADR-104](./adr/ADR-104-admin-panel-visual-redesign.md) 2026-11-03 addendum): one product definition shared with the storefront, snapshotted on the order; released 2026-11-03 via #668.
 - **156** 2026-11-03: a privacy-id (`@lid`) chat that sends an order number is checked against the checkout phone through OpenWA's lookup and tied to it on a match ([ADR-116](./adr/ADR-116-customer-order-notifications-over-whatsapp.md) 2026-11-03 addendum); released 2026-11-03 via #668.
 - **24** 2026-11-02: resume or cancel a pending Purchase Balance top-up ([ADR-135](./adr/ADR-135-pending-topup-resume-cancel.md)), built in four PRs (#655, #656, #657, #658), released 2026-11-02 via #660. The portal and the WhatsApp group (`.batalbaki`) show, resume and cancel a pending top-up, with the cancel decided by CHIP. The settlement screen shows a settled payment whose record here is not paid, with Re-check with CHIP.
