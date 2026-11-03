@@ -96,13 +96,17 @@ class CsKnowledgeController extends Controller
 
     public function entries(Request $request): JsonResponse
     {
-        $request->validate(['status' => ['nullable', Rule::in([CsKnowledgeEntry::STATUS_APPROVED, CsKnowledgeEntry::STATUS_ARCHIVED])]]);
+        $request->validate([
+            'status' => ['nullable', Rule::in([CsKnowledgeEntry::STATUS_APPROVED, CsKnowledgeEntry::STATUS_ARCHIVED])],
+            // The merge picker loads every approved entry at once.
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:500'],
+        ]);
 
         $page = CsKnowledgeEntry::query()
             ->with(self::RELATIONS)
             ->when($request->query('status'), fn ($q, $status) => $q->where('status', $status))
             ->latest('updated_at')
-            ->paginate(25);
+            ->paginate((int) $request->query('per_page', 25));
 
         return response()->json([
             'data' => $page->items(),

@@ -75,6 +75,8 @@ const sections: PanelNavSection[] = [
       { kind: "link", name: "Membership", href: "/admin/membership", icon: <BoxLineIcon /> },
       { kind: "link", name: "Reviews", href: "/admin/reviews", icon: <TagIcon /> },
       { kind: "link", name: "Blacklist", href: "/admin/blacklist", icon: <BlockIcon /> },
+      // ADR-136 decision 10: what the support assistant may say, approved here.
+      { kind: "link", name: "CS Knowledge", href: "/admin/cs-knowledge", icon: <FileIcon /> },
     ],
   },
   {
