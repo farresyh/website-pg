@@ -1806,3 +1806,17 @@ Checked every doc this session touched against `origin/main..origin/staging` and
 **Run #2** (read-only review on prod): 80/80 answers, 0 errors; Flash-Lite 2 safety and 4 total failures, 20 blind picks, $0.055; 3.8 Flash 1 safety and 3 total failures, 18 picks, $0.076. Details and the deferred model decision are in ADR-136's run #2 addendum. Google lists `gemini-3.1-flash-lite` for shutdown at the earliest on 2027-05-07 (replacement `gemini-3.5-flash-lite`).
 
 **State at session end.** Item 158: PR 1, PR 2 and PR 3a live; 5 knowledge entries and 40 test cases on prod; nightly suggestions start 03:00 MYT 2026-11-04. Next, when the founder takes it up: choose the model (Qwen to be considered), then PR 3b (Shadow), then PR 4 during Shadow with Live off.
+
+## 2026-11-03 — Reviews on affiliate storefronts, the marquee gap, and a per-brand OG image
+
+The founder asked three things: why the homepage review marquee leaves a blank strip at the right, why affiliate storefronts show no reviews although the admin approved some, and why `pekangame.com` has no OG image (opengraph.xyz).
+
+**Checked read-only on prod first.** Brand scoping is correct: `GET /api/catalog/reviews` with `X-Storefront-Host: fixfastapp.com` returns its one commented review. OhahaStore's 3 approved reviews (orders on Mobile Legends Indonesia) are all star-only, and both public surfaces show only reviews with a comment, so the game page answered `review_count: 3, reviews: []` and hid the section while its JSON-LD still emitted `aggregateRating`. PekanGame has 4 commented reviews, all from one customer, so the 2-per-customer cap leaves 2: one marquee copy was ~790px, narrower than the screen. `affiliate_seo_settings.default_og_image` is `NULL` for all three brands, and the public settings endpoint would have served the primary's image to every brand.
+
+**Built (one PR into `staging`):** ADR-082 and ADR-060 2026-11-03 addenda. `GameReviewsSection` shows the score badge whenever `review_count > 0`; the marquee repeats reviews to 8 cards per copy, uses card padding instead of `gap` and moves the left inset to the wrapper; `SeoController::settings` reads `default_og_image` from the brand's own row (test `test_default_og_image_is_the_brands_own_never_the_primarys`). New PRD §16 item 160 (affiliate OG image editor).
+
+**Verified.** Backend suite 3561 passed. Storefront `tsc`, lint and build clean. Local storefront against the prod API (read-only): OhahaStore's Mobile Legends Indonesia page renders "5.0 · 3 verified reviews"; Chromium measured the marquee at 390, 1440 and 2560px: one copy is 2688 / 3168px, exactly half the strip, and frames at 0% and -50% look the same; with reduced motion only the 2 real cards show.
+
+**Gotcha.** Playwright's `scrollIntoViewIfNeeded` never finishes on a running CSS animation ("element is not stable"); pause the animation first.
+
+**After release (founder):** make or pick a 1200 × 630 PNG/JPG under ~300 KB, upload it in the Gallery, paste its URL in Admin → SEO → Settings → Default OG image, then re-check opengraph.xyz.
