@@ -1862,3 +1862,12 @@ Shipped #685 and #686 at the founder's request. Merge `bdea7c1b`; box release `8
 Before release, an end-to-end check on an isolated local backend (database queue, OpenWA at a dead port): signed webhooks for a two-message burst and a staff reply produced one draft for the burst from knowledge, the staff reply classified as staff, nothing sent; `cs:judge-drafts` graded it "same" through Sonnet; `cs:suggest-knowledge` wrote a general question and answer and pointed to the existing entry; in the browser, the model's version prefilled Approve, an overrule saved, and a tripped cap showed its banner.
 
 Next: the founder switches Settings → Mode → Shadow; Claude checks the first prod drafts read-only. Meanwhile the founder chooses between the reseller rebate idea (a new feature, group E, needs an ADR) and ADR-118 marketing campaigns; PR 4 after 1–2 weeks of Shadow.
+
+## 2026-11-04 — Next features discussed: KOL campaigns and a reseller cash rebate (no code)
+
+After release #687 the founder raised two features; both are now in PRD §16 group B with the data and decisions (items 57 and 161). Highlights:
+
+- **KOL campaigns (item 57, ADR-118):** trigger met (two KOLs, start as soon as possible); fixed monthly fee per KOL; the discount must be computed. Prod on 2026-11-04: all 1,269 active packages carry a 10% markup on landed cost, about 9.1% margin, not ADR-118's 15% median, so a 5% discount leaves about 4.1% before the fee. Open: each KOL's fee, and whether codes work on affiliate brands.
+- **Reseller cash rebate + automatic refund (item 161):** founder decided to build both. Prod: 5 tiers (1–5%), one buying reseller (October RM336.10 / RM9.47). Recommended a rebate as a share of the reseller's own platform profit, and an automatic refund only on a confirmed Failed delivery after retries (revising ADR-073 decision 7).
+
+The founder closed the session here; the next session starts from item 57 (ADR-118 addendum), then 161.
