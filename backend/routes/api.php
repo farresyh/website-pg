@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\AffiliateMembershipTierController;
 use App\Http\Controllers\Admin\BlacklistController;
 use App\Http\Controllers\Admin\BudgetEnvelopeController;
 use App\Http\Controllers\Admin\CrawlerRuleController;
+use App\Http\Controllers\Admin\CsKnowledgeController;
 use App\Http\Controllers\Admin\CustomerAnalyticsController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FaqController;
@@ -597,6 +598,21 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
     // ADR-087 decision 6/9 — super_admin only (stricter than the Reports
     // group above: this surface's read access is broader than any
     // single existing screen), own route rather than a Reports tab.
+    // ADR-136 decisions 2, 10, 16, 17 (PR 2) — CS knowledge: only a
+    // super_admin turns a suggestion into what the assistant may say.
+    Route::middleware('admin.role:super_admin')->prefix('cs-knowledge')->group(function () {
+        Route::get('/suggestions', [CsKnowledgeController::class, 'suggestions']);
+        Route::post('/suggestions/{suggestion}/approve', [CsKnowledgeController::class, 'approve']);
+        Route::post('/suggestions/{suggestion}/merge', [CsKnowledgeController::class, 'merge']);
+        Route::post('/suggestions/{suggestion}/reject', [CsKnowledgeController::class, 'reject']);
+        Route::post('/suggestions/{suggestion}/ignore-chat', [CsKnowledgeController::class, 'ignoreChat']);
+        Route::get('/entries', [CsKnowledgeController::class, 'entries']);
+        Route::post('/entries', [CsKnowledgeController::class, 'store']);
+        Route::patch('/entries/{entry}', [CsKnowledgeController::class, 'update']);
+        Route::patch('/entries/{entry}/archive', [CsKnowledgeController::class, 'archive']);
+        Route::patch('/entries/{entry}/restore', [CsKnowledgeController::class, 'restore']);
+    });
+
     Route::middleware('admin.role:super_admin')->prefix('reports/assistant')->group(function () {
         Route::post('/ask', [ReportAssistantController::class, 'ask']);
     });
