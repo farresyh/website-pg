@@ -1854,3 +1854,11 @@ Run #3 on prod (founder ran and revealed it): Haiku 5.5 15 picks / 2 safety fail
 **Gotcha.** In a throwaway DB, sample drafts seeded with `last_message_id` 1–3 collide with the first real `cs_messages` ids, so the drafter's "already drafted" check returns early; seed drafts with ids no message will have.
 
 **After release (founder):** switch Settings → Mode to Shadow. First drafts appear as customers write; first grades the night after.
+
+## 2026-11-04 — Release #687 (`staging` → `main`): item 158 PR 3b (Shadow)
+
+Shipped #685 and #686 at the founder's request. Merge `bdea7c1b`; box release `82010527`. The `backend-concurrency` job ran long (over 10 minutes), so the deploy started later than usual. One migration, applied (`2026_11_05_120000_create_cs_shadow_tables`). Checked read-only: settings row `off` / Haiku 5.5 / Sonnet 5.5 / cap 1000 sen, no key missing; `cs:judge-drafts` scheduled 19:30 UTC; health all true; both WhatsApp sessions `ready`; Horizon running.
+
+Before release, an end-to-end check on an isolated local backend (database queue, OpenWA at a dead port): signed webhooks for a two-message burst and a staff reply produced one draft for the burst from knowledge, the staff reply classified as staff, nothing sent; `cs:judge-drafts` graded it "same" through Sonnet; `cs:suggest-knowledge` wrote a general question and answer and pointed to the existing entry; in the browser, the model's version prefilled Approve, an overrule saved, and a tripped cap showed its banner.
+
+Next: the founder switches Settings → Mode → Shadow; Claude checks the first prod drafts read-only. Meanwhile the founder chooses between the reseller rebate idea (a new feature, group E, needs an ADR) and ADR-118 marketing campaigns; PR 4 after 1–2 weeks of Shadow.
