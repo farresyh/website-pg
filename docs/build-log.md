@@ -2010,3 +2010,31 @@ Admin: Order Detail shows "Promo Discount (CODE)". Portal: "Promo discount" on t
 - Local dev DB migrated.
 
 **Not reachable yet:** codes can only be created from PR 4's Campaigns page.
+
+## 2026-11-04 — Item 57 PR 4: Campaigns page and scorecard (ADR-118 V14/V15/V17/V19)
+
+**Built.** One migration, `2026_11_06_160000_add_campaign_scorecard_settings_to_platform_settings`: `campaign_qualified_min_sen` (default 1000), `campaign_target_cac_sen` and `campaign_trial_months` (nullable).
+
+Backend:
+- `ReportService::campaignBreakdown()` reuses `scopedOrders` / `salesByGroup` / `profitByGroup`, so sales and profit match Reports. One grouped query per side covers redeemed and attributed-only orders (`code * 2 + flag`).
+- `RecognisedRevenue::promoDiscountByCode()` gives the discount per code, with the kept share on a settled partial.
+- Clicks come from `promo_code_clicks`.
+- New customers are committed redemptions paid in the range, de-duplicated through the `PromoCustomer` seam. A customer is qualified when their first order is at least the minimum or they bought again.
+- Fees are the accrued schedule for every KL month the range touches.
+- `Admin\CampaignController` (super admin) handles the list, create, show, rename or end, fee rows, codes (create and edit), the margin check and the settings, with a FormRequest per mutating route.
+- A code is 3–20 letters and digits, stored uppercase and unique forever. Its percentage is fixed once any redemption exists.
+- The margin check calls `CampaignService::refusedOn()`, the same floor checkout applies.
+- Verdict (the founder's rule): none until a target CAC and a trial length are both set. During the trial it shows "month x of n"; after it, the all-time CAC is compared with the target, and no qualified customer counts as above target.
+
+Admin:
+- Customers → Campaigns, in the Reports layout: KPI cards, `ReportCard`, `ReportTable`, and the Reports date filter. `FilterSelect` moved out of the Reports page into `components/reports/FilterSelect.tsx` so both pages share it.
+- The campaign page has the range and all-time scorecards, codes (copy tracker link, edit, live refused-package list), fee schedule and balance.
+- Forms use the kit's dialogs. Money uses Reports' format ("RM 500.00", a loss "−RM 500.00").
+
+**Verified.**
+- Backend suite: 3631 passed (13 new: the API rules and a November scorecard with three customers, one returning, one below RM10).
+- Admin: `tsc`, lint and build are clean.
+- Browser: the local admin dev server, signed in through the sidebar, with screenshots of the list, campaign page, code form (15% refused on 14 local packages) and 390px mobile (no sideways scroll), compared beside Reports.
+- Local dev DB migrated.
+
+**Not in v1 (V20):** deleting a code (pause it instead), Customer Analytics' campaign filter, the funding split.

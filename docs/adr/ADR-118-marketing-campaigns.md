@@ -406,3 +406,15 @@ Refinements made while building PR 1, test-first against V1–V20. None changes 
 - **The member warning shows only when it matters (founder's option a).** The modal warns when the member's own price is below the code's price; when the code is cheaper, there is nothing to warn about. The quota fall-back message no longer fires because of a promo.
 - **Clicks (V16).** `promo_code_clicks` holds one row per visit. `POST /api/promo-clicks` answers 204 for anything, so it is no oracle for codes. It records only a code of the storefront's own brand. The browser keeps the code 7 days for prefill and logs one click per tab.
 - **Readers (V18).** Track-order (and its broadcast), the affiliate order API, the orders workbook, the Report Assistant view and schema, admin Order Detail (with the code) and the portal order view carry the promo. Track-order lists Package Price before the promo, as checkout showed it. `RefundInformationCards`' "Discount Applied" sits in the "Voucher Used" card and is the voucher's own discount, so it is unchanged; the promo has its own row in Order Detail.
+
+### 2026-11-04 addendum — PR 4 build notes (Campaigns page and scorecard)
+
+- **Verdict rule (founder, refines V14).** No verdict until a target CAC and a trial length are both set. During the trial (counted from the first fee month) the page shows "In trial (month x of n)". After it, the all-time CAC is compared with the target: at or under it is "Worth keeping", over it is "Above target CAC". No qualified customer after the trial counts as above target. Cumulative net is shown beside it, not folded into the verdict.
+- **Super admin only (founder).** The same tier as Accounting, because the fee schedule feeds the Monthly Summary.
+- **Settings live on the Campaigns page (founder, V19).** A card on the page, stored in `platform_settings`.
+- **Scorecard definitions (V14).**
+  - New customers: committed redemptions whose order was paid in the range, counted once per identity through the `PromoCustomer` seam.
+  - Came back and 30-day repeat: a later paid order of the same customer attributed to the same code, at any date.
+  - Sales are on `paid_at` and profit on the ledger's recognition date, as on Reports.
+  - Fees are the accrued fee of every Malaysia month the range touches.
+- **No code delete in v1 (V17).** A code is paused or left to end. Its string stays used forever, so a mistyped unused code is simply paused.
