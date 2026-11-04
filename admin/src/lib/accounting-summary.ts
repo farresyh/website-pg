@@ -2,6 +2,9 @@ import { apiFetch } from "@/lib/api-client";
 
 /** ADR-083 decision 8, fills ADR-110 PR-B — Monthly Accounting Summary journal lines, one period at a time. */
 export interface MonthlyAccountingSummary {
+  /** ADR-118 V13: before the KOL promo discount; gross − promo = sales_revenue_sen. */
+  gross_sales_sen: number;
+  promo_discounts_sen: number;
   sales_revenue_sen: number;
   membership_revenue_sen: number;
   /** At funded cost: the deposit's MYR per unit, ADR-083 2026-10-17 addendum. */
@@ -27,6 +30,11 @@ export interface MonthlyAccountingSummary {
   reseller_wallet_balance_sen: number;
   /** Information only: already taken out of their envelopes, never subtracted from operating profit. */
   envelope_manual_expenses_sen: number;
+  /** ADR-118 V12/V13: journal lines only, never in operating profit (the payment already left its envelope). */
+  kol_fees_accrued_sen: number;
+  kol_fees_paid_sen: number;
+  /** Positive: prepaid (an asset). Negative: owed to KOLs (accrued expense). */
+  kol_prepaid_balance_sen: number;
   /** ADR-083 2026-10-10 addendum, decision 11 — what the month close allocates. */
   operating_profit_sen: number;
 }
@@ -72,6 +80,8 @@ export interface MonthClose {
   prior_adjustment_sen: number;
   allocate_sen: number;
   envelope_expenses: { category: string; label: string; amount_sen: number }[];
+  /** ADR-118 V13: KOL fees in their month of service (KOL payments are not in envelope_expenses). */
+  kol_fees_accrued_sen: number;
   net_sen: number;
   position: CashPosition;
   close: {

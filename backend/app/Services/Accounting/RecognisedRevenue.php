@@ -49,6 +49,24 @@ final class RecognisedRevenue
             ->values();
     }
 
+    /**
+     * ADR-118 V13: the KOL promo discount given on the revenue recognised in
+     * the range (gross = net + this). A settled partial order counts only the
+     * share it kept, rounded down, beside keptSen().
+     */
+    public function promoDiscountSen(?CarbonInterface $from, ?CarbonInterface $toExclusive): int
+    {
+        return (int) $this->inRange(Order::query(), $from, $toExclusive)
+            ->where('delivery_status', DeliveryStatus::Delivered->value)
+            ->sum('promo_discount_sen')
+            + (int) $this->settledPartialOrders($from, $toExclusive)->sum(fn (Order $o) => $this->keptPromoSen($o));
+    }
+
+    public function keptPromoSen(Order $order): int
+    {
+        return $order->selling_price > 0 ? intdiv($order->promo_discount_sen * $this->keptSen($order), $order->selling_price) : 0;
+    }
+
     /** What a settled partial order kept: the revenue it is recognised at. */
     public function keptSen(Order $order): int
     {

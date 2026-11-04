@@ -35,6 +35,8 @@ class StoreBudgetEnvelopePostingRequest extends FormRequest
             'fund_type' => ['nullable', 'string', Rule::enum(FundType::class)],
             'expense_category' => ['nullable', 'string', Rule::enum(ExpenseCategory::class)],
             'reference_no' => ['nullable', 'string', 'max:191'],
+            // ADR-118 V12: a KOL fee payment's campaign; the service checks it is an Advertising expense.
+            'campaign_id' => ['nullable', 'integer', 'exists:campaigns,id'],
             'receipt' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
             'lines' => ['required', 'array', 'min:1', 'max:20'],
             'lines.*.budget_envelope_id' => ['required', 'integer', 'exists:budget_envelopes,id'],

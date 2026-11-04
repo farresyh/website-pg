@@ -36,6 +36,29 @@ export interface BudgetEnvelopeIndex {
   expense_categories: Option[];
   /** What the company owes each director, computed from postings. */
   loan_balances: LoanBalance[];
+  /** ADR-118 V12: KOL campaigns an Advertising payment can be tagged to. */
+  campaigns: CampaignOption[];
+}
+
+export interface CampaignOption {
+  id: number;
+  name: string;
+  /** This month's fee from the campaign's schedule. */
+  monthly_fee_sen: number;
+  /** Positive: paid ahead (prepaid). Negative: owed to the KOL (accrued). */
+  balance_sen: number;
+}
+
+/** ADR-118 V12: what a payment would leave, before it is saved. */
+export interface CampaignPaymentPreview {
+  balance_before_sen: number;
+  balance_after_sen: number;
+  /** `YYYY-MM`, the last month the balance covers; null while the KOL is still owed. */
+  covers_until: string | null;
+}
+
+export function previewCampaignPayment(campaignId: number, amountSen: number, date: string) {
+  return apiFetch<CampaignPaymentPreview>(`/api/accounting/campaigns/${campaignId}/payment-preview?amount_sen=${amountSen}&date=${date}`);
 }
 
 /** One line in one envelope, with its posting's details. */
@@ -53,6 +76,8 @@ export interface BudgetEnvelopeEntry {
   counterparty_label: string | null;
   fund_type_label: string | null;
   expense_category_label: string | null;
+  /** ADR-118 V12: the KOL campaign a fee payment belongs to. */
+  campaign_name: string | null;
   reference_no: string | null;
   has_receipt: boolean;
   reverses_posting_id: number | null;
@@ -75,6 +100,7 @@ export interface RecordPostingValues {
   counterparty?: string;
   fund_type?: string;
   expense_category?: string;
+  campaign_id?: number;
   reference_no?: string;
   receipt?: File | null;
 }
@@ -114,6 +140,7 @@ export function recordPosting(values: RecordPostingValues) {
   if (values.counterparty) formData.append("counterparty", values.counterparty);
   if (values.fund_type) formData.append("fund_type", values.fund_type);
   if (values.expense_category) formData.append("expense_category", values.expense_category);
+  if (values.campaign_id) formData.append("campaign_id", String(values.campaign_id));
   if (values.reference_no) formData.append("reference_no", values.reference_no);
   if (values.receipt) formData.append("receipt", values.receipt);
 
