@@ -5,6 +5,7 @@ namespace App\Services\Payment;
 use App\Jobs\FulfillOrderJob;
 use App\Models\Order;
 use App\Services\Accounting\AccountingPeriod;
+use App\Services\Campaign\CampaignService;
 use App\Services\Membership\MembershipQuotaService;
 use App\Services\Order\InvalidOrderTransitionException;
 use App\Services\Order\OrderStatusService;
@@ -38,6 +39,7 @@ final class OrderPaymentOutcomeService
         private readonly VoucherService $vouchers,
         private readonly MembershipQuotaService $membershipQuota,
         private readonly OrderStatusService $orderStatus,
+        private readonly CampaignService $campaigns,
     ) {}
 
     /**
@@ -115,6 +117,7 @@ final class OrderPaymentOutcomeService
             $locked->update(['payment_status' => PaymentStatus::Failed->value]);
             $this->vouchers->restore($locked->id);
             $this->membershipQuota->restore($locked->id);
+            $this->campaigns->restore($locked->id);
 
             return OrderPaymentOutcome::Failed;
         });

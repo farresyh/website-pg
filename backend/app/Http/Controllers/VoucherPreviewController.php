@@ -5,7 +5,11 @@ namespace App\Http\Controllers;
 use App\Http\Requests\Voucher\PreviewVoucherRequest;
 use App\Models\Game;
 use App\Models\Package;
+use App\Services\Campaign\CampaignService;
+use App\Services\Campaign\InvalidPromoCodeException;
+use App\Services\Campaign\PromoCustomer;
 use App\Services\Joki\JokiCheckoutService;
+use App\Services\Pricing\OrderPricingResolver;
 use App\Services\Pricing\PricingService;
 use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherService;
@@ -35,6 +39,8 @@ class VoucherPreviewController extends Controller
         private readonly VoucherService $vouchers,
         private readonly StorefrontBrand $storefrontBrand,
         private readonly JokiCheckoutService $jokiCheckout,
+        private readonly OrderPricingResolver $pricingResolver,
+        private readonly CampaignService $campaigns,
     ) {}
 
     public function store(PreviewVoucherRequest $request): JsonResponse
@@ -69,6 +75,23 @@ class VoucherPreviewController extends Controller
                 $terms['tier'],
                 $terms['markup'],
             )->sellingPrice;
+
+        // ADR-118 V7: with a promo, the voucher is capped at the price after
+        // it — the same quote checkout applies, Standard basis (decision 4).
+        if (filled($data['promo_code'] ?? null)) {
+            try {
+                $sellingPriceSen = $this->campaigns->quote(
+                    $data['promo_code'],
+                    $brand->id,
+                    $game->is_joki
+                        ? $this->jokiCheckout->resolve($package, (array) ($data['joki'] ?? []), $brand)->pricing
+                        : $this->pricingResolver->resolveStorefront($package->cost_price, $package->standard_selling_price, (float) $package->markup_percent, $terms['markup'], $terms['tier'], null),
+                    PromoCustomer::at($game, $data['customer_email'], $data['customer_phone'], $data['player_id'], $data['server_id'] ?? null),
+                )->pricing->sellingPriceSen;
+            } catch (InvalidPromoCodeException $e) {
+                throw ValidationException::withMessages(['promo_code' => [$e->getMessage()]]);
+            }
+        }
 
         try {
             $preview = $this->vouchers->preview(

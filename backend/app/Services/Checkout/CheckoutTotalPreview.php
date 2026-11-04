@@ -16,6 +16,7 @@ final readonly class CheckoutTotalPreview
         public int $voucherDiscountSen,
         public int $transactionFeeSen,
         public int $finalAmountSen,
-    ) {
-    }
+        // ADR-118 V4: `sellingPriceSen` is before the promo; this is the RM saved.
+        public int $promoDiscountSen = 0,
+    ) {}
 }

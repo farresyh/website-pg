@@ -8,6 +8,7 @@ use App\Models\OrderDeliveryLeg;
 use App\Models\OrderResendAttempt;
 use App\Models\Supplier;
 use App\Services\Accounting\SupplierFundingService;
+use App\Services\Campaign\CampaignService;
 use App\Services\Currency\LandedCostRate;
 use App\Services\Ledger\LedgerService;
 use App\Services\Notification\CustomerNotificationService;
@@ -55,6 +56,10 @@ final class OrderFulfillmentService
         private readonly VoucherService $vouchers,
         private readonly SupplierFundingService $supplierFunding,
         private readonly LandedCostRate $landedCost,
+        // A default, not a required argument: the console test commands and
+        // fixtures build this service by hand, and CampaignService has no
+        // dependencies of its own.
+        private readonly CampaignService $campaigns = new CampaignService,
     ) {}
 
     /**
@@ -355,7 +360,7 @@ final class OrderFulfillmentService
                 // three-outcome model: any reserved redemption this order
                 // made is now permanent, never restored. No-op if this
                 // order never used a voucher.
-                $this->vouchers->commit($locked->id);
+                $this->commitInstruments($locked->id);
 
                 if (isset($result->data['price'])) {
                     $drawdownPrice = (float) $result->data['price'];
@@ -923,7 +928,7 @@ final class OrderFulfillmentService
                 ]);
 
                 $this->creditProfit($locked);
-                $this->vouchers->commit($locked->id);
+                $this->commitInstruments($locked->id);
 
                 return $locked->fresh();
             }
@@ -1147,7 +1152,7 @@ final class OrderFulfillmentService
                 $locked->update($updateData);
 
                 $this->creditProfit($locked);
-                $this->vouchers->commit($locked->id);
+                $this->commitInstruments($locked->id);
                 $this->resolvePendingResendAttempt($locked->id, 'success', $locked->supplier_response);
 
                 Log::info('Pending delivery finalized as delivered', ['supplier_ref' => $supplierRef]);
@@ -1471,7 +1476,7 @@ final class OrderFulfillmentService
             ]);
 
             $this->creditProfit($locked);
-            $this->vouchers->commit($locked->id);
+            $this->commitInstruments($locked->id);
 
             Log::info('Delivery manually confirmed after needs_review', [
                 'supplier_ref' => $supplierRef,
@@ -1736,6 +1741,17 @@ final class OrderFulfillmentService
                 Log::warning('Supplier group post not queued', ['order_id' => $orderId, 'exception' => $e->getMessage()]);
             }
         });
+    }
+
+    /**
+     * ADR-024 decision 6 + ADR-118 V9: both payment and delivery succeeded,
+     * so any reserved voucher or promo redemption on the order is now
+     * permanent. No-op for an order that used neither.
+     */
+    private function commitInstruments(int $orderId): void
+    {
+        $this->vouchers->commit($orderId);
+        $this->campaigns->commit($orderId);
     }
 
     private function creditProfit(Order $order): void

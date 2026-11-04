@@ -2,6 +2,7 @@
 
 namespace App\Services\Checkout;
 
+use App\Services\Campaign\PromoCustomer;
 use App\Services\Joki\JokiPurchase;
 use App\Services\Pricing\PaymentMethodFeeConfig;
 
@@ -53,5 +54,9 @@ final class CheckoutRequest
         // ADR-126: a joki order's purchase. Its Fixed pricing replaces the
         // storefront chain; the cost/markup fields above are not read.
         public readonly ?JokiPurchase $joki = null,
+        // ADR-118 V5/V6: the KOL promo code typed (if any), and who is buying,
+        // for the new-customer rule and the order's campaign attribution.
+        public readonly ?string $promoCode = null,
+        public readonly ?PromoCustomer $promoCustomer = null,
     ) {}
 }

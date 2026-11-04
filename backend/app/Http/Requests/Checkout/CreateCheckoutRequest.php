@@ -110,6 +110,8 @@ class CreateCheckoutRequest extends FormRequest
             ],
             'idempotency_key' => ['required', 'string', 'min:8', 'max:100'],
             'voucher_code' => ['nullable', 'string', 'max:32'],
+            // ADR-118 V17: only the code string; the discount is computed server-side.
+            'promo_code' => ['nullable', 'string', 'max:32'],
             // ADR-126: a joki order's ranks and requests; CheckoutController
             // requires it on the joki game and refuses it on any other.
             ...JokiSelectionRules::rules(),

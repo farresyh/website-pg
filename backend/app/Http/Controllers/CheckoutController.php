@@ -13,6 +13,11 @@ use App\Models\Package;
 use App\Models\PaymentMethod;
 use App\Models\PlatformSettings;
 use App\Models\PlayerValidation;
+use App\Models\PromoCode;
+use App\Services\Campaign\CampaignService;
+use App\Services\Campaign\InvalidPromoCodeException;
+use App\Services\Campaign\PromoCustomer;
+use App\Services\Campaign\PromoRejection;
 use App\Services\Checkout\CheckoutAttemptClosedException;
 use App\Services\Checkout\CheckoutFailedException;
 use App\Services\Checkout\CheckoutInputValidator;
@@ -72,6 +77,7 @@ class CheckoutController extends Controller
         private readonly CheckoutInputValidator $checkoutInputValidator,
         private readonly JokiCheckoutService $jokiCheckout,
         private readonly PaymentReconciliationService $reconciliation,
+        private readonly CampaignService $campaigns,
     ) {}
 
     public function store(CreateCheckoutRequest $request): JsonResponse
@@ -160,6 +166,15 @@ class CheckoutController extends Controller
 
         $terms = $affiliate->storefrontPriceTerms();
 
+        // ADR-118 V5/V6: who is buying — for a promo's new-customer rule and
+        // for counting a KOL's returning customer.
+        $promoCode = filled($data['promo_code'] ?? null) ? $data['promo_code'] : null;
+        $promoCustomer = PromoCustomer::at($game, $data['customer_email'], $data['customer_phone'] ?? null, $data['player_id'], $data['server_id'] ?? null);
+
+        if ($promoCode !== null) {
+            $this->releaseAbandonedPromoCheckout($affiliate->id, $promoCustomer);
+        }
+
         try {
             $order = $this->checkout->initiate(new CheckoutRequest(
                 customerEmail: $data['customer_email'],
@@ -187,8 +202,11 @@ class CheckoutController extends Controller
                 affiliateId: $affiliate->id,
                 membershipId: $membershipId,
                 credentials: $credentials,
-                memberPricingApplies: $game->memberPricingApplies(),
+                // ADR-118 decision 4 / R13: a promo is never on top of member pricing.
+                memberPricingApplies: $game->memberPricingApplies() && $promoCode === null,
                 joki: $joki,
+                promoCode: $promoCode,
+                promoCustomer: $promoCustomer,
             ), $gateway);
         } catch (DuplicateCheckoutAttemptException) {
             // Lost a genuine race — a concurrent request with the same
@@ -222,6 +240,9 @@ class CheckoutController extends Controller
             throw ValidationException::withMessages([
                 'voucher_code' => ['This voucher code is not valid for this order.'],
             ]);
+        } catch (InvalidPromoCodeException $e) {
+            // ADR-118: thrown by the quote, before any Order is created.
+            throw ValidationException::withMessages(['promo_code' => [$e->getMessage()]]);
         }
 
         return $this->buildCheckoutResponse($order, $gateway, 201, $data['fpx_bank_code'] ?? null);
@@ -246,7 +267,9 @@ class CheckoutController extends Controller
 
         $affiliate = $this->storefrontBrand->get();
         $platformSettings = PlatformSettings::current();
-        $membershipId = $this->membershipIdFor($request, $game, $affiliate, $platformSettings);
+        $promoCode = filled($data['promo_code'] ?? null) ? $data['promo_code'] : null;
+        // ADR-118 decision 4 / R13: a promo prices as Standard, as checkout does.
+        $membershipId = $promoCode === null ? $this->membershipIdFor($request, $game, $affiliate, $platformSettings) : null;
 
         $terms = $affiliate->storefrontPriceTerms();
 
@@ -264,6 +287,8 @@ class CheckoutController extends Controller
                 customerEmail: $data['customer_email'] ?? '',
                 customerPhone: $data['customer_phone'] ?? null,
                 pricing: $joki?->pricing,
+                promoCode: $promoCode,
+                promoCustomer: $promoCode === null ? null : PromoCustomer::at($game, $data['customer_email'], $data['customer_phone'], $data['player_id'], $data['server_id'] ?? null),
             );
         } catch (InvalidVoucherException) {
             // Same generic message as store()'s own catch — a voucher
@@ -272,10 +297,14 @@ class CheckoutController extends Controller
             throw ValidationException::withMessages([
                 'voucher_code' => ['This voucher code is not valid for this order.'],
             ]);
+        } catch (InvalidPromoCodeException $e) {
+            throw ValidationException::withMessages(['promo_code' => [$e->getMessage()]]);
         }
 
         return response()->json([
+            // ADR-118 V4: before the promo; `promo_discount_sen` is the RM saved.
             'selling_price_sen' => $preview->sellingPriceSen,
+            'promo_discount_sen' => $preview->promoDiscountSen,
             'member_discount_percent' => $preview->memberDiscountPercent,
             'voucher_discount_sen' => $preview->voucherDiscountSen,
             'transaction_fee_sen' => $preview->transactionFeeSen,
@@ -372,6 +401,13 @@ class CheckoutController extends Controller
         // ADR-126 addendum decision 8: the climb bought is part of the order.
         if ($joki !== null) {
             $payload['joki'] = [$joki->quote->from, $joki->quote->to, $joki->quote->isExpress];
+        }
+
+        // ADR-118 V7: the promo changes the price, so a replay must carry the
+        // same code. Added only when present, so hashes of orders placed
+        // before promo codes existed still match their replays.
+        if (filled($data['promo_code'] ?? null)) {
+            $payload['promo_code'] = PromoCode::normalise($data['promo_code']);
         }
 
         return hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR));
@@ -555,6 +591,35 @@ class CheckoutController extends Controller
      * use the response to distinguish "wrong value, try another" from
      * "you're rate-limited, wait it out."
      */
+    /**
+     * ADR-118 V8: the same customer (email, phone and player account all
+     * equal) left an earlier promo checkout unpaid — a reload, a closed
+     * CHIP tab. Ask CHIP to cancel it, then act only on CHIP's answer
+     * (ADR-135 decision 5's pattern), so its redemption goes back through
+     * the one failure seam and this checkout can take the code. If CHIP
+     * does not confirm the cancel, the old checkout keeps the code and
+     * this one is told to try again later.
+     */
+    private function releaseAbandonedPromoCheckout(int $brandId, PromoCustomer $customer): void
+    {
+        $holder = $this->campaigns->abandonedCheckoutOf($brandId, $customer);
+
+        if ($holder === null) {
+            return;
+        }
+
+        if ($holder->payment_ref !== null && $holder->payment_gateway !== null) {
+            $this->gatewayFactory->make($holder->payment_gateway)->cancelPayment($holder->payment_ref);
+            $this->reconciliation->reconcileOrder($holder, earlyCheck: true);
+        }
+
+        if ($holder->fresh()->payment_status === PaymentStatus::Pending) {
+            throw ValidationException::withMessages(['promo_code' => [PromoRejection::NotNewCustomer->message()]]);
+        }
+
+        Log::info('Abandoned promo checkout cancelled for a new one', ['order_number' => $holder->order_number]);
+    }
+
     /**
      * 2026-09-29 audit (Wave 5 Low): CatalogController already hides a
      * game the brand turned off (`affiliate_game.is_visible = false`), but
