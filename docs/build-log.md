@@ -1901,3 +1901,31 @@ The founder reviewed the first 28 CS knowledge suggestions with Claude (all clos
 Founder agreed to all.
 
 Next: build v1 test-first.
+
+## 2026-11-04 — Item 57 PR 1: KOL promo codes, backend core (ADR-118 V1–V20)
+
+**Built:** one migration, `2026_11_06_120000_create_campaign_tables`:
+- tables `campaigns`, `promo_codes`, `promo_code_redemptions`;
+- on `orders`: `promo_code_id`, `promo_discount_sen`, `attributed_promo_code_id`;
+- `platform_settings.campaign_min_margin_percent`.
+
+`App\Services\Campaign\CampaignService` owns the money path:
+- `quote()` runs before `computeTotal()` in checkout, the review total and the voucher preview;
+- `reserve()` is the third instrument in `reserveAll()`;
+- `commit()` is called through a new `commitInstruments()` at the four delivery sites;
+- `restore()` runs in `applyFailed` and in `settle` (by share).
+
+`PromoCustomer` is the one identity matcher: email, phone through `PhoneNumber`, and player account scoped by game family. The checkout controller cancels the same customer's unpaid promo checkout through CHIP before a new one (ADR-135's cancel-then-read pattern).
+
+**Verified:**
+- Fast suite 3607 passed (24 new: 19 checkout, 5 lifecycle).
+- New MySQL concurrency test `PromoCodeReserveConcurrencyTest`: one customer racing two KOL codes, and one code twice. Passed 6 runs in a row.
+- Mutation checks: removing the wallet exclusion, the reseller check, the restore on failed payment, the promo commit, the share restore, the re-reserve, or the promo pricing each fails its test.
+- Local dev DB migrated with plain `migrate`; the llm views were re-created and are intact.
+
+**Gotchas:**
+- **sqlite.** Adding a foreign key to `orders` rebuilds the table under the `llm_report_*` views. The migration drops and re-creates them from their stored SQL, as `2026_10_08_140000` does.
+- **MySQL REPEATABLE READ.** The first concurrency run let both racers reserve. Plain reads after the brand lock still saw the old snapshot, so they now read with a shared lock (ADR-118 PR 1 build notes).
+- **Fake gateway in tests.** A fake gateway bound as a fresh instance per resolve loses its "cancelled" state between `cancelPayment` and `getPayment`. Bind one instance.
+
+**Not reachable yet:** no campaign can be created until PR 2 (fee schedule) and PR 4 (admin page). PR 3 adds the storefront field.

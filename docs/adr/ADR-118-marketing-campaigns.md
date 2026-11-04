@@ -377,3 +377,15 @@ The model re-checked every key finding against code or prod. **This addendum ove
 - KOL 2 at RM2,000 needs about 75–226 new customers a month to break even. The founder negotiates with KOL 1's first month of scorecard data in hand.
 - Each month the founder records the KOL payment on the Envelope Ledger with its campaign.
 - When a third-party affiliate brand first runs a campaign: bring back V1's dropped parts with their own code trace.
+
+### 2026-11-04 addendum — PR 1 build notes (backend core)
+
+Refinements made while building PR 1, test-first against V1–V20. None changes a money rule.
+
+- **One customer message, not two (refines V5).** "New customers only" and "in use in an unfinished payment" share one message: "for new customers only, once per customer; if you have an unfinished payment, try again in 30 minutes". Two messages would tell a prober which case applied. The code-level messages stay specific (not valid, ended, reached its limit, cannot be used for this item).
+- **"Bought before" = a delivered or partially delivered order on the brand (V5 a).** It does not use `recognised_at`. An unsettled partial order also counts, because the customer already received goods. Wallet and test orders are excluded.
+- **Voucher preview (refines V7).** `VoucherPreviewController` keeps its own endpoint. With a `promo_code` it prices through the same `CampaignService::quote()` checkout uses, so the voucher is capped at the post-promo price. It is not rerouted through `previewTotal()`, which would change its member-pricing behaviour for every non-promo caller.
+- **Idempotency hash (V7).** `promo_code` is added to the hash only when present, so a replay of an order placed before this release still matches its stored hash.
+- **Cancel-and-replace runs before the quote (V8).** A fresh checkout with an identical identity cancels the old unpaid checkout first, even if the new code later turns out invalid. The old link was abandoned either way, so nothing is lost.
+- **Locking reads in `reserve()` (V5, V8).** Found by the new MySQL concurrency test: both racers got a discount. Under REPEATABLE READ a plain read inside the reserve transaction still sees the snapshot from before the brand lock was granted. The budget sum and the live-redemption check therefore read with a shared lock. Voucher and quota were never exposed to this, because they read their balance row with `lockForUpdate()`.
+- **Settings.** `platform_settings.campaign_min_margin_percent` (default 2.00) is the only V19 setting PR 1 needs. The scorecard settings arrive with PR 4.
