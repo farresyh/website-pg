@@ -34,6 +34,8 @@ export const TrackedOrderSchema = z.object({
   payment_method: z.string().nullable(),
   selling_price: z.number(),
   voucher_discount: z.number(),
+  // ADR-118 V18: the KOL promo, already taken off `selling_price`.
+  promo_discount: z.number().default(0),
   transaction_fee: z.number(),
   final_amount: z.number(), // sen
   payment_status: z.enum(["pending", "paid", "failed"]),

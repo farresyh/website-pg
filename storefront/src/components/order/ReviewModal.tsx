@@ -8,6 +8,7 @@ import { ArrowRight, Crown, X } from "@phosphor-icons/react/dist/ssr";
 import Button from "@/components/ui/Button";
 import { ApiError } from "@/lib/api-client";
 import { previewVoucher, type VoucherPreviewResult } from "@/lib/vouchers";
+import { rememberedPromoCode } from "@/lib/promo";
 import type { CheckoutTotalPreview } from "@/lib/checkout";
 import type { Game, GamePackage } from "@/lib/catalog";
 
@@ -37,8 +38,8 @@ interface ReviewModalProps {
   onConfirm: () => void;
   /** ADR-024 — the applied voucher's code, or null once cleared/removed. */
   onVoucherChange: (code: string | null) => void;
-  /** ADR-055 second touchpoint (design preview) — same `showPromo` gate OrderForm already computes for the sidebar card: false/omitted hides the strip entirely (no plans, or the visitor is already on the top tier). */
-  showMembershipPromo?: boolean;
+  /** ADR-055 second touchpoint (design preview) — same `showMembershipUpsell` gate OrderForm already computes for the sidebar card: false/omitted hides the strip entirely (no plans, or the visitor is already on the top tier). */
+  showMembershipUpsell?: boolean;
   /** The top tier's member price for this package, RM — same value the sidebar card promotes. */
   topTierMemberPriceRm?: number | null;
   /** 2026-09-20 quota transparency: true once we know this visitor is a signed-in member (any tier). */
@@ -47,6 +48,13 @@ interface ReviewModalProps {
   quotaRemainingRm?: number | null;
   /** ADR-126: a joki order's climb — the voucher preview prices it like checkout. */
   joki?: JokiSelection;
+  /** ADR-118: the applied KOL promo code (OrderForm's totals preview validates it), its refusal, and the setter. Omitted on the joki form: no promo there (V2). */
+  promoCode?: string | null;
+  promoError?: string | null;
+  onPromoChange?: (code: string | null) => void;
+  /** The player account the promo's new-customer rule checks, also sent with a voucher preview. */
+  promoPlayerId?: string;
+  promoServerId?: string;
 }
 
 const inputClass =
@@ -90,11 +98,16 @@ export default function ReviewModal({
   submitError,
   onConfirm,
   onVoucherChange,
-  showMembershipPromo = false,
+  showMembershipUpsell = false,
   topTierMemberPriceRm = null,
   isMember = false,
   quotaRemainingRm = null,
   joki,
+  promoCode = null,
+  promoError = null,
+  onPromoChange,
+  promoPlayerId = "",
+  promoServerId = "",
 }: ReviewModalProps) {
   const [tcChecked, setTcChecked] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
@@ -103,6 +116,11 @@ export default function ReviewModal({
   const [applying, setApplying] = useState(false);
   const [voucherError, setVoucherError] = useState<string | null>(null);
   const [appliedVoucher, setAppliedVoucher] = useState<{ code: string; result: VoucherPreviewResult } | null>(null);
+
+  // ADR-118 V16: a KOL link's code is prefilled (never applied for the customer).
+  const [promoInput, setPromoInput] = useState(() => rememberedPromoCode() ?? "");
+  const [promoOpen, setPromoOpen] = useState(() => promoInput.length > 0);
+  const [promoHint, setPromoHint] = useState<string | null>(null);
 
   function handleConfirmWithRemember() {
     try {
@@ -205,16 +223,52 @@ export default function ReviewModal({
     setApplying(true);
     setVoucherError(null);
     try {
-      const result = await previewVoucher(game.id, pkg.id, voucherCode.trim(), customerEmail, customerPhone, joki);
+      const result = await previewVoucher(
+        game.id,
+        pkg.id,
+        voucherCode.trim(),
+        customerEmail,
+        customerPhone,
+        joki,
+        promoCode ? { code: promoCode, playerId: promoPlayerId, serverId: promoServerId } : undefined,
+      );
       setAppliedVoucher({ code: voucherCode.trim(), result });
       onVoucherChange(voucherCode.trim());
     } catch (err) {
       setAppliedVoucher(null);
       onVoucherChange(null);
-      setVoucherError(err instanceof ApiError ? err.message : "Couldn't check that voucher. Please try again.");
+      // ADR-118 V17: every voucher starts with VC-; anything else is likely a promo code.
+      setVoucherError(
+        onPromoChange && !/^vc-/i.test(voucherCode.trim())
+          ? "That isn't a voucher code. If it's a promo code, enter it under Promo Code below."
+          : err instanceof ApiError
+            ? err.message
+            : "Couldn't check that voucher. Please try again.",
+      );
     } finally {
       setApplying(false);
     }
+  }
+
+  function handleApplyPromo() {
+    const code = promoInput.trim().toUpperCase();
+    if (code.length === 0 || !onPromoChange) return;
+    if (/^vc-/i.test(code)) {
+      setPromoHint("That's a voucher code. Enter it under Voucher Code above.");
+      return;
+    }
+    if (customerEmail.trim().length === 0 || customerPhone.trim().length === 0) {
+      setPromoHint("Enter your email address and phone number above first.");
+      return;
+    }
+    setPromoHint(null);
+    onPromoChange(code);
+  }
+
+  function handleRemovePromo() {
+    setPromoInput("");
+    setPromoHint(null);
+    onPromoChange?.(null);
   }
 
   function handleRemoveVoucher() {
@@ -254,7 +308,7 @@ export default function ReviewModal({
   // (the only other null-cause, "not a member", can't apply here since
   // `isMember` is already true). Only shown once `preview` has actually
   // loaded, so it never flashes based on stale/fallback pricing.
-  const quotaFellBackToStandard = isMember && preview !== null && preview.member_discount_percent === null;
+  const quotaFellBackToStandard = isMember && promoCode === null && preview !== null && preview.member_discount_percent === null;
   // Bug found live-testing this feature: `isMemberPrice` only reflects
   // the catalog's personalization flag, not whether quota actually held
   // at checkout — once the real `preview` lands, it (not the catalog
@@ -263,6 +317,15 @@ export default function ReviewModal({
   // never mislabels a quota-exceeded order that fell back to standard.
   const chargedAsMember = preview ? preview.member_discount_percent !== null : isMemberPrice;
   const voucherDiscountRm = preview ? preview.voucher_discount_sen / 100 : fallbackDiscountRm;
+  // ADR-118 V4: the customer sees the RM saved, never the percentage.
+  const promoSavedRm = preview && promoCode ? preview.promo_discount_sen / 100 : 0;
+  const promoChecking = promoCode !== null && preview === null;
+  // Decision 4 + the founder's option (a): a promo prices at the standard
+  // price, never on top of member pricing. When this member's own price is
+  // lower than the code's, say so, so they can remove the code.
+  const memberPriceBeatsPromo =
+    isMember && promoSavedRm > 0 && isMemberPrice && preview !== null
+      && pkg.memberPriceRm! < (preview.selling_price_sen - preview.promo_discount_sen) / 100;
   const payableRm = preview ? preview.final_amount_sen / 100 : fallbackPayableRm;
 
   return (
@@ -399,6 +462,59 @@ export default function ReviewModal({
           {voucherError && <p className="mt-1.5 text-[12.5px] text-danger">{voucherError}</p>}
         </div>
 
+        {onPromoChange && (
+          <div className="mb-5">
+            {promoCode || promoOpen ? (
+              <>
+                <label htmlFor="reviewPromo" className={labelClass}>
+                  Promo Code
+                </label>
+                {promoCode ? (
+                  <div className="flex items-center justify-between rounded-lg border-2 border-primary bg-primary-fixed px-3.5 py-2.5">
+                    <span className="text-sm font-semibold">{promoCode}</span>
+                    <button type="button" onClick={handleRemovePromo} className="text-[13px] font-semibold text-on-surface-variant hover:text-danger">
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      id="reviewPromo"
+                      type="text"
+                      value={promoInput}
+                      onChange={(e) => setPromoInput(e.target.value)}
+                      placeholder="Enter promo code"
+                      autoCapitalize="characters"
+                      className={inputClass}
+                    />
+                    <Button onClick={handleApplyPromo} disabled={promoInput.trim().length === 0} className="shrink-0 px-4">
+                      Apply
+                    </Button>
+                  </div>
+                )}
+                {promoChecking && <p className="mt-1.5 text-[12.5px] text-on-surface-variant">Checking…</p>}
+                {promoSavedRm > 0 && (
+                  <p className="mt-1.5 text-[12.5px] font-semibold text-primary-on-surface">You save RM{promoSavedRm.toFixed(2)}</p>
+                )}
+                {(promoHint ?? promoError) && <p className="mt-1.5 text-[12.5px] text-danger">{promoHint ?? promoError}</p>}
+                {memberPriceBeatsPromo && (
+                  <p className="mt-1.5 text-[12.5px] text-on-surface-variant">
+                    Your member price (RM{pkg.memberPriceRm!.toFixed(2)}) is lower. A promo code uses the standard price, so remove it to pay the member price.
+                  </p>
+                )}
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setPromoOpen(true)}
+                className="text-[13px] font-semibold text-primary-on-surface underline underline-offset-2"
+              >
+                Have a promo code?
+              </button>
+            )}
+          </div>
+        )}
+
         <hr className="mb-5 border-t-2 border-ink" />
 
         <div className="mb-5 flex flex-col gap-1.5">
@@ -409,7 +525,7 @@ export default function ReviewModal({
             </div>
           )}
           <Row k={chargedAsMember ? "Member Price" : "Package Price"} v={`RM${packagePriceRm.toFixed(2)}`} />
-          {!chargedAsMember && showMembershipPromo && topTierMemberPriceRm !== null && (
+          {!chargedAsMember && showMembershipUpsell && topTierMemberPriceRm !== null && (
             <div className="flex min-h-[60px] items-center justify-between gap-3 rounded-lg border-2 border-ink bg-secondary-container px-3.5 py-2 text-on-secondary-container">
               <div className="flex items-center gap-2">
                 <Crown size={16} weight="fill" className="shrink-0 text-on-secondary-container/70" />
@@ -431,6 +547,12 @@ export default function ReviewModal({
                 Become a Member
                 <ArrowRight size={11} weight="bold" />
               </Link>
+            </div>
+          )}
+          {promoSavedRm > 0 && (
+            <div className="flex items-center justify-between text-sm text-primary-on-surface">
+              <span>Promo ({promoCode})</span>
+              <span>-RM{promoSavedRm.toFixed(2)}</span>
             </div>
           )}
           {transactionFeeRm != null && <Row k="Transaction Fee" v={`RM${transactionFeeRm.toFixed(2)}`} />}
