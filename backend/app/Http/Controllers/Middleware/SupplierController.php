@@ -43,46 +43,57 @@ class SupplierController extends Controller
      */
     public function index(): JsonResponse
     {
-        $breakerConfig = config('services.circuit_breaker');
-
         // ADR-126 F5: the joki pool holds no balance and is switched with Joki.
-        $suppliers = Supplier::query()->exceptAssignmentPool()->orderBy('name')->get()->map(function (Supplier $supplier) use ($breakerConfig) {
-            $breaker = new CircuitBreaker(
-                name: $supplier->slug,
-                failureThreshold: $breakerConfig['failure_threshold'],
-                cooldownSeconds: $breakerConfig['cooldown_seconds'],
-            );
-
-            return array_merge($supplier->toArray(), [
-                'circuit_state' => $breaker->state()->value,
-                'has_credentials' => ! empty($supplier->api_config),
-                // Found live, 2026-08-28: has_credentials alone reads
-                // "Configured" the moment ANY key is saved (e.g. just
-                // base_url), which is exactly what let a supplier one
-                // Refresh Balance click away from crashing look
-                // finished. This is the field the "Configured" badge
-                // should actually gate on — every key
-                // SupplierConfigSchema defines for this slug present,
-                // not merely "not empty".
-                'is_fully_configured' => SupplierConfigSchema::missingKeys($supplier->driver, $supplier->api_config ?? []) === [],
-                // Per-secret-field presence (never the value itself,
-                // same SUPP-5 boundary visibleConfig() already
-                // enforces) — lets the Edit form's per-field badge
-                // show which secret is actually set instead of every
-                // secret field reusing has_credentials' one supplier-
-                // wide flag.
-                'configured_secret_keys' => $this->configuredSecretKeys($supplier),
-                'visible_config' => $this->visibleConfig($supplier),
-                'is_sandbox' => $this->isSandbox($supplier),
-                // ADR-125 decisions 2 and 18: a manual supplier has no API
-                // to poll, so its balance is its funding ledger.
-                'is_api_backed' => $supplier->isApiBacked(),
-                'display_balance' => $supplier->displayBalance(),
-                'reference_counts' => $this->referenceCounts($supplier),
-            ]);
-        })->values();
+        $suppliers = Supplier::query()->exceptAssignmentPool()->orderBy('name')->get()->map(fn (Supplier $supplier) => $this->present($supplier))->values();
 
         return response()->json($suppliers);
+    }
+
+    /**
+     * One supplier in the shape every screen reads (index's rows). Every
+     * endpoint that answers with a single supplier uses it too, so a page
+     * that swaps the answer into its list never gets a row missing
+     * display_balance / is_api_backed (found live 2026-11-05 on
+     * /admin/balance).
+     *
+     * @return array<string, mixed>
+     */
+    private function present(Supplier $supplier): array
+    {
+        $breakerConfig = config('services.circuit_breaker');
+        $breaker = new CircuitBreaker(
+            name: $supplier->slug,
+            failureThreshold: $breakerConfig['failure_threshold'],
+            cooldownSeconds: $breakerConfig['cooldown_seconds'],
+        );
+
+        return array_merge($supplier->toArray(), [
+            'circuit_state' => $breaker->state()->value,
+            'has_credentials' => ! empty($supplier->api_config),
+            // Found live, 2026-08-28: has_credentials alone reads
+            // "Configured" the moment ANY key is saved (e.g. just
+            // base_url), which is exactly what let a supplier one
+            // Refresh Balance click away from crashing look
+            // finished. This is the field the "Configured" badge
+            // should actually gate on — every key
+            // SupplierConfigSchema defines for this slug present,
+            // not merely "not empty".
+            'is_fully_configured' => SupplierConfigSchema::missingKeys($supplier->driver, $supplier->api_config ?? []) === [],
+            // Per-secret-field presence (never the value itself,
+            // same SUPP-5 boundary visibleConfig() already
+            // enforces) — lets the Edit form's per-field badge
+            // show which secret is actually set instead of every
+            // secret field reusing has_credentials' one supplier-
+            // wide flag.
+            'configured_secret_keys' => $this->configuredSecretKeys($supplier),
+            'visible_config' => $this->visibleConfig($supplier),
+            'is_sandbox' => $this->isSandbox($supplier),
+            // ADR-125 decisions 2 and 18: a manual supplier has no API
+            // to poll, so its balance is its funding ledger.
+            'is_api_backed' => $supplier->isApiBacked(),
+            'display_balance' => $supplier->displayBalance(),
+            'reference_counts' => $this->referenceCounts($supplier),
+        ]);
     }
 
     /**
@@ -111,7 +122,7 @@ class SupplierController extends Controller
 
         $supplier = Supplier::query()->create(array_merge(['api_config' => []], $data));
 
-        return response()->json($supplier, 201);
+        return response()->json($this->present($supplier->fresh()), 201);
     }
 
     /**
@@ -157,7 +168,7 @@ class SupplierController extends Controller
         $supplier->update($data);
         $supplier->refresh();
 
-        $payload = $supplier->toArray();
+        $payload = $this->present($supplier);
 
         // ADR-069 decision 11 — a credential change that silently fails
         // to take (the masked-merge of ADR-046 decision 3 is exactly
@@ -236,12 +247,12 @@ class SupplierController extends Controller
         if (! $supplier->isApiBacked()) {
             $manual->setActive($supplier, $request->validated('is_active'), $request->user()->id);
 
-            return response()->json($supplier->fresh());
+            return response()->json($this->present($supplier->fresh()));
         }
 
         $supplier->update(['is_active' => $request->validated('is_active')]);
 
-        return response()->json($supplier->fresh());
+        return response()->json($this->present($supplier->fresh()));
     }
 
     /**
@@ -302,7 +313,7 @@ class SupplierController extends Controller
 
         $supplier->update($update);
 
-        return response()->json($supplier->fresh());
+        return response()->json($this->present($supplier->fresh()));
     }
 
     /**

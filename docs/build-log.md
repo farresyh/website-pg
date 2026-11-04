@@ -1139,3 +1139,11 @@ New PRD §16 item 162 tracks it.
 **FX.** open.er-api.com is still called, but only for the market rate shown beside the landed rate in the Price Sync Center (`ProductSyncService.php:150`). Price Sync costs and per-order real cost use `LandedCostRate` (ADR-134). The last run priced IDR at 0.00023913 MYR (deposit pool) against a market rate of 0.000225, a spread of +6.28%.
 
 **OpenWA #1978.** The maintainer shipped the fix in rmyndharis/OpenWA#1992 and closed the issue. It is on OpenWA's `main` only; the latest release is still v0.27.1. Item 159 now waits for the release that ships it.
+
+## 2026-11-05 — Fix: Refresh on /admin/balance crashed the page
+
+**Symptom (founder, prod).** Clicking Refresh on a supplier row at `/admin/balance` showed "This page couldn't load". A hard reload then showed the page, with the refreshed balance.
+
+**Cause.** `POST /api/middleware/suppliers/{id}/refresh-balance` answered with the bare model (`$supplier->fresh()`). That answer has no `display_balance` and no `is_api_backed`. The page swaps the answer into its table, so `formatSupplierBalance(undefined)` threw on `toLocaleString`. The `/middleware/suppliers` page never showed the bug because it refetches the list after a refresh. Three more endpoints answered in the same bare shape: `status` (two branches), `store` and `update`.
+
+**Fix.** `SupplierController::present()` is now the one shape for a supplier row. `index()` uses it, and so do all five single-supplier answers (`update` still adds `connection_probe`). The regression test `test_single_supplier_responses_match_the_index_row_shape` asserts that the refresh, status and update answers have exactly `index()`'s keys and never include `api_config`. Full backend suite green (3,632 tests).

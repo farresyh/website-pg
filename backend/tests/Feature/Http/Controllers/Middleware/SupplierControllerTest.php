@@ -364,6 +364,33 @@ class SupplierControllerTest extends TestCase
         $this->assertEquals(9999, $response->json('balance'));
     }
 
+    /**
+     * Found live 2026-11-05: /admin/balance swaps the refreshed row into
+     * its table, and the bare model had no display_balance, so the page
+     * crashed ("This page couldn't load") until a hard reload. Every
+     * endpoint that answers with one supplier answers in index()'s shape.
+     */
+    public function test_single_supplier_responses_match_the_index_row_shape(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = $this->supplier(['balance' => 50]);
+        $this->app->bind('supplier-adapter.gamevion', fn () => $this->fakeAdapter(true, ['balance' => 9999]));
+
+        $indexKeys = array_keys($this->getJson('/api/middleware/suppliers')->assertOk()->json('0'));
+
+        $refreshed = $this->postJson("/api/middleware/suppliers/{$supplier->id}/refresh-balance")->assertOk();
+        $this->assertEqualsCanonicalizing($indexKeys, array_keys($refreshed->json()));
+        $this->assertEquals(9999, $refreshed->json('display_balance'));
+        $this->assertTrue($refreshed->json('is_api_backed'));
+
+        $toggled = $this->patchJson("/api/middleware/suppliers/{$supplier->id}/status", ['is_active' => false])->assertOk();
+        $this->assertEqualsCanonicalizing($indexKeys, array_keys($toggled->json()));
+        $this->assertArrayNotHasKey('api_config', $toggled->json());
+
+        $updated = $this->putJson("/api/middleware/suppliers/{$supplier->id}", ['name' => 'Renamed'])->assertOk();
+        $this->assertEqualsCanonicalizing($indexKeys, array_keys($updated->json()));
+    }
+
     public function test_refresh_balance_records_a_failure(): void
     {
         $this->actingAsAdmin();
