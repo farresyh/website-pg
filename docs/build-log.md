@@ -1884,4 +1884,20 @@ The founder reviewed the first 28 CS knowledge suggestions with Claude (all clos
 
 **Accountant's answers (same day):** discount is contra-revenue (MPERS s.23), shown as gross − promo = net; KOL fee is an advertising expense in the month of service (prepayment / accrual); no WHT for local individuals (10% for non-residents); SST is not recoverable, so it is part of the fee; an individual KOL gets a self-billed e-invoice; free diamonds to a KOL are a marketing expense at cost, never sales. The Envelope Ledger is cash-dated, so V12 became a per-campaign fee schedule (the agreement) plus campaign-tagged Envelope payments (the cash), as affiliate commission already works; a general service period on every Envelope expense was rejected for now.
 
+**Adversarial stress test (three forks: abuse and concurrency, accounting and ledger, lifecycle and hygiene; key findings re-checked by Claude in code and on prod):** the addendum was rewritten as one consistent list, V1–V20, with an explicit "Superseded for v1" list. Fixed in the design:
+- the KOL fee must never enter operating profit or the month-close allocation (Envelope expenses are already excluded there; adding the accrual would deduct it twice);
+- `void()` must carry `campaign_id`;
+- the promo line is proportional on a partial settlement (`recognisedPromoSen` beside `keptSen`);
+- a campaign needs a fee row from creation, in an open month;
+- one KOL discount per customer per brand under a brand-level lock (two concurrent orders with two KOLs' codes got both), which made `customer_campaign_attribution` dead weight (dropped);
+- cancel-and-replace of the same customer's unpaid checkout (prod: 5 customers let a link expire and retried within 1–8 minutes, and would have been locked out);
+- qualified new customers (first order ≥ RM10 or a repeat) so tiny orders can't pad a KOL's CAC;
+- an optional RM max per code;
+- generic rejection messages;
+- reseller identities rejected;
+- the Paid-after-Failed re-reserve never blocks a delivery;
+- code lifecycle (chosen by the admin, case-insensitive, unique forever, immutable after the first redemption).
+
+Founder agreed to all.
+
 Next: build v1 test-first.

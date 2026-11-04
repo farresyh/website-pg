@@ -1,6 +1,6 @@
 # ADR-118: Marketing Campaigns — multi-use KOL discount codes, separate from `Voucher`
 
-> **Standing (2026-11-04):** Accepted (design); v1 scope is the 2026-11-04 addendum (V1–V18). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-04):** Accepted (design); v1 scope is the 2026-11-04 addendum (V1–V20). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-10-02, grilled across four rounds via `/mattpocock-skills:grilling`, plus a dedicated adversarial stress-test pass that caught and corrected two real design flaws before any code was written (decisions 9 and 11 below). Build not started.
 
@@ -160,65 +160,220 @@ The loss guard (R5) replaces a snapshot-based safety proof with a per-order chec
 - R14's accounting treatment is the founder's working decision, pending the external reviewer.
 - Original consequence #2 (upsell card) is resolved by R13; consequence #3 (affiliate portal display) is resolved by R6.
 
-### 2026-11-04 addendum — v1 for two PekanGame KOLs, re-traced against current code
+### 2026-11-04 addendum — v1 for two PekanGame KOLs (founder decisions, code trace, accountant, stress test)
 
-**Status:** Accepted (design), 2026-11-04: founder decisions, the code-trace pass, the founder's answers on Joki, the margin floor and the tracker link, and the external accountant's answers to R14 (V13), which also replaced the fee design (V12).
+**Status:** Accepted (design), 2026-11-04. Accepted after four inputs:
+- the founder's decisions;
+- a three-fork money code-trace pass;
+- the external accountant's answers to R14;
+- an adversarial stress test, also three forks: abuse and concurrency; accounting and ledger; lifecycle and hygiene.
+
+The model re-checked every key finding against code or prod. **This addendum overrides decisions 1–17 and R1–R16 wherever they conflict. Build v1 from all three; the "Superseded for v1" list below names every overridden part.**
 
 **Context:**
 
-- Trigger met (PRD §16 item 57): the founder has two KOLs. KOL 1 asks RM500 a month; KOL 2 starts at RM2,000 and is still being negotiated. Each is paid a fixed monthly fee, a marketing expense, not a per-order cost.
-- The 2026-10-02 margin facts are stale. On 2026-11-04 every one of the 1,269 active packages has a 10% markup on landed cost (ADR-134), about **9.1% margin on price** (ADR-118 assumed a 15% median).
-- Real retail scale, read-only on prod, paid non-wallet orders since 2026-10-05: 41 orders, RM2,338.09, average RM57.03; 24 customers, 10 bought again, 1.71 orders each; 33 of the 41 orders on OhahaStore, 8 on PekanGame. That is about RM8.85 platform profit per customer per month.
-  - Breakeven new customers a month, if each behaves like today's customers for one month: KOL 1 ≈ 57, KOL 2 ≈ 226. If each keeps buying for three months: ≈ 19 and ≈ 75.
-  - The discount is not the main cost. 5% of a RM57 first order is RM2.85 per new customer; the fee is RM500 ÷ 57 ≈ RM8.80.
-- The founder's goal: know, per KOL and per month, whether the KOL is worth paying again.
-- A second code-trace pass ran on 2026-11-04 (three parallel forks: checkout and pricing; ledger, fulfillment and compensation; downstream readers). Its key claims were re-checked by the model. Much of the code R7, R8, R12 and R16 cite has moved since 2026-10-02; the corrections are folded into the decisions below.
+- **Trigger met** (PRD §16 item 57): the founder has two KOLs. KOL 1 asks RM500 a month. KOL 2 starts at RM2,000 and is still negotiating. Both are local individuals. Each is paid a fixed monthly fee. The founder's goal: know, per KOL and per month, whether the KOL is worth paying again.
+- **The 2026-10-02 margin facts are stale.** On 2026-11-04 every one of the 1,269 active packages has a 10% markup on landed cost (ADR-134), about **9.1% margin on price**. The original assumed a 15% median.
+- **Retail scale on prod** (read-only, paid non-wallet orders since 2026-10-05): 41 orders, RM2,338.09, average RM57.03; 24 customers, 10 bought again, 1.71 orders each; 33 of the 41 on OhahaStore. That is about RM8.85 platform profit per customer per month.
+  - Breakeven new customers a month, if each buys like today's customers for one month: KOL 1 ≈ 57, KOL 2 ≈ 226. If each keeps buying for three months: ≈ 19 and ≈ 75.
+  - The discount is not the main cost: 5% of a RM57 first order is RM2.85, while the fee is RM500 ÷ 57 ≈ RM8.80 per customer.
+- **Prod facts from the stress test** (79 non-wallet orders):
+  - 1 of 35 player accounts appears under more than one email.
+  - 16 of 62 paid orders have no `server_id`.
+  - Every stored phone normalises with `PhoneNumber`.
+  - 5 customers left a CHIP link to expire (~40 minutes Pending), then checked out again 1–8 minutes later.
+- **The accountant's answers (2026-11-04):**
+  - The discount is contra-revenue (MPERS Section 23), shown as gross − discount = net.
+  - The KOL fee is an advertising expense in the month of service: a prepayment when paid ahead, an accrued expense when paid after.
+  - Withholding tax: none for a local individual; 10% for a non-resident.
+  - SST is not recoverable, so it is part of the cost.
+  - An individual KOL gets a self-billed e-invoice.
+  - A free product given to a KOL is a marketing expense at real cost, never sales.
 
-**Decision (numbered V1–V18 so they don't collide with 1–17 or R1–R16):**
+**Superseded for v1:**
+- Decision 2's lock and R10: replaced by V5.
+- Decision 11's `customer_campaign_attribution` table, and R11's key for it: dropped by V6. R11's brand lock stays.
+- Decisions 12–13's funding split, R4 and R6: out of v1 (V1).
+- Decision 14: replaced by V14.
+- Decision 15's "no persistence": replaced by V16.
+- Decision 16 and R16: replaced by V15.
+- R7: replaced by V8.
+- R8's site list: replaced by V9.
+- R12: replaced by V7.
+- R14's `kol_fee_sen`: replaced by V12.
 
-- **V1. Scope: PekanGame only.** v1 codes are valid only on the `is_primary` brand. Owned brands price as the platform (`Affiliate::storefrontPriceTerms`, ADR-061 2026-10-30 addendum), so the basis is always Standard and the platform share is 100%. Dropped from v1: `platform_share_percent`, `promo_affiliate_share_sen`, R4's resend subtraction, R6 (affiliate negative profit). They come back together, with their own trace, the first time a third-party affiliate brand runs a campaign.
-- **V2. Eligible orders.** Standard basis only. Rejected explicitly, server-side: Member (decision 4 / R13 stand), ResellerWallet (R5), **Fixed (Joki)**, and any order not on the campaign's brand.
-- **V3. Discount: a percentage per `PromoCode`, no RM cap** (matches the benchmarked competitor). Taken off the pre-promo price the customer would pay (R3). Computed once in sen, rounded down.
-- **V4. The customer sees RM, never the percentage.** Storefront review and checkout show "Jimat RMx.xx" and the new total; the percentage is admin-only. A flat-RM discount was rejected: on the smallest packages (RM0.93, about RM0.08 profit) any useful flat amount is a loss, so the guard would reject the code there and confuse the customer.
-- **V5. New customers only, once per code (replaces R10).** A code is rejected when the customer already has a **recognised** order on the brand (delivered, or a partial settlement, ADR-127 `recognised_at`) matching **email (case-insensitive) OR phone (`PhoneNumber::same`) OR player account (`player_id` + `server_id`, any game)**. Reseller wallet orders (`wallet_reseller_id` not null) are excluded from that search: they are stamped with the primary brand but are not customers. "Recognised", not "paid", so a customer whose first promo order failed and was compensated can still redeem (it frees the slot, as R10 intended). Once per code is counted over non-restored `promo_code_redemptions`. Both checks run in the locked reserve step (V8), which also closes the race between two concurrent first orders.
-  - `ponytail:` the phone and player-ID match is a PHP scan of the brand's recognised orders (phone is stored as typed). Fine at today's scale (91 orders all-time); add a stored normalised phone column when the scan shows in Pulse.
-- **V6. Attribution: decision 11 and R9 stand (most-recent-touch, snapshot per order).** With V5 a customer can redeem only one KOL code on the brand, so in practice a customer stays with the KOL who brought them in. Past orders are never re-attributed.
-- **V7. One pricing seam (replaces R12's assumption).** `CheckoutService::computeTotal()` is already shared by `initiate()` and `previewTotal()`; `VoucherPreviewController` still prices on its own (`calculateForAffiliate`) and is routed through `previewTotal()`. The promo is applied to the pricing resolution **before** `computeTotal()`, lowering both `sellingPriceSen` and `platformProfitSen` in the draft `OrderFactory` writes. Applying it after the draft would leave `platform_profit` pre-promo: ledger profit overstated where real cost is missing, and every promo order flagged by ADR-111's drift check. The preview request gains `promo_code`, `player_id`, `server_id` and phone, so the RM saved it shows is the one checkout gives. The checkout idempotency `payloadHash` includes `promo_code`.
-- **V8. Reserve (replaces R7).** Log-and-proceed no longer exists: `reserveOrClose()` / `reserveAll()` (ADR-024 2026-10-04 addendum) already reserve all-or-nothing after the CHIP link exists and before the customer sees it, and on the full-voucher path (`settleWithVoucher`). The promo is a third instrument there: lock order Order → Voucher → Membership → PromoCode; if the promo loses, the voucher and quota roll back and the order closes, as today. R7's separate null-`payment_ref` restore is obsolete (nothing is reserved before the link).
-  - While a Failed delivery's reservation is held (R8), a second try with the same code is rejected with a message naming the order still being handled, not a generic "invalid code".
+**Decision (V1–V20, so the numbers don't collide with 1–17 or R1–R16):**
+
+- **V1. Scope: PekanGame only.**
+  - `campaigns.affiliate_id` exists from v1 and is validated as the `is_primary` brand.
+  - Owned brands price as the platform (`Affiliate::storefrontPriceTerms`), so the basis is Standard and the platform takes the whole discount.
+  - The split (`platform_share_percent`, an affiliate share column, R4, R6) comes back later as additive columns, with its own trace, when a third-party brand first runs a campaign. That needs no backfill: every v1 row has affiliate share 0.
+- **V2. Eligible orders.**
+  - Standard basis on the campaign's brand only.
+  - Rejected server-side: Member (decision 4 and R13 stand), ResellerWallet, Fixed (Joki), membership purchases, and any other brand.
+- **V3. Discount.**
+  - A percentage per `PromoCode`, taken off the pre-promo price the customer would pay (R3).
+  - Optional `max_discount_sen` per code. Null means uncapped, as the benchmarked competitor; the founder chooses per code.
+  - Computed once in sen and rounded down.
+- **V4. The customer sees RM, never the percentage.**
+  - Storefront review and checkout show "Jimat RMx.xx" and the new total.
+  - A flat-RM discount was rejected: on the smallest packages (RM0.93, about RM0.08 profit) any useful flat amount is a loss.
+- **V5. One KOL discount per customer per brand (replaces decision 2's lock and R10).**
+  - **Identity seam.** One matcher, used by V5 and V6 and nowhere re-implemented. Two identities match on any of:
+    - email, case-insensitive;
+    - phone, via `PhoneNumber::same`;
+    - player account: (`games.family`, `player_id`, `server_id`), where a null `server_id` matches null.
+  - **A code is rejected when the identity matches any of:**
+    - (a) a **recognised** order on the brand: delivered, or a settled partial (ADR-127 `recognised_at`). Reseller wallet orders (`wallet_reseller_id` not null) are excluded, because they carry the primary brand but are not customers. A failed and compensated order is not recognised, so its customer can redeem again.
+    - (b) a live (non-restored) redemption of **any** code on the brand;
+    - (c) a reseller's registered email or phone.
+  - **Locking.** The check runs in the reserve step (V8) under one brand-level lock: the brand's active `PromoCode` rows, locked in id order. That closes the race of two concurrent first orders with the same or different codes.
+    - `ponytail:` the phone and player-account match is a PHP scan of the brand's recognised orders (phone is stored as typed). Fine at today's scale; add a stored normalised phone column when the scan shows in Pulse. The lock covers a few codes per brand; move to a per-brand lock row if campaigns multiply.
+  - **Messages are generic.** "This code is for new customers" or "This code is in use in an unfinished payment, try again in 30 minutes". They never name an order or say which detail matched. The promo preview runs under the existing checkout throttles.
+- **V6. Attribution: a customer belongs to the one KOL code they redeemed (replaces decision 11's most-recent-touch table).**
+  - With V5 a customer can hold only one redemption per brand, so "most recent" and "only" are the same.
+  - `orders.attributed_promo_code_id` is stamped once at order creation: the code redeemed on that order, or, for a later order, the code of a **committed** redemption whose identity matches through the V5 seam on that brand.
+  - The stamp is never rewritten. Reports show redeemed and attributed-only orders apart.
+  - `customer_campaign_attribution` is not built.
+- **V7. One pricing seam (replaces R12).**
+  - `CheckoutService::computeTotal()` is already shared by `initiate()` and `previewTotal()`. `VoucherPreviewController`, which prices on its own today, is routed through `previewTotal()`.
+  - The promo is applied to the pricing resolution **before** `computeTotal()`, lowering both `sellingPriceSen` and `platformProfitSen` in the draft that `OrderFactory` writes. Applying it after the draft would leave `platform_profit` pre-promo: ledger profit would be overstated where real cost is missing, and ADR-111 would flag every promo order for profit drift.
+  - The preview request gains `promo_code`, `player_id`, `server_id` and phone.
+  - The checkout idempotency `payloadHash` includes `promo_code`.
+- **V8. Reserve (replaces R7).**
+  - **Where.** The promo is a third instrument in `reserveOrClose()` / `reserveAll()` (ADR-024 2026-10-04 addendum): after the CHIP link exists, before the customer sees it, and on the full-voucher path (`settleWithVoucher`).
+  - **Lock order:** Order → Voucher → Membership → the brand's PromoCodes. If the promo loses, the voucher and quota roll back and the order closes, as today.
+  - **Checks at reserve:** the code is active, inside its validity window, and has budget for this order's discount (decision 8's binary reject). A later change to the code never revokes a reservation already made.
+  - **Cancel and replace.** Suppose the identity's live redemption is held by an unpaid Pending order whose email **and** phone **and** player account all equal the new checkout's. Then the new checkout cancels the old CHIP purchase (`PaymentGateway::cancelPayment`), `applyFailed` restores the old reservation, and the new order reserves. The customer sees "your unfinished payment was cancelled".
+    - With any detail different, the generic in-use message is shown instead. So knowing a stranger's phone or player ID cannot cancel their checkout.
+    - An old link paid anyway follows V9's Paid-after-Failed rule.
 - **V9. Commit and restore (replaces R8's site list).**
-  - Commit at the four delivery sites that commit a voucher today, each paired with `creditProfit`. Pull them into one private `commitInstruments()` in `OrderFulfillmentService` and commit the promo there.
-  - Restore in `OrderPaymentOutcomeService::applyFailed` (the one seam the CHIP webhook, the reconciliation sweep and `SettlementRecheckService` share) and in `OrderSettlementService::settle` (a partial delivery restores its undelivered share, mirroring the voucher).
-  - A Paid-after-Failed order later delivered by an admin: `commit` on a restored redemption **re-reserves it** (it does not no-op like the voucher), so the budget and the once-per-code slot stay exact.
+  - **Commit** at the four delivery sites that commit a voucher today, each paired with `creditProfit`. They are pulled into one private `commitInstruments()` in `OrderFulfillmentService`, which commits the promo too.
+  - **Restore** in `OrderPaymentOutcomeService::applyFailed` (the one seam the CHIP webhook, the reconciliation sweep and `SettlementRecheckService` share) and in `OrderSettlementService::settle`. A partial delivery restores its undelivered share, mirroring the voucher.
+  - **A commit on a restored redemption re-reserves it unconditionally.** This is the Paid-after-Failed order delivered by an admin. The re-reserve never throws or rolls back a delivery, may exceed the budget or the one-per-customer rule, and flags the code ("over cap by RMx"). The discount was already given.
   - R8's hold of a Failed-but-uncompensated reservation stands.
-- **V10. Loss guard with a margin floor (refines R5).** The promo is rejected for an item when platform profit after the promo would fall below a **panel-set minimum margin** (`campaign_min_margin_percent`, default 2% of the post-promo price), not merely below zero. The checkout guard sees catalog cost only; ADR-111's real cost and FX drift land later, and at 9.1% margin a 5% promo leaves about 4.1% of headroom. Combos whose override price equals cost are rejected by the same guard. The campaign screen lists packages the guard would reject at the chosen percentage.
-- **V11. Budget cap per code stands (decisions 7–8).** It bounds the total discount, which the absent RM cap no longer does per order.
-- **V12. KOL fee: an agreed fee schedule plus tagged payments (replaces R14's `kol_fee_sen`).** The accountant requires the fee as an advertising expense **in the month of service** (accrual): a prepayment when paid ahead, an accrued expense when paid after. The Envelope Ledger is cash-dated (`envelopeExpensesByCategory` reads `transaction_date`), so a payment alone cannot carry it. The design follows the pattern affiliate commission already uses (expense from the obligation, cash from the payout):
-  - **Schedule (the agreement).** Each `Campaign` has fee rows: monthly fee in sen (including SST when the KOL charges it, since SST is not recoverable), a start month, an optional end month. A renegotiation adds a row from its month; a package ("RM1,500 for 3 months") is entered as its monthly fee with an end month, a remainder sen going to the last month. Rows touching a closed month cannot change (`AccountingPeriod::assertOpen`).
-  - **Payments (the cash).** Recorded on the Envelope Ledger exactly as today, as `Expense` or `DirectorPaidExpense` (so envelope balances and the director's loan stay right), category `Advertising`, plus a new nullable `campaign_id`. No new posting type. The form previews the campaign's balance after the payment ("Prepaid RM1,000, covers to Jan 2027"), so a wrong schedule shows before saving.
-  - **P&L.** The one envelope P&L reader (`envelopeExpensesByCategory`, also behind the profit bridge) skips campaign-tagged postings; the KOL fee expense for a month comes from the schedule. A test proves every ringgit is expensed once.
-  - **Balance.** Prepaid / (accrued) = Σ schedule to month-end − Σ tagged payments to month-end, computed, never typed.
-  - Option C (a service period on every Envelope expense) was rejected for now: it changes the meaning of the whole Envelope Ledger and still cannot accrue a fee paid after its month is closed. Revisit only if non-KOL prepayments (an annual software plan) need spreading.
-- **V13. Accounting (R14 confirmed by the external accountant, 2026-11-04).**
-  - The customer discount is contra-revenue (MPERS Section 23), not a marketing expense. No profit writer changes: every `platform_profit` writer and reader already works from `selling_price` (real-cost reconcile, combo residual, resend, partial settlement, manual confirm, `RecognisedRevenue`), and compensation (`final_amount − fee`) and CHIP matching (`final_amount`) are already on the post-promo amount.
-  - The Monthly Summary shows **Gross sales − "Diskaun Kod Promo KOL" = Net sales** (net is today's recognised revenue; gross = net + Σ `promo_discount_sen` over the `RecognisedRevenue` set), plus "KOL fees (accrued)" and the KOL prepaid / (accrued) balance (V12).
-  - Withholding tax: none for a resident individual KOL (both KOLs are local); a non-resident KOL is subject to 10% WHT, handled by the founder outside the system.
-  - Documents: an individual KOL without invoices gets a self-billed e-invoice (LHDN MyInvois) issued by the founder, kept with a payment voucher and the bank receipt, attached to the Envelope posting. The KOL's IC number and TIN are **not** stored in the platform (sensitive personal data it does not need).
-  - Free product to a KOL (e.g. diamonds) is a marketing expense at real supplier cost, never sales. Not in v1 (no plan yet). Do not give it through the storefront with an admin voucher: that order would be recognised as sales and create phantom profit. It needs a "marketing order" type with its own design first.
-- **V14. Scorecard (replaces decision 14's breakdown for v1).** Per campaign and per code, for a date range and cumulative:
-  - clicks (V16), redemptions, **new customers** (counted from `promo_code_redemptions`, not Customer Analytics, which keys on email only);
-  - sales and ledger profit of every order attributed to the code (`attributed_promo_code_id`), redeemed and attributed-only shown apart (R9);
-  - discount cost (Σ `promo_discount_sen`), fees (V12), **CAC** = fees ÷ new customers, **cumulative net** = profit − fees (profit is already net of the discount; the discount is shown, not subtracted twice), 30-day repeat rate of the code's new customers.
-  - Target CAC and trial length are panel settings the founder fills in later; empty means no verdict is shown.
-- **V15. Admin UI (replaces R16).** One **Campaigns** page as a plain link under the **Customers** section (Customer Analytics now sits under Overview). The list shows the V14 scorecard side by side; the detail page holds the codes (%, budget used vs cap, redemptions, tracker link with copy). Customer Analytics gains the `campaignId` filter. No separate Campaign Analytics page in v1.
-- **V16. Tracker link (decision 15 stands, made concrete).** `?promo=CODE` on any storefront page. The storefront reads it in the browser (as `OrderForm` already reads `player_id`), logs one click through a public endpoint throttled with its **own** prefix (`throttle:60,1,promo-click`; without a prefix the bucket is shared with `redirect-hit` per IP), and keeps the code in `localStorage` for 7 days (founder, 2026-11-04) so a link to the homepage, or a return visit in the same browser, still fills the code on `/order/[slug]`. Prefill only: it never attributes an order (the redeemed code does). No cookie, no cross-device tracking; an in-app browser (TikTok, Instagram) keeps its own storage, so the KOL also tells followers to type the code. Reads and writes are wrapped in try/catch. Clicks are a soft signal; redemptions are the truth.
-- **V17. Readers (completes R15).** R15's list plus the two admin cards it missed (`OrderDetailCards` and `RefundInformationCards` "Discount Applied"). The affiliate order API and the portal order view get the field too (one line each), so a later third-party brand never shows a wrong number silently. WhatsApp, email and the CS assistant read no discount field and need no change.
-- **V18. Dropped from v1:** the funding split (V1), a separate analytics page (V15), any portal or self-service campaign creation (decision 6 stands).
+- **V10. Loss guard with a margin floor (refines R5).**
+  - The promo is rejected for an item when platform profit after the promo would fall below the panel-set minimum margin (V19, default 2% of the post-promo price). Combos whose override price equals cost fall to the same guard.
+  - The checkout guard sees catalog cost only; real cost and FX drift land later (ADR-111). At a 9.1% margin, a 5% promo leaves about 4.1% of headroom.
+  - The code form lists the packages the guard would reject at the chosen percentage.
+- **V11. Budget cap per code stands (decisions 7–8).** It bounds the total discount. V3's optional per-order maximum stops one large first order from taking the whole budget.
+- **V12. KOL fee: an agreed fee schedule plus tagged payments (replaces R14's `kol_fee_sen`).**
+  - **Why.** The accountant requires the fee in its month of service. The Envelope Ledger is dated by cash (`transaction_date`), so a payment alone cannot carry that. This follows affiliate commission: the expense comes from the obligation, the cash from the payout.
+  - **Schedule (the agreement).**
+    - A campaign cannot be created without a fee row. RM0 is allowed, and the first row starts in an open month.
+    - A row is a monthly fee in sen, a start month and an optional end month. The fee includes SST when the KOL charges it.
+    - Rows are append-only with an effective-from month. A renegotiation adds a row; a package ("RM1,500 for 3 months") is entered as its monthly fee with an end month, with any remainder sen in the last month.
+    - Only `end_month` can be set after creation, and only to an open month. Nothing that touches a closed month can change (`AccountingPeriod::assertOpen`).
+  - **Payments (the cash).**
+    - Recorded on the Envelope Ledger as today, as `Expense` or `DirectorPaidExpense`, so envelope balances and the director's loan stay right. Category `Advertising`, plus a nullable `campaign_id`. No new posting type.
+    - A payment can be tagged only to an existing campaign. `BudgetEnvelopeService::write()` takes `campaign_id`, and `void()` copies it to the reversal.
+    - A campaign's paid total = Σ its tagged postings, reversals included.
+    - The form previews the balance after the payment ("Prepaid RM1,000, covers to Jan 2027"), so a wrong schedule shows before saving.
+  - **Balance.** Prepaid / (accrued) = Σ schedule to month-end − Σ tagged payments to month-end. It is computed, never typed.
+  - **End of a campaign.** When a campaign ends with a prepaid balance, the page shows it. Writing it off is a final schedule row (an advertising expense). A refund from the KOL has no posting type and is out of v1.
+  - Rejected: a service period on every Envelope expense. It changes the meaning of the whole Envelope Ledger and still cannot accrue a fee paid after its month closed. Revisit only if non-KOL prepayments need spreading.
+- **V13. Accounting (R14 confirmed by the accountant).**
+  - **Discount is contra-revenue. No profit writer changes.**
+    - Every `platform_profit` writer and reader already works from `selling_price`: real-cost reconcile, combo residual, resend, partial settlement, manual confirm, `RecognisedRevenue`.
+    - Compensation (`final_amount − fee`) and CHIP matching (`final_amount`) are already on the post-promo amount.
+    - A uniform percentage leaves the combo leg ratio `u` unchanged.
+  - **Operating profit and the month-close allocation are untouched.**
+    - `operatingProfit()` already leaves Envelope expenses out (ADR-083 Q9), because they reduce their envelope when recorded and the close allocates operating profit into envelopes.
+    - The KOL fee is therefore never added to `operatingProfit()`, `profitLines()` or the allocation; doing so would deduct it twice.
+    - `envelopeExpensesByCategory()` skips campaign-tagged postings.
+    - The Monthly Summary adds three journal lines: "KOL fees: expense (accrued)" from the schedule, "KOL fees: paid (cash)" from tagged postings, and the KOL prepaid / (accrued) closing balance.
+    - The close preview's `net_sen` = operating profit − (untagged Envelope expenses + accrued KOL fees).
+  - **Gross − promo = net.**
+    - Net is today's recognised revenue. The promo line is Σ `Order::recognisedPromoSen()` over the `RecognisedRevenue` set.
+    - That is the whole `promo_discount_sen` for a delivered order, and promo × kept ÷ `selling_price` (rounded down) for a settled partial, beside `keptSen`.
+    - The scorecard uses the same method.
+  - **Founder's paperwork, outside the system.** A self-billed e-invoice (LHDN MyInvois), the payment voucher and the bank receipt, attached to the Envelope posting. The KOL's IC number and TIN are **not** stored in the platform. A non-resident KOL's 10% WHT is handled by the founder.
+  - **Free product to a KOL is not in v1.** Never give it through the storefront with an admin voucher: that order would be recognised as sales and create phantom profit. It needs a "marketing order" type with its own design.
+- **V14. Scorecard (replaces decision 14).**
+  - Built as `ReportService::campaignBreakdown()` on the existing `scopedOrders()` / `profitByGroup()`, so profit is the ledger's. No parallel profit query in the campaign service.
+  - **Per campaign, for a range and cumulative:**
+    - clicks (V16) and redemptions;
+    - **new customers** and **qualified new customers**. A qualified customer's first order is ≥ the panel minimum (V19, default RM10), or they bought again. This blocks a scorecard padded with tiny orders.
+    - median first-order value, and the share that never returned;
+    - sales and ledger profit of attributed orders, redeemed and attributed-only apart;
+    - discount cost (V13);
+    - fees = the accrued schedule (never the payment dates, so CAC does not spike in a prepaying month);
+    - **CAC** = accrued fees ÷ qualified new customers;
+    - **cumulative net** = profit − accrued fees (profit is already net of the discount);
+    - 30-day repeat rate.
+  - **Per code:** redemptions, new customers and sales. CAC is campaign-level only.
+  - New customers are counted from `promo_code_redemptions`, not Customer Analytics (which keys on email only).
+  - With target CAC and trial length empty, no verdict is shown.
+- **V15. Admin UI (replaces decision 16 and R16).**
+  - One **Campaigns** page, a plain link under **Customers**.
+  - The list shows the V14 scorecard side by side.
+  - The detail page holds the fee schedule, the balance, and the codes (percentage, max, budget used vs cap, redemptions, tracker link with copy).
+  - Customer Analytics' campaign filter is not in v1.
+- **V16. Tracker link (replaces decision 15's "no persistence").**
+  - `?promo=CODE` works on any storefront page. The storefront reads it in the browser, as `OrderForm` already reads `player_id`.
+  - It keeps the code in `localStorage` for 7 days (founder). That is prefill only and never attributes an order. Reads and writes are wrapped in try/catch.
+  - It logs one click per tab through a public endpoint that checks the code exists, throttled with its own prefix (`throttle:60,1,promo-click`).
+  - No cookie. An in-app browser keeps its own storage, so the KOL also tells followers to type the code.
+- **V17. Code and campaign lifecycle.**
+  - **The code string.**
+    - The admin chooses it: 3–20 letters and digits, stored uppercase.
+    - The customer's input is matched case-insensitively, with spaces trimmed.
+    - Unique forever, ended codes included, and never reused, because old KOL videos keep circulating. It cannot start with `VC-` (the voucher format), and each checkout field hints when given the other kind of code.
+  - **Status.** `is_active`, plus optional `starts_at` / `ends_at`. Pausing a code means setting it inactive.
+  - **What can change.**
+    - The percentage, the string and the campaign are immutable after the first redemption; a new offer is a new code. Reservations store sen, so an edit could not corrupt them, but the scorecard would mix two offers.
+    - The budget and the max stay editable. Lowering a budget below what is already reserved only stops new redemptions.
+  - **No hard delete** once a code has a redemption or a click; archive it instead.
+  - **Ending.** Ending a campaign stops its codes. Attribution continues.
+- **V18. Readers (completes R15).**
+  - R15's list, plus the two admin cards it missed: `OrderDetailCards` and `RefundInformationCards`' "Discount Applied".
+  - The affiliate order API and the portal order view also get the field, one line each.
+  - WhatsApp, email and the CS assistant read no discount field and need no change.
+- **V19. Settings.**
+  - `PlatformSettings`, editable in the panel:
+    - campaign minimum margin (2%);
+    - qualified first-order minimum (RM10);
+    - target CAC (empty);
+    - trial months (empty).
+  - Constants: the 7-day prefill and the click throttle.
+- **V20. Not in v1:**
+  - the funding split (V1);
+  - a separate analytics page and the Customer Analytics filter (V15);
+  - `customer_campaign_attribution` (V6);
+  - portal or self-service campaign creation (decision 6 stands);
+  - free-product marketing orders (V13).
 
-**Rationale:** The founder's question is "is this KOL worth paying again", so v1 keeps exactly what answers it (a code that is safe on money, an exact budget, clean new-customer attribution, a scorecard built from the books) and drops what only matters for third-party brands. New-customers-only (V5) does double duty: it stops one customer collecting every KOL's discount and makes every redemption a real acquisition, which is what CAC measures. R1's "the promo lives inside `selling_price`" is confirmed as the root decision: the trace found no profit writer, compensation path or settlement match that needs to change.
+**Rationale:**
+- v1 keeps exactly what answers "is this KOL worth paying again": a code that is safe on money, an exact budget, attribution with one owner per customer, and a scorecard built from the ledger and from the accountant's accrual. It drops what only matters for third-party brands.
+- R1 ("the promo lives inside `selling_price`") is confirmed as the root decision. Two traces found no profit writer, compensation path or settlement match that needs to change.
+- The stress test's corrections close the paths that would have silently produced wrong numbers:
+  - a fee deducted twice through the month-close allocation;
+  - a void that drops its campaign tag;
+  - a full discount counted on a partial delivery;
+  - one customer collecting every KOL's discount;
+  - a delivery blocked by its own budget;
+  - a scorecard padded with RM0.93 orders.
+- Each correction lands in a seam the code already has (`reserveAll`, `applyFailed`, `settle`, `RecognisedRevenue`, `BudgetEnvelopeService::write`, `ReportService`), not in a new parallel path.
 
 **Consequence to track:**
 
-- Tests: one per profit writer proving a promo order's ledger profit = post-promo selling price − cost (V7, V13); the reserve concurrency test next to `VoucherRedeemConcurrencyTest.php`, including two concurrent first orders by one customer (V5, V8); a restored redemption frees the slot and a re-delivered Paid-after-Failed order re-reserves it (V9); the preview total equals the CHIP amount with a promo and a voucher (V7); a reseller wallet order never blocks a new customer (V5).
-- KOL 2 at RM2,000 needs about 75–226 new customers a month to break even (Context). The founder negotiates with KOL 1's first month of scorecard data in hand.
-- When a third-party affiliate brand first runs a campaign: bring back V1's dropped parts with their own code-trace.
+- **Tests (build is test-first):**
+  - one per profit writer: a promo order's ledger profit = post-promo selling price − cost;
+  - preview total = CHIP amount, with promo and voucher, through both preview endpoints;
+  - the idempotency hash changes with the promo;
+  - the margin floor rejects, including a cost-priced combo;
+  - Member, wallet, Joki and membership purchases are rejected;
+  - the reserve concurrency test next to `VoucherRedeemConcurrencyTest.php`: two concurrent first orders by one customer with the **same** and with **different** codes;
+  - cancel-and-replace happens only when all three details match;
+  - a restored redemption frees the slot;
+  - a Paid-after-Failed delivery re-reserves over the cap without throwing;
+  - a partial settlement restores only its share, and `recognisedPromoSen` is proportional;
+  - a wallet order and a gifted player account behave as V5 says, and a reseller's email or phone is rejected;
+  - each Envelope ringgit is counted once, and operating profit and the allocation are unchanged by KOL fees;
+  - void → re-record moves the payment to the right campaign;
+  - the prepaid / accrued balance across a schedule change and a closed month;
+  - gross − promo = `RecognisedRevenue`;
+  - code case-insensitivity, uniqueness forever, the `VC-` rejection, and immutability after the first redemption.
+- KOL 2 at RM2,000 needs about 75–226 new customers a month to break even. The founder negotiates with KOL 1's first month of scorecard data in hand.
+- Each month the founder records the KOL payment on the Envelope Ledger with its campaign.
+- When a third-party affiliate brand first runs a campaign: bring back V1's dropped parts with their own code trace.
