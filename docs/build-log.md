@@ -1105,3 +1105,37 @@ Every status fact re-checked against prod (read-only), git and code.
 - Every pointer was updated: AGENTS.md, the PRD headers and rows, ADR-126.
 
 **Not changed:** the 8 required CI checks in AGENTS.md (matched against the ruleset) and the stack versions (Laravel 13, PHP 8.4, Next 16, Astro 7) are correct.
+
+## 2026-11-04 — October closed, Gamevion's new API (ADR-137 proposed), OpenWA #1992
+
+Read-only checks on prod, no code change.
+
+**October close.** The founder closed October 2026 at 21:02 MYT (close #4), after the evening's docs audit had recorded it as open. Checked with `MonthCloseService::preview(2026, 10)` inside a rolled-back transaction:
+- operating profit RM129.22, all allocated to Company Savings; drift since the close 0;
+- envelope expenses RM257.89 (software RM152.31, other RM88.06, advertising RM17.52), so the month's net is −RM128.67; KOL fees accrued RM0 (the first campaign starts in November);
+- gap −RM10.95 against September's −RM10.94 (the CHIP cutover), with the founder's written note.
+
+The 2 sen between CHIP settlement #7's matched and file totals (RM1,492.38 against RM1,492.36) is two DuitNow orders, #62 and #64, whose fee we computed 1 sen under CHIP's (25 against 26 sen, 40 against 41 sen). That is the known pre-#649 DuitNow fee rounding; no adjustment needed. The founder has also told the resellers about the ~6.8% price rise, so PRD §16 item 155 is closed.
+
+**Price Sync `partial` runs are all Gamevion.** In the 14 days to 2026-11-04: 672 runs, 593 `success` and 79 `partial`. Every partial run is Gamevion failing to connect to `api.gamevion.com`: cURL 7 (42), connect timeout (24), SSL timeout (13). On 2026-11-04 (UTC) it was 19 of 29. Digiflazz never failed.
+
+**Gamevion moved to a new API.** The new API at `gamevion.cloud` (vendor document v62.25) has:
+- a single `gvk_` key;
+- a per-game catalog;
+- async orders with a `client_ref` that replays the original order on a repeat;
+- a webhook signed with HMAC-SHA256;
+- no documented sandbox.
+
+The founder confirmed that the old API no longer takes orders. Gamevion has 71 packages, none active, and no order has ever been routed to it. The founder switched the supplier off in `/middleware`; checked on prod at 14:11 UTC (`is_active = false`).
+
+Founder decisions, recorded in ADR-137 (Proposed):
+- rewrite the adapter, after item 28;
+- `gametopup` only;
+- no `max_price`, matching `DigiflazzAdapter`, which sends none;
+- no test top-up yet.
+
+New PRD §16 item 162 tracks it.
+
+**FX.** open.er-api.com is still called, but only for the market rate shown beside the landed rate in the Price Sync Center (`ProductSyncService.php:150`). Price Sync costs and per-order real cost use `LandedCostRate` (ADR-134). The last run priced IDR at 0.00023913 MYR (deposit pool) against a market rate of 0.000225, a spread of +6.28%.
+
+**OpenWA #1978.** The maintainer shipped the fix in rmyndharis/OpenWA#1992 and closed the issue. It is on OpenWA's `main` only; the latest release is still v0.27.1. Item 159 now waits for the release that ships it.
