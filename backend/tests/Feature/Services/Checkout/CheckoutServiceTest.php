@@ -12,6 +12,7 @@ use App\Models\Package;
 use App\Models\Supplier;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
+use App\Services\Campaign\CampaignService;
 use App\Services\Checkout\CheckoutAttemptClosedException;
 use App\Services\Checkout\CheckoutFailedException;
 use App\Services\Checkout\CheckoutRequest;
@@ -54,6 +55,7 @@ class CheckoutServiceTest extends TestCase
             new VoucherService(new LedgerService),
             new MembershipQuotaService,
             new StorefrontBrand,
+            new CampaignService,
         );
     }
 

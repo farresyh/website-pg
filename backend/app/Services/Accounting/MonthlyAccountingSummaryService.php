@@ -3,6 +3,7 @@
 namespace App\Services\Accounting;
 
 use App\Models\BudgetEnvelopePosting;
+use App\Models\Campaign;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\PaymentSettlement;
@@ -10,6 +11,7 @@ use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
+use App\Services\Campaign\CampaignFeeSchedule;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Report\ReportService;
 use App\Support\MalaysiaTime;
@@ -50,10 +52,17 @@ final class MonthlyAccountingSummaryService
         // month is shorter (31 Oct KL fell into no month at all).
         [$from, $toExclusive] = self::monthBounds($year, $month);
 
+        $profitLines = $this->profitLinesBefore($from, $toExclusive);
+        $promo = $this->revenue->promoDiscountSen($from, $toExclusive);
+
         $lines = [
-            ...$this->profitLinesBefore($from, $toExclusive),
+            // ADR-118 V13 (the accountant): gross − KOL promo discount = net, the recognised revenue below.
+            'gross_sales_sen' => $profitLines['sales_revenue_sen'] + $promo,
+            'promo_discounts_sen' => $promo,
+            ...$profitLines,
             'reseller_wallet_balance_sen' => $this->resellerWalletBalance($toExclusive),
             'envelope_manual_expenses_sen' => array_sum($this->envelopeExpensesByCategory($year, $month)),
+            ...$this->kolFeeLines($year, $month),
         ];
 
         return [...$lines, 'operating_profit_sen' => self::operatingProfit($lines)];
@@ -150,6 +159,8 @@ final class MonthlyAccountingSummaryService
 
         return BudgetEnvelopePosting::query()
             ->whereIn('type', [EnvelopePostingType::Expense->value, EnvelopePostingType::DirectorPaidExpense->value])
+            // ADR-118 V13: a KOL fee payment is its own line (kolFeeLines()), expensed by its schedule.
+            ->whereNull('campaign_id')
             ->whereDate('transaction_date', '>=', $first)
             ->whereDate('transaction_date', '<=', $last)
             ->get(['expense_category', 'amount_sen'])
@@ -158,6 +169,33 @@ final class MonthlyAccountingSummaryService
             ->filter()
             ->sortKeys()
             ->all();
+    }
+
+    /**
+     * ADR-118 V12/V13, the accountant's rule: a KOL fee is an advertising
+     * expense in its month of service. Journal and information lines only,
+     * like envelope expenses: never in operatingProfit() or the allocation,
+     * because the payment already came out of its envelope.
+     *
+     * @return array{kol_fees_accrued_sen: int, kol_fees_paid_sen: int, kol_prepaid_balance_sen: int}
+     */
+    private function kolFeeLines(int $year, int $month): array
+    {
+        $schedule = app(CampaignFeeSchedule::class);
+        $campaigns = Campaign::query()->with('fees')->get();
+        $period = sprintf('%04d-%02d', $year, $month);
+
+        return [
+            'kol_fees_accrued_sen' => (int) $campaigns->sum(fn (Campaign $c) => $schedule->feeForMonth($c, $period)),
+            'kol_fees_paid_sen' => (int) BudgetEnvelopePosting::query()
+                ->whereNotNull('campaign_id')
+                ->whereIn('type', [EnvelopePostingType::Expense->value, EnvelopePostingType::DirectorPaidExpense->value])
+                ->whereDate('transaction_date', '>=', Carbon::create($year, $month, 1)->toDateString())
+                ->whereDate('transaction_date', '<=', Carbon::create($year, $month, 1)->endOfMonth()->toDateString())
+                ->sum('amount_sen'),
+            // Positive: paid ahead (prepayment, an asset). Negative: owed to the KOL (accrued expense).
+            'kol_prepaid_balance_sen' => (int) $campaigns->sum(fn (Campaign $c) => $schedule->balanceSen($c, $period)),
+        ];
     }
 
     /**

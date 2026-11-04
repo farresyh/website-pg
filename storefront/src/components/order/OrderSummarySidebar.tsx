@@ -55,6 +55,9 @@ function OrderSummarySidebar({
           v={`RM${(preview ? preview.selling_price_sen / 100 : (selectedPackage?.priceRm ?? 0)).toFixed(2)}`}
           mono
         />
+        {/* ADR-118 V4: so Package Price, the discounts and the fee add up to Total. */}
+        {preview && preview.promo_discount_sen > 0 && <Row k="Promo" v={`- RM${(preview.promo_discount_sen / 100).toFixed(2)}`} mono />}
+        {preview && preview.voucher_discount_sen > 0 && <Row k="Voucher" v={`- RM${(preview.voucher_discount_sen / 100).toFixed(2)}`} mono />}
         {preview && <Row k="Transaction Fee" v={`+ RM${(preview.transaction_fee_sen / 100).toFixed(2)}`} mono />}
         <div className="mt-2 flex items-end justify-between border-t-2 border-ink pt-3">
           <span className="font-display text-[15px] font-bold uppercase">Total</span>

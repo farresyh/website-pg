@@ -1854,3 +1854,187 @@ Run #3 on prod (founder ran and revealed it): Haiku 5.5 15 picks / 2 safety fail
 **Gotcha.** In a throwaway DB, sample drafts seeded with `last_message_id` 1–3 collide with the first real `cs_messages` ids, so the drafter's "already drafted" check returns early; seed drafts with ids no message will have.
 
 **After release (founder):** switch Settings → Mode to Shadow. First drafts appear as customers write; first grades the night after.
+
+## 2026-11-04 — Release #687 (`staging` → `main`): item 158 PR 3b (Shadow)
+
+Shipped #685 and #686 at the founder's request. Merge `bdea7c1b`; box release `82010527`. The `backend-concurrency` job ran long (over 10 minutes), so the deploy started later than usual. One migration, applied (`2026_11_05_120000_create_cs_shadow_tables`). Checked read-only: settings row `off` / Haiku 5.5 / Sonnet 5.5 / cap 1000 sen, no key missing; `cs:judge-drafts` scheduled 19:30 UTC; health all true; both WhatsApp sessions `ready`; Horizon running.
+
+Before release, an end-to-end check on an isolated local backend (database queue, OpenWA at a dead port): signed webhooks for a two-message burst and a staff reply produced one draft for the burst from knowledge, the staff reply classified as staff, nothing sent; `cs:judge-drafts` graded it "same" through Sonnet; `cs:suggest-knowledge` wrote a general question and answer and pointed to the existing entry; in the browser, the model's version prefilled Approve, an overrule saved, and a tripped cap showed its banner.
+
+Next: the founder switches Settings → Mode → Shadow; Claude checks the first prod drafts read-only. Meanwhile the founder chooses between the reseller rebate idea (a new feature, group E, needs an ADR) and ADR-118 marketing campaigns; PR 4 after 1–2 weeks of Shadow.
+
+## 2026-11-04 — Next features discussed: KOL campaigns and a reseller cash rebate (no code)
+
+After release #687 the founder raised two features; both are now in PRD §16 group B with the data and decisions (items 57 and 161). Highlights:
+
+- **KOL campaigns (item 57, ADR-118):** trigger met (two KOLs, start as soon as possible); fixed monthly fee per KOL; the discount must be computed. Prod on 2026-11-04: all 1,269 active packages carry a 10% markup on landed cost, about 9.1% margin, not ADR-118's 15% median, so a 5% discount leaves about 4.1% before the fee. Open: each KOL's fee, and whether codes work on affiliate brands.
+- **Reseller cash rebate + automatic refund (item 161):** founder decided to build both. Prod: 5 tiers (1–5%), one buying reseller (October RM336.10 / RM9.47). Recommended a rebate as a share of the reseller's own platform profit, and an automatic refund only on a confirmed Failed delivery after retries (revising ADR-073 decision 7).
+
+The founder closed the session here; the next session starts from item 57 (ADR-118 addendum), then 161.
+
+## 2026-11-04 — ADR-118 v1 addendum: KOL campaigns designed for two PekanGame KOLs (docs only)
+
+The founder reviewed the first 28 CS knowledge suggestions with Claude (all closed: 13 merged, 2 approved as new entries #8 and #9, 12 rejected, 1 chat ignored; checked read-only on prod), then settled item 57's open questions.
+
+**Founder decisions:** KOL 1 RM500 a month, KOL 2 from RM2,000 (negotiating); PekanGame only; a percentage with no RM cap (as the competitor), shown to the customer only as RM saved; new customers only, once per code; attribution stays most-recent-touch (with new-customers-only a customer stays with the KOL who brought them in); not on Joki; a 2% margin floor; a `?promo=` link that prefills the code for 7 days; target CAC and trial length set later in the panel.
+
+**Data used (prod, read-only, paid non-wallet orders since 2026-10-05):** 41 orders, RM2,338.09, 24 customers, 1.71 orders each, 33 of 41 on OhahaStore; about RM8.85 profit per customer per month. Breakeven new customers a month: KOL 1 ≈ 57 (one month of buying) or ≈ 19 (three months); KOL 2 ≈ 226 or ≈ 75.
+
+**Code-trace pass (three forks, read-only; key findings re-checked by Claude):** R1 holds with no change to any profit writer, compensation or CHIP matching. Corrected in the addendum: R7's log-and-proceed is gone (reserve joins `reserveAll()`), R8's restore sites are now `applyFailed` and `settle`, `VoucherPreviewController` prices on its own, the idempotency hash lacks the promo, wallet orders carry the primary brand (excluded from the new-customer search), the promo must lower `platform_profit` in the draft (else ledger overstatement and ADR-111 drift flags), "new" must mean no recognised order (else a compensated failure blocks a retry), a Paid-after-Failed delivery must re-reserve, the click throttle needs its own prefix, the KOL fee belongs on an Envelope `Advertising` posting with a `campaign_id`, Customer Analytics now sits under Overview.
+
+**Accountant's answers (same day):** discount is contra-revenue (MPERS s.23), shown as gross − promo = net; KOL fee is an advertising expense in the month of service (prepayment / accrual); no WHT for local individuals (10% for non-residents); SST is not recoverable, so it is part of the fee; an individual KOL gets a self-billed e-invoice; free diamonds to a KOL are a marketing expense at cost, never sales. The Envelope Ledger is cash-dated, so V12 became a per-campaign fee schedule (the agreement) plus campaign-tagged Envelope payments (the cash), as affiliate commission already works; a general service period on every Envelope expense was rejected for now.
+
+**Adversarial stress test (three forks: abuse and concurrency, accounting and ledger, lifecycle and hygiene; key findings re-checked by Claude in code and on prod):** the addendum was rewritten as one consistent list, V1–V20, with an explicit "Superseded for v1" list. Fixed in the design:
+- the KOL fee must never enter operating profit or the month-close allocation (Envelope expenses are already excluded there; adding the accrual would deduct it twice);
+- `void()` must carry `campaign_id`;
+- the promo line is proportional on a partial settlement (`recognisedPromoSen` beside `keptSen`);
+- a campaign needs a fee row from creation, in an open month;
+- one KOL discount per customer per brand under a brand-level lock (two concurrent orders with two KOLs' codes got both), which made `customer_campaign_attribution` dead weight (dropped);
+- cancel-and-replace of the same customer's unpaid checkout (prod: 5 customers let a link expire and retried within 1–8 minutes, and would have been locked out);
+- qualified new customers (first order ≥ RM10 or a repeat) so tiny orders can't pad a KOL's CAC;
+- an optional RM max per code;
+- generic rejection messages;
+- reseller identities rejected;
+- the Paid-after-Failed re-reserve never blocks a delivery;
+- code lifecycle (chosen by the admin, case-insensitive, unique forever, immutable after the first redemption).
+
+Founder agreed to all.
+
+Next: build v1 test-first.
+
+## 2026-11-04 — Item 57 PR 1: KOL promo codes, backend core (ADR-118 V1–V20)
+
+**Built:** one migration, `2026_11_06_120000_create_campaign_tables`:
+- tables `campaigns`, `promo_codes`, `promo_code_redemptions`;
+- on `orders`: `promo_code_id`, `promo_discount_sen`, `attributed_promo_code_id`;
+- `platform_settings.campaign_min_margin_percent`.
+
+`App\Services\Campaign\CampaignService` owns the money path:
+- `quote()` runs before `computeTotal()` in checkout, the review total and the voucher preview;
+- `reserve()` is the third instrument in `reserveAll()`;
+- `commit()` is called through a new `commitInstruments()` at the four delivery sites;
+- `restore()` runs in `applyFailed` and in `settle` (by share).
+
+`PromoCustomer` is the one identity matcher: email, phone through `PhoneNumber`, and player account scoped by game family. The checkout controller cancels the same customer's unpaid promo checkout through CHIP before a new one (ADR-135's cancel-then-read pattern).
+
+**Verified:**
+- Fast suite 3607 passed (24 new: 19 checkout, 5 lifecycle).
+- New MySQL concurrency test `PromoCodeReserveConcurrencyTest`: one customer racing two KOL codes, and one code twice. Passed 6 runs in a row.
+- Mutation checks: removing the wallet exclusion, the reseller check, the restore on failed payment, the promo commit, the share restore, the re-reserve, or the promo pricing each fails its test.
+- Local dev DB migrated with plain `migrate`; the llm views were re-created and are intact.
+
+**Gotchas:**
+- **sqlite.** Adding a foreign key to `orders` rebuilds the table under the `llm_report_*` views. The migration drops and re-creates them from their stored SQL, as `2026_10_08_140000` does.
+- **MySQL REPEATABLE READ.** The first concurrency run let both racers reserve. Plain reads after the brand lock still saw the old snapshot, so they now read with a shared lock (ADR-118 PR 1 build notes).
+- **Fake gateway in tests.** A fake gateway bound as a fresh instance per resolve loses its "cancelled" state between `cancelPayment` and `getPayment`. Bind one instance.
+
+**Not reachable yet:** no campaign can be created until PR 2 (fee schedule) and PR 4 (admin page). PR 3 adds the storefront field.
+
+## 2026-11-04 — Item 57 PR 2: KOL fee schedule and accounting (ADR-118 V12/V13)
+
+**Built.** One migration, `2026_11_06_130000_create_campaign_fees_table`:
+- `campaign_fees`, unique on (`campaign_id`, `from_month`);
+- `budget_envelope_postings.campaign_id`.
+
+`CampaignFeeSchedule`:
+- creates a campaign together with its first fee row, on the primary brand;
+- adds a later row, and sets an end month, only where every changed month is open;
+- computes the fee for a month, the accrued and paid totals, the prepaid / (owed) balance, and a payment preview.
+
+`BudgetEnvelopeService`:
+- takes `campaign_id` on an Advertising expense or director-paid expense only;
+- `void()` copies the tag to the reversal.
+
+Monthly Summary:
+- `gross_sales_sen` and `promo_discounts_sen` (`RecognisedRevenue::promoDiscountSen`, the kept share on a settled partial);
+- `kol_fees_accrued_sen`, `kol_fees_paid_sen`, `kol_prepaid_balance_sen`;
+- `envelope_manual_expenses_sen` now leaves out tagged payments.
+
+The close preview's net subtracts the accrued KOL fee instead of the cash payment.
+
+Admin:
+- the Envelope form shows a "KOL campaign" dropdown for Advertising, with a live balance preview ("Owed RM 500.00 now → Prepaid RM 1000.00 after, covers to Jan 2027");
+- the entries table shows `KOL: <campaign>`;
+- the summary page has five new lines with definitions;
+- the month-close panel includes the KOL fees.
+
+**Verified.**
+- Backend suite: 3614 passed (7 new). Mutation checks on the plain-expense exclusion, the void tag, the close net and the closed-month guard each fail their test. The first version of the closed-month test passed for the wrong reason (an "end before start" rejection); it was rewritten.
+- Admin: `tsc`, lint and unit tests (22) are clean, and the build is OK.
+- Browser check: a throwaway sqlite backend and a local admin build, driven with Playwright. A RM1,500 payment was tagged to a RM500/month campaign. The summary showed accrued RM500, paid RM1500, prepaid RM1000, manual expenses RM0 and operating profit unchanged.
+- Local dev DB migrated.
+
+## 2026-11-04 — Item 57 PR 3: storefront promo field, `?promo=` link, readers (ADR-118 V4/V16/V18)
+
+**Built.** Two migrations:
+- `2026_11_06_140000_create_promo_code_clicks_table`: one row per `?promo=` visit (V16), so the scorecard can count clicks for any range;
+- `2026_11_06_150000_add_promo_discount_to_llm_report_orders_view`: the Report Assistant view gains `promo_discount_sen`.
+
+Backend:
+- `POST /api/promo-clicks` (`throttle:60,1,promo-click`, `storefront.brand`). It always answers 204 and records only a real code of this brand.
+- `promo_discount` added to track-order (and so to the `OrderStatusUpdated` broadcast) and to the affiliate order API.
+- A "Promo Discount (RM)" column in the orders workbook. It is information only, since the promo is already inside Selling Price.
+- The Report Assistant schema line.
+- The admin order detail loads `promoCode:id,code`.
+
+Storefront:
+- "Have a promo code?" under the voucher field in the Review Modal. Apply needs email and phone first. OrderForm's totals preview validates the code, and a refusal drops the code and shows the server's reason.
+- The customer sees "You save RMx.xx" and a "Promo (CODE)" row, never the percentage.
+- Each field hints when given the other kind of code (vouchers start `VC-`).
+- `?promo=CODE` is read on any page by `PromoLinkCapture` in the root layout. It is kept in `localStorage` for 7 days to prefill the field, and one click is logged per tab (`sessionStorage`).
+- Members (founder's option a): when the member's own price beats the code's price, the modal says so. The quota fall-back message no longer fires because of a promo.
+- `showPromo` / `showMembershipPromo` renamed to `showMembershipUpsell` (R13).
+- The order summary sidebar and the track-order page list Promo (and the sidebar Voucher), so Package Price, discounts and fee add up to Total.
+
+Admin: Order Detail shows "Promo Discount (CODE)". Portal: "Promo discount" on the order view.
+
+**Fixed on the way.** The Review Modal stayed mounted while closed, so a reopened modal still showed an applied voucher that OrderForm had cleared and would not send. It now mounts only while open, on both the order page and `/joki` (same bug there).
+
+**Verified.**
+- Backend suite: 3618 passed (4 new). The public-route allowlist and the workbook's column letters were updated for the new route and column.
+- Storefront, admin and portal: `tsc`, lint and build are clean.
+- Browser check with the e2e harness and a temporary spec (deleted afterwards). The flow:
+  1. `/?promo=kol10` logged one click; a reload in the same tab logged none.
+  2. The modal prefilled `KOL10`. A `VC-` code got the hint.
+  3. Applying showed "You save RM0.50", and checkout sent `promo_code: KOL10`.
+  4. The order was stored with `selling_price` 450 and `promo_discount_sen` 50, and the admin API returned `promo_code.code` KOL10.
+  5. After the CHIP webhook and delivery, the status page showed Package RM5.00, Promo −RM0.50, Fee +RM1.00.
+  6. The same customer applying again saw the new-customers message, and the code was dropped (mobile 390px).
+- A second browser round (the founder asked for the cases the first one skipped):
+  - voucher and promo together: RM5.00 − 0.50 promo + 1.00 fee − 2.00 voucher = RM3.50, and Confirm & Pay matched;
+  - closing and reopening the modal cleared the voucher and kept the promo;
+  - a signed-in top-tier member who applied the code saw "Your member price (RM4.16) is lower…", with no quota message;
+  - the whole modal on mobile at 390px;
+  - `/joki` shows no promo field.
+  The Promo row was moved directly under Package Price, so the member upsell strip no longer separates the two.
+- Local dev DB migrated.
+
+**Not reachable yet:** codes can only be created from PR 4's Campaigns page.
+
+## 2026-11-04 — Item 57 PR 4: Campaigns page and scorecard (ADR-118 V14/V15/V17/V19)
+
+**Built.** One migration, `2026_11_06_160000_add_campaign_scorecard_settings_to_platform_settings`: `campaign_qualified_min_sen` (default 1000), `campaign_target_cac_sen` and `campaign_trial_months` (nullable).
+
+Backend:
+- `ReportService::campaignBreakdown()` reuses `scopedOrders` / `salesByGroup` / `profitByGroup`, so sales and profit match Reports. One grouped query per side covers redeemed and attributed-only orders (`code * 2 + flag`).
+- `RecognisedRevenue::promoDiscountByCode()` gives the discount per code, with the kept share on a settled partial.
+- Clicks come from `promo_code_clicks`.
+- New customers are committed redemptions paid in the range, de-duplicated through the `PromoCustomer` seam. A customer is qualified when their first order is at least the minimum or they bought again.
+- Fees are the accrued schedule for every KL month the range touches.
+- `Admin\CampaignController` (super admin) handles the list, create, show, rename or end, fee rows, codes (create and edit), the margin check and the settings, with a FormRequest per mutating route.
+- A code is 3–20 letters and digits, stored uppercase and unique forever. Its percentage is fixed once any redemption exists.
+- The margin check calls `CampaignService::refusedOn()`, the same floor checkout applies.
+- Verdict (the founder's rule): none until a target CAC and a trial length are both set. During the trial it shows "month x of n"; after it, the all-time CAC is compared with the target, and no qualified customer counts as above target.
+
+Admin:
+- Customers → Campaigns, in the Reports layout: KPI cards, `ReportCard`, `ReportTable`, and the Reports date filter. `FilterSelect` moved out of the Reports page into `components/reports/FilterSelect.tsx` so both pages share it.
+- The campaign page has the range and all-time scorecards, codes (copy tracker link, edit, live refused-package list), fee schedule and balance.
+- Forms use the kit's dialogs. Money uses Reports' format ("RM 500.00", a loss "−RM 500.00").
+
+**Verified.**
+- Backend suite: 3631 passed (13 new: the API rules and a November scorecard with three customers, one returning, one below RM10).
+- Admin: `tsc`, lint and build are clean.
+- Browser: the local admin dev server, signed in through the sidebar, with screenshots of the list, campaign page, code form (15% refused on 14 local packages) and 390px mobile (no sideways scroll), compared beside Reports.
+- Local dev DB migrated.
+
+**Not in v1 (V20):** deleting a code (pause it instead), Customer Analytics' campaign filter, the funding split.

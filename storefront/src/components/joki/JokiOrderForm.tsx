@@ -467,7 +467,8 @@ export default function JokiOrderForm({ catalog, paymentChannels, whatsappHref, 
         </div>
       </div>
 
-      {summaryPackage && selectedChannel && (
+      {/* Mounted only while open, as in OrderForm: openReview() clears the voucher. */}
+      {summaryPackage && selectedChannel && reviewOpen && (
         <ReviewModal
           key={checkoutAttempt}
           open={reviewOpen}

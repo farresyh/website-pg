@@ -5,6 +5,7 @@ namespace App\Services\Accounting;
 use App\Models\BudgetEnvelope;
 use App\Models\BudgetEnvelopeEntry;
 use App\Models\BudgetEnvelopePosting;
+use App\Models\Campaign;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -35,15 +36,18 @@ final class BudgetEnvelopeService
         ?ExpenseCategory $expenseCategory = null,
         ?string $referenceNo = null,
         ?UploadedFile $receipt = null,
+        // ADR-118 V12: a KOL fee payment names its campaign (Advertising only).
+        ?int $campaignId = null,
     ): BudgetEnvelopePosting {
         $lines = array_map(fn (array $l) => ['budget_envelope_id' => (int) $l['budget_envelope_id'], 'amount_sen' => (int) $l['amount_sen']], $lines);
         $this->assertHeader($type, $counterparty, $fundType, $expenseCategory);
+        $this->assertCampaign($type, $expenseCategory, $campaignId);
         $this->assertLines($type, $lines);
         // A month close posts its own allocation while the month is still open, so this never blocks it.
         AccountingPeriod::assertOpen($transactionDate, 'transaction_date');
 
         return AccountingFileStore::storeThen($receipt, config('filesystems.accounting_disk'), 'accounting/budget-envelopes', $transactionDate,
-            fn (?string $receiptPath) => DB::transaction(function () use ($type, $lines, $transactionDate, $description, $adminUserId, $counterparty, $fundType, $expenseCategory, $referenceNo, $receiptPath) {
+            fn (?string $receiptPath) => DB::transaction(function () use ($type, $lines, $transactionDate, $description, $adminUserId, $counterparty, $fundType, $expenseCategory, $referenceNo, $receiptPath, $campaignId) {
                 $envelopes = $this->lockEnvelopes();
 
                 foreach ($lines as $line) {
@@ -61,7 +65,7 @@ final class BudgetEnvelopeService
                     }
                 }
 
-                return $this->write($type, $amount, $lines, $transactionDate, $description, $adminUserId, $counterparty, $fundType, $expenseCategory, $referenceNo, $receiptPath);
+                return $this->write($type, $amount, $lines, $transactionDate, $description, $adminUserId, $counterparty, $fundType, $expenseCategory, $referenceNo, $receiptPath, campaignId: $campaignId);
             }));
     }
 
@@ -117,6 +121,8 @@ final class BudgetEnvelopeService
                 null,
                 reversesPostingId: $locked->id,
                 voidReason: $reason,
+                // ADR-118 V12: the reversal keeps the tag, so the campaign's paid total nets to zero.
+                campaignId: $locked->campaign_id,
             );
         });
     }
@@ -209,6 +215,21 @@ final class BudgetEnvelopeService
         }
     }
 
+    private function assertCampaign(EnvelopePostingType $type, ?ExpenseCategory $expenseCategory, ?int $campaignId): void
+    {
+        if ($campaignId === null) {
+            return;
+        }
+
+        if ($expenseCategory !== ExpenseCategory::Advertising || ! in_array($type, [EnvelopePostingType::Expense, EnvelopePostingType::DirectorPaidExpense], true)) {
+            $this->reject('campaign_id', 'Only an Advertising expense can be a KOL campaign payment.');
+        }
+
+        if (! Campaign::query()->whereKey($campaignId)->exists()) {
+            $this->reject('campaign_id', 'That campaign does not exist.');
+        }
+    }
+
     /** @param list<array{budget_envelope_id: int, amount_sen: int}> $lines */
     private function assertLines(EnvelopePostingType $type, array $lines): void
     {
@@ -278,6 +299,7 @@ final class BudgetEnvelopeService
         ?string $receiptPath,
         ?int $reversesPostingId = null,
         ?string $voidReason = null,
+        ?int $campaignId = null,
     ): BudgetEnvelopePosting {
         $posting = BudgetEnvelopePosting::query()->create([
             'type' => $type->value,
@@ -287,6 +309,7 @@ final class BudgetEnvelopeService
             'counterparty' => $counterparty?->value,
             'fund_type' => $fundType?->value,
             'expense_category' => $expenseCategory?->value,
+            'campaign_id' => $campaignId,
             'reference_no' => $referenceNo,
             'receipt_path' => $receiptPath,
             'reverses_posting_id' => $reversesPostingId,

@@ -91,11 +91,16 @@ export function MonthClosePanel({ year, month, data, onChanged }: Props) {
       <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Figure label="Operating profit" sen={close?.operating_profit_sen ?? data.operating_profit_sen} hint="What the close allocates." />
         <Figure
-          label="Manual expenses (Envelope)"
-          sen={data.envelope_expenses.reduce((s, e) => s + e.amount_sen, 0)}
-          hint={data.envelope_expenses.map((e) => `${e.label} ${formatRm(e.amount_sen)}`).join(" · ") || "None this month."}
+          label="Manual expenses (Envelope + KOL fees)"
+          sen={data.envelope_expenses.reduce((s, e) => s + e.amount_sen, 0) + data.kol_fees_accrued_sen}
+          hint={
+            [
+              ...data.envelope_expenses.map((e) => `${e.label} ${formatRm(e.amount_sen)}`),
+              ...(data.kol_fees_accrued_sen ? [`KOL fees (accrued) ${formatRm(data.kol_fees_accrued_sen)}`] : []),
+            ].join(" · ") || "None this month."
+          }
         />
-        <Figure label="Net (information only)" sen={data.net_sen} hint="Operating profit less manual expenses." />
+        <Figure label="Net (information only)" sen={data.net_sen} hint="Operating profit less manual expenses and this month's KOL fees." />
       </div>
 
       {data.prior_adjustment_sen !== 0 && (

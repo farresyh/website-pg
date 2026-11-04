@@ -73,6 +73,8 @@ const sections: PanelNavSection[] = [
     title: "Customers",
     items: [
       { kind: "link", name: "Membership", href: "/admin/membership", icon: <BoxLineIcon /> },
+      // ADR-118 V15: KOL promo codes and their scorecard (super admin).
+      { kind: "link", name: "Campaigns", href: "/admin/campaigns", icon: <TrendUpIcon /> },
       { kind: "link", name: "Reviews", href: "/admin/reviews", icon: <TagIcon /> },
       { kind: "link", name: "Blacklist", href: "/admin/blacklist", icon: <BlockIcon /> },
       // ADR-136 decision 10: what the support assistant may say, approved here.

@@ -137,6 +137,9 @@ export interface OrderDetail extends OrderListItem {
   affiliate_markup_pct: string;
   wholesale_markup_pct?: string | null;
   voucher_discount: number | null;
+  /** ADR-118: a KOL promo's discount, already taken off `selling_price`. */
+  promo_discount_sen: number;
+  promo_code: { id: number; code: string } | null;
   affiliate_profit: number;
   pricing_basis: "standard" | "member" | "reseller-wallet" | "affiliate" | "fixed";
   member_discount_percent: string | null;

@@ -59,6 +59,8 @@ export class ApiError extends Error {
     public code: string | undefined,
     message: string,
     public retryAfter: string | null = null,
+    /** Laravel's per-field validation messages (422), e.g. `errors.promo_code`. */
+    public errors: Record<string, string[]> | null = null,
   ) {
     super(message);
     this.name = "ApiError";
@@ -106,6 +108,7 @@ export async function apiFetch<T>(path: string, { body, token, headers, ...init 
       payload?.code,
       payload?.message ?? `Request to ${path} failed (${response.status})`,
       response.headers.get("Retry-After"),
+      payload?.errors ?? null,
     );
   }
 

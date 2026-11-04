@@ -420,7 +420,9 @@ export default function OrderStatusTracker({ orderNumber }: { orderNumber: strin
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex-1">
                 {order.payment_method && <DetailRow k="Method" v={CHANNEL_GROUPS.find((g) => g.key === order.payment_method)?.label ?? order.payment_method} />}
-                <DetailRow k="Package Price" v={rm(order.selling_price)} mono />
+                {/* ADR-118: listed before the promo, as checkout showed it. */}
+                <DetailRow k="Package Price" v={rm(order.selling_price + order.promo_discount)} mono />
+                {order.promo_discount > 0 && <DetailRow k="Promo" v={`− ${rm(order.promo_discount)}`} mono />}
                 <DetailRow k="Transaction Fee" v={`+ ${rm(order.transaction_fee)}`} mono />
                 {order.voucher_discount > 0 && (
                   <DetailRow k="Voucher Deduction" v={`− ${rm(order.voucher_discount)}`} mono />

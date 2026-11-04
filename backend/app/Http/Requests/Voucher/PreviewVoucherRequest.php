@@ -28,7 +28,11 @@ class PreviewVoucherRequest extends FormRequest
             'package_id' => ['required', 'integer', 'exists:packages,id'],
             'voucher_code' => ['required', 'string', 'max:32'],
             'customer_email' => ['required', 'email', 'max:255'],
-            'customer_phone' => ['nullable', 'string', 'max:32'],
+            'customer_phone' => ['nullable', 'required_with:promo_code', 'string', 'max:32'],
+            // ADR-118 V7: a promo lowers the price the voucher is capped at.
+            'promo_code' => ['nullable', 'string', 'max:32'],
+            'player_id' => ['nullable', 'required_with:promo_code', 'string', 'max:255'],
+            'server_id' => ['nullable', 'string', 'max:255'],
             // ADR-126: the climb, priced like checkout for the joki game.
             ...JokiSelectionRules::rules(),
         ];

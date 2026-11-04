@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\AffiliateImpersonationController;
 use App\Http\Controllers\Admin\AffiliateMembershipTierController;
 use App\Http\Controllers\Admin\BlacklistController;
 use App\Http\Controllers\Admin\BudgetEnvelopeController;
+use App\Http\Controllers\Admin\CampaignController;
 use App\Http\Controllers\Admin\CrawlerRuleController;
 use App\Http\Controllers\Admin\CsEvalController;
 use App\Http\Controllers\Admin\CsKnowledgeController;
@@ -93,6 +94,7 @@ use App\Http\Controllers\PackageController;
 use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\PlayerCheckController;
 use App\Http\Controllers\PlayerValidationController;
+use App\Http\Controllers\PromoCodeClickController;
 use App\Http\Controllers\PublicResellerPriceListController;
 use App\Http\Controllers\ResellerApi\BalanceController as ResellerApiBalanceController;
 use App\Http\Controllers\ResellerApi\CatalogController as ResellerApiCatalogController;
@@ -191,6 +193,10 @@ Route::post('/vouchers/preview', [VoucherPreviewController::class, 'store'])->mi
 // ADR-060 PR-4c: `storefront.brand` — the summary total must match what
 // the real checkout charges for this brand (anti-divergence).
 Route::post('/checkout/preview-totals', [CheckoutController::class, 'previewTotal'])->middleware(['throttle:30,1,checkout-preview-totals', 'storefront.brand']);
+
+// ADR-118 V16: a `?promo=CODE` visit, sent once per browser tab. Its own
+// throttle prefix (see the note above on shared throttle keys).
+Route::post('/promo-clicks', [PromoCodeClickController::class, 'store'])->middleware(['throttle:60,1,promo-click', 'storefront.brand']);
 
 // ADR-126 decision 12: the `/joki` page — the rank model, routes and
 // public settings, and a live quote from the same JokiPricingService the
@@ -858,6 +864,22 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
     // account), not a supplier-integration one, same reasoning as
     // Membership above. Nested under {supplier} like the reseller wallet
     // is under {reseller}.
+    // ADR-118 V15 (PR 4): the Campaigns page. Super admin only, like Accounting:
+    // a campaign's fee schedule feeds the Monthly Summary. `settings` and
+    // `margin-check` stay above `{campaign}` or they bind as an id.
+    Route::middleware('admin.role:super_admin')->group(function () {
+        Route::get('/campaigns', [CampaignController::class, 'index']);
+        Route::post('/campaigns', [CampaignController::class, 'store']);
+        Route::patch('/campaigns/settings', [CampaignController::class, 'updateSettings']);
+        Route::get('/campaigns/margin-check', [CampaignController::class, 'marginCheck']);
+        Route::get('/campaigns/{campaign}', [CampaignController::class, 'show']);
+        Route::patch('/campaigns/{campaign}', [CampaignController::class, 'update']);
+        Route::post('/campaigns/{campaign}/fees', [CampaignController::class, 'storeFee']);
+        Route::patch('/campaign-fees/{campaignFee}', [CampaignController::class, 'updateFee']);
+        Route::post('/campaigns/{campaign}/codes', [CampaignController::class, 'storeCode']);
+        Route::patch('/promo-codes/{promoCode}', [CampaignController::class, 'updateCode']);
+    });
+
     Route::middleware('admin.role:super_admin')->prefix('accounting')->group(function () {
         Route::prefix('suppliers/{supplier}/transfers')->group(function () {
             Route::get('/', [SupplierTransferController::class, 'index']);
@@ -918,6 +940,8 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         // ADR-083 2026-10-10 addendum: every action is one posting with typed lines.
         Route::post('/envelope-postings', [BudgetEnvelopeController::class, 'storePosting']);
         Route::post('/envelope-postings/{posting}/void', [BudgetEnvelopeController::class, 'voidPosting']);
+        // ADR-118 V12: a KOL campaign's balance after a payment, previewed on the posting form.
+        Route::get('/campaigns/{campaign}/payment-preview', [BudgetEnvelopeController::class, 'campaignPaymentPreview']);
         Route::get('/envelope-postings/{posting}/receipt', [BudgetEnvelopeController::class, 'downloadReceipt']);
     });
 

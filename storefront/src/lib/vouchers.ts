@@ -31,6 +31,8 @@ export async function previewVoucher(
   customerPhone?: string,
   /** ADR-126: the climb, so a joki voucher is previewed against the price checkout charges. */
   joki?: JokiSelection,
+  /** ADR-118 V7: the voucher is capped at the price after the promo. */
+  promo?: { code: string; playerId: string; serverId?: string },
 ) {
   const path = "/api/vouchers/preview";
   const raw = await apiFetch<unknown>(path, {
@@ -42,6 +44,9 @@ export async function previewVoucher(
       customer_email: customerEmail,
       customer_phone: customerPhone || undefined,
       joki,
+      promo_code: promo?.code,
+      player_id: promo?.playerId,
+      server_id: promo?.serverId || undefined,
     },
   });
   return parseResponse(VoucherPreviewResultSchema, raw, "VoucherPreviewResult", path);

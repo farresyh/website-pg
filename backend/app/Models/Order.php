@@ -57,6 +57,8 @@ class Order extends Model
         'affiliate_id',
         'wallet_reseller_id',
         'voucher_id',
+        'promo_code_id',
+        'attributed_promo_code_id',
         'pricing_basis',
         'membership_id',
         'member_discount_percent',
@@ -68,6 +70,7 @@ class Order extends Model
         'wholesale_markup_pct',
         'selling_price',
         'voucher_discount',
+        'promo_discount_sen',
         'transaction_fee',
         'final_amount',
         'platform_profit',
@@ -103,6 +106,7 @@ class Order extends Model
         'wholesale_markup_pct' => 'decimal:2',
         'selling_price' => 'integer',
         'voucher_discount' => 'integer',
+        'promo_discount_sen' => 'integer',
         'transaction_fee' => 'integer',
         'final_amount' => 'integer',
         'platform_profit' => 'integer',
@@ -858,6 +862,18 @@ class Order extends Model
     public function voucherRedemption(): HasOne
     {
         return $this->hasOne(VoucherRedemption::class);
+    }
+
+    /** ADR-118 V1–V20: the KOL code redeemed on this order, if any. */
+    public function promoCodeRedemption(): HasOne
+    {
+        return $this->hasOne(PromoCodeRedemption::class);
+    }
+
+    /** ADR-118 V18: the code applied at checkout, for the admin order detail. */
+    public function promoCode(): BelongsTo
+    {
+        return $this->belongsTo(PromoCode::class);
     }
 
     /**

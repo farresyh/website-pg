@@ -49,6 +49,47 @@ final class RecognisedRevenue
             ->values();
     }
 
+    /**
+     * ADR-118 V13: the KOL promo discount given on the revenue recognised in
+     * the range (gross = net + this). A settled partial order counts only the
+     * share it kept, rounded down, beside keptSen().
+     */
+    public function promoDiscountSen(?CarbonInterface $from, ?CarbonInterface $toExclusive): int
+    {
+        return (int) $this->inRange(Order::query(), $from, $toExclusive)
+            ->where('delivery_status', DeliveryStatus::Delivered->value)
+            ->sum('promo_discount_sen')
+            + (int) $this->settledPartialOrders($from, $toExclusive)->sum(fn (Order $o) => $this->keptPromoSen($o));
+    }
+
+    /**
+     * ADR-118 V14: promoDiscountSen() per code, for the campaign scorecard.
+     *
+     * @return array<int, int> promo_code_id => sen
+     */
+    public function promoDiscountByCode(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
+    {
+        $byCode = $this->inRange(Order::query(), $from, $toExclusive)
+            ->where('delivery_status', DeliveryStatus::Delivered->value)
+            ->whereNotNull('promo_code_id')
+            ->groupBy('promo_code_id')
+            ->selectRaw('promo_code_id, SUM(promo_discount_sen) as total')
+            ->pluck('total', 'promo_code_id')
+            ->map(fn ($sen) => (int) $sen)
+            ->all();
+
+        foreach ($this->settledPartialOrders($from, $toExclusive)->whereNotNull('promo_code_id') as $order) {
+            $byCode[$order->promo_code_id] = ($byCode[$order->promo_code_id] ?? 0) + $this->keptPromoSen($order);
+        }
+
+        return $byCode;
+    }
+
+    public function keptPromoSen(Order $order): int
+    {
+        return $order->selling_price > 0 ? intdiv($order->promo_discount_sen * $this->keptSen($order), $order->selling_price) : 0;
+    }
+
     /** What a settled partial order kept: the revenue it is recognised at. */
     public function keptSen(Order $order): int
     {

@@ -37,6 +37,7 @@ class CheckoutControllerPreviewTotalsTest extends TestCase
         $preview->assertOk();
         $preview->assertExactJson([
             'selling_price_sen' => 500,
+            'promo_discount_sen' => 0,
             'member_discount_percent' => null,
             'voucher_discount_sen' => 0,
             'transaction_fee_sen' => 210,
@@ -68,6 +69,7 @@ class CheckoutControllerPreviewTotalsTest extends TestCase
         // test_partial_cover_voucher_reduces_fee_base_and_redeems_after_gateway_success()'s real-order numbers exactly.
         $preview->assertExactJson([
             'selling_price_sen' => 500,
+            'promo_discount_sen' => 0,
             'member_discount_percent' => null,
             'voucher_discount_sen' => 200,
             'transaction_fee_sen' => 210,
@@ -93,6 +95,7 @@ class CheckoutControllerPreviewTotalsTest extends TestCase
         // ADR-024 decision #5: feeBase 0 -> transaction_fee/final_amount forced to 0, not the flat_fee_sen=210.
         $preview->assertExactJson([
             'selling_price_sen' => 500,
+            'promo_discount_sen' => 0,
             'member_discount_percent' => null,
             'voucher_discount_sen' => 500,
             'transaction_fee_sen' => 0,
@@ -126,6 +129,7 @@ class CheckoutControllerPreviewTotalsTest extends TestCase
         $preview->assertOk();
         $preview->assertExactJson([
             'selling_price_sen' => 1040,
+            'promo_discount_sen' => 0,
             'member_discount_percent' => 80.0,
             'voucher_discount_sen' => 0,
             'transaction_fee_sen' => 210,
