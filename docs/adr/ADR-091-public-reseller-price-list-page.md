@@ -1,6 +1,6 @@
 # ADR-091: Public Reseller Price List page — a sales/acquisition surface on `is_owned` storefronts, admin-selected tiers
 
-> **Standing (2026-11-01):** In force; decisions 5 and 9 are revised by the 2026-11-01 addendum (Accepted, built, not released). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-04):** In force; decisions 5 and 9 are revised by the 2026-11-01 addendum. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Context:**
 
