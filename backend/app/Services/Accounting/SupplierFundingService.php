@@ -2,6 +2,7 @@
 
 namespace App\Services\Accounting;
 
+use App\Jobs\CheckSupplierBufferJob;
 use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
 use App\Models\Supplier;
@@ -400,6 +401,9 @@ final class SupplierFundingService
                 'reference_type' => $referenceType,
                 'reference_id' => $referenceId,
             ]);
+
+            // ADR-115 2026-11-05 addendum, decision 6: every delivery path records its drawdown here.
+            CheckSupplierBufferJob::dispatch($supplier->id)->afterCommit();
         } catch (UniqueConstraintViolationException) {
             // ADR-127 decision 11: a concurrent writer recorded it first.
             return;

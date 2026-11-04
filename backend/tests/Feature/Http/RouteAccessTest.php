@@ -164,6 +164,7 @@ class RouteAccessTest extends TestCase
             'GET api/customer-analytics/export',
             'GET api/customer-analytics/summary',
             'GET api/dashboard/health',
+            'GET api/dashboard/supplier-buffers',
             'GET api/gallery/images',
             'GET api/gallery/images/{gallery_image}/references',
             'GET api/games',

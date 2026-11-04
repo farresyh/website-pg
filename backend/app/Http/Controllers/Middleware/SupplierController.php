@@ -210,11 +210,7 @@ class SupplierController extends Controller
             'last_test_result' => $response->success ? 'success' : "failed: [{$response->errorCode}] {$response->errorMessage}",
         ];
 
-        if ($response->success && isset($response->data['balance'])) {
-            $update['balance'] = $response->data['balance'];
-        }
-
-        $supplier->update($update);
+        $supplier->recordPolledBalance($response->success && isset($response->data['balance']) ? (float) $response->data['balance'] : null, $update);
 
         return [
             'connection_ok' => $response->success,
@@ -296,11 +292,7 @@ class SupplierController extends Controller
             'last_test_result' => $response->success ? 'success' : "failed: [{$response->errorCode}] {$response->errorMessage}",
         ];
 
-        if ($response->success && isset($response->data['balance'])) {
-            $update['balance'] = $response->data['balance'];
-        }
-
-        $supplier->update($update);
+        $supplier->recordPolledBalance($response->success && isset($response->data['balance']) ? (float) $response->data['balance'] : null, $update);
 
         return response()->json($supplier->fresh());
     }

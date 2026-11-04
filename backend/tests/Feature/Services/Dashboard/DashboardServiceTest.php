@@ -21,6 +21,7 @@ use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Scheduling\SchedulerLiveness;
+use App\Services\Supplier\SupplierBufferService;
 use App\Services\Withdrawal\WithdrawalStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -43,7 +44,7 @@ class DashboardServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->dashboard = new DashboardService(new OpenWaSessionStatus, app(LandedCostRate::class), new SchedulerLiveness);
+        $this->dashboard = new DashboardService(new OpenWaSessionStatus, app(LandedCostRate::class), new SchedulerLiveness, app(SupplierBufferService::class));
     }
 
     /**

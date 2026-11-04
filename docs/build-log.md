@@ -1139,3 +1139,53 @@ New PRD §16 item 162 tracks it.
 **FX.** open.er-api.com is still called, but only for the market rate shown beside the landed rate in the Price Sync Center (`ProductSyncService.php:150`). Price Sync costs and per-order real cost use `LandedCostRate` (ADR-134). The last run priced IDR at 0.00023913 MYR (deposit pool) against a market rate of 0.000225, a spread of +6.28%.
 
 **OpenWA #1978.** The maintainer shipped the fix in rmyndharis/OpenWA#1992 and closed the issue. It is on OpenWA's `main` only; the latest release is still v0.27.1. Item 159 now waits for the release that ships it.
+
+## 2026-11-05 — Item 28: supplier buffer forecast and low-balance email (ADR-115 2026-11-05 addendum)
+
+**Why now.** The 2026-10-14 trigger fell on 2026-11-05, two weeks after real payments. Real Digiflazz spend from 22 Oct to 4 Nov was IDR 9.57 million (about RM 2,289), and it came in bursts: 31 Oct and 1 Nov were IDR 7.58 million.
+
+**Founder decisions (in Malay).**
+- The buffer learns from sales.
+- From Thursday it must last until Monday, because transfers do not land at the weekend.
+- A check runs after every webhook.
+- The email fires below the higher of the floor and the forecast.
+- No recovery email.
+- Malaysia calendar days.
+- A margin setting, default 0%.
+
+**The stress test changed the design before code:**
+- **p90 → the 60-day maximum.** On the real data, p90 was IDR 0.77 million (RM 184), against a real two-day burst of IDR 7.58 million: 36 of the 59 two-day windows were empty.
+- **Compute on read** instead of stored columns.
+- **Lower of polled and ledger.** The polled balance moves only on a webhook, a poll or Refresh.
+- **One seam per trigger.** `recordOrderDrawdown()` is shared by all five delivery paths. `Supplier::recordPolledBalance()` replaces five direct writers.
+- **An atomic once-a-day claim**, the price-sync staleness pattern.
+- **One assessment** replaces the Dashboard's and the daily command's separate threshold rules.
+
+**Built.**
+- `SupplierBufferService::assess()` and `SupplierBuffer`.
+- `SupplierBufferAlert` (email through `BackupFailureAlerter`, area "Supplier balance"; one log line with each email).
+- `CheckSupplierBufferJob`: unique per supplier, `default` lane.
+- `GET /api/dashboard/supplier-buffers` (admin and super admin, like `/dashboard/health`).
+- Supplier settings `topup_lead_days` and `buffer_margin_pct`; Low-balance Threshold is relabelled Low-balance Floor.
+- `/admin/balance` restyled with the report kit (Campaigns layout): buffer cards, then the two tables as ReportTables. A Refresh now reloads the whole page's data, because the buffer moves with the balance.
+- Migration `2026_11_07_120000_add_supplier_buffer_alert`: `suppliers.low_balance_alerted_at`, plus index `(supplier_id, type, created_at)` on `supplier_ledger_entries`.
+
+**Tests.** 18 new tests in `SupplierBufferTest`:
+- busiest window, with quiet days counted as zero;
+- all six weekdays;
+- lead time;
+- the Malaysia-midnight boundary (Wednesday 23:59 against Thursday 00:00 MYT, and drawdowns either side of midnight);
+- floor, margin and the lower-of balance;
+- the email once a day, a reminder the next day, recovery that clears it, and a claim already taken;
+- every trigger;
+- the daily sweep;
+- the Dashboard chip and the endpoint.
+
+The guard tests (route list, `visible_config`) and the old daily-warning test were updated. Full suite: 3,649 tests green. Admin: tsc, lint, 22 unit tests and the build all pass.
+
+**Browser check.** The founder's running dev servers served the branch (`localhost:3000`, API `:8000`).
+- The real endpoint answered 200, with a 5-day window through Monday 9 Nov on Thursday 5 Nov.
+- Both buffer states were rendered from prod-shaped fixtures intercepted in Playwright, so the dev DB was not written. They were checked in light, dark and 390 px, with no horizontal page overflow and no JS errors.
+- Refresh no longer breaks the page.
+
+**Gotcha.** `QueueFake` honours `ShouldBeUnique`: a second dispatch for the same supplier inside `uniqueFor` is dropped. That is intended, so the trigger test uses a second supplier for the drawdown path.

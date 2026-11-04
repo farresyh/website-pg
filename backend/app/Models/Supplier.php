@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Jobs\CheckSupplierBufferJob;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
@@ -40,6 +41,7 @@ class Supplier extends Model
         'last_test_result',
         'last_price_sync_at',
         'price_sync_alerted_at',
+        'low_balance_alerted_at',
     ];
 
     /**
@@ -58,6 +60,7 @@ class Supplier extends Model
         'last_tested_at' => 'datetime',
         'last_price_sync_at' => 'datetime',
         'price_sync_alerted_at' => 'datetime',
+        'low_balance_alerted_at' => 'datetime',
     ];
 
     /**
@@ -222,6 +225,23 @@ class Supplier extends Model
      * the source other code reads, ADR-069) by the drift check in
      * `app:refresh-supplier-balances`. Not a replacement for `balance`.
      */
+    /**
+     * ADR-115 2026-11-05 addendum, decision 6: the one writer of a polled
+     * `balance` (daily refresh, Refresh/probe, Digiflazz webhook). Every
+     * new balance queues the buffer check, so a drop seen by any of them
+     * is assessed.
+     *
+     * @param  array<string, mixed>  $attributes  saved with it (last_tested_at, last_test_result)
+     */
+    public function recordPolledBalance(?float $balance, array $attributes = []): void
+    {
+        $this->update($balance === null ? $attributes : [...$attributes, 'balance' => $balance]);
+
+        if ($balance !== null) {
+            CheckSupplierBufferJob::dispatch($this->id)->afterCommit();
+        }
+    }
+
     public function supplierLedgerBalance(): string
     {
         // number_format rather than a raw (string) cast: sqlite's SUM()
