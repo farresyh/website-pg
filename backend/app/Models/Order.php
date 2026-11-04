@@ -870,6 +870,12 @@ class Order extends Model
         return $this->hasOne(PromoCodeRedemption::class);
     }
 
+    /** ADR-118 V18: the code applied at checkout, for the admin order detail. */
+    public function promoCode(): BelongsTo
+    {
+        return $this->belongsTo(PromoCode::class);
+    }
+
     /**
      * ADR-053 (REV-1..5): at most one, enforced by reviews.order_id's
      * unique index — the primary spam control on submission.

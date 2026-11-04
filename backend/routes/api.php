@@ -93,6 +93,7 @@ use App\Http\Controllers\PackageController;
 use App\Http\Controllers\PaymentMethodCatalogController;
 use App\Http\Controllers\PlayerCheckController;
 use App\Http\Controllers\PlayerValidationController;
+use App\Http\Controllers\PromoCodeClickController;
 use App\Http\Controllers\PublicResellerPriceListController;
 use App\Http\Controllers\ResellerApi\BalanceController as ResellerApiBalanceController;
 use App\Http\Controllers\ResellerApi\CatalogController as ResellerApiCatalogController;
@@ -191,6 +192,10 @@ Route::post('/vouchers/preview', [VoucherPreviewController::class, 'store'])->mi
 // ADR-060 PR-4c: `storefront.brand` — the summary total must match what
 // the real checkout charges for this brand (anti-divergence).
 Route::post('/checkout/preview-totals', [CheckoutController::class, 'previewTotal'])->middleware(['throttle:30,1,checkout-preview-totals', 'storefront.brand']);
+
+// ADR-118 V16: a `?promo=CODE` visit, sent once per browser tab. Its own
+// throttle prefix (see the note above on shared throttle keys).
+Route::post('/promo-clicks', [PromoCodeClickController::class, 'store'])->middleware(['throttle:60,1,promo-click', 'storefront.brand']);
 
 // ADR-126 decision 12: the `/joki` page — the rank model, routes and
 // public settings, and a live quote from the same JokiPricingService the

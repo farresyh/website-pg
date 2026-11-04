@@ -103,6 +103,7 @@ class RouteAccessTest extends TestCase
             'POST api/onboarding/verify-email',
             'POST api/orders/{orderNumber}/review',
             'POST api/player-check/{slug}',
+            'POST api/promo-clicks',
             'POST api/track-order/{orderNumber}/check-payment',
             'POST api/vouchers/preview',
             'POST api/webhooks/chip',
