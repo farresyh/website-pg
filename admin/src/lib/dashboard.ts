@@ -33,7 +33,7 @@ export interface DashboardHealthSupplier {
   currency: string;
   /** Display-only conversion (CurrencyRateService, cached ~24h). Null when unavailable — never a hardcoded MYR label. */
   balance_myr_equivalent: number | null;
-  /** ADR-069 — balance is below this supplier's api_config['low_balance_threshold']. */
+  /** ADR-115 2026-11-05 addendum — below the higher of the floor and the busiest-window forecast (SupplierBufferService). */
   low_balance: boolean;
   drift: SupplierFundingDrift | null;
   circuit_state: "closed" | "open";
@@ -112,6 +112,35 @@ export interface DashboardHealth {
   reseller_wallet_liability_definition: string;
 }
 
+
+/**
+ * ADR-115 2026-11-05 addendum: what a supplier must hold to last until a
+ * top-up started today lands. Mirrors SupplierBuffer::toArray(); amounts in
+ * the supplier's own currency, `*_myr` at the landed rate; dates are
+ * Malaysia calendar days (Y-m-d).
+ */
+export interface SupplierBuffer {
+  supplier_id: number;
+  name: string;
+  currency: string;
+  balance: number;
+  floor: number | null;
+  forecast: number;
+  margin_pct: number;
+  required: number;
+  window_days: number;
+  covers_until: string;
+  busiest_from: string | null;
+  busiest_to: string | null;
+  balance_myr: number | null;
+  required_myr: number | null;
+  is_short: boolean;
+}
+
+/** Only watched suppliers: an active API supplier with a floor or some spend. */
+export function getSupplierBuffers() {
+  return apiFetch<SupplierBuffer[]>("/api/dashboard/supplier-buffers");
+}
 
 export function getDashboardHealth() {
   return apiFetch<DashboardHealth>("/api/dashboard/health");

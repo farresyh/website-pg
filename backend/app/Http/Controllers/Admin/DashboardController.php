@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Supplier;
 use App\Services\Dashboard\DashboardService;
+use App\Services\Supplier\SupplierBufferService;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -22,5 +24,17 @@ class DashboardController extends Controller
     public function health(): JsonResponse
     {
         return response()->json($this->dashboard->health());
+    }
+
+    /** ADR-115 2026-11-05 addendum, decision 10: /admin/balance's buffer cards. */
+    public function supplierBuffers(SupplierBufferService $buffers): JsonResponse
+    {
+        $rows = Supplier::query()->where('is_active', true)->apiBacked()->orderBy('name')->get()
+            ->map(fn (Supplier $s) => ($b = $buffers->assess($s)) === null ? null : [
+                'supplier_id' => $s->id, 'name' => $s->name, 'currency' => $s->currency, ...$b->toArray(),
+            ])
+            ->filter()->values();
+
+        return response()->json($rows);
     }
 }

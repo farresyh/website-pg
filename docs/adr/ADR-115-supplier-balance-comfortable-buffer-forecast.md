@@ -1,6 +1,6 @@
 # ADR-115: Supplier balance comfortable-buffer forecast — learned, per-supplier top-up threshold (design only, build parked)
 
-> **Standing (2026-10-13):** Parked (designed); the 2026-10-13 addendum adds a low-balance email alert to the build scope, revising decision 8. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-05):** In force. The 2026-11-05 addendum revises decisions 4–10 and settles the 2026-10-13 addendum's open points (the busiest 60-day window instead of p90, weekend cover, the higher of floor and forecast, one email a day). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Parked — grilled 2026-09-28 (`/mattpocock-skills:grilling`, 3 rounds), fully designed and decided below, **build deliberately deferred**. No automatic trigger to start building (decision 10) — the founder will say when.
 
@@ -92,3 +92,104 @@ RM 333.50; payments off since 2026-10-07, so spend is near zero.
    (about RM 2,280) on 2026-10-14, the cold-start number of decision 6. The
    Dashboard "low balance" chip and the log warning now work; the chip
    shows while the balance stays under it.
+
+### 2026-11-05 addendum — built: the busiest window of the last 60 days, weekend cover, the higher of floor and forecast
+
+**Context.** The 2026-10-14 trigger fell on 2026-11-05, two weeks after real
+payments came back. The founder started the build. Prod scale, checked
+read-only on 2026-11-04 (Digiflazz, `supplier_ledger_entries`):
+- 2026-10-22 → 11-04: 37 drawdowns, IDR 9.57 million (about RM 2,289 at the
+  landed rate 0.00023913);
+- spend comes in bursts: 31 Oct and 1 Nov alone are IDR 7.58 million;
+- of the 59 two-day windows in the last 60 days, 36 spent nothing;
+- the balance was IDR 15,406,587, the same in the polled `balance` and in
+  the funding ledger; the manual threshold was IDR 10,000,000.
+
+The founder asked for a stress test of the design before code. The design
+was then traced against the code and the data above.
+
+**Decisions (founder, 2026-11-04 and 2026-11-05, in Malay).** These revise
+decisions 4, 5, 6, 8, 9 and 10 and the 2026-10-13 addendum where they differ.
+
+1. **The forecast is the busiest window of the last 60 days, not its p90**
+   (revises decision 4). The stress test computed p90 on the real data: IDR
+   0.77 million (RM 184) for two days, against a real two-day burst of IDR
+   7.58 million (RM 1,813). With most windows empty, p90 skips exactly the
+   bursts the buffer exists for. The maximum also rises the day a new record
+   is set; its cost is that one outlier holds the figure up for 60 days.
+2. **The window length depends on the Malaysia weekday** (revises decision
+   5). A transfer started on a Thursday or later may not land before
+   Monday, because banks do not process at the weekend. Monday to
+   Wednesday, the window is the lead time: `topup_lead_days`, default 2.
+   Thursday to Sunday, the window runs from today through Monday: 5, 4, 3
+   and 2 days. The window is never shorter than the lead time. Today counts
+   as a full day. Days are Malaysia calendar days (`MalaysiaTime`).
+   Public holidays are not modelled in v1.
+3. **Required balance = the higher of the floor and the forecast × (1 +
+   margin)** (revises decisions 6 and 10).
+   - The floor is the admin's `low_balance_threshold`, never overwritten.
+   - The margin is `buffer_margin_pct`, default 0.
+   - The forecast can raise protection on its own but never lower it below
+     the floor, so the figure follows sales without the admin copying it in.
+   - No floor and no history means nothing is watched (fail-safe to silent,
+     as ADR-069 decision 13).
+4. **Computed when read, not stored** (revises decision 10's columns). One
+   query sums `ORDER_DRAWDOWN` per Malaysia day for the last 60 days,
+   cached on the supplier, today's date and the latest ledger id. No figure
+   can go stale, so there is no "computed at" column and no stale label.
+   `REFUND` has no writer today, so the sum reads drawdowns only.
+5. **The balance compared is the lower of the polled balance and the
+   funding-ledger balance.** The polled figure moves only on a Digiflazz
+   webhook, a poll or a Refresh. The ledger moves on every drawdown. Using
+   the lower of the two never misses a drop that only one of them has seen.
+6. **Checked at three points, through one seam each:**
+   - after every drawdown, from `SupplierFundingService::recordOrderDrawdown()`,
+     which all five delivery paths share;
+   - after every polled-balance write, from `Supplier::recordPolledBalance()`,
+     which replaces the five direct writers;
+   - once a day, from `app:refresh-supplier-balances`, a CRITICAL task
+     (ADR-122).
+
+   The first two queue a `CheckSupplierBufferJob` (unique per supplier, on
+   the `default` lane), so neither a webhook nor a delivery waits on it.
+7. **One email per supplier per Malaysia day while short; no recovery email**
+   (settles the 2026-10-13 addendum's open points).
+   - `suppliers.low_balance_alerted_at` is claimed by an atomic conditional
+     update, the pattern `CheckPriceSyncStalenessCommand` uses. Two
+     concurrent checks therefore send one email.
+   - The claim is cleared when the balance is back above the required
+     figure.
+   - The email goes through `BackupFailureAlerter`, area "Supplier
+     balance".
+8. **One assessment feeds every reader.** `SupplierBufferService::assess()`
+   is the only rule for "short". It feeds the email, the Dashboard chip and
+   briefing (`DashboardService`'s own threshold comparison is replaced),
+   `/admin/balance` and the daily command's log line.
+9. **Decision 7's MYR figure is at the landed rate** (ADR-134 decision 15),
+   as everywhere else a supplier balance is shown in ringgit.
+10. **`/admin/balance` shows the buffer and is restyled with the report kit.**
+    - KPI cards: the balance, the required figure and the window that set
+      it, and "enough until Mon 10 Nov" or "top up now".
+    - The `ReportCard` layout of the Campaigns page.
+    - The two tables keep their content.
+
+    `topup_lead_days` and `buffer_margin_pct` are optional supplier
+    settings in `/middleware` → Suppliers.
+11. **Scope** is every active, API-backed supplier (decision 2's "Digiflazz
+    only" falls out of that: Gamevion is off and manual suppliers have no
+    polled balance).
+
+**Rationale.** Each change answers a gap the stress test found in code or
+data:
+- p90 against bursty spend;
+- the weekend lead time;
+- a forecast the admin would have had to copy by hand;
+- a stored figure that can go stale;
+- a polled balance that lags the ledger;
+- five balance writers and two "low balance" rules;
+- a throttle that two webhooks could both pass.
+
+**Consequence to track.** If a single outlier keeps the forecast high for
+60 days and ties up capital the founder needs, revisit decision 1 (for
+example, the second-busiest window). Malaysian public holidays are the next
+gap if a transfer is ever late because of one.

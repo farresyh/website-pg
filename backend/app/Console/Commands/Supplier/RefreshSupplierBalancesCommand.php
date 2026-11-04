@@ -4,6 +4,7 @@ namespace App\Console\Commands\Supplier;
 
 use App\Models\Supplier;
 use App\Services\Supplier\SupplierAdapterFactory;
+use App\Services\Supplier\SupplierBufferAlert;
 use App\Services\Supplier\SupplierConfigSchema;
 use App\Services\Supplier\SupplierNotConfiguredException;
 use App\Services\Supplier\UnsupportedSupplierException;
@@ -20,9 +21,9 @@ use Throwable;
  * /middleware/suppliers, so the Dashboard Health figure can be days
  * stale. This runs `checkBalance()` for every active, fully-configured
  * supplier on a daily schedule (routes/console.php) and writes the
- * result, and emits a `Log::warning` when a balance drops below the
- * supplier's own `api_config['low_balance_threshold']` (absent = no
- * warning — fail-safe to silent, never to false alarms).
+ * result, then runs the buffer check for every active API supplier
+ * (ADR-115 2026-11-05 addendum): a log line, and one email a day, while a
+ * balance is below what it needs to last the coming window.
  *
  * Calling the adapter directly from a scheduled command is fine here:
  * `checkBalance()` is a read-only supplier call with no side effect
@@ -38,10 +39,10 @@ use Throwable;
  * and the task exits FAILURE so ADR-122's heartbeat turns health red.
  */
 #[Signature('app:refresh-supplier-balances')]
-#[Description('Refresh Supplier.balance for every active, configured supplier and warn on a low balance.')]
+#[Description('Refresh Supplier.balance for every active, configured supplier and check each against its buffer.')]
 class RefreshSupplierBalancesCommand extends Command
 {
-    public function handle(SupplierAdapterFactory $adapters): int
+    public function handle(SupplierAdapterFactory $adapters, SupplierBufferAlert $buffers): int
     {
         // ADR-125 decision 2: a manual supplier has no balance to poll; its
         // balance is its funding ledger (Supplier::displayBalance()).
@@ -70,8 +71,6 @@ class RefreshSupplierBalancesCommand extends Command
 
         if ($suppliers->isEmpty()) {
             $this->info('No active, fully-configured supplier to refresh.');
-
-            return self::SUCCESS;
         }
 
         $crashed = false;
@@ -87,6 +86,18 @@ class RefreshSupplierBalancesCommand extends Command
                     'last_test_result' => 'failed: [ERROR] '.Str::limit($e->getMessage(), 200),
                 ]);
                 $this->error("'{$supplier->slug}' balance refresh crashed: {$e->getMessage()}");
+            }
+        }
+
+        // ADR-115 2026-11-05 addendum, decision 6: the daily check, even for a
+        // supplier whose balance did not move (Thursday widens the window).
+        foreach ($active as $supplier) {
+            try {
+                $buffers->check($supplier->fresh());
+            } catch (Throwable $e) {
+                $crashed = true;
+                report($e);
+                $this->error("'{$supplier->slug}' buffer check crashed: {$e->getMessage()}");
             }
         }
 
@@ -120,26 +131,8 @@ class RefreshSupplierBalancesCommand extends Command
         }
 
         $balance = $response->data['balance'] ?? null;
-
-        if ($balance !== null) {
-            $update['balance'] = $balance;
-        }
-
-        $supplier->update($update);
-
-        $threshold = $supplier->api_config['low_balance_threshold'] ?? null;
-
-        if ($balance !== null && $threshold !== null && is_numeric($threshold) && (float) $balance < (float) $threshold) {
-            Log::warning('Supplier balance is low', [
-                'supplier' => $supplier->slug,
-                'balance' => (float) $balance,
-                'threshold' => (float) $threshold,
-                'currency' => $supplier->currency,
-            ]);
-            $this->warn("'{$supplier->slug}' balance {$balance} {$supplier->currency} is below threshold {$threshold}");
-        } else {
-            $this->info("'{$supplier->slug}' balance: {$balance} {$supplier->currency}");
-        }
+        $supplier->recordPolledBalance($balance === null ? null : (float) $balance, $update);
+        $this->info("'{$supplier->slug}' balance: {$balance} {$supplier->currency}");
 
         // ADR-083 decision 6 — compares the just-refreshed
         // `balance` against the funding ledger's own sum; never
