@@ -1871,3 +1871,15 @@ After release #687 the founder raised two features; both are now in PRD §16 gro
 - **Reseller cash rebate + automatic refund (item 161):** founder decided to build both. Prod: 5 tiers (1–5%), one buying reseller (October RM336.10 / RM9.47). Recommended a rebate as a share of the reseller's own platform profit, and an automatic refund only on a confirmed Failed delivery after retries (revising ADR-073 decision 7).
 
 The founder closed the session here; the next session starts from item 57 (ADR-118 addendum), then 161.
+
+## 2026-11-04 — ADR-118 v1 addendum: KOL campaigns designed for two PekanGame KOLs (docs only)
+
+The founder reviewed the first 28 CS knowledge suggestions with Claude (all closed: 13 merged, 2 approved as new entries #8 and #9, 12 rejected, 1 chat ignored; checked read-only on prod), then settled item 57's open questions.
+
+**Founder decisions:** KOL 1 RM500 a month, KOL 2 from RM2,000 (negotiating); PekanGame only; a percentage with no RM cap (as the competitor), shown to the customer only as RM saved; new customers only, once per code; attribution stays most-recent-touch (with new-customers-only a customer stays with the KOL who brought them in); not on Joki; a 2% margin floor; a `?promo=` link that prefills the code for 7 days; target CAC and trial length set later in the panel.
+
+**Data used (prod, read-only, paid non-wallet orders since 2026-10-05):** 41 orders, RM2,338.09, 24 customers, 1.71 orders each, 33 of 41 on OhahaStore; about RM8.85 profit per customer per month. Breakeven new customers a month: KOL 1 ≈ 57 (one month of buying) or ≈ 19 (three months); KOL 2 ≈ 226 or ≈ 75.
+
+**Code-trace pass (three forks, read-only; key findings re-checked by Claude):** R1 holds with no change to any profit writer, compensation or CHIP matching. Corrected in the addendum: R7's log-and-proceed is gone (reserve joins `reserveAll()`), R8's restore sites are now `applyFailed` and `settle`, `VoucherPreviewController` prices on its own, the idempotency hash lacks the promo, wallet orders carry the primary brand (excluded from the new-customer search), the promo must lower `platform_profit` in the draft (else ledger overstatement and ADR-111 drift flags), "new" must mean no recognised order (else a compensated failure blocks a retry), a Paid-after-Failed delivery must re-reserve, the click throttle needs its own prefix, the KOL fee belongs on an Envelope `Advertising` posting with a `campaign_id`, Customer Analytics now sits under Overview.
+
+Next: the founder asks the external accountant the V13 questions; then build v1 test-first.
