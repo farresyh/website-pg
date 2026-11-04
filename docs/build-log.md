@@ -1988,7 +1988,7 @@ Storefront:
 
 Admin: Order Detail shows "Promo Discount (CODE)". Portal: "Promo discount" on the order view.
 
-**Fixed on the way.** The Review Modal stayed mounted while closed, so a reopened modal still showed an applied voucher that OrderForm had cleared and would not send. It now mounts only while open.
+**Fixed on the way.** The Review Modal stayed mounted while closed, so a reopened modal still showed an applied voucher that OrderForm had cleared and would not send. It now mounts only while open, on both the order page and `/joki` (same bug there).
 
 **Verified.**
 - Backend suite: 3618 passed (4 new). The public-route allowlist and the workbook's column letters were updated for the new route and column.
@@ -2000,6 +2000,13 @@ Admin: Order Detail shows "Promo Discount (CODE)". Portal: "Promo discount" on t
   4. The order was stored with `selling_price` 450 and `promo_discount_sen` 50, and the admin API returned `promo_code.code` KOL10.
   5. After the CHIP webhook and delivery, the status page showed Package RM5.00, Promo −RM0.50, Fee +RM1.00.
   6. The same customer applying again saw the new-customers message, and the code was dropped (mobile 390px).
+- A second browser round (the founder asked for the cases the first one skipped):
+  - voucher and promo together: RM5.00 − 0.50 promo + 1.00 fee − 2.00 voucher = RM3.50, and Confirm & Pay matched;
+  - closing and reopening the modal cleared the voucher and kept the promo;
+  - a signed-in top-tier member who applied the code saw "Your member price (RM4.16) is lower…", with no quota message;
+  - the whole modal on mobile at 390px;
+  - `/joki` shows no promo field.
+  The Promo row was moved directly under Package Price, so the member upsell strip no longer separates the two.
 - Local dev DB migrated.
 
 **Not reachable yet:** codes can only be created from PR 4's Campaigns page.
