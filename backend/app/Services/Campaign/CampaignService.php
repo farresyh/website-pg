@@ -219,6 +219,18 @@ final class CampaignService
             ->sum(fn (PromoCodeRedemption $r) => $r->heldSen());
     }
 
+    /** V10: the code form's list — would this (unsaved) code be refused on this price? */
+    public function refusedOn(PromoCode $promo, PricingResolution $pricing): bool
+    {
+        try {
+            $this->priced($promo, $pricing);
+
+            return false;
+        } catch (InvalidPromoCodeException) {
+            return true;
+        }
+    }
+
     /** V3 + V10: the discount on this order, refused below the panel margin floor. */
     private function priced(PromoCode $promo, PricingResolution $pricing): PromoQuote
     {
