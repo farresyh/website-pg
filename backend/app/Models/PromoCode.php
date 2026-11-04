@@ -25,6 +25,7 @@ class PromoCode extends Model
     ];
 
     protected $casts = [
+        'campaign_id' => 'integer',
         'discount_percent' => 'decimal:2',
         'max_discount_sen' => 'integer',
         'budget_sen' => 'integer',

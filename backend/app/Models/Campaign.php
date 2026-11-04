@@ -14,7 +14,7 @@ class Campaign extends Model
 {
     protected $fillable = ['affiliate_id', 'name', 'ended_at', 'created_by'];
 
-    protected $casts = ['ended_at' => 'datetime'];
+    protected $casts = ['affiliate_id' => 'integer', 'ended_at' => 'datetime'];
 
     public function affiliate(): BelongsTo
     {

@@ -21,6 +21,8 @@ class PromoCodeRedemption extends Model
     protected $fillable = ['promo_code_id', 'order_id', 'amount_sen', 'restored_sen', 'status', 'restored_at', 'over_cap'];
 
     protected $casts = [
+        'promo_code_id' => 'integer',
+        'order_id' => 'integer',
         'amount_sen' => 'integer',
         'restored_sen' => 'integer',
         'restored_at' => 'datetime',
