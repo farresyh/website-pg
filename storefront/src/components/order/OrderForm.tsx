@@ -334,6 +334,9 @@ export default function OrderForm({
       : null;
   const [totalPreview, setTotalPreview] = useState<{ key: string; result: CheckoutTotalPreview } | null>(null);
   const preview = totalPreview && totalPreview.key === totalPreviewKey ? totalPreview.result : null;
+  // The key of a preview that failed (network, timeout): the Review Modal
+  // then says so instead of showing "Checking…" for an applied promo forever.
+  const [failedPreviewKey, setFailedPreviewKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!totalPreviewKey || !selectedPackage || !channelCode) return;
@@ -370,6 +373,8 @@ export default function OrderForm({
             idempotencyKeyRef.current = crypto.randomUUID();
             setPromoCode(null);
             setPromoError(err.errors.promo_code[0]);
+          } else if (!cancelled) {
+            setFailedPreviewKey(totalPreviewKey);
           }
           // Otherwise a failed preview just leaves the sidebar/modal without
           // a fee breakdown (falls back to package-price-only display) rather
@@ -649,6 +654,7 @@ export default function OrderForm({
           onConfirm={handleConfirmPayment}
           onVoucherChange={changeVoucher}
           promoCode={promoCode}
+          previewFailed={failedPreviewKey !== null && failedPreviewKey === totalPreviewKey}
           promoError={promoError}
           onPromoChange={changePromo}
           promoPlayerId={accountValue}

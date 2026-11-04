@@ -50,6 +50,8 @@ interface ReviewModalProps {
   joki?: JokiSelection;
   /** ADR-118: the applied KOL promo code (OrderForm's totals preview validates it), its refusal, and the setter. Omitted on the joki form: no promo there (V2). */
   promoCode?: string | null;
+  /** The totals preview for the current inputs failed (network, timeout), so a promo can't be confirmed yet. */
+  previewFailed?: boolean;
   promoError?: string | null;
   onPromoChange?: (code: string | null) => void;
   /** The player account the promo's new-customer rule checks, also sent with a voucher preview. */
@@ -104,6 +106,7 @@ export default function ReviewModal({
   quotaRemainingRm = null,
   joki,
   promoCode = null,
+  previewFailed = false,
   promoError = null,
   onPromoChange,
   promoPlayerId = "",
@@ -319,7 +322,7 @@ export default function ReviewModal({
   const voucherDiscountRm = preview ? preview.voucher_discount_sen / 100 : fallbackDiscountRm;
   // ADR-118 V4: the customer sees the RM saved, never the percentage.
   const promoSavedRm = preview && promoCode ? preview.promo_discount_sen / 100 : 0;
-  const promoChecking = promoCode !== null && preview === null;
+  const promoChecking = promoCode !== null && preview === null && !previewFailed;
   // Decision 4 + the founder's option (a): a promo prices at the standard
   // price, never on top of member pricing. When this member's own price is
   // lower than the code's, say so, so they can remove the code.
@@ -493,6 +496,9 @@ export default function ReviewModal({
                   </div>
                 )}
                 {promoChecking && <p className="mt-1.5 text-[12.5px] text-on-surface-variant">Checking…</p>}
+                {promoCode !== null && preview === null && previewFailed && (
+                  <p className="mt-1.5 text-[12.5px] text-danger">Couldn&apos;t check this code. Check your connection, then remove it and apply it again.</p>
+                )}
                 {promoSavedRm > 0 && (
                   <p className="mt-1.5 text-[12.5px] font-semibold text-primary-on-surface">You save RM{promoSavedRm.toFixed(2)}</p>
                 )}
