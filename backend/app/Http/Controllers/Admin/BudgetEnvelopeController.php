@@ -10,11 +10,14 @@ use App\Http\Requests\Admin\VoidBudgetEnvelopePostingRequest;
 use App\Models\BudgetEnvelope;
 use App\Models\BudgetEnvelopeEntry;
 use App\Models\BudgetEnvelopePosting;
+use App\Models\Campaign;
 use App\Services\Accounting\BudgetEnvelopeService;
 use App\Services\Accounting\EnvelopePostingType;
 use App\Services\Accounting\ExpenseCategory;
 use App\Services\Accounting\FundType;
 use App\Services\Accounting\PaidFrom;
+use App\Services\Campaign\CampaignFeeSchedule;
+use App\Support\MalaysiaTime;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -23,7 +26,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BudgetEnvelopeController extends Controller
 {
-    public function __construct(private readonly BudgetEnvelopeService $envelopes) {}
+    public function __construct(
+        private readonly BudgetEnvelopeService $envelopes,
+        private readonly CampaignFeeSchedule $campaignFees,
+    ) {}
 
     public function index(): JsonResponse
     {
@@ -45,6 +51,13 @@ class BudgetEnvelopeController extends Controller
             'loan_balances' => collect($this->envelopes->loanBalances())
                 ->map(fn (int $balance, string $director) => ['counterparty' => $director, 'label' => PaidFrom::from($director)->label(), 'balance_sen' => $balance])
                 ->values(),
+            // ADR-118 V12: the KOL campaigns an Advertising payment can be tagged to.
+            'campaigns' => Campaign::query()->with('fees')->orderByDesc('id')->get()->map(fn (Campaign $c) => [
+                'id' => $c->id,
+                'name' => $c->name,
+                'monthly_fee_sen' => $this->campaignFees->feeForMonth($c, now(MalaysiaTime::TIMEZONE)->format('Y-m')),
+                'balance_sen' => $this->campaignFees->balanceSen($c, now(MalaysiaTime::TIMEZONE)->format('Y-m')),
+            ])->values(),
         ]);
     }
 
@@ -90,6 +103,7 @@ class BudgetEnvelopeController extends Controller
             expenseCategory: isset($data['expense_category']) ? ExpenseCategory::from($data['expense_category']) : null,
             referenceNo: $data['reference_no'] ?? null,
             receipt: $request->file('receipt'),
+            campaignId: isset($data['campaign_id']) ? (int) $data['campaign_id'] : null,
         );
 
         Log::info('Envelope posting recorded', [
@@ -100,6 +114,17 @@ class BudgetEnvelopeController extends Controller
         ]);
 
         return response()->json(['posting' => $posting], 201);
+    }
+
+    /** ADR-118 V12: the campaign's balance after a payment, before it is saved. Read-only. */
+    public function campaignPaymentPreview(Request $request, Campaign $campaign): JsonResponse
+    {
+        $data = $request->validate([
+            'amount_sen' => ['required', 'integer', 'between:1,1000000000'],
+            'date' => ['required', 'date_format:Y-m-d'],
+        ]);
+
+        return response()->json($this->campaignFees->paymentPreview($campaign->load('fees'), (int) $data['amount_sen'], $data['date']));
     }
 
     public function voidPosting(VoidBudgetEnvelopePostingRequest $request, BudgetEnvelopePosting $posting): JsonResponse
@@ -128,7 +153,7 @@ class BudgetEnvelopeController extends Controller
             ->whereHas('posting', fn ($q) => $q
                 ->when($from, fn ($q) => $q->whereDate('transaction_date', '>=', $from))
                 ->when($to, fn ($q) => $q->whereDate('transaction_date', '<=', $to)))
-            ->with(['posting.createdBy', 'posting.reversal:id,reverses_posting_id'])
+            ->with(['posting.createdBy', 'posting.reversal:id,reverses_posting_id', 'posting.campaign:id,name'])
             ->orderByDesc('id')
             ->get()
             ->map(fn (BudgetEnvelopeEntry $entry) => $this->entryRow($entry));
@@ -203,6 +228,7 @@ class BudgetEnvelopeController extends Controller
             'counterparty_label' => $posting->counterparty?->label(),
             'fund_type_label' => $posting->fund_type?->label(),
             'expense_category_label' => $posting->expense_category?->label(),
+            'campaign_name' => $posting->campaign?->name,
             'reference_no' => $posting->reference_no,
             'has_receipt' => $posting->receipt_path !== null,
             'reverses_posting_id' => $posting->reverses_posting_id,

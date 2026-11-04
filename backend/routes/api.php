@@ -918,6 +918,8 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         // ADR-083 2026-10-10 addendum: every action is one posting with typed lines.
         Route::post('/envelope-postings', [BudgetEnvelopeController::class, 'storePosting']);
         Route::post('/envelope-postings/{posting}/void', [BudgetEnvelopeController::class, 'voidPosting']);
+        // ADR-118 V12: a KOL campaign's balance after a payment, previewed on the posting form.
+        Route::get('/campaigns/{campaign}/payment-preview', [BudgetEnvelopeController::class, 'campaignPaymentPreview']);
         Route::get('/envelope-postings/{posting}/receipt', [BudgetEnvelopeController::class, 'downloadReceipt']);
     });
 

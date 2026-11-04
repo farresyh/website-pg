@@ -75,7 +75,7 @@ export function EntriesTable({ entries, onChanged, onError }: Props) {
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {entries.map((entry) => {
               const isReversal = entry.reverses_posting_id !== null;
-              const details = [entry.counterparty_label, entry.fund_type_label, entry.expense_category_label, entry.reference_no && `Ref: ${entry.reference_no}`].filter(Boolean);
+              const details = [entry.counterparty_label, entry.fund_type_label, entry.expense_category_label, entry.campaign_name && `KOL: ${entry.campaign_name}`, entry.reference_no && `Ref: ${entry.reference_no}`].filter(Boolean);
 
               return (
                 <tr key={entry.id} className={entry.is_voided ? "opacity-60" : undefined}>

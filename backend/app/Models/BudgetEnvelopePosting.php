@@ -30,6 +30,7 @@ class BudgetEnvelopePosting extends Model
         'counterparty',
         'fund_type',
         'expense_category',
+        'campaign_id',
         'reference_no',
         'receipt_path',
         'reverses_posting_id',
@@ -44,6 +45,7 @@ class BudgetEnvelopePosting extends Model
         'counterparty' => PaidFrom::class,
         'fund_type' => FundType::class,
         'expense_category' => ExpenseCategory::class,
+        'campaign_id' => 'integer',
     ];
 
     protected static function booted(): void
@@ -66,6 +68,12 @@ class BudgetEnvelopePosting extends Model
     public function reversal(): HasOne
     {
         return $this->hasOne(self::class, 'reverses_posting_id');
+    }
+
+    /** ADR-118 V12: a KOL fee payment names its campaign. */
+    public function campaign(): BelongsTo
+    {
+        return $this->belongsTo(Campaign::class);
     }
 
     public function reversesPosting(): BelongsTo

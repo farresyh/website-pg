@@ -52,7 +52,9 @@ final class MonthCloseService
             'prior_adjustment_sen' => $prior,
             'allocate_sen' => $allocate,
             'envelope_expenses' => collect($expenses)->map(fn (int $sen, string $category) => ['category' => $category, 'label' => ExpenseCategory::from($category)->label(), 'amount_sen' => $sen])->values(),
-            'net_sen' => $lines['operating_profit_sen'] - array_sum($expenses),
+            // ADR-118 V13: KOL fees count in their month of service, from the schedule, not by payment date.
+            'kol_fees_accrued_sen' => $lines['kol_fees_accrued_sen'],
+            'net_sen' => $lines['operating_profit_sen'] - array_sum($expenses) - $lines['kol_fees_accrued_sen'],
             'position' => $close?->equation ?? $this->position->asOf($year, $month, $allocate),
             'close' => $close === null ? null : [
                 'id' => $close->id,

@@ -8,7 +8,7 @@
  * message is shown as-is.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -17,10 +17,12 @@ import { ApiError } from "@/lib/api-client";
 import { notify } from "@/components/ui/toast";
 import {
   formatRm,
+  previewCampaignPayment,
   recordPosting,
   rmToSen,
   type BudgetEnvelope,
   type BudgetEnvelopeIndex,
+  type CampaignPaymentPreview,
   type PostingLine,
   type PostingType,
 } from "@/lib/budget-envelopes";
@@ -59,6 +61,8 @@ export function PostingForm({ index, defaultEnvelopeId, onRecorded }: Props) {
   const [description, setDescription] = useState("");
   const [referenceNo, setReferenceNo] = useState("");
   const [receipt, setReceipt] = useState<File | null>(null);
+  const [campaignId, setCampaignId] = useState(0);
+  const [fetchedPreview, setFetchedPreview] = useState<{ key: string; preview: CampaignPaymentPreview } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -66,6 +70,27 @@ export function PostingForm({ index, defaultEnvelopeId, onRecorded }: Props) {
   const needsCategory = type === "expense" || type === "director_paid_expense";
   const owed = index.loan_balances.find((b) => b.counterparty === counterparty)?.balance_sen;
   const splitTotal = Object.values(splits).reduce((sum, v) => sum + (Number.isFinite(rmToSen(v)) ? rmToSen(v) : 0), 0);
+  // ADR-118 V12: a KOL fee is an Advertising expense tagged to its campaign.
+  const canTagCampaign = needsCategory && expenseCategory === "advertising" && index.campaigns.length > 0;
+  const taggedCampaign = canTagCampaign ? index.campaigns.find((c) => c.id === campaignId) : undefined;
+  const amountSen = rmToSen(amount);
+
+  // A preview belongs to one campaign, amount and date; a stale one is never shown.
+  const previewKey = taggedCampaign && Number.isFinite(amountSen) && amountSen >= 1 ? `${taggedCampaign.id}:${amountSen}:${transactionDate}` : null;
+  const campaignPreview = fetchedPreview && fetchedPreview.key === previewKey ? fetchedPreview.preview : null;
+
+  useEffect(() => {
+    if (!previewKey || !taggedCampaign) return;
+    let cancelled = false;
+    previewCampaignPayment(taggedCampaign.id, amountSen, transactionDate)
+      .then((preview) => {
+        if (!cancelled) setFetchedPreview({ key: previewKey, preview });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [previewKey, taggedCampaign, amountSen, transactionDate]);
 
   function buildLines(): PostingLine[] | string {
     if (type === "funding") {
@@ -121,6 +146,7 @@ export function PostingForm({ index, defaultEnvelopeId, onRecorded }: Props) {
         counterparty: needsDirector ? counterparty : undefined,
         fund_type: type === "funding" ? fundType : undefined,
         expense_category: needsCategory ? expenseCategory : undefined,
+        campaign_id: taggedCampaign?.id,
         reference_no: referenceNo.trim() || undefined,
         receipt,
       });
@@ -129,6 +155,7 @@ export function PostingForm({ index, defaultEnvelopeId, onRecorded }: Props) {
       setDescription("");
       setReferenceNo("");
       setReceipt(null);
+      setCampaignId(0);
       notify.success("Posting recorded");
       await onRecorded();
     } catch (err) {
@@ -200,6 +227,27 @@ export function PostingForm({ index, defaultEnvelopeId, onRecorded }: Props) {
           </div>
         )}
 
+        {canTagCampaign && (
+          <div>
+            <Label htmlFor="posting_campaign">KOL campaign</Label>
+            <select id="posting_campaign" value={campaignId} onChange={(e) => setCampaignId(Number(e.target.value))} className={SELECT_CLASS}>
+              <option value={0}>Not a KOL fee</option>
+              {index.campaigns.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({formatRm(c.monthly_fee_sen)}/month)
+                </option>
+              ))}
+            </select>
+            {taggedCampaign && (
+              <span className="mt-1 block text-theme-xs text-ink-subtle">
+                {campaignPreview
+                  ? `${balanceText(campaignPreview.balance_before_sen)} now → ${balanceText(campaignPreview.balance_after_sen)} after${campaignPreview.covers_until ? `, covers to ${monthLabel(campaignPreview.covers_until)}` : ""}.`
+                  : `${balanceText(taggedCampaign.balance_sen)} now. Expensed by its fee schedule, not by this date.`}
+              </span>
+            )}
+          </div>
+        )}
+
         {type === "funding" ? (
           <div className="space-y-2 sm:col-span-2">
             <p className="text-theme-xs font-medium text-gray-600 dark:text-gray-400">Split across envelopes (RM)</p>
@@ -267,4 +315,14 @@ export function PostingForm({ index, defaultEnvelopeId, onRecorded }: Props) {
       </div>
     </form>
   );
+}
+
+function balanceText(sen: number): string {
+  if (sen === 0) return "Settled";
+  return sen > 0 ? `Prepaid ${formatRm(sen)}` : `Owed ${formatRm(-sen)}`;
+}
+
+function monthLabel(yearMonth: string): string {
+  const [y, m] = yearMonth.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleString("en-GB", { month: "short", year: "numeric" });
 }

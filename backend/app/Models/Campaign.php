@@ -26,6 +26,12 @@ class Campaign extends Model
         return $this->hasMany(PromoCode::class);
     }
 
+    /** ADR-118 V12: the fee schedule, oldest first. */
+    public function fees(): HasMany
+    {
+        return $this->hasMany(CampaignFee::class)->orderBy('from_month');
+    }
+
     public function hasEnded(): bool
     {
         return $this->ended_at !== null && $this->ended_at->lte(now());

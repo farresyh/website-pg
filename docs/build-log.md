@@ -1929,3 +1929,37 @@ Next: build v1 test-first.
 - **Fake gateway in tests.** A fake gateway bound as a fresh instance per resolve loses its "cancelled" state between `cancelPayment` and `getPayment`. Bind one instance.
 
 **Not reachable yet:** no campaign can be created until PR 2 (fee schedule) and PR 4 (admin page). PR 3 adds the storefront field.
+
+## 2026-11-04 — Item 57 PR 2: KOL fee schedule and accounting (ADR-118 V12/V13)
+
+**Built.** One migration, `2026_11_06_130000_create_campaign_fees_table`:
+- `campaign_fees`, unique on (`campaign_id`, `from_month`);
+- `budget_envelope_postings.campaign_id`.
+
+`CampaignFeeSchedule`:
+- creates a campaign together with its first fee row, on the primary brand;
+- adds a later row, and sets an end month, only where every changed month is open;
+- computes the fee for a month, the accrued and paid totals, the prepaid / (owed) balance, and a payment preview.
+
+`BudgetEnvelopeService`:
+- takes `campaign_id` on an Advertising expense or director-paid expense only;
+- `void()` copies the tag to the reversal.
+
+Monthly Summary:
+- `gross_sales_sen` and `promo_discounts_sen` (`RecognisedRevenue::promoDiscountSen`, the kept share on a settled partial);
+- `kol_fees_accrued_sen`, `kol_fees_paid_sen`, `kol_prepaid_balance_sen`;
+- `envelope_manual_expenses_sen` now leaves out tagged payments.
+
+The close preview's net subtracts the accrued KOL fee instead of the cash payment.
+
+Admin:
+- the Envelope form shows a "KOL campaign" dropdown for Advertising, with a live balance preview ("Owed RM 500.00 now → Prepaid RM 1000.00 after, covers to Jan 2027");
+- the entries table shows `KOL: <campaign>`;
+- the summary page has five new lines with definitions;
+- the month-close panel includes the KOL fees.
+
+**Verified.**
+- Backend suite: 3614 passed (7 new). Mutation checks on the plain-expense exclusion, the void tag, the close net and the closed-month guard each fail their test. The first version of the closed-month test passed for the wrong reason (an "end before start" rejection); it was rewritten.
+- Admin: `tsc`, lint and unit tests (22) are clean, and the build is OK.
+- Browser check: a throwaway sqlite backend and a local admin build, driven with Playwright. A RM1,500 payment was tagged to a RM500/month campaign. The summary showed accrued RM500, paid RM1500, prepaid RM1000, manual expenses RM0 and operating profit unchanged.
+- Local dev DB migrated.

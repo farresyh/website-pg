@@ -389,3 +389,13 @@ Refinements made while building PR 1, test-first against V1–V20. None changes 
 - **Cancel-and-replace runs before the quote (V8).** A fresh checkout with an identical identity cancels the old unpaid checkout first, even if the new code later turns out invalid. The old link was abandoned either way, so nothing is lost.
 - **Locking reads in `reserve()` (V5, V8).** Found by the new MySQL concurrency test: both racers got a discount. Under REPEATABLE READ a plain read inside the reserve transaction still sees the snapshot from before the brand lock was granted. The budget sum and the live-redemption check therefore read with a shared lock. Voucher and quota were never exposed to this, because they read their balance row with `lockForUpdate()`.
 - **Settings.** `platform_settings.campaign_min_margin_percent` (default 2.00) is the only V19 setting PR 1 needs. The scorecard settings arrive with PR 4.
+
+### 2026-11-04 addendum — PR 2 build notes (fee schedule and accounting)
+
+- **Monthly fee only (refines V12).** A fee row is entered as a monthly fee with an optional end month. The founder chose monthly entry over a "package total" field. A package ("RM1,500 for 3 months") is entered as RM500 with an end month, so the remainder-sen rule is not needed while fees are whole monthly amounts.
+- **The Monthly Summary presents the accountant's view in three places:**
+  - The gross − promo = net lines sit above recognised revenue.
+  - The three KOL fee lines sit after the envelope expenses.
+  - The month-close panel shows the accrued KOL fee beside the envelope expenses and subtracts it in "Net (information only)".
+- **No allocation change.** `operatingProfit()` and the allocation are unchanged; a test pins it.
+- **Member with a promo (decision 4, R13).** The founder chose to warn: when a signed-in member enters a code, the storefront says the member price is lower and that the code switches the order to the standard price. That is built in PR 3. The backend already prices such an order as Standard less the promo, and never stacks the two.
