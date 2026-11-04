@@ -1876,7 +1876,7 @@ The founder closed the session here; the next session starts from item 57 (ADR-1
 
 The founder reviewed the first 28 CS knowledge suggestions with Claude (all closed: 13 merged, 2 approved as new entries #8 and #9, 12 rejected, 1 chat ignored; checked read-only on prod), then settled item 57's open questions.
 
-**Founder decisions:** KOL 1 RM500 a month, KOL 2 from RM2,000 (negotiating); PekanGame only; a percentage with no RM cap (as the competitor), shown to the customer only as RM saved; new customers only, once per code; attribution stays most-recent-touch (with new-customers-only a customer stays with the KOL who brought them in); not on Joki; a 2% margin floor; a `?promo=` link that prefills the code for 7 days; target CAC and trial length set later in the panel.
+**Founder decisions:** KOL 1 RM500 a month, KOL 2 from RM2,000 (negotiating); PekanGame only; a percentage with no RM cap (as the competitor), shown to the customer only as RM saved; new customers only, once per code; attribution stays most-recent-touch (with new-customers-only a customer stays with the KOL who brought them in); not on Joki; a 2% margin floor; a `?promo=` link that prefills the code (7 days proposed, not yet confirmed); target CAC and trial length set later in the panel.
 
 **Data used (prod, read-only, paid non-wallet orders since 2026-10-05):** 41 orders, RM2,338.09, 24 customers, 1.71 orders each, 33 of 41 on OhahaStore; about RM8.85 profit per customer per month. Breakeven new customers a month: KOL 1 ≈ 57 (one month of buying) or ≈ 19 (three months); KOL 2 ≈ 226 or ≈ 75.
 
