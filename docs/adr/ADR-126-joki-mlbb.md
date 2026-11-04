@@ -55,7 +55,7 @@
 
 ### 2026-10-23 addendum — re-traced against ADR-125 as built; grill S1–S26 and stress test F1–F5
 
-**Context.** ADR-126 was written on 2026-10-17, before ADR-125 decisions 48–64 were built and before Login Top-up ran on production (first real order PG-YTVHCNMQ2SZX, 2026-10-23, build-log). Before building, the design was re-traced against the code in three read-only passes, one per layer (checkout and pricing; ledger, fulfilment and compensation; downstream readers), with the top findings re-checked by hand. It was then grilled with the founder (S1–S26, in Malay) and stress-tested once more (F1–F5). This addendum overrides the original decisions where they differ.
+**Context.** ADR-126 was written on 2026-10-17, before ADR-125 decisions 48–64 were built and before Login Top-up ran on production (first real order PG-YTVHCNMQ2SZX, 2026-10-23, build-log-archive). Before building, the design was re-traced against the code in three read-only passes, one per layer (checkout and pricing; ledger, fulfilment and compensation; downstream readers), with the top findings re-checked by hand. It was then grilled with the founder (S1–S26, in Malay) and stress-tested once more (F1–F5). This addendum overrides the original decisions where they differ.
 
 **Decision.**
 
