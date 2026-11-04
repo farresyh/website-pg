@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\AffiliateImpersonationController;
 use App\Http\Controllers\Admin\AffiliateMembershipTierController;
 use App\Http\Controllers\Admin\BlacklistController;
 use App\Http\Controllers\Admin\BudgetEnvelopeController;
+use App\Http\Controllers\Admin\CampaignController;
 use App\Http\Controllers\Admin\CrawlerRuleController;
 use App\Http\Controllers\Admin\CsEvalController;
 use App\Http\Controllers\Admin\CsKnowledgeController;
@@ -863,6 +864,22 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
     // account), not a supplier-integration one, same reasoning as
     // Membership above. Nested under {supplier} like the reseller wallet
     // is under {reseller}.
+    // ADR-118 V15 (PR 4): the Campaigns page. Super admin only, like Accounting:
+    // a campaign's fee schedule feeds the Monthly Summary. `settings` and
+    // `margin-check` stay above `{campaign}` or they bind as an id.
+    Route::middleware('admin.role:super_admin')->group(function () {
+        Route::get('/campaigns', [CampaignController::class, 'index']);
+        Route::post('/campaigns', [CampaignController::class, 'store']);
+        Route::patch('/campaigns/settings', [CampaignController::class, 'updateSettings']);
+        Route::get('/campaigns/margin-check', [CampaignController::class, 'marginCheck']);
+        Route::get('/campaigns/{campaign}', [CampaignController::class, 'show']);
+        Route::patch('/campaigns/{campaign}', [CampaignController::class, 'update']);
+        Route::post('/campaigns/{campaign}/fees', [CampaignController::class, 'storeFee']);
+        Route::patch('/campaign-fees/{campaignFee}', [CampaignController::class, 'updateFee']);
+        Route::post('/campaigns/{campaign}/codes', [CampaignController::class, 'storeCode']);
+        Route::patch('/promo-codes/{promoCode}', [CampaignController::class, 'updateCode']);
+    });
+
     Route::middleware('admin.role:super_admin')->prefix('accounting')->group(function () {
         Route::prefix('suppliers/{supplier}/transfers')->group(function () {
             Route::get('/', [SupplierTransferController::class, 'index']);

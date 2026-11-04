@@ -38,6 +38,9 @@ class PlatformSettings extends Model
         'company_address',
         'partner_applications_open',
         'campaign_min_margin_percent',
+        'campaign_qualified_min_sen',
+        'campaign_target_cac_sen',
+        'campaign_trial_months',
     ];
 
     protected $casts = [
@@ -53,6 +56,9 @@ class PlatformSettings extends Model
         'balance_cap_default_sen' => 'integer',
         'partner_applications_open' => 'boolean',
         'campaign_min_margin_percent' => 'decimal:2',
+        'campaign_qualified_min_sen' => 'integer',
+        'campaign_target_cac_sen' => 'integer',
+        'campaign_trial_months' => 'integer',
     ];
 
     public static function current(): self
@@ -77,6 +83,7 @@ class PlatformSettings extends Model
             'balance_cap_default_sen' => 10_000_000,
             'partner_applications_open' => false,
             'campaign_min_margin_percent' => 2.00,
+            'campaign_qualified_min_sen' => 1000,
         ]);
     }
 }

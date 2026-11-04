@@ -3,13 +3,19 @@
 namespace App\Services\Report;
 
 use App\Models\Affiliate;
+use App\Models\Campaign;
 use App\Models\Game;
 use App\Models\LedgerEntry;
 use App\Models\Order;
+use App\Models\PlatformSettings;
+use App\Models\PromoCodeClick;
+use App\Models\PromoCodeRedemption;
 use App\Models\Reseller;
 use App\Models\Voucher;
 use App\Services\Accounting\MonthlyAccountingSummaryService;
 use App\Services\Accounting\RecognisedRevenue;
+use App\Services\Campaign\CampaignFeeSchedule;
+use App\Services\Campaign\PromoCustomer;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -1076,6 +1082,151 @@ final class ReportService
                 'affiliate_profit' => (int) $entries->where('owner_type', LedgerOwnerType::Affiliate->value)->sum('amount'),
             ];
         });
+    }
+
+    /**
+     * ADR-118 V14: the campaign scorecard, one row per campaign (with its
+     * codes), for the range. Null bounds = cumulative.
+     *
+     * - Sales and profit are Reports' own: sales on `paid_at`, profit from
+     *   the ledger on its recognition date. "Redeemed" orders carry the
+     *   promo; "attributed only" are a KOL customer's later orders (V6).
+     * - New customers are the committed redemptions whose order was paid in
+     *   the range. Qualified = first order ≥ the panel minimum, or they
+     *   bought again (any time since). Returned / 30-day repeat follow them.
+     * - Fees are the accrued schedule for the months the range touches,
+     *   never payment dates, so CAC doesn't spike in a prepaying month.
+     *
+     * ponytail: customer matching is a PHP pass over KOL orders through the
+     * one PromoCustomer seam; fine at a few hundred KOL customers.
+     *
+     * @return array<int, array<string, mixed>> keyed by campaign id
+     */
+    public function campaignBreakdown(?CarbonImmutable $from, ?CarbonImmutable $toExclusive): array
+    {
+        $campaigns = Campaign::query()->with(['fees', 'promoCodes'])->orderBy('id')->get();
+        $codeCampaign = $campaigns->flatMap(fn (Campaign $c) => $c->promoCodes->mapWithKeys(fn ($p) => [$p->id => $c->id]))->all();
+
+        // code * 2 + (attributed only ? 1 : 0): two buckets per code in one grouped query.
+        $key = 'orders.attributed_promo_code_id * 2 + CASE WHEN orders.promo_code_id IS NULL THEN 1 ELSE 0 END';
+        $sales = $this->salesByGroup($this->scopedOrders($from, $toExclusive, null)->whereNotNull('attributed_promo_code_id'), $key);
+        $profit = $this->profitByGroup($from, $toExclusive, null, $key);
+
+        $clicks = PromoCodeClick::query()
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
+            ->groupBy('promo_code_id')->selectRaw('promo_code_id, COUNT(*) as n')->pluck('n', 'promo_code_id');
+        $discounts = app(RecognisedRevenue::class)->promoDiscountByCode($from, $toExclusive);
+
+        $redemptions = PromoCodeRedemption::query()
+            ->where('status', PromoCodeRedemption::STATUS_COMMITTED)
+            ->whereHas('order', fn ($q) => $q->where('is_test', false)->whereNotNull('paid_at')
+                ->when($from, fn ($q) => $q->where('paid_at', '>=', $from))
+                ->when($toExclusive, fn ($q) => $q->where('paid_at', '<', $toExclusive)))
+            ->with('order.game:id,family')
+            ->get()
+            ->groupBy('promo_code_id');
+        // Every later order of a KOL customer, any date: "did they come back?"
+        $laterOrders = Order::query()
+            ->whereNotNull('attributed_promo_code_id')->whereNull('promo_code_id')
+            ->where('is_test', false)->where('payment_status', PaymentStatus::Paid->value)
+            ->with('game:id,family')
+            ->get(['id', 'game_id', 'customer_email', 'customer_phone', 'player_id', 'server_id', 'paid_at', 'attributed_promo_code_id'])
+            ->groupBy('attributed_promo_code_id');
+
+        $settings = PlatformSettings::current();
+        $fees = app(CampaignFeeSchedule::class);
+        $rows = [];
+
+        foreach ($campaigns as $campaign) {
+            $codes = [];
+            $firsts = collect();
+
+            foreach ($campaign->promoCodes as $code) {
+                $redeemed = $sales->get($code->id * 2);
+                $only = $sales->get($code->id * 2 + 1);
+                $codeRedemptions = $redemptions->get($code->id, collect());
+                $firsts = $firsts->concat($codeRedemptions->map(fn (PromoCodeRedemption $r) => [
+                    'order' => $r->order,
+                    'customer' => PromoCustomer::forOrder($r->order),
+                    'later' => $laterOrders->get($code->id, collect()),
+                ]));
+
+                $codes[] = [
+                    'promo_code_id' => $code->id,
+                    'code' => $code->code,
+                    'clicks' => (int) ($clicks[$code->id] ?? 0),
+                    'redemptions' => $codeRedemptions->count(),
+                    'new_customers' => $this->distinctCustomers($codeRedemptions->map(fn ($r) => PromoCustomer::forOrder($r->order))),
+                    'sales_sen' => (int) ($redeemed->sales ?? 0) + (int) ($only->sales ?? 0),
+                    'redeemed' => ['sales_sen' => (int) ($redeemed->sales ?? 0), 'profit_sen' => $profit->get($code->id * 2)['platform'] ?? 0, 'orders' => (int) ($redeemed->orders_count ?? 0)],
+                    'attributed_only' => ['sales_sen' => (int) ($only->sales ?? 0), 'profit_sen' => $profit->get($code->id * 2 + 1)['platform'] ?? 0, 'orders' => (int) ($only->orders_count ?? 0)],
+                    'discount_sen' => (int) ($discounts[$code->id] ?? 0),
+                ];
+            }
+
+            $sum = fn (string $field, string $sub) => array_sum(array_map(fn ($c) => $c[$field][$sub], $codes));
+            $firstValues = $firsts->map(fn ($f) => (int) $f['order']->selling_price)->sort()->values();
+            $returned = $firsts->map(fn ($f) => $f['later']
+                ->filter(fn (Order $o) => $o->paid_at > $f['order']->paid_at && PromoCustomer::forOrder($o)->sameAs($f['customer']))
+                ->min('paid_at'));
+            $qualified = $firsts->filter(fn ($f, $i) => $f['order']->selling_price >= $settings->campaign_qualified_min_sen || $returned[$i] !== null)->count();
+            $feesSen = $this->campaignFeesIn($fees, $campaign, $from, $toExclusive);
+            $profitSen = $sum('redeemed', 'profit_sen') + $sum('attributed_only', 'profit_sen');
+
+            $rows[$campaign->id] = [
+                'clicks' => array_sum(array_column($codes, 'clicks')),
+                'redemptions' => array_sum(array_column($codes, 'redemptions')),
+                'new_customers' => $this->distinctCustomers($firsts->pluck('customer')),
+                'qualified_new_customers' => $qualified,
+                'median_first_order_sen' => $firstValues->isEmpty() ? null : (int) $firstValues->median(),
+                'returned_customers' => $returned->filter()->count(),
+                'repeat_30d_customers' => $returned->filter(fn ($at, $i) => $at !== null && $at->lte($firsts[$i]['order']->paid_at->copy()->addDays(30)))->count(),
+                'redeemed' => ['sales_sen' => $sum('redeemed', 'sales_sen'), 'profit_sen' => $sum('redeemed', 'profit_sen'), 'orders' => $sum('redeemed', 'orders')],
+                'attributed_only' => ['sales_sen' => $sum('attributed_only', 'sales_sen'), 'profit_sen' => $sum('attributed_only', 'profit_sen'), 'orders' => $sum('attributed_only', 'orders')],
+                'discount_sen' => array_sum(array_column($codes, 'discount_sen')),
+                'fees_accrued_sen' => $feesSen,
+                'cac_sen' => $qualified > 0 ? intdiv($feesSen, $qualified) : null,
+                'net_sen' => $profitSen - $feesSen,
+                'codes' => $codes,
+            ];
+        }
+
+        return $rows;
+    }
+
+    /** V5's identity seam: customers matching on any detail count once. */
+    private function distinctCustomers(Collection $customers): int
+    {
+        $seen = [];
+
+        foreach ($customers as $customer) {
+            if (! collect($seen)->contains(fn (PromoCustomer $s) => $s->sameAs($customer))) {
+                $seen[] = $customer;
+            }
+        }
+
+        return count($seen);
+    }
+
+    /** V14: the accrued fee for every KL month the range touches (cumulative: through this month). */
+    private function campaignFeesIn(CampaignFeeSchedule $fees, Campaign $campaign, ?CarbonImmutable $from, ?CarbonImmutable $toExclusive): int
+    {
+        $first = $campaign->fees->first()?->from_month;
+
+        if ($first === null) {
+            return 0;
+        }
+
+        $month = $from === null ? CarbonImmutable::parse($first) : $from->setTimezone(MalaysiaTime::TIMEZONE)->startOfMonth();
+        $last = ($toExclusive === null ? CarbonImmutable::now(MalaysiaTime::TIMEZONE) : $toExclusive->subSecond()->setTimezone(MalaysiaTime::TIMEZONE))->startOfMonth();
+        $total = 0;
+
+        for (; $month->format('Y-m') <= $last->format('Y-m'); $month = $month->addMonthNoOverflow()) {
+            $total += $fees->feeForMonth($campaign, $month->format('Y-m'));
+        }
+
+        return $total;
     }
 
     private function scopedOrders(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): Builder
