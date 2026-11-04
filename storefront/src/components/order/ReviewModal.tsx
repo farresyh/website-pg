@@ -525,6 +525,12 @@ export default function ReviewModal({
             </div>
           )}
           <Row k={chargedAsMember ? "Member Price" : "Package Price"} v={`RM${packagePriceRm.toFixed(2)}`} />
+          {promoSavedRm > 0 && (
+            <div className="flex items-center justify-between text-sm text-primary-on-surface">
+              <span>Promo ({promoCode})</span>
+              <span>-RM{promoSavedRm.toFixed(2)}</span>
+            </div>
+          )}
           {!chargedAsMember && showMembershipUpsell && topTierMemberPriceRm !== null && (
             <div className="flex min-h-[60px] items-center justify-between gap-3 rounded-lg border-2 border-ink bg-secondary-container px-3.5 py-2 text-on-secondary-container">
               <div className="flex items-center gap-2">
@@ -547,12 +553,6 @@ export default function ReviewModal({
                 Become a Member
                 <ArrowRight size={11} weight="bold" />
               </Link>
-            </div>
-          )}
-          {promoSavedRm > 0 && (
-            <div className="flex items-center justify-between text-sm text-primary-on-surface">
-              <span>Promo ({promoCode})</span>
-              <span>-RM{promoSavedRm.toFixed(2)}</span>
             </div>
           )}
           {transactionFeeRm != null && <Row k="Transaction Fee" v={`RM${transactionFeeRm.toFixed(2)}`} />}
