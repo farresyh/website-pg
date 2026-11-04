@@ -37,6 +37,7 @@ class PlatformSettings extends Model
         'company_reg_no',
         'company_address',
         'partner_applications_open',
+        'campaign_min_margin_percent',
     ];
 
     protected $casts = [
@@ -51,6 +52,7 @@ class PlatformSettings extends Model
         'topup_max_sen' => 'integer',
         'balance_cap_default_sen' => 'integer',
         'partner_applications_open' => 'boolean',
+        'campaign_min_margin_percent' => 'decimal:2',
     ];
 
     public static function current(): self
@@ -74,6 +76,7 @@ class PlatformSettings extends Model
             'topup_max_sen' => 1_000_000,
             'balance_cap_default_sen' => 10_000_000,
             'partner_applications_open' => false,
+            'campaign_min_margin_percent' => 2.00,
         ]);
     }
 }
