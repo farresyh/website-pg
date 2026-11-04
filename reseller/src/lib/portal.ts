@@ -72,6 +72,8 @@ export interface OrderDetail extends OrderListItem {
   server_id: string | null;
   affiliate_markup_pct?: number;
   voucher_discount?: number;
+  /** ADR-118 V18: a KOL promo's discount (owned brands only today). */
+  promo_discount?: number;
   transaction_fee?: number;
   payment_method?: string | null;
   delivered_at: string | null;
