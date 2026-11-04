@@ -109,6 +109,7 @@ export default function OrderDetailPage() {
                   rows={[
                     ["Customer paid", formatRm(order.final_amount)],
                     ["Voucher discount", order.voucher_discount ? `− ${formatRm(order.voucher_discount)}` : "None"],
+                    ...(order.promo_discount ? [["Promo discount", `− ${formatRm(order.promo_discount)}`] as [string, React.ReactNode]] : []),
                     ["Payment fee", order.transaction_fee ? formatRm(order.transaction_fee) : "None"],
                     ["Your markup", `${order.affiliate_markup_pct ?? 0}%`],
                     ["Paid", order.paid_at ? `${dateAndTime(order.paid_at).date} · ${dateAndTime(order.paid_at).time}` : "Not paid"],

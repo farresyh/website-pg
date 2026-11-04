@@ -1963,3 +1963,50 @@ Admin:
 - Admin: `tsc`, lint and unit tests (22) are clean, and the build is OK.
 - Browser check: a throwaway sqlite backend and a local admin build, driven with Playwright. A RM1,500 payment was tagged to a RM500/month campaign. The summary showed accrued RM500, paid RM1500, prepaid RM1000, manual expenses RM0 and operating profit unchanged.
 - Local dev DB migrated.
+
+## 2026-11-04 — Item 57 PR 3: storefront promo field, `?promo=` link, readers (ADR-118 V4/V16/V18)
+
+**Built.** Two migrations:
+- `2026_11_06_140000_create_promo_code_clicks_table`: one row per `?promo=` visit (V16), so the scorecard can count clicks for any range;
+- `2026_11_06_150000_add_promo_discount_to_llm_report_orders_view`: the Report Assistant view gains `promo_discount_sen`.
+
+Backend:
+- `POST /api/promo-clicks` (`throttle:60,1,promo-click`, `storefront.brand`). It always answers 204 and records only a real code of this brand.
+- `promo_discount` added to track-order (and so to the `OrderStatusUpdated` broadcast) and to the affiliate order API.
+- A "Promo Discount (RM)" column in the orders workbook. It is information only, since the promo is already inside Selling Price.
+- The Report Assistant schema line.
+- The admin order detail loads `promoCode:id,code`.
+
+Storefront:
+- "Have a promo code?" under the voucher field in the Review Modal. Apply needs email and phone first. OrderForm's totals preview validates the code, and a refusal drops the code and shows the server's reason.
+- The customer sees "You save RMx.xx" and a "Promo (CODE)" row, never the percentage.
+- Each field hints when given the other kind of code (vouchers start `VC-`).
+- `?promo=CODE` is read on any page by `PromoLinkCapture` in the root layout. It is kept in `localStorage` for 7 days to prefill the field, and one click is logged per tab (`sessionStorage`).
+- Members (founder's option a): when the member's own price beats the code's price, the modal says so. The quota fall-back message no longer fires because of a promo.
+- `showPromo` / `showMembershipPromo` renamed to `showMembershipUpsell` (R13).
+- The order summary sidebar and the track-order page list Promo (and the sidebar Voucher), so Package Price, discounts and fee add up to Total.
+
+Admin: Order Detail shows "Promo Discount (CODE)". Portal: "Promo discount" on the order view.
+
+**Fixed on the way.** The Review Modal stayed mounted while closed, so a reopened modal still showed an applied voucher that OrderForm had cleared and would not send. It now mounts only while open, on both the order page and `/joki` (same bug there).
+
+**Verified.**
+- Backend suite: 3618 passed (4 new). The public-route allowlist and the workbook's column letters were updated for the new route and column.
+- Storefront, admin and portal: `tsc`, lint and build are clean.
+- Browser check with the e2e harness and a temporary spec (deleted afterwards). The flow:
+  1. `/?promo=kol10` logged one click; a reload in the same tab logged none.
+  2. The modal prefilled `KOL10`. A `VC-` code got the hint.
+  3. Applying showed "You save RM0.50", and checkout sent `promo_code: KOL10`.
+  4. The order was stored with `selling_price` 450 and `promo_discount_sen` 50, and the admin API returned `promo_code.code` KOL10.
+  5. After the CHIP webhook and delivery, the status page showed Package RM5.00, Promo −RM0.50, Fee +RM1.00.
+  6. The same customer applying again saw the new-customers message, and the code was dropped (mobile 390px).
+- A second browser round (the founder asked for the cases the first one skipped):
+  - voucher and promo together: RM5.00 − 0.50 promo + 1.00 fee − 2.00 voucher = RM3.50, and Confirm & Pay matched;
+  - closing and reopening the modal cleared the voucher and kept the promo;
+  - a signed-in top-tier member who applied the code saw "Your member price (RM4.16) is lower…", with no quota message;
+  - the whole modal on mobile at 390px;
+  - `/joki` shows no promo field.
+  The Promo row was moved directly under Package Price, so the member upsell strip no longer separates the two.
+- Local dev DB migrated.
+
+**Not reachable yet:** codes can only be created from PR 4's Campaigns page.

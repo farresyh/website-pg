@@ -82,6 +82,8 @@ final class ReportAssistantService
             both, say so; the exact month figure is the Monthly Accounting Summary's operating
             profit, not a sum of platform_profit
           - transaction_fee, voucher_discount (sen)
+          - promo_discount_sen (a KOL promo code's discount, sen; already taken off selling_price,
+            so never subtract it again)
           - affiliate_markup_pct, wholesale_markup_pct (percent, whichever channel applied)
           - final_amount (what the customer paid, sen, before any wallet refund)
           - wallet_refund (sen credited back to a reseller's wallet for this order; 0 if none)

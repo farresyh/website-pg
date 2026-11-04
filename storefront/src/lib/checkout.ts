@@ -95,6 +95,8 @@ const CheckoutPayloadSchema = z.object({
    * Modal's own "Apply" preview.
    */
   voucher_code: z.string().optional(),
+  /** ADR-118: a KOL promo code; the server computes the discount, never the client. */
+  promo_code: z.string().optional(),
   /** ADR-126: a joki order's climb and requests; the price is never sent (ORD-9). */
   joki: JokiSelectionSchema.optional(),
 });
@@ -153,7 +155,9 @@ export async function submitCheckout(payload: CheckoutPayload, membershipToken?:
  * formula the real charge uses (`CheckoutController::previewTotal()`).
  */
 const CheckoutTotalPreviewSchema = z.object({
+  /** ADR-118 V4: before the promo; `promo_discount_sen` is the RM saved. */
   selling_price_sen: z.number(),
+  promo_discount_sen: z.number(),
   member_discount_percent: z.number().nullable(),
   voucher_discount_sen: z.number(),
   transaction_fee_sen: z.number(),
@@ -169,6 +173,10 @@ export interface CheckoutTotalPreviewParams {
   voucher_code?: string;
   customer_email?: string;
   customer_phone?: string;
+  /** ADR-118 V7: with a promo the server also needs who is buying (new-customer rule). */
+  promo_code?: string;
+  player_id?: string;
+  server_id?: string;
   joki?: JokiSelection;
 }
 

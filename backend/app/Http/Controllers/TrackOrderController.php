@@ -126,6 +126,8 @@ class TrackOrderController extends Controller
             'payment_method' => $order->payment_method,
             'selling_price' => $order->selling_price,
             'voucher_discount' => $order->voucher_discount ?? 0,
+            // ADR-118 V18: the KOL promo, already taken off `selling_price`.
+            'promo_discount' => (int) $order->promo_discount_sen,
             'transaction_fee' => $order->transaction_fee,
             'final_amount' => $order->final_amount,
             'payment_status' => $order->payment_status->value,

@@ -843,6 +843,8 @@ class OrderController extends Controller
             // voucher issued because this order failed). Powers the
             // Order Detail "Voucher Used to Pay" refund-information card.
             'paidWithVoucher',
+            // ADR-118 V18: the KOL code behind `promo_discount_sen`.
+            'promoCode:id,code',
             // ADR-073 decision 7: which Reseller (wallet) account placed
             // this order, if any — the admin detail screen swaps "Issue
             // Voucher" for "Refund to Wallet" when this is set.

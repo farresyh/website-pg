@@ -109,6 +109,7 @@ class OrderController extends Controller
             'server_id' => $order->isLoginOrder() ? null : $order->server_id,
             'affiliate_markup_pct' => (float) $order->affiliate_markup_pct,
             'voucher_discount' => $order->voucher_discount,
+            'promo_discount' => (int) $order->promo_discount_sen,
             'transaction_fee' => $order->transaction_fee,
             'payment_method' => $order->payment_method,
             'delivered_at' => $order->delivered_at?->toIso8601String(),

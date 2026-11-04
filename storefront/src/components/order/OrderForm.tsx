@@ -250,6 +250,19 @@ export default function OrderForm({
     setVoucherCode(code);
   }, []);
 
+  // ADR-118: the applied KOL promo code. The totals preview below is what
+  // validates it (the server's new-customer rule needs email, phone and the
+  // player account); a refusal there clears it and shows the reason.
+  // Kept across Review Modal opens: unlike a voucher it is not tied to
+  // one attempt. A change gets its own idempotency key, as a voucher does.
+  const [promoCode, setPromoCode] = useState<string | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const changePromo = useCallback((code: string | null) => {
+    idempotencyKeyRef.current = crypto.randomUUID();
+    setPromoError(null);
+    setPromoCode(code);
+  }, []);
+
   // useCallback so the memoized OrderSummarySidebar isn't re-rendered
   // just because OrderForm re-rendered (ADR-071 PR2).
   const openReview = useCallback(() => {
@@ -295,7 +308,7 @@ export default function OrderForm({
   // plans, no Tier 2 anchor price).
   const topTier =
     membershipPlans.length > 0 ? membershipPlans.reduce((a, b) => (b.discountPercent > a.discountPercent ? b : a)) : null;
-  const showPromo =
+  const showMembershipUpsell =
     selectedPackage !== null && topTier !== null && selectedTier2MemberPriceRm !== null && activeTierName !== topTier.name;
 
   // Bug fix, 2026-08-30: Order Summary/Review Modal used to compute
@@ -308,12 +321,22 @@ export default function OrderForm({
   // (rather than resetting state synchronously in the effect) so a
   // stale preview is never shown mid-refetch or after a selection
   // changes back.
+  // What the summary and review show for the account: the identifier
+  // only, never a secret field. Also the player account a promo is checked
+  // against (ADR-118 V5).
+  const accountLabel = loginGame ? (game.credentialFields.find((f) => f.isIdentifier)?.label ?? "Login") : "Player ID";
+  const accountValue = loginGame ? loginIdentifier(game.credentialFields, credentials) : playerId;
+  const promoServerId = game.extraField ? serverId : "";
+
   const totalPreviewKey =
     selectedPackage && channelCode
-      ? JSON.stringify([selectedPackage.id, channelCode, voucherCode, membershipToken, contactEmail, customerPhone, checkoutAttempt])
+      ? JSON.stringify([selectedPackage.id, channelCode, voucherCode, promoCode, accountValue, promoServerId, membershipToken, contactEmail, customerPhone, checkoutAttempt])
       : null;
   const [totalPreview, setTotalPreview] = useState<{ key: string; result: CheckoutTotalPreview } | null>(null);
   const preview = totalPreview && totalPreview.key === totalPreviewKey ? totalPreview.result : null;
+  // The key of a preview that failed (network, timeout): the Review Modal
+  // then says so instead of showing "Checking…" for an applied promo forever.
+  const [failedPreviewKey, setFailedPreviewKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!totalPreviewKey || !selectedPackage || !channelCode) return;
@@ -323,6 +346,8 @@ export default function OrderForm({
     // Review Modal's email/phone (a voucher makes those part of the
     // key), shouldn't fire a `previewCheckoutTotal` round trip per
     // keystroke. A dep change within the window clears the pending call.
+    // A voucher or a promo is matched against who is buying.
+    const withContact = voucherCode !== null || promoCode !== null;
     const timer = setTimeout(() => {
       previewCheckoutTotal(
         {
@@ -330,17 +355,29 @@ export default function OrderForm({
           package_id: selectedPackage.id,
           channel_code: channelCode,
           voucher_code: voucherCode ?? undefined,
-          customer_email: voucherCode ? contactEmail : undefined,
-          customer_phone: voucherCode ? customerPhone : undefined,
+          customer_email: withContact ? contactEmail : undefined,
+          customer_phone: withContact ? customerPhone : undefined,
+          promo_code: promoCode ?? undefined,
+          player_id: promoCode ? accountValue : undefined,
+          server_id: promoCode && promoServerId ? promoServerId : undefined,
         },
         membershipToken ?? undefined,
       )
         .then((result) => {
           if (!cancelled) setTotalPreview({ key: totalPreviewKey, result });
         })
-        .catch(() => {
-          // A failed preview just leaves the sidebar/modal without a fee
-          // breakdown (falls back to package-price-only display) rather
+        .catch((err) => {
+          // ADR-118: a refused promo is dropped with its reason, so the
+          // total shown is again the one checkout will charge.
+          if (!cancelled && err instanceof ApiError && err.errors?.promo_code) {
+            idempotencyKeyRef.current = crypto.randomUUID();
+            setPromoCode(null);
+            setPromoError(err.errors.promo_code[0]);
+          } else if (!cancelled) {
+            setFailedPreviewKey(totalPreviewKey);
+          }
+          // Otherwise a failed preview just leaves the sidebar/modal without
+          // a fee breakdown (falls back to package-price-only display) rather
           // than blocking the order flow — the real charge is still
           // computed correctly server-side at checkout regardless (ORD-9).
         });
@@ -350,7 +387,7 @@ export default function OrderForm({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [totalPreviewKey, game.id, selectedPackage, channelCode, voucherCode, membershipToken, contactEmail, customerPhone]);
+  }, [totalPreviewKey, game.id, selectedPackage, channelCode, voucherCode, promoCode, accountValue, promoServerId, membershipToken, contactEmail, customerPhone]);
 
   // Editing the ID after Step 1 was completed invalidates that
   // completion — re-lock downstream steps rather than trust stale state.
@@ -369,11 +406,6 @@ export default function OrderForm({
     setCredentialConsentRaw(value);
     if (!value && step1Continued) setStep1Continued(false);
   }
-  // What the summary and review show for the account: the identifier
-  // only, never a secret field.
-  const accountLabel = loginGame ? (game.credentialFields.find((f) => f.isIdentifier)?.label ?? "Login") : "Player ID";
-  const accountValue = loginGame ? loginIdentifier(game.credentialFields, credentials) : playerId;
-
   function updateServerId(value: string) {
     setServerIdRaw(value);
     if (step1Continued) {
@@ -457,6 +489,7 @@ export default function OrderForm({
         fpx_bank_code: bankCode ?? undefined,
         idempotency_key: idempotencyKeyRef.current ?? crypto.randomUUID(),
         voucher_code: voucherCode ?? undefined,
+        promo_code: promoCode ?? undefined,
         // CHIP needs these for its hosted checkout page (FPX, DuitNow QR)
         // — where it sends the customer back to after they pay. We do not
         // have the order_number yet at this point (only the backend does,
@@ -565,7 +598,7 @@ export default function OrderForm({
             onReview={openReview}
           />
         </div>
-        {showPromo && topTier && selectedPackage && selectedTier2MemberPriceRm !== null && (
+        {showMembershipUpsell && topTier && selectedPackage && selectedTier2MemberPriceRm !== null && (
           <MembershipPromoCard
             plan={topTier}
             packageName={selectedPackage.name}
@@ -593,7 +626,10 @@ export default function OrderForm({
         </div>
       </div>
 
-      {selectedPackage && selectedChannel && (
+      {/* Mounted only while open, so a reopened modal starts from OrderForm's
+        * state (a voucher is cleared on every open) instead of showing a
+        * voucher it would no longer send. */}
+      {selectedPackage && selectedChannel && reviewOpen && (
         <ReviewModal
           key={checkoutAttempt}
           open={reviewOpen}
@@ -617,7 +653,13 @@ export default function OrderForm({
           submitError={submitError}
           onConfirm={handleConfirmPayment}
           onVoucherChange={changeVoucher}
-          showMembershipPromo={showPromo}
+          promoCode={promoCode}
+          previewFailed={failedPreviewKey !== null && failedPreviewKey === totalPreviewKey}
+          promoError={promoError}
+          onPromoChange={changePromo}
+          promoPlayerId={accountValue}
+          promoServerId={promoServerId}
+          showMembershipUpsell={showMembershipUpsell}
           topTierMemberPriceRm={selectedTier2MemberPriceRm}
           // Bug found live-testing: `activeSession` is set for anyone with
           // a *verified* membership-session token, which exists before a
