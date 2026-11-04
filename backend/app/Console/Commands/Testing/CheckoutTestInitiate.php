@@ -2,6 +2,9 @@
 
 namespace App\Console\Commands\Testing;
 
+use App\Models\Game;
+use App\Services\Campaign\InvalidPromoCodeException;
+use App\Services\Campaign\PromoCustomer;
 use App\Services\Checkout\CheckoutAttemptClosedException;
 use App\Services\Checkout\CheckoutRequest;
 use App\Services\Checkout\CheckoutService;
@@ -23,7 +26,7 @@ use Illuminate\Http\Request;
  * for real (ADR-024 2026-10-04 addendum). The fake gateway always
  * succeeds — the race under test is the reservation after it.
  */
-#[Signature('app:checkout-test-initiate {affiliateId} {gameId} {packageId} {costPriceSen} {sellingPriceSen} {markupPercent} {idempotencyKey} {resultFile} {--voucher=} {--membership=}')]
+#[Signature('app:checkout-test-initiate {affiliateId} {gameId} {packageId} {costPriceSen} {sellingPriceSen} {markupPercent} {idempotencyKey} {resultFile} {--voucher=} {--membership=} {--promo=}')]
 #[Description('Test-only: initiate a gateway checkout (voucher and/or member) and write the outcome to a result file.')]
 class CheckoutTestInitiate extends Command
 {
@@ -80,11 +83,17 @@ class CheckoutTestInitiate extends Command
                 packageId: (int) $this->argument('packageId'),
                 affiliateId: (int) $this->argument('affiliateId'),
                 membershipId: $this->option('membership') !== null ? (int) $this->option('membership') : null,
+                // ADR-118: two KOL codes raced by one customer.
+                promoCode: $this->option('promo'),
+                promoCustomer: PromoCustomer::at(Game::query()->findOrFail((int) $this->argument('gameId')), 'buyer@example.com', null, '123456', null),
             ), $gateway);
 
             file_put_contents($resultFile, $order->payment_ref !== null ? 'linked' : $order->payment_status->value);
         } catch (CheckoutAttemptClosedException $e) {
             file_put_contents($resultFile, 'checkout_closed: '.$e->getMessage());
+        } catch (InvalidPromoCodeException) {
+            // ADR-118: the processes did not overlap; the second quote already saw the first redemption.
+            file_put_contents($resultFile, 'rejected_at_preview');
         } catch (InvalidVoucherException) {
             // The two processes did not overlap: the second one's preview
             // already saw the drained voucher. A legitimate outcome.

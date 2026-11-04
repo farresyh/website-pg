@@ -4,10 +4,11 @@ namespace App\Services\Fulfillment;
 
 use App\Models\MembershipQuotaDebit;
 use App\Models\Order;
-use App\Models\Reseller;
 use App\Models\OrderDeliveryLeg;
+use App\Models\Reseller;
 use App\Models\ResellerBotOrderNotification;
 use App\Models\VoucherRedemption;
+use App\Services\Campaign\CampaignService;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Membership\MembershipQuotaService;
@@ -51,6 +52,7 @@ final class OrderSettlementService
         private readonly CustomerNotificationService $notifications,
         private readonly OpenWaClient $openWa,
         private readonly ResellerWebhookDispatcher $webhooks,
+        private readonly CampaignService $campaigns,
     ) {}
 
     /**
@@ -91,6 +93,8 @@ final class OrderSettlementService
 
             $amounts = $this->amounts($locked);
             $this->restoreQuota($locked, $amounts['num'], $amounts['den']);
+            // ADR-118 V9: the promo's undelivered share goes back to its code's budget.
+            $this->campaigns->restore($locked->id, (int) round($locked->promo_discount_sen * $amounts['num'] / $amounts['den']));
 
             if ($locked->delivery_status === DeliveryStatus::PartiallyDelivered) {
                 $this->creditDeliveredProfit($locked, $amounts);

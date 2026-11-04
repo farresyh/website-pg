@@ -64,6 +64,10 @@ final readonly class OrderDraft
         // ADR-126 decision 1: a joki order's `joki_orders` row, written in
         // the same transaction as the order INSERT.
         public ?JokiPurchase $joki = null,
+        // ADR-118 R1/V6: `pricing` is already after the promo; these record it.
+        public ?int $promoCodeId = null,
+        public int $promoDiscountSen = 0,
+        public ?int $attributedPromoCodeId = null,
     ) {}
 
     /**

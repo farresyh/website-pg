@@ -5,6 +5,8 @@ namespace App\Services\Checkout;
 use App\Jobs\FulfillOrderJob;
 use App\Models\Membership;
 use App\Models\Order;
+use App\Services\Campaign\CampaignService;
+use App\Services\Campaign\PromoCustomer;
 use App\Services\Membership\MembershipQuotaService;
 use App\Services\Order\DuplicateOrderException;
 use App\Services\Order\OrderDraft;
@@ -43,6 +45,7 @@ final class CheckoutService
         private readonly VoucherService $vouchers,
         private readonly MembershipQuotaService $membershipQuota,
         private readonly StorefrontBrand $storefrontBrand,
+        private readonly CampaignService $campaigns,
     ) {}
 
     /**
@@ -75,6 +78,13 @@ final class CheckoutService
             $request->tierMarkupPct,
             $request->memberPricingApplies ? $request->membershipId : null,
         );
+
+        // ADR-118 V7: the promo lowers the price and the platform profit before
+        // anything is totalled or stored, so selling_price is after it (R1).
+        $promo = $request->promoCode !== null && $request->promoCustomer !== null && $request->affiliateId !== null
+            ? $this->campaigns->quote($request->promoCode, $request->affiliateId, $pricing, $request->promoCustomer)
+            : null;
+        $pricing = $promo?->pricing ?? $pricing;
 
         // ADR-068 decision 16: a logged-in member's order is attributed
         // to their OTP-verified membership email, never a contact address
@@ -154,6 +164,9 @@ final class CheckoutService
                 channelCode: $request->channelCode,
                 credentials: $request->credentials,
                 joki: $request->joki,
+                promoCodeId: $promo?->promoCodeId,
+                promoDiscountSen: $promo?->discountSen ?? 0,
+                attributedPromoCodeId: $promo?->promoCodeId ?? $this->attributionFor($request),
             ));
         } catch (DuplicateOrderException $e) {
             throw new DuplicateCheckoutAttemptException(
@@ -448,7 +461,23 @@ final class CheckoutService
             return false;
         }
 
+        // ADR-118 V8: the promo is the third instrument; losing it gives back the other two.
+        if (! $this->campaigns->reserve($order)) {
+            $this->membershipQuota->restore($order->id);
+            $this->vouchers->restore($order->id);
+
+            return false;
+        }
+
         return true;
+    }
+
+    /** ADR-118 V6: a later order of a customer a KOL brought in counts for that KOL's code. */
+    private function attributionFor(CheckoutRequest $request): ?int
+    {
+        return $request->promoCustomer !== null && $request->affiliateId !== null
+            ? $this->campaigns->attributionFor($request->affiliateId, $request->promoCustomer)
+            : null;
     }
 
     /**
@@ -462,6 +491,7 @@ final class CheckoutService
             'order_number' => $order->order_number,
             'voucher_id' => $order->voucher_id,
             'membership_id' => $order->membership_id,
+            'promo_code_id' => $order->promo_code_id,
         ]);
     }
 
@@ -552,6 +582,9 @@ final class CheckoutService
         ?int $affiliateId = null,
         // ADR-126 decision 8: a joki review total, priced as its checkout will be.
         ?PricingResolution $pricing = null,
+        // ADR-118 V7: the same quote checkout applies.
+        ?string $promoCode = null,
+        ?PromoCustomer $promoCustomer = null,
     ): CheckoutTotalPreview {
         $pricing ??= $this->pricingResolver->resolveStorefront(
             $costPriceSen,
@@ -561,6 +594,12 @@ final class CheckoutService
             $tierMarkupPct,
             $membershipId,
         );
+        $listedSellingPriceSen = $pricing->sellingPriceSen;
+
+        $promo = $promoCode !== null && $promoCustomer !== null && $affiliateId !== null
+            ? $this->campaigns->quote($promoCode, $affiliateId, $pricing, $promoCustomer)
+            : null;
+        $pricing = $promo?->pricing ?? $pricing;
 
         [, $total, $fullyCoveredByVoucher] = $this->computeTotal(
             $pricing->sellingPriceSen,
@@ -572,7 +611,9 @@ final class CheckoutService
         );
 
         return new CheckoutTotalPreview(
-            sellingPriceSen: $pricing->sellingPriceSen,
+            // Before the promo, so the customer sees the price, then "Jimat RMx" (V4).
+            sellingPriceSen: $listedSellingPriceSen,
+            promoDiscountSen: $promo?->discountSen ?? 0,
             memberDiscountPercent: $pricing->memberDiscountPercent,
             voucherDiscountSen: $total->voucherDiscount,
             transactionFeeSen: $fullyCoveredByVoucher ? 0 : $total->transactionFee,

@@ -40,8 +40,13 @@ class PreviewCheckoutTotalRequest extends FormRequest
                 Rule::exists('payment_methods', 'channel_code')->where('is_active', true),
             ],
             'voucher_code' => ['nullable', 'string', 'max:32'],
-            'customer_email' => ['nullable', 'required_with:voucher_code', 'email', 'max:255'],
-            'customer_phone' => ['nullable', 'string', 'max:32'],
+            'customer_email' => ['nullable', 'required_with:voucher_code,promo_code', 'email', 'max:255'],
+            'customer_phone' => ['nullable', 'required_with:promo_code', 'string', 'max:32'],
+            // ADR-118 V7: the promo's new-customer rule needs the player account
+            // too, so the RM saved shown here is the one checkout gives.
+            'promo_code' => ['nullable', 'string', 'max:32'],
+            'player_id' => ['nullable', 'required_with:promo_code', 'string', 'max:255'],
+            'server_id' => ['nullable', 'string', 'max:255'],
             ...JokiSelectionRules::rules(),
         ];
     }
