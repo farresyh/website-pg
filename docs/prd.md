@@ -846,20 +846,28 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   every brand). OpenWA's first 90-day message prune is around 2026-12-24;
   PR 1 already keeps the chats.
 
+- **162** Gamevion v2 API ([ADR-137](./adr/ADR-137-gamevion-v2-api.md),
+  Accepted 2026-11-05 after the grill, the money code-trace and a stress test;
+  money-critical). Gamevion, the backup supplier, moved to `gamevion.cloud`;
+  its old API no longer takes orders, and the founder switched it off on
+  2026-11-04. Build, test-first, in three PRs:
+  1. two generic money fixes found by the trace: a package is switched on only
+     through one seam with live blockers ([ADR-015](./adr/ADR-015-price-sync.md)
+     2026-11-05 addendum), and the same-reference age limit on every re-submit
+     path ([ADR-102](./adr/ADR-102-order-delivery-failure-guard-unification.md)
+     2026-11-05 addendum);
+  2. the adapter, the signed webhook, the supplier cutover guard, and removal
+     of the dead `duplicate_reference` paths;
+  3. the package repoint in Product Manager.
+
+  Then the founder's steps (ADR-137 Consequence): `gvk_` key, IP allowlist,
+  webhook URL and secret, config in `/middleware`. Then the first sync, the
+  match list for the 71 old packages (repoint or delete), and one funded test
+  order before any package is switched on.
+
 **B. Needs a short grill / ADR addendum first**
 - **161** Reseller cash rebate plus automatic refund on a failed wallet order (founder, 2026-11-04; new ADR + ADR-073 addendum, money-critical). Context: target is WhatsApp agents of big stores, most under RM10k a month and 1–5 above; they stay with their leader out of habit and trust, and the leader already has a WhatsApp order bot and branded stores, so neither is a selling point. A brainstorm the founder had with another model proposed monthly milestone cashback as a % of sales plus tier up/down by monthly sales; checked against prod on 2026-11-04: 5 tiers (Supreme 1%, SSS 2%, SS 3%, S 4%, A 5%), assigned by an admin; one buying reseller (Tier SS, October RM336.10 sales, RM9.47 profit, 2.82%); the RM1 FPX top-up fee is already reseller-borne. Claude's recommendation: rebate as a panel-set share of the reseller's own `platform_profit` for the month (can never lose money, safe on the 1% tier and thin packages), paid as Purchase Balance credit through `LedgerService` within ADR-131's limits, Malaysia month, delivered orders only; a monthly tier review that suggests up/down for an admin to approve; tiers shown by name only, never `markup_percent`. Automatic refund revises ADR-073 decision 7 (refund is a deliberate admin action today): only on a supplier-confirmed Failed, never NeedsReview or Pending (ADR-102), after automatic retries, through `OrderSettlementService`. Also to ask agents: what annoys them most selling with their leader.
 
-
-- **162** Gamevion v2 API ([ADR-137](./adr/ADR-137-gamevion-v2-api.md),
-  Proposed 2026-11-04, money-critical). Gamevion, the backup supplier, moved
-  to `gamevion.cloud`; its old API no longer takes orders (founder) and failed
-  to connect in every one of the 79 `partial` Price Sync runs of the 14 days
-  to 2026-11-04 (19 of 29 that day). The founder switched it off in
-  `/middleware` (14:11 UTC). Founder decisions: rewrite the adapter, after
-  item 28; `gametopup` only; no `max_price` (as with Digiflazz); no top-up yet,
-  every Gamevion package stays inactive until one funded test order is
-  delivered. Next: the technical grill and the money code-trace on ADR-137
-  decisions 5–12 and its open questions, then build test-first.
 
 **C. Founder actions (no code)**
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches

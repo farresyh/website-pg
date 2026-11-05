@@ -1,6 +1,6 @@
 # ADR-015: Price Sync — cost propagation + deactivation detection (built 2026-07-26)
 
-> **Standing (2026-10-09):** In force; decision 3 (manual-only reactivation) reversed by ADR-100. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-05):** In force; decision 3 (manual-only reactivation) reversed by ADR-100; a package is switched on only through one seam with live blockers (2026-11-05 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-07-26 (grilled with the founder one decision at a time, using the `codebase-design`/`domain-modeling` vocabulary, before any code — explicit founder instruction: this session is audit + research + plan only, build happens next session)
 
@@ -43,3 +43,40 @@
 **Rationale (stress test):** the first design counted consecutive failed runs from run history. Four problems: "Sync Now" clicks and `PRICE_SYNC_INTERVAL_MINUTES` change what N runs means; a `failed()` run would have to claim every supplier failed; a check inside the job never runs when the queue is down; and deriving "already alerted" from history races with a concurrent manual run. A timestamp, an explicit alert column and a scheduler check remove all four. `failed_suppliers` stays as display-only history.
 
 **Consequence to track:** a supplier reactivated after a long pause can get one stale email and its recovery email within the next sync interval. `BackupFailureAlerter`'s name no longer fits its callers (backup, Horizon, Security, Price Sync), and the recovery email also logs at `critical`. Rename it only if it causes confusion.
+
+### 2026-11-05 addendum — a package is switched on through one seam that checks live blockers
+
+**Context.** Found while tracing [ADR-137](./ADR-137-gamevion-v2-api.md) decision 21; stress-tested with the founder (in Malay), who accepted the fix. Checkout sells a package when `packages.is_active` is true and reads nothing else. Nine places turn a package on, each writing `is_active = true, deactivated_reason = null` directly:
+- Pending Reactivation approve and bulk approve;
+- `PendingReactivationAutoApprover`;
+- Dismissed Packages restore;
+- Pending Price Change approve **and** dismiss;
+- `SupplierPackageStatusService::reactivate()` (the supplier's Reactivate button, a manual supplier switched on, an unfunded supplier funded);
+- the `/games` status toggle;
+- the two combo cascades in `ComboPricingService`.
+
+Each clears the one stored reason and checks nothing else, while several blockers can hold at once:
+- **Gap A.** Reactivate on a supplier brings back a package whose price swing is still waiting, at the old cost. It also brings back one whose product vanished while it was off: Price Sync does not touch an inactive package, so the vanish was never recorded.
+- **Gap B.** Approving or dismissing a price swing switches the package on whatever its reason: a supplier switched off, or an admin's own switch-off.
+
+Prod, 2026-11-05: none of the 1,210 active API packages is affected. Inactive packages by reason: `supplier_sync` 109, none recorded 93, `supplier_issue` 71, `combo_component_deactivated` 21, `price_anomaly` 1.
+
+**Decision.**
+1. **One seam, `PackageActivation`, is the only code that switches a package on.** Every one of the nine callers goes through it.
+2. **Blockers are computed when asked, not stored.** Each maps to the existing reason whose own path later brings the package back:
+
+   | Blocker | Reason left on the package |
+   | --- | --- |
+   | an open `PendingPriceChange` | `price_anomaly` |
+   | the supplier is switched off | `supplier_issue` |
+   | a foreign supplier with no landed rate (`LandedCostRate::isFunded()` false) | `unfunded` |
+   | an API supplier's product is missing, not `active`, or not seen by its last successful sync | `supplier_sync` |
+   | a combo with an inactive component | `combo_component_deactivated` |
+
+   A manual supplier has no catalog, so the product check skips it.
+3. **When blocked, the package stays off with the first blocker's reason, and the caller is told which.** An admin sees why; a bulk caller counts it as skipped. The caller resolving a blocker clears it before asking: approve or dismiss closes the swing first.
+4. **Invariant test:** CI fails if any file other than the seam writes `'deactivated_reason' => null` to a package.
+
+**Rationale.** A single stored reason cannot hold two blockers, and nine writers each re-deciding "is it safe now" drift apart. Live blockers need no migration and cannot go stale. Mapping each blocker to an existing reason reuses the paths that already bring packages back (Pending Reactivation, the supplier's Reactivate, the unfunded sync, the combo cascade), so no new path is added.
+
+**Consequence to track.** A new place that switches packages on must call the seam; the invariant test enforces it. A package created active (manual, combo, Promote) is creation, not reactivation, and is out of scope.

@@ -1,6 +1,6 @@
 # ADR-102: Order delivery-failure guard unification + Digiflazz `rc`-classification correction + admin refund-clarity UI
 
-> **Standing (2026-10-09):** In force; decision 12 reversed by ADR-108. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-05):** In force; decision 12 reversed by ADR-108; the same-reference age limit holds on every re-submit path (2026-11-05 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — grilled (`/mattpocock-skills:grilling`) 2026-09-16. **Phase 1 (decisions 1-2) built + merged to `staging` same day** (PR #225). **Phase 2 (decisions 3-9) built + merged to `staging`** (PR #226). **Phase 3 (decisions 10-13, player/server-ID resend correction + admin refund-info UI) built** — see the 2026-09-16 addenda below. This ADR's own decisions are now fully built; only sibling ADR-103 (combo per-leg reference independence) remains.
 
@@ -97,3 +97,18 @@ Verified: full backend suite **2065/2065** green, concurrency suite 16/16 (real 
 10. **Not built:** continued polling of NeedsReview (Q4: the webhook plus decision 4 close the only money path; add if admins start seeing delivered NeedsReview orders), automatic clawback of compensation (Q2: decision 4 makes it unreachable for Digiflazz).
 
 *Consequence to track:* a Digiflazz outage now blocks Confirm Failed for its duration; if that ever strands a customer too long, revisit decision 4's no-override rule rather than adding a bypass. Re-check decision 2 if Digiflazz ever documents a Gagal→Sukses transition.
+
+### 2026-11-05 addendum — the same-reference age limit holds on every re-submit path
+
+**Context.** Found in the [ADR-137](./ADR-137-gamevion-v2-api.md) stress test (2026-11-05, accepted by the founder). `max_reconcile_age_days` is enforced by:
+- the reconcile poll (`ReconcilePendingDeliveriesCommand::checkStalePending()`, through `Supplier::pendingPolicy()`);
+- Check supplier and Confirm Failed (`SupplierDeliveryCheckService::canAskAboutNeedsReview()`).
+
+It is not enforced on Resend or Retry of a NeedsReview order or combo leg, which re-submits the same reference (`OrderFulfillmentService`, `$resubmit`). Past Digiflazz's 90 days a re-submit is a new transaction. Past Gamevion's 31-day lookup it may be one too. Either way it is a second purchase. Prod, 2026-11-05: no order is NeedsReview.
+
+**Decision.**
+1. **One predicate decides whether a reference is still inside its supplier's window.** The poll, Check supplier, Confirm Failed, and the plain and combo-leg re-submit all read it.
+2. **A re-submit outside the window is refused** with "too old to re-submit with the same reference; use Confirm Failed". It is never sent.
+3. **A fresh reference (a resend from Failed, decision 9) is untouched.**
+
+**Rationale.** The limit is a supplier's protocol fact about one reference. It belongs where every re-submit passes, not at two of its three callers.

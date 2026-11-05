@@ -1,6 +1,6 @@
 # ADR-040: Gamevion sandbox integration — investigation saga, `telp` normalization, `callback_url` fix (2026-07-25 – 2026-08-14)
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-05):** Superseded for the API contract by ADR-137 (Gamevion moved to `gamevion.cloud`); kept as history. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Resolved — investigation and fixes spanning 2026-07-25 through 2026-08-14. Split out from ADR-006's addenda chain (2026-08-27 docs refactor) for readability — see ADR-006's cross-reference.
 
