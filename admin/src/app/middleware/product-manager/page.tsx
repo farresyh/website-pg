@@ -45,6 +45,7 @@ import {
   listAllSupplierProducts,
   linkSupplierProductCategory,
   promoteSupplierProduct,
+  repointSupplierProduct,
 } from "@/lib/supplier-products";
 import {
   CUSTOMER_NO_SEPARATOR_OPTIONS,
@@ -59,6 +60,7 @@ import {
 import { SimpleSelect } from "@/components/ui/select";
 import LinkCategoryModal from "@/components/middleware/LinkCategoryModal";
 import PromoteProductModal from "@/components/middleware/PromoteProductModal";
+import RepointProductModal from "@/components/middleware/RepointProductModal";
 
 function formatRm(sen: number | null): string {
   return sen === null ? "—" : `RM ${(sen / 100).toFixed(2)}`;
@@ -225,6 +227,7 @@ export default function ProductManagerPage() {
 
   const [linkingCategory, setLinkingCategory] = useState<SupplierProductCategory | null>(null);
   const [promoting, setPromoting] = useState<SupplierProduct | null>(null);
+  const [repointing, setRepointing] = useState<SupplierProduct | null>(null);
 
   /** Reloads the group list; resolves to it, or null when it failed or a newer load superseded this one. */
   function refreshCategories(): Promise<SupplierProductCategory[] | null> {
@@ -311,6 +314,15 @@ export default function ProductManagerPage() {
     const refreshed = await refreshCategories();
     const reopened = refreshed?.find((c) => sameGroup(c, selected));
     if (reopened) setSelected(reopened);
+  }
+
+  async function handleRepointSubmit(packageId: number) {
+    if (!session || !repointing || !selected) return;
+    await repointSupplierProduct(repointing.id, packageId);
+    notify.success("Package linked to the new item");
+    setRepointing(null);
+    await openCategory(selected);
+    await refreshCategories();
   }
 
   async function handlePromoteSubmit(values: PromoteValues) {
@@ -436,13 +448,23 @@ export default function ProductManagerPage() {
                                   {product.is_promoted ? (
                                     <span className="text-ink-subtle">—</span>
                                   ) : (
-                                    <Button
-                                      size="small"
-                                      disabled={product.price_sen === null}
-                                      onClick={() => setPromoting(product)}
-                                    >
-                                      Add to Catalog
-                                    </Button>
+                                    <div className="flex flex-wrap gap-2">
+                                      <Button
+                                        size="small"
+                                        disabled={product.price_sen === null}
+                                        onClick={() => setPromoting(product)}
+                                      >
+                                        Add to Catalog
+                                      </Button>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        disabled={product.price_sen === null}
+                                        onClick={() => setRepointing(product)}
+                                      >
+                                        Link to existing
+                                      </Button>
+                                    </div>
                                   )}
                                 </DataTableCell>
                               </DataTableRow>
@@ -521,6 +543,17 @@ export default function ProductManagerPage() {
               </div>
             )}
           </>
+        )}
+
+        {selected.game && (
+          <RepointProductModal
+            isOpen={repointing !== null}
+            onClose={() => setRepointing(null)}
+            onSubmit={handleRepointSubmit}
+            product={repointing}
+            gameId={selected.game.id}
+            gameName={selected.game.name}
+          />
         )}
 
         {selected.game && (
