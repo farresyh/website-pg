@@ -1252,3 +1252,37 @@ The guard tests (route list, `visible_config`) and the old daily-warning test we
 - Four tests that built `ComboPricingService` / `PendingReactivationAutoApprover` by hand now resolve them from the container.
 - The auto-approver fixture's Digiflazz is MYR: an IDR supplier with no deposit is unfunded, which the seam rightly refuses.
 - Full suite 3,666 green. Admin: `tsc` and `eslint` clean.
+
+## 2026-11-05 — Item 162 PR 2: Gamevion v2 adapter, webhook and cutover guard (ADR-137)
+
+**Built.**
+- `GamevionAdapter`, rewritten for gamevion.cloud, behind the unchanged `SupplierAdapter` seam:
+  - one `Authorization: Bearer gvk_…` key;
+  - product reference `{game}:{sku}`;
+  - `listProducts()` keeps `gametopup` games whose required `/fields` are `userid`/`serverid` only, paces pricelists 1.6 s apart (40/min limit), and fails whole on any failed call (a partial catalog would switch packages off);
+  - `createOrder()` posts with our reference as `client_ref`; a re-submit and `checkStatus()` read `GET /api/orders/{client_ref}` first and post once only on a 404;
+  - one mapping, `GamevionAdapter::responseFor()`: `successful`, `pending`, and `error`/`cancelled`/`refunded` as confirmed failures. No-order error codes (400/402/404/422, `price_changed`) are confirmed; 409 `request_in_progress`, 429, 5xx and 401/403 are unknown (401/403 and 5xx count against the breaker).
+- `gamevion` joins `RESUBMIT_REPLAYS_OUTCOME`. Its same-reference window is a protocol constant of 30 days (`Supplier::SAME_REFERENCE_WINDOW_DAYS`), so a blank setting cannot fall back to 90.
+- `POST /api/webhooks/gamevion` (`GamevionWebhookController`):
+  - HMAC-SHA256 of `timestamp.raw body`, rejected past 5 minutes;
+  - finalizes a plain order or a combo leg by `client_ref` through `finalizePendingDelivery[Leg]()`;
+  - a `refunded` after delivery emails every admin (area "Supplier refund") and changes nothing;
+  - `pending` or an unknown status is acknowledged and left to the poll.
+- Cutover guard: saving a supplier's `api_config` with a new `base_url` is refused while it has an order or combo leg in Processing, Pending or NeedsReview. A key rotation at the same URL is allowed.
+- Config: Gamevion's required keys are `base_url` and `api_key`; `webhook_secret` is optional; `bearer_token`/`sandbox` and the `GAMEVION_*` credential env defaults are gone. The admin form matches.
+- `app:gamevion-smoke-test` uses the supplier row: balance, catalog, and with `--order` one order only at a zero balance (expects 402).
+- `app:backfill-supplier-credentials` covers Digiflazz only.
+- Dead code: `flagStaleDuplicateReferences()` removed. The sandbox's `duplicate_reference` convention stays (ADR-137 PR 2 build addendum).
+
+**Money checks in tests.**
+- A delivered Gamevion order records its drawdown and a real cost of RM4.20 = 420 sen at face value (MYR, no transfer).
+- A repeated webhook writes one drawdown.
+- An `error` writes none.
+
+**Tests.**
+- 20 in the new `GamevionAdapterTest`, 9 in `GamevionWebhookControllerTest`, plus the cutover guard and the 30-day window.
+- Fixtures that used `gamevion` as a non-replaying or sandboxed supplier now use a generic `legacy-api` supplier or Digiflazz with `testing`, because Gamevion now replays and has no sandbox.
+- Full suite 3,675 green. Admin `tsc` and `eslint` clean.
+- Local curl: `POST /api/webhooks/gamevion` answers 503 against the dev DB, which has no `webhook_secret` (fail-safe).
+
+**Gotcha.** A test with no `Queue::fake()` on a replay-safe supplier now also runs the recovery poll inline. A fixture supplier with no config then throws from the poll, not the order (`ResellerBotOrderTest`).

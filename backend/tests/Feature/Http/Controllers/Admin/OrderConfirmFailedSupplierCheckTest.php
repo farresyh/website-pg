@@ -204,11 +204,11 @@ class OrderConfirmFailedSupplierCheckTest extends TestCase
         $this->assertCount(0, $this->checks);
     }
 
-    /** A supplier that does not replay (Gamevion) keeps today's admin-only confirmation. */
+    /** A supplier that does not replay keeps today's admin-only confirmation. */
     public function test_confirm_failed_on_a_non_replay_supplier_does_not_ask_the_supplier(): void
     {
-        $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'currency' => 'MYR', 'api_config' => []]);
-        $order = $this->needsReviewOrder(['supplier_id' => $gamevion->id]);
+        $legacy = Supplier::query()->create(['name' => 'Legacy API', 'slug' => 'legacy-api', 'currency' => 'MYR', 'api_config' => []]);
+        $order = $this->needsReviewOrder(['supplier_id' => $legacy->id]);
 
         $this->confirm($order)->assertOk()->assertJsonPath('delivery_status', 'failed');
     }
@@ -285,8 +285,8 @@ class OrderConfirmFailedSupplierCheckTest extends TestCase
 
     public function test_check_supplier_refuses_a_needs_review_order_on_a_non_replay_supplier(): void
     {
-        $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'currency' => 'MYR', 'api_config' => []]);
-        $order = $this->needsReviewOrder(['supplier_id' => $gamevion->id]);
+        $legacy = Supplier::query()->create(['name' => 'Legacy API', 'slug' => 'legacy-api', 'currency' => 'MYR', 'api_config' => []]);
+        $order = $this->needsReviewOrder(['supplier_id' => $legacy->id]);
 
         $this->postJson("/api/orders/{$order->id}/check-supplier")->assertUnprocessable();
     }

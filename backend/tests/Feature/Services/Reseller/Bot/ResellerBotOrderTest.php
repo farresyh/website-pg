@@ -353,6 +353,7 @@ class ResellerBotOrderTest extends TestCase
 
     public function test_a_text_format_game_places_a_riot_id_order(): void
     {
+        Queue::fake();
         $package = $this->makePackage(requiresServerId: false);
         $package->game->update(['validation_rules' => ['player_id_format' => 'text']]);
         $this->makeLinkedReseller();

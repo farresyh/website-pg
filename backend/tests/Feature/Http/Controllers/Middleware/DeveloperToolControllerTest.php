@@ -34,15 +34,18 @@ class DeveloperToolControllerTest extends TestCase
 
     private function fullyConfiguredSupplier(bool $sandbox = true): Supplier
     {
+        // Digiflazz: Gamevion's v2 API has no sandbox mode (ADR-137), so it
+        // can never be live-fired with createOrder from here.
         return Supplier::query()->create([
-            'name' => 'Gamevion',
-            'slug' => 'gamevion',
-            'currency' => 'MYR',
+            'name' => 'Digiflazz',
+            'slug' => 'digiflazz',
+            'currency' => 'IDR',
             'api_config' => [
-                'base_url' => 'https://api.gamevion.com',
-                'bearer_token' => 'secret-token',
+                'base_url' => 'https://api.digiflazz.com',
+                'username' => 'secret-user',
                 'api_key' => 'secret-key',
-                'sandbox' => $sandbox,
+                'testing' => $sandbox,
+                'customer_no_separator' => '|',
             ],
         ]);
     }
@@ -87,7 +90,7 @@ class DeveloperToolControllerTest extends TestCase
         $this->actingAsAdmin();
         $supplier = $this->fullyConfiguredSupplier();
 
-        // Deliberately no supplier-adapter.gamevion rebind — a dry-run
+        // Deliberately no supplier-adapter.digiflazz rebind — a dry-run
         // must never touch the adapter layer at all (decision 3).
         $response = $this->postJson('/api/middleware/developer-tools/test', [
             'supplier_id' => $supplier->id,
@@ -106,8 +109,8 @@ class DeveloperToolControllerTest extends TestCase
     {
         $this->actingAsAdmin();
         $supplier = Supplier::query()->create([
-            'name' => 'Gamevion', 'slug' => 'gamevion', 'currency' => 'MYR',
-            'api_config' => ['base_url' => 'https://api.gamevion.com'],
+            'name' => 'Digiflazz', 'slug' => 'digiflazz', 'currency' => 'IDR',
+            'api_config' => ['base_url' => 'https://api.digiflazz.com'],
         ]);
 
         $response = $this->postJson('/api/middleware/developer-tools/test', [
@@ -117,7 +120,7 @@ class DeveloperToolControllerTest extends TestCase
         ]);
 
         $response->assertStatus(422);
-        $this->assertStringContainsString('bearer_token', $response->json('errors.supplier.0'));
+        $this->assertStringContainsString('username', $response->json('errors.supplier.0'));
     }
 
     /**
@@ -128,7 +131,7 @@ class DeveloperToolControllerTest extends TestCase
     {
         $this->actingAsAdmin();
         $supplier = $this->fullyConfiguredSupplier(sandbox: false);
-        $this->app->bind('supplier-adapter.gamevion', fn () => $this->fakeAdapter());
+        $this->app->bind('supplier-adapter.digiflazz', fn () => $this->fakeAdapter());
 
         $response = $this->postJson('/api/middleware/developer-tools/test', [
             'supplier_id' => $supplier->id,
@@ -145,7 +148,7 @@ class DeveloperToolControllerTest extends TestCase
     {
         $this->actingAsAdmin();
         $supplier = $this->fullyConfiguredSupplier(sandbox: true);
-        $this->app->bind('supplier-adapter.gamevion', fn () => $this->fakeAdapter());
+        $this->app->bind('supplier-adapter.digiflazz', fn () => $this->fakeAdapter());
 
         $response = $this->postJson('/api/middleware/developer-tools/test', [
             'supplier_id' => $supplier->id,
@@ -164,7 +167,7 @@ class DeveloperToolControllerTest extends TestCase
     {
         $this->actingAsAdmin();
         $supplier = $this->fullyConfiguredSupplier(sandbox: false);
-        $this->app->bind('supplier-adapter.gamevion', fn () => $this->fakeAdapter());
+        $this->app->bind('supplier-adapter.digiflazz', fn () => $this->fakeAdapter());
 
         $response = $this->postJson('/api/middleware/developer-tools/test', [
             'supplier_id' => $supplier->id,
@@ -180,7 +183,7 @@ class DeveloperToolControllerTest extends TestCase
     {
         $this->actingAsAdmin();
         $supplier = $this->fullyConfiguredSupplier();
-        $this->app->bind('supplier-adapter.gamevion', fn () => $this->fakeAdapter());
+        $this->app->bind('supplier-adapter.digiflazz', fn () => $this->fakeAdapter());
 
         $response = $this->postJson('/api/middleware/developer-tools/test', [
             'supplier_id' => $supplier->id,

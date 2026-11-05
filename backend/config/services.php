@@ -48,15 +48,9 @@ return [
         'url' => env('SUPPLIER_PROXY_URL'),
     ],
 
-    // Temporary env-based config for local/manual testing of
-    // GamevionAdapter. Once the Supplier model exists (SUPP-5), this
-    // moves to encrypted-at-rest per-supplier `api_config` in the DB —
-    // do not build admin UI around these env vars.
+    // Credentials live in the `gamevion` Supplier row's encrypted
+    // `api_config` (ADR-046, ADR-137); only the timeouts stay here.
     'gamevion' => [
-        'base_url' => env('GAMEVION_BASE_URL', 'https://api.gamevion.com'),
-        'bearer_token' => env('GAMEVION_BEARER_TOKEN'),
-        'api_key' => env('GAMEVION_API_KEY'),
-        'sandbox' => env('GAMEVION_SANDBOX', true),
         // createOrder() runs inside a DB row lock (OrderFulfillmentService)
         // — keep these short so a hung supplier response can't hold that
         // lock open indefinitely. See GamevionAdapter::client().

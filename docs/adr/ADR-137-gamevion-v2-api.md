@@ -1,6 +1,6 @@
 # ADR-137: Gamevion v2 API — rewrite the adapter for `gamevion.cloud`, async delivery with a signed webhook and same-reference replay
 
-> **Standing (2026-11-05):** Accepted (2026-11-05 addendum: decisions 13–24 after the grill, money code-trace and stress test). It replaces the API contract of [ADR-040](./ADR-040-gamevion-sandbox-integration.md) (old `api.gamevion.com`, sandbox header, `telp`, `callback_url`) and, for Gamevion only, the `duplicate_reference` → NeedsReview routing of [ADR-026](./ADR-026-delivery-side-reconciliation-ord-10.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record.
+> **Standing (2026-11-05):** Accepted (2026-11-05 addendum: decisions 13–24 after the grill, money code-trace and stress test; the PR 2 build addendum corrects decisions 17 and 19). It replaces the API contract of [ADR-040](./ADR-040-gamevion-sandbox-integration.md) (old `api.gamevion.com`, sandbox header, `telp`, `callback_url`) and, for Gamevion only, the `duplicate_reference` → NeedsReview routing of [ADR-026](./ADR-026-delivery-side-reconciliation-ord-10.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record.
 
 **Status:** Proposed, 2026-11-04. Decisions 1–4 were made with the founder (in Malay) on 2026-11-04. Decisions 5–12 are Claude's draft from the vendor's API document and a first code-trace; they go through the technical grill and the money code-trace (AGENTS.md lifecycle step 2) before Accepted. The open questions at the end are settled in that grill.
 
@@ -139,3 +139,14 @@ Each now sits on the seam every caller passes through, with an invariant test. T
   8. Switch packages on.
 - **Founder steps:** generate the `gvk_` key; set the IP allowlist; set the webhook URL `https://api.pekangame.space/api/webhooks/gamevion` and keep the secret; enter `base_url`, `api_key` and `webhook_secret` in `/middleware` → Suppliers; switch Gamevion on.
 - Revisit decision 16 when the real game count is known; revisit 17 if Gamevion states its de-duplication window.
+
+### 2026-11-05 addendum — PR 2 build: two decisions corrected by the code-trace
+
+**Context.** Building PR 2 (the adapter, the webhook, the cutover guard and the dead code) traced decisions 17 and 19 against the code. Both changed slightly.
+
+**Decisions.**
+1. **Decision 17's 30 days is a protocol constant, not an `api_config` value** (revises decision 17). `Supplier::SAME_REFERENCE_WINDOW_DAYS = ['gamevion' => 30]` feeds `pendingPolicy()`, which every same-reference check reads (`Order::sameReferenceWithinWindow()`, ADR-102 2026-11-05 addendum). As a setting, a blank field would silently fall back to Digiflazz's 90 days and reopen the double purchase. `max_reconcile_age_days` in `api_config` still overrides it, as for any supplier.
+2. **Decision 19 removed less than it listed** (revises decision 19).
+   - **Removed:** `ReconcilePendingDeliveriesCommand::flagStaleDuplicateReferences()`, a one-time catch-up for rows before August that prod never held.
+   - **Kept:** `duplicate_reference` in `FakeSupplierAdapter` and in `Order::deliveryRetryUnsafeWithSameReference()`. They are not Gamevion's: the admin sandbox uses the code to simulate an ambiguous outcome (NeedsReview). Only their comments changed.
+   - **Moved:** Developer Tools can no longer live-fire `createOrder` at Gamevion, because v2 has no sandbox mode (`SupplierConfigSchema::isSandbox()` is null). The funded test of decision 23 goes through the storefront.
