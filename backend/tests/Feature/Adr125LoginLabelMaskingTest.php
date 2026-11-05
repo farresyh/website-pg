@@ -67,14 +67,15 @@ class Adr125LoginLabelMaskingTest extends TestCase
             ->assertJsonPath('fulfilment_kind', 'uid');
     }
 
-    public function test_the_mask_holds_after_the_game_loses_its_schema_or_is_deleted(): void
+    public function test_the_mask_holds_after_the_game_loses_its_schema_or_its_link(): void
     {
         $order = $this->loginOrder();
         $order->game->update(['validation_rules' => null]);
 
         $this->getJson("/api/track-order/{$order->order_number}")->assertJsonPath('player_id', 'p••••@example.com');
 
-        $order->game->delete();
+        // A game with orders can no longer be deleted (ADR-119 2026-11-05); a null link is the only shape left.
+        $order->update(['game_id' => null]);
         $this->getJson("/api/track-order/{$order->order_number}")
             ->assertJsonPath('player_id', 'p••••@example.com')
             ->assertJsonPath('player_label', 'Login');

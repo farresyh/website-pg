@@ -7,6 +7,7 @@ use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\Supplier;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -316,6 +317,20 @@ class PackageControllerTest extends TestCase
 
         $response->assertStatus(422)->assertJsonValidationErrors('package');
         $this->assertSame(1, Package::query()->count());
+    }
+
+    /** ADR-119 2026-11-05 decision 1: the schema itself refuses, whichever path deletes it. */
+    public function test_the_database_refuses_to_delete_a_package_with_order_history(): void
+    {
+        $package = $this->package();
+        $order = Order::factory()->create(['package_id' => $package->id]);
+
+        try {
+            $package->delete();
+            $this->fail('A package with order history was deleted.');
+        } catch (QueryException) {
+            $this->assertSame($package->id, $order->fresh()->package_id);
+        }
     }
 
     public function test_destroy_rejects_a_package_used_as_a_combo_component(): void
