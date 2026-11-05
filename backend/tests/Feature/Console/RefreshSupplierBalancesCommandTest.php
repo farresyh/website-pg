@@ -5,6 +5,7 @@ namespace Tests\Feature\Console;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Services\Accounting\SupplierLedgerEntryType;
+use App\Services\Backup\BackupFailureAlerter;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Supplier\CircuitBreakingSupplierAdapter;
 use App\Services\Supplier\SupplierAdapter;
@@ -15,6 +16,7 @@ use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Log;
+use Mockery;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -87,19 +89,24 @@ class RefreshSupplierBalancesCommandTest extends TestCase
         $this->assertSame('success', $supplier->fresh()->last_test_result);
     }
 
-    public function test_it_warns_when_the_balance_is_below_the_threshold(): void
+    /** ADR-115 2026-11-05 addendum: the daily sweep runs the buffer check (floor 100, no spend yet). */
+    public function test_it_warns_and_emails_when_the_balance_is_below_the_buffer(): void
     {
+        $alerter = Mockery::spy(BackupFailureAlerter::class);
+        $this->app->instance(BackupFailureAlerter::class, $alerter);
         $this->configuredGamevion(['low_balance_threshold' => '100']);
         $this->app->bind('supplier-adapter.gamevion', fn () => $this->fakeAdapter(true, 40.0));
 
         Log::shouldReceive('warning')
             ->once()
-            ->withArgs(fn (string $message, array $ctx) => $message === 'Supplier balance is low'
+            ->withArgs(fn (string $message, array $ctx) => $message === 'Supplier balance is below its buffer'
                 && $ctx['supplier'] === 'gamevion'
                 && $ctx['balance'] === 40.0
-                && $ctx['threshold'] === 100.0);
+                && $ctx['required'] === 100.0);
 
         $this->artisan('app:refresh-supplier-balances')->assertSuccessful();
+
+        $alerter->shouldHaveReceived('alert')->once();
     }
 
     public function test_it_does_not_warn_when_no_threshold_is_set(): void

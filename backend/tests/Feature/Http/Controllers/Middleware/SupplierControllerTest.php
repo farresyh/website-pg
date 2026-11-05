@@ -96,7 +96,7 @@ class SupplierControllerTest extends TestCase
         // decision 13 adds the optional low_balance_threshold (null
         // until set); ADR-083 decision 6 adds drift_threshold likewise, ADR-015's 2026-10-17 addendum price_sync_stale_alert_minutes, ADR-134 the transfer spread band.
         $this->assertSame(
-            ['base_url' => 'https://api.gamevion.com', 'sandbox' => true, 'low_balance_threshold' => null, 'drift_threshold' => null, 'price_sync_stale_alert_minutes' => null, 'transfer_spread_min_pct' => null, 'transfer_spread_max_pct' => null],
+            ['base_url' => 'https://api.gamevion.com', 'sandbox' => true, 'low_balance_threshold' => null, 'drift_threshold' => null, 'price_sync_stale_alert_minutes' => null, 'transfer_spread_min_pct' => null, 'transfer_spread_max_pct' => null, 'topup_lead_days' => null, 'buffer_margin_pct' => null],
             $body['visible_config'],
         );
 
@@ -362,6 +362,33 @@ class SupplierControllerTest extends TestCase
         $response->assertJsonPath('last_test_result', 'success');
         $this->assertNotNull($response->json('last_tested_at'));
         $this->assertEquals(9999, $response->json('balance'));
+    }
+
+    /**
+     * Found live 2026-11-05: /admin/balance swaps the refreshed row into
+     * its table, and the bare model had no display_balance, so the page
+     * crashed ("This page couldn't load") until a hard reload. Every
+     * endpoint that answers with one supplier answers in index()'s shape.
+     */
+    public function test_single_supplier_responses_match_the_index_row_shape(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = $this->supplier(['balance' => 50]);
+        $this->app->bind('supplier-adapter.gamevion', fn () => $this->fakeAdapter(true, ['balance' => 9999]));
+
+        $indexKeys = array_keys($this->getJson('/api/middleware/suppliers')->assertOk()->json('0'));
+
+        $refreshed = $this->postJson("/api/middleware/suppliers/{$supplier->id}/refresh-balance")->assertOk();
+        $this->assertEqualsCanonicalizing($indexKeys, array_keys($refreshed->json()));
+        $this->assertEquals(9999, $refreshed->json('display_balance'));
+        $this->assertTrue($refreshed->json('is_api_backed'));
+
+        $toggled = $this->patchJson("/api/middleware/suppliers/{$supplier->id}/status", ['is_active' => false])->assertOk();
+        $this->assertEqualsCanonicalizing($indexKeys, array_keys($toggled->json()));
+        $this->assertArrayNotHasKey('api_config', $toggled->json());
+
+        $updated = $this->putJson("/api/middleware/suppliers/{$supplier->id}", ['name' => 'Renamed'])->assertOk();
+        $this->assertEqualsCanonicalizing($indexKeys, array_keys($updated->json()));
     }
 
     public function test_refresh_balance_records_a_failure(): void

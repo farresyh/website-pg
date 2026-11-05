@@ -74,9 +74,9 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     { key: "bearer_token", label: "Bearer Token", type: "secret" },
     { key: "api_key", label: "API Key", type: "secret" },
     { key: "sandbox", label: "Sandbox Mode", type: "boolean" },
-    // ADR-069 decision 13: a bare number in the supplier's balance
-    // currency — drives the daily low-balance warning + Health chip.
-    { key: "low_balance_threshold", label: "Low-balance Threshold", type: "text", placeholder: "e.g. 50 (blank = no warning)" },
+    // ADR-069 decision 13 + ADR-115 2026-11-05: the buffer's floor, in the
+    // supplier's balance currency.
+    { key: "low_balance_threshold", label: "Low-balance Floor", type: "text", placeholder: "e.g. 50 (blank = no floor; the busiest window still applies)" },
     // ADR-083 decision 6: max acceptable gap between the polled balance
     // above and this supplier's own funding-ledger sum before the
     // Dashboard Health drift chip lights up. Blank = never checked.
@@ -88,6 +88,9 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     // market rate must be confirmed before it saves (it prices the whole catalogue). Blank = −2 / +12.
     { key: "transfer_spread_min_pct", label: "Transfer Spread Min %", type: "text", placeholder: "-2 (blank = -2)" },
     { key: "transfer_spread_max_pct", label: "Transfer Spread Max %", type: "text", placeholder: "12 (blank = 12)" },
+    // ADR-115 2026-11-05 addendum: the buffer's lead time and margin; Low-balance Floor above is its floor.
+    { key: "topup_lead_days", label: "Top-up Lead Time (days)", type: "text", placeholder: "2 (blank = 2; Thu–Sun always cover through Monday)" },
+    { key: "buffer_margin_pct", label: "Buffer Margin %", type: "text", placeholder: "0 (blank = 0; added on top of the busiest window)" },
   ],
   digiflazz: [
     { key: "base_url", label: "Base URL", type: "text", placeholder: "https://api.digiflazz.com (no trailing slash)" },
@@ -102,9 +105,9 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     // (Atur Koneksi > API > Webhook). Optional for outbound calls;
     // DigiflazzWebhookController rejects every callback until it's set.
     { key: "webhook_secret", label: "Webhook Secret", type: "secret" },
-    // ADR-069 decision 13: a bare number in IDR — drives the daily
-    // low-balance warning + the Dashboard Health chip.
-    { key: "low_balance_threshold", label: "Low-balance Threshold", type: "text", placeholder: "e.g. 100000 (IDR; blank = no warning)" },
+    // ADR-069 decision 13 + ADR-115 2026-11-05: the buffer's floor, in IDR —
+    // the email and the Dashboard chip fire below max(floor, busiest window).
+    { key: "low_balance_threshold", label: "Low-balance Floor", type: "text", placeholder: "e.g. 10000000 (IDR; blank = no floor; the busiest window still applies)" },
     // ADR-083 decision 6: max acceptable gap (IDR) between the polled
     // balance above and this supplier's own funding-ledger sum.
     { key: "drift_threshold", label: "Drift Threshold", type: "text", placeholder: "e.g. 50000 (IDR; blank = drift never checked)" },
@@ -115,6 +118,9 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     // market rate must be confirmed before it saves (it prices the whole catalogue). Blank = −2 / +12.
     { key: "transfer_spread_min_pct", label: "Transfer Spread Min %", type: "text", placeholder: "-2 (blank = -2)" },
     { key: "transfer_spread_max_pct", label: "Transfer Spread Max %", type: "text", placeholder: "12 (blank = 12)" },
+    // ADR-115 2026-11-05 addendum: the buffer's lead time and margin; Low-balance Floor above is its floor.
+    { key: "topup_lead_days", label: "Top-up Lead Time (days)", type: "text", placeholder: "2 (blank = 2; Thu–Sun always cover through Monday)" },
+    { key: "buffer_margin_pct", label: "Buffer Margin %", type: "text", placeholder: "0 (blank = 0; added on top of the busiest window)" },
   ],
 };
 

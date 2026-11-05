@@ -579,6 +579,7 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
     // Reports, no reason to restrict further.
     Route::middleware('admin.role:super_admin,admin')->prefix('dashboard')->group(function () {
         Route::get('/health', [DashboardController::class, 'health']);
+        Route::get('/supplier-buffers', [DashboardController::class, 'supplierBuffers']);
     });
 
     Route::middleware('admin.role:super_admin,admin')->prefix('reports')->group(function () {

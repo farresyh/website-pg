@@ -22,6 +22,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Scheduling\SchedulerLiveness;
 use App\Services\Supplier\Manual\SupplierGroupNotifier;
+use App\Services\Supplier\SupplierBufferService;
 use App\Services\Withdrawal\WithdrawalStatus;
 use App\Support\MalaysiaTime;
 use Carbon\CarbonImmutable;
@@ -52,6 +53,7 @@ final class DashboardService
         private readonly OpenWaSessionStatus $openWaSessionStatus,
         private readonly LandedCostRate $landedCost,
         private readonly SchedulerLiveness $schedulerLiveness,
+        private readonly SupplierBufferService $buffers,
     ) {}
 
     /**
@@ -90,14 +92,11 @@ final class DashboardService
                 cooldownSeconds: $breakerConfig['cooldown_seconds'],
             );
 
-            // ADR-069 decision 13 — low_balance is true only when both a
-            // balance and a threshold exist and the balance is under it.
-            $threshold = $supplier->api_config['low_balance_threshold'] ?? null;
+            // ADR-115 2026-11-05 addendum, decision 8: the same rule the
+            // email and /admin/balance read — below the higher of the floor
+            // and the busiest-window forecast. Not watched = never low.
             $balance = $supplier->displayBalance();
-            $lowBalance = $balance !== null
-                && $threshold !== null
-                && is_numeric($threshold)
-                && $balance < (float) $threshold;
+            $lowBalance = $supplier->is_active && ($this->buffers->assess($supplier)?->isShort() ?? false);
 
             // ADR-083 decision 6 — same computation
             // app:refresh-supplier-balances logs from, exposed here for

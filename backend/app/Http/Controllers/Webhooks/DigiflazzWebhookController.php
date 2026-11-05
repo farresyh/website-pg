@@ -188,7 +188,7 @@ class DigiflazzWebhookController extends Controller
         // after the debit — keeps Dashboard Health fresh for the one
         // supplier with live traffic, no scheduled call needed.
         if ($outcome === SupplierOutcome::Success && isset($data['buyer_last_saldo']) && $order->supplier !== null) {
-            $order->supplier->update(['balance' => (float) $data['buyer_last_saldo']]);
+            $order->supplier->recordPolledBalance((float) $data['buyer_last_saldo']);
         }
 
         if ($outcome === null) {
@@ -262,7 +262,7 @@ class DigiflazzWebhookController extends Controller
         $outcome = $this->outcomeFrom($data);
 
         if ($outcome === SupplierOutcome::Success && isset($data['buyer_last_saldo'])) {
-            $component->supplier->update(['balance' => (float) $data['buyer_last_saldo']]);
+            $component->supplier->recordPolledBalance((float) $data['buyer_last_saldo']);
         }
 
         if ($outcome === null) {
