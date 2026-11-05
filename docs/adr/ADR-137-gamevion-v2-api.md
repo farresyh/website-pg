@@ -1,6 +1,6 @@
 # ADR-137: Gamevion v2 API — rewrite the adapter for `gamevion.cloud`, async delivery with a signed webhook and same-reference replay
 
-> **Standing (2026-11-04):** Proposed. When accepted it replaces the API contract of [ADR-040](./ADR-040-gamevion-sandbox-integration.md) (old `api.gamevion.com`, sandbox header, `telp`, `callback_url`) and, for Gamevion only, the `duplicate_reference` → NeedsReview routing of [ADR-026](./ADR-026-delivery-side-reconciliation-ord-10.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record.
+> **Standing (2026-11-05):** Accepted (2026-11-05 addendum: decisions 13–24 after the grill, money code-trace and stress test). It replaces the API contract of [ADR-040](./ADR-040-gamevion-sandbox-integration.md) (old `api.gamevion.com`, sandbox header, `telp`, `callback_url`) and, for Gamevion only, the `duplicate_reference` → NeedsReview routing of [ADR-026](./ADR-026-delivery-side-reconciliation-ord-10.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record.
 
 **Status:** Proposed, 2026-11-04. Decisions 1–4 were made with the founder (in Malay) on 2026-11-04. Decisions 5–12 are Claude's draft from the vendor's API document and a first code-trace; they go through the technical grill and the money code-trace (AGENTS.md lifecycle step 2) before Accepted. The open questions at the end are settled in that grill.
 
@@ -59,3 +59,83 @@ Draft for the grill (Claude, 2026-11-04):
 - **Founder steps at build time:** generate a `gvk_` key, set the IP allowlist, set the webhook URL and keep the secret, then enter the key and secret in `/middleware` → Suppliers and switch Gamevion back on.
 - ADR-115's single-supplier scope stays: Gamevion is still unfunded.
 - `GamevionSmokeTest`, `SandboxOrderController` and the Developer Tools read the old config shape; they change with the adapter.
+
+### 2026-11-05 addendum — Accepted: grill, money code-trace and stress test
+
+**Context.** The technical grill (three rounds), the money code-trace and a stress test ran on 2026-11-05 against the vendor document (v62.25, read in full) and the code. The founder accepted every recommendation (in Malay). Read-only prod facts, 2026-11-05:
+- Gamevion (supplier #1, MYR, off) has 71 packages, all inactive (`supplier_issue`), in five games that also sell through Digiflazz: Free Fire 11, PUBG 6, HOK 10, Valorant 6, MLBB 38. It has 187 catalog rows, 71 of them promoted.
+- No order, combo leg, combo component, transfer or `duplicate_reference` row has ever touched Gamevion.
+- No order on any supplier is Processing, Pending or NeedsReview.
+- Prod sends supplier calls from the box IP `159.223.39.16` (no `SUPPLIER_PROXY_URL`).
+
+**Facts from the document that settle the open questions.**
+- The order response, `GET /api/orders/{id}` and the `order.updated` webhook all carry `price` (MYR, per unit). So the drawdown (`recordOrderDrawdown`) and the real cost (ADR-111) record as for Digiflazz. An MYR supplier with no transfer prices at face value (`LandedCostRate`), so no FX code is needed.
+- The document's own timeout rule is "GET `/api/orders/{client_ref}`: 404 means it was never created and is safe to send again". A `pending` order under Gamevion admin review must not be re-sent.
+- `error`, `cancelled` and `refunded` return the balance. Product codes are stable ("Kod produk kekal").
+- Only `/api/pricelist` is limited (40 a minute); `/fields` and the rest allow 3,000 a minute.
+- How long Gamevion remembers a `client_ref` for de-duplication is not stated. The order list covers 31 days.
+
+**Decisions.** Decisions 1–12 stand, except where these revise them.
+
+13. **`checkStatus()` reads first** (revises decision 8). It calls `GET /api/orders/{client_ref}`. A found order maps its `order_status`. A 404 sends `POST /api/order` once with the same `client_ref`; a customer who paid gets the delivery. `createOrder(resubmit: true)` does the same. Because the POST runs only after a 404, an error on it answers for the order. A concurrent repeat (409 `request_in_progress`), a timeout or a 5xx stays unknown: Pending, polled with the same reference. `gamevion` joins `SupplierAdapterFactory::RESUBMIT_REPLAYS_OUTCOME`.
+14. **Status mapping:**
+    - `successful` → delivered.
+    - `pending` → Pending.
+    - `error`, `cancelled`, or `refunded` while our order is not delivered → confirmed failure (Gamevion returned the balance).
+    - `refunded` after delivery → no state change; an email to every active admin (`BackupFailureAlerter`, area "Supplier refund") and a log line. The funding ledger is not written; the admin records an adjustment by hand (no `REFUND` writer exists, and a new money writer needs its own grill).
+15. **Error mapping** (decision 12, confirmed). `insufficient_balance` 402 on a new order is a confirmed failure, the same as Digiflazz rc 44.
+16. **Catalog:**
+    - `listProducts()` keeps `kind = gametopup`.
+    - It drops a game whose `/fields` requires anything other than `userid` and `serverid` (checkout has no `charname`).
+    - It paces pricelist calls under 40 a minute. The `price-sync` worker's 300 s timeout bounds this at about 150 games. The real count is read once when the key exists. If it is over, a games allowlist in `api_config` is added then, not before.
+    - Product reference `{game}:{sku}` (decision 6).
+17. **Poll age 30 days** for Gamevion (`api_config.max_reconcile_age_days`), inside its 31-day lookup. Digiflazz keeps 90.
+18. **Webhook IP allowlist** on the `gvk_` key: `159.223.39.16`. If `SUPPLIER_PROXY_URL` is ever switched on, the allowlist changes with it.
+19. **Dead code goes.** Only the old `GamevionAdapter` ever produced `duplicate_reference`, and prod holds no row with it. Removed with the old adapter:
+    - `Order::deliveryRetryUnsafeWithSameReference()`'s `duplicate_reference` branch;
+    - `ReconcilePendingDeliveriesCommand::flagStaleDuplicateReferences()`;
+    - the Fake adapter's option;
+    - the docblocks that describe the old Gamevion.
+
+    `GamevionSmokeTest`, the sandbox controller and Developer Tools move to the new config: `base_url`, `api_key` (secret) and `webhook_secret` (secret).
+20. **Supplier cutover guard.** Saving a supplier's `api_config` with a changed `base_url` is refused while that supplier has an order or combo leg in Processing, Pending or NeedsReview. A poll in the new protocol would ask about a reference the new system never saw; with decision 13 that is a second purchase. A protocol change at the same URL is covered by the runbook in the Consequence below.
+21. **Repoint a package to a new supplier product** (the general answer when a supplier changes system). Product Manager gets "Link to existing package" beside Promote. It applies when:
+    - the supplier is the same;
+    - the product is linked to the package's game;
+    - the package is not a combo and not manual;
+    - the product is not already promoted;
+    - the package has no order in Processing, Pending or NeedsReview.
+
+    The package keeps its id, order history, markup, name, catalog code and combo memberships.
+    - Cost is set from the new product's price through `PackageCostService::apply()` (a `PriceChangeLog` row with the admin). It is the same trust as Promote: the admin sees the price before confirming.
+    - Any open `PendingPriceChange` on the package is closed, since it priced the old reference.
+    - The package stays inactive.
+    - A new table `package_ref_changes` records the package, old reference, new reference, admin and time.
+    - Old orders keep their frozen `supplier_product_ref`; a resend uses the package's current reference.
+    - The old promoted catalog row loses its protection and is pruned by the next sync (`pruneVanishedRows`), so no clean-up code is needed.
+    - A package with no counterpart is deleted with the existing delete, which refuses one with orders or a combo.
+22. **The 71 Gamevion packages.** After the first sync, Claude proposes a match list (old reference → new sku, by name and denomination). The founder repoints the packages wanted as backup and deletes the rest. No bulk path.
+23. **The funded test** (decision 4): activate one cheap package and place a real storefront order. That proves the order, webhook, drawdown and real cost end to end before more packages are switched on.
+24. **Two money gaps outside Gamevion, found by tracing decision 21, are fixed first** (one PR, before the adapter). Both are recorded where they belong:
+    - package activation through one seam with live blockers ([ADR-015](./ADR-015-price-sync.md) 2026-11-05 addendum);
+    - the same-reference re-submit age limit on every path ([ADR-102](./ADR-102-order-delivery-failure-guard-unification.md) 2026-11-05 addendum).
+
+**Rationale (stress test).** The first draft of three points was a patch:
+- decision 24's gaps were going to be fixed at two of nine activation sites;
+- the age limit at two of three re-submit paths;
+- the cutover drain as a runbook step only.
+
+Each now sits on the seam every caller passes through, with an invariant test. The repoint keeps a package's identity separate from the supplier's reference, which is the real cause of the clutter a supplier's system change leaves behind.
+
+**Consequence to track.**
+- **Supplier system change runbook:**
+  1. Switch the supplier off.
+  2. Settle every non-terminal order on it (decision 20 enforces this for a URL change).
+  3. Release the new adapter.
+  4. Enter the new config.
+  5. Sync.
+  6. Repoint or delete the old packages.
+  7. Run one funded test order.
+  8. Switch packages on.
+- **Founder steps:** generate the `gvk_` key; set the IP allowlist; set the webhook URL `https://api.pekangame.space/api/webhooks/gamevion` and keep the secret; enter `base_url`, `api_key` and `webhook_secret` in `/middleware` → Suppliers; switch Gamevion on.
+- Revisit decision 16 when the real game count is known; revisit 17 if Gamevion states its de-duplication window.
