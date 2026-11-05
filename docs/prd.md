@@ -875,6 +875,19 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   added and alert-tested by the founder 2026-10-14).
 
 **D. Waiting on a trigger: don't build early**
+- **163** Seam audit (founder, 2026-11-05): a full read-only audit of the
+  system for one decision written in many places, each correct alone but
+  wrong when two cases overlap. Found once already: nine places switched a
+  package on directly ([ADR-015](./adr/ADR-015-price-sync.md) 2026-11-05
+  addendum), and the same-reference age limit sat on two of three re-submit
+  paths ([ADR-102](./adr/ADR-102-order-delivery-failure-guard-unification.md)
+  2026-11-05 addendum). Method: list every writer of each money- or
+  sale-deciding state (order and leg delivery status, voucher status,
+  wallet and ledger writes, package price and activation, supplier and
+  brand switches), find decisions re-made at more than one site, and check
+  each for a single seam plus an invariant test. Output: a report first
+  (no edits), then one PR per seam the founder approves. Trigger: item 162
+  done.
 - **160** An admin editor for an affiliate storefront's default OG image
   (ADR-060 2026-11-03 addendum): today only the primary's row is editable, so
   an affiliate's homepage has no share image. When an affiliate asks for one.
