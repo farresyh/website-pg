@@ -318,14 +318,13 @@ class ReconcilePendingDeliveriesCommand extends Command
                 continue;
             }
 
-            $maxAgeDays = $policy['max_age_days'];
             $maxHours = $policy['max_hours'];
 
             // ADR-102 addendum (2026-09-29): also age out a Pending order
             // that hasn't moved in `pending_max_hours` — updated_at marks
             // entry into Pending, since a still-Pending/ambiguous poll never
             // writes to the order.
-            if ($order->created_at->lte(now()->subDays($maxAgeDays)) || $order->updated_at->lte(now()->subHours($maxHours))) {
+            if (! $order->sameReferenceWithinWindow() || $order->updated_at->lte(now()->subHours($maxHours))) {
                 DB::transaction(function () use ($order, $orderStatus) {
                     $locked = Order::query()->lockForUpdate()->find($order->id);
 

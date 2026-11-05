@@ -232,6 +232,11 @@ final class OrderResendService
             return ['delivery_status', 'This order has already been compensated (voucher issued or wallet refunded) — it cannot be resent.'];
         }
 
+        // ADR-102 2026-11-05 addendum: a resend from NeedsReview reuses the stored reference.
+        if ($order->delivery_status === DeliveryStatus::NeedsReview && ! $order->sameReferenceWithinWindow()) {
+            return ['delivery_status', Order::PAST_WINDOW_MESSAGE];
+        }
+
         if ($targetPackage->game_id !== $order->game_id) {
             return ['package_id', 'The selected package must belong to the same game as this order.'];
         }
