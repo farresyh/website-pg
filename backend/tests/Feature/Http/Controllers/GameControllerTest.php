@@ -4,6 +4,7 @@ namespace Tests\Feature\Http\Controllers;
 
 use App\Models\AdminUser;
 use App\Models\Game;
+use App\Models\Order;
 use App\Models\Package;
 use App\Models\PlayerValidatorProfile;
 use App\Models\Supplier;
@@ -425,25 +426,54 @@ class GameControllerTest extends TestCase
         $response->assertUnprocessable();
     }
 
-    /**
-     * `packages.game_id` is `cascadeOnDelete()` — deleting a Game must
-     * take its Packages with it, not orphan them.
-     */
-    public function test_destroy_cascades_to_the_games_packages(): void
+    /** ADR-119 2026-11-05 decision 3: an unused game goes with its packages and combos, and its catalog groups are unlinked. */
+    public function test_destroy_deletes_an_unused_game_with_its_packages_and_unlinks_its_groups(): void
     {
         $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
         $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
-        Package::query()->create([
+        $component = Package::query()->create([
             'game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'standard_selling_price' => 500,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A',
         ]);
+        $combo = Package::query()->create(['game_id' => $game->id, 'name' => 'Combo', 'cost_price' => 0, 'standard_selling_price' => 0, 'is_combo' => true]);
+        $combo->components()->attach($component->id, ['quantity' => 2, 'sort_order' => 0]);
+        $item = SupplierProduct::query()->create(['supplier_id' => $supplier->id, 'game_id' => $game->id, 'external_ref' => 'A', 'name' => '100 Diamonds', 'group_label' => 'Free Fire', 'price_sen' => 421, 'last_synced_at' => now()]);
         $this->actingAsAdmin();
 
-        $response = $this->deleteJson("/api/games/{$game->id}");
+        $this->deleteJson("/api/games/{$game->id}")->assertNoContent();
 
-        $response->assertNoContent();
         $this->assertSame(0, Game::query()->count());
         $this->assertSame(0, Package::query()->count());
+        $this->assertNull($item->fresh()->game_id);
+    }
+
+    /** ADR-119 2026-11-05: a game whose packages were bought is never deleted; nothing is removed. */
+    public function test_destroy_refuses_a_game_with_order_history(): void
+    {
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        $sold = Package::query()->create(['game_id' => $game->id, 'name' => '100 Diamonds', 'cost_price' => 421, 'standard_selling_price' => 500, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'A']);
+        Package::query()->create(['game_id' => $game->id, 'name' => '200 Diamonds', 'cost_price' => 842, 'standard_selling_price' => 1000, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'B']);
+        Order::factory()->create(['game_id' => $game->id, 'package_id' => $sold->id]);
+        $this->actingAsAdmin();
+
+        $this->deleteJson("/api/games/{$game->id}")
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'This game has order history and cannot be deleted. Deactivate it instead.');
+
+        $this->assertSame(1, Game::query()->count());
+        $this->assertSame(2, Package::query()->count());
+    }
+
+    /** Order #7's shape: an order that kept its game but lost its package still blocks the game. */
+    public function test_destroy_refuses_a_game_an_order_points_at_directly(): void
+    {
+        $game = Game::query()->create(['name' => 'Free Fire Global', 'slug' => 'free-fire-global']);
+        Order::factory()->create(['game_id' => $game->id, 'package_id' => null]);
+        $this->actingAsAdmin();
+
+        $this->deleteJson("/api/games/{$game->id}")->assertStatus(422);
+        $this->assertSame(1, Game::query()->count());
     }
 
     /**

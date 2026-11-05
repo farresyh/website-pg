@@ -7,14 +7,17 @@ use App\Http\Requests\Games\StoreLoginGameRequest;
 use App\Http\Requests\Games\UpdateGameCredentialSchemaRequest;
 use App\Http\Requests\Games\UpdateGameRequest;
 use App\Models\Game;
+use App\Models\Order;
 use App\Models\OrderCredential;
 use App\Models\Package;
 use App\Models\SupplierProduct;
 use App\Services\Catalog\GameFulfilmentRule;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * GAME-1..5/6: Admin's Games & Packages management, and also the "link
@@ -162,13 +165,31 @@ class GameController extends Controller
     }
 
     /**
-     * Cascades to every Package under this Game (`packages.game_id`
-     * is `cascadeOnDelete()`) — a real destructive action, the
-     * frontend must confirm before calling this.
+     * ADR-119 2026-11-05 addendum: a game with order history is never
+     * deleted (the schema restricts it; this only explains the refusal).
+     * An unused game goes with its packages in one transaction: combos
+     * first (always same-game, and their components are restricted), then
+     * the rest. Its Product Manager groups are unlinked (SET NULL).
      */
     public function destroy(Game $game): JsonResponse
     {
-        $game->delete();
+        $refusal = ValidationException::withMessages(['game' => ['This game has order history and cannot be deleted. Deactivate it instead.']]);
+
+        if (Order::query()->where('game_id', $game->id)->orWhereIn('package_id', $game->packages()->select('id'))->exists()) {
+            throw $refusal;
+        }
+
+        try {
+            DB::transaction(function () use ($game) {
+                $game->packages()->where('is_combo', true)->delete();
+                $game->packages()->delete();
+                $game->delete();
+            });
+        } catch (QueryException $e) {
+            // An order placed since the check: the restrict rolled it all back.
+            throw $e->getCode() === '23000' ? $refusal : $e;
+        }
+
         self::forgetIndexCache();
         self::forgetPackagesCache($game->id);
 

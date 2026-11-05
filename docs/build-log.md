@@ -1363,3 +1363,27 @@ Every `partial` price-sync run in the last 7 days was Gamevion: the old API timi
 - The error state shows "Gamevion did not return its games: …".
 
 **Gotcha.** A checkbox inside `<summary>` doesn't toggle the `<details>` (the input is the activation target), so no `stopPropagation` was needed. Re-sorting families by live tick state made a ticked family jump under the cursor; the order now comes from the list the form opened with.
+
+## 2026-11-05 — Deleting a game can no longer remove used packages (ADR-119 2026-11-05 addendum)
+
+**Found** in the founder's stress test of catalog management (read-only on prod):
+- `GameController::destroy()` was a plain `$game->delete()`.
+- The schema then cascaded to every package of the game (`packages.game_id` CASCADE), past ADR-119's guard in `PackageController::destroy()`.
+- It nulled the orders' `game_id` and `package_id` (SET NULL) and deleted price, deactivation and repoint history.
+- Prod's foreign keys match the migrations. 10 of 40 games have orders (102 orders).
+- Order #7 (a combo, 2026-09-15) already has no `package_id`: its package was deleted before the 2026-10-02 guard.
+
+**Built** on `fix/game-delete-integrity`:
+- Migration `2026_11_10_120000_restrict_deleting_used_games_and_packages`: `packages.game_id`, `orders.package_id` and `orders.game_id` → RESTRICT.
+  - On sqlite, the llm_report_* views are dropped and re-created from their stored SQL around the table rebuild, as `2026_10_08_140000` does.
+  - On MySQL (docker), the three rules read RESTRICT afterwards.
+- `GameController::destroy()` refuses with "This game has order history and cannot be deleted. Deactivate it instead." when an order points at the game or one of its packages.
+  - Otherwise, in one transaction it deletes combos, then the other packages, then the game. Product Manager groups are unlinked.
+  - A racing order hits the restrict, rolls back, and gets the same 422.
+- Three tests that deleted a used game or package on purpose now use the legacy null-link shape, or assert the refusal.
+
+**Tests.** 4 new (3 controller, 1 database-level package delete). The 4 deletion tests also pass on MySQL. Full suite: 3,704 green.
+
+**Browser check** (founder's dev servers, local DB): Arena Breakout (3 orders) → Edit Game → Delete Game answered 422 and showed the message in the modal. Its 4 packages are still there.
+
+**Gotcha.** The MySQL test run first failed with `llm_report_orders already exists`: views were left in docker `kerox` by an earlier killed run (`backend/AGENTS.md` gotcha 8). Dropping them fixed it.
