@@ -1197,3 +1197,25 @@ The guard tests (route list, `visible_config`) and the old daily-warning test we
 - Refresh no longer breaks the page.
 
 **Gotcha.** `QueueFake` honours `ShouldBeUnique`: a second dispatch for the same supplier inside `uniqueFor` is dropped. That is intended, so the trigger test uses a second supplier for the drawdown path.
+
+## 2026-11-05 — Released #699: supplier buffer forecast live
+
+**What.**
+- `staging` → `main` PR #699, merged on the founder's go-ahead as `d478522e`.
+- It ships #695–#698: item 28, the supplier buffer forecast and low-balance email (ADR-115 2026-11-05 addendum); the `/admin/balance` Refresh fix (#697); two docs PRs.
+- CI on the PR and on `main` was green on every job, including `backend-concurrency`, `playwright` and `deploy`.
+- The box runs release `82151010` at `d478522`.
+
+**Checked read-only after release.**
+- Migration `2026_11_07_120000_add_supplier_buffer_alert` `Ran`. The column `suppliers.low_balance_alerted_at` and the index `sle_supplier_type_created_idx` exist.
+- `/api/health` 200, Horizon running, and both WhatsApp sessions `ready`.
+- `SupplierBufferService::assess()` on Digiflazz:
+  - balance IDR 15,363,305 (RM 3,673.81 at the landed rate);
+  - forecast IDR 8,716,246, from the busiest window, 30 Oct – 3 Nov;
+  - required IDR 10,000,000 (the floor is higher than the forecast);
+  - a 5-day window covering until Monday 9 Nov; not short.
+- No supplier has an alert claimed.
+- The manual suppliers assess to `null`, as designed.
+- The four Vercel production deploys succeeded.
+
+**Docs.** PRD §14, §15 (Supplier Management and Balance rows), §16 items 28 and 104 and the line on Error Handling now say released. Item 57's closed line still said "not released yet" after #694; it was corrected. §14 also records CHIP's 2026-11-05 reply on the additional payment methods.
