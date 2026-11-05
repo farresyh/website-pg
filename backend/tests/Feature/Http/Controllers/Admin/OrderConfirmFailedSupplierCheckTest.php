@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
 use App\Models\Package;
 use App\Models\Supplier;
+use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderFulfillmentService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -203,11 +204,11 @@ class OrderConfirmFailedSupplierCheckTest extends TestCase
         $this->assertCount(0, $this->checks);
     }
 
-    /** A supplier that does not replay (Gamevion) keeps today's admin-only confirmation. */
+    /** A supplier that does not replay keeps today's admin-only confirmation. */
     public function test_confirm_failed_on_a_non_replay_supplier_does_not_ask_the_supplier(): void
     {
-        $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'currency' => 'MYR', 'api_config' => []]);
-        $order = $this->needsReviewOrder(['supplier_id' => $gamevion->id]);
+        $legacy = Supplier::query()->create(['name' => 'Legacy API', 'slug' => 'legacy-api', 'currency' => 'MYR', 'api_config' => []]);
+        $order = $this->needsReviewOrder(['supplier_id' => $legacy->id]);
 
         $this->confirm($order)->assertOk()->assertJsonPath('delivery_status', 'failed');
     }
@@ -284,8 +285,8 @@ class OrderConfirmFailedSupplierCheckTest extends TestCase
 
     public function test_check_supplier_refuses_a_needs_review_order_on_a_non_replay_supplier(): void
     {
-        $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'currency' => 'MYR', 'api_config' => []]);
-        $order = $this->needsReviewOrder(['supplier_id' => $gamevion->id]);
+        $legacy = Supplier::query()->create(['name' => 'Legacy API', 'slug' => 'legacy-api', 'currency' => 'MYR', 'api_config' => []]);
+        $order = $this->needsReviewOrder(['supplier_id' => $legacy->id]);
 
         $this->postJson("/api/orders/{$order->id}/check-supplier")->assertUnprocessable();
     }
@@ -363,6 +364,76 @@ class OrderConfirmFailedSupplierCheckTest extends TestCase
         app(OrderFulfillmentService::class)->fulfill($order);
 
         $this->assertSame(DeliveryStatus::Pending, $order->fresh()->delivery_status);
+    }
+
+    private function pastWindow(Order $order): Order
+    {
+        Order::query()->whereKey($order->id)->update(['created_at' => now()->subDays(91)]);
+
+        return $order->fresh();
+    }
+
+    /** ADR-102 2026-11-05 addendum: a Retry outside the supplier's window is refused before it is queued. */
+    public function test_retry_from_needs_review_past_the_same_reference_window_is_refused(): void
+    {
+        Queue::fake();
+        $order = $this->pastWindow($this->needsReviewOrder());
+
+        $this->postJson("/api/orders/{$order->id}/retry-delivery")
+            ->assertUnprocessable()->assertJsonValidationErrors('delivery_status');
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_resend_of_the_same_package_from_needs_review_past_the_window_is_refused(): void
+    {
+        Queue::fake();
+        [$package] = $this->twoPackages();
+        $order = $this->pastWindow($this->needsReviewOrder(['game_id' => $package->game_id, 'package_id' => $package->id]));
+
+        $this->postJson("/api/orders/{$order->id}/resend", ['package_id' => $package->id])
+            ->assertUnprocessable()->assertJsonValidationErrors('delivery_status');
+
+        Queue::assertNothingPushed();
+    }
+
+    /** The seam itself: a re-submit outside the window never reaches the supplier, whichever path queued it. */
+    public function test_fulfil_never_re_submits_a_reference_past_the_window(): void
+    {
+        $this->realDigiflazzAnswers(['status' => 'Sukses', 'rc' => '00', 'message' => 'ok']);
+        $order = $this->pastWindow($this->needsReviewOrder());
+
+        try {
+            app(OrderFulfillmentService::class)->fulfill($order);
+            $this->fail('A re-submit past the window must be refused.');
+        } catch (OrderFulfillmentException) {
+        }
+
+        Http::assertNothingSent();
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
+    }
+
+    public function test_a_combo_leg_past_the_window_is_not_re_submitted(): void
+    {
+        $this->realDigiflazzAnswers(['status' => 'Sukses', 'rc' => '00', 'message' => 'ok']);
+        [$order, $leg1, $leg2] = $this->comboWithNeedsReviewLegs();
+        $order = $this->pastWindow($order);
+
+        app(OrderFulfillmentService::class)->fulfill($order);
+
+        Http::assertNothingSent();
+        $this->assertSame(DeliveryStatus::NeedsReview, $leg1->fresh()->status);
+        $this->assertSame(DeliveryStatus::NeedsReview, $leg2->fresh()->status);
+    }
+
+    public function test_check_supplier_on_a_pending_order_past_the_window_is_refused(): void
+    {
+        $this->digiflazzAnswers(new RuntimeException('must not be called'));
+        $order = $this->pastWindow($this->needsReviewOrder(['delivery_status' => DeliveryStatus::Pending->value]));
+
+        $this->postJson("/api/orders/{$order->id}/check-supplier")->assertUnprocessable();
+
+        $this->assertCount(0, $this->checks);
     }
 
     /** @param  array<string, string>  $data  Digiflazz's `data` envelope */

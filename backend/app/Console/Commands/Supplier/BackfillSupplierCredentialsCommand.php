@@ -22,14 +22,13 @@ use Illuminate\Console\Command;
  * left alone unless --force is passed.
  */
 #[Signature('app:backfill-supplier-credentials {--force : overwrite a supplier row that already has a non-empty api_config}')]
-#[Description('Copy gamevion/digiflazz .env credentials into their Supplier.api_config row, once, before the adapter binding cuts over to reading from the DB.')]
+#[Description('Copy digiflazz .env credentials (Gamevion config is entered in /middleware since ADR-137) into their Supplier.api_config row, once, before the adapter binding cuts over to reading from the DB.')]
 class BackfillSupplierCredentialsCommand extends Command
 {
     /**
      * @var array<string, list<string>>
      */
     private const FIELD_MAP = [
-        'gamevion' => ['base_url', 'bearer_token', 'api_key', 'sandbox'],
         'digiflazz' => ['base_url', 'username', 'api_key', 'testing', 'customer_no_separator'],
     ];
 

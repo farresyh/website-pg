@@ -229,6 +229,20 @@ class Order extends Model
     }
 
     /** ADR-125 decision 3: Pending past its supplier's stale window (Supplier::pendingPolicy()). */
+    /**
+     * ADR-102 2026-11-05 addendum: whether this order's stored reference may
+     * still be re-submitted. Past the supplier's `max_reconcile_age_days` the
+     * supplier no longer recognises it, so a re-submit would be a new
+     * purchase. The poll, Check supplier, Confirm Failed and every re-submit
+     * (plain and combo leg) read this one rule. A manual supplier has no window.
+     */
+    public function sameReferenceWithinWindow(): bool
+    {
+        $maxAgeDays = ($this->fulfilmentSupplier()?->pendingPolicy() ?? Supplier::defaultPendingPolicy())['max_age_days'];
+
+        return $maxAgeDays === null || $this->created_at->gt(now()->subDays($maxAgeDays));
+    }
+
     public function isStalePending(): bool
     {
         if ($this->delivery_status !== DeliveryStatus::Pending) {
@@ -269,7 +283,7 @@ class Order extends Model
      * real leg-level ambiguity with NOTHING delivered yet (no Delivered
      * leg present at all) versus a genuine partial delivery (at least
      * one leg Delivered, alongside at least one leg that is Failed or
-     * itself NeedsReview — a Gamevion duplicate_reference, an
+     * itself NeedsReview — an ambiguous duplicate_reference, an
      * unexpected exception mid-attempt, or a rare Digiflazz malformed-
      * envelope case; confirmed supplier-agnostic, not Gamevion-only).
      * Only the second is this decision's carve-out from ADR-026
@@ -535,6 +549,8 @@ class Order extends Model
 
         return $this->delivery_status === DeliveryStatus::NeedsReview;
     }
+
+    public const PAST_WINDOW_MESSAGE = 'This order is too old to re-submit with the same reference: the supplier no longer recognises it, so it would be a new purchase. Use Confirm Failed.';
 
     public const PACKAGE_SWAP_BLOCKED_MESSAGE = 'This order is still awaiting the supplier\'s final answer for its original package. Retry the same package, or settle it first (Check Supplier / Confirm Failed), then resend a different package from Failed.';
 

@@ -1,6 +1,6 @@
 # ADR-026: Delivery-side reconciliation (ORD-10) — `NeedsReview` state for ambiguous Gamevion order-creation failures (built 2026-08-14)
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-05):** In force; its Gamevion `duplicate_reference` routing is retired by ADR-137 (decision 19). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-08-14, grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched.
 

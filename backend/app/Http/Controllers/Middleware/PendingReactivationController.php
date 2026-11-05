@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\GameController;
 use App\Http\Requests\Middleware\BulkPendingReactivationRequest;
 use App\Models\Package;
+use App\Services\Catalog\PackageActivation;
 use App\Services\Pricing\ComboPricingService;
 use App\Services\Sync\PendingReactivationFinder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 /**
  * SYNC-5/6, ADR-015 decision #3: a package Deactivation Detection
@@ -24,6 +26,7 @@ class PendingReactivationController extends Controller
     public function __construct(
         private readonly PendingReactivationFinder $finder,
         private readonly ComboPricingService $comboPricing,
+        private readonly PackageActivation $activation,
     ) {}
 
     public function index(): JsonResponse
@@ -35,7 +38,10 @@ class PendingReactivationController extends Controller
     {
         $this->assertPending($package);
 
-        $package->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
+        if (! $this->activation->activate($package, PackageActivation::SUPPLIER_SYNC)) {
+            throw ValidationException::withMessages(['package' => [PackageActivation::explain($package->deactivated_reason)]]);
+        }
+
         $this->comboPricing->cascadeReactivate($package, priceSyncRunId: null, adminUserId: $request->user()?->id);
         $this->forgetCaches($package);
 
@@ -62,7 +68,10 @@ class PendingReactivationController extends Controller
             ->whereIn('id', array_intersect($request->validated('package_ids'), $pendingIds))
             ->get()
             ->each(function (Package $package) use ($request) {
-                $package->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
+                if (! $this->activation->activate($package, PackageActivation::SUPPLIER_SYNC)) {
+                    return;
+                }
+
                 $this->comboPricing->cascadeReactivate($package, priceSyncRunId: null, adminUserId: $request->user()?->id);
                 $this->forgetCaches($package);
             });

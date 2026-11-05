@@ -6,13 +6,22 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\GameController;
 use App\Http\Requests\Middleware\LinkSupplierProductCategoryRequest;
 use App\Http\Requests\Middleware\PromoteSupplierProductRequest;
+use App\Http\Requests\Middleware\RepointSupplierProductRequest;
 use App\Models\Game;
+use App\Models\Order;
+use App\Models\OrderDeliveryLeg;
 use App\Models\Package;
+use App\Models\PackageRefChange;
+use App\Models\PendingPriceChange;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
+use App\Services\Order\DeliveryStatus;
+use App\Services\Pricing\ComboPricingService;
+use App\Services\Pricing\PackageCostService;
 use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -252,5 +261,67 @@ class SupplierProductController extends Controller
         GameController::forgetPackagesCache($data['game_id']);
 
         return response()->json(['package' => $package], 201);
+    }
+
+    /**
+     * ADR-137 decision 21: when a supplier changes system, point an existing
+     * package at the new supplier product instead of promoting a second one.
+     * The package keeps its id, order history, markup, name, catalog code and
+     * combo memberships; its cost comes from the new price through the same
+     * seam as Price Sync (a PriceChangeLog row with the admin), any open price
+     * swing (it priced the old reference) is closed, and it stays on or off as
+     * it was. Old orders keep their frozen supplier_product_ref; a resend uses
+     * the new one. The old catalog row loses its protection and the next sync
+     * prunes it.
+     */
+    public function repoint(
+        RepointSupplierProductRequest $request,
+        SupplierProduct $supplierProduct,
+        PackageCostService $packageCost,
+        ComboPricingService $comboPricing,
+    ): JsonResponse {
+        $adminUserId = $request->user()?->id;
+
+        $package = DB::transaction(function () use ($request, $supplierProduct, $packageCost, $adminUserId) {
+            $package = Package::query()->with('supplier')->lockForUpdate()->findOrFail($request->validated('package_id'));
+
+            if ($error = $this->repointRefusal($supplierProduct, $package)) {
+                throw ValidationException::withMessages(['package_id' => [$error]]);
+            }
+
+            PendingPriceChange::query()->where('package_id', $package->id)->where('status', 'pending')->update(['status' => 'superseded']);
+            PackageRefChange::query()->create([
+                'package_id' => $package->id,
+                'old_ref' => $package->supplier_package_ref,
+                'new_ref' => $supplierProduct->external_ref,
+                'admin_user_id' => $adminUserId,
+            ]);
+
+            $package->update(['supplier_package_ref' => $supplierProduct->external_ref]);
+            $packageCost->apply($package, $supplierProduct->price_sen, null, $adminUserId);
+
+            return $package;
+        });
+
+        $comboPricing->recomputeForComponentChange($package, null);
+        GameController::forgetIndexCache();
+        GameController::forgetPackagesCache($package->game_id);
+
+        return response()->json(['package' => $package->fresh()]);
+    }
+
+    private function repointRefusal(SupplierProduct $product, Package $package): ?string
+    {
+        $unsettled = [DeliveryStatus::Processing->value, DeliveryStatus::Pending->value, DeliveryStatus::NeedsReview->value];
+
+        return match (true) {
+            $product->price_sen === null || $product->price_sen <= 0 => 'This item has no valid supplier price yet.',
+            Package::query()->where('supplier_id', $product->supplier_id)->where('supplier_package_ref', $product->external_ref)->exists() => 'This item is already in the catalog.',
+            $package->is_combo || $package->supplier_id !== $product->supplier_id || ! $package->supplier?->isApiBacked() => 'Only a package from this same API supplier can be linked to this item.',
+            $product->game_id === null || $product->game_id !== $package->game_id => 'This item\'s group is not linked to the package\'s game.',
+            Order::query()->where('package_id', $package->id)->whereIn('delivery_status', $unsettled)->exists()
+                || OrderDeliveryLeg::query()->where('component_package_id', $package->id)->whereIn('status', $unsettled)->exists() => 'This package has orders still in Processing, Pending or Needs Review. Settle them first.',
+            default => null,
+        };
     }
 }

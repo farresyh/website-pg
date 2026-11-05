@@ -70,10 +70,10 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     { key: "reply_sla_minutes", label: "Reply SLA (minutes)", type: "text", placeholder: "30 (blank = 30) — a Pending order counts as stuck after this" },
   ],
   gamevion: [
-    { key: "base_url", label: "Base URL", type: "text", placeholder: "https://api.gamevion.com (no trailing slash)" },
-    { key: "bearer_token", label: "Bearer Token", type: "secret" },
-    { key: "api_key", label: "API Key", type: "secret" },
-    { key: "sandbox", label: "Sandbox Mode", type: "boolean" },
+    // ADR-137: gamevion.cloud takes one `gvk_` key; the webhook secret is shown once when the webhook URL is set.
+    { key: "base_url", label: "Base URL", type: "text", placeholder: "https://gamevion.cloud (no trailing slash)" },
+    { key: "api_key", label: "API Key (gvk_…)", type: "secret" },
+    { key: "webhook_secret", label: "Webhook Secret", type: "secret" },
     // ADR-069 decision 13 + ADR-115 2026-11-05: the buffer's floor, in the
     // supplier's balance currency.
     { key: "low_balance_threshold", label: "Low-balance Floor", type: "text", placeholder: "e.g. 50 (blank = no floor; the busiest window still applies)" },
@@ -226,7 +226,7 @@ export function updateSupplierPackagesStatus(
   supplierId: number,
   values: UpdateSupplierPackagesStatusValues,
 ) {
-  return apiFetch<{ updated: number }>(`/api/middleware/suppliers/${supplierId}/packages/status`, {
+  return apiFetch<{ updated: number; skipped?: number }>(`/api/middleware/suppliers/${supplierId}/packages/status`, {
     method: "PATCH",
     body: values,
   });

@@ -185,20 +185,28 @@ class Supplier extends Model
             ];
         }
 
-        return self::defaultPendingPolicy($config);
+        return self::defaultPendingPolicy($config, $this->driver);
     }
+
+    /**
+     * ADR-137 decision 17: how long a supplier still recognises one of our
+     * references, as a protocol fact rather than a setting an admin could
+     * leave blank. Gamevion looks orders up for 31 days. A driver not
+     * listed uses `max_reconcile_age_days` (Digiflazz's 90).
+     */
+    private const SAME_REFERENCE_WINDOW_DAYS = ['gamevion' => 30];
 
     /**
      * The API-supplier policy, also used for an order with no supplier row.
      *
      * @return array{polls: bool, stale_minutes: int, max_age_days: ?int, max_hours: ?int}
      */
-    public static function defaultPendingPolicy(array $config = []): array
+    public static function defaultPendingPolicy(array $config = [], ?string $driver = null): array
     {
         return [
             'polls' => true,
             'stale_minutes' => (int) ($config['pending_stale_minutes'] ?? config('services.delivery_reconciliation.pending_stale_minutes')),
-            'max_age_days' => (int) ($config['max_reconcile_age_days'] ?? config('services.delivery_reconciliation.max_reconcile_age_days')),
+            'max_age_days' => (int) ($config['max_reconcile_age_days'] ?? self::SAME_REFERENCE_WINDOW_DAYS[$driver] ?? config('services.delivery_reconciliation.max_reconcile_age_days')),
             'max_hours' => (int) ($config['pending_max_hours'] ?? config('services.delivery_reconciliation.pending_max_hours')),
         ];
     }

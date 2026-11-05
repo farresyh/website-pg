@@ -6,6 +6,7 @@ use App\Http\Controllers\GameController;
 use App\Models\DeactivationLog;
 use App\Models\Package;
 use App\Models\Supplier;
+use App\Services\Catalog\PackageActivation;
 use App\Services\Pricing\ComboPricingService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -33,7 +34,10 @@ final class SupplierPackageStatusService
 
     public const UNFUNDED = 'unfunded';
 
-    public function __construct(private readonly ComboPricingService $comboPricing) {}
+    public function __construct(
+        private readonly ComboPricingService $comboPricing,
+        private readonly PackageActivation $activation,
+    ) {}
 
     /** @return array{updated: int, updated_combos: int} */
     public function deactivate(Supplier $supplier, ?int $adminUserId, ?string $reason, ?int $gameId = null, string $code = self::REASON): array
@@ -77,33 +81,44 @@ final class SupplierPackageStatusService
         return ['updated' => $packageIds->count(), 'updated_combos' => $affectedComboCount];
     }
 
-    /** @return array{updated: int, updated_combos: int} */
-    /** @param  ?list<string>  $refs  only these supplier refs (Price Sync passes what its run saw active) */
+    /**
+     * ADR-015 2026-11-05 addendum: each package goes through PackageActivation,
+     * so one still blocked for another reason (an open price swing, a product
+     * the supplier no longer lists) stays off and is counted as skipped.
+     *
+     * @param  ?list<string>  $refs  only these supplier refs (Price Sync passes what its run saw active)
+     * @return array{updated: int, updated_combos: int, skipped: int}
+     */
     public function reactivate(Supplier $supplier, ?int $adminUserId, ?int $gameId = null, string $code = self::REASON, ?array $refs = null): array
     {
         $this->assertNotPool($supplier);
-        $query = $this->packages($supplier, $gameId)->where('is_active', false)->where('deactivated_reason', $code)
-            ->when($refs !== null, fn ($q) => $q->whereIn('supplier_package_ref', $refs));
-        $packageIds = (clone $query)->pluck('id');
-        $gameIds = (clone $query)->distinct()->pluck('game_id')->all();
+        $packages = $this->packages($supplier, $gameId)->where('is_active', false)->where('deactivated_reason', $code)
+            ->when($refs !== null, fn ($q) => $q->whereIn('supplier_package_ref', $refs))
+            ->with('supplier')
+            ->get();
+        $activatedIds = collect();
         $affectedComboCount = 0;
 
-        DB::transaction(function () use ($query, $packageIds, $adminUserId, &$affectedComboCount) {
-            $query->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
+        DB::transaction(function () use ($packages, $code, $adminUserId, $activatedIds, &$affectedComboCount) {
+            foreach ($packages as $package) {
+                if ($this->activation->activate($package, $code)) {
+                    $activatedIds->push($package->id);
+                }
+            }
 
             // Addendum (2026-09-24) — a combo cascade-deactivated because one
             // of these components went down can now complete, once every
             // other component is active too.
             $affectedComboCount = $this->comboPricing->cascadeReactivateForComponents(
-                $packageIds,
+                $activatedIds,
                 priceSyncRunId: null,
                 adminUserId: $adminUserId,
             )->count();
         });
 
-        $this->forgetCaches($gameIds);
+        $this->forgetCaches($packages->pluck('game_id')->unique()->values()->all());
 
-        return ['updated' => $packageIds->count(), 'updated_combos' => $affectedComboCount];
+        return ['updated' => $activatedIds->count(), 'updated_combos' => $affectedComboCount, 'skipped' => $packages->count() - $activatedIds->count()];
     }
 
     private function packages(Supplier $supplier, ?int $gameId)

@@ -15,6 +15,7 @@ use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\PriceChangeLog;
+use App\Services\Catalog\PackageActivation;
 use App\Services\Pricing\ComboPricingService;
 use App\Services\Pricing\PackageCostService;
 use App\Services\Pricing\PackageMarkupService;
@@ -215,7 +216,7 @@ class PackageController extends Controller
      *    it depends on, the moment every one of that combo's other
      *    components is active too (`cascadeReactivate()`, addendum).
      */
-    public function updateStatus(UpdatePackageStatusRequest $request, Package $package, ComboPricingService $comboPricing): JsonResponse
+    public function updateStatus(UpdatePackageStatusRequest $request, Package $package, ComboPricingService $comboPricing, PackageActivation $activation): JsonResponse
     {
         $isActive = $request->validated('is_active');
 
@@ -244,9 +245,15 @@ class PackageController extends Controller
             }
         }
 
-        $package->update(['is_active' => $isActive]);
+        // ADR-015 2026-11-05 addendum: an admin's switch-on clears any stored
+        // reason, but never a blocker that still holds.
+        if ($isActive && ! $activation->activate($package, null)) {
+            throw ValidationException::withMessages(['is_active' => [PackageActivation::explain($package->deactivated_reason)]]);
+        }
 
         if (! $isActive) {
+            $package->update(['is_active' => false]);
+
             $comboPricing->cascadeDeactivate($package, priceSyncRunId: null, adminUserId: $request->user()?->id);
         } else {
             $comboPricing->cascadeReactivate($package, priceSyncRunId: null, adminUserId: $request->user()?->id);

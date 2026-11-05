@@ -13,318 +13,264 @@ use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 
 /**
- * Adapter for Gamevion (docs.gamevion.com/gamevion-api, OAS 3.1.0,
- * confirmed against the real spec — not assumed). Key traits specific
- * to Gamevion that this adapter absorbs so business logic never has to
- * know about them:
- *  - Auth requires BOTH a Bearer token and an X-API-KEY header.
- *  - Sandbox mode reuses the production URL; only a header/body flag
- *    changes, and it returns a differently-prefixed product shape
- *    (sandbox_* instead of product_*).
- *  - A 409 on order creation means "already submitted" (their
- *    idempotency signal on `referenceNumber`), not a generic failure.
- *  - check-status takes Gamevion's own order id (`invoice_number` from
- *    the create-order response), never our `reference_number`.
- *  - No player-validation endpoint exists at all (ADR-005 fallback
- *    applies to every game on this supplier).
- *  - `telp` (phone) on order creation rejects a leading `+` — digits
- *    only, discovered live 2026-07-25 (see normalizePhone()).
+ * Adapter for Gamevion's API at gamevion.cloud ("Gamevion Dokumentasi API"
+ * v62.25, ADR-137). What it absorbs so business logic never sees it:
+ *  - One `Authorization: Bearer gvk_…` key; every price is MYR.
+ *  - Our product reference is `{game}:{sku}`: a sku is unique only inside
+ *    its game.
+ *  - An order is usually `pending` first; the final status comes by the
+ *    signed webhook (GamevionWebhookController) or a lookup.
+ *  - Our reference is Gamevion's `client_ref`. A repeat POST with the same
+ *    `client_ref` returns the original order and never charges twice, and
+ *    `GET /api/orders/{client_ref}` answering 404 means it was never made.
+ *    So a re-submit reads first and posts only after a 404 (decision 13):
+ *    an error on that post answers for the order.
+ *  - `error`, `cancelled` and `refunded` return the balance (decision 14).
  */
 final class GamevionAdapter implements SupplierAdapter
 {
+    /** Player fields checkout can fill; a game requiring any other is not synced (decision 16). */
+    private const SUPPORTED_FIELDS = ['userid', 'serverid'];
+
+    /** Pricelist calls are limited to 40 a minute per account; 1.6 s apart stays under it. */
+    private const PRICELIST_PAUSE_MS = 1600;
+
+    /** Error codes for which Gamevion made no order and took no balance. */
+    private const NO_ORDER_CODES = ['invalid_request', 'insufficient_balance', 'not_found', 'price_changed', 'invalid_player_id'];
+
     public function __construct(
         private readonly string $baseUrl,
-        private readonly string $bearerToken,
         private readonly string $apiKey,
-        private readonly bool $sandbox = false,
         private readonly ?string $proxyUrl = null,
         private readonly int $timeoutSeconds = 10,
         private readonly int $connectTimeoutSeconds = 5,
     ) {}
 
-    /**
-     * ADR-046 addendum: always queries Gamevion's real/production
-     * account, never the sandbox one — regardless of $this->sandbox
-     * (which exists for testing order-routing, a separate concern).
-     * Found live: X-ENVIRONMENT: sandbox routes check-balance to a
-     * *different* account with its own (fake, test-money) balance, not
-     * a sandboxed view of the same real number — a balance-monitoring
-     * screen (SUPP-1/DASH-2) showing that instead of the real balance
-     * whenever an admin happens to have sandbox mode on is a real
-     * money-visibility risk, not a cosmetic one.
-     */
     public function checkBalance(): SupplierResponse
     {
-        $response = $this->client(forceProduction: true, callType: 'checkBalance')->post('/api/check-balance');
+        $response = $this->client('checkBalance')->get('/api/balance');
 
         if ($failure = $this->failureFrom($response)) {
             return $failure;
         }
 
-        $data = $response->json('data', []);
-
         return SupplierResponse::success([
-            'account_name' => $data['user_name'] ?? null,
-            'account_email' => $data['user_email'] ?? null,
-            'membership' => $data['user_membership'] ?? null,
-            'balance' => isset($data['user_balance']) ? (float) $data['user_balance'] : null,
+            'account_name' => $response->json('username'),
+            'account_email' => null,
+            'membership' => null,
+            'balance' => $response->json('balance') !== null ? (float) $response->json('balance') : null,
         ]);
     }
 
+    /**
+     * Every `gametopup` game whose required fields checkout can fill, one
+     * pricelist each. Any failed call fails the whole sync: a partial
+     * catalog would read as products vanishing and switch packages off.
+     */
     public function listProducts(): SupplierResponse
     {
-        $response = $this->client(callType: 'listProducts')->post('/api/product', array_filter([
-            'sandbox' => $this->sandbox ?: null,
-        ]));
+        $games = $this->client('listProducts')->get('/api/games');
 
-        if ($failure = $this->failureFrom($response)) {
+        if ($failure = $this->failureFrom($games)) {
             return $failure;
         }
 
-        $items = $response->json('data', []);
+        $items = [];
+        $first = true;
 
-        return SupplierResponse::success(array_map(
-            fn (array $item) => $this->normalizeProduct($item),
-            $items,
-        ));
+        foreach ((array) $games->json() as $game) {
+            if (($game['kind'] ?? null) !== 'gametopup' || empty($game['code'])) {
+                continue;
+            }
+
+            $fields = $this->client('listProducts')->get("/api/games/{$game['code']}/fields");
+
+            if ($failure = $this->failureFrom($fields)) {
+                return $failure;
+            }
+
+            if (! self::fieldsSupported((array) $fields->json('fields'))) {
+                continue;
+            }
+
+            if (! $first) {
+                Sleep::for(self::PRICELIST_PAUSE_MS)->milliseconds();
+            }
+            $first = false;
+
+            $pricelist = $this->client('listProducts')->get("/api/pricelist/{$game['code']}");
+
+            if ($failure = $this->failureFrom($pricelist)) {
+                return $failure;
+            }
+
+            foreach ((array) $pricelist->json('prices') as $price) {
+                $items[] = $this->catalogItem($game, $price);
+            }
+        }
+
+        return SupplierResponse::success($items);
     }
 
     public function createOrder(SupplierOrderRequest $request): SupplierResponse
     {
-        $response = $this->client(callType: 'createOrder', orderId: $request->orderId)->post('/api/order', array_filter([
-            'product_code' => $request->productRef,
-            'referenceNumber' => $request->referenceNumber,
-            'data' => $request->serverId !== null
-                ? "{$request->playerId}|{$request->serverId}"
-                : $request->playerId,
-            'telp' => $this->normalizePhone($request->customerPhone),
-            // Gamevion's real API requires this key present in the body
-            // even when there's no real callback (their own docs example
-            // sends "" — confirmed live with Gamevion support 2026-07-29
-            // after this array_filter was silently dropping the key
-            // entirely whenever $request->callbackUrl was null, which it
-            // always was — nothing in this codebase ever sets it. `??
-            // ''` means this is never null by the time array_filter's
-            // `$value !== null` check runs, so it's never stripped.
-            'callback_url' => $request->callbackUrl ?? '',
-        ], fn ($value) => $value !== null));
-
-        if ($response->status() === 409) {
-            return SupplierResponse::failure(
-                'duplicate_reference',
-                'Gamevion already has an order for this reference number',
-                // ADR-098, renamed by ADR-102 decision 5 — the generic,
-                // supplier-agnostic signal this 409 case already
-                // represents: Gamevion has already recorded a
-                // transaction for this reference number, so a resubmit
-                // can only replay it, never reprocess. outcomeConfirmedFailed
-                // stays false (default) — a 409 carries no status field
-                // confirming anything, so this is a genuinely unknown
-                // outcome, not a confirmed one (ADR-102 decision 4).
-                resendUnsafeWithSameReference: true,
-            );
+        if ($request->resubmit) {
+            return $this->lookupThenPost($request->referenceNumber, $request->productRef, $request->playerId, $request->serverId, $request->orderId);
         }
 
-        if ($failure = $this->failureFrom($response)) {
-            return $failure;
-        }
-
-        $data = $response->json('data', []);
-
-        return SupplierResponse::success([
-            'supplier_ref' => $data['invoice_number'] ?? null,
-            'service_name' => $data['ServiceName'] ?? null,
-            'price' => isset($data['price']) ? (float) $data['price'] : null,
-            'quantity' => $data['quantity'] ?? null,
-            'game' => $data['game'] ?? null,
-            'player_id' => $data['uid'] ?? null,
-            'server_id' => $data['server'] ?? null,
-            'created_at' => $data['created_at'] ?? null,
-        ]);
+        return $this->post($request->referenceNumber, $request->productRef, $request->playerId, $request->serverId, $request->orderId);
     }
 
+    /** Our reference is the `client_ref`, so a check reads it and posts only when Gamevion never made it. */
     public function checkStatus(SupplierStatusCheckRequest $request): SupplierResponse
     {
-        $response = $this->client(callType: 'checkStatus', orderId: $request->orderId)->post('/api/check-status', [
-            'order_id' => $request->supplierRef,
-        ]);
-
-        if ($failure = $this->failureFrom($response)) {
-            return $failure;
-        }
-
-        $data = $response->json('data', []);
-
-        return SupplierResponse::success([
-            'supplier_ref' => $data['invoice'] ?? null,
-            'product_name' => $data['product_name'] ?? null,
-            'status' => $data['transaction_status'] ?? null,
-            'serial_number' => $data['serial_number'] ?? null,
-            'note' => $data['note'] ?? null,
-            'created_at' => $data['created_at'] ?? null,
-        ]);
+        return $this->lookupThenPost($request->supplierRef, (string) $request->productRef, (string) $request->playerId, $request->serverId, $request->orderId);
     }
 
     public function validatePlayer(string $playerId, ?string $serverId): SupplierResponse
     {
-        throw new ValidationNotSupportedException(
-            'Gamevion has no player-validation endpoint — validation happens implicitly at order time (ADR-005).',
+        // `/api/validate` needs the game code, which this interface does not carry (ADR-005 fallback).
+        throw new ValidationNotSupportedException('Gamevion player validation needs the game code; validation happens at order time (ADR-005).');
+    }
+
+    /**
+     * The one mapping from a Gamevion order object to our outcome, shared
+     * by the order calls and the webhook (decision 14). A delivered order
+     * that is later `refunded` is the webhook's concern, not this mapping's.
+     *
+     * @param  array<string, mixed>  $order
+     */
+    public static function responseFor(array $order): SupplierResponse
+    {
+        $data = [
+            'supplier_ref' => $order['order_id'] ?? null,
+            'status' => $order['order_status'] ?? null,
+            'price' => isset($order['price']) ? (float) $order['price'] : null,
+            'message' => $order['message'] ?? null,
+        ];
+
+        return match ($order['order_status'] ?? null) {
+            'successful' => SupplierResponse::success($data),
+            'pending' => SupplierResponse::pending($data),
+            'error', 'cancelled', 'refunded' => SupplierResponse::failure(
+                (string) $order['order_status'],
+                (string) (($order['message'] ?? '') ?: "Gamevion order {$order['order_status']}"),
+                outcomeConfirmedFailed: true,
+            ),
+            default => SupplierResponse::failure('unknown', 'Gamevion returned an order with no known status', resendUnsafeWithSameReference: true),
+        };
+    }
+
+    private function lookupThenPost(string $reference, string $productRef, string $playerId, ?string $serverId, ?int $orderId): SupplierResponse
+    {
+        $lookup = $this->client('checkStatus', $orderId)->get('/api/orders/'.rawurlencode($reference));
+
+        if ($lookup->status() === 404) {
+            return $this->post($reference, $productRef, $playerId, $serverId, $orderId);
+        }
+
+        return $this->failureFrom($lookup) ?? self::responseFor((array) $lookup->json());
+    }
+
+    private function post(string $reference, string $productRef, string $playerId, ?string $serverId, ?int $orderId): SupplierResponse
+    {
+        [$game, $sku] = array_pad(explode(':', $productRef, 2), 2, '');
+
+        $response = $this->client('createOrder', $orderId)->post('/api/order', array_filter([
+            'game' => $game,
+            'denom' => $sku,
+            'userid' => $playerId,
+            'serverid' => $serverId,
+            'client_ref' => $reference,
+        ], fn ($value) => $value !== null && $value !== ''));
+
+        return $this->failureFrom($response) ?? self::responseFor((array) $response->json());
+    }
+
+    /**
+     * Errors carry a machine `code`. A no-order code is a confirmed failure;
+     * everything else (a concurrent repeat, a rate limit, 5xx, an auth
+     * failure, an unreadable body) leaves the outcome unknown: Pending with
+     * a same-reference poll (decision 13). 401/403 count against the breaker
+     * like a 5xx (decision 12).
+     */
+    private function failureFrom(Response $response): ?SupplierResponse
+    {
+        if ($response->successful() && is_array($response->json())) {
+            return null;
+        }
+
+        $code = (string) ($response->json('code') ?? $response->status());
+        $message = (string) ($response->json('message') ?? "Gamevion request failed with HTTP {$response->status()}");
+
+        if (in_array($code, self::NO_ORDER_CODES, true)) {
+            return SupplierResponse::failure($code, $message, outcomeConfirmedFailed: true);
+        }
+
+        return SupplierResponse::failure(
+            $code,
+            $message,
+            isServerError: $response->serverError() || in_array($response->status(), [401, 403], true),
+            resendUnsafeWithSameReference: true,
+        );
+    }
+
+    /** @param  list<array<string, mixed>>  $fields */
+    private static function fieldsSupported(array $fields): bool
+    {
+        foreach ($fields as $field) {
+            if (! empty($field['required']) && ! in_array($field['key'] ?? null, self::SUPPORTED_FIELDS, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $game
+     * @param  array<string, mixed>  $price
+     */
+    private function catalogItem(array $game, array $price): SupplierCatalogItem
+    {
+        $amount = isset($price['price']) ? (float) $price['price'] : null;
+
+        return new SupplierCatalogItem(
+            productRef: "{$game['code']}:{$price['sku']}",
+            name: $price['label'] ?? null,
+            category: $game['name'] ?? $game['code'],
+            price: $amount,
+            status: ($price['available'] ?? false) ? 'active' : 'inactive',
+            groupLabel: $game['name'] ?? $game['code'],
+            type: $price['group'] ?? null,
+            rawPrice: $amount,
+            rawCurrency: $amount !== null ? 'MYR' : null,
         );
     }
 
     /**
-     * createOrder() runs inside OrderFulfillmentService::fulfill()'s
-     * DB::transaction()/lockForUpdate() (added during the 2026-07-25
-     * audit to fix a double-delivery race) — a hung/slow Gamevion
-     * response with no client-side timeout would hold that row lock
-     * (and the open transaction) for as long as the socket stays open,
-     * risking lock-wait timeouts/connection pool exhaustion under load.
-     * Every request goes through this one client, so the timeout
-     * applies uniformly, not just to createOrder().
+     * createOrder() runs inside OrderFulfillmentService's row lock, so every
+     * call keeps the short timeout. The shared retry covers connection
+     * failures and 5xx only; repeating a POST is safe because the same
+     * `client_ref` never charges twice.
      */
-    private function client(bool $forceProduction = false, string $callType = 'unknown', ?int $orderId = null): PendingRequest
+    private function client(string $callType, ?int $orderId = null): PendingRequest
     {
         $client = Http::baseUrl($this->baseUrl)
-            ->withHeaders(array_filter([
-                'Authorization' => "Bearer {$this->bearerToken}",
-                'X-API-KEY' => $this->apiKey,
-                'X-ENVIRONMENT' => ($this->sandbox && ! $forceProduction) ? 'sandbox' : null,
-            ]))
+            ->withToken($this->apiKey)
+            ->withHeaders(['X-Lang' => 'en'])
             ->timeout($this->timeoutSeconds)
             ->connectTimeout($this->connectTimeoutSeconds)
             ->acceptJson()
-            // ADR-014: 3 retries, 200ms/500ms/1s backoff, connection
-            // failures and real 5xx only — never a 4xx like the 422
-            // "invalid product code" ADR-006's sandbox retest hit.
-            // throw:false keeps failureFrom()'s own status/body
-            // inspection working unchanged for non-retried failures.
             ->retry([200, 500, 1000], when: TransientFailureRetryPolicy::shouldRetry(), throw: false);
 
         if ($this->proxyUrl !== null) {
             $client = $client->withOptions(['proxy' => $this->proxyUrl]);
         }
 
-        // ADR-051 — every real outbound call from this adapter gets a
-        // supplier_request_logs row, regardless of which of the 4
-        // callers above reached this method.
         return SupplierRequestLogger::attach($client, 'gamevion', $callType, $orderId);
-    }
-
-    /**
-     * Gamevion's error-response body shape isn't defined in the spec
-     * for 400/409/422/500/404 (status + description only) — this reads
-     * defensively rather than assuming a body exists at all.
-     *
-     * 2026-09-28 audit finding M-3: unlike Digiflazz's own `status`
-     * field, nothing here tells a genuine business rejection ("Gamevion
-     * looked at this and said no") apart from an ambiguous transport/
-     * server failure ("we don't know what Gamevion did") — so every
-     * branch below conservatively sets resendUnsafeWithSameReference:
-     * true (never outcomeConfirmedFailed), the same safe default the
-     * 409 duplicate_reference branch above already uses. This routes
-     * every Gamevion failure to NeedsReview rather than a confirmed
-     * Failed; a finer confirmed-vs-ambiguous split would need Gamevion's
-     * real per-code error catalogue, which isn't documented anywhere
-     * this codebase has access to.
-     */
-    private function failureFrom(Response $response): ?SupplierResponse
-    {
-        if ($response->failed()) {
-            $body = $response->json() ?? [];
-
-            return SupplierResponse::failure(
-                (string) $response->status(),
-                $body['message'] ?? "Gamevion request failed with HTTP {$response->status()}",
-                isServerError: $response->serverError(),
-                resendUnsafeWithSameReference: true,
-            );
-        }
-
-        if (($response->json('error') ?? false) === true) {
-            return SupplierResponse::failure(
-                (string) ($response->json('code') ?? 'unknown'),
-                $response->json('message') ?? 'Unknown Gamevion error',
-                resendUnsafeWithSameReference: true,
-            );
-        }
-
-        return null;
-    }
-
-    /**
-     * Discovered live, 2026-07-25 (real end-to-end checkout test,
-     * MLBB): Gamevion's `telp` field rejects a leading `+` — our own
-     * checkout stores whatever format the customer typed
-     * (`Order.customer_phone`, e.g. "+60123456789"), and Gamevion's
-     * validator returned the confusingly-worded "telp field must be
-     * between 9 and 13 digits" for a value that *is* 11 digits, just
-     * with a `+` prefix that fails their "must be all-digit" check
-     * entirely. ADAPT-4's own principle: this is exactly the kind of
-     * supplier-specific format quirk the Adapter absorbs, not
-     * something business logic (or the customer) should need to know.
-     * Strips everything except digits — doesn't attempt to validate or
-     * reformat into a specific length, since Gamevion's own real
-     * constraint (9-13 digits) is theirs to enforce, not ours to
-     * second-guess.
-     */
-    private function normalizePhone(?string $phone): ?string
-    {
-        if ($phone === null) {
-            return null;
-        }
-
-        $digitsOnly = preg_replace('/\D/', '', $phone);
-
-        return $digitsOnly !== '' ? $digitsOnly : null;
-    }
-
-    /**
-     * Live mode: product_code/product_price (number)/...
-     * Sandbox mode: sandbox_code/sandbox_price (string)/... — a
-     * genuinely different field set for the same concept, confirmed
-     * from the spec's oneOf. Both collapse to one canonical shape.
-     *
-     * ADR-067 decision 4: `groupLabel` is `category` — Gamevion's
-     * category string is already edition-level ("Free Fire Global",
-     * "Mobile Legends: Bang Bang (Malaysia)"), so it is the right
-     * Product Manager grouping key as-is. Gamevion has no `type`
-     * concept, so that stays null.
-     */
-    private function normalizeProduct(array $item): SupplierCatalogItem
-    {
-        // ADR-069 decision 10: Gamevion already quotes in MYR — no FX
-        // conversion happens for it — so its raw price is the same
-        // number as `price`, tagged 'MYR'. Kept for parity so the
-        // Product Manager's sanity line renders uniformly across
-        // suppliers, not because a conversion needs checking here.
-        if (array_key_exists('sandbox_code', $item)) {
-            $price = isset($item['sandbox_price']) ? (float) $item['sandbox_price'] : null;
-
-            return new SupplierCatalogItem(
-                productRef: $item['sandbox_code'] ?? '',
-                name: $item['sandbox_serviceName'] ?? null,
-                category: $item['sandbox_category'] ?? null,
-                price: $price,
-                status: $item['sandbox_status'] ?? null,
-                groupLabel: $item['sandbox_category'] ?? null,
-                rawPrice: $price,
-                rawCurrency: $price !== null ? 'MYR' : null,
-            );
-        }
-
-        $price = isset($item['product_price']) ? (float) $item['product_price'] : null;
-
-        return new SupplierCatalogItem(
-            productRef: $item['product_code'] ?? '',
-            name: $item['product_serviceName'] ?? null,
-            category: $item['product_category'] ?? null,
-            price: $price,
-            status: $item['product_status'] ?? null,
-            groupLabel: $item['product_category'] ?? null,
-            rawPrice: $price,
-            rawCurrency: $price !== null ? 'MYR' : null,
-        );
     }
 }

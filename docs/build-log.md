@@ -1197,3 +1197,124 @@ The guard tests (route list, `visible_config`) and the old daily-warning test we
 - Refresh no longer breaks the page.
 
 **Gotcha.** `QueueFake` honours `ShouldBeUnique`: a second dispatch for the same supplier inside `uniqueFor` is dropped. That is intended, so the trigger test uses a second supplier for the drawdown path.
+
+## 2026-11-05 — Released #699: supplier buffer forecast live
+
+**What.**
+- `staging` → `main` PR #699, merged on the founder's go-ahead as `d478522e`.
+- It ships #695–#698: item 28, the supplier buffer forecast and low-balance email (ADR-115 2026-11-05 addendum); the `/admin/balance` Refresh fix (#697); two docs PRs.
+- CI on the PR and on `main` was green on every job, including `backend-concurrency`, `playwright` and `deploy`.
+- The box runs release `82151010` at `d478522`.
+
+**Checked read-only after release.**
+- Migration `2026_11_07_120000_add_supplier_buffer_alert` `Ran`. The column `suppliers.low_balance_alerted_at` and the index `sle_supplier_type_created_idx` exist.
+- `/api/health` 200, Horizon running, and both WhatsApp sessions `ready`.
+- `SupplierBufferService::assess()` on Digiflazz:
+  - balance IDR 15,363,305 (RM 3,673.81 at the landed rate);
+  - forecast IDR 8,716,246, from the busiest window, 30 Oct – 3 Nov;
+  - required IDR 10,000,000 (the floor is higher than the forecast);
+  - a 5-day window covering until Monday 9 Nov; not short.
+- No supplier has an alert claimed.
+- The manual suppliers assess to `null`, as designed.
+- The four Vercel production deploys succeeded.
+
+**Docs.** PRD §14, §15 (Supplier Management and Balance rows), §16 items 28 and 104 and the line on Error Handling now say released. Item 57's closed line still said "not released yet" after #694; it was corrected. §14 also records CHIP's 2026-11-05 reply on the additional payment methods.
+
+## 2026-11-05 — Item 162 PR 1: package activation seam and the same-reference window
+
+**Why.** Two money gaps found while tracing ADR-137 (Gamevion v2) decision 21, outside Gamevion itself. The stress test showed that the first fix, at two sites, was a patch; the founder accepted the root-cause fix (ADR-015 and ADR-102 2026-11-05 addenda).
+
+**Gap A and B: package activation.**
+- Checkout sells any package with `is_active`. Nine places switched a package on by writing `is_active = true, deactivated_reason = null` directly. Each cleared the one stored reason and checked nothing else.
+- So a supplier's Reactivate brought back a package with an open price swing (sold at the old cost) or one its supplier no longer lists.
+- Approving or dismissing a swing switched on a package that was off because its supplier was off, or because an admin turned it off.
+- Prod, read-only, 2026-11-05: none of the 1,210 active API packages is affected.
+
+**Built.**
+- `App\Services\Catalog\PackageActivation`:
+  - `activate($package, $clears)` and `blocker($package)`;
+  - blockers are computed live: an open `PendingPriceChange`, supplier off, unfunded, not listed at the supplier's last sync, a combo component off;
+  - a blocked package stays off with that blocker as its reason, so the path that owns the reason brings it back;
+  - a caller clears only the reason it owns; `null` is an admin's own switch-on from `/games`.
+- All nine writers route through it: Pending Reactivation approve and bulk, the auto-approver, Dismissed restore, swing approve and dismiss, the supplier's Reactivate (and a manual supplier switched on, and the unfunded sync), the `/games` toggle, the two combo cascades.
+- The supplier's Reactivate now returns `skipped`, and the admin toast says how many stayed off.
+- An invariant test fails CI if other code clears a package deactivation.
+
+**The same-reference window.**
+- `max_reconcile_age_days` was enforced by the poll and Check supplier / Confirm Failed, but not by Retry or Resend from NeedsReview, which re-submit the stored reference.
+- `Order::sameReferenceWithinWindow()` is now the one rule:
+  - `fulfill()` and the combo leg attempt refuse outside it;
+  - Retry, Resend and Check supplier on a Pending order answer 422 with `Order::PAST_WINDOW_MESSAGE`.
+
+**Tests.**
+- 11 in `PackageActivationTest`.
+- 5 added to `OrderConfirmFailedSupplierCheckTest`: Retry, Resend, `fulfill()`, a combo leg, and Check supplier past the window.
+- Four tests that built `ComboPricingService` / `PendingReactivationAutoApprover` by hand now resolve them from the container.
+- The auto-approver fixture's Digiflazz is MYR: an IDR supplier with no deposit is unfunded, which the seam rightly refuses.
+- Full suite 3,666 green. Admin: `tsc` and `eslint` clean.
+
+## 2026-11-05 — Item 162 PR 2: Gamevion v2 adapter, webhook and cutover guard (ADR-137)
+
+**Built.**
+- `GamevionAdapter`, rewritten for gamevion.cloud, behind the unchanged `SupplierAdapter` seam:
+  - one `Authorization: Bearer gvk_…` key;
+  - product reference `{game}:{sku}`;
+  - `listProducts()` keeps `gametopup` games whose required `/fields` are `userid`/`serverid` only, paces pricelists 1.6 s apart (40/min limit), and fails whole on any failed call (a partial catalog would switch packages off);
+  - `createOrder()` posts with our reference as `client_ref`; a re-submit and `checkStatus()` read `GET /api/orders/{client_ref}` first and post once only on a 404;
+  - one mapping, `GamevionAdapter::responseFor()`: `successful`, `pending`, and `error`/`cancelled`/`refunded` as confirmed failures. No-order error codes (400/402/404/422, `price_changed`) are confirmed; 409 `request_in_progress`, 429, 5xx and 401/403 are unknown (401/403 and 5xx count against the breaker).
+- `gamevion` joins `RESUBMIT_REPLAYS_OUTCOME`. Its same-reference window is a protocol constant of 30 days (`Supplier::SAME_REFERENCE_WINDOW_DAYS`), so a blank setting cannot fall back to 90.
+- `POST /api/webhooks/gamevion` (`GamevionWebhookController`):
+  - HMAC-SHA256 of `timestamp.raw body`, rejected past 5 minutes;
+  - finalizes a plain order or a combo leg by `client_ref` through `finalizePendingDelivery[Leg]()`;
+  - a `refunded` after delivery emails every admin (area "Supplier refund") and changes nothing;
+  - `pending` or an unknown status is acknowledged and left to the poll.
+- Cutover guard: saving a supplier's `api_config` with a new `base_url` is refused while it has an order or combo leg in Processing, Pending or NeedsReview. A key rotation at the same URL is allowed.
+- Config: Gamevion's required keys are `base_url` and `api_key`; `webhook_secret` is optional; `bearer_token`/`sandbox` and the `GAMEVION_*` credential env defaults are gone. The admin form matches.
+- `app:gamevion-smoke-test` uses the supplier row: balance, catalog, and with `--order` one order only at a zero balance (expects 402).
+- `app:backfill-supplier-credentials` covers Digiflazz only.
+- Dead code: `flagStaleDuplicateReferences()` removed. The sandbox's `duplicate_reference` convention stays (ADR-137 PR 2 build addendum).
+
+**Money checks in tests.**
+- A delivered Gamevion order records its drawdown and a real cost of RM4.20 = 420 sen at face value (MYR, no transfer).
+- A repeated webhook writes one drawdown.
+- An `error` writes none.
+
+**Tests.**
+- 20 in the new `GamevionAdapterTest`, 9 in `GamevionWebhookControllerTest`, plus the cutover guard and the 30-day window.
+- Fixtures that used `gamevion` as a non-replaying or sandboxed supplier now use a generic `legacy-api` supplier or Digiflazz with `testing`, because Gamevion now replays and has no sandbox.
+- Full suite 3,675 green. Admin `tsc` and `eslint` clean.
+- Local curl: `POST /api/webhooks/gamevion` answers 503 against the dev DB, which has no `webhook_secret` (fail-safe).
+
+**Gotcha.** A test with no `Queue::fake()` on a replay-safe supplier now also runs the recovery poll inline. A fixture supplier with no config then throws from the poll, not the order (`ResellerBotOrderTest`).
+
+## 2026-11-05 — Item 162 PR 3: package repoint in Product Manager (ADR-137 decision 21)
+
+**Why.** When a supplier changes system, its references change. Before this, a package could not be pointed at a new reference: Promote refuses an item that is already a package, and the package update never took `supplier_package_ref`. The only options were a second package beside a dead one, or delete and set up again.
+
+**Built.**
+- `POST /api/middleware/supplier-products/{item}/repoint` (`package_id`), super admin, with `RepointSupplierProductRequest`.
+- Under a row lock it refuses when:
+  - the item has no valid price;
+  - the item is already in the catalog;
+  - the package is from another supplier, a combo, or a manual supplier's;
+  - the item's group is not linked to the package's game;
+  - the package has an order or combo leg in Processing, Pending or NeedsReview.
+- Otherwise it:
+  - records `package_ref_changes` (old, new, admin);
+  - closes any open price swing as `superseded`;
+  - sets the new reference;
+  - sets the cost from the new price through `PackageCostService::apply()` (a `PriceChangeLog` row with the admin; markup kept);
+  - recomputes the combos that use the package.
+- The package stays on or off as it was. Old orders keep their frozen reference; a resend uses the new one. The old catalog row is no longer protected, so the next sync prunes it.
+- Migration `2026_11_08_120000_create_package_ref_changes_table`. On MySQL (docker test DB), `SHOW INDEX` shows a standalone index on `package_id` and `admin_user_id`.
+- Admin: "Link to existing" beside "Add to Catalog" opens `RepointProductModal` (`components/ui` kit). It lists this game's packages from the same supplier and shows the current cost against the new price before confirming.
+
+**Tests.** 7 in `SupplierProductRepointTest`. Full suite 3,682 green. Admin `tsc`, `eslint` and 22 unit tests pass.
+
+**Browser check.** On the founder's running dev servers (`:3000`, API `:8000`):
+- Product Manager → Arena Breakout (Gamevion, dev data) → Link to existing → pick a package → Link package.
+- The POST was intercepted by Playwright, so the dev DB was not written. Its body was `{"package_id": 3}`.
+- Checked in light, dark and 390 px: no horizontal overflow, no JS errors.
+- The cost comparison showed a deliberately mismatched pick plainly (RM 3.25 → RM 165.24).
+
+**Gotcha.** `php artisan migrate --env=testing` with no `.env.testing` runs against the dev DB. It ran this additive migration there, which lifecycle step 5 needs anyway.

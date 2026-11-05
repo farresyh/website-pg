@@ -39,25 +39,17 @@ use Illuminate\Support\Facades\Log;
  * OrderFulfillmentService::fulfill() itself (routes straight to
  * needs_review, never back through this command).
  *
- * Gap Y — delivery_status=failed rows already carrying
- * supplier_response.error_code=duplicate_reference from before this
- * feature existed (fulfill() used to treat it as a plain failure). A
- * one-time catch-up per row, not an ongoing concern: any *future*
- * duplicate_reference response is now caught directly inside fulfill()
- * itself and never reaches delivery_status=failed at all.
+ * Gap Y — a one-time Failed → NeedsReview catch-up for rows carrying the
+ * old Gamevion API's `duplicate_reference` — was removed with that API
+ * (ADR-137 decision 19): prod never held such a row.
  *
- * Neither gap is resolved via SupplierAdapter::checkStatus() —
- * confirmed (ADR-026's Context) that Gamevion's check-status endpoint
- * needs its own invoice number, which is exactly the value missing in
- * both cases, and neither Gamevion's API nor its merchant dashboard
- * support a reference-number lookup. needs_review exists because no
- * automated resolution is possible with Gamevion's currently-confirmed
- * surface, not because this command doesn't try hard enough.
+ * Gamevion's v2 API is looked up by our own reference (ADR-137), so it
+ * resolves through checkStatus() like Digiflazz below.
  *
  * ADR-032 decision 5 adds a third, structurally different job: the
  * poll backup for an async supplier's Pending state (checkStalePending()
  * below) — this one CAN resolve via SupplierAdapter::checkStatus(),
- * unlike Gap X/Y above, since an async supplier's own status-check
+ * unlike Gap X above, since an async supplier's own status-check
  * endpoint is keyed on our own reference_number, not a supplier-side
  * invoice number we may not have yet.
  */
@@ -71,7 +63,6 @@ class ReconcilePendingDeliveriesCommand extends Command
 
         $this->retryStuckProcessing($staleAfterMinutes, $orderStatus, $fulfillment);
         $this->retryStuckNotStarted($staleAfterMinutes);
-        $this->flagStaleDuplicateReferences($staleAfterMinutes, $orderStatus);
         $this->reclassifyConfirmedFailedNeedsReview($orderStatus);
         $this->checkStalePending($orderStatus);
         $this->remindStaleManualPending($notifier);
@@ -186,54 +177,6 @@ class ReconcilePendingDeliveriesCommand extends Command
     }
 
     /**
-     * Gap Y catch-up. Was widened by ADR-098 to also catch a stale
-     * Failed order carrying one of Digiflazz's own "Terbentuk
-     * Transaksi=Ya" rc codes — ADR-102 decision 4 REMOVES that
-     * Digiflazz branch again: those codes are now a confirmed-Gagal
-     * outcome that belongs on Failed permanently (Issue Voucher
-     * already available there), so detouring one through NeedsReview
-     * here would just be immediately reversed by
-     * reclassifyConfirmedFailedNeedsReview() below in the very same
-     * command run — a pointless flip-flop, not a correctness bug, but
-     * confusing to read in the logs. Only Gamevion's own
-     * `'duplicate_reference'` stays here: it is still genuinely
-     * ambiguous (no status field confirms anything), so a stale Failed
-     * row carrying it still needs the same Failed→NeedsReview catch-up
-     * Gap Y always existed for.
-     *
-     * Row-locked despite this command only ever running as a single
-     * scheduled instance — same discipline this codebase applies to
-     * every other order-state mutation (backend/CLAUDE.md).
-     */
-    private function flagStaleDuplicateReferences(int $staleAfterMinutes, OrderStatusService $orderStatus): void
-    {
-        $orders = Order::query()
-            ->where('delivery_status', DeliveryStatus::Failed->value)
-            ->where('updated_at', '<=', now()->subMinutes($staleAfterMinutes))
-            ->where('supplier_response->error_code', 'duplicate_reference')
-            ->get();
-
-        $this->info("Flagging {$orders->count()} stale unretriable delivery(ies) for review...");
-
-        foreach ($orders as $order) {
-            DB::transaction(function () use ($order, $orderStatus) {
-                $locked = Order::query()->lockForUpdate()->find($order->id);
-
-                if ($locked === null || $locked->delivery_status !== DeliveryStatus::Failed) {
-                    return;
-                }
-
-                $needsReview = $orderStatus->markNeedsReview($locked->delivery_status);
-
-                $locked->update(['delivery_status' => $needsReview->value]);
-
-                Log::withContext(['order_number' => $locked->order_number]);
-                Log::warning('Delivery reconciliation: flagged stale unretriable delivery for manual review');
-            });
-        }
-    }
-
-    /**
      * ADR-102 decision 7 — a PERMANENT safety net, not a one-time
      * cleanup: reclassifies any existing needs_review order whose
      * stored error_code is one of Digiflazz's 20 confirmed-Gagal
@@ -244,10 +187,8 @@ class ReconcilePendingDeliveriesCommand extends Command
      * anything already stuck there before the fix shipped, and as a
      * guard against a future misroute (a new bug, a webhook race)
      * landing one there again. Scoped to `supplier.slug = digiflazz`
-     * for the exact same reason flagStaleDuplicateReferences() above
-     * scopes its own rc-code branch — Gamevion's error_code is an
-     * arbitrary, unbounded string that could coincidentally collide
-     * with one of Digiflazz's numeric codes. No staleness window: this
+     * because another supplier's error_code is its own string that could
+     * coincidentally collide with one of Digiflazz's numeric codes. No staleness window: this
      * is a live classification correction, not "wait and see if it
      * resolves itself" — a combo order's own order-level
      * supplier_response.error_code is never set (only its legs carry
@@ -318,14 +259,13 @@ class ReconcilePendingDeliveriesCommand extends Command
                 continue;
             }
 
-            $maxAgeDays = $policy['max_age_days'];
             $maxHours = $policy['max_hours'];
 
             // ADR-102 addendum (2026-09-29): also age out a Pending order
             // that hasn't moved in `pending_max_hours` — updated_at marks
             // entry into Pending, since a still-Pending/ambiguous poll never
             // writes to the order.
-            if ($order->created_at->lte(now()->subDays($maxAgeDays)) || $order->updated_at->lte(now()->subHours($maxHours))) {
+            if (! $order->sameReferenceWithinWindow() || $order->updated_at->lte(now()->subHours($maxHours))) {
                 DB::transaction(function () use ($order, $orderStatus) {
                     $locked = Order::query()->lockForUpdate()->find($order->id);
 

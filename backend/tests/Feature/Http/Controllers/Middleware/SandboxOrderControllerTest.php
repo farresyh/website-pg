@@ -42,8 +42,11 @@ class SandboxOrderControllerTest extends TestCase
     private function gameWithPackage(array $packageOverrides = []): array
     {
         $supplier = Supplier::query()->firstOrCreate(
-            ['slug' => 'gamevion'],
-            ['name' => 'Gamevion', 'api_config' => [], 'currency' => 'MYR'],
+            // A supplier whose re-submit does not replay a stored result, so an
+            // ambiguous outcome reaches needs_review (Digiflazz and Gamevion
+            // replay and would park it at Pending instead, ADR-137).
+            ['slug' => 'legacy-api'],
+            ['name' => 'Legacy API', 'api_config' => [], 'currency' => 'MYR'],
         );
         $game = Game::query()->create(['name' => 'Free Fire Global '.uniqid(), 'slug' => 'free-fire-global-'.uniqid()]);
         $package = Package::query()->create(array_merge([

@@ -150,9 +150,7 @@ class AppServiceProvider extends ServiceProvider
 
                 $gamevion = new GamevionAdapter(
                     baseUrl: $apiConfig['base_url'],
-                    bearerToken: (string) $apiConfig['bearer_token'],
                     apiKey: (string) $apiConfig['api_key'],
-                    sandbox: (bool) $apiConfig['sandbox'],
                     proxyUrl: $proxy['enabled'] ? $proxy['url'] : null,
                     timeoutSeconds: $config['timeout'],
                     connectTimeoutSeconds: $config['connect_timeout'],

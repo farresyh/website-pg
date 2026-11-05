@@ -5,6 +5,7 @@ namespace Tests\Feature\Http\Controllers\Middleware;
 use App\Models\AdminUser;
 use App\Models\DeactivationLog;
 use App\Models\Game;
+use App\Models\Order;
 use App\Models\Package;
 use App\Models\PackageReactivationLog;
 use App\Models\Supplier;
@@ -77,7 +78,7 @@ class SupplierControllerTest extends TestCase
     public function test_index_never_leaks_api_config_and_reports_status(): void
     {
         $this->actingAsAdmin();
-        $this->supplier(['api_config' => ['base_url' => 'https://api.gamevion.com', 'bearer_token' => 'secret-value', 'api_key' => 'secret-key', 'sandbox' => true]]);
+        $this->supplier(['api_config' => ['base_url' => 'https://gamevion.cloud', 'api_key' => 'secret-value', 'webhook_secret' => 'secret-hook']]);
 
         $response = $this->getJson('/api/middleware/suppliers')->assertOk();
 
@@ -86,22 +87,22 @@ class SupplierControllerTest extends TestCase
         $this->assertArrayNotHasKey('api_config', $body);
         $this->assertTrue($body['has_credentials']);
         $this->assertTrue($body['is_fully_configured']);
-        $this->assertSame(['bearer_token', 'api_key'], $body['configured_secret_keys']);
+        $this->assertSame(['api_key', 'webhook_secret'], $body['configured_secret_keys']);
         $this->assertSame('closed', $body['circuit_state']);
         $this->assertSame(['packages' => 0, 'supplier_products' => 0, 'orders' => 0], $body['reference_counts']);
         $this->assertStringNotContainsString('secret-value', $response->getContent());
 
-        // ADR-046 decision 3: non-secret keys (base_url/sandbox) are
+        // ADR-046 decision 3: non-secret keys (base_url) are
         // safe to expose so the Edit form can pre-fill them. ADR-069
         // decision 13 adds the optional low_balance_threshold (null
         // until set); ADR-083 decision 6 adds drift_threshold likewise, ADR-015's 2026-10-17 addendum price_sync_stale_alert_minutes, ADR-134 the transfer spread band.
         $this->assertSame(
-            ['base_url' => 'https://api.gamevion.com', 'sandbox' => true, 'low_balance_threshold' => null, 'drift_threshold' => null, 'price_sync_stale_alert_minutes' => null, 'transfer_spread_min_pct' => null, 'transfer_spread_max_pct' => null, 'topup_lead_days' => null, 'buffer_margin_pct' => null],
+            ['base_url' => 'https://gamevion.cloud', 'low_balance_threshold' => null, 'drift_threshold' => null, 'price_sync_stale_alert_minutes' => null, 'transfer_spread_min_pct' => null, 'transfer_spread_max_pct' => null, 'topup_lead_days' => null, 'buffer_margin_pct' => null],
             $body['visible_config'],
         );
 
-        // ADR-046 addendum: the card's Sandbox/Production badge.
-        $this->assertTrue($body['is_sandbox']);
+        // ADR-137: Gamevion v2 has no sandbox mode, so no badge either way.
+        $this->assertNull($body['is_sandbox']);
     }
 
     /**
@@ -115,13 +116,13 @@ class SupplierControllerTest extends TestCase
     public function test_index_reports_partial_configuration_accurately(): void
     {
         $this->actingAsAdmin();
-        $this->supplier(['api_config' => ['base_url' => 'https://api.gamevion.com', 'bearer_token' => 'secret-value']]);
+        $this->supplier(['api_config' => ['webhook_secret' => 'secret-value']]);
 
         $body = $this->getJson('/api/middleware/suppliers')->assertOk()->json()[0];
 
         $this->assertTrue($body['has_credentials']);
         $this->assertFalse($body['is_fully_configured']);
-        $this->assertSame(['bearer_token'], $body['configured_secret_keys']);
+        $this->assertSame(['webhook_secret'], $body['configured_secret_keys']);
     }
 
     public function test_available_drivers_lists_registered_adapters(): void
@@ -167,6 +168,29 @@ class SupplierControllerTest extends TestCase
         $this->patchJson("/api/middleware/suppliers/{$supplier->id}/status", ['is_active' => true])
             ->assertOk()
             ->assertJsonPath('is_active', true);
+    }
+
+    /** ADR-137 decision 20: a new Base URL is a cutover; in-flight references must be settled first. */
+    public function test_a_base_url_change_is_refused_while_the_supplier_has_unsettled_deliveries(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = $this->supplier(['api_config' => ['base_url' => 'https://api.gamevion.com', 'api_key' => 'old']]);
+        $this->app->bind('supplier-adapter.gamevion', fn () => $this->fakeAdapter(true));
+        $order = Order::query()->create(['placed_via' => 'storefront', 'affiliate_id' => $this->primaryAffiliate()->id,
+            'order_number' => 'KRS-CUT-1', 'reference_number' => 'REF-CUT-1', 'customer_email' => 'b@example.com', 'player_id' => '1',
+            'supplier_id' => $supplier->id, 'supplier_product_ref' => 'x', 'cost_price' => 1, 'standard_selling_price' => 1,
+            'selling_price' => 1, 'transaction_fee' => 0, 'final_amount' => 1, 'platform_profit' => 0, 'affiliate_profit' => 0,
+            'payment_status' => 'paid', 'delivery_status' => 'needs_review']);
+
+        $this->putJson("/api/middleware/suppliers/{$supplier->id}", ['api_config' => ['base_url' => 'https://gamevion.cloud']])
+            ->assertUnprocessable()->assertJsonValidationErrors('api_config.base_url');
+        $this->assertSame('https://api.gamevion.com', $supplier->fresh()->api_config['base_url']);
+
+        // A key rotation at the same URL is not a cutover.
+        $this->putJson("/api/middleware/suppliers/{$supplier->id}", ['api_config' => ['api_key' => 'rotated']])->assertOk();
+
+        $order->update(['delivery_status' => 'delivered']);
+        $this->putJson("/api/middleware/suppliers/{$supplier->id}", ['api_config' => ['base_url' => 'https://gamevion.cloud']])->assertOk();
     }
 
     public function test_update_merges_api_config_instead_of_replacing_it(): void
@@ -415,12 +439,12 @@ class SupplierControllerTest extends TestCase
     public function test_refresh_balance_with_partially_configured_credentials_returns_a_clean_error(): void
     {
         $this->actingAsAdmin();
-        $supplier = $this->supplier(['api_config' => ['base_url' => 'https://api.gamevion.com']]);
+        $supplier = $this->supplier(['api_config' => ['base_url' => 'https://gamevion.cloud']]);
 
         $response = $this->postJson("/api/middleware/suppliers/{$supplier->id}/refresh-balance");
 
         $response->assertStatus(422);
-        $this->assertStringContainsString('bearer_token', $response->json('errors.supplier.0'));
+        $this->assertStringContainsString('api_key', $response->json('errors.supplier.0'));
     }
 
     public function test_deactivate_all_turns_off_every_package_and_writes_audit_rows(): void

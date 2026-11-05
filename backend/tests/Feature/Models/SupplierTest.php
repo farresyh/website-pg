@@ -140,4 +140,14 @@ class SupplierTest extends TestCase
 
         $this->assertFalse($supplier->fundingDrift()['is_drifted']);
     }
+
+    /** ADR-137 decision 17: Gamevion recognises a reference for 31 days, so its window is 30, not the default 90. */
+    public function test_gamevion_s_same_reference_window_is_its_protocol_fact(): void
+    {
+        $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'currency' => 'MYR', 'api_config' => []]);
+        $digiflazz = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'currency' => 'IDR', 'api_config' => []]);
+
+        $this->assertSame(30, $gamevion->pendingPolicy()['max_age_days']);
+        $this->assertSame(90, $digiflazz->pendingPolicy()['max_age_days']);
+    }
 }

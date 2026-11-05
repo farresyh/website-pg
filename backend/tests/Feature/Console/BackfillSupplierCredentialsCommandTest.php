@@ -6,56 +6,60 @@ use App\Models\Supplier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
+/** Digiflazz only since ADR-137: Gamevion's config is entered in /middleware. */
 class BackfillSupplierCredentialsCommandTest extends TestCase
 {
     use RefreshDatabase;
+
+    private function digiflazzEnv(string $apiKey = 'key'): void
+    {
+        config([
+            'services.digiflazz.base_url' => 'https://api.digiflazz.test', 'services.digiflazz.username' => 'user',
+            'services.digiflazz.api_key' => $apiKey, 'services.digiflazz.testing' => true, 'services.digiflazz.customer_no_separator' => '|',
+        ]);
+    }
 
     public function test_skips_a_supplier_with_no_existing_row(): void
     {
         $this->artisan('app:backfill-supplier-credentials')->assertExitCode(1);
 
-        $this->assertDatabaseMissing('suppliers', ['slug' => 'gamevion']);
+        $this->assertDatabaseMissing('suppliers', ['slug' => 'digiflazz']);
     }
 
     public function test_backfills_api_config_from_env_config_for_an_existing_empty_row(): void
     {
-        config(['services.gamevion.base_url' => 'https://api.gamevion.test', 'services.gamevion.bearer_token' => 'tok', 'services.gamevion.api_key' => 'key', 'services.gamevion.sandbox' => true]);
-
-        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => [], 'currency' => 'MYR']);
+        $this->digiflazzEnv();
+        $supplier = Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR']);
 
         $this->artisan('app:backfill-supplier-credentials')->assertExitCode(0);
 
         $this->assertSame(
-            ['base_url' => 'https://api.gamevion.test', 'bearer_token' => 'tok', 'api_key' => 'key', 'sandbox' => true],
+            ['base_url' => 'https://api.digiflazz.test', 'username' => 'user', 'api_key' => 'key', 'testing' => true, 'customer_no_separator' => '|'],
             $supplier->fresh()->api_config,
         );
     }
 
     public function test_does_not_overwrite_an_already_configured_row_without_force(): void
     {
-        config(['services.gamevion.bearer_token' => 'new-token', 'services.gamevion.api_key' => 'new-key']);
-
+        $this->digiflazzEnv('new-key');
         $supplier = Supplier::query()->create([
-            'name' => 'Gamevion', 'slug' => 'gamevion', 'currency' => 'MYR',
-            'api_config' => ['bearer_token' => 'already-set', 'api_key' => 'already-set'],
+            'name' => 'Digiflazz', 'slug' => 'digiflazz', 'currency' => 'IDR', 'api_config' => ['api_key' => 'already-set'],
         ]);
 
         $this->artisan('app:backfill-supplier-credentials')->assertExitCode(1);
 
-        $this->assertSame('already-set', $supplier->fresh()->api_config['bearer_token']);
+        $this->assertSame('already-set', $supplier->fresh()->api_config['api_key']);
     }
 
     public function test_force_overwrites_an_already_configured_row(): void
     {
-        config(['services.gamevion.base_url' => 'https://api.gamevion.test', 'services.gamevion.bearer_token' => 'new-token', 'services.gamevion.api_key' => 'new-key', 'services.gamevion.sandbox' => true]);
-
+        $this->digiflazzEnv('new-key');
         $supplier = Supplier::query()->create([
-            'name' => 'Gamevion', 'slug' => 'gamevion', 'currency' => 'MYR',
-            'api_config' => ['bearer_token' => 'already-set', 'api_key' => 'already-set'],
+            'name' => 'Digiflazz', 'slug' => 'digiflazz', 'currency' => 'IDR', 'api_config' => ['api_key' => 'already-set'],
         ]);
 
         $this->artisan('app:backfill-supplier-credentials --force')->assertExitCode(0);
 
-        $this->assertSame('new-token', $supplier->fresh()->api_config['bearer_token']);
+        $this->assertSame('new-key', $supplier->fresh()->api_config['api_key']);
     }
 }
