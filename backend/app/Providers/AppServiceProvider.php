@@ -138,23 +138,28 @@ class AppServiceProvider extends ServiceProvider
             $this->app->bind(SupplierAdapter::class, fn () => new FakeSupplierAdapter(simulateSuccess: true));
             $this->app->bind('supplier-adapter.e2e-fake-supplier', fn () => new FakeSupplierAdapter(simulateSuccess: true));
         } else {
-            $this->app->bind('supplier-adapter.gamevion', function () {
-                // ADR-046 decision 2: credentials/mode come from the
-                // `gamevion` Supplier row's api_config, not .env — the
-                // pre-ADR-046 stopgap this replaces. timeout/connect_timeout
-                // stay config-based (cross-cutting, not per-supplier
-                // secret/mode state — ADR-046 decision 3's own scoping).
+            // ADR-046 decision 2: credentials/mode come from the `gamevion`
+            // Supplier row's api_config, not .env. timeout/connect_timeout
+            // stay config-based (ADR-046 decision 3). Bound unwrapped too, for
+            // the Middleware games picker (ADR-137 2026-11-05 decision 1),
+            // which must not count against the order breaker.
+            $this->app->bind(GamevionAdapter::class, function () {
                 $apiConfig = $this->supplierApiConfig('gamevion');
                 $config = config('services.gamevion');
                 $proxy = config('services.proxy');
 
-                $gamevion = new GamevionAdapter(
+                return new GamevionAdapter(
                     baseUrl: $apiConfig['base_url'],
                     apiKey: (string) $apiConfig['api_key'],
                     proxyUrl: $proxy['enabled'] ? $proxy['url'] : null,
                     timeoutSeconds: $config['timeout'],
                     connectTimeoutSeconds: $config['connect_timeout'],
+                    games: array_values((array) ($apiConfig['games'] ?? [])),
                 );
+            });
+
+            $this->app->bind('supplier-adapter.gamevion', function () {
+                $gamevion = $this->app->make(GamevionAdapter::class);
 
                 // ADR-019 addendum, foundation-security.md §6, DASH-2 - a
                 // decorator, not a change to GamevionAdapter itself, so any

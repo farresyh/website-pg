@@ -2,11 +2,13 @@
 
 namespace Tests\Feature\Services\Supplier;
 
+use App\Jobs\LogSupplierRequestJob;
 use App\Services\Supplier\Gamevion\GamevionAdapter;
 use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierOutcome;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
+use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -28,9 +30,10 @@ class GamevionAdapterTest extends TestCase
         Sleep::fake();
     }
 
-    private function adapter(): GamevionAdapter
+    /** @param  list<string>  $games */
+    private function adapter(array $games = ['mlbb_sgmy']): GamevionAdapter
     {
-        return new GamevionAdapter(baseUrl: 'https://gamevion.cloud', apiKey: 'gvk_test');
+        return new GamevionAdapter(baseUrl: 'https://gamevion.cloud', apiKey: 'gvk_test', games: $games);
     }
 
     /** @return array<string, mixed> */
@@ -79,7 +82,7 @@ class GamevionAdapterTest extends TestCase
             ]]),
         ]);
 
-        $result = $this->adapter()->listProducts();
+        $result = $this->adapter(['mlbb_sgmy', 'gi_glob', 'steam'])->listProducts();
 
         $this->assertTrue($result->success);
         $this->assertCount(2, $result->data);
@@ -93,8 +96,8 @@ class GamevionAdapterTest extends TestCase
         Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'pricelist/gi_glob') || str_contains($r->url(), 'steam'));
     }
 
-    /** A partial catalog would read as vanished products and switch packages off. */
-    public function test_list_products_fails_whole_when_one_pricelist_fails(): void
+    /** The only chosen game failing is more than a quarter: nothing may switch off. */
+    public function test_list_products_fails_whole_when_its_only_game_fails(): void
     {
         Http::fake([
             'gamevion.cloud/api/games' => Http::response([['code' => 'mlbb_sgmy', 'name' => 'MLBB', 'kind' => 'gametopup']]),
@@ -105,7 +108,142 @@ class GamevionAdapterTest extends TestCase
         $result = $this->adapter()->listProducts();
 
         $this->assertFalse($result->success);
-        $this->assertSame('rate_limited', $result->errorCode);
+        $this->assertStringContainsString('1 of 1 chosen games (mlbb_sgmy)', $result->errorMessage);
+    }
+
+    /** @param  list<string>  $codes */
+    private function fakeCatalog(array $codes, array $overrides = []): void
+    {
+        $fakes = ['gamevion.cloud/api/games' => Http::response(array_map(
+            fn (string $code) => ['code' => $code, 'name' => strtoupper($code), 'family' => 'Fam', 'kind' => 'gametopup'],
+            $codes,
+        ))];
+
+        foreach ($codes as $code) {
+            $fakes["gamevion.cloud/api/games/{$code}/fields"] = Http::response(['fields' => [['key' => 'userid', 'required' => 1]]]);
+            $fakes["gamevion.cloud/api/pricelist/{$code}"] = Http::response(['game' => $code, 'prices' => [
+                ['sku' => '1', 'label' => '1', 'group' => 'G', 'price' => 1.0, 'available' => true],
+            ]]);
+        }
+
+        Http::fake(array_merge($fakes, $overrides));
+    }
+
+    private function down(int $status = 503, string $code = 'service_unavailable'): PromiseInterface
+    {
+        return Http::response(['error' => 'x', 'message' => 'Service temporarily unavailable.', 'code' => $code], $status);
+    }
+
+    /** ADR-137 2026-11-05 decision 1: only the games chosen in the picker are fetched. */
+    public function test_list_products_fetches_only_the_chosen_games(): void
+    {
+        $this->fakeCatalog(['mlbb_sgmy', 'ace_racer_id', 'hok']);
+
+        $result = $this->adapter(['mlbb_sgmy', 'hok'])->listProducts();
+
+        $this->assertTrue($result->success);
+        $this->assertSame(['mlbb_sgmy:1', 'hok:1'], array_map(fn ($i) => $i->productRef, $result->data));
+        Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'ace_racer_id'));
+    }
+
+    public function test_list_products_refuses_to_sync_when_no_game_is_chosen(): void
+    {
+        $this->fakeCatalog(['mlbb_sgmy']);
+
+        $result = $this->adapter([])->listProducts();
+
+        $this->assertFalse($result->success);
+        $this->assertSame('no_games_selected', $result->errorCode);
+        $this->assertStringContainsString('Middleware', $result->errorMessage);
+        Http::assertNothingSent();
+    }
+
+    /** ADR-137 2026-11-05 decision 2: one game Gamevion cannot answer is left out; the rest still sync. */
+    public function test_a_game_that_fails_is_skipped_and_the_rest_still_sync(): void
+    {
+        $this->fakeCatalog(['mlbb_sgmy', 'hok', 'valorant', 'pubgm'], ['gamevion.cloud/api/pricelist/valorant' => $this->down()]);
+
+        $result = $this->adapter(['mlbb_sgmy', 'hok', 'valorant', 'pubgm'])->listProducts();
+
+        $this->assertTrue($result->success);
+        $this->assertSame(['mlbb_sgmy:1', 'hok:1', 'pubgm:1'], array_map(fn ($i) => $i->productRef, $result->data));
+    }
+
+    public function test_a_fields_failure_skips_the_game_too(): void
+    {
+        $this->fakeCatalog(['mlbb_sgmy', 'hok', 'valorant', 'pubgm'], ['gamevion.cloud/api/games/valorant/fields' => $this->down()]);
+
+        $result = $this->adapter(['mlbb_sgmy', 'hok', 'valorant', 'pubgm'])->listProducts();
+
+        $this->assertTrue($result->success);
+        $this->assertCount(3, $result->data);
+        Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'pricelist/valorant'));
+    }
+
+    /** More than a quarter failing means Gamevion itself is down: switch nothing off. */
+    public function test_the_whole_sync_fails_when_more_than_a_quarter_of_the_games_fail(): void
+    {
+        $this->fakeCatalog(['mlbb_sgmy', 'hok', 'valorant', 'pubgm'], [
+            'gamevion.cloud/api/pricelist/valorant' => $this->down(),
+            'gamevion.cloud/api/pricelist/hok' => $this->down(429, 'rate_limited'),
+        ]);
+
+        $result = $this->adapter(['mlbb_sgmy', 'hok', 'valorant', 'pubgm'])->listProducts();
+
+        $this->assertFalse($result->success);
+        $this->assertStringContainsString('2 of 4', $result->errorMessage);
+    }
+
+    /** A bad key must never read as every game vanishing. */
+    public function test_an_auth_failure_on_any_game_fails_the_whole_sync(): void
+    {
+        $this->fakeCatalog(['mlbb_sgmy', 'hok', 'valorant', 'pubgm'], [
+            'gamevion.cloud/api/pricelist/hok' => $this->down(401, 'unauthorized'),
+        ]);
+
+        $result = $this->adapter(['mlbb_sgmy', 'hok', 'valorant', 'pubgm'])->listProducts();
+
+        $this->assertFalse($result->success);
+        $this->assertSame('unauthorized', $result->errorCode);
+    }
+
+    public function test_the_whole_sync_fails_when_the_game_list_fails(): void
+    {
+        Http::fake(['gamevion.cloud/api/games' => $this->down()]);
+
+        $result = $this->adapter()->listProducts();
+
+        $this->assertFalse($result->success);
+        $this->assertSame('service_unavailable', $result->errorCode);
+    }
+
+    /** ADR-137 2026-11-05 decision 4: per-game catalog calls are logged only when they fail. */
+    public function test_only_the_game_list_and_failed_per_game_calls_are_logged(): void
+    {
+        $this->fakeCatalog(['mlbb_sgmy', 'hok', 'valorant', 'pubgm'], ['gamevion.cloud/api/pricelist/valorant' => Http::response(['code' => 'service_unavailable', 'message' => 'x'], 503)]);
+
+        $this->adapter(['mlbb_sgmy', 'hok', 'valorant', 'pubgm'])->listProducts();
+
+        $logged = Queue::pushed(LogSupplierRequestJob::class)
+            ->map(fn (LogSupplierRequestJob $job) => parse_url($job->entry()['url'], PHP_URL_PATH).' '.$job->entry()['outcome']);
+
+        $this->assertSame(['/api/games success'], $logged->filter(fn ($l) => str_contains($l, 'success'))->values()->all());
+        $this->assertTrue($logged->contains('/api/pricelist/valorant failure'));
+        $this->assertFalse($logged->contains(fn ($l) => str_contains($l, '/fields') || str_contains($l, 'pricelist/mlbb_sgmy')));
+    }
+
+    /** The picker's source: every `gametopup` game with its family and region. */
+    public function test_list_games_returns_the_gametopup_games_for_the_picker(): void
+    {
+        Http::fake(['gamevion.cloud/api/games' => Http::response([
+            ['code' => 'mlbb_sgmy', 'name' => 'Mobile Legends (Malaysia)', 'family' => 'Mobile Legends', 'region' => 'MY', 'kind' => 'gametopup'],
+            ['code' => 'steam', 'name' => 'Steam Wallet', 'family' => 'Steam', 'kind' => 'giftcard'],
+        ])]);
+
+        $result = $this->adapter()->listGames();
+
+        $this->assertTrue($result->success);
+        $this->assertSame([['code' => 'mlbb_sgmy', 'name' => 'Mobile Legends (Malaysia)', 'family' => 'Mobile Legends', 'region' => 'MY']], $result->data);
     }
 
     public function test_create_order_posts_the_order_with_our_reference_as_client_ref(): void

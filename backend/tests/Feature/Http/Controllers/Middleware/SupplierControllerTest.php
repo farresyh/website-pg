@@ -97,7 +97,7 @@ class SupplierControllerTest extends TestCase
         // decision 13 adds the optional low_balance_threshold (null
         // until set); ADR-083 decision 6 adds drift_threshold likewise, ADR-015's 2026-10-17 addendum price_sync_stale_alert_minutes, ADR-134 the transfer spread band.
         $this->assertSame(
-            ['base_url' => 'https://gamevion.cloud', 'low_balance_threshold' => null, 'drift_threshold' => null, 'price_sync_stale_alert_minutes' => null, 'transfer_spread_min_pct' => null, 'transfer_spread_max_pct' => null, 'topup_lead_days' => null, 'buffer_margin_pct' => null],
+            ['base_url' => 'https://gamevion.cloud', 'games' => null, 'low_balance_threshold' => null, 'drift_threshold' => null, 'price_sync_stale_alert_minutes' => null, 'transfer_spread_min_pct' => null, 'transfer_spread_max_pct' => null, 'topup_lead_days' => null, 'buffer_margin_pct' => null],
             $body['visible_config'],
         );
 
@@ -594,5 +594,53 @@ class SupplierControllerTest extends TestCase
         $log = PackageReactivationLog::query()->where('package_id', $combo->id)->firstOrFail();
         $this->assertSame('combo_components_all_active', $log->trigger);
         $this->assertSame($admin->id, $log->admin_user_id);
+    }
+
+    /** ADR-137 2026-11-05 decision 1: the games picker lists Gamevion's `gametopup` games. */
+    public function test_the_gamevion_games_picker_lists_gamevions_gametopup_games(): void
+    {
+        $this->actingAsAdmin();
+        $this->supplier(['api_config' => ['base_url' => 'https://gamevion.cloud', 'api_key' => 'gvk_x']]);
+        Http::fake(['gamevion.cloud/api/games' => Http::response([
+            ['code' => 'mlbb_sgmy', 'name' => 'Mobile Legends (Malaysia)', 'family' => 'Mobile Legends', 'region' => 'MY', 'kind' => 'gametopup'],
+            ['code' => 'steam', 'name' => 'Steam', 'family' => 'Steam', 'kind' => 'giftcard'],
+        ])]);
+
+        $this->getJson('/api/middleware/suppliers/gamevion/games')
+            ->assertOk()
+            ->assertExactJson([['code' => 'mlbb_sgmy', 'name' => 'Mobile Legends (Malaysia)', 'family' => 'Mobile Legends', 'region' => 'MY']]);
+    }
+
+    public function test_the_games_picker_says_so_when_gamevion_cannot_answer(): void
+    {
+        $this->actingAsAdmin();
+        $this->supplier(['api_config' => ['base_url' => 'https://gamevion.cloud', 'api_key' => 'gvk_x']]);
+        Http::fake(['gamevion.cloud/api/games' => Http::response(['code' => 'unauthorized', 'message' => 'Invalid key'], 401)]);
+
+        $this->getJson('/api/middleware/suppliers/gamevion/games')
+            ->assertStatus(502)
+            ->assertJsonPath('message', 'Gamevion did not return its games: Invalid key');
+    }
+
+    public function test_the_games_picker_needs_gamevion_configured_first(): void
+    {
+        $this->actingAsAdmin();
+        $this->supplier();
+
+        $this->getJson('/api/middleware/suppliers/gamevion/games')->assertStatus(422);
+    }
+
+    /** The chosen codes are saved as a list, like `category_whitelist`, and shown back to the form. */
+    public function test_update_saves_the_chosen_gamevion_games_as_a_list(): void
+    {
+        $this->actingAsAdmin();
+        $supplier = $this->supplier(['api_config' => ['base_url' => 'https://gamevion.cloud', 'api_key' => 'gvk_x']]);
+        Http::fake(['gamevion.cloud/api/balance' => Http::response(['balance' => 0, 'username' => 'x'])]);
+
+        $this->putJson("/api/middleware/suppliers/{$supplier->id}", ['api_config' => ['games' => ['mlbb_sgmy', ' hok ', '']]])
+            ->assertOk()
+            ->assertJsonPath('visible_config.games', ['mlbb_sgmy', 'hok']);
+
+        $this->assertSame('gvk_x', $supplier->refresh()->api_config['api_key']);
     }
 }

@@ -54,7 +54,7 @@ export interface Supplier {
  * supplier's real shape is confirmed. Mirror of the backend's
  * SupplierConfigSchema; keep both in sync by hand.
  */
-export type SupplierFieldType = "text" | "boolean" | "secret" | "list";
+export type SupplierFieldType = "text" | "boolean" | "secret" | "list" | "games";
 
 export interface SupplierField {
   key: string;
@@ -74,6 +74,8 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     { key: "base_url", label: "Base URL", type: "text", placeholder: "https://gamevion.cloud (no trailing slash)" },
     { key: "api_key", label: "API Key (gvk_…)", type: "secret" },
     { key: "webhook_secret", label: "Webhook Secret", type: "secret" },
+    // ADR-137 2026-11-05 decision 1: the games picker; only these are synced.
+    { key: "games", label: "Games to sync", type: "games" },
     // ADR-069 decision 13 + ADR-115 2026-11-05: the buffer's floor, in the
     // supplier's balance currency.
     { key: "low_balance_threshold", label: "Low-balance Floor", type: "text", placeholder: "e.g. 50 (blank = no floor; the busiest window still applies)" },
@@ -230,4 +232,16 @@ export function updateSupplierPackagesStatus(
     method: "PATCH",
     body: values,
   });
+}
+
+/** ADR-137 2026-11-05 decision 1: one `gametopup` game Gamevion offers, for the games picker. */
+export interface GamevionGame {
+  code: string;
+  name: string;
+  family: string;
+  region: string | null;
+}
+
+export function listGamevionGames() {
+  return apiFetch<GamevionGame[]>("/api/middleware/suppliers/gamevion/games");
 }

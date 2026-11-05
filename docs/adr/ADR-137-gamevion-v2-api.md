@@ -1,6 +1,6 @@
 # ADR-137: Gamevion v2 API — rewrite the adapter for `gamevion.cloud`, async delivery with a signed webhook and same-reference replay
 
-> **Standing (2026-11-05):** Accepted (2026-11-05 addendum: decisions 13–24 after the grill, money code-trace and stress test; the PR 2 build addendum corrects decisions 17 and 19). It replaces the API contract of [ADR-040](./ADR-040-gamevion-sandbox-integration.md) (old `api.gamevion.com`, sandbox header, `telp`, `callback_url`) and, for Gamevion only, the `duplicate_reference` → NeedsReview routing of [ADR-026](./ADR-026-delivery-side-reconciliation-ord-10.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record.
+> **Standing (2026-11-05):** Accepted (2026-11-05 addendum: decisions 13–24 after the grill, money code-trace and stress test; the PR 2 build addendum corrects decisions 17 and 19; the last addendum revisits decision 16: games picker, per-game failure, one sync job per supplier). It replaces the API contract of [ADR-040](./ADR-040-gamevion-sandbox-integration.md) (old `api.gamevion.com`, sandbox header, `telp`, `callback_url`) and, for Gamevion only, the `duplicate_reference` → NeedsReview routing of [ADR-026](./ADR-026-delivery-side-reconciliation-ord-10.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record.
 
 **Status:** Proposed, 2026-11-04. Decisions 1–4 were made with the founder (in Malay) on 2026-11-04. Decisions 5–12 are Claude's draft from the vendor's API document and a first code-trace; they go through the technical grill and the money code-trace (AGENTS.md lifecycle step 2) before Accepted. The open questions at the end are settled in that grill.
 
@@ -150,3 +150,47 @@ Each now sits on the seam every caller passes through, with an invariant test. T
    - **Removed:** `ReconcilePendingDeliveriesCommand::flagStaleDuplicateReferences()`, a one-time catch-up for rows before August that prod never held.
    - **Kept:** `duplicate_reference` in `FakeSupplierAdapter` and in `Order::deliveryRetryUnsafeWithSameReference()`. They are not Gamevion's: the admin sandbox uses the code to simulate an ambiguous outcome (NeedsReview). Only their comments changed.
    - **Moved:** Developer Tools can no longer live-fire `createOrder` at Gamevion, because v2 has no sandbox mode (`SupplierConfigSchema::isSandbox()` is null). The funded test of decision 23 goes through the storefront.
+
+### 2026-11-05 addendum — decision 16 revisited: the games picker, per-game failure, one sync job per supplier
+
+**Context.** The first sync after release #705 (2026-11-05 11:47) failed: `GET /api/games/ace_racer_id/fields` answered 503 `service_unavailable` four times, and decision 16 fails the whole catalog on any call. A read-only check on prod found:
+- **430 `gametopup` games** of 1,344. Decision 16's ceiling (about 150 games under the `price-sync` worker's 300 s) is far exceeded, so its allowlist is now due.
+- **Some games are down at Gamevion for long periods.** Ace Racer, Valorant (generic) and Blood Strike Pass answered 503 on both `/fields` and `/pricelist`, again on a later retry.
+- **One price-sync job runs every supplier in turn** under that one 300 s limit. Gamevion is supplier id 1, so it runs before Digiflazz. Digiflazz takes 25–79 s a run (7 days of runs). A Gamevion run of about 75 games at the 40-a-minute pricelist pace takes about 2.5–3 minutes. Together they come close to the limit. A timeout would cut Digiflazz, the live supplier, mid-run.
+- **The request log would grow about 7,300 rows a day.** That is about 150 logged calls a sync × 48 syncs, about 550 MB at the 30-day retention. The table is 5.4 MB today.
+
+**Decisions (with the founder, in Malay, 2026-11-05).**
+1. **Games to sync are chosen in a picker** (revises decision 16's allowlist).
+   - `api_config.games` is a `list` of Gamevion game codes, an optional `SupplierConfigSchema` key, so the merge, the coercion and the visible config work as for `category_whitelist`.
+   - `/middleware` → Suppliers → Gamevion → Edit loads `GET /api/games` once (one call; that endpoint allows 3,000 a minute). The form shows the `gametopup` games grouped by Gamevion's `family`, with a select-all per family. An unticked game in a family that has a ticked one is labelled "New".
+   - The adapter fetches only the chosen games. An empty list fails the sync with a message that says where to choose them.
+   - **Codes, not family names.** Gamevion's family names are inconsistent ("Free Fire" and "Freefire"), and a family rule would let the sync time grow unseen. A new region is ticked by hand when the picker shows it.
+   - The first list is the families PekanGame already sells (Digiflazz's included), 74 codes. It is seeded once by an idempotent migration, only when `games` is absent. Left out:
+     - `call_of_duty_mobile_my`: Gamevion requires no player field, so an order would carry no player;
+     - `arena_breakout_infinite`: the PC game; we sell the mobile one;
+     - `valorant` and `blood_strike_pass`: down at Gamevion that day; ticked in the picker once they answer.
+2. **A game that fails is skipped, not the whole catalog** (revises decision 16's "any failed call fails the whole sync").
+   - A game whose `/fields` or `/pricelist` call still fails after the shared retry is left out of this run's catalog.
+   - Its packages go off through the existing vanished-product path (`PackagePriceSyncService`, reason `supplier_sync`). They come back through Pending Reactivation: auto-approve is on in prod, after 6 consecutive active syncs (ADR-100). Treating a catalog Gamevion cannot answer as unavailable is the conservative choice: an order for it would fail too.
+   - **The whole run still fails** when:
+     - `/api/games` fails;
+     - any call answers 401 or 403 (a bad key must never switch every package off);
+     - more than a quarter of the chosen games fail in one run (Gamevion itself is down).
+   - A skipped game is logged as a warning, and its failed calls stay in the request log.
+3. **One sync job per supplier.**
+   - `SyncSupplierPricesJob` keeps its role and its `PriceSyncRun`. It now dispatches one `SyncSupplierCatalogJob` per syncable supplier as a `Bus::batch` on the same `price-sync` queue. Each job has its own 300 s, and the existing single worker runs them one after another.
+   - Each job merges its counts into the run's `stats` under a row lock. A job that fails or times out records itself in `failed_suppliers` from its `failed()` hook.
+   - The batch's `finally` sets the run's status by the existing rule: success, partial, or failed when no supplier synced.
+   - The Price Sync Center, the stats endpoint, the broadcast and the staleness check read the run unchanged.
+4. **Only failed per-game catalog calls are logged** (refines ADR-051 decision 5 for Gamevion). The `/api/games` call is logged every run. The per-game `/fields` and `/pricelist` calls are logged only when they fail. That is about 48 rows a day plus failures.
+
+**Rationale.** Each problem is fixed where every case passes through:
+- the batch gives every supplier its own time budget, whatever the order;
+- the per-game rule reuses the deactivation and reactivation paths every supplier already has;
+- the picker writes the same `api_config` list shape the form already handles.
+
+No new table, worker or supervisor.
+
+**Consequence to track.**
+- Ceiling: about 130 chosen games fit one 300 s job (about 2.2 s a game). Near 120, split the Gamevion catalog over more than one job.
+- If a skipped game's packages flap often, revisit decision 2 with a grace period before they go off.

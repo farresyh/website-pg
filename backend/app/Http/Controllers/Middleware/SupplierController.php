@@ -14,6 +14,7 @@ use App\Models\Supplier;
 use App\Models\WhatsAppGroup;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Supplier\Gamevion\GamevionAdapter;
 use App\Services\Supplier\Manual\ManualSupplierStatusService;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierConfigSchema;
@@ -107,6 +108,26 @@ class SupplierController extends Controller
     public function availableDrivers(SupplierAdapterFactory $adapters): JsonResponse
     {
         return response()->json($adapters->registeredDrivers());
+    }
+
+    /**
+     * ADR-137 2026-11-05 decision 1: the games picker's list, live from
+     * Gamevion (one call, read only). The unwrapped adapter, so a
+     * failure here never counts against the order breaker.
+     */
+    public function gamevionGames(): JsonResponse
+    {
+        try {
+            $result = app(GamevionAdapter::class)->listGames();
+        } catch (SupplierNotConfiguredException $e) {
+            return response()->json(['message' => 'Save the Gamevion Base URL and API key first.'], 422);
+        }
+
+        if (! $result->success) {
+            return response()->json(['message' => 'Gamevion did not return its games: '.$result->errorMessage], 502);
+        }
+
+        return response()->json($result->data);
     }
 
     public function store(CreateSupplierRequest $request): JsonResponse

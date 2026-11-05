@@ -22,10 +22,19 @@ use Throwable;
  */
 final class SupplierRequestLogger
 {
-    public static function attach(PendingRequest $client, string $slug, string $callType, ?int $orderId = null): PendingRequest
+    /**
+     * `$failuresOnly` (ADR-137 2026-11-05 decision 4): a high-volume call
+     * whose success carries no evidence anyone reads — Gamevion's per-game
+     * catalog calls — is logged only when it fails.
+     */
+    public static function attach(PendingRequest $client, string $slug, string $callType, ?int $orderId = null, bool $failuresOnly = false): PendingRequest
     {
         return $client->withOptions([
-            'on_stats' => function (TransferStats $stats) use ($slug, $callType, $orderId) {
+            'on_stats' => function (TransferStats $stats) use ($slug, $callType, $orderId, $failuresOnly) {
+                if ($failuresOnly && $stats->hasResponse() && $stats->getResponse()->getStatusCode() < 400) {
+                    return;
+                }
+
                 self::log($stats, $slug, $callType, $orderId);
             },
         ]);
