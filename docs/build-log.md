@@ -1347,6 +1347,7 @@ Every `partial` price-sync run in the last 7 days was Gamevion: the old API timi
   - Each job merges its counts into the run under a row lock (`PriceSyncRun::recordSupplierSynced` / `recordSupplierFailed`).
   - The batch's `finally` calls `finishBatch()`. It counts the suppliers that synced (`stats.synced_suppliers`), never the failures recorded so far, because a timed-out job's `failed()` may run after it.
 - **Request log.** `SupplierRequestLogger::attach(..., failuresOnly: true)` for Gamevion's per-game catalog calls.
+- **Batch rows.** `queue:prune-batches --hours=168` runs daily (`job-batch-pruning`, routine tier), so `job_batches` keeps a week (48 rows a day).
 
 **Tests.**
 - New: 9 adapter tests, 4 controller tests, 3 job tests, 3 migration tests.

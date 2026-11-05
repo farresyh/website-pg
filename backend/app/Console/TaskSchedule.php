@@ -51,6 +51,7 @@ class TaskSchedule
     public const ROUTINE = [
         'player-validation-pruning',
         'supplier-request-log-pruning',
+        'job-batch-pruning',
         'report-assistant-audit-log-pruning',
         'credential-reveal-pruning',
         'supplier-login-link-pruning',
@@ -150,6 +151,13 @@ class TaskSchedule
         $schedule->command('app:prune-supplier-request-logs')
             ->daily()
             ->name('supplier-request-log-pruning')
+            ->withoutOverlapping($overlap);
+
+        // ADR-137 2026-11-05 decision 3: each price-sync run is a Bus::batch,
+        // one `job_batches` row; a finished batch is kept a week.
+        $schedule->command('queue:prune-batches', ['--hours' => 168])
+            ->daily()
+            ->name('job-batch-pruning')
             ->withoutOverlapping($overlap);
 
         // ADR-087 decision 8 — prunes report_assistant_audit_logs past its
