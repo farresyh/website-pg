@@ -84,7 +84,9 @@ final class SupplierConfigSchema
         ],
         // ADR-137 decision 9: `webhook_secret` only authenticates
         // GamevionWebhookController, so it does not gate the adapter.
-        'gamevion' => ['webhook_secret' => 'secret', 'low_balance_threshold' => 'text', 'drift_threshold' => 'text', 'price_sync_stale_alert_minutes' => 'text', 'transfer_spread_min_pct' => 'text', 'transfer_spread_max_pct' => 'text', 'topup_lead_days' => 'text', 'buffer_margin_pct' => 'text'],
+        // ADR-137 2026-11-05 decision 1: `games`, the codes chosen in the
+        // games picker; empty fails the sync with a message, so it is optional.
+        'gamevion' => ['games' => 'list', 'webhook_secret' => 'secret', 'low_balance_threshold' => 'text', 'drift_threshold' => 'text', 'price_sync_stale_alert_minutes' => 'text', 'transfer_spread_min_pct' => 'text', 'transfer_spread_max_pct' => 'text', 'topup_lead_days' => 'text', 'buffer_margin_pct' => 'text'],
         // ADR-125 decisions 2-3: a manual supplier's own settings. Absent
         // `reply_sla_minutes` means the default (Supplier::DEFAULT_MANUAL_SLA_MINUTES).
         'manual' => ['reply_sla_minutes' => 'text'],

@@ -13,6 +13,7 @@ use App\Services\Supplier\ValidationNotSupportedException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Sleep;
 
 /**
@@ -38,6 +39,9 @@ final class GamevionAdapter implements SupplierAdapter
     /** Pricelist calls are limited to 40 a minute per account; 1.6 s apart stays under it. */
     private const PRICELIST_PAUSE_MS = 1600;
 
+    /** A key Gamevion refuses fails the whole sync: it must never read as every game vanishing. */
+    private const AUTH_STATUSES = [401, 403];
+
     /** Error codes for which Gamevion made no order and took no balance. */
     private const NO_ORDER_CODES = ['invalid_request', 'insufficient_balance', 'not_found', 'price_changed', 'invalid_player_id'];
 
@@ -47,6 +51,8 @@ final class GamevionAdapter implements SupplierAdapter
         private readonly ?string $proxyUrl = null,
         private readonly int $timeoutSeconds = 10,
         private readonly int $connectTimeoutSeconds = 5,
+        /** @var list<string> the game codes chosen in Middleware → Suppliers (ADR-137 2026-11-05 decision 1) */
+        private readonly array $games = [],
     ) {}
 
     public function checkBalance(): SupplierResponse
@@ -66,30 +72,44 @@ final class GamevionAdapter implements SupplierAdapter
     }
 
     /**
-     * Every `gametopup` game whose required fields checkout can fill, one
-     * pricelist each. Any failed call fails the whole sync: a partial
-     * catalog would read as products vanishing and switch packages off.
+     * The chosen `gametopup` games whose required fields checkout can fill,
+     * one pricelist each (ADR-137 2026-11-05 decisions 1–2). A game
+     * Gamevion cannot answer is left out, so its packages go off through
+     * the vanished-product path. The whole sync fails instead when the
+     * game list fails, the key is refused, or more than a quarter of the
+     * games fail: then Gamevion itself is down and nothing may switch off.
      */
     public function listProducts(): SupplierResponse
     {
+        if ($this->games === []) {
+            return SupplierResponse::failure('no_games_selected', 'No Gamevion games are chosen to sync. Choose them in Middleware → Suppliers → Gamevion → Edit.');
+        }
+
         $games = $this->client('listProducts')->get('/api/games');
 
         if ($failure = $this->failureFrom($games)) {
             return $failure;
         }
 
+        $chosen = array_filter(
+            (array) $games->json(),
+            fn ($game) => ($game['kind'] ?? null) === 'gametopup' && in_array($game['code'] ?? null, $this->games, true),
+        );
+
         $items = [];
+        $failed = [];
         $first = true;
 
-        foreach ((array) $games->json() as $game) {
-            if (($game['kind'] ?? null) !== 'gametopup' || empty($game['code'])) {
+        foreach ($chosen as $game) {
+            $fields = $this->client('listProducts', failuresOnly: true)->get("/api/games/{$game['code']}/fields");
+
+            if (! $this->usable($fields)) {
+                if (in_array($fields->status(), self::AUTH_STATUSES, true)) {
+                    return $this->failureFrom($fields);
+                }
+                $failed[] = $game['code'];
+
                 continue;
-            }
-
-            $fields = $this->client('listProducts')->get("/api/games/{$game['code']}/fields");
-
-            if ($failure = $this->failureFrom($fields)) {
-                return $failure;
             }
 
             if (! self::fieldsSupported((array) $fields->json('fields'))) {
@@ -101,10 +121,15 @@ final class GamevionAdapter implements SupplierAdapter
             }
             $first = false;
 
-            $pricelist = $this->client('listProducts')->get("/api/pricelist/{$game['code']}");
+            $pricelist = $this->client('listProducts', failuresOnly: true)->get("/api/pricelist/{$game['code']}");
 
-            if ($failure = $this->failureFrom($pricelist)) {
-                return $failure;
+            if (! $this->usable($pricelist)) {
+                if (in_array($pricelist->status(), self::AUTH_STATUSES, true)) {
+                    return $this->failureFrom($pricelist);
+                }
+                $failed[] = $game['code'];
+
+                continue;
             }
 
             foreach ((array) $pricelist->json('prices') as $price) {
@@ -112,7 +137,40 @@ final class GamevionAdapter implements SupplierAdapter
             }
         }
 
+        if (count($failed) * 4 > count($chosen)) {
+            return SupplierResponse::failure('service_unavailable', sprintf(
+                'Gamevion did not answer for %d of %d chosen games (%s); nothing was changed.',
+                count($failed), count($chosen), implode(', ', $failed),
+            ), isServerError: true);
+        }
+
+        if ($failed !== []) {
+            Log::warning('GamevionAdapter: games skipped this sync, their packages go off until they answer again', ['games' => $failed]);
+        }
+
         return SupplierResponse::success($items);
+    }
+
+    /**
+     * Every `gametopup` game Gamevion offers, for the Middleware games
+     * picker (ADR-137 2026-11-05 decision 1). One call.
+     */
+    public function listGames(): SupplierResponse
+    {
+        $games = $this->client('listProducts')->get('/api/games');
+
+        if ($failure = $this->failureFrom($games)) {
+            return $failure;
+        }
+
+        $list = array_filter((array) $games->json(), fn ($game) => ($game['kind'] ?? null) === 'gametopup' && ! empty($game['code']));
+
+        return SupplierResponse::success(array_values(array_map(fn (array $game) => [
+            'code' => $game['code'],
+            'name' => $game['name'] ?? $game['code'],
+            'family' => $game['family'] ?? $game['name'] ?? $game['code'],
+            'region' => $game['region'] ?? null,
+        ], $list)));
     }
 
     public function createOrder(SupplierOrderRequest $request): SupplierResponse
@@ -197,9 +255,14 @@ final class GamevionAdapter implements SupplierAdapter
      * a same-reference poll (decision 13). 401/403 count against the breaker
      * like a 5xx (decision 12).
      */
+    private function usable(Response $response): bool
+    {
+        return $response->successful() && is_array($response->json());
+    }
+
     private function failureFrom(Response $response): ?SupplierResponse
     {
-        if ($response->successful() && is_array($response->json())) {
+        if ($this->usable($response)) {
             return null;
         }
 
@@ -257,7 +320,7 @@ final class GamevionAdapter implements SupplierAdapter
      * failures and 5xx only; repeating a POST is safe because the same
      * `client_ref` never charges twice.
      */
-    private function client(string $callType, ?int $orderId = null): PendingRequest
+    private function client(string $callType, ?int $orderId = null, bool $failuresOnly = false): PendingRequest
     {
         $client = Http::baseUrl($this->baseUrl)
             ->withToken($this->apiKey)
@@ -271,6 +334,6 @@ final class GamevionAdapter implements SupplierAdapter
             $client = $client->withOptions(['proxy' => $this->proxyUrl]);
         }
 
-        return SupplierRequestLogger::attach($client, 'gamevion', $callType, $orderId);
+        return SupplierRequestLogger::attach($client, 'gamevion', $callType, $orderId, $failuresOnly);
     }
 }
