@@ -1387,3 +1387,39 @@ Every `partial` price-sync run in the last 7 days was Gamevion: the old API timi
 **Browser check** (founder's dev servers, local DB): Arena Breakout (3 orders) → Edit Game → Delete Game answered 422 and showed the message in the modal. Its 4 packages are still there.
 
 **Gotcha.** The MySQL test run first failed with `llm_report_orders already exists`: views were left in docker `kerox` by an earlier killed run (`backend/AGENTS.md` gotcha 8). Dropping them fixed it.
+
+## 2026-11-05 — Released #707: Gamevion sync scope fix live; first sync clean; #708 merged to staging
+
+**Released.** #707 (`staging` → `main`, #706) merged 13:40 UTC (`ba9a2c6f`), on the founder's go-ahead. CI and the `deploy` job were green, and the box runs release `82204655`.
+- Migration `2026_11_09_120000_seed_gamevion_games_to_sync` ran (batch 66). `api_config.games` holds 74 codes; the `gvk_` key was untouched.
+- `queue:prune-batches --hours=168` is in the schedule (daily). `/up` and `/api/health` answer 200.
+
+**First run after it** (3293, started by the founder at 14:16 UTC):
+- `success`, with `synced_suppliers` [gamevion, digiflazz] and no failed supplier.
+- Batch `price-sync-run-3293`: 2 jobs, 0 failed.
+- Gamevion synced 74 games and 1,541 products in about 2 min 40 s. Digiflazz followed in 17 s.
+- Gamevion wrote one request-log row (the game list); none of its games failed.
+- 116 old unpromoted Gamevion rows were pruned; the 71 old package references are kept.
+- The 11 packages deactivated in the run are all Digiflazz's (its usual flapping). Gamevion still has 0 packages on.
+
+**Match list for the 71 old packages** (read-only on prod, given to the founder):
+- MLBB Malaysia (38) → `mlbb_sgmy`: 33 diamond denominations; Weekly Diamond Pass → `Weekly Pass`; First Topup 150+150 and 500+500 → the same First Recharge items. First Topup 50+50 and 250+250 match only `First Recharge 50 + 5` / `250 + 25`; to be checked on Gamevion or deleted.
+- Free Fire Malaysia (11) → `freefire_mysg`.
+- Honor of Kings (10) → `hok` (`800 Tokens` … `8000 Tokens` by name).
+- PUBG Mobile Global (6) → `pubgm_global` (60 UC RM3.66 → RM4.00).
+- Valorant Malaysia (6) → `valorant_my`.
+
+Before a repoint, the five Gamevion groups must be linked to their games in Product Manager.
+
+**#708** (a used game or package can't be deleted by any path, ADR-119 2026-11-05 addendum) merged to `staging` after green CI (`7ea13ddb`). Not released.
+
+**Docs audit** (`docs/cleanup-2026-11-05`), each fact re-checked against prod read-only:
+- PRD §14 headline: Gamevion's state, storefront counts (67 paid from 28 emails; OhahaStore 39), the second KOL campaign ("Mik4ca", code `4ARMY`, 31 clicks across both codes, no redemption), the latest release (#707) and what is on `staging` (#708).
+- PRD §6 Gamevion row and ADAPT-4's example now describe the v2 API.
+- §15 "not released" labels for #705 and #707 corrected, and `.batalbaki` (live since #660) no longer says "on `staging`".
+- §16:
+  - item 162 is now only the founder's steps (moved to group C);
+  - 163 is next (moved to A);
+  - 165 added: a KOL paid as a share of profit isn't supported, and the interim way to pay one is "Not a KOL fee".
+- `backend/AGENTS.md` (Gamevion's state, the replay-safe suppliers, the smoke test) and `foundation-security.md` (Gamevion's quirks) corrected.
+- ADR-031 and ADR-051 banners and index rows now note what ADR-137's addendum revised.

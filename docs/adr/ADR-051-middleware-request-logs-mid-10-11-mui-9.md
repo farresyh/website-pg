@@ -1,6 +1,6 @@
 # ADR-051: Middleware Request Logs (MID-10/11, MUI-9) — HTTP-client-event hook, redact-then-queue write path, and split retention
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-05):** In force; decision 5 is refined for Gamevion by [ADR-137](./ADR-137-gamevion-v2-api.md)'s 2026-11-05 addendum: its per-game catalog calls are logged only when they fail. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-08-28 (grilled via `/mattpocock-skills:grilling`, four rounds, before any code touched)
 
