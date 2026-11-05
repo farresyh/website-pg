@@ -7,6 +7,7 @@ use App\Models\Package;
 use App\Models\PackageReactivationLog;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
+use App\Services\Catalog\PackageActivation;
 use App\Services\Pricing\ComboPricingService;
 use Illuminate\Support\Carbon;
 
@@ -63,6 +64,7 @@ final class PendingReactivationAutoApprover
     public function __construct(
         private readonly PendingReactivationFinder $finder,
         private readonly ComboPricingService $comboPricing,
+        private readonly PackageActivation $activation,
     ) {}
 
     public function run(Supplier $supplier, ?int $priceSyncRunId): int
@@ -102,8 +104,9 @@ final class PendingReactivationAutoApprover
                 continue;
             }
 
-            $this->approve($package, $priceSyncRunId, $trigger);
-            $approved++;
+            if ($this->approve($package, $priceSyncRunId, $trigger)) {
+                $approved++;
+            }
         }
 
         return $approved;
@@ -141,9 +144,11 @@ final class PendingReactivationAutoApprover
         return $time >= $product->cutoff_start || $time <= $product->cutoff_end;
     }
 
-    private function approve(Package $package, ?int $priceSyncRunId, string $trigger): void
+    private function approve(Package $package, ?int $priceSyncRunId, string $trigger): bool
     {
-        $package->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
+        if (! $this->activation->activate($package, PackageActivation::SUPPLIER_SYNC)) {
+            return false;
+        }
 
         PackageReactivationLog::query()->create([
             'package_id' => $package->id,
@@ -159,5 +164,7 @@ final class PendingReactivationAutoApprover
         // per-package pattern exactly — default `withIndex=true`
         // purges both in one call.
         GameController::forgetPackagesCache($package->game_id);
+
+        return true;
     }
 }

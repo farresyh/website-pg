@@ -6,6 +6,7 @@ use App\Models\DeactivationLog;
 use App\Models\Package;
 use App\Models\PackageReactivationLog;
 use App\Models\PriceChangeLog;
+use App\Services\Catalog\PackageActivation;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -20,7 +21,10 @@ use Illuminate\Support\Facades\Log;
  */
 final class ComboPricingService
 {
-    public function __construct(private readonly PackageMarkupService $markup) {}
+    public function __construct(
+        private readonly PackageMarkupService $markup,
+        private readonly PackageActivation $activation,
+    ) {}
 
     /**
      * Recomputes one combo's `denomination`/`cost_price`/
@@ -235,7 +239,10 @@ final class ComboPricingService
 
                 // Never back on sale at a price stored before it went off.
                 $this->recomputeAndLog($combo, $priceSyncRunId);
-                $combo->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
+
+                if (! $this->activation->activate($combo, PackageActivation::COMBO_COMPONENT)) {
+                    return;
+                }
 
                 PackageReactivationLog::query()->create([
                     'package_id' => $combo->id,
@@ -377,7 +384,10 @@ final class ComboPricingService
 
                 // Same as cascadeReactivate(): repriced before it is sellable.
                 $this->recomputeAndLog($combo, $priceSyncRunId);
-                $combo->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
+
+                if (! $this->activation->activate($combo, PackageActivation::COMBO_COMPONENT)) {
+                    return;
+                }
 
                 PackageReactivationLog::query()->create([
                     'package_id' => $combo->id,

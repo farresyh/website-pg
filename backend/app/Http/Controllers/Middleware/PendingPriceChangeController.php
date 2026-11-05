@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Middleware;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\GameController;
 use App\Models\PendingPriceChange;
+use App\Services\Catalog\PackageActivation;
 use App\Services\Pricing\ComboPricingService;
 use App\Services\Pricing\PackageCostService;
 use Illuminate\Http\JsonResponse;
@@ -21,6 +22,7 @@ class PendingPriceChangeController extends Controller
     public function __construct(
         private readonly PackageCostService $packageCost,
         private readonly ComboPricingService $comboPricing,
+        private readonly PackageActivation $activation,
     ) {}
 
     public function index(): JsonResponse
@@ -54,10 +56,13 @@ class PendingPriceChangeController extends Controller
             $pendingPriceChange->proposed_cost_price,
             $pendingPriceChange->price_sync_run_id,
             $request->user()?->id,
-            ['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null],
         );
 
         $pendingPriceChange->update(['status' => 'approved']);
+
+        // ADR-015 2026-11-05 addendum: only the swing's own switch-off is
+        // undone, and only when nothing else still holds the package off.
+        $activated = $this->activation->activate($package, PackageActivation::PRICE_ANOMALY);
 
         // ADR-094 decision 6: this is the *other* real "component
         // cost_price changed" event besides PackagePriceSyncService's
@@ -70,7 +75,7 @@ class PendingPriceChangeController extends Controller
         // ADR-094 addendum (2026-09-24) — this package may itself have
         // been a `price_anomaly`-deactivated combo component; a combo
         // depending on it can now complete.
-        if ($wasInactive) {
+        if ($wasInactive && $activated) {
             $this->comboPricing->cascadeReactivate($package, priceSyncRunId: $pendingPriceChange->price_sync_run_id, adminUserId: $request->user()?->id);
         }
 
@@ -90,10 +95,9 @@ class PendingPriceChangeController extends Controller
 
         $package = $pendingPriceChange->package;
         $wasInactive = ! $package->is_active;
-        $package->update(['is_active' => true, 'deactivated_reason' => null, 'deactivated_at' => null]);
         $pendingPriceChange->update(['status' => 'dismissed']);
 
-        if ($wasInactive) {
+        if ($wasInactive && $this->activation->activate($package, PackageActivation::PRICE_ANOMALY)) {
             $this->comboPricing->cascadeReactivate($package, priceSyncRunId: $pendingPriceChange->price_sync_run_id, adminUserId: $request->user()?->id);
         }
 

@@ -9,10 +9,7 @@ use App\Models\PackageReactivationLog;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
-use App\Services\Pricing\ComboPricingService;
-use App\Services\Pricing\PackageMarkupService;
 use App\Services\Sync\PendingReactivationAutoApprover;
-use App\Services\Sync\PendingReactivationFinder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
@@ -39,8 +36,10 @@ class PendingReactivationAutoApproverTest extends TestCase
      */
     private function pendingPackage(array $supplierOverrides = [], array $productOverrides = [], array $packageOverrides = []): array
     {
+        // MYR: an IDR supplier with no recorded deposit is unfunded, which
+        // PackageActivation rightly refuses (ADR-015 2026-11-05 addendum).
         $supplier = Supplier::query()->create(array_merge([
-            'name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'IDR',
+            'name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => [], 'currency' => 'MYR',
         ], $supplierOverrides));
         $game = Game::query()->create(['name' => 'Mobile Legends', 'slug' => 'mobile-legends-'.$supplier->id]);
         $package = Package::query()->create(array_merge([
@@ -62,7 +61,7 @@ class PendingReactivationAutoApproverTest extends TestCase
         config(['packages.pending_reactivation_auto_approve' => false]);
         [$supplier, $package] = $this->pendingPackage(productOverrides: ['consecutive_active_syncs' => 5]);
 
-        $approved = (new PendingReactivationAutoApprover(new PendingReactivationFinder, new ComboPricingService(new PackageMarkupService)))->run($supplier, null);
+        $approved = app(PendingReactivationAutoApprover::class)->run($supplier, null);
 
         $this->assertSame(0, $approved);
         $this->assertFalse($package->fresh()->is_active);
@@ -81,7 +80,7 @@ class PendingReactivationAutoApproverTest extends TestCase
         ]);
         $run = PriceSyncRun::query()->create(['status' => 'running']);
 
-        $approved = (new PendingReactivationAutoApprover(new PendingReactivationFinder, new ComboPricingService(new PackageMarkupService)))->run($supplier, $run->id);
+        $approved = app(PendingReactivationAutoApprover::class)->run($supplier, $run->id);
 
         $this->assertSame(1, $approved);
         $package->refresh();
@@ -108,7 +107,7 @@ class PendingReactivationAutoApproverTest extends TestCase
             'cutoff_start' => '00:00', 'cutoff_end' => '00:00', 'consecutive_active_syncs' => 0,
         ]);
 
-        $approved = (new PendingReactivationAutoApprover(new PendingReactivationFinder, new ComboPricingService(new PackageMarkupService)))->run($supplier, null);
+        $approved = app(PendingReactivationAutoApprover::class)->run($supplier, null);
 
         $this->assertSame(0, $approved);
         $this->assertFalse($package->fresh()->is_active);
@@ -125,7 +124,7 @@ class PendingReactivationAutoApproverTest extends TestCase
             productOverrides: ['consecutive_active_syncs' => 2],
         );
 
-        $approved = (new PendingReactivationAutoApprover(new PendingReactivationFinder, new ComboPricingService(new PackageMarkupService)))->run($supplier, null);
+        $approved = app(PendingReactivationAutoApprover::class)->run($supplier, null);
 
         $this->assertSame(1, $approved);
         $this->assertTrue($package->fresh()->is_active);
@@ -143,7 +142,7 @@ class PendingReactivationAutoApproverTest extends TestCase
         ]);
         [$supplier, $package] = $this->pendingPackage(productOverrides: ['consecutive_active_syncs' => 1]);
 
-        $approved = (new PendingReactivationAutoApprover(new PendingReactivationFinder, new ComboPricingService(new PackageMarkupService)))->run($supplier, null);
+        $approved = app(PendingReactivationAutoApprover::class)->run($supplier, null);
 
         $this->assertSame(0, $approved);
         $this->assertFalse($package->fresh()->is_active);
@@ -173,7 +172,7 @@ class PendingReactivationAutoApproverTest extends TestCase
         }
         Carbon::setTestNow();
 
-        $approved = (new PendingReactivationAutoApprover(new PendingReactivationFinder, new ComboPricingService(new PackageMarkupService)))->run($supplier, null);
+        $approved = app(PendingReactivationAutoApprover::class)->run($supplier, null);
 
         $this->assertSame(1, $approved);
         $this->assertTrue($package->fresh()->is_active);
@@ -191,7 +190,7 @@ class PendingReactivationAutoApproverTest extends TestCase
             productOverrides: ['status_raw' => 'inactive', 'consecutive_active_syncs' => 0],
         );
 
-        $approved = (new PendingReactivationAutoApprover(new PendingReactivationFinder, new ComboPricingService(new PackageMarkupService)))->run($supplier, null);
+        $approved = app(PendingReactivationAutoApprover::class)->run($supplier, null);
 
         $this->assertSame(0, $approved);
         $this->assertFalse($package->fresh()->is_active);
@@ -212,7 +211,7 @@ class PendingReactivationAutoApproverTest extends TestCase
         );
         SupplierProduct::query()->where('supplier_id', $gamevion->id)->update(['external_ref' => 'GV16']);
 
-        $approved = (new PendingReactivationAutoApprover(new PendingReactivationFinder, new ComboPricingService(new PackageMarkupService)))->run($digiflazz, null);
+        $approved = app(PendingReactivationAutoApprover::class)->run($digiflazz, null);
 
         $this->assertSame(1, $approved);
         $this->assertTrue($digiflazzPackage->fresh()->is_active);
