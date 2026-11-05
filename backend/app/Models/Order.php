@@ -283,7 +283,7 @@ class Order extends Model
      * real leg-level ambiguity with NOTHING delivered yet (no Delivered
      * leg present at all) versus a genuine partial delivery (at least
      * one leg Delivered, alongside at least one leg that is Failed or
-     * itself NeedsReview — a Gamevion duplicate_reference, an
+     * itself NeedsReview — an ambiguous duplicate_reference, an
      * unexpected exception mid-attempt, or a rare Digiflazz malformed-
      * envelope case; confirmed supplier-agnostic, not Gamevion-only).
      * Only the second is this decision's carve-out from ADR-026

@@ -22,20 +22,20 @@ final class SupplierResponse
         //
         //  - $resendUnsafeWithSameReference: "a resubmit of this same
         //    reference can only replay a stored result, never
-        //    reprocess" — Gamevion's 409/duplicate_reference, or
+        //    reprocess" — e.g. an ambiguous 409 with no status, or
         //    Digiflazz's own 20-code "Terbentuk Transaksi=Ya" table.
         //    Drives the admin Resend/Retry button's futile-to-click
         //    signal (decision 3), never routing.
         //  - $outcomeConfirmedFailed: "the supplier's own status field
         //    definitively said Gagal" — true for Digiflazz's Gagal
-        //    branch, always false for Gamevion (a 409 carries no status
-        //    field to confirm anything). Drives decision 4's routing:
+        //    branch and Gamevion's error/cancelled/refunded (ADR-137); false
+        //    whenever no status field confirms anything. Drives decision 4's routing:
         //    a confirmed-Gagal failure goes straight to Failed even
         //    when resendUnsafeWithSameReference is also true, since
         //    "can't safely resubmit" and "outcome unknown" are
         //    different facts — only the combination of unsafe-to-resend
-        //    AND NOT confirmed-failed is genuinely ambiguous (Gamevion's
-        //    409, or an exception/timeout with no response at all).
+        //    AND NOT confirmed-failed is genuinely ambiguous (a 409 with no
+        //    status, or an exception/timeout with no response at all).
         //
         // Neither is a business consequence itself — OrderFulfillmentService,
         // not this class, decides what routing follows (same ADAPT-2

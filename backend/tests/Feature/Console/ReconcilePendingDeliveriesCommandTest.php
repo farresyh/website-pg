@@ -16,11 +16,10 @@ use Illuminate\Support\Facades\Bus;
 use Tests\TestCase;
 
 /**
- * ADR-026 (ORD-10) — ReconcilePendingDeliveriesCommand covers two
- * distinct ambiguous-failure shapes (Gap X: stuck processing with no
- * supplier_ref; Gap Y: a stale duplicate_reference recorded before
- * needs_review existed). See the command's own docblock for the full
- * story.
+ * ADR-026 (ORD-10) — ReconcilePendingDeliveriesCommand: stuck processing
+ * with no supplier_ref (Gap X), the Pending poll and its age-out, and the
+ * Digiflazz confirmed-Gagal reclassification. Gap Y's one-time catch-up
+ * was removed with the old Gamevion API (ADR-137 decision 19).
  */
 class ReconcilePendingDeliveriesCommandTest extends TestCase
 {
@@ -175,35 +174,9 @@ class ReconcilePendingDeliveriesCommandTest extends TestCase
         Bus::assertNotDispatched(FulfillOrderJob::class);
     }
 
-    public function test_flags_a_stale_duplicate_reference_order_for_manual_review(): void
-    {
-        Bus::fake();
-        $order = $this->stale($this->order([
-            'delivery_status' => DeliveryStatus::Failed->value,
-            'supplier_response' => ['error_code' => 'duplicate_reference', 'error_message' => 'dup'],
-        ]));
-
-        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
-
-        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
-    }
-
-    public function test_does_not_flag_a_recent_duplicate_reference_order_still_within_the_threshold(): void
-    {
-        $order = $this->order([
-            'delivery_status' => DeliveryStatus::Failed->value,
-            'supplier_response' => ['error_code' => 'duplicate_reference', 'error_message' => 'dup'],
-        ]);
-
-        $this->artisan('app:reconcile-pending-deliveries')->assertExitCode(0);
-
-        $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
-    }
-
     /**
      * A genuine business-level failure (wrong product code, insufficient
-     * supplier balance, etc.) must never be swept into needs_review —
-     * only duplicate_reference is evidence of an ambiguous outcome.
+     * supplier balance, etc.) must never be swept into needs_review.
      */
     public function test_does_not_flag_a_stale_order_with_a_different_error_code(): void
     {
@@ -222,9 +195,7 @@ class ReconcilePendingDeliveriesCommandTest extends TestCase
      * to flip a stale Failed Digiflazz-terminal-rc order to NeedsReview:
      * that code is now a confirmed-Gagal outcome that belongs on Failed
      * permanently (Issue Voucher already available there). A stale
-     * Failed order carrying one now stays exactly where it is — only
-     * Gamevion's own duplicate_reference (still genuinely ambiguous)
-     * gets the Failed→NeedsReview catch-up below.
+     * Failed order carrying one now stays exactly where it is.
      */
     public function test_does_not_flag_a_stale_digiflazz_terminal_rc_order(): void
     {
@@ -279,9 +250,9 @@ class ReconcilePendingDeliveriesCommandTest extends TestCase
     }
 
     /**
-     * Gamevion's duplicate_reference is still genuinely ambiguous (no
-     * status field confirms anything) — must never be reclassified by
-     * this new clause, unlike a Digiflazz confirmed-Gagal code.
+     * `duplicate_reference` (the sandbox's ambiguous-outcome code) is
+     * genuinely ambiguous — never reclassified by this clause, unlike a
+     * Digiflazz confirmed-Gagal code.
      */
     public function test_does_not_reclassify_a_needs_review_order_with_gamevion_duplicate_reference(): void
     {

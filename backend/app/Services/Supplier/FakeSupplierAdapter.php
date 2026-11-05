@@ -46,8 +46,9 @@ final class FakeSupplierAdapter implements SupplierAdapter
                 // ADR-098, split by ADR-102 decision 6 into two typed
                 // conventions the sandbox's Simulated Outcome picker
                 // supports:
-                //  - 'duplicate_reference' — Gamevion-409-alike: unsafe
-                //    to resubmit, outcome NOT confirmed → needs_review.
+                //  - 'duplicate_reference' — an ambiguous outcome: unsafe
+                //    to resubmit, NOT confirmed → needs_review (named after
+                //    the old Gamevion API's 409, ADR-026).
                 //  - 'confirmed_failed' — Digiflazz-20-code-table-alike:
                 //    unsafe to resubmit AND the outcome IS confirmed →
                 //    Failed (decision 4's actual fix), letting this be
