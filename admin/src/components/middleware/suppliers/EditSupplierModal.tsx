@@ -14,6 +14,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { SUPPLIER_FIELD_DEFINITIONS, type Supplier, type UpdateSupplierValues } from "@/lib/suppliers";
+import GamevionGamePicker from "./GamevionGamePicker";
 
 interface EditSupplierModalProps {
   isOpen: boolean;
@@ -45,6 +46,11 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
   const isManual = !supplier.is_api_backed;
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
   const [visibleValues, setVisibleValues] = useState<Record<string, string | boolean>>({});
+  // ADR-137 2026-11-05 decision 1: the games picker's ticked codes.
+  const [games, setGames] = useState<string[]>(() => {
+    const fromServer = supplier.visible_config.games;
+    return Array.isArray(fromServer) ? fromServer : [];
+  });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -77,6 +83,10 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
     for (const field of fields) {
       if (field.type === "secret") {
         if (secretValues[field.key]?.trim()) apiConfig[field.key] = secretValues[field.key].trim();
+        continue;
+      }
+      if (field.type === "games") {
+        apiConfig[field.key] = games;
         continue;
       }
       if (field.type === "list") {
@@ -163,6 +173,10 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
               </p>
 
               {fields.map((field) => {
+                if (field.type === "games") {
+                  return <GamevionGamePicker key={field.key} value={games} onChange={setGames} />;
+                }
+
                 if (field.type === "secret") {
                   const isConfigured = supplier.configured_secret_keys.includes(field.key);
                   return (
