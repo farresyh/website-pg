@@ -7,10 +7,13 @@ use App\Http\Requests\Middleware\BulkUpdateSupplierPackagesStatusRequest;
 use App\Http\Requests\Middleware\CreateSupplierRequest;
 use App\Http\Requests\Middleware\UpdateSupplierRequest;
 use App\Http\Requests\Middleware\UpdateSupplierStatusRequest;
+use App\Models\Order;
+use App\Models\OrderDeliveryLeg;
 use App\Models\Package;
 use App\Models\Supplier;
 use App\Models\WhatsAppGroup;
 use App\Services\CircuitBreaker\CircuitBreaker;
+use App\Services\Order\DeliveryStatus;
 use App\Services\Supplier\Manual\ManualSupplierStatusService;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierConfigSchema;
@@ -158,6 +161,17 @@ class SupplierController extends Controller
             throw ValidationException::withMessages(['currency' => ['This supplier already has transfers or packages in '.$supplier->currency.'; its currency can no longer change.']]);
         }
 
+        // ADR-137 decision 20: a new base_url is a cutover to another system,
+        // which never saw this supplier's in-flight references; polling one
+        // there would buy it again. Settle them first.
+        if ($configChanged && array_key_exists('base_url', $data['api_config'])
+            && $data['api_config']['base_url'] !== ($supplier->api_config['base_url'] ?? null)
+            && $this->hasUnsettledDeliveries($supplier)) {
+            throw ValidationException::withMessages(['api_config.base_url' => [
+                'This supplier still has orders in Processing, Pending or Needs Review. Settle them before changing its Base URL.',
+            ]]);
+        }
+
         if ($configChanged) {
             $data['api_config'] = SupplierConfigSchema::normalizeConfig(
                 $supplier->driver,
@@ -180,6 +194,14 @@ class SupplierController extends Controller
         }
 
         return response()->json($payload);
+    }
+
+    private function hasUnsettledDeliveries(Supplier $supplier): bool
+    {
+        $unsettled = [DeliveryStatus::Processing->value, DeliveryStatus::Pending->value, DeliveryStatus::NeedsReview->value];
+
+        return Order::query()->where('supplier_id', $supplier->id)->whereIn('delivery_status', $unsettled)->exists()
+            || OrderDeliveryLeg::query()->where('supplier_id', $supplier->id)->whereIn('status', $unsettled)->exists();
     }
 
     /**
