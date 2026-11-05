@@ -1318,3 +1318,47 @@ The guard tests (route list, `visible_config`) and the old daily-warning test we
 - The cost comparison showed a deliberately mismatched pick plainly (RM 3.25 → RM 165.24).
 
 **Gotcha.** `php artisan migrate --env=testing` with no `.env.testing` runs against the dev DB. It ran this additive migration there, which lifecycle step 5 needs anyway.
+
+## 2026-11-05 — Released #705: Gamevion v2 live; first sync failed; sync scope fix built (ADR-137 2026-11-05 addendum)
+
+**Released.** #705 (`staging` → `main`, #700–#704) merged 11:28 UTC; the deploy job passed. Read-only checks on prod:
+- `0344cf1` is live;
+- migration `package_ref_changes` ran (batch 65);
+- `/up` is 200;
+- `POST /api/webhooks/gamevion` answers 503 "webhook not configured" until the secret is saved.
+
+Gamevion had 71 packages (0 on) and 0 orders. The founder entered the `gvk_` key, Base URL and webhook secret and switched Gamevion on. The balance check passed (RM 0, VIP tier).
+
+**Found.** The first sync (run 3287, 11:47) failed with `[service_unavailable]`. The request log shows ten games fetched cleanly, then `GET /api/games/ace_racer_id/fields` answering 503 on all four attempts. A later check from prod found:
+- **Ace Racer, Valorant (generic) and Blood Strike Pass are down at Gamevion.** Both their `/fields` and `/pricelist` answer 503.
+- **`/api/games` lists 1,344 games, 430 of them `gametopup`.** At the 40-a-minute pricelist pace that is about 12 minutes, over the 300 s `price-sync` limit (decision 16 put the ceiling near 150).
+- **One job ran every supplier in turn under one 300 s limit.** Gamevion (id 1) runs before Digiflazz, which takes 25–79 s a run (7 days of runs).
+- **The request log would grow about 7,300 rows a day.** Every catalog call is logged, which is about 550 MB at the 30-day retention. The table is 5.4 MB.
+
+Every `partial` price-sync run in the last 7 days was Gamevion: the old API timing out on 1–4 Nov, then this. The 15 failed jobs (`cs-assistant`, 2026-11-03) were already fixed by `75570048`.
+
+**Built** on `fix/gamevion-sync-scope` (ADR-137 2026-11-05 addendum):
+- **Games picker.** `api_config.games` is an optional `list` key.
+  - `GET /api/middleware/suppliers/gamevion/games` (super admin) returns `GamevionAdapter::listGames()`: one call, unwrapped, so it never counts against the order breaker.
+  - `GamevionGamePicker` in the Edit modal groups the games by Gamevion's family, with a select-all per family, search, and "New" on an unticked game in a ticked family. Built on the ADR-104 tokens.
+  - Migration `2026_11_09_120000_seed_gamevion_games_to_sync` writes the 74 agreed codes once, only while `games` is absent.
+- **Per-game failure.** `listProducts()` fetches only the chosen games. A game whose `/fields` or `/pricelist` still fails after the retry is left out, with a warning. The whole sync fails on 401/403, a failed `/api/games`, or more than a quarter of the games failing. An empty list fails with "Choose them in Middleware → Suppliers".
+- **One job per supplier.** `SyncSupplierPricesJob` dispatches one `SyncSupplierCatalogJob` per syncable supplier as a `Bus::batch` (`allowFailures`, same `price-sync` queue and worker).
+  - Each job merges its counts into the run under a row lock (`PriceSyncRun::recordSupplierSynced` / `recordSupplierFailed`).
+  - The batch's `finally` calls `finishBatch()`. It counts the suppliers that synced (`stats.synced_suppliers`), never the failures recorded so far, because a timed-out job's `failed()` may run after it.
+- **Request log.** `SupplierRequestLogger::attach(..., failuresOnly: true)` for Gamevion's per-game catalog calls.
+
+**Tests.**
+- New: 9 adapter tests, 4 controller tests, 3 job tests, 3 migration tests.
+- Changed: 15 job tests now go through `dispatchSync`, so the batch runs inline.
+- Full suite: 3,701 green.
+- Admin: `tsc`, `eslint` and 22 unit tests pass.
+
+**Browser check** on the founder's dev servers (`:3000`, API `:8000`). The local proxy is on, so the picker endpoint was answered by Playwright with prod's real 430-game list; the endpoint itself is covered by the controller tests.
+- Light and dark: 290 families, 74 ticked, "New" on Valorant and Blood Strike Pass.
+- Ticking a family keeps it in place and doesn't toggle its `<details>`.
+- Contrast: code text 5.3 / 5.8, the "New" tag 6.1 / 8.3.
+- Save sent `api_config.games` with the codes.
+- The error state shows "Gamevion did not return its games: …".
+
+**Gotcha.** A checkbox inside `<summary>` doesn't toggle the `<details>` (the input is the activation target), so no `stopPropagation` was needed. Re-sorting families by live tick state made a ticked family jump under the cursor; the order now comes from the list the form opened with.
