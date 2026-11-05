@@ -116,6 +116,14 @@ export function linkSupplierProductCategory(values: LinkCategoryValues) {
   });
 }
 
+/** ADR-137 decision 21: point an existing package of the same supplier and game at this item. */
+export function repointSupplierProduct(id: number, packageId: number) {
+  return apiFetch<{ package: { id: number } }>(`/api/middleware/supplier-products/${id}/repoint`, {
+    method: "POST",
+    body: { package_id: packageId },
+  });
+}
+
 export function promoteSupplierProduct(id: number, values: PromoteValues) {
   return apiFetch<{ package: { id: number } }>(`/api/middleware/supplier-products/${id}/promote`, {
     method: "POST",

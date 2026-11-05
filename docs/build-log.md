@@ -1286,3 +1286,35 @@ The guard tests (route list, `visible_config`) and the old daily-warning test we
 - Local curl: `POST /api/webhooks/gamevion` answers 503 against the dev DB, which has no `webhook_secret` (fail-safe).
 
 **Gotcha.** A test with no `Queue::fake()` on a replay-safe supplier now also runs the recovery poll inline. A fixture supplier with no config then throws from the poll, not the order (`ResellerBotOrderTest`).
+
+## 2026-11-05 — Item 162 PR 3: package repoint in Product Manager (ADR-137 decision 21)
+
+**Why.** When a supplier changes system, its references change. Before this, a package could not be pointed at a new reference: Promote refuses an item that is already a package, and the package update never took `supplier_package_ref`. The only options were a second package beside a dead one, or delete and set up again.
+
+**Built.**
+- `POST /api/middleware/supplier-products/{item}/repoint` (`package_id`), super admin, with `RepointSupplierProductRequest`.
+- Under a row lock it refuses when:
+  - the item has no valid price;
+  - the item is already in the catalog;
+  - the package is from another supplier, a combo, or a manual supplier's;
+  - the item's group is not linked to the package's game;
+  - the package has an order or combo leg in Processing, Pending or NeedsReview.
+- Otherwise it:
+  - records `package_ref_changes` (old, new, admin);
+  - closes any open price swing as `superseded`;
+  - sets the new reference;
+  - sets the cost from the new price through `PackageCostService::apply()` (a `PriceChangeLog` row with the admin; markup kept);
+  - recomputes the combos that use the package.
+- The package stays on or off as it was. Old orders keep their frozen reference; a resend uses the new one. The old catalog row is no longer protected, so the next sync prunes it.
+- Migration `2026_11_08_120000_create_package_ref_changes_table`. On MySQL (docker test DB), `SHOW INDEX` shows a standalone index on `package_id` and `admin_user_id`.
+- Admin: "Link to existing" beside "Add to Catalog" opens `RepointProductModal` (`components/ui` kit). It lists this game's packages from the same supplier and shows the current cost against the new price before confirming.
+
+**Tests.** 7 in `SupplierProductRepointTest`. Full suite 3,682 green. Admin `tsc`, `eslint` and 22 unit tests pass.
+
+**Browser check.** On the founder's running dev servers (`:3000`, API `:8000`):
+- Product Manager → Arena Breakout (Gamevion, dev data) → Link to existing → pick a package → Link package.
+- The POST was intercepted by Playwright, so the dev DB was not written. Its body was `{"package_id": 3}`.
+- Checked in light, dark and 390 px: no horizontal overflow, no JS errors.
+- The cost comparison showed a deliberately mismatched pick plainly (RM 3.25 → RM 165.24).
+
+**Gotcha.** `php artisan migrate --env=testing` with no `.env.testing` runs against the dev DB. It ran this additive migration there, which lifecycle step 5 needs anyway.

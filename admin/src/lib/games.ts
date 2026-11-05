@@ -154,6 +154,8 @@ export interface GamePackage {
   standard_selling_price: number;
   markup_percent: string; // decimal cast serializes as a string
   is_active: boolean;
+  /** Null for a combo. */
+  supplier_id: number | null;
   supplier_package_ref: string;
   /** Read-only — has the supplier turned this item off on their own side? */
   supplier_active: boolean;

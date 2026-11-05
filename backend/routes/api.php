@@ -780,6 +780,8 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::post('/categories/link', [SupplierProductController::class, 'linkCategory']);
         Route::get('/', [SupplierProductController::class, 'index']);
         Route::post('/{supplier_product}/promote', [SupplierProductController::class, 'promote']);
+        // ADR-137 decision 21: point an existing package at this product.
+        Route::post('/{supplier_product}/repoint', [SupplierProductController::class, 'repoint']);
     });
 
     // ADR-015/ADR-016 — Price Sync: manual trigger + status polling,
