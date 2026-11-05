@@ -22,7 +22,8 @@ final class SupplierConfigSchema
      * `missingKeys()` / the "fully configured" gate check exactly these.
      */
     private const REQUIRED = [
-        'gamevion' => ['base_url' => 'text', 'bearer_token' => 'secret', 'api_key' => 'secret', 'sandbox' => 'boolean'],
+        // ADR-137: one `gvk_` key for gamevion.cloud.
+        'gamevion' => ['base_url' => 'text', 'api_key' => 'secret'],
         'digiflazz' => ['base_url' => 'text', 'username' => 'secret', 'api_key' => 'secret', 'testing' => 'boolean', 'customer_no_separator' => 'text'],
     ];
 
@@ -81,7 +82,9 @@ final class SupplierConfigSchema
             'topup_lead_days' => 'text',
             'buffer_margin_pct' => 'text',
         ],
-        'gamevion' => ['low_balance_threshold' => 'text', 'drift_threshold' => 'text', 'price_sync_stale_alert_minutes' => 'text', 'transfer_spread_min_pct' => 'text', 'transfer_spread_max_pct' => 'text', 'topup_lead_days' => 'text', 'buffer_margin_pct' => 'text'],
+        // ADR-137 decision 9: `webhook_secret` only authenticates
+        // GamevionWebhookController, so it does not gate the adapter.
+        'gamevion' => ['webhook_secret' => 'secret', 'low_balance_threshold' => 'text', 'drift_threshold' => 'text', 'price_sync_stale_alert_minutes' => 'text', 'transfer_spread_min_pct' => 'text', 'transfer_spread_max_pct' => 'text', 'topup_lead_days' => 'text', 'buffer_margin_pct' => 'text'],
         // ADR-125 decisions 2-3: a manual supplier's own settings. Absent
         // `reply_sla_minutes` means the default (Supplier::DEFAULT_MANUAL_SLA_MINUTES).
         'manual' => ['reply_sla_minutes' => 'text'],
