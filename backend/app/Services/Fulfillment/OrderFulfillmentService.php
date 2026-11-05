@@ -198,6 +198,14 @@ final class OrderFulfillmentService
             // is a status check as much as an order.
             $resubmit = $locked->delivery_status !== DeliveryStatus::Failed && $locked->reference_number !== null;
 
+            // ADR-102 2026-11-05 addendum: past the supplier's window the
+            // stored reference is unknown to it, so a re-submit would buy again.
+            if ($resubmit && ! $locked->sameReferenceWithinWindow()) {
+                throw new OrderFulfillmentException(
+                    "Order #{$locked->id} is too old to re-submit with the same reference; use Confirm Failed",
+                );
+            }
+
             // ADR-014: extends whatever context the caller already set
             // (order_number, from the webhook/job) with the ORD-8 key
             // Gamevion itself is called with — the two together are
@@ -623,6 +631,13 @@ final class OrderFulfillmentService
                 // this attempt's reference queryable.
                 // ADR-102 2026-10-05 addendum (rc correction), leg form.
                 $resubmit = $lockedLeg->status !== DeliveryStatus::Failed && $lockedLeg->reference_number !== null;
+
+                // ADR-102 2026-11-05 addendum: the same window as a plain order.
+                if ($resubmit && ! $order->sameReferenceWithinWindow()) {
+                    Log::warning('Combo leg not re-submitted: past the supplier\'s same-reference window', ['leg_id' => $lockedLeg->id]);
+
+                    return;
+                }
 
                 $legReferenceNumber = match ($lockedLeg->status) {
                     DeliveryStatus::Failed => "{$order->reference_number}-L{$lockedLeg->leg_number}-".Str::ulid(),

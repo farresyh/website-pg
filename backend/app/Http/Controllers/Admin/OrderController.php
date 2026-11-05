@@ -381,6 +381,14 @@ class OrderController extends Controller
             ]);
         }
 
+        // ADR-102 2026-11-05 addendum: a retry from NeedsReview re-submits the
+        // stored reference, which the supplier forgets after its window.
+        if ($order->delivery_status === DeliveryStatus::NeedsReview && ! $order->sameReferenceWithinWindow()) {
+            throw ValidationException::withMessages([
+                'delivery_status' => [Order::PAST_WINDOW_MESSAGE],
+            ]);
+        }
+
         $this->guardResendUnsafeOverride($request, $order);
         $this->guardLoginNotWiped($order);
 
@@ -545,7 +553,7 @@ class OrderController extends Controller
         // the order reached it, inside the age limit).
         // ADR-125 decision 2: never a manual supplier (no API to ask).
         $askable = SupplierDeliveryCheckService::canAsk($order) && (
-            $order->delivery_status === DeliveryStatus::Pending
+            ($order->delivery_status === DeliveryStatus::Pending && $order->sameReferenceWithinWindow())
             || ($order->delivery_status === DeliveryStatus::NeedsReview && SupplierDeliveryCheckService::canAskAboutNeedsReview($order))
         );
 

@@ -11,7 +11,6 @@ use App\Models\PriceChangeLog;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
 use App\Services\Pricing\ComboPricingService;
-use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -27,7 +26,7 @@ class ComboPricingServiceTest extends TestCase
 
     private function service(): ComboPricingService
     {
-        return new ComboPricingService(new PackageMarkupService);
+        return app(ComboPricingService::class);
     }
 
     private function game(): Game

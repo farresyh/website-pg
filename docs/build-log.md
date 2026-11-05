@@ -1219,3 +1219,36 @@ The guard tests (route list, `visible_config`) and the old daily-warning test we
 - The four Vercel production deploys succeeded.
 
 **Docs.** PRD §14, §15 (Supplier Management and Balance rows), §16 items 28 and 104 and the line on Error Handling now say released. Item 57's closed line still said "not released yet" after #694; it was corrected. §14 also records CHIP's 2026-11-05 reply on the additional payment methods.
+
+## 2026-11-05 — Item 162 PR 1: package activation seam and the same-reference window
+
+**Why.** Two money gaps found while tracing ADR-137 (Gamevion v2) decision 21, outside Gamevion itself. The stress test showed that the first fix, at two sites, was a patch; the founder accepted the root-cause fix (ADR-015 and ADR-102 2026-11-05 addenda).
+
+**Gap A and B: package activation.**
+- Checkout sells any package with `is_active`. Nine places switched a package on by writing `is_active = true, deactivated_reason = null` directly. Each cleared the one stored reason and checked nothing else.
+- So a supplier's Reactivate brought back a package with an open price swing (sold at the old cost) or one its supplier no longer lists.
+- Approving or dismissing a swing switched on a package that was off because its supplier was off, or because an admin turned it off.
+- Prod, read-only, 2026-11-05: none of the 1,210 active API packages is affected.
+
+**Built.**
+- `App\Services\Catalog\PackageActivation`:
+  - `activate($package, $clears)` and `blocker($package)`;
+  - blockers are computed live: an open `PendingPriceChange`, supplier off, unfunded, not listed at the supplier's last sync, a combo component off;
+  - a blocked package stays off with that blocker as its reason, so the path that owns the reason brings it back;
+  - a caller clears only the reason it owns; `null` is an admin's own switch-on from `/games`.
+- All nine writers route through it: Pending Reactivation approve and bulk, the auto-approver, Dismissed restore, swing approve and dismiss, the supplier's Reactivate (and a manual supplier switched on, and the unfunded sync), the `/games` toggle, the two combo cascades.
+- The supplier's Reactivate now returns `skipped`, and the admin toast says how many stayed off.
+- An invariant test fails CI if other code clears a package deactivation.
+
+**The same-reference window.**
+- `max_reconcile_age_days` was enforced by the poll and Check supplier / Confirm Failed, but not by Retry or Resend from NeedsReview, which re-submit the stored reference.
+- `Order::sameReferenceWithinWindow()` is now the one rule:
+  - `fulfill()` and the combo leg attempt refuse outside it;
+  - Retry, Resend and Check supplier on a Pending order answer 422 with `Order::PAST_WINDOW_MESSAGE`.
+
+**Tests.**
+- 11 in `PackageActivationTest`.
+- 5 added to `OrderConfirmFailedSupplierCheckTest`: Retry, Resend, `fulfill()`, a combo leg, and Check supplier past the window.
+- Four tests that built `ComboPricingService` / `PendingReactivationAutoApprover` by hand now resolve them from the container.
+- The auto-approver fixture's Digiflazz is MYR: an IDR supplier with no deposit is unfunded, which the seam rightly refuses.
+- Full suite 3,666 green. Admin: `tsc` and `eslint` clean.

@@ -52,9 +52,7 @@ final class SupplierDeliveryCheckService
             return false;
         }
 
-        $maxAgeDays = (int) ($supplier->api_config['max_reconcile_age_days'] ?? config('services.delivery_reconciliation.max_reconcile_age_days'));
-
-        return $order->created_at->gt(now()->subDays($maxAgeDays));
+        return $order->sameReferenceWithinWindow();
     }
 
     /**

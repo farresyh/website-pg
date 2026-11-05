@@ -226,7 +226,7 @@ export function updateSupplierPackagesStatus(
   supplierId: number,
   values: UpdateSupplierPackagesStatusValues,
 ) {
-  return apiFetch<{ updated: number }>(`/api/middleware/suppliers/${supplierId}/packages/status`, {
+  return apiFetch<{ updated: number; skipped?: number }>(`/api/middleware/suppliers/${supplierId}/packages/status`, {
     method: "PATCH",
     body: values,
   });

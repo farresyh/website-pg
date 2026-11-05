@@ -169,8 +169,14 @@ export default function SuppliersPage() {
 
   async function handlePackagesSubmit(values: Parameters<typeof updateSupplierPackagesStatus>[1]) {
     if (!session || !packagesTarget) return;
-    await updateSupplierPackagesStatus(packagesTarget.id, values);
-    notify.success("Packages updated");
+    const result = await updateSupplierPackagesStatus(packagesTarget.id, values);
+    // ADR-015 2026-11-05 addendum: a package still blocked (price review, supplier off, no longer listed) stays off.
+    notify.success(
+      "Packages updated",
+      result.skipped
+        ? `${result.skipped} kept off: a price review, the supplier's status or its catalog still blocks them.`
+        : undefined,
+    );
     setPackagesTarget(null);
     refresh();
   }
