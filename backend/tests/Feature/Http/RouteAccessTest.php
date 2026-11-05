@@ -108,6 +108,7 @@ class RouteAccessTest extends TestCase
             'POST api/vouchers/preview',
             'POST api/webhooks/chip',
             'POST api/webhooks/digiflazz',
+            'POST api/webhooks/gamevion',
             'POST api/webhooks/openwa',
             'PUT api/onboarding/stage-two/{token}',
         ], $public);

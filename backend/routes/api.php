@@ -113,6 +113,7 @@ use App\Http\Controllers\TrackOrderController;
 use App\Http\Controllers\VoucherPreviewController;
 use App\Http\Controllers\Webhooks\ChipWebhookController;
 use App\Http\Controllers\Webhooks\DigiflazzWebhookController;
+use App\Http\Controllers\Webhooks\GamevionWebhookController;
 use App\Http\Controllers\Webhooks\OpenWaWebhookController;
 use App\Http\Middleware\EnsureResellerApiKey;
 use Illuminate\Support\Facades\Route;
@@ -1247,6 +1248,13 @@ Route::post('/webhooks/chip', [ChipWebhookController::class, 'handle'])
 Route::post('/webhooks/digiflazz', [DigiflazzWebhookController::class, 'handle'])
     ->middleware('throttle:600,1,webhook-digiflazz')
     ->name('webhooks.digiflazz');
+
+// ADR-137 decision 9 — Gamevion's `order.updated` webhook. Not behind
+// auth:sanctum: the X-Gamevion-Signature HMAC (with a 5-minute timestamp
+// window) IS the auth. The reconcile poll stays the backstop.
+Route::post('/webhooks/gamevion', [GamevionWebhookController::class, 'handle'])
+    ->middleware('throttle:600,1,webhook-gamevion')
+    ->name('webhooks.gamevion');
 
 // ADR-075 / PR-F build addendum — the Reseller Bot channel's inbound
 // half (self-hosted OpenWA). Not behind auth:sanctum: the
