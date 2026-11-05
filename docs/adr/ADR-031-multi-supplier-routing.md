@@ -1,6 +1,6 @@
 # ADR-031: Multi-supplier routing — `SupplierAdapterFactory` + one-Package-one-supplier (built 2026-08-25)
 
-> **Standing (2026-10-18):** In force; decision 1's binding key is the supplier's `driver`, not its slug, since [ADR-125](./ADR-125-login-top-up-manual-supplier.md) (2026-10-18 addendum below). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-05):** In force; decision 1's binding key is the supplier's `driver`, not its slug, since [ADR-125](./ADR-125-login-top-up-manual-supplier.md) (2026-10-18 addendum below). Decision 4's loop: since [ADR-137](./ADR-137-gamevion-v2-api.md)'s 2026-11-05 addendum, `SyncSupplierPricesJob` dispatches one job per supplier as a batch instead of looping in one job. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-08-24 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
 
