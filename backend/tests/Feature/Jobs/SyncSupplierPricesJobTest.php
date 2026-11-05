@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Jobs;
 
+use App\Jobs\SyncSupplierCatalogJob;
 use App\Jobs\SyncSupplierPricesJob;
 use App\Models\Game;
 use App\Models\Package;
@@ -16,10 +17,12 @@ use App\Services\Supplier\SupplierOrderRequest;
 use App\Services\Supplier\SupplierResponse;
 use App\Services\Supplier\SupplierStatusCheckRequest;
 use App\Services\Supplier\ValidationNotSupportedException;
-use App\Services\Sync\PackagePriceSyncService;
-use App\Services\Sync\PendingReactivationAutoApprover;
+use App\Services\Sync\PackagePriceSyncResult;
+use App\Services\Sync\ProductSyncResult;
 use App\Services\Sync\ProductSyncService;
+use Illuminate\Bus\PendingBatch;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Tests\TestCase;
@@ -96,12 +99,7 @@ class SyncSupplierPricesJobTest extends TestCase
 
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
-        (new SyncSupplierPricesJob($run))->handle(
-            app(ProductSyncService::class),
-            app(PackagePriceSyncService::class),
-            app(SupplierAdapterFactory::class),
-            app(PendingReactivationAutoApprover::class),
-        );
+        SyncSupplierPricesJob::dispatchSync($run);
 
         $run->refresh();
         $this->assertSame('success', $run->status);
@@ -139,12 +137,7 @@ class SyncSupplierPricesJobTest extends TestCase
 
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
-        (new SyncSupplierPricesJob($run))->handle(
-            app(ProductSyncService::class),
-            app(PackagePriceSyncService::class),
-            app(SupplierAdapterFactory::class),
-            app(PendingReactivationAutoApprover::class),
-        );
+        SyncSupplierPricesJob::dispatchSync($run);
 
         $run->refresh();
         $this->assertSame('success', $run->status);
@@ -161,12 +154,7 @@ class SyncSupplierPricesJobTest extends TestCase
 
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
-        (new SyncSupplierPricesJob($run))->handle(
-            app(ProductSyncService::class),
-            app(PackagePriceSyncService::class),
-            app(SupplierAdapterFactory::class),
-            app(PendingReactivationAutoApprover::class),
-        );
+        SyncSupplierPricesJob::dispatchSync($run);
 
         $run->refresh();
         $this->assertSame('failed', $run->status);
@@ -192,12 +180,7 @@ class SyncSupplierPricesJobTest extends TestCase
 
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
-        (new SyncSupplierPricesJob($run))->handle(
-            app(ProductSyncService::class),
-            app(PackagePriceSyncService::class),
-            app(SupplierAdapterFactory::class),
-            app(PendingReactivationAutoApprover::class),
-        );
+        SyncSupplierPricesJob::dispatchSync($run);
 
         $run->refresh();
         $this->assertSame('partial', $run->status);
@@ -218,12 +201,7 @@ class SyncSupplierPricesJobTest extends TestCase
 
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
-        (new SyncSupplierPricesJob($run))->handle(
-            app(ProductSyncService::class),
-            app(PackagePriceSyncService::class),
-            app(SupplierAdapterFactory::class),
-            app(PendingReactivationAutoApprover::class),
-        );
+        SyncSupplierPricesJob::dispatchSync($run);
 
         $run->refresh();
         $this->assertSame('success', $run->status);
@@ -270,12 +248,7 @@ class SyncSupplierPricesJobTest extends TestCase
 
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
-        (new SyncSupplierPricesJob($run))->handle(
-            app(ProductSyncService::class),
-            app(PackagePriceSyncService::class),
-            app(SupplierAdapterFactory::class),
-            app(PendingReactivationAutoApprover::class),
-        );
+        SyncSupplierPricesJob::dispatchSync($run);
 
         $run->refresh();
         $this->assertSame('success', $run->status);
@@ -314,12 +287,7 @@ class SyncSupplierPricesJobTest extends TestCase
 
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
-        (new SyncSupplierPricesJob($run))->handle(
-            app(ProductSyncService::class),
-            app(PackagePriceSyncService::class),
-            app(SupplierAdapterFactory::class),
-            app(PendingReactivationAutoApprover::class),
-        );
+        SyncSupplierPricesJob::dispatchSync($run);
 
         $run->refresh();
         $this->assertCount(1, $run->stats['fx_rates_used']);
@@ -335,12 +303,7 @@ class SyncSupplierPricesJobTest extends TestCase
 
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
-        (new SyncSupplierPricesJob($run))->handle(
-            app(ProductSyncService::class),
-            app(PackagePriceSyncService::class),
-            app(SupplierAdapterFactory::class),
-            app(PendingReactivationAutoApprover::class),
-        );
+        SyncSupplierPricesJob::dispatchSync($run);
 
         $run->refresh();
         $this->assertSame([], $run->stats['fx_rates_used']);
@@ -359,12 +322,7 @@ class SyncSupplierPricesJobTest extends TestCase
 
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
-        (new SyncSupplierPricesJob($run))->handle(
-            app(ProductSyncService::class),
-            app(PackagePriceSyncService::class),
-            app(SupplierAdapterFactory::class),
-            app(PendingReactivationAutoApprover::class),
-        );
+        SyncSupplierPricesJob::dispatchSync($run);
 
         $run->refresh();
         $this->assertSame('success', $run->status);
@@ -393,12 +351,7 @@ class SyncSupplierPricesJobTest extends TestCase
 
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
-        (new SyncSupplierPricesJob($run))->handle(
-            app(ProductSyncService::class),
-            app(PackagePriceSyncService::class),
-            app(SupplierAdapterFactory::class),
-            app(PendingReactivationAutoApprover::class),
-        );
+        SyncSupplierPricesJob::dispatchSync($run);
 
         $run->refresh();
         $this->assertSame('success', $run->status);
@@ -410,12 +363,7 @@ class SyncSupplierPricesJobTest extends TestCase
     {
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
-        (new SyncSupplierPricesJob($run))->handle(
-            app(ProductSyncService::class),
-            app(PackagePriceSyncService::class),
-            app(SupplierAdapterFactory::class),
-            app(PendingReactivationAutoApprover::class),
-        );
+        SyncSupplierPricesJob::dispatchSync($run);
 
         $this->assertDatabaseMissing('suppliers', ['slug' => 'gamevion']);
         $this->assertSame('success', $run->refresh()->status);
@@ -467,12 +415,7 @@ class SyncSupplierPricesJobTest extends TestCase
 
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
-        (new SyncSupplierPricesJob($run))->handle(
-            app(ProductSyncService::class),
-            app(PackagePriceSyncService::class),
-            app(SupplierAdapterFactory::class),
-            app(PendingReactivationAutoApprover::class),
-        );
+        SyncSupplierPricesJob::dispatchSync($run);
 
         $this->assertSame('success', $run->refresh()->status);
         $this->assertTrue($package->fresh()->is_active);
@@ -505,12 +448,7 @@ class SyncSupplierPricesJobTest extends TestCase
 
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
-        (new SyncSupplierPricesJob($run))->handle(
-            app(ProductSyncService::class),
-            app(PackagePriceSyncService::class),
-            app(SupplierAdapterFactory::class),
-            app(PendingReactivationAutoApprover::class),
-        );
+        SyncSupplierPricesJob::dispatchSync($run);
 
         $this->assertSame('success', $run->refresh()->status);
         $this->assertFalse($package->fresh()->is_active);
@@ -520,12 +458,7 @@ class SyncSupplierPricesJobTest extends TestCase
     private function runJob(): PriceSyncRun
     {
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
-        (new SyncSupplierPricesJob($run))->handle(
-            app(ProductSyncService::class),
-            app(PackagePriceSyncService::class),
-            app(SupplierAdapterFactory::class),
-            app(PendingReactivationAutoApprover::class),
-        );
+        SyncSupplierPricesJob::dispatchSync($run);
 
         return $run->refresh();
     }
@@ -570,5 +503,63 @@ class SyncSupplierPricesJobTest extends TestCase
         $this->assertSame([true, null, 77], [$selling->fresh()->is_active, $selling->fresh()->deactivated_reason, $selling->fresh()->cost_price]);
         $this->assertFalse($gone->fresh()->is_active);
         $this->assertSame([false, 'admin'], [$adminOff->fresh()->is_active, $adminOff->fresh()->deactivated_reason]);
+    }
+
+    /** ADR-137 2026-11-05 decision 3: every supplier gets its own job and its own time limit. */
+    public function test_each_syncable_supplier_syncs_in_its_own_job_on_the_price_sync_queue(): void
+    {
+        Bus::fake();
+        Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR']);
+        Supplier::query()->create(['name' => 'Digiflazz', 'slug' => 'digiflazz', 'api_config' => self::FAKE_CONFIG, 'currency' => 'IDR']);
+        Supplier::query()->create(['name' => 'Off', 'slug' => 'off', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR', 'is_active' => false]);
+        $run = PriceSyncRun::query()->create(['status' => 'queued']);
+
+        (new SyncSupplierPricesJob($run))->handle();
+
+        Bus::assertBatched(fn (PendingBatch $batch) => $batch->jobs->count() === 2
+            && $batch->jobs->every(fn ($job) => $job instanceof SyncSupplierCatalogJob && $job->queue === 'price-sync')
+            && $batch->allowsFailures());
+        $this->assertSame('running', $run->refresh()->status);
+    }
+
+    /**
+     * A supplier job killed by its time limit lands in failed(). The batch
+     * may finish the run before or after that hook, so the status counts
+     * the suppliers that synced, never the failures recorded so far.
+     */
+    public function test_a_supplier_job_that_times_out_leaves_the_run_partial_either_way_round(): void
+    {
+        $gamevion = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR']);
+
+        foreach (['finish first', 'failed() first'] as $order) {
+            $run = PriceSyncRun::query()->create(['status' => 'running', 'stats' => PriceSyncRun::emptyStats()]);
+            $run->recordSupplierSynced('digiflazz', new ProductSyncResult(total: 10, created: 0, updated: 10, durationMs: 1, syncedAt: now()), new PackagePriceSyncResult(priceChanged: 1, deactivated: 0, affectedGameIds: []));
+
+            if ($order === 'failed() first') {
+                (new SyncSupplierCatalogJob($run, $gamevion))->failed(new RuntimeException('Job has timed out.'));
+                $run->finishBatch(2);
+            } else {
+                $run->finishBatch(2);
+                (new SyncSupplierCatalogJob($run, $gamevion))->failed(new RuntimeException('Job has timed out.'));
+            }
+
+            $run->refresh();
+            $this->assertSame('partial', $run->status, $order);
+            $this->assertSame([['slug' => 'gamevion', 'error' => 'Job has timed out.']], $run->stats['failed_suppliers'], $order);
+            $this->assertSame(10, $run->stats['catalog_total'], $order);
+        }
+    }
+
+    public function test_the_run_fails_when_no_supplier_synced(): void
+    {
+        $run = PriceSyncRun::query()->create(['status' => 'running', 'stats' => PriceSyncRun::emptyStats()]);
+        $run->recordSupplierFailed('gamevion', 'Gamevion did not respond');
+
+        $run->finishBatch(1);
+
+        $run->refresh();
+        $this->assertSame('failed', $run->status);
+        $this->assertSame('Gamevion did not respond', $run->error_message);
+        $this->assertNotNull($run->finished_at);
     }
 }

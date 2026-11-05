@@ -17,9 +17,6 @@ use App\Services\Order\PaymentStatus;
 use App\Services\Supplier\Manual\ManualSupplierAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\UnsupportedSupplierException;
-use App\Services\Sync\PackagePriceSyncService;
-use App\Services\Sync\PendingReactivationAutoApprover;
-use App\Services\Sync\ProductSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
@@ -119,12 +116,7 @@ class Adr125ManualSupplierReadersTest extends TestCase
         $this->manualSupplier();
         $run = PriceSyncRun::query()->create(['status' => 'queued']);
 
-        (new SyncSupplierPricesJob($run))->handle(
-            app(ProductSyncService::class),
-            app(PackagePriceSyncService::class),
-            app(SupplierAdapterFactory::class),
-            app(PendingReactivationAutoApprover::class),
-        );
+        SyncSupplierPricesJob::dispatchSync($run);
 
         $run->refresh();
         $this->assertSame('success', $run->status);
