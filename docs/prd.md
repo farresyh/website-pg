@@ -679,12 +679,10 @@ developer-docs site. CHIP FPX and DuitNow QR payments and the CHIP + Digiflazz
 webhooks are proven end-to-end with real money. **Digiflazz is the only live
 supplier** (funded 2026-09-15). **Gamevion** (MYR-billed, the backup supplier)
 runs on its new API at `gamevion.cloud` since releases #705 and #707
-(ADR-137): switched on, 74 chosen games, but unfunded (RM 0, no deposit
-recorded) and none of its 71 old packages on. **Every sync has failed with
-`401 Invalid access token` since 2026-11-06 01:00 UTC**, so its catalog is
-frozen at the 00:30 UTC run; the founder is generating a new key. The 71
-packages then wait for the founder's repoint and one funded test order (§16
-item 162). No order has ever been routed to it.
+(ADR-137): switched on, 74 chosen games syncing, but unfunded (RM 0, no
+deposit recorded) and none of its 71 old packages on. They wait for the
+founder's repoint and one funded test order (§16 item 162). No order has ever
+been routed to it.
 
 **Customers.**
 - **Storefront:** 67 paid retail orders from 28 customer emails (42 of them since 2026-10-22). By brand: PekanGame 24, **OhahaStore** 39 (an affiliate and one of our own brands, `is_owned`, on `ohahastore.com`; payments approved 2026-10-30), FixFast Demo 4. The all-time count includes the founder's early tests, so an analysis that needs the distinction still judges each order.
@@ -715,9 +713,9 @@ affiliate domains are LWF's own brands. The history of the switches is in the bu
 Maybank2u) and DuitNow QR (`PG-L4RCBELJ9RE3`, RM25.70) each completed with
 real money and were delivered.
 
-**Latest release 2026-11-06 (`staging`→`main`, PR #715, founder's go-ahead).** Merge `e2a00fcb`. CI (all jobs) and the `deploy` job were green, and the box runs release `82286819` at `e2a00fc`. It ships item 166 (ADR-138, #711–#714) and #708 (ADR-119 2026-11-05 addendum). Recorded in the build-log.
-- **Migrations, `Ran`:** `2026_11_10_120000_restrict_deleting_used_games_and_packages` (three foreign keys now RESTRICT) and `2026_11_11_120000_record_admin_reason_on_unexplained_off_packages` (85 rows). No env change.
-- **Checked read-only after release:** `/api/health` 200, Horizon running, no active combo with an off component, no open price row, no order in flight. Price sync runs read `partial` because of Gamevion alone; DigiFlazz syncs.
+**Latest release 2026-11-06 (`staging`→`main`, PR #717, founder's go-ahead).** Merge `73008972`, CI and `deploy` green, box release `82305761`. It ships #716, the Dismissed list order fix. The release before it the same day, #715 (`e2a00fcb`), shipped item 166 (ADR-138, #711–#714) and #708 (ADR-119 2026-11-05 addendum). Both are recorded in the build-log.
+- **Migrations, `Ran` (#715):** `2026_11_10_120000_restrict_deleting_used_games_and_packages` (three foreign keys now RESTRICT) and `2026_11_11_120000_record_admin_reason_on_unexplained_off_packages` (85 rows). #717 has none. No env change.
+- **Checked read-only after release:** `/api/health` 200, Horizon running, no active combo with an off component, no open price row, no order in flight. Run 3341 (2026-11-06 14:00 UTC) synced both suppliers with no failure.
 
 **Not yet seen on prod:**
 - the first affiliate auto-payout ticket (ADR-132; no affiliate has bank details);
@@ -903,9 +901,6 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
      other package is switched on.
 
   The item closes after the test order is checked in the database.
-  **Blocked first (2026-11-06):** every sync answers `401 Invalid access
-  token` since 01:00 UTC, cause unknown. The founder is generating a new key;
-  check the next sync after it is saved.
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
   `/api/health`, the OpenWA gateway and `/api/health/whatsapp` (third monitor
   added and alert-tested by the founder 2026-10-14).
