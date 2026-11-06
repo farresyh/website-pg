@@ -1549,3 +1549,13 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 
 **Gotcha.** Printing even a credential's prefix or length through tinker was refused in this session, rightly. Diagnose a supplier's auth from `supplier_request_logs`' status codes.
 
+## 2026-11-06 — Released #717: Dismissed list fix live; Gamevion syncing again
+
+**#716 merged to `staging`** (`06826a8d`), **#717 released** on the founder's go-ahead: merge `73008972`, CI and `deploy` green, box release `82305761`. No migration, no env change.
+
+**Checked read-only after release:** the real controller's pages list 87 packages, each once, 42 of them Call of Duty; `closeRow()` and `PRICE_ANOMALY` are gone; `/api/health` ok; 0 open price rows; 0 active combos with an off component.
+
+**Gamevion recovered.** `GET /api/games` still answered 401 at 13:57:20 UTC, `/api/balance` answered 200 at 13:59:17, and run 3341 at 14:00 UTC read `success` with both suppliers synced and `price_sync_alerted_at` cleared. That matches the founder saving a new key; the cause of the first 401 stays unknown.
+
+**Packages on sale 1,265 to 1,248.** An admin switched two Mobile Legends Malaysia packages off at 13:20:36 UTC, and five combos went with them. Run 3340 then took 11 DigiFlazz packages off, Valorant among them, reported unavailable. That is 18 off; the net of 17 leaves one back on, with no reactivation log, so it was not through sync.
+
