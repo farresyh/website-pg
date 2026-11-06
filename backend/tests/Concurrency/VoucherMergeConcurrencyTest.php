@@ -3,7 +3,11 @@
 namespace Tests\Concurrency;
 
 use App\Models\AdminUser;
+use App\Models\Order;
 use App\Models\Voucher;
+use App\Models\VoucherRedemption;
+use App\Services\Order\DeliveryStatus;
+use App\Services\Order\PaymentStatus;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\Process;
 use Tests\TestCase;
@@ -83,6 +87,52 @@ class VoucherMergeConcurrencyTest extends TestCase
         $this->assertNotSame($bMerged, $cMerged, 'Expected exactly one of B/C to be merged, not both or neither.');
 
         $this->assertDatabaseCount('voucher_merges', 2);
+    }
+
+    /**
+     * ADR-036 2026-11-07 addendum: a redeem racing a merge of the same
+     * voucher. Whichever takes the voucher lock first wins, and the outcome
+     * is never a reservation on a merged voucher, the state that strands
+     * value when the order later gives it back.
+     */
+    public function test_a_redeem_racing_a_merge_never_leaves_a_reservation_on_a_merged_voucher(): void
+    {
+        $admin = AdminUser::factory()->create(['role' => 'admin']);
+        $a = $this->voucher('KRS-RACE-REDEEM-A', 1000);
+        $b = $this->voucher('KRS-RACE-REDEEM-B', 500);
+        $order = Order::query()->create([
+            'placed_via' => 'storefront', 'affiliate_id' => $this->primaryAffiliate()->id, 'order_number' => 'KRS-RACE-REDEEM',
+            'customer_email' => 'merge-race@example.com', 'player_id' => '123456', 'cost_price' => 900,
+            'standard_selling_price' => 900, 'selling_price' => 1000, 'transaction_fee' => 0, 'final_amount' => 1000,
+            'platform_profit' => 100, 'affiliate_profit' => 0,
+            'payment_status' => PaymentStatus::Pending->value, 'delivery_status' => DeliveryStatus::NotStarted->value,
+        ]);
+
+        $mergeFile = tempnam(sys_get_temp_dir(), 'voucher_merge_test_');
+        $redeemFile = tempnam(sys_get_temp_dir(), 'voucher_redeem_test_');
+        $env = [
+            'APP_ENV' => 'testing', 'DB_CONNECTION' => 'mysql', 'DB_HOST' => '127.0.0.1', 'DB_PORT' => '3306',
+            'DB_DATABASE' => 'kerox', 'DB_USERNAME' => 'kerox', 'DB_PASSWORD' => 'kerox',
+        ];
+
+        $merge = Process::path(base_path())->env($env)->start([
+            PHP_BINARY, 'artisan', 'app:voucher-test-merge', "{$a->id},{$b->id}", (string) $admin->id, $mergeFile,
+        ]);
+        $redeem = Process::path(base_path())->env($env)->start([
+            PHP_BINARY, 'artisan', 'app:voucher-test-redeem', (string) $a->id, (string) $order->id, '400', 'merge-race@example.com', $redeemFile,
+        ]);
+
+        $merge->wait();
+        $redeem->wait();
+
+        $merged = file_get_contents($mergeFile);
+        $redeemed = file_get_contents($redeemFile);
+        unlink($mergeFile);
+        unlink($redeemFile);
+
+        $this->assertNotSame(str_starts_with($merged, 'success:'), $redeemed === 'success', "merge: {$merged}, redeem: {$redeemed}");
+        $this->assertSame(0, VoucherRedemption::query()->where('status', 'reserved')
+            ->whereHas('voucher', fn ($q) => $q->where('status', 'merged'))->count());
     }
 
     private function voucher(string $code, int $remaining): Voucher

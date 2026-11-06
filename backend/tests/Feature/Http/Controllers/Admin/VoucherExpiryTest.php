@@ -72,8 +72,8 @@ class VoucherExpiryTest extends TestCase
 
     public function test_a_merge_uses_the_same_end_of_day_rule(): void
     {
-        $a = $this->create(null)->json('id');
-        $b = $this->create(null)->json('id');
+        $a = $this->create('2026-10-20')->json('id');
+        $b = $this->create('2026-10-25')->json('id');
 
         $response = $this->postJson('/api/vouchers/merge', [
             'voucher_ids' => [$a, $b],
