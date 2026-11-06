@@ -120,3 +120,11 @@ Production, read-only, 2026-11-06:
 - **Decision 2, return values.** `deactivate()` returns a bool, not game ids. A combo shares its components' game (`StoreComboPackageRequest`, and a package can't move games), so the caller's own `game_id` covers the cache forget. `deactivateMany()` returns the combo count that Deactivate All reports.
 - **Decision 3, Dismissed.** The list now also filters on `is_active = false`: an admin can switch a Joki package off in `/admin/games` and Joki settings can switch it back on without clearing the reason, so that package would have shown as dismissed while on sale.
 - **A swing now writes a `DeactivationLog` row,** so it appears in Sync Details. `deactivated` in the run result still excludes it.
+
+### 2026-11-06 addendum — PR 2 build notes
+
+- **Decision 13, the daily email.** The claim is `Cache::add` on a key per supplier and Malaysia day, not a column as `SupplierBufferAlert` has. It's just as atomic and needs no migration. A cache flush can send a second email that day, which is harmless.
+- **Decision 15, where the limits live.** `price_drop_hold_pct`, `price_hold_hours` and `mass_swing_limit` are per-supplier fields in the existing Edit modal, like `topup_lead_days`. A blank or non-positive value means the default (`PriceSwingPolicy`). The swing test compares whole numbers, so exactly 30% counts.
+- **Decision 11, a product that isn't active.** A big drop on one neither applies nor opens a row, because the hold needs an active product. A rise still applies, as Price Propagation always has.
+- **Decision 14.** Approve all runs row by row in one request. Fine at today's scale; move it to a queued job if a real mass change ever times out.
+- **Legacy rows.** A drop row opened before this rule and still open at release has an old `created_at`, so it can apply on first sight. Production had no open row on 2026-11-06.

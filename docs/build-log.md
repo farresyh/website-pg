@@ -1466,3 +1466,24 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 **Tests.** `PackageSwitchOffTest`: the seam, a failed write changing nothing, the bulk form, swing to combo off to Approve back repriced, the backfill, every off path leaving no combo on sale, and a static check for writes outside the seam. Tests of the old cascade methods moved there.
 
 **Gotcha.** `Package::create()` without `is_active` leaves it null in memory (the default lives in the database), so `deactivate()` sees it as off and returns false. Three combo tests hit this. PR 3's creation change has to pass `is_active` explicitly, as ADR-138 decision 16 says.
+
+## 2026-11-06 — Item 166 PR 2: price swing rules by direction and the mass change breaker (ADR-138)
+
+**#711 (PR 1) merged to `staging`** (`884103ff`) after green CI. Not released, by the founder's choice, and neither is #708. The founder Approved package 412 first: read-only on prod it shows approved, on sale, cost RM9.49, with no open row and no `price_anomaly` package left.
+
+**Built.**
+- `evaluatePriceChange()` goes by direction. A rise applies at once. A drop of 30% or more opens one row and the package keeps selling at the old cost. The row keeps the highest price seen and applies it after 24 hours as `auto_applied`.
+- A price back in range, a rise, or a product not seen active closes the row as `superseded`. The check runs before the `price_sen !== cost_price` gate, which would skip a price back at exactly the held cost.
+- `isMassChange()` counts a supplier's swings before the loop. Over the limit, both directions are held, auto-apply stops, and one email goes out per Malaysia day.
+- Row work runs under the package lock on a freshly read package, and `approveHeld()` shares it.
+- `PriceSwingPolicy` reads three new per-supplier fields in the Edit modal.
+- Removed: the pending-row blocker, Dismiss for price changes, `price_swing_threshold_percent`. A `closeRow()` branch brings back any package a swing flagged before release; delete it once production shows none.
+- Price Sync Center: the section is now "Held Price Changes", with a signed percent and "Approve all" per supplier behind a confirm dialog.
+
+**Tests.** `PriceSwingRulesTest` (21). Tests pinning the old rule were deleted or moved to a drop case, including `PendingPriceChangeConcurrencyTest`.
+
+**Verified:** `php artisan test` 3,723 of 3,723; `PendingPriceChangeConcurrencyTest` on local MySQL; admin `tsc` and `eslint` clean on the touched files. In a real browser on the local admin, with temporary rows removed afterwards: the section, signed percents, the confirm dialog and Approve all changing the rows and costs.
+
+**Gotchas hit.**
+- The browser check caught what the API tests couldn't: the first `approveAllPendingPriceChanges` passed `JSON.stringify(...)` to `apiFetch`, which stringifies again, so the server answered "supplier id field is required".
+- Local Approve all then answered 500 "cache store does not support tagging" (`backend/AGENTS.md` gotcha 5: local cache is `database`, prod is `redis`, read-only checked), after the rows had applied. That showed the list could go stale on a part failure, so the page now refreshes in `finally`. The final cache forget therefore hasn't run in a browser on Redis; it's the same call single Approve makes.
