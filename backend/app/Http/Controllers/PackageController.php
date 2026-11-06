@@ -208,8 +208,8 @@ class PackageController extends Controller
      *  - **deactivating** a component Package with active combo
      *    dependents requires `acknowledge_cascade` (decision 13); once
      *    acknowledged, the deactivation cascades onto every one of
-     *    them via the same `ComboPricingService::cascadeDeactivate()`
-     *    Price Sync's own automated path already uses.
+     *    them through `PackageActivation::deactivate()`, the same door
+     *    Price Sync's own automated path uses.
      *  - **reactivating** a combo Package directly here is still
      *    blocked while any of its own components are inactive — but
      *    reactivating a *component* now DOES cascade back onto a combo
@@ -252,9 +252,7 @@ class PackageController extends Controller
         }
 
         if (! $isActive) {
-            $package->update(['is_active' => false]);
-
-            $comboPricing->cascadeDeactivate($package, priceSyncRunId: null, adminUserId: $request->user()?->id);
+            $activation->deactivate($package, PackageActivation::ADMIN, adminUserId: $request->user()?->id);
         } else {
             $comboPricing->cascadeReactivate($package, priceSyncRunId: null, adminUserId: $request->user()?->id);
         }

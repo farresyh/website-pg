@@ -3,7 +3,6 @@
 namespace App\Services\Supplier;
 
 use App\Http\Controllers\GameController;
-use App\Models\DeactivationLog;
 use App\Models\Package;
 use App\Models\Supplier;
 use App\Services\Catalog\PackageActivation;
@@ -46,35 +45,7 @@ final class SupplierPackageStatusService
         $query = $this->packages($supplier, $gameId)->where('is_active', true);
         $packageIds = (clone $query)->pluck('id');
         $gameIds = (clone $query)->distinct()->pluck('game_id')->all();
-        $affectedComboCount = 0;
-
-        DB::transaction(function () use ($query, $packageIds, $adminUserId, $reason, $code, &$affectedComboCount) {
-            $query->update(['is_active' => false, 'deactivated_reason' => $code, 'deactivated_at' => now()]);
-
-            $now = now();
-            $rows = $packageIds->map(fn (int $packageId) => [
-                'package_id' => $packageId,
-                'admin_user_id' => $adminUserId,
-                'reason' => $reason,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ])->all();
-
-            if ($rows !== []) {
-                DeactivationLog::query()->insert($rows);
-            }
-
-            // Addendum (2026-09-24) — this bulk toggle used to bypass combo
-            // cascade entirely (a raw mass update), leaving a combo listed
-            // active while one of its legs went dark. A combo's own game is
-            // always one of $gameIds (its components share its game).
-            $affectedComboCount = $this->comboPricing->cascadeDeactivateForComponents(
-                $packageIds,
-                priceSyncRunId: null,
-                adminUserId: $adminUserId,
-                reason: $reason,
-            )->count();
-        });
+        $affectedComboCount = $this->activation->deactivateMany($packageIds, $code, $adminUserId, $reason);
 
         $this->forgetCaches($gameIds);
 
