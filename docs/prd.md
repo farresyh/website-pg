@@ -842,15 +842,18 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   wallet and ledger writes, package price and activation, supplier and
   brand switches), find decisions re-made at more than one site, and check
   each for a single seam plus an invariant test. Output: a report first
-  (no edits), then one PR per seam the founder approves. **Next: starts in a
-  new session (founder, 2026-11-05)**; item 162's remaining steps are the
-  founder's and don't block a read-only audit. **Scope widened 2026-11-05:** catalog structure
+  (no edits), then one PR per seam the founder approves. **Report done
+  2026-11-06** (`build-log.md`): seven seams, A to G, plus six small items.
+  A, E, F and G became ADR-138 (item 166), C is item 167, D is item 168.
+  B (a Paid after a Failed) was downgraded to watch only. **Scope widened 2026-11-05:** catalog structure
   too (game, package, group link, supplier reference). Its first finding is
   fixed: deleting a game bypassed ADR-119's guard and cascaded to used
   packages ([ADR-119](./adr/ADR-119-package-delete-guards.md) 2026-11-05
   addendum). Inputs already found: repoint is allowed on a live package; a
   package cannot move between games; a group link also merges the game's
   validation rules; promote trusts the `game_id` the UI sends.
+- **166** Build [ADR-138](./adr/ADR-138-package-sale-lifecycle.md), package sale lifecycle (money-critical; Accepted 2026-11-06 after the grill, money code-trace and stress test). Four PRs in the ADR's order; PR 1 alone closes seam A, a price swing that leaves a combo on sale at the old cost. **Before PR 2 releases, the founder Approves pending row 2 (package 412, 172 Diamonds) and never Dismisses it:** Dismiss puts a RM9.35 item back on sale at RM5.27.
+
 - **158** Customer-support assistant on the CS number ([ADR-136](./adr/ADR-136-customer-support-assistant.md),
   Accepted 2026-11-03 after the grill and a stress test). PR 1 (#672), PR 2
   and PR 3a (#677, fixes #680), the run #3 candidates (#684) and PR 3b Shadow
@@ -876,6 +879,11 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
 - **165** KOL fee as a share of profit ([ADR-118](./adr/ADR-118-marketing-campaigns.md) addendum, money-critical; founder, 2026-11-05). A KOL may ask for no monthly fee but a share of the profit their sales bring (70/30 was only a proposal). Today a campaign knows only a fixed monthly fee schedule (`CampaignFeeSchedule`, RM0 allowed), so neither way of paying such a KOL is right: a payment tagged to an RM0 campaign leaves both the envelope expenses (`whereNull('campaign_id')`) and the accrued KOL fee line, so the cost disappears from the month-close net and shows as a growing "prepaid"; tagged "Not a KOL fee", the books are right on a cash basis but the scorecard counts no fee (net and CAC overstated). **Until built, pay such a KOL as "Not a KOL fee".** Proposed: a "profit share %" fee type whose accrued fee per Malaysia month is computed from the campaign's attributed ledger profit (the scorecard's own number), never typed. Open for the founder: orders that used the code only, or every attributed order; a loss month as 0 or carried; a monthly cap; simulate the share on real order data first.
 - **161** Reseller cash rebate plus automatic refund on a failed wallet order (founder, 2026-11-04; new ADR + ADR-073 addendum, money-critical). Context: target is WhatsApp agents of big stores, most under RM10k a month and 1–5 above; they stay with their leader out of habit and trust, and the leader already has a WhatsApp order bot and branded stores, so neither is a selling point. A brainstorm the founder had with another model proposed monthly milestone cashback as a % of sales plus tier up/down by monthly sales; checked against prod on 2026-11-04: 5 tiers (Supreme 1%, SSS 2%, SS 3%, S 4%, A 5%), assigned by an admin; one buying reseller (Tier SS, October RM336.10 sales, RM9.47 profit, 2.82%); the RM1 FPX top-up fee is already reseller-borne. Claude's recommendation: rebate as a panel-set share of the reseller's own `platform_profit` for the month (can never lose money, safe on the 1% tier and thin packages), paid as Purchase Balance credit through `LedgerService` within ADR-131's limits, Malaysia month, delivered orders only; a monthly tier review that suggests up/down for an admin to approve; tiers shown by name only, never `markup_percent`. Automatic refund revises ADR-073 decision 7 (refund is a deliberate admin action today): only on a supplier-confirmed Failed, never NeedsReview or Pending (ADR-102), after automatic retries, through `OrderSettlementService`. Also to ask agents: what annoys them most selling with their leader.
 
+
+- **167** Combo leg safety, item 163's seam C (grill first; delivery and money). A leg's reference isn't saved before the supplier call, so a killed worker leaves a sent leg looking unsent. A `NotStarted` leg rolls up as a partial delivery and settles at zero. "Is this a combo" is decided two ways.
+- **168** Value restored onto a voucher that can't be spent, item 163's seam D (short grill; money). `merge()` ignores reserved redemptions, so a later restore lands on a merged voucher; a restore onto a revoked one has the same accounting hole.
+- **169** Send `max_price` to suppliers (after 168; order delivery). The only real protection against a supplier charging more than the stored cost between syncs. Gamevion documents it; Digiflazz lists it without saying what happens over the limit, so test in sandbox first. Revisits ADR-137 decision 3.
+- **170** Item 163's small findings, each to re-verify first: the same-reference window counts from the order's age, not the reference's; Issue Voucher has no `is_test` guard; a member can pay more than a guest on a low tier; the profit residual is written four times; the scorecard counts a partial order's promo cost but not its redemption; the wallet-refund SQL has a second copy.
 
 **C. Founder actions (no code)**
 - **162** Gamevion v2 API ([ADR-137](./adr/ADR-137-gamevion-v2-api.md),
