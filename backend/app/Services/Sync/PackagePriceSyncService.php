@@ -6,12 +6,17 @@ use App\Models\Package;
 use App\Models\PendingPriceChange;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
+use App\Services\Backup\BackupFailureAlerter;
 use App\Services\Catalog\PackageActivation;
 use App\Services\Pricing\ComboPricingService;
 use App\Services\Pricing\PackageCostService;
 use App\Services\Pricing\PackageMarkupService;
 use App\Services\Supplier\SupplierPackageStatusService;
+use App\Support\MalaysiaTime;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -41,12 +46,12 @@ use Illuminate\Support\Facades\Log;
  *   'admin'`) — both invariants are already implied by "already
  *   `is_active === false`", so a single guard covers them.
  *
- * A third mechanism, ADR-025, sits inside Price Propagation itself
- * rather than beside it: `evaluatePriceChange()` is consulted before
- * every write to `cost_price`, either rejecting an invalid supplier
- * price outright (floor) or diverting a too-large swing into the
- * `PendingPriceChange` review queue instead of applying it (see that
- * ADR for the full floor/swing design).
+ * A third mechanism sits inside Price Propagation itself rather than
+ * beside it: `evaluatePriceChange()` is consulted before every write to
+ * `cost_price`. It rejects an invalid supplier price outright (ADR-025's
+ * floor) and goes by direction (ADR-138): a rise applies at once, and a
+ * big drop is held at the old cost, still selling, until it has stayed
+ * low long enough. Many big swings at once are treated as bad data.
  */
 final class PackagePriceSyncService
 {
@@ -56,6 +61,7 @@ final class PackagePriceSyncService
         private readonly PackageCostService $packageCost,
         private readonly SupplierPackageStatusService $packageStatus,
         private readonly PackageActivation $activation,
+        private readonly BackupFailureAlerter $alerter,
     ) {}
 
     public function apply(Supplier $supplier, Carbon $syncedAt, ?int $priceSyncRunId): PackagePriceSyncResult
@@ -67,6 +73,10 @@ final class PackagePriceSyncService
             ->whereIn('external_ref', $packages->pluck('supplier_package_ref'))
             ->get()
             ->keyBy('external_ref');
+
+        $policy = PriceSwingPolicy::for($supplier);
+        $openRows = PendingPriceChange::query()->where('status', 'pending')->whereIn('package_id', $packages->pluck('id'))->pluck('id', 'package_id');
+        $massChange = $this->isMassChange($supplier, $packages, $supplierProducts, $syncedAt, $policy);
 
         $priceChanged = 0;
         $deactivated = 0;
@@ -84,7 +94,14 @@ final class PackagePriceSyncService
             // actually persisted for a row touched this same run.
             $seenThisRun = $product && $product->last_synced_at?->timestamp === $syncedAt->timestamp;
 
+            $held = $openRows->has($package->id);
+
             if (! $seenThisRun) {
+                if ($held) {
+                    $this->closeUnseenRow($package);
+                    $affectedGameIds[] = $package->game_id;
+                }
+
                 if ($this->activation->deactivate($package, PackageActivation::SUPPLIER_SYNC, $priceSyncRunId)) {
                     $deactivated++;
                     $affectedGameIds[] = $package->game_id;
@@ -93,8 +110,10 @@ final class PackagePriceSyncService
                 continue;
             }
 
-            if ($product->price_sen !== null && $product->price_sen !== $package->cost_price) {
-                $outcome = $this->evaluatePriceChange($package, $product->price_sen, $priceSyncRunId);
+            // ADR-138 decision 11: an open row is checked even at an unchanged
+            // price, the usual end of a false drop.
+            if ($product->price_sen !== null && ($held || $product->price_sen !== $package->cost_price)) {
+                $outcome = $this->evaluatePriceChange($package, $product->price_sen, $priceSyncRunId, $policy, $massChange, $product->status_raw === 'active', $held);
 
                 match ($outcome) {
                     'applied' => $priceChanged++,
@@ -103,7 +122,7 @@ final class PackagePriceSyncService
                     'skipped' => null,
                 };
 
-                if ($outcome === 'applied' || $outcome === 'anomaly_flagged') {
+                if ($held || $outcome === 'applied' || $outcome === 'anomaly_flagged') {
                     $affectedGameIds[] = $package->game_id;
                 }
 
@@ -153,18 +172,74 @@ final class PackagePriceSyncService
     }
 
     /**
-     * ADR-025 decisions #1-#3: a floor violation (`<= 0`) is an
-     * unconditional hard auto-reject; a swing past the configured
-     * threshold blocks the write and queues a PendingPriceChange
-     * instead of applying it; anything else propagates normally. A
-     * package with no prior cost_price (`0`, legacy data predating
-     * this guard) has no safe baseline to diff a percentage against —
-     * applies directly, same reasoning `promote()`'s own first-time
-     * creation already uses.
+     * An admin applies a held price now. Null when the row is no longer open.
+     */
+    public function approveHeld(PendingPriceChange $change, ?int $adminUserId): ?Package
+    {
+        $package = DB::transaction(function () use ($change, $adminUserId) {
+            $locked = Package::query()->lockForUpdate()->findOrFail($change->package_id);
+            $row = PendingPriceChange::query()->lockForUpdate()->whereKey($change->id)->where('status', 'pending')->first();
+
+            if ($row === null) {
+                return null;
+            }
+
+            $this->applyHeld($locked, $row, 'approved', $row->price_sync_run_id, $adminUserId);
+
+            return $locked;
+        });
+
+        if ($package !== null) {
+            $this->comboPricing->recomputeForComponentChange($package, $change->price_sync_run_id);
+        }
+
+        return $package;
+    }
+
+    /**
+     * ADR-138 decision 13: every price of a supplier comes from one deposit
+     * average, so many big swings in one run mean a bad input, not a market.
+     *
+     * @param  Collection<int, Package>  $packages
+     * @param  Collection<string, SupplierProduct>  $products
+     */
+    private function isMassChange(Supplier $supplier, Collection $packages, Collection $products, Carbon $syncedAt, PriceSwingPolicy $policy): bool
+    {
+        $swinging = $packages->filter(function (Package $package) use ($products, $syncedAt, $policy) {
+            $product = $products->get($package->supplier_package_ref);
+
+            return $product?->price_sen > 0
+                && $product->last_synced_at?->timestamp === $syncedAt->timestamp
+                && $policy->isSwing($package->cost_price, $product->price_sen);
+        })->count();
+
+        if ($swinging <= $policy->massLimit) {
+            return false;
+        }
+
+        $day = CarbonImmutable::now(MalaysiaTime::TIMEZONE)->toDateString();
+
+        if (Cache::add("price-sync:mass-swing-alert:{$supplier->id}:{$day}", true, now()->addDay())) {
+            $this->alerter->alert(
+                "{$supplier->name} prices moved together",
+                "{$swinging} packages moved {$policy->holdPercent}% or more in one Price Sync, so this is treated as bad data. "
+                .'They keep selling at the old price and nothing applies by itself. Check the latest deposit. '
+                .'If the change is real, use Approve all in Price Sync Center.',
+                'Price Sync',
+            );
+        }
+
+        return true;
+    }
+
+    /**
+     * ADR-025 decision 1: a price at or below zero is rejected outright.
+     * ADR-138 decisions 7–13 for the rest. A package with no prior cost has
+     * no baseline to compare with, so it applies directly.
      *
      * @return 'applied'|'floor_rejected'|'anomaly_flagged'|'skipped'
      */
-    private function evaluatePriceChange(Package $package, int $newCostPrice, ?int $priceSyncRunId): string
+    private function evaluatePriceChange(Package $package, int $newCostPrice, ?int $priceSyncRunId, PriceSwingPolicy $policy, bool $massChange, bool $productActive, bool $held): string
     {
         if ($newCostPrice <= 0) {
             Log::error('Price Sync: rejected a non-positive supplier price', [
@@ -175,65 +250,110 @@ final class PackagePriceSyncService
             return 'floor_rejected';
         }
 
-        if ($package->cost_price > 0) {
-            $swingPercent = abs($newCostPrice - $package->cost_price) / $package->cost_price * 100;
-            $threshold = (float) config('packages.price_swing_threshold_percent');
+        if (! $held && ! $policy->isSwing($package->cost_price, $newCostPrice)) {
+            $this->packageCost->apply($package, $newCostPrice, $priceSyncRunId);
 
-            if ($swingPercent > $threshold) {
-                // Decision #5's "skip if already pending" check and the
-                // row it writes must be atomic — without a lock, two
-                // sync runs evaluating this package at the same moment
-                // (e.g. an overlapping scheduled run + a manual "Sync
-                // All Prices Now" click) could both pass the exists()
-                // check before either inserts, producing two open
-                // PendingPriceChange rows for one package. Locking the
-                // Package row itself (not a new table-specific lock)
-                // serializes any concurrent evaluation of this package,
-                // matching this codebase's existing row-lock convention
-                // (LedgerService::withdraw()/VoucherService::redeem()).
-                return DB::transaction(function () use ($package, $newCostPrice, $priceSyncRunId) {
-                    Package::query()->whereKey($package->id)->lockForUpdate()->firstOrFail();
-
-                    if (PendingPriceChange::query()->where('package_id', $package->id)->where('status', 'pending')->exists()) {
-                        return 'skipped';
-                    }
-
-                    $this->flagPriceAnomaly($package, $newCostPrice, $priceSyncRunId);
-
-                    return 'anomaly_flagged';
-                });
-            }
+            return 'applied';
         }
 
-        $this->packageCost->apply($package, $newCostPrice, $priceSyncRunId);
+        // The package row serializes this with an admin's Approve; both read
+        // it fresh, because `$package` was loaded when the run started.
+        return DB::transaction(function () use ($package, $newCostPrice, $priceSyncRunId, $policy, $massChange, $productActive) {
+            $locked = Package::query()->lockForUpdate()->findOrFail($package->id);
+            $row = PendingPriceChange::query()->where('package_id', $locked->id)->where('status', 'pending')->first();
+            $cost = $locked->cost_price;
+            $isDrop = $newCostPrice < $cost;
+            $hold = $policy->isSwing($cost, $newCostPrice) && ($massChange || $isDrop);
 
-        return 'applied';
+            if (! $hold) {
+                if ($newCostPrice !== $cost) {
+                    $this->packageCost->apply($locked, $newCostPrice, $priceSyncRunId);
+                }
+
+                if ($row !== null) {
+                    $this->closeRow($locked, $row, 'superseded', $priceSyncRunId, null);
+                }
+
+                return $newCostPrice === $cost ? 'skipped' : 'applied';
+            }
+
+            if (! $productActive) {
+                if ($row !== null) {
+                    $this->closeRow($locked, $row, 'superseded', $priceSyncRunId, null);
+                }
+
+                return 'skipped';
+            }
+
+            if ($row === null) {
+                $this->openRow($locked, $newCostPrice, $priceSyncRunId);
+
+                return 'anomaly_flagged';
+            }
+
+            if (! $massChange && $isDrop && $row->created_at->lte(now()->subHours($policy->holdHours))) {
+                $this->applyHeld($locked, $row, 'auto_applied', $priceSyncRunId, null);
+
+                return 'applied';
+            }
+
+            // Decision 9: "stayed at or below X" is what a hold proves, so a
+            // held drop only moves up. A held rise follows the latest price.
+            $proposal = $isDrop && $row->proposed_cost_price < $cost ? max($row->proposed_cost_price, $newCostPrice) : $newCostPrice;
+            $row->update([
+                'proposed_cost_price' => $proposal,
+                'proposed_standard_selling_price' => $this->markup->calculateStandardSellingPrice($proposal, (float) $locked->markup_percent),
+            ]);
+
+            return 'skipped';
+        });
     }
 
-    private function flagPriceAnomaly(Package $package, int $proposedCostPrice, ?int $priceSyncRunId): void
+    private function openRow(Package $package, int $proposedCostPrice, ?int $priceSyncRunId): void
     {
-        $proposedStandardSellingPrice = $this->markup->calculateStandardSellingPrice($proposedCostPrice, (float) $package->markup_percent);
-
         PendingPriceChange::query()->create([
             'price_sync_run_id' => $priceSyncRunId,
             'package_id' => $package->id,
             'old_cost_price' => $package->cost_price,
             'proposed_cost_price' => $proposedCostPrice,
             'old_standard_selling_price' => $package->standard_selling_price,
-            'proposed_standard_selling_price' => $proposedStandardSellingPrice,
+            'proposed_standard_selling_price' => $this->markup->calculateStandardSellingPrice($proposedCostPrice, (float) $package->markup_percent),
         ]);
 
-        Log::warning('Price Sync: flagged a price swing anomaly', [
+        Log::warning('Price Sync: held a price swing', [
             'package_id' => $package->id,
             'old_cost_price' => $package->cost_price,
             'proposed_cost_price' => $proposedCostPrice,
         ]);
+    }
 
-        // Mirrors deactivate()'s own "never touches a package the
-        // admin already deactivated" invariant: only take the package
-        // offline here if it was this sync that's putting it in that
-        // state, never silently overwrite an admin's own
-        // deactivated_reason (e.g. 'admin') with 'price_anomaly'.
-        $this->activation->deactivate($package, PackageActivation::PRICE_ANOMALY, $priceSyncRunId);
+    private function applyHeld(Package $locked, PendingPriceChange $row, string $status, ?int $priceSyncRunId, ?int $adminUserId): void
+    {
+        $this->packageCost->apply($locked, $row->proposed_cost_price, $priceSyncRunId, $adminUserId);
+        $this->closeRow($locked, $row, $status, $priceSyncRunId, $adminUserId);
+    }
+
+    /** Decision 11: a product this run didn't see breaks the hold, so the clock restarts. */
+    private function closeUnseenRow(Package $package): void
+    {
+        DB::transaction(function () use ($package) {
+            $locked = Package::query()->lockForUpdate()->findOrFail($package->id);
+            $row = PendingPriceChange::query()->where('package_id', $locked->id)->where('status', 'pending')->first();
+
+            if ($row !== null) {
+                $this->closeRow($locked, $row, 'superseded', null, null);
+            }
+        });
+    }
+
+    private function closeRow(Package $locked, PendingPriceChange $row, string $status, ?int $priceSyncRunId, ?int $adminUserId): void
+    {
+        $row->update(['status' => $status]);
+
+        // ADR-138 build order: only a swing flagged before this rule can
+        // still hold a package off. Delete once production shows none left.
+        if ($locked->deactivated_reason === PackageActivation::PRICE_ANOMALY && $this->activation->activate($locked, PackageActivation::PRICE_ANOMALY)) {
+            $this->comboPricing->cascadeReactivate($locked, $priceSyncRunId, $adminUserId);
+        }
     }
 }

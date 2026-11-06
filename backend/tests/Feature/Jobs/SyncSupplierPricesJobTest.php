@@ -116,7 +116,6 @@ class SyncSupplierPricesJobTest extends TestCase
     /** ADR-025 decision #1: surfaced in the run's own stats, not just the counters this session's audit found missing. */
     public function test_job_surfaces_floor_rejections_and_price_anomalies_in_run_stats(): void
     {
-        config(['packages.price_swing_threshold_percent' => 50]);
         $supplier = Supplier::query()->create([
             'name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR',
         ]);
@@ -131,7 +130,7 @@ class SyncSupplierPricesJobTest extends TestCase
         ]);
 
         $this->bindFakeAdapter(true, [
-            new SupplierCatalogItem('GV733', '14 Diamond', 'Mobile Legends', 16.0, 'active'), // +60%, over threshold
+            new SupplierCatalogItem('GV733', '14 Diamond', 'Mobile Legends', 4.0, 'active'), // -60%, held
             new SupplierCatalogItem('GV734', '28 Diamond', 'Mobile Legends', 0.0, 'active'), // floor violation
         ]);
 

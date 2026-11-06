@@ -6,7 +6,6 @@ use App\Models\AdminUser;
 use App\Models\DeactivationLog;
 use App\Models\Game;
 use App\Models\Package;
-use App\Models\PendingPriceChange;
 use App\Models\PriceSyncRun;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
@@ -174,29 +173,6 @@ class PackageSwitchOffTest extends TestCase
         $this->assertSame('Supplier outage', $log->reason);
     }
 
-    /** Seam A: a swing used to switch the component off and leave the combo selling at the old cost. */
-    public function test_a_price_swing_takes_the_combo_off_and_approve_brings_it_back_repriced(): void
-    {
-        $component = $this->package();
-        $combo = $this->comboOf($component);
-        $syncedAt = now();
-        $this->product('GV1', 1600, 'active', $syncedAt);
-
-        app(PackagePriceSyncService::class)->apply($this->supplier, $syncedAt, priceSyncRunId: null);
-
-        $this->assertFalse($combo->refresh()->is_active);
-        $this->assertSame(PackageActivation::COMBO_COMPONENT, $combo->deactivated_reason);
-        $this->assertSame(1, DeactivationLog::query()->where('package_id', $component->id)->count());
-
-        $pending = PendingPriceChange::query()->firstOrFail();
-        $this->patchJson("/api/middleware/price-sync/pending-price-changes/{$pending->id}/approve")->assertOk();
-
-        $this->assertTrue($component->refresh()->is_active);
-        $combo->refresh();
-        $this->assertTrue($combo->is_active);
-        $this->assertSame(1600, $combo->cost_price);
-    }
-
     public function test_an_admin_switch_off_records_why_so_it_can_be_found_again(): void
     {
         $package = $this->package();
@@ -236,16 +212,14 @@ class PackageSwitchOffTest extends TestCase
     {
         $unseen = $this->package('GV-UNSEEN');
         $unlisted = $this->package('GV-INACTIVE');
-        $swung = $this->package('GV-SWING');
         $byAdmin = $this->package('GV-ADMIN');
-        $packages = [$unseen, $unlisted, $swung, $byAdmin];
+        $packages = [$unseen, $unlisted, $byAdmin];
         foreach ($packages as $package) {
             $this->comboOf($package);
         }
 
         $syncedAt = now();
         $this->product('GV-INACTIVE', 1000, 'inactive', $syncedAt);
-        $this->product('GV-SWING', 1600, 'active', $syncedAt);
         $this->product('GV-ADMIN', 1000, 'active', $syncedAt);
         app(PackagePriceSyncService::class)->apply($this->supplier, $syncedAt, priceSyncRunId: null);
         $this->patchJson("/api/packages/{$byAdmin->id}/status", ['is_active' => false, 'acknowledge_cascade' => true])->assertOk();
