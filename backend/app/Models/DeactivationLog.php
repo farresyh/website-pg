@@ -7,8 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * ADR-016 Sync Details modal: one row per package
- * PackagePriceSyncService::deactivate() actually turned off on a given
- * run — the deactivation counterpart to PriceChangeLog, since
+ * PackageActivation actually switched off (ADR-138), on a sync run or by
+ * an admin — the deactivation counterpart to PriceChangeLog, since
  * Deactivation Detection's own "only actual changes get logged"
  * discipline (ADR-015 decision #2) applies here too.
  */

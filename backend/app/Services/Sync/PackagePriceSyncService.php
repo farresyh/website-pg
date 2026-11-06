@@ -2,11 +2,11 @@
 
 namespace App\Services\Sync;
 
-use App\Models\DeactivationLog;
 use App\Models\Package;
 use App\Models\PendingPriceChange;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
+use App\Services\Catalog\PackageActivation;
 use App\Services\Pricing\ComboPricingService;
 use App\Services\Pricing\PackageCostService;
 use App\Services\Pricing\PackageMarkupService;
@@ -55,6 +55,7 @@ final class PackagePriceSyncService
         private readonly ComboPricingService $comboPricing,
         private readonly PackageCostService $packageCost,
         private readonly SupplierPackageStatusService $packageStatus,
+        private readonly PackageActivation $activation,
     ) {}
 
     public function apply(Supplier $supplier, Carbon $syncedAt, ?int $priceSyncRunId): PackagePriceSyncResult
@@ -84,10 +85,9 @@ final class PackagePriceSyncService
             $seenThisRun = $product && $product->last_synced_at?->timestamp === $syncedAt->timestamp;
 
             if (! $seenThisRun) {
-                if ($this->deactivate($package, $priceSyncRunId)) {
+                if ($this->activation->deactivate($package, PackageActivation::SUPPLIER_SYNC, $priceSyncRunId)) {
                     $deactivated++;
                     $affectedGameIds[] = $package->game_id;
-                    $affectedGameIds = [...$affectedGameIds, ...$this->comboPricing->cascadeDeactivate($package, $priceSyncRunId)->all()];
                 }
 
                 continue;
@@ -116,10 +116,9 @@ final class PackagePriceSyncService
                 }
             }
 
-            if ($product->status_raw !== 'active' && $this->deactivate($package, $priceSyncRunId)) {
+            if ($product->status_raw !== 'active' && $this->activation->deactivate($package, PackageActivation::SUPPLIER_SYNC, $priceSyncRunId)) {
                 $deactivated++;
                 $affectedGameIds[] = $package->game_id;
-                $affectedGameIds = [...$affectedGameIds, ...$this->comboPricing->cascadeDeactivate($package, $priceSyncRunId)->all()];
             }
         }
 
@@ -235,32 +234,6 @@ final class PackagePriceSyncService
         // offline here if it was this sync that's putting it in that
         // state, never silently overwrite an admin's own
         // deactivated_reason (e.g. 'admin') with 'price_anomaly'.
-        if ($package->is_active) {
-            $package->update([
-                'is_active' => false,
-                'deactivated_reason' => 'price_anomaly',
-                'deactivated_at' => now(),
-            ]);
-        }
-    }
-
-    private function deactivate(Package $package, ?int $priceSyncRunId): bool
-    {
-        if (! $package->is_active) {
-            return false;
-        }
-
-        $package->update([
-            'is_active' => false,
-            'deactivated_reason' => 'supplier_sync',
-            'deactivated_at' => now(),
-        ]);
-
-        DeactivationLog::query()->create([
-            'price_sync_run_id' => $priceSyncRunId,
-            'package_id' => $package->id,
-        ]);
-
-        return true;
+        $this->activation->deactivate($package, PackageActivation::PRICE_ANOMALY, $priceSyncRunId);
     }
 }

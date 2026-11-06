@@ -30,6 +30,7 @@ class DismissedPackageController extends Controller
         $query = Package::query()
             ->with('game', 'supplier')
             ->where('deactivated_reason', 'admin')
+            ->where('is_active', false)
             ->orderBy('deactivated_at', 'desc');
 
         return response()->json($query->paginate($perPage)->withQueryString());
