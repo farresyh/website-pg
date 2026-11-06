@@ -1576,3 +1576,23 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 - `isCombo()` needed the admin payload and two `page.tsx` checks too.
 
 **Next:** build it from ADR-103 decisions 10 to 17, tests first.
+
+## 2026-11-07 — Item 167 built: combo leg safety (ADR-103 decisions 10 to 17)
+
+**Built on `fix/combo-leg-safety`, into `staging`, not released.** No migration, no env change.
+- A leg commits its reference, `Processing` and a `pending` attempt row before the supplier call (`claimLeg()`), then makes the call under order then leg locks.
+- `DeliveryStatus::comboRollup()` is the one rule, and `confirmComboLegsFailed()` uses it too. A webhook during a pass records its leg and decides nothing.
+- `recoverDeadComboPass()` is the reconciler's way out for a stale combo: it parks legs through `parkUnknownLeg()`, the same rule as the catch block, moves the order out of `Processing`, then rolls up.
+- A combo past the same-reference window starts no pass, and Retry refuses it from any status.
+- `Order::isCombo()` replaces the `package?->is_combo` reads, and the admin payload carries `is_combo`, so a paid combo with no legs can't be marked delivered.
+
+**Verified.**
+- `php artisan test` 3,776 of 3,776.
+- Concurrency suite on real MySQL: only `BackupRestoreMysqlTest` fails, the known local gap (no `mysqldump`).
+- The three new real-process tests (SIGKILL during a first attempt, SIGKILL during a retry, a webhook racing the leg in flight) fail on the old service and pass on the new one.
+- Admin `tsc` and `eslint` clean, admin unit tests pass.
+- In a real browser on a throwaway backend: a combo with no legs shows Retry Delivery and Confirm Failed, with no Mark as Delivered; a `processing` leg shows in the breakdown; a plain order keeps Resend Delivery and Mark as Delivered.
+
+**One existing test changed:** `test_a_combo_leg_past_the_window_is_not_re_submitted` became `test_a_combo_past_the_window_sends_nothing`, the decision itself. No other existing test needed changing.
+
+**Open at release:** the release needs no prod step. Confirm afterwards that no leg sits at `Processing` for long.

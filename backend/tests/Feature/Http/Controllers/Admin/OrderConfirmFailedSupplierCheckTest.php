@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Http\Controllers\Admin;
 
+use App\Jobs\FulfillOrderJob;
 use App\Jobs\ResendOrderDeliveryJob;
 use App\Models\AdminUser;
 use App\Models\Game;
@@ -413,17 +414,36 @@ class OrderConfirmFailedSupplierCheckTest extends TestCase
         $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
     }
 
-    public function test_a_combo_leg_past_the_window_is_not_re_submitted(): void
+    /** ADR-103 decision 16: past the window a combo starts no pass at all. */
+    public function test_a_combo_past_the_window_sends_nothing(): void
     {
         $this->realDigiflazzAnswers(['status' => 'Sukses', 'rc' => '00', 'message' => 'ok']);
         [$order, $leg1, $leg2] = $this->comboWithNeedsReviewLegs();
         $order = $this->pastWindow($order);
 
-        app(OrderFulfillmentService::class)->fulfill($order);
+        try {
+            app(OrderFulfillmentService::class)->fulfill($order);
+            $this->fail('A past-window combo must not start a pass.');
+        } catch (OrderFulfillmentException $e) {
+            $this->assertStringContainsString('too old', $e->getMessage());
+        }
 
         Http::assertNothingSent();
+        $this->assertSame(DeliveryStatus::NeedsReview, $order->fresh()->delivery_status);
         $this->assertSame(DeliveryStatus::NeedsReview, $leg1->fresh()->status);
         $this->assertSame(DeliveryStatus::NeedsReview, $leg2->fresh()->status);
+    }
+
+    public function test_retry_of_a_failed_combo_past_the_window_is_refused(): void
+    {
+        Queue::fake();
+        [$order] = $this->comboWithNeedsReviewLegs();
+        $order = $this->pastWindow($order);
+        $order->update(['delivery_status' => DeliveryStatus::Failed->value]);
+
+        $this->postJson("/api/orders/{$order->id}/retry-delivery")->assertUnprocessable();
+
+        Queue::assertNotPushed(FulfillOrderJob::class);
     }
 
     public function test_check_supplier_on_a_pending_order_past_the_window_is_refused(): void

@@ -248,7 +248,7 @@ final class OrderResendService
         // ADR-094 decision 10: a package swap copies one
         // supplier_product_ref onto the order — meaningless for a combo.
         // A combo uses the ordinary Retry instead.
-        if ($order->package?->is_combo || $targetPackage->is_combo) {
+        if ($order->isCombo() || $targetPackage->is_combo) {
             return ['package_id', 'A combo order cannot be resent to a different package — use the ordinary Resend Delivery retry instead.'];
         }
 

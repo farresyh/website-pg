@@ -48,7 +48,7 @@ final class SupplierDeliveryCheckService
             return false;
         }
 
-        if (! $order->package?->is_combo && $order->reference_number === null) {
+        if (! $order->isCombo() && $order->reference_number === null) {
             return false;
         }
 
@@ -93,7 +93,7 @@ final class SupplierDeliveryCheckService
             return $this->fulfillment->recordAdminConfirmation($fresh, $note, $confirmedBy);
         }
 
-        $unanswered = $order->package?->is_combo
+        $unanswered = $order->isCombo()
             ? OrderDeliveryLeg::query()->where('order_id', $order->id)
                 ->where('status', DeliveryStatus::NeedsReview->value)
                 ->whereNotNull('reference_number')
@@ -131,7 +131,7 @@ final class SupplierDeliveryCheckService
             throw new OrderFulfillmentException("Order #{$order->id}: a manual supplier can't be asked; confirm it in the Manual Queue");
         }
 
-        if ($order->package?->is_combo) {
+        if ($order->isCombo()) {
             return ['type' => 'combo', 'legs' => $this->checkComboLegs($order)];
         }
 

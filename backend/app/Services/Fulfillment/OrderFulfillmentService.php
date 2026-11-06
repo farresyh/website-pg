@@ -94,7 +94,7 @@ final class OrderFulfillmentService
         // reached via OrderResendService::resend() (decision 10 rejects
         // every combo resend), so $recordAttempt has no combo case to
         // gate — not threaded through fulfillCombo().
-        if ($order->package?->is_combo) {
+        if ($order->isCombo()) {
             return $this->fulfillCombo($order, $triggeredBy, $note);
         }
 
@@ -449,9 +449,9 @@ final class OrderFulfillmentService
      *     from `package->components` on the first attempt only (a retry
      *     finds its legs already there and reuses them — decision 7's
      *     idempotent-by-construction leg loop).
-     *  2. Attempt every not-yet-terminal leg exactly once, each its own
-     *     short lock+transaction+one-HTTP-call cycle, in `leg_number`
-     *     order.
+     *  2. Attempt every not-yet-terminal leg exactly once, in `leg_number`
+     *     order: a committed claim, then one locked supplier call
+     *     (attemptLeg(), ADR-103 2026-11-07 addendum).
      *  3. Aggregate the legs' resulting statuses into the order's own
      *     delivery_status (resolveComboOutcome()).
      */
@@ -466,6 +466,16 @@ final class OrderFulfillmentService
             if ($locked->isAlreadyCompensated()) {
                 throw new OrderFulfillmentException(
                     "Order #{$locked->id} has already been compensated (voucher issued or wallet refunded) — refusing to fulfill",
+                );
+            }
+
+            // ADR-103 decision 16: past the same-reference window a combo sends
+            // nothing, not even under a fresh reference. The window counts
+            // from the order's age, so a leg killed mid-call there would age
+            // out at once and reach Confirm Failed without being asked about.
+            if (! $locked->sameReferenceWithinWindow()) {
+                throw new OrderFulfillmentException(
+                    "Order #{$locked->id} is too old to re-submit with the same reference; use Confirm Failed",
                 );
             }
 
@@ -490,15 +500,6 @@ final class OrderFulfillmentService
         $parkedForRecovery = false;
 
         foreach ($legs as $leg) {
-            // Delivered = already succeeded; Pending = already submitted,
-            // awaiting an async supplier confirmation (Digiflazz) —
-            // neither is ever re-submitted. Everything else (NotStarted,
-            // Failed) gets exactly one attempt this pass, same "one call
-            // per invocation" discipline fulfill() itself uses.
-            if (in_array($leg->status, [DeliveryStatus::Delivered, DeliveryStatus::Pending], true)) {
-                continue;
-            }
-
             $parkedForRecovery = $this->attemptLeg($order, $leg, $triggeredBy, $note) || $parkedForRecovery;
         }
 
@@ -550,104 +551,36 @@ final class OrderFulfillmentService
     }
 
     /**
-     * ADR-094 decision 7/26 (idempotency key): `{reference_number}-L{n}`
-     * extends the existing ORD-8 scheme rather than replacing it — one
-     * real supplier call, one leg row updated, its own short
-     * lock+transaction. ADR-026's duplicate_reference ambiguity applies
-     * per leg exactly as it does per order: routes to NeedsReview, never
-     * a plain Failed, since it's evidence a prior attempt for *this leg's*
-     * reference already reached the supplier.
+     * ADR-094 decision 7/26 (idempotency key): one real supplier call,
+     * one leg row updated. `{reference_number}-L{n}` extends ORD-8.
      *
-     * ADR-094 2026-09-15 addendum (post-Phase-4 resilience grill): the
-     * inner `DB::transaction()` only ever throws for a genuinely
-     * unexpected reason — a business-level rejection is a clean
-     * `SupplierResponse::failure()` return, handled below, never an
-     * exception. Found live: `fulfillCombo()`'s own first transaction
-     * (advancing the *order* to Processing) already commits before this
-     * loop starts, so an uncaught exception here used to strand the
-     * order at Processing forever — `resolveComboOutcome()` never ran.
+     * ADR-103 2026-11-07 addendum, decisions 10-12: the two phases
+     * fulfill() has. claimLeg() commits the reference, Processing and a
+     * pending attempt row first, so a killed worker leaves a leg that says
+     * "sent, outcome unknown" under the reference it really used. Only
+     * then the supplier call, in its own transaction, order then leg. The
+     * claim stays outside the try: an exception there has sent nothing, so
+     * it must not park a leg as if it had.
      *
-     * 2026-09-28 audit finding M-1 correction: this comment used to
-     * claim the ordinary single-supplier `fulfill()` "doesn't have this
-     * gap" because its Processing transition and its one supplier call
-     * shared the *same* transaction, rolling both back to "a safe,
-     * retryable pre-attempt state" on a thrown exception. That was
-     * wrong — a rollback losing the just-generated reference_number
-     * meant a retry minted a brand-new one via `resolve(null)`, and if
-     * the supplier had actually processed the exception-interrupted
-     * attempt, the retry could deliver a second time under the new
-     * reference. `fulfill()` now uses the same two-phase shape this
-     * method does (Processing committed on its own before the supplier
-     * call, a catch block routing an exception to NeedsReview while
-     * keeping the already-persisted reference) for exactly that reason
-     * — the two paths are no longer structurally different here, only
-     * per-leg vs per-order in scope.
+     * Returns true when the leg was parked for an automatic poll.
      */
     private function attemptLeg(Order $order, OrderDeliveryLeg $leg, ?string $triggeredBy = null, ?string $note = null): bool
     {
+        $claim = $this->claimLeg($order, $leg, $triggeredBy, $note);
+
+        if ($claim === null) {
+            return false;
+        }
+
+        [$legReferenceNumber, $resubmit] = $claim;
+        $legId = $leg->id;
         $drawdownPrice = null;
         $parked = false; // ADR-102 addendum (2026-09-29): true when the replay-safe rule parked this leg at Pending
-        $legId = $leg->id;
-
-        // ADR-103 decision 3 — captured OUTSIDE the transaction below by
-        // reference: a thrown exception mid-call rolls back everything
-        // written inside that transaction, including the reference
-        // persist, but this PHP variable survives the rollback — the
-        // catch block re-persists it in its own (committed) transaction
-        // so a genuinely-attempted reference is never silently lost.
-        $legReferenceNumber = null;
-
-        // ADR-106 addendum (2026-09-21) — same reasoning as fulfill()'s
-        // own $wasNotStarted: captured once, from the locked leg, before
-        // this call's own update() advances it past NotStarted, and by
-        // reference so the catch block below can still write a correct
-        // `initial`-vs-`retry` attempt row even when the try block's own
-        // transaction rolled back. Defaults false (never a false
-        // 'initial') for the theoretical case an exception fires before
-        // the locked leg is even read.
-        $wasLegNotStarted = false;
 
         try {
-            DB::transaction(function () use ($order, $leg, &$drawdownPrice, &$parked, &$legReferenceNumber, &$wasLegNotStarted, $triggeredBy, $note) {
-                $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($leg->id);
-
-                if (in_array($lockedLeg->status, [DeliveryStatus::Delivered, DeliveryStatus::Pending], true)) {
-                    // Lost a race with another attempt at this same leg —
-                    // nothing to do, the other attempt already owns it.
-                    return;
-                }
-
-                $wasLegNotStarted = $lockedLeg->status === DeliveryStatus::NotStarted;
-
-                // ADR-103 decision 3 — mirrors ADR-102 decision 9 at leg
-                // granularity: NotStarted keeps today's derived value
-                // (now persisted instead of re-derived every call);
-                // Failed mints a fresh reference (decision 4's ULID
-                // suffix — safe, this leg is confirmed non-delivered);
-                // NeedsReview reuses the stored value unchanged (the
-                // double-delivery protection, same reasoning as
-                // ORD-8/decision 9). Persisted BEFORE the supplier call
-                // (not after) so a thrown exception below still leaves
-                // this attempt's reference queryable.
-                // ADR-102 2026-10-05 addendum (rc correction), leg form.
-                $resubmit = $lockedLeg->status !== DeliveryStatus::Failed && $lockedLeg->reference_number !== null;
-
-                // ADR-102 2026-11-05 addendum: the same window as a plain order.
-                if ($resubmit && ! $order->sameReferenceWithinWindow()) {
-                    Log::warning('Combo leg not re-submitted: past the supplier\'s same-reference window', ['leg_id' => $lockedLeg->id]);
-
-                    return;
-                }
-
-                $legReferenceNumber = match ($lockedLeg->status) {
-                    DeliveryStatus::Failed => "{$order->reference_number}-L{$lockedLeg->leg_number}-".Str::ulid(),
-                    DeliveryStatus::NeedsReview => $lockedLeg->reference_number,
-                    default => $lockedLeg->reference_number ?? "{$order->reference_number}-L{$lockedLeg->leg_number}",
-                };
-
-                Log::withContext(['reference_number' => $legReferenceNumber]);
-
-                $lockedLeg->update(['reference_number' => $legReferenceNumber]);
+            DB::transaction(function () use ($order, $legId, $legReferenceNumber, $resubmit, &$drawdownPrice, &$parked) {
+                Order::query()->lockForUpdate()->findOrFail($order->id);
+                $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($legId);
 
                 $component = $lockedLeg->componentPackage;
                 $adapter = $this->supplierAdapters->for($component->supplier);
@@ -671,7 +604,7 @@ final class OrderFulfillmentService
                 if ($result->outcome === SupplierOutcome::Pending) {
                     $lockedLeg->update(['status' => DeliveryStatus::Pending->value]);
 
-                    $this->recordLegAttempt($lockedLeg, $wasLegNotStarted, $triggeredBy, $note, $result->data);
+                    $this->resolvePendingLegAttempt($lockedLeg->id, 'pending', $result->data);
 
                     Log::info('Combo leg pending — awaiting async supplier confirmation', ['leg_id' => $lockedLeg->id]);
 
@@ -679,51 +612,25 @@ final class OrderFulfillmentService
                 }
 
                 if ($result->outcome === SupplierOutcome::Failure) {
+                    $attemptData = ['error_code' => $result->errorCode, 'error_message' => $result->errorMessage];
+
                     // ADR-098 / ADR-102 decision 4 — same split-flag
                     // routing fulfill()'s own Failure branch uses.
-                    $requiresManualReview = $result->resendUnsafeWithSameReference && ! $result->outcomeConfirmedFailed;
+                    if ($result->resendUnsafeWithSameReference && ! $result->outcomeConfirmedFailed) {
+                        // ADR-103 decision 2: the flag feeds decision 8's
+                        // OR-rollup, and only a NeedsReview leg needs it.
+                        $parked = $this->parkUnknownLeg($lockedLeg, $result->errorMessage, $attemptData, ['resend_unsafe_with_same_reference' => true]);
 
-                    // ADR-102 addendum (2026-09-29): same replay-safe rule as
-                    // fulfill() — park at Pending, polled with this leg's
-                    // own same reference, instead of NeedsReview.
-                    if ($requiresManualReview && SupplierAdapterFactory::resubmitReplaysOutcome($component->supplier)) {
-                        $lockedLeg->update(['status' => DeliveryStatus::Pending->value]);
-                        $parked = true;
-
-                        $this->recordLegAttempt($lockedLeg, $wasLegNotStarted, $triggeredBy, $note, [
-                            'error_code' => $result->errorCode,
-                            'error_message' => $result->errorMessage,
-                            'auto_recovery' => self::AUTO_RECOVERY_NOTE,
-                        ]);
-
-                        Log::warning('Combo leg ambiguous — Pending, auto-polling with the same reference', ['leg_id' => $lockedLeg->id, 'error_code' => $result->errorCode]);
+                        Log::warning('Combo leg ambiguous — outcome unknown', ['leg_id' => $lockedLeg->id, 'error_code' => $result->errorCode, 'parked_for_poll' => $parked]);
 
                         return;
                     }
 
-                    $lockedLeg->update(array_merge([
-                        'status' => $requiresManualReview ? DeliveryStatus::NeedsReview->value : DeliveryStatus::Failed->value,
-                        'failure_reason' => $result->errorMessage,
-                    ], $requiresManualReview ? [
-                        // ADR-103 decision 2 — populated only when this
-                        // leg actually lands on NeedsReview, feeding
-                        // decision 8's OR-rollup. A Failed leg never
-                        // needs it: decision 3 always mints it a fresh
-                        // reference on retry, so it can never be
-                        // genuinely futile the way a NeedsReview leg can.
-                        'resend_unsafe_with_same_reference' => true,
-                    ] : []));
+                    $lockedLeg->update(['status' => DeliveryStatus::Failed->value, 'failure_reason' => $result->errorMessage]);
 
-                    $this->recordLegAttempt($lockedLeg, $wasLegNotStarted, $triggeredBy, $note, [
-                        'error_code' => $result->errorCode,
-                        'error_message' => $result->errorMessage,
-                    ]);
+                    $this->resolvePendingLegAttempt($lockedLeg->id, 'failed', $attemptData);
 
-                    Log::warning($requiresManualReview ? 'Combo leg ambiguous — needs manual review' : 'Combo leg failed', [
-                        'leg_id' => $lockedLeg->id,
-                        'error_code' => $result->errorCode,
-                        'error_message' => $result->errorMessage,
-                    ]);
+                    Log::warning('Combo leg failed', ['leg_id' => $lockedLeg->id] + $attemptData);
 
                     return;
                 }
@@ -741,72 +648,31 @@ final class OrderFulfillmentService
                     'real_cost_price_sen' => $realLegCostPriceSen,
                 ]);
 
-                $this->recordLegAttempt($lockedLeg, $wasLegNotStarted, $triggeredBy, $note, $result->data);
+                $this->resolvePendingLegAttempt($lockedLeg->id, 'success', $result->data);
 
                 if (isset($result->data['price'])) {
                     $drawdownPrice = (float) $result->data['price'];
                 }
             });
         } catch (Throwable $e) {
-            // Same ambiguity duplicate_reference already handles above
-            // — we genuinely don't know whether the supplier received
-            // this leg's request before things broke, so the safe
-            // default is identical: NeedsReview, never Failed (Failed
-            // implies "nothing happened, safe to retry from scratch,"
-            // not a safe assumption here). A subsequent retry re-submits
-            // under the same idempotency key (decision 7) — if the
-            // supplier really did see it, duplicate_reference detection
-            // catches that safely, same as it always has. Deliberately
-            // NOT wrapping the recordOrderDrawdown() call below this
-            // try block — that runs only after a real Delivered commit,
-            // so a failure there is a bookkeeping concern, never a
-            // reason to relabel a delivery that genuinely already
-            // succeeded back to "needs review".
-            Log::error('Combo leg attempt threw unexpectedly — marking NeedsReview rather than stranding the order at Processing', [
+            // We don't know whether the supplier received this leg's
+            // request before things broke, so it is never Failed (Failed
+            // means "safe to retry from scratch"). Deliberately not wrapping
+            // recordOrderDrawdown() below: it runs after a real Delivered
+            // commit, so a failure there is a bookkeeping concern, never a
+            // reason to relabel a delivery that succeeded.
+            Log::error('Combo leg attempt threw unexpectedly — outcome unknown', [
                 'leg_id' => $legId,
                 'exception' => $e->getMessage(),
             ]);
 
-            DB::transaction(function () use ($legId, $e, &$parked, $legReferenceNumber, $wasLegNotStarted, $triggeredBy, $note) {
+            DB::transaction(function () use ($order, $legId, $e, &$parked) {
+                Order::query()->lockForUpdate()->findOrFail($order->id);
                 $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($legId);
 
-                if (in_array($lockedLeg->status, [DeliveryStatus::Delivered, DeliveryStatus::Pending], true)) {
-                    // Same race-guard as the main attempt above — another
-                    // concurrent attempt already resolved this leg.
-                    return;
+                if ($lockedLeg->status === DeliveryStatus::Processing) {
+                    $parked = $this->parkUnknownLeg($lockedLeg, 'Delivery attempt failed unexpectedly: '.$e->getMessage(), ['error_message' => $e->getMessage()]);
                 }
-
-                // ADR-102 addendum (2026-09-29) — replay-safe supplier: Pending
-                // under the reference it was genuinely attempted with.
-                if (SupplierAdapterFactory::resubmitReplaysOutcome($lockedLeg->componentPackage?->supplier)) {
-                    $lockedLeg->update(array_filter([
-                        'status' => DeliveryStatus::Pending->value,
-                        'reference_number' => $legReferenceNumber,
-                    ]));
-                    $parked = true;
-
-                    $this->recordLegAttempt($lockedLeg, $wasLegNotStarted, $triggeredBy, $note, [
-                        'error_message' => $e->getMessage(),
-                        'auto_recovery' => self::AUTO_RECOVERY_NOTE,
-                    ]);
-
-                    return;
-                }
-
-                $lockedLeg->update(array_merge([
-                    'status' => DeliveryStatus::NeedsReview->value,
-                    'failure_reason' => 'Delivery attempt failed unexpectedly: '.$e->getMessage(),
-                ], $legReferenceNumber !== null ? [
-                    // ADR-103 decisions 1/3 — the transaction that
-                    // computed this reference and attempted the actual
-                    // supplier call rolled back with the exception;
-                    // re-persisted here so a NeedsReview leg reached via
-                    // this path still reuses the SAME reference it was
-                    // genuinely attempted under, not a stale/null one.
-                    'reference_number' => $legReferenceNumber,
-                ] : []));
-
-                $this->recordLegAttempt($lockedLeg, $wasLegNotStarted, $triggeredBy, $note, ['error_message' => $e->getMessage()]);
             });
 
             return $parked;
@@ -820,43 +686,139 @@ final class OrderFulfillmentService
     }
 
     /**
-     * ADR-094 decision 9: rolls every leg's current status up into the
-     * order's own delivery_status. Precedence, most conservative first:
+     * ADR-103 decision 10: the committed half of an attempt. Delivered,
+     * Pending and Processing legs are already owned, so never re-submitted;
+     * anything else gets one attempt this pass.
      *
-     *  - any leg Pending → order Pending (still genuinely in flight;
-     *    a no-op if the order is already sitting at Pending itself —
-     *    re-evaluating an incomplete leg set from a Phase 3b webhook/
-     *    poll call must never re-throw markPending()'s Processing-only
-     *    guard).
-     *  - any leg NeedsReview → order NeedsReview (real ambiguity always
-     *    wins — never guess a duplicate_reference leg either way).
-     *  - every leg Delivered → order Delivered. ADR-107 decision 2:
-     *    `platform_profit` is reconciled once, right here, as a
-     *    money-conservation residual (`order.selling_price (frozen) −
-     *    Σ live componentPackage->cost_price across every leg −
-     *    affiliate_profit`) — the same identity ADR-105 decision 8
-     *    established for the single-package case, aggregated across
-     *    legs. `affiliate_profit` itself is never touched — it keeps
-     *    the exact value frozen at checkout (decision 2's own call:
-     *    combo has no single "target package" resend concept to
-     *    reconcile it against). Credit profit once, commit any reserved
-     *    voucher once — order-level, not per-leg, matching ORD-9.
-     *  - every leg Failed → order Failed (clean, ordinary failure —
-     *    nothing was delivered, "Resend Delivery" retries normally).
-     *  - otherwise (a genuine mix of Delivered + Failed, no Pending/
-     *    NeedsReview) → order PartiallyDelivered (2026-10-04 addendum,
-     *    decision 28; was NeedsReview under decision 9). An admin still
-     *    triggers compensation (OrderSettlementService), but the amount
-     *    is a formula, not a typed figure.
+     * The reference follows decision 3 (ADR-102 decision 9 at leg
+     * granularity): NotStarted keeps its derived value, Failed mints a fresh
+     * one (decision 4's ULID suffix; this leg is confirmed non-delivered),
+     * NeedsReview reuses the stored value (the double-delivery protection).
+     * ADR-102 2026-10-05 addendum (rc correction): `resubmit` is decided from
+     * the status before this claim overwrites it.
      *
-     * Callable from two entry states — Processing (fulfillCombo()'s own
-     * synchronous pass) or Pending (Phase 3b's finalizePendingDeliveryLeg(),
-     * once a webhook/poll resolves one of possibly several Digiflazz
-     * legs an earlier pass left Pending) — so every Delivered/Failed
-     * transition dispatches to whichever of markDelivered()/
-     * finalizePendingSuccess() (or markDeliveryFailed()/
-     * finalizePendingFailure()) actually matches the order's current
-     * state, rather than assuming Processing.
+     * @return array{0: string, 1: bool}|null reference and resubmit; null when the leg needs no attempt
+     */
+    private function claimLeg(Order $order, OrderDeliveryLeg $leg, ?string $triggeredBy, ?string $note): ?array
+    {
+        return DB::transaction(function () use ($order, $leg, $triggeredBy, $note) {
+            Order::query()->lockForUpdate()->findOrFail($order->id);
+            $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($leg->id);
+
+            if (in_array($lockedLeg->status, [DeliveryStatus::Delivered, DeliveryStatus::Pending, DeliveryStatus::Processing], true)) {
+                return null;
+            }
+
+            $wasLegNotStarted = $lockedLeg->status === DeliveryStatus::NotStarted;
+            $resubmit = $lockedLeg->status !== DeliveryStatus::Failed && $lockedLeg->reference_number !== null;
+
+            $legReferenceNumber = match ($lockedLeg->status) {
+                DeliveryStatus::Failed => "{$order->reference_number}-L{$lockedLeg->leg_number}-".Str::ulid(),
+                DeliveryStatus::NeedsReview => $lockedLeg->reference_number,
+                default => $lockedLeg->reference_number ?? "{$order->reference_number}-L{$lockedLeg->leg_number}",
+            };
+
+            Log::withContext(['reference_number' => $legReferenceNumber]);
+
+            $lockedLeg->update(['reference_number' => $legReferenceNumber, 'status' => DeliveryStatus::Processing->value]);
+
+            $this->recordLegAttempt($lockedLeg, $wasLegNotStarted, $triggeredBy, $note);
+
+            return [$legReferenceNumber, $resubmit];
+        });
+    }
+
+    /**
+     * ADR-103 decision 12: the one rule for a leg whose outcome is unknown.
+     * A replay-safe supplier is polled with the same reference (ADR-102
+     * addendum 2026-09-29), anything else waits for an admin. Either way the
+     * reference stays. Caller holds the order and leg locks. Returns true
+     * when the leg was parked for a poll.
+     *
+     * @param  array<string, mixed>  $attemptData
+     * @param  array<string, mixed>  $reviewColumns
+     */
+    private function parkUnknownLeg(OrderDeliveryLeg $lockedLeg, ?string $reason, array $attemptData, array $reviewColumns = []): bool
+    {
+        if (SupplierAdapterFactory::resubmitReplaysOutcome($lockedLeg->componentPackage?->supplier)) {
+            $lockedLeg->update(['status' => DeliveryStatus::Pending->value]);
+
+            $this->resolvePendingLegAttempt($lockedLeg->id, 'pending', $attemptData + ['auto_recovery' => self::AUTO_RECOVERY_NOTE]);
+
+            return true;
+        }
+
+        $lockedLeg->update(['status' => DeliveryStatus::NeedsReview->value, 'failure_reason' => $reason] + $reviewColumns);
+
+        $this->resolvePendingLegAttempt($lockedLeg->id, 'failed', $attemptData);
+
+        return false;
+    }
+
+    /**
+     * ADR-103 decision 13: an order at Processing always means a live pass,
+     * so a stale one (the worker died) is moved out here, in one transaction:
+     * every in-flight leg parked, the order to Pending or NeedsReview, then
+     * the same rollup as everywhere else. All delivered gives Delivered with
+     * profit credited; a leg in flight is polled with its reference; a leg
+     * never tried waits for an admin's Retry (founder's call: no automatic
+     * path buys it). A no-op on any other status.
+     */
+    public function recoverDeadComboPass(Order $order): Order
+    {
+        $recovered = DB::transaction(function () use ($order) {
+            $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+
+            if ($locked->delivery_status !== DeliveryStatus::Processing) {
+                return $locked;
+            }
+
+            $legs = OrderDeliveryLeg::query()->where('order_id', $locked->id)->with('componentPackage.supplier')->lockForUpdate()->get();
+
+            foreach ($legs->where('status', DeliveryStatus::Processing) as $leg) {
+                $this->parkUnknownLeg($leg, 'Worker stopped mid-delivery', ['error_message' => 'Worker stopped mid-delivery']);
+            }
+
+            Log::withContext(['order_number' => $locked->order_number]);
+            Log::warning('Delivery reconciliation: stale combo pass recovered', ['legs' => $legs->map(fn (OrderDeliveryLeg $leg) => $leg->status->value)->all()]);
+
+            $locked->update(['delivery_status' => $legs->contains('status', DeliveryStatus::Pending)
+                ? $this->orderStatus->markPending($locked->delivery_status)->value
+                : $this->orderStatus->markNeedsReview($locked->delivery_status)->value]);
+
+            return $this->resolveComboOutcome($locked);
+        });
+
+        if ($recovered->delivery_status === DeliveryStatus::Pending) {
+            $this->scheduleRecoveryPoll($recovered);
+        }
+
+        return $recovered;
+    }
+
+    /**
+     * ADR-103 decision 14: applies DeliveryStatus::comboRollup() to the
+     * order and runs what each outcome owes. The rule itself lives there;
+     * this is its side effects.
+     *
+     * Two guards first. A terminal order is left alone. An order at
+     * Processing with a leg not yet final is left alone too: its pass still
+     * owns it, so a webhook that lands mid-pass records its leg and nothing
+     * more, and the pass's own end decides (a dead pass: recoverDeadComboPass()).
+     *
+     * Delivered: ADR-107 decision 2 reconciles `platform_profit` once, here,
+     * as a money-conservation residual (`selling_price (frozen) − Σ leg cost −
+     * affiliate_profit`, ADR-105 decision 8's identity across legs).
+     * `affiliate_profit` keeps its checkout value. Profit credits once and any
+     * reserved voucher commits once, order-level, not per leg (ORD-9).
+     * Failed: nothing delivered, Resend Delivery retries normally.
+     * PartiallyDelivered: ADR-094 decision 28, settled by an admin with a
+     * formula (OrderSettlementService), which credits the profit then.
+     *
+     * Callable from Processing (a pass, webhook or poll), Pending or
+     * NeedsReview (a webhook or poll, or recovery), so each transition
+     * dispatches to whichever of markDelivered()/finalizePendingSuccess()
+     * (or markDeliveryFailed()/finalizePendingFailure()) matches.
      */
     private function resolveComboOutcome(Order $order): Order
     {
@@ -870,16 +832,25 @@ final class OrderFulfillmentService
             // DeliveryStatus below, not a bare string).
             $legs = OrderDeliveryLeg::query()->where('order_id', $locked->id)->with('componentPackage:id,cost_price')->get();
             $statuses = $legs->pluck('status');
+
+            if (in_array($locked->delivery_status, [DeliveryStatus::Delivered, DeliveryStatus::Failed, DeliveryStatus::PartiallyDelivered], true)) {
+                return $locked->fresh();
+            }
+
+            if ($locked->delivery_status === DeliveryStatus::Processing
+                && $statuses->contains(fn (DeliveryStatus $status) => in_array($status, [DeliveryStatus::NotStarted, DeliveryStatus::Processing], true))) {
+                return $locked->fresh();
+            }
+
             // ADR-102 2026-10-05 addendum, decision 7: NeedsReview is the
             // other "awaiting the supplier" state a late leg result can
             // arrive in, so it exits the same way Pending does.
             $enteringFromSupplierWait = in_array($locked->delivery_status, [DeliveryStatus::Pending, DeliveryStatus::NeedsReview], true);
+            $outcome = DeliveryStatus::comboRollup($statuses);
 
-            if ($statuses->contains(DeliveryStatus::Pending)) {
-                // Still incomplete. Only Processing→Pending is a real
-                // transition; Pending (or NeedsReview) re-evaluated with
-                // a leg still outstanding is a deliberate no-op —
-                // markPending() only accepts Processing as its source.
+            if ($outcome === DeliveryStatus::Pending) {
+                // Only Processing→Pending is a real transition; markPending()
+                // accepts nothing else, and an order already waiting stays.
                 if (! $enteringFromSupplierWait) {
                     $locked->update(['delivery_status' => $this->orderStatus->markPending($locked->delivery_status)->value]);
                 }
@@ -887,17 +858,15 @@ final class OrderFulfillmentService
                 return $locked->fresh();
             }
 
-            if ($statuses->contains(DeliveryStatus::NeedsReview)) {
-                if ($locked->delivery_status === DeliveryStatus::NeedsReview) {
-                    return $locked->fresh();
+            if ($outcome === DeliveryStatus::NeedsReview) {
+                if ($locked->delivery_status !== DeliveryStatus::NeedsReview) {
+                    $locked->update(['delivery_status' => $this->orderStatus->markNeedsReview($locked->delivery_status)->value]);
                 }
-
-                $locked->update(['delivery_status' => $this->orderStatus->markNeedsReview($locked->delivery_status)->value]);
 
                 return $locked->fresh();
             }
 
-            if ($statuses->every(fn (DeliveryStatus $status) => $status === DeliveryStatus::Delivered)) {
+            if ($outcome === DeliveryStatus::Delivered) {
                 $newStatus = $enteringFromSupplierWait
                     ? $this->orderStatus->finalizePendingSuccess($locked->delivery_status)
                     : $this->orderStatus->markDelivered($locked->delivery_status);
@@ -948,7 +917,7 @@ final class OrderFulfillmentService
                 return $locked->fresh();
             }
 
-            if ($statuses->every(fn (DeliveryStatus $status) => $status === DeliveryStatus::Failed)) {
+            if ($outcome === DeliveryStatus::Failed) {
                 $newStatus = $enteringFromSupplierWait
                     ? $this->orderStatus->finalizePendingFailure($locked->delivery_status)
                     : $this->orderStatus->markDeliveryFailed($locked->delivery_status);
@@ -958,9 +927,8 @@ final class OrderFulfillmentService
                 return $locked->fresh();
             }
 
-            // Mixed Delivered + Failed, no Pending/NeedsReview present —
-            // decision 28: a known outcome, its own terminal status. No
-            // profit credit here: it's credited at settlement (decision
+            // ADR-094 decision 28: a known outcome, its own terminal status.
+            // No profit credit here: it's credited at settlement (decision
             // 35), the same as a Failed order.
             $locked->update(['delivery_status' => $this->orderStatus->markPartiallyDelivered($locked->delivery_status)->value]);
 
@@ -1302,10 +1270,10 @@ final class OrderFulfillmentService
     /**
      * ADR-106 addendum (2026-09-21) — the leg-scoped twin of
      * resolvePendingResendAttempt() above: a combo leg's own `pending`
-     * attempt row (written by attemptLeg()'s Pending branch) is
-     * resolved here once finalizePendingDeliveryLeg() (webhook or poll)
-     * settles it, so a leg that went Pending never leaves its own
-     * attempt history stuck at `outcome=pending` forever.
+     * attempt row (written with the claim, ADR-103 decision 10) is
+     * resolved here by whichever writer learns the outcome: the supplier
+     * call itself, or finalizePendingDeliveryLeg() (webhook or poll). So
+     * no leg leaves its attempt history stuck at `outcome=pending`.
      */
     private function resolvePendingLegAttempt(int $legId, string $outcome, mixed $supplierResponse): void
     {
@@ -1369,11 +1337,9 @@ final class OrderFulfillmentService
      * columns (`status`/`failure_reason`/`supplier_reference`) get
      * overwritten on every attempt exactly like a plain order's used to
      * before ADR-106 — this writes the leg's own durable per-attempt
-     * row instead, called from all 4 of attemptLeg()'s write sites
-     * (Pending/Failure/Success inside its transaction, plus the
-     * Throwable catch's own separate one) right after $lockedLeg's
-     * status is updated for this call's real outcome, so it only ever
-     * commits alongside that outcome.
+     * row instead. ADR-103 decision 10: written `pending` with the claim,
+     * so a killed worker still leaves it with the right `attempt_type`;
+     * resolvePendingLegAttempt() closes it with the real outcome.
      *
      * `package_id` here is the LEG's own component package, not the
      * order's (a combo order's own `package_id` is the combo SKU
@@ -1387,7 +1353,7 @@ final class OrderFulfillmentService
      * leg-level cost-drift reconciliation, which is ADR-107's own
      * domain.
      */
-    private function recordLegAttempt(OrderDeliveryLeg $lockedLeg, bool $wasLegNotStarted, ?string $triggeredBy, ?string $note, mixed $supplierResponseData): void
+    private function recordLegAttempt(OrderDeliveryLeg $lockedLeg, bool $wasLegNotStarted, ?string $triggeredBy, ?string $note): void
     {
         OrderResendAttempt::query()->create([
             'order_id' => $lockedLeg->order_id,
@@ -1397,12 +1363,10 @@ final class OrderFulfillmentService
             'cost_price_sen' => $lockedLeg->componentPackage->cost_price,
             'standard_selling_price_sen' => $lockedLeg->selling_price_sen,
             'price_diff_sen' => null,
-            'outcome' => match ($lockedLeg->status) {
-                DeliveryStatus::Delivered => 'success',
-                DeliveryStatus::Pending => 'pending',
-                default => 'failed',
-            },
-            'supplier_response' => $supplierResponseData,
+            // ADR-103 decision 10: written with the claim, so a killed worker
+            // still leaves it. resolvePendingLegAttempt() closes it.
+            'outcome' => 'pending',
+            'supplier_response' => null,
             'note' => $note,
             'triggered_by' => $triggeredBy,
         ]);
@@ -1590,7 +1554,9 @@ final class OrderFulfillmentService
     {
         $legs = OrderDeliveryLeg::query()->where('order_id', $locked->id)->lockForUpdate()->get();
 
-        if ($legs->contains('status', DeliveryStatus::Pending)) {
+        // ADR-103 decision 15: a leg with a live or unanswered attempt is
+        // still in flight. A leg with no reference has never been sent.
+        if ($legs->contains(fn (OrderDeliveryLeg $leg) => in_array($leg->status, [DeliveryStatus::Pending, DeliveryStatus::Processing], true))) {
             throw new OrderFulfillmentException(
                 "Order #{$locked->id} still has a leg awaiting the supplier — refusing to confirm it failed",
             );
@@ -1602,9 +1568,11 @@ final class OrderFulfillmentService
             }
         }
 
-        return $legs->contains('status', DeliveryStatus::Delivered)
-            ? $this->orderStatus->markPartiallyDelivered($locked->delivery_status)
-            : $this->orderStatus->markNeedsReviewAsFailed($locked->delivery_status);
+        return match (DeliveryStatus::comboRollup($legs->pluck('status'))) {
+            DeliveryStatus::PartiallyDelivered => $this->orderStatus->markPartiallyDelivered($locked->delivery_status),
+            DeliveryStatus::Failed => $this->orderStatus->markNeedsReviewAsFailed($locked->delivery_status),
+            default => throw new OrderFulfillmentException("Order #{$locked->id} has no failed leg to confirm"),
+        };
     }
 
     /**

@@ -144,9 +144,19 @@ class Order extends Model
      */
     public function fulfilmentSupplier(): ?Supplier
     {
-        return $this->package?->is_combo
+        return $this->isCombo()
             ? $this->package->components->first()?->supplier
             : $this->supplier;
+    }
+
+    /**
+     * ADR-103 decision 17: the one test, true with or without seeded legs.
+     * A package loaded with a partial select answers false, so this stays
+     * out of `$appends` and list payloads.
+     */
+    public function isCombo(): bool
+    {
+        return $this->package?->is_combo === true;
     }
 
     /**

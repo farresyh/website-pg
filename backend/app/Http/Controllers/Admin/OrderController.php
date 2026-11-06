@@ -383,7 +383,8 @@ class OrderController extends Controller
 
         // ADR-102 2026-11-05 addendum: a retry from NeedsReview re-submits the
         // stored reference, which the supplier forgets after its window.
-        if ($order->delivery_status === DeliveryStatus::NeedsReview && ! $order->sameReferenceWithinWindow()) {
+        // ADR-103 decision 16: a combo past it sends nothing from any status.
+        if (($order->delivery_status === DeliveryStatus::NeedsReview || $order->isCombo()) && ! $order->sameReferenceWithinWindow()) {
             throw ValidationException::withMessages([
                 'delivery_status' => [Order::PAST_WINDOW_MESSAGE],
             ]);
@@ -575,9 +576,7 @@ class OrderController extends Controller
         // future per-supplier override) is keyed on the first
         // component's supplier, mirroring ReconcilePendingDeliveriesCommand's
         // own checkStalePending() resolution.
-        $supplier = $order->package?->is_combo
-            ? $order->package->components->first()?->supplier
-            : $order->supplier;
+        $supplier = $order->fulfilmentSupplier();
         $cooldownSeconds = $supplier?->api_config['manual_check_cooldown_seconds'] ?? config('services.manual_check.cooldown_seconds');
 
         try {
@@ -686,7 +685,7 @@ class OrderController extends Controller
         // every leg does). A leg still outstanding here needs Retry Delivery
         // (resolves it automatically) or Confirm Failed (rolls up to
         // PartiallyDelivered, ADR-094 decision 31) — never this button.
-        if ($order->deliveryLegs->isNotEmpty()) {
+        if ($order->isCombo()) {
             throw ValidationException::withMessages([
                 'delivery_status' => ['This order is a combo — use Retry Delivery to resolve outstanding legs, or Confirm Failed.'],
             ]);
@@ -947,6 +946,9 @@ class OrderController extends Controller
             // actually disables the Resend/Retry button and requires a
             // logged override reason to proceed anyway.
             'resend_unsafe_to_override' => $order->resendUnsafeToOverride(),
+            // ADR-103 decision 17: true with or without seeded legs, so the
+            // panel never offers a plain order's actions on a combo.
+            'is_combo' => $order->isCombo(),
             // ADR-102 2026-10-05 addendum, decisions 4/6 — a needs_review
             // order the supplier can safely be asked about: shows Check
             // from Supplier, and Confirm Failed asks the supplier first.
