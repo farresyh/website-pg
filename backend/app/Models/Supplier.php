@@ -13,6 +13,8 @@ class Supplier extends Model
     /** ADR-125 decision 1: a supplier with no API, whose orders a person fulfils. */
     public const DRIVER_MANUAL = 'manual';
 
+    public const PRICE_SYNC_STALE_MINUTES = 90;
+
     public const FUNDING_PREPAID = 'prepaid';
 
     public const FUNDING_PAY_AFTER = 'pay_after';
@@ -82,6 +84,22 @@ class Supplier extends Model
      * never `api_config` emptiness — a manual supplier keeps its own
      * settings in `api_config` too.
      */
+    /** ADR-015 2026-10-17 addendum: blank or not a number means the default, 0 switches the stale email off. */
+    public function priceSyncStaleMinutes(): int
+    {
+        $value = $this->api_config['price_sync_stale_alert_minutes'] ?? null;
+
+        return is_numeric($value) ? (int) $value : self::PRICE_SYNC_STALE_MINUTES;
+    }
+
+    /** ADR-138 decision 22. Switching the email off doesn't remove the limit, so 0 keeps the default. */
+    public function hasFreshPriceSync(): bool
+    {
+        $minutes = $this->priceSyncStaleMinutes() ?: self::PRICE_SYNC_STALE_MINUTES;
+
+        return $this->last_price_sync_at?->greaterThan(now()->subMinutes($minutes)) ?? false;
+    }
+
     public function isApiBacked(): bool
     {
         return $this->driver !== self::DRIVER_MANUAL;

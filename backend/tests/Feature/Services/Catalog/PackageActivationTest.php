@@ -79,7 +79,7 @@ class PackageActivationTest extends TestCase
 
     public function test_supplier_reactivate_leaves_a_package_its_supplier_no_longer_lists_off(): void
     {
-        $supplier = $this->supplier(['api_config' => ['base_url' => 'https://example.test']]);
+        $supplier = $this->supplier(['last_price_sync_at' => now(), 'api_config' => ['base_url' => 'https://example.test']]);
         $vanished = $this->package($supplier, 'supplier_issue', ['supplier_package_ref' => 'OLD']);
         $listed = $this->package($supplier, 'supplier_issue', ['supplier_package_ref' => 'NEW']);
         $this->listed($supplier, 'OLD', now()->subDay());

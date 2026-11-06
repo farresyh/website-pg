@@ -4,6 +4,7 @@ namespace App\Services\Supplier;
 
 use App\Http\Controllers\GameController;
 use App\Models\Package;
+use App\Models\PendingPriceChange;
 use App\Models\Supplier;
 use App\Services\Catalog\PackageActivation;
 use App\Services\Pricing\ComboPricingService;
@@ -37,6 +38,24 @@ final class SupplierPackageStatusService
         private readonly ComboPricingService $comboPricing,
         private readonly PackageActivation $activation,
     ) {}
+
+    /**
+     * ADR-138 decision 20: an API supplier that is off has no package on sale.
+     * Stays outside a transaction: the flag has to be committed before any
+     * package goes off, so a parallel activate() already sees the blocker.
+     * Sync skips an off supplier, so nothing else would close its open rows.
+     */
+    public function switchOffApiSupplier(Supplier $supplier, int $adminUserId): void
+    {
+        $supplier->update(['is_active' => false]);
+
+        PendingPriceChange::query()
+            ->whereIn('package_id', $this->packages($supplier, null)->select('id'))
+            ->where('status', 'pending')
+            ->update(['status' => 'superseded']);
+
+        $this->deactivate($supplier, $adminUserId, 'Supplier switched off');
+    }
 
     /** @return array{updated: int, updated_combos: int} */
     public function deactivate(Supplier $supplier, ?int $adminUserId, ?string $reason, ?int $gameId = null, string $code = self::REASON): array
