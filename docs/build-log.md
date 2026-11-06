@@ -1559,3 +1559,20 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 
 **Packages on sale 1,265 to 1,248.** An admin switched two Mobile Legends Malaysia packages off at 13:20:36 UTC, and five combos went with them. Run 3340 then took 11 DigiFlazz packages off, Valorant among them, reported unavailable. That is 18 off; the net of 17 leaves one back on, with no reactivation log, so it was not through sync.
 
+
+## 2026-11-07 — Item 167 designed: ADR-103 addendum Accepted (design only, no code)
+
+**Trigger.** The founder asked to double-check item 163's seam C before fixing it. Combo volume had also changed: 6 combo orders, 3 of them on 2026-11-06, and an admin Retry on orders 111 and 121 that day.
+
+**The audit undersold it.** Proofs run from a scratch test, repo untouched, found two paths it missed: a killed retry of a `Failed` leg loses its fresh reference, so a leg can be bought twice; and a webhook during the pass marks a fully delivered order partial, with RM0 settlement and a stuck leg. No production harm: all 15 legs delivered, and no worker-stop line in the retained logs.
+
+**Grill, Q1 to Q7.** Leg `Processing` committed before the call; a dead pass parks legs and polls; a never-tried leg waits for an admin; one rollup; `Order::isCombo()`; drawdown left as ADR-083 decided (a crash window, not a seam: one writer, 89 of 89 delivered units recorded, variance 0); a past-window combo sends nothing.
+
+**The stress test changed the design.** Three forks broke the first version:
+- All three found the "wait while unfinished" rule stranded a dead pass at `Processing`, which can't be retried or settled. Now `Processing` always means a live pass, and the reconciler moves the order out before rolling up. Two forks proposed a flag; the order's status already carries the fact.
+- The agreed leg lock deadlocks with a webhook once the reference is visible during the call (`ERROR 1213` on MySQL 8.4, in replica tables). Order then leg, as `fulfill()`.
+- The reconciler couldn't write the attempt row correctly, so the row is written at the claim.
+- An empty leg set counted as all delivered, with 1,500 sen credited in a test.
+- `isCombo()` needed the admin payload and two `page.tsx` checks too.
+
+**Next:** build it from ADR-103 decisions 10 to 17, tests first.
