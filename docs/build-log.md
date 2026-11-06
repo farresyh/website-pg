@@ -1596,3 +1596,27 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 **One existing test changed:** `test_a_combo_leg_past_the_window_is_not_re_submitted` became `test_a_combo_past_the_window_sends_nothing`, the decision itself. No other existing test needed changing.
 
 **Open at release:** the release needs no prod step. Confirm afterwards that no leg sits at `Processing` for long.
+
+## 2026-11-07 — Item 168 built: a voucher in use can't be closed (ADR-036 2026-11-07 addendum)
+
+**#720 merged to `staging`** (item 167, not released; the founder wants several items done before a release).
+
+**The hole, proven.** A RM100 voucher with RM40 reserved, then merged or revoked, then the order fails: the RM40 lands on a voucher nobody can spend, and Cash Position and breakage both miss it. Production untouched: 0 reserved, one merge, 0 revokes.
+
+**Built on `fix/voucher-close-guard`, into `staging`, not released.** No migration, no env change.
+- `merge()` and `revoke()` refuse a voucher an order is using, and the message names both.
+- A no-expiry source keeps the merged voucher without one. The founder asked whether expiry should go and giveaways move to Campaign; the check showed Campaign can't do a fixed-RM gift to a named person, so the line is: customer money never expires, gifts may, public discounts are Campaign.
+- The panel hides "Valid until" when the rule applies.
+- `/admin/vouchers`: Total Issued and Total Used count a merge once. They were overstated by RM460.42 each, display only.
+
+**The stress test changed the design.** Two forks independently found the agreed locking read deadlocks with `restore()` (`ERROR 1213`, on replica tables), so it is a plain read after the voucher lock. Also: a revoke refusal would have been a 500, the "settle" wording was wrong for an unpaid order, and "Valid until" would have refused every date on today's vouchers. Two claims made to the founder were corrected: a refused revoke does leave the unreserved balance spendable, and Campaign covers the primary brand only (item 171).
+
+**Verified.**
+- `php artisan test` 3,785 of 3,785.
+- Concurrency suite on real MySQL: 44 of 48, only `BackupRestoreMysqlTest` fails (no local `mysqldump`). It includes a new real-process race of `redeem` against `merge`.
+- Admin `tsc`, `eslint` on the changed file, and 22 of 22 unit tests.
+- In a real browser on a throwaway backend: "Valid until" hidden for no-expiry vouchers and kept for gifts; a revoke of a voucher in use shows the message naming the order, and the voucher stays active.
+
+**One existing test changed:** `test_a_merge_uses_the_same_end_of_day_rule` now merges vouchers that have an expiry, because the old setup is what this rule refuses.
+
+**Open at release:** confirm no reservation sits on a merged or revoked voucher.
