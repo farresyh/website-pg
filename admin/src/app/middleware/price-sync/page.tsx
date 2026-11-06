@@ -623,7 +623,7 @@ export default function PriceSyncPage() {
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <span className="font-medium text-gray-800 dark:text-white/90">{p.name}</span>
                           <br />
-                          <span className="text-theme-xs text-ink-subtle">{p.supplier_package_ref} · {p.supplier?.name}</span>
+                          <span className="text-theme-xs text-ink-subtle">{p.supplier_package_ref ? `${p.supplier_package_ref} · ${p.supplier?.name}` : "Combo"}</span>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{p.game?.name ?? "—"}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.cost_price)}</DataTableCell>

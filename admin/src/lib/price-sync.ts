@@ -110,7 +110,8 @@ export interface DismissedPackage {
   standard_selling_price: number;
   deactivated_reason: "admin";
   deactivated_at: string;
-  supplier_package_ref: string;
+  /** Null on a combo: it has no supplier of its own (ADR-138). */
+  supplier_package_ref: string | null;
   game: { id: number; name: string } | null;
   supplier: { id: number; name: string } | null;
 }
