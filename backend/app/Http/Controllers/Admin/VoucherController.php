@@ -8,6 +8,7 @@ use App\Http\Requests\Voucher\MergeVouchersRequest;
 use App\Http\Requests\Voucher\StoreVoucherFromOrderRequest;
 use App\Models\Order;
 use App\Models\Voucher;
+use App\Models\VoucherRedemption;
 use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderSettlementService;
 use App\Services\Notification\CustomerNotificationService;
@@ -44,6 +45,7 @@ class VoucherController extends Controller
     {
         $vouchers = Voucher::query()
             ->with('affiliate:id,business_name')
+            ->withExists('mergesAsTarget')
             ->orderBy('created_at', 'desc')
             ->get()
             ->each->append('display_status');
@@ -52,6 +54,16 @@ class VoucherController extends Controller
         $active = $vouchers->where('display_status', 'active');
         $expired = $vouchers->where('display_status', 'expired');
 
+        // A merge target re-represents its sources' credit (ADR-036), so a
+        // merge counts once as issued. `remaining` can't say what was spent:
+        // a merge zeroes a source without spending it. Redemptions can.
+        $issued = $vouchers->where('merges_as_target_exists', false);
+        $spent = VoucherRedemption::query()
+            ->selectRaw('voucher_id, SUM(amount - COALESCE(restored_amount, 0)) AS spent_sen')
+            ->groupBy('voucher_id')
+            ->pluck('spent_sen', 'voucher_id')
+            ->filter(fn ($sen) => (int) $sen > 0);
+
         return response()->json([
             'stats' => [
                 'active' => [
@@ -59,12 +71,12 @@ class VoucherController extends Controller
                     'total' => (int) $active->sum('remaining'),
                 ],
                 'total_issued' => [
-                    'count' => $vouchers->count(),
-                    'total' => (int) $vouchers->sum('amount'),
+                    'count' => $issued->count(),
+                    'total' => (int) $issued->sum('amount'),
                 ],
                 'total_used' => [
-                    'count' => $vouchers->filter(fn (Voucher $v) => $v->remaining < $v->amount)->count(),
-                    'total' => (int) $vouchers->sum(fn (Voucher $v) => $v->amount - $v->remaining),
+                    'count' => $spent->count(),
+                    'total' => (int) $spent->sum(),
                 ],
                 'expired' => [
                     'count' => $expired->count(),
@@ -252,6 +264,10 @@ class VoucherController extends Controller
 
     public function revoke(Request $request, Voucher $voucher): JsonResponse
     {
-        return response()->json($this->vouchers->revoke($voucher));
+        try {
+            return response()->json($this->vouchers->revoke($voucher));
+        } catch (InvalidVoucherException $e) {
+            throw ValidationException::withMessages(['status' => [$e->getMessage()]]);
+        }
     }
 }

@@ -1,6 +1,6 @@
 # ADR-036: Voucher Merge — admin-triggered consolidation into a new code, no ledger write (built 2026-08-26)
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-07):** In force; decision 4 narrowed: a no-expiry source keeps the merged voucher without one (2026-11-07 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — grilled 2026-08-25, built 2026-08-26, no scope changes on contact with code
 
@@ -44,3 +44,38 @@ Two other directions were considered and rejected this session before landing on
 ### Cross-reference (2026-10-12) — decision 5's ledger premise is narrower now
 
 Decision 5 says each source's liability "already sits correctly in the ledger via the sources' own original `voucher_issued` debits". Since ADR-024's 2026-10-12 addendum (PRD §16 item 79), only an admin-issued source has that debit. A compensation source never had a cost to book, so it has none. Decision 5's conclusion is unchanged: a merge writes no ledger row, and the platform ledger stays right for any mix of sources.
+
+### 2026-11-07 addendum — a voucher in use can't be closed, and customer credit never gains an expiry (PRD §16 item 168; revises decision 4)
+
+**Status:** Accepted 2026-11-07. Grilled with the founder (Q1 to Q5), code-traced, stress-tested by two read-only forks whose top findings were re-read or re-run. Item 163's seam D.
+
+**Context.** A redemption stays `reserved` from checkout until the order delivers or gives the value back; one on production stayed open 489 minutes. `merge()` only moved `remaining`, so a reserved amount stayed behind on the source. `restore()` then added it to a voucher nobody can spend, and `balanceAsOf()` reads a merged-away or revoked voucher as 0, so the books lost it too. Proven with a RM100 voucher and RM40 reserved: after a merge or a revoke, the customer has no RM40 and neither Cash Position nor breakage shows it. Nothing on production was hit: 12 vouchers, 0 reserved, one merge, 0 revokes, none with an expiry.
+
+**Decisions.**
+
+1. **A voucher an order is using can't be merged or revoked.** `merge()` and `revoke()` are the only two closers, so one check in `VoucherService` covers both, and the refusal names the order and the voucher. The admin waits, or resolves the order. An order may not be paid yet, so the message doesn't say "settle".
+2. **The check is a plain read taken after the voucher lock, never a locking read.** `restore()` locks the redemption and then the voucher, so a locking read deadlocks with it (proven: `ERROR 1213` with `restore` the victim, on MySQL with replica tables). Plain is enough: every reservation takes the voucher lock, so it committed before ours, and this is the transaction's first plain read, so its snapshot starts after that lock. A stale `reserved` can only refuse, the safe side.
+3. **Refusing a revoke has a cost, accepted (founder, Q4).** The unreserved balance stays spendable until the order closes, so a voucher can't be stopped on the spot. Production has never revoked one. A "frozen" status was rejected: a new state on every voucher path for a case that hasn't happened.
+4. **What each tool is for.**
+
+   | Need | Tool | Expiry |
+   | --- | --- | --- |
+   | The customer's own money (a failed order) | Compensation voucher | Never |
+   | A gift to a named person (giveaway, goodwill) | Admin-issued voucher (Path A) | Optional |
+   | A public discount | Campaign, [ADR-118](./ADR-118-marketing-campaigns.md) | The code's `ends_at` |
+
+   Expiry stays on vouchers for gifts. A Campaign can't replace it: it is percent only, new customers only, and for the primary brand only.
+5. **Revises decision 4: if any source has no expiry, the merged voucher can't have one.** Settlement never sets an expiry, so a compensation voucher has none, and this rule keeps it that way through any chain of merges, with no new column. The admin can still date a merge of vouchers that all expire. The panel hides "Valid until" when the rule applies, and the server refuses it regardless.
+6. **ADR-127's rule on expiry stands.** A restore onto an expired voucher is breakage of the restore month. Under decision 5 only gift value can expire, so this never takes a customer's own money. A cash share of the same order still comes back as a new voucher.
+7. **The `/admin/vouchers` stats count a merge once.** A merge target re-represents its sources, so Total Issued leaves it out. Total Used reads redemptions, net of what was restored, because a merge zeroes a source without spending it. Both had been overstated by RM460.42 since the first merge. Display only: the ledger and Cash Position read neither.
+
+**Rejected.**
+- *Restore follows the merge to its target.* The target may be spent, expired or revoked by then, which is more cases, not fewer.
+- *Issue a new voucher at restore.* It collides with what "compensated" means, and with the admin-issued expense line.
+- *Remove expiry from vouchers and move giveaways to Campaign.* It would rebuild a fixed-RM, named-person voucher inside Campaign, which ADR-118 keeps separate on purpose.
+
+**Consequence to track.**
+- Re-check at release that no reservation sits on a merged or revoked voucher: this rule stops new ones, it doesn't repair old ones. 0 on 2026-11-06.
+- A reservation whose payment lookup never answers keeps its voucher open with no admin exit. Correct, since that order could still be paid, and the value is held today regardless. 0 pending on 2026-11-06.
+- A promo on OhahaStore, or for existing customers, needs an ADR-118 addendum first (PRD §16 item 171). OhahaStore is the busier brand: 51 paid retail orders against PekanGame's 27 on 2026-11-06.
+
