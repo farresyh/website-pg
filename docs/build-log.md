@@ -1423,3 +1423,30 @@ Before a repoint, the five Gamevion groups must be linked to their games in Prod
   - 165 added: a KOL paid as a share of profit isn't supported, and the interim way to pay one is "Not a KOL fee".
 - `backend/AGENTS.md` (Gamevion's state, the replay-safe suppliers, the smoke test) and `foundation-security.md` (Gamevion's quirks) corrected.
 - ADR-031 and ADR-051 banners and index rows now note what ADR-137's addendum revised.
+
+## 2026-11-06 — Item 163 seam audit reported; ADR-138 Accepted (design only, no code)
+
+**#709 merged to `staging`** (`92acb151`), on the founder's go-ahead. #708 is still unreleased, so on production deleting a game can still cascade to used packages.
+
+**Seam audit (item 163).** Three read-only forks, one per layer (order and delivery, stored value, pricing and catalog). Claude re-checked the top findings in code and read production; no test was run. Production: 104 orders, 3 combos, none in `needs_review`, no active combo with an off component, no affected voucher.
+- **A.** A price swing switches a component off but leaves its combo on sale.
+- **B.** A Paid after a Failed on a voucher order has no exit. Downgraded, see below.
+- **C.** Combo legs: reference not durable before the supplier call, `NotStarted` rolled up as partial, combo decided two ways.
+- **D.** Voucher merge ignores reserved redemptions; a restore onto a merged or revoked voucher is stranded.
+- **E.** Approve writes a stale frozen price.
+- **F.** New packages start on sale with no check.
+- **G.** An API supplier off keeps selling but stops syncing.
+- Six small items are PRD item 170. Ledger writes, wallet debits, withdrawals, the selling price formula and webhook-versus-poll finalization came back clean.
+
+**B was overstated.** The founder asked whether it can really happen. CHIP's spec says `cancelled` and `expired` can't be paid, and `single_attempt` ends a purchase after one failed attempt. Production: 19 failed orders, none with a voucher, none in the 41 settlement rows; CHIP reads 8 `cancelled`, 6 `expired`, and 5 lookups gave 404 (cause unknown); no "Paid after a failed" in logs back to 2026-10-18. The one open path is a customer already at the bank when a purchase is cut off, which CHIP's documents don't cover. ADR-024 decision 10's rule stands: add a guard if it ever happens once. The founder may ask CHIP.
+
+**Grill 1, ADR-138.** A, E, F and G are one problem: nothing owned switching off or creating a package. The founder challenged manual price approval (a rise can't lose money), which led to the direction rule. Production history backed it: package 412 fell 49.5% to RM4.79 for 3.5 hours, passing the 50% guard, while package 1538 sat off 7 days at a correct price.
+
+**The stress test changed the design.** Three forks broke the first version:
+- Removing the guard would have let one mistyped transfer reprice the catalog after 24 hours, worse than today, because ADR-134 decision 16 relied on it. Hence the breaker.
+- An open row could stick when the price returned to exactly the held cost, then let a later false drop through at once.
+- The hold now records the highest price seen, and Approve's live-price refusal was dropped as useless.
+
+Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 30% or more reversed within 24 hours, and the 2026-11-01 landed-cost run moved 1,399 packages at a median of 6.76%.
+
+**Next:** build ADR-138 (item 166), then Grill 2 (item 167), Grill 3 (item 168), `max_price` (item 169).

@@ -1,6 +1,6 @@
 # ADR-025: Supplier price-sync sanity guard — floor + swing checks on Gamevion's incoming price (built 2026-08-21)
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-06):** In force; decisions 2–5 and 7 revised by [ADR-138](./ADR-138-package-sale-lifecycle.md) (a rise applies at once, a drop of 30% or more is held and keeps selling, no swing switches a package off, Dismiss removed). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-08-14 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
 
@@ -43,3 +43,7 @@ Two follow-up questions surfaced re-reading the original design: (1) does the sw
 Question 1 resolved by fact, not by decision — a targeted code check (not assumed) confirmed `Package.cost_price` has **no admin-facing write path at all**: `PackageController::update()` only touches `name`, `updateMarkup()` only accepts `markup_percent` and recomputes `reseller_cost_price` from the *existing* `cost_price` without ever letting it be set directly, and `updateStatus()`/`destroy()` don't touch pricing. The only two writers of `Package.cost_price` in the entire codebase are `PackagePriceSyncService::propagatePrice()` (this ADR's own sync path) and `SupplierProductController::promote()` (first-time creation from a `SupplierProduct`). So the swing check's "old" value is, by construction, always a previously-synced-or-promoted supplier price — never an admin override — and the false-positive/false-negative risk this question raised cannot occur. No design change needed; this is recorded here so a future reader doesn't re-raise the same question without checking first.
 
 Question 2 — decided: **keep the threshold as a flat percentage, no absolute-sen floor added.** Same reasoning this ADR already applies to the 50% number itself (decision 3's "first cut, revisit once real data exists") extends to the threshold's *shape*: adding a second config value (a minimum-delta floor) now would be tuning against a guessed risk, not a measured one, before a single real sync cycle has run. If cheap-package noise turns out to be a real, observed problem once `pending_price_changes` has real rows to look at, revisit then — not preemptively.
+
+### 2026-11-06 addendum — the swing rule goes by direction
+
+[ADR-138](./ADR-138-package-sale-lifecycle.md) revises decisions 2, 3, 4, 5 and 7. A rise applies at once. A drop of 30% or more is held at the old price and keeps selling, then applies after 24 hours. A swing no longer switches a package off, `price_anomaly` is retired, and Dismiss is removed. A mass change breaker replaces this guard as the catch for catalog-wide errors. Decision 1 (the floor check) stands.

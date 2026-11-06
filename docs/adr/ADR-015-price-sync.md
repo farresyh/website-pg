@@ -1,6 +1,6 @@
 # ADR-015: Price Sync — cost propagation + deactivation detection (built 2026-07-26)
 
-> **Standing (2026-11-05):** In force; decision 3 (manual-only reactivation) reversed by ADR-100; a package is switched on only through one seam with live blockers (2026-11-05 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-06):** In force; decision 3 (manual-only reactivation) reversed by ADR-100; a package is switched on only through one seam with live blockers (2026-11-05 addendum); ownership of switch-off and creation moved to [ADR-138](./ADR-138-package-sale-lifecycle.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-07-26 (grilled with the founder one decision at a time, using the `codebase-design`/`domain-modeling` vocabulary, before any code — explicit founder instruction: this session is audit + research + plan only, build happens next session)
 
@@ -80,3 +80,7 @@ Prod, 2026-11-05: none of the 1,210 active API packages is affected. Inactive pa
 **Rationale.** A single stored reason cannot hold two blockers, and nine writers each re-deciding "is it safe now" drift apart. Live blockers need no migration and cannot go stale. Mapping each blocker to an existing reason reuses the paths that already bring packages back (Pending Reactivation, the supplier's Reactivate, the unfunded sync, the combo cascade), so no new path is added.
 
 **Consequence to track.** A new place that switches packages on must call the seam; the invariant test enforces it. A package created active (manual, combo, Promote) is creation, not reactivation, and is out of scope.
+
+### 2026-11-06 addendum — switch-off and creation join the seam
+
+The 2026-11-05 addendum put package creation out of scope. [ADR-138](./ADR-138-package-sale-lifecycle.md) reverses that: a new package is created off and passes through `activate()`, and `PackageActivation` now owns switching off too, with the combo cascade inside it.

@@ -1,6 +1,6 @@
 # ADR-137: Gamevion v2 API — rewrite the adapter for `gamevion.cloud`, async delivery with a signed webhook and same-reference replay
 
-> **Standing (2026-11-05):** Accepted (2026-11-05 addendum: decisions 13–24 after the grill, money code-trace and stress test; the PR 2 build addendum corrects decisions 17 and 19; the last addendum revisits decision 16: games picker, per-game failure, one sync job per supplier). It replaces the API contract of [ADR-040](./ADR-040-gamevion-sandbox-integration.md) (old `api.gamevion.com`, sandbox header, `telp`, `callback_url`) and, for Gamevion only, the `duplicate_reference` → NeedsReview routing of [ADR-026](./ADR-026-delivery-side-reconciliation-ord-10.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record.
+> **Standing (2026-11-06):** Accepted (2026-11-05 addendum: decisions 13–24 after the grill, money code-trace and stress test; the PR 2 build addendum corrects decisions 17 and 19; the last addendum revisits decision 16: games picker, per-game failure, one sync job per supplier). It replaces the API contract of [ADR-040](./ADR-040-gamevion-sandbox-integration.md) (old `api.gamevion.com`, sandbox header, `telp`, `callback_url`) and, for Gamevion only, the `duplicate_reference` → NeedsReview routing of [ADR-026](./ADR-026-delivery-side-reconciliation-ord-10.md); decision 21 tightened by [ADR-138](./ADR-138-package-sale-lifecycle.md) (repoint refuses an inactive product or an open order). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record.
 
 **Status:** Proposed, 2026-11-04. Decisions 1–4 were made with the founder (in Malay) on 2026-11-04. Decisions 5–12 are Claude's draft from the vendor's API document and a first code-trace; they go through the technical grill and the money code-trace (AGENTS.md lifecycle step 2) before Accepted. The open questions at the end are settled in that grill.
 
@@ -194,3 +194,7 @@ No new table, worker or supervisor.
 **Consequence to track.**
 - Ceiling: about 130 chosen games fit one 300 s job (about 2.2 s a game). Near 120, split the Gamevion catalog over more than one job.
 - If a skipped game's packages flap often, revisit decision 2 with a grace period before they go off.
+
+### 2026-11-06 addendum — repoint guards
+
+[ADR-138](./ADR-138-package-sale-lifecycle.md) decisions 18–19 add to decision 21: repoint refuses a product that isn't active, and refuses while an order on the package is paid or awaiting payment and not yet delivered. Decision 4 is unchanged and isn't enforced by code, so Promote before the funded test stays the founder's rule.
