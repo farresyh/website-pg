@@ -1363,3 +1363,169 @@ Every `partial` price-sync run in the last 7 days was Gamevion: the old API timi
 - The error state shows "Gamevion did not return its games: …".
 
 **Gotcha.** A checkbox inside `<summary>` doesn't toggle the `<details>` (the input is the activation target), so no `stopPropagation` was needed. Re-sorting families by live tick state made a ticked family jump under the cursor; the order now comes from the list the form opened with.
+
+## 2026-11-05 — Deleting a game can no longer remove used packages (ADR-119 2026-11-05 addendum)
+
+**Found** in the founder's stress test of catalog management (read-only on prod):
+- `GameController::destroy()` was a plain `$game->delete()`.
+- The schema then cascaded to every package of the game (`packages.game_id` CASCADE), past ADR-119's guard in `PackageController::destroy()`.
+- It nulled the orders' `game_id` and `package_id` (SET NULL) and deleted price, deactivation and repoint history.
+- Prod's foreign keys match the migrations. 10 of 40 games have orders (102 orders).
+- Order #7 (a combo, 2026-09-15) already has no `package_id`: its package was deleted before the 2026-10-02 guard.
+
+**Built** on `fix/game-delete-integrity`:
+- Migration `2026_11_10_120000_restrict_deleting_used_games_and_packages`: `packages.game_id`, `orders.package_id` and `orders.game_id` → RESTRICT.
+  - On sqlite, the llm_report_* views are dropped and re-created from their stored SQL around the table rebuild, as `2026_10_08_140000` does.
+  - On MySQL (docker), the three rules read RESTRICT afterwards.
+- `GameController::destroy()` refuses with "This game has order history and cannot be deleted. Deactivate it instead." when an order points at the game or one of its packages.
+  - Otherwise, in one transaction it deletes combos, then the other packages, then the game. Product Manager groups are unlinked.
+  - A racing order hits the restrict, rolls back, and gets the same 422.
+- Three tests that deleted a used game or package on purpose now use the legacy null-link shape, or assert the refusal.
+
+**Tests.** 4 new (3 controller, 1 database-level package delete). The 4 deletion tests also pass on MySQL. Full suite: 3,704 green.
+
+**Browser check** (founder's dev servers, local DB): Arena Breakout (3 orders) → Edit Game → Delete Game answered 422 and showed the message in the modal. Its 4 packages are still there.
+
+**Gotcha.** The MySQL test run first failed with `llm_report_orders already exists`: views were left in docker `kerox` by an earlier killed run (`backend/AGENTS.md` gotcha 8). Dropping them fixed it.
+
+## 2026-11-05 — Released #707: Gamevion sync scope fix live; first sync clean; #708 merged to staging
+
+**Released.** #707 (`staging` → `main`, #706) merged 13:40 UTC (`ba9a2c6f`), on the founder's go-ahead. CI and the `deploy` job were green, and the box runs release `82204655`.
+- Migration `2026_11_09_120000_seed_gamevion_games_to_sync` ran (batch 66). `api_config.games` holds 74 codes; the `gvk_` key was untouched.
+- `queue:prune-batches --hours=168` is in the schedule (daily). `/up` and `/api/health` answer 200.
+
+**First run after it** (3293, started by the founder at 14:16 UTC):
+- `success`, with `synced_suppliers` [gamevion, digiflazz] and no failed supplier.
+- Batch `price-sync-run-3293`: 2 jobs, 0 failed.
+- Gamevion synced 74 games and 1,541 products in about 2 min 40 s. Digiflazz followed in 17 s.
+- Gamevion wrote one request-log row (the game list); none of its games failed.
+- 116 old unpromoted Gamevion rows were pruned; the 71 old package references are kept.
+- The 11 packages deactivated in the run are all Digiflazz's (its usual flapping). Gamevion still has 0 packages on.
+
+**Match list for the 71 old packages** (read-only on prod, given to the founder):
+- MLBB Malaysia (38) → `mlbb_sgmy`: 33 diamond denominations; Weekly Diamond Pass → `Weekly Pass`; First Topup 150+150 and 500+500 → the same First Recharge items. First Topup 50+50 and 250+250 match only `First Recharge 50 + 5` / `250 + 25`; to be checked on Gamevion or deleted.
+- Free Fire Malaysia (11) → `freefire_mysg`.
+- Honor of Kings (10) → `hok` (`800 Tokens` … `8000 Tokens` by name).
+- PUBG Mobile Global (6) → `pubgm_global` (60 UC RM3.66 → RM4.00).
+- Valorant Malaysia (6) → `valorant_my`.
+
+Before a repoint, the five Gamevion groups must be linked to their games in Product Manager.
+
+**#708** (a used game or package can't be deleted by any path, ADR-119 2026-11-05 addendum) merged to `staging` after green CI (`7ea13ddb`). Not released.
+
+**Docs audit** (`docs/cleanup-2026-11-05`), each fact re-checked against prod read-only:
+- PRD §14 headline: Gamevion's state, storefront counts (67 paid from 28 emails; OhahaStore 39), the second KOL campaign ("Mik4ca", code `4ARMY`, 31 clicks across both codes, no redemption), the latest release (#707) and what is on `staging` (#708).
+- PRD §6 Gamevion row and ADAPT-4's example now describe the v2 API.
+- §15 "not released" labels for #705 and #707 corrected, and `.batalbaki` (live since #660) no longer says "on `staging`".
+- §16:
+  - item 162 is now only the founder's steps (moved to group C);
+  - 163 is next (moved to A);
+  - 165 added: a KOL paid as a share of profit isn't supported, and the interim way to pay one is "Not a KOL fee".
+- `backend/AGENTS.md` (Gamevion's state, the replay-safe suppliers, the smoke test) and `foundation-security.md` (Gamevion's quirks) corrected.
+- ADR-031 and ADR-051 banners and index rows now note what ADR-137's addendum revised.
+
+## 2026-11-06 — Item 163 seam audit reported; ADR-138 Accepted (design only, no code)
+
+**#709 merged to `staging`** (`92acb151`), on the founder's go-ahead. #708 is still unreleased, so on production deleting a game can still cascade to used packages.
+
+**Seam audit (item 163).** Three read-only forks, one per layer (order and delivery, stored value, pricing and catalog). Claude re-checked the top findings in code and read production; no test was run. Production: 104 orders, 3 combos, none in `needs_review`, no active combo with an off component, no affected voucher.
+- **A.** A price swing switches a component off but leaves its combo on sale.
+- **B.** A Paid after a Failed on a voucher order has no exit. Downgraded, see below.
+- **C.** Combo legs: reference not durable before the supplier call, `NotStarted` rolled up as partial, combo decided two ways.
+- **D.** Voucher merge ignores reserved redemptions; a restore onto a merged or revoked voucher is stranded.
+- **E.** Approve writes a stale frozen price.
+- **F.** New packages start on sale with no check.
+- **G.** An API supplier off keeps selling but stops syncing.
+- Six small items are PRD item 170. Ledger writes, wallet debits, withdrawals, the selling price formula and webhook-versus-poll finalization came back clean.
+
+**B was overstated.** The founder asked whether it can really happen. CHIP's spec says `cancelled` and `expired` can't be paid, and `single_attempt` ends a purchase after one failed attempt. Production: 19 failed orders, none with a voucher, none in the 41 settlement rows; CHIP reads 8 `cancelled`, 6 `expired`, and 5 lookups gave 404 (cause unknown); no "Paid after a failed" in logs back to 2026-10-18. The one open path is a customer already at the bank when a purchase is cut off, which CHIP's documents don't cover. ADR-024 decision 10's rule stands: add a guard if it ever happens once. The founder may ask CHIP.
+
+**Grill 1, ADR-138.** A, E, F and G are one problem: nothing owned switching off or creating a package. The founder challenged manual price approval (a rise can't lose money), which led to the direction rule. Production history backed it: package 412 fell 49.5% to RM4.79 for 3.5 hours, passing the 50% guard, while package 1538 sat off 7 days at a correct price.
+
+**The stress test changed the design.** Three forks broke the first version:
+- Removing the guard would have let one mistyped transfer reprice the catalog after 24 hours, worse than today, because ADR-134 decision 16 relied on it. Hence the breaker.
+- An open row could stick when the price returned to exactly the held cost, then let a later false drop through at once.
+- The hold now records the highest price seen, and Approve's live-price refusal was dropped as useless.
+
+Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 30% or more reversed within 24 hours, and the 2026-11-01 landed-cost run moved 1,399 packages at a median of 6.76%.
+
+**Next:** build ADR-138 (item 166), then Grill 2 (item 167), Grill 3 (item 168), `max_price` (item 169).
+
+## 2026-11-06 — Item 166 PR 1: one door for switching a package off (ADR-138)
+
+**Why.** Seam A: a price swing switched a component off and left its combo on sale at the old cost, with no price cap sent to the supplier. Every off path also recorded something different.
+
+**Built.**
+- `PackageActivation::deactivate()` and `deactivateMany()` write the reason, the `DeactivationLog` row and the combo cascade in one transaction. The bulk form stays a few statements.
+- The cascade moved out of `ComboPricingService`, which already depended on `PackageActivation`. `cascadeReactivate` stays there because it recomputes.
+- Sync's two off paths, `flagPriceAnomaly`, `SupplierPackageStatusService::deactivate()` and the admin toggle all go through the door.
+- An admin switch-off now stores reason `admin`, a time and a log row, so it reaches Dismissed.
+- Migration `2026_11_11_120000` gives the same reason to packages off with none, leaving the Joki pool out. Sale state doesn't change. On prod 2026-11-06 that selected 85 Digiflazz rows, with 8 pool rows left out.
+- The Dismissed list filters on `is_active = false`; a combo row reads "Combo" (it has no supplier ref).
+
+**Tests.** `PackageSwitchOffTest`: the seam, a failed write changing nothing, the bulk form, swing to combo off to Approve back repriced, the backfill, every off path leaving no combo on sale, and a static check for writes outside the seam. Tests of the old cascade methods moved there.
+
+**Gotcha.** `Package::create()` without `is_active` leaves it null in memory (the default lives in the database), so `deactivate()` sees it as off and returns false. Three combo tests hit this. PR 3's creation change has to pass `is_active` explicitly, as ADR-138 decision 16 says.
+
+## 2026-11-06 — Item 166 PR 2: price swing rules by direction and the mass change breaker (ADR-138)
+
+**#711 (PR 1) merged to `staging`** (`884103ff`) after green CI. Not released, by the founder's choice, and neither is #708. The founder Approved package 412 first: read-only on prod it shows approved, on sale, cost RM9.49, with no open row and no `price_anomaly` package left.
+
+**Built.**
+- `evaluatePriceChange()` goes by direction. A rise applies at once. A drop of 30% or more opens one row and the package keeps selling at the old cost. The row keeps the highest price seen and applies it after 24 hours as `auto_applied`.
+- A price back in range, a rise, or a product not seen active closes the row as `superseded`. The check runs before the `price_sen !== cost_price` gate, which would skip a price back at exactly the held cost.
+- `isMassChange()` counts a supplier's swings before the loop. Over the limit, both directions are held, auto-apply stops, and one email goes out per Malaysia day.
+- Row work runs under the package lock on a freshly read package, and `approveHeld()` shares it.
+- `PriceSwingPolicy` reads three new per-supplier fields in the Edit modal.
+- Removed: the pending-row blocker, Dismiss for price changes, `price_swing_threshold_percent`. A `closeRow()` branch brings back any package a swing flagged before release; delete it once production shows none.
+- Price Sync Center: the section is now "Held Price Changes", with a signed percent and "Approve all" per supplier behind a confirm dialog.
+
+**Tests.** `PriceSwingRulesTest` (21). Tests pinning the old rule were deleted or moved to a drop case, including `PendingPriceChangeConcurrencyTest`.
+
+**Verified:** `php artisan test` 3,723 of 3,723; `PendingPriceChangeConcurrencyTest` on local MySQL; admin `tsc` and `eslint` clean on the touched files. In a real browser on the local admin, with temporary rows removed afterwards: the section, signed percents, the confirm dialog and Approve all changing the rows and costs.
+
+**Gotchas hit.**
+- The browser check caught what the API tests couldn't: the first `approveAllPendingPriceChanges` passed `JSON.stringify(...)` to `apiFetch`, which stringifies again, so the server answered "supplier id field is required".
+- Local Approve all then answered 500 "cache store does not support tagging" (`backend/AGENTS.md` gotcha 5: local cache is `database`, prod is `redis`, read-only checked), after the rows had applied. That showed the list could go stale on a part failure, so the page now refreshes in `finally`. The final cache forget therefore hasn't run in a browser on Redis; it's the same call single Approve makes.
+
+## 2026-11-06 — Item 166 PR 3: new packages, Promote and repoint (ADR-138)
+
+**#712 (PR 2) merged to `staging`** (`72faf935`) after green CI. Neither PR 1, PR 2 nor #708 is released, by the founder's choice.
+
+**Why.** Seam F: a new package started on sale with no check, Promote trusted the `game_id` the UI sent, and repoint could move a package with orders still to be sent.
+
+**Built.**
+- `PackageActivation::activateNew()`: Promote, `storeCombo` and `storeManual` create off, then pass through `activate()`. No blocker means on sale, so the normal flow is unchanged. Joki's creation paths stay outside.
+- A combo activates after attach and recompute, inside the transaction. One that stays off is still priced.
+- Each response carries `notice`, and the admin shows "Added, but not on sale" with the reason.
+- Promote takes the game from the product and refuses a product with none. The admin no longer sends `game_id`.
+- Repoint refuses a product that isn't active, and an order paid or awaiting payment that hasn't been sent, including a combo order holding the package. Failed payments and finished deliveries don't block.
+
+**Tests.** `PackageCreationTest` (9) and four new repoint tests. Promote's old refusal tests now give the product a game, or they would pass on the missing game instead of what they name.
+
+**Verified:** `php artisan test` 3,735 of 3,735; admin `tsc` and `eslint` clean on the touched files. In a real browser on a built admin, with temporary rows removed afterwards: Promote under a switched-off supplier (package off, `supplier_issue`, warning shown, no `game_id` sent), Promote with no blocker, and a combo whose component went off while the modal was open. The manual warning was not seen in a browser: the modal lists active suppliers only, so it is covered by the backend test.
+
+**Gotchas hit.**
+- `backend/AGENTS.md` gotcha 5 again: the first browser run looked like a missing toast, but the cache forget had answered 500 after the package was saved. `CACHE_STORE=array php artisan serve --no-reload` avoids it without Redis.
+- `:3000` was held by an unrelated process, so the admin ran on `:3010` with Playwright routing `localhost:3000` to it, which keeps the session cookie valid. Chromium then needs `--disable-features=LocalNetworkAccessChecks`.
+- A test helper named `component()` is a fatal error: Laravel's test case already has one.
+
+## 2026-11-06 — Item 166 PR 4: the supplier switch (ADR-138)
+
+**#713 (PR 3) merged to `staging`** (`66a77f9b`) after green CI, on the founder's go-ahead.
+
+**Why.** Seam G: an API supplier switched off kept selling but stopped syncing, so its packages sold at costs that grew older. On prod 2026-11-06 DigiFlazz has 1,195 packages on sale, so this switch now stops most of the store, which is why it asks first.
+
+**Built.**
+- Switching an API supplier off writes the flag first, closes its open price rows, then takes its packages and combos off through the seam as `supplier_issue`.
+- Switching it on restores nothing. A manual supplier stays automatic both ways (ADR-125 decision 64).
+- Reactivate is refused until the supplier has synced within its limit (default 90 minutes).
+- `/middleware/suppliers`: Deactivate has a confirm dialog with the counts, and both dialogs say how packages come back.
+- The stale limit moved from `CheckPriceSyncStalenessCommand` to `Supplier::priceSyncStaleMinutes()`, so the email and Reactivate read one setting.
+
+**Tests.** `SupplierSwitchTest` (9). `PackageActivationTest`'s supplier now has a recent sync.
+
+**Verified:** `php artisan test` 3,744 of 3,744; admin `tsc` and `eslint` clean on the touched files. In a real browser on a built admin, with temporary rows removed afterwards and the database read at each step: the dialog's counts, off (package `supplier_issue`, combo `combo_component_deactivated`), on (both stay off), Reactivate refused with a sync five hours old, then allowed after a fresh one (both on). The count line's wording was changed after that run, and only `tsc` and `eslint` saw the new text.
+
+**Open.** A single package switched on after a long stop has no freshness check (ADR-138 PR 4 build notes). For the founder to decide.
+

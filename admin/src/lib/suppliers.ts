@@ -42,6 +42,11 @@ export interface Supplier {
     supplier_products: number;
     orders: number;
   };
+  /** ADR-138 decision 20: what switching this supplier off takes off sale. */
+  on_sale: {
+    packages: number;
+    combos: number;
+  };
 }
 
 /**
@@ -93,6 +98,10 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     // ADR-115 2026-11-05 addendum: the buffer's lead time and margin; Low-balance Floor above is its floor.
     { key: "topup_lead_days", label: "Top-up Lead Time (days)", type: "text", placeholder: "2 (blank = 2; Thu–Sun always cover through Monday)" },
     { key: "buffer_margin_pct", label: "Buffer Margin %", type: "text", placeholder: "0 (blank = 0; added on top of the busiest window)" },
+    // ADR-138 decision 15: a drop this big is held at the old cost until it has stayed low for the hold time; more packages than the limit swinging in one run is treated as bad data.
+    { key: "price_drop_hold_pct", label: "Price Drop Hold %", type: "text", placeholder: "30 (blank = 30)" },
+    { key: "price_hold_hours", label: "Price Hold Time (hours)", type: "text", placeholder: "24 (blank = 24)" },
+    { key: "mass_swing_limit", label: "Mass Swing Limit (packages)", type: "text", placeholder: "10 (blank = 10)" },
   ],
   digiflazz: [
     { key: "base_url", label: "Base URL", type: "text", placeholder: "https://api.digiflazz.com (no trailing slash)" },
@@ -123,6 +132,10 @@ export const SUPPLIER_FIELD_DEFINITIONS: Record<string, SupplierField[]> = {
     // ADR-115 2026-11-05 addendum: the buffer's lead time and margin; Low-balance Floor above is its floor.
     { key: "topup_lead_days", label: "Top-up Lead Time (days)", type: "text", placeholder: "2 (blank = 2; Thu–Sun always cover through Monday)" },
     { key: "buffer_margin_pct", label: "Buffer Margin %", type: "text", placeholder: "0 (blank = 0; added on top of the busiest window)" },
+    // ADR-138 decision 15: a drop this big is held at the old cost until it has stayed low for the hold time; more packages than the limit swinging in one run is treated as bad data.
+    { key: "price_drop_hold_pct", label: "Price Drop Hold %", type: "text", placeholder: "30 (blank = 30)" },
+    { key: "price_hold_hours", label: "Price Hold Time (hours)", type: "text", placeholder: "24 (blank = 24)" },
+    { key: "mass_swing_limit", label: "Mass Swing Limit (packages)", type: "text", placeholder: "10 (blank = 10)" },
   ],
 };
 

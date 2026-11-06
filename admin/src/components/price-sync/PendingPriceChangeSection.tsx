@@ -1,15 +1,26 @@
 "use client";
 
 /**
- * ADR-025 decision #8: sixth Price Sync Center section — a supplier
- * price swing large enough to cross the configured threshold, blocked
- * from applying until an admin Approves (recomputes affiliate price
- * from the package's live markup, decision #6) or Dismisses (reverts
- * to the old, already-proven-safe price, decision #7) it here.
- * Extracted from page.tsx to keep that file's own size in check, same
- * reasoning SyncDetailsModal was already split out for.
+ * ADR-138 decisions 12 and 14: held supplier prices. The package keeps
+ * selling at its current cost; a held drop applies by itself once it has
+ * stayed low, and Approve applies it now. "Approve all" is the way out of a
+ * mass change that turns out to be real.
  */
 
+import { useState } from "react";
+import {
+  Dialog,
+  DialogPortal,
+  DialogBackdrop,
+  DialogPositioner,
+  DialogPopup,
+  DialogHeader,
+  DialogHeaderActions,
+  DialogClose,
+  DialogTitle,
+  DialogContent,
+} from "@/components/ui/dialog";
+import { Times as CloseIcon } from "@primeicons/react/times";
 import {
   DataTable,
   DataTableTableContainer,
@@ -30,20 +41,54 @@ function formatRm(sen: number): string {
 
 function swingPercent(oldPrice: number, proposedPrice: number): string {
   if (oldPrice === 0) return "—";
-  return `${Math.round((Math.abs(proposedPrice - oldPrice) / oldPrice) * 100)}%`;
+  const percent = Math.round(((proposedPrice - oldPrice) / oldPrice) * 100);
+  return `${percent > 0 ? "+" : ""}${percent}%`;
+}
+
+function bySupplier(items: PendingPriceChange[]) {
+  const counts = new Map<number, { name: string; count: number }>();
+  for (const item of items) {
+    const supplier = item.package.supplier;
+    if (!supplier) continue;
+    counts.set(supplier.id, { name: supplier.name, count: (counts.get(supplier.id)?.count ?? 0) + 1 });
+  }
+  return [...counts].map(([id, value]) => ({ id, ...value }));
 }
 
 interface Props {
   items: PendingPriceChange[] | null;
   busyId: number | null;
   onApprove: (id: number) => void;
-  onDismiss: (id: number) => void;
+  onApproveAll: (supplierId: number) => Promise<void>;
 }
 
-export default function PendingPriceChangeSection({ items, busyId, onApprove, onDismiss }: Props) {
+export default function PendingPriceChangeSection({ items, busyId, onApprove, onApproveAll }: Props) {
+  const [confirming, setConfirming] = useState<{ id: number; name: string; count: number } | null>(null);
+  const [approvingAll, setApprovingAll] = useState(false);
+
+  async function approveAll() {
+    if (!confirming) return;
+    setApprovingAll(true);
+    await onApproveAll(confirming.id);
+    setApprovingAll(false);
+    setConfirming(null); // a failure shows in the page's own error banner
+  }
+
   return (
     <>
-      <h2 className="mb-3 text-base font-semibold text-gray-800 dark:text-white/90">Pending Price Change</h2>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Held Price Changes</h2>
+          <p className="text-theme-xs text-ink-subtle">These packages keep selling at their current cost. A held drop applies by itself once it stays low.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {bySupplier(items ?? []).map((supplier) => (
+            <Button key={supplier.id} size="small" variant="outlined" onClick={() => setConfirming(supplier)}>
+              Approve all {supplier.name} ({supplier.count})
+            </Button>
+          ))}
+        </div>
+      </div>
       <div className="mb-8 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
           <DataTable data={items ?? []} dataKey="id">
@@ -53,8 +98,8 @@ export default function PendingPriceChangeSection({ items, busyId, onApprove, on
                   <DataTableTHeadRow>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Old Cost</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Proposed Cost</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Current Cost</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Held Price</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Swing</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
@@ -77,14 +122,9 @@ export default function PendingPriceChangeSection({ items, busyId, onApprove, on
                           {swingPercent(p.old_cost_price, p.proposed_cost_price)}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <div className="flex gap-2">
-                            <Button size="small" disabled={busyId === p.id} onClick={() => onApprove(p.id)}>
-                              Approve
-                            </Button>
-                            <Button size="small" variant="outlined" disabled={busyId === p.id} onClick={() => onDismiss(p.id)}>
-                              Dismiss
-                            </Button>
-                          </div>
+                          <Button size="small" disabled={busyId === p.id} onClick={() => onApprove(p.id)}>
+                            Approve
+                          </Button>
                         </DataTableCell>
                       </DataTableRow>
                     );
@@ -95,7 +135,7 @@ export default function PendingPriceChangeSection({ items, busyId, onApprove, on
           </DataTable>
           {items?.length === 0 && (
             <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
-              Nothing pending — no supplier price swing has crossed the review threshold.
+              Nothing held. No supplier price is waiting to apply.
             </p>
           )}
           {items === null && (
@@ -103,6 +143,32 @@ export default function PendingPriceChangeSection({ items, busyId, onApprove, on
           )}
         </div>
       </div>
+      <Dialog open={confirming !== null} onOpenChange={(e) => { if (!e.value) setConfirming(null); }}>
+        <DialogPortal>
+          <DialogBackdrop />
+          <DialogPositioner>
+            <DialogPopup className="w-full max-w-md">
+              <DialogHeader>
+                <DialogTitle>Approve all {confirming?.name} prices?</DialogTitle>
+                <DialogHeaderActions>
+                  <DialogClose aria-label="Close">
+                    <CloseIcon className="h-5 w-5" />
+                  </DialogClose>
+                </DialogHeaderActions>
+              </DialogHeader>
+              <DialogContent>
+                <p className="mb-4 text-sm text-gray-600 dark:text-gray-300">
+                  {confirming?.count} packages will change to their held price now. If many moved at once, check the latest deposit first: a mistyped transfer moves every price.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outlined" disabled={approvingAll} onClick={() => setConfirming(null)}>Cancel</Button>
+                  <Button disabled={approvingAll} onClick={approveAll}>{approvingAll ? "Approving…" : "Approve all"}</Button>
+                </div>
+              </DialogContent>
+            </DialogPopup>
+          </DialogPositioner>
+        </DialogPortal>
+      </Dialog>
     </>
   );
 }

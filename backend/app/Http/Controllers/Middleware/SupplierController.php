@@ -97,6 +97,7 @@ class SupplierController extends Controller
             'is_api_backed' => $supplier->isApiBacked(),
             'display_balance' => $supplier->displayBalance(),
             'reference_counts' => $this->referenceCounts($supplier),
+            'on_sale' => $this->onSaleCounts($supplier),
         ]);
     }
 
@@ -277,19 +278,20 @@ class SupplierController extends Controller
      * ADR-046 decision 5: activating is a real, immediate action (the
      * next scheduled sync picks this supplier up — ADR-031 decision
      * 4) — the confirm warning itself is a frontend concern, this just
-     * flips the flag.
+     * flips the flag. ADR-138 decisions 20-21: switching an API supplier
+     * off takes its packages off sale too; switching it on restores
+     * nothing, the admin uses Reactivate.
      */
-    public function updateStatus(UpdateSupplierStatusRequest $request, Supplier $supplier, ManualSupplierStatusService $manual): JsonResponse
+    public function updateStatus(UpdateSupplierStatusRequest $request, Supplier $supplier, ManualSupplierStatusService $manual, SupplierPackageStatusService $packages): JsonResponse
     {
-        // ADR-125 decision 64: a manual supplier's switch also takes its
-        // packages on and off sale; an API supplier's flag stays as it was.
-        if (! $supplier->isApiBacked()) {
-            $manual->setActive($supplier, $request->validated('is_active'), $request->user()->id);
+        $isActive = $request->validated('is_active');
 
-            return response()->json($this->present($supplier->fresh()));
-        }
-
-        $supplier->update(['is_active' => $request->validated('is_active')]);
+        // ADR-125 decision 64: a manual supplier's switch works both ways.
+        match (true) {
+            ! $supplier->isApiBacked() => $manual->setActive($supplier, $isActive, $request->user()->id),
+            $isActive => $supplier->update(['is_active' => true]),
+            default => $packages->switchOffApiSupplier($supplier, $request->user()->id),
+        };
 
         return response()->json($this->present($supplier->fresh()));
     }
@@ -366,10 +368,18 @@ class SupplierController extends Controller
      * since that could also re-activate a package Price Sync
      * deactivated for an unrelated reason (supplier_sync/price_anomaly),
      * silently bypassing ADR-025's swing-review safety net.
+     *
+     * ADR-138 decision 22: refused here, not in the service, because Price
+     * Sync's own `unfunded` reactivate runs before its run is recorded. An
+     * off supplier falls through: its packages stay off and count as skipped.
      */
     public function updatePackagesStatus(BulkUpdateSupplierPackagesStatusRequest $request, Supplier $supplier, SupplierPackageStatusService $packages): JsonResponse
     {
         $gameId = $request->validated('game_id');
+
+        if ($request->validated('is_active') && $supplier->is_active && $supplier->isSyncable() && ! $supplier->hasFreshPriceSync()) {
+            throw ValidationException::withMessages(['is_active' => ['This supplier has not synced recently, so its prices may be old. Wait for the next sync, then Reactivate.']]);
+        }
 
         return response()->json($request->validated('is_active')
             ? $packages->reactivate($supplier, $request->user()->id, $gameId)
@@ -433,6 +443,23 @@ class SupplierController extends Controller
     /**
      * @return array{packages: int, supplier_products: int, orders: int}
      */
+    /**
+     * ADR-138 decision 20: what switching this supplier off takes off sale.
+     *
+     * @return array{packages: int, combos: int}
+     */
+    private function onSaleCounts(Supplier $supplier): array
+    {
+        $packages = Package::query()->where('supplier_id', $supplier->id)->where('is_active', true);
+
+        return [
+            'packages' => (clone $packages)->count(),
+            'combos' => Package::query()->where('is_combo', true)->where('is_active', true)
+                ->whereIn('id', DB::table('package_components')->whereIn('component_package_id', $packages->select('id'))->select('combo_package_id'))
+                ->count(),
+        ];
+    }
+
     private function referenceCounts(Supplier $supplier): array
     {
         return [

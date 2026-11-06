@@ -53,7 +53,7 @@ class PendingPriceChangeConcurrencyTest extends TestCase
             'supplier_id' => $supplier->id,
             'external_ref' => 'GV-RACE-1',
             'name' => '14 Diamond',
-            'price_sen' => 1700, // 70% swing over cost_price=1000, past the 50% default threshold
+            'price_sen' => 300, // a 70% drop from cost_price=1000, past the 30% default hold
             'status_raw' => 'active',
             'last_synced_at' => $syncedAt,
         ]);
@@ -92,7 +92,7 @@ class PendingPriceChangeConcurrencyTest extends TestCase
         $this->assertSame(1, PendingPriceChange::query()->where('package_id', $package->id)->count());
 
         $package->refresh();
-        $this->assertFalse($package->is_active);
-        $this->assertSame('price_anomaly', $package->deactivated_reason);
+        $this->assertTrue($package->is_active);
+        $this->assertSame(1000, $package->cost_price);
     }
 }

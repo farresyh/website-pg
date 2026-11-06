@@ -16,9 +16,10 @@ use Tests\TestCase;
 /**
  * ADR-015 2026-11-05 addendum: a package is switched on only through
  * PackageActivation, which checks the blockers that can hold while the
- * package stores one reason. Gap A (a supplier's Reactivate ignored an open
- * price swing and a vanished product) and Gap B (approving or dismissing a
- * swing switched on a package off for another reason).
+ * package stores one reason. Gap A (a supplier's Reactivate ignored a vanished
+ * product) and Gap B (approving a swing switched on a package off for another
+ * reason). ADR-138: an open swing no longer blocks, because none holds a
+ * package off.
  */
 class PackageActivationTest extends TestCase
 {
@@ -76,23 +77,9 @@ class PackageActivationTest extends TestCase
         ]);
     }
 
-    public function test_supplier_reactivate_leaves_a_package_with_an_open_price_swing_off(): void
-    {
-        $supplier = $this->supplier();
-        $package = $this->package($supplier, 'supplier_issue');
-        $this->swing($package);
-
-        $this->patchJson("/api/middleware/suppliers/{$supplier->id}/packages/status", ['is_active' => true])
-            ->assertOk()->assertJson(['updated' => 0, 'skipped' => 1]);
-
-        $package->refresh();
-        $this->assertFalse($package->is_active);
-        $this->assertSame('price_anomaly', $package->deactivated_reason);
-    }
-
     public function test_supplier_reactivate_leaves_a_package_its_supplier_no_longer_lists_off(): void
     {
-        $supplier = $this->supplier(['api_config' => ['base_url' => 'https://example.test']]);
+        $supplier = $this->supplier(['last_price_sync_at' => now(), 'api_config' => ['base_url' => 'https://example.test']]);
         $vanished = $this->package($supplier, 'supplier_issue', ['supplier_package_ref' => 'OLD']);
         $listed = $this->package($supplier, 'supplier_issue', ['supplier_package_ref' => 'NEW']);
         $this->listed($supplier, 'OLD', now()->subDay());
@@ -121,19 +108,14 @@ class PackageActivationTest extends TestCase
         $this->assertSame('approved', $swing->fresh()->status);
     }
 
-    public function test_approving_or_dismissing_a_swing_never_overrides_an_admin_switch_off(): void
+    public function test_approving_a_swing_never_overrides_an_admin_switch_off(): void
     {
-        $supplier = $this->supplier();
-        $approved = $this->package($supplier, 'admin');
-        $dismissed = $this->package($supplier, 'admin');
+        $package = $this->package($this->supplier(), 'admin');
 
-        $this->patchJson('/api/middleware/price-sync/pending-price-changes/'.$this->swing($approved)->id.'/approve')->assertOk();
-        $this->patchJson('/api/middleware/price-sync/pending-price-changes/'.$this->swing($dismissed)->id.'/dismiss')->assertOk();
+        $this->patchJson('/api/middleware/price-sync/pending-price-changes/'.$this->swing($package)->id.'/approve')->assertOk();
 
-        foreach ([$approved, $dismissed] as $package) {
-            $this->assertFalse($package->fresh()->is_active);
-            $this->assertSame('admin', $package->fresh()->deactivated_reason);
-        }
+        $this->assertFalse($package->fresh()->is_active);
+        $this->assertSame('admin', $package->fresh()->deactivated_reason);
     }
 
     public function test_approving_a_swing_still_switches_a_price_anomaly_package_on(): void
@@ -155,17 +137,6 @@ class PackageActivationTest extends TestCase
 
         $this->assertFalse($package->fresh()->is_active);
         $this->assertSame('supplier_issue', $package->fresh()->deactivated_reason);
-    }
-
-    public function test_restoring_a_dismissed_package_is_refused_while_its_price_swing_is_open(): void
-    {
-        $package = $this->package($this->supplier(), 'admin');
-        $this->swing($package);
-
-        $this->patchJson("/api/middleware/price-sync/dismissed-packages/{$package->id}/restore")->assertUnprocessable();
-
-        $this->assertFalse($package->fresh()->is_active);
-        $this->assertSame('price_anomaly', $package->fresh()->deactivated_reason);
     }
 
     public function test_a_foreign_supplier_with_no_deposit_blocks_activation(): void

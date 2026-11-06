@@ -148,34 +148,4 @@ class PendingPriceChangeControllerTest extends TestCase
 
         $response->assertUnprocessable();
     }
-
-    public function test_dismiss_reactivates_the_package_at_the_old_price_without_applying_the_proposal(): void
-    {
-        $supplier = $this->supplier();
-        $package = $this->flaggedPackage($supplier, $this->game());
-        $pending = $this->pendingChange($package);
-        $this->actingAsAdmin();
-
-        $response = $this->patchJson("/api/middleware/price-sync/pending-price-changes/{$pending->id}/dismiss");
-
-        $response->assertOk();
-        $package->refresh();
-        $this->assertSame(1000, $package->cost_price); // unchanged — the old price was fine all along
-        $this->assertTrue($package->is_active);
-        $this->assertNull($package->deactivated_reason);
-        $this->assertSame('dismissed', $pending->refresh()->status);
-        $this->assertSame(0, PriceChangeLog::query()->count()); // no price was actually applied
-    }
-
-    public function test_dismiss_rejects_a_row_that_is_not_pending(): void
-    {
-        $supplier = $this->supplier();
-        $package = $this->flaggedPackage($supplier, $this->game(), ['is_active' => true, 'deactivated_reason' => null]);
-        $pending = $this->pendingChange($package, ['status' => 'dismissed']);
-        $this->actingAsAdmin();
-
-        $response = $this->patchJson("/api/middleware/price-sync/pending-price-changes/{$pending->id}/dismiss");
-
-        $response->assertUnprocessable();
-    }
 }

@@ -118,8 +118,9 @@ class BestSellingProductsTest extends TestCase
         OrderResendAttempt::query()->create(['order_id' => $swapped->id, 'attempt_type' => 'initial', 'package_id' => $bought->id, 'cost_price_sen' => 500, 'standard_selling_price_sen' => 600, 'outcome' => 'failed']);
         $old = $this->order($bought, 600, ['product_key' => null, 'product_name' => null]);
         $gone = $this->order($this->package(['name' => 'Gone', 'denomination' => 99]), 600, ['product_key' => null, 'product_name' => null]);
-        DB::table('packages')->where('id', $gone->package_id)->delete();
-        $goneId = $gone->fresh()->package_id; // an FK may null it, as sqlite's does; production keeps the id
+        // A package deleted before ADR-119 (order #7's shape): the link is null. The schema now refuses that delete.
+        DB::table('orders')->where('id', $gone->id)->update(['package_id' => null]);
+        $goneId = null;
 
         $migration = require database_path('migrations/2026_11_03_120000_add_product_key_to_orders_table.php');
         $migration->backfill();

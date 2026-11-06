@@ -20,9 +20,11 @@ Laravel-specific, loaded only when working inside `backend/`.
   to the original payment method was withdrawn 2026-11-01 (ADR-004 addendum).
 - **Supplier and payment integrations are behind adapters** —
   `SupplierAdapter` (`GamevionAdapter` and `DigiflazzAdapter` are the two
-  real, production-wired implementations — ADR-030/067; only Digiflazz is
-  funded/live (funded 2026-09-15; Gamevion deliberately left unfunded 2026-09-24), Gamevion stays integrated but unfunded; resolved per-order
-  by `supplier_id` via `SupplierAdapterFactory`, ADR-031) and `PaymentGateway`
+  real, production-wired implementations — ADR-030/067/137; only Digiflazz
+  is funded/live (funded 2026-09-15). Gamevion runs on its v2 API
+  (`gamevion.cloud`, ADR-137) but is unfunded and has no package on;
+  resolved per-order by `supplier_id` via `SupplierAdapterFactory`, ADR-031)
+  and `PaymentGateway`
   (`ChipGateway` is the one real implementation since ADR-022's 2026-09-01
   addendum removed Xendit; still resolved per-channel via
   `PaymentGatewayFactory`, which stays for a future multi-region gateway).
@@ -53,7 +55,8 @@ Laravel-specific, loaded only when working inside `backend/`.
 - **An ambiguous supplier outcome is never guessed.** Confirmed Gagal →
   Failed; genuinely unknown → Pending + same-reference poll for a supplier
   whose re-submit replays the stored result
-  (`SupplierAdapterFactory::resubmitReplaysOutcome()`, Digiflazz), else
+  (`SupplierAdapterFactory::resubmitReplaysOutcome()`: Digiflazz, and
+  Gamevion since ADR-137, each within its same-reference window), else
   NeedsReview (ADR-102 + its 2026-09-29 addendum). Never mint a new
   reference for an order that may already have reached the supplier (M-1).
 - **Customer messages go only through `CustomerNotificationService`**
@@ -129,7 +132,7 @@ docker compose up -d && php artisan test -c phpunit.concurrency.xml  # concurren
 php artisan app:chip-smoke-test                             # hits the real CHIP API (test-mode key; no separate sandbox URL)
 php artisan app:digiflazz-smoke-test                        # real Digiflazz API (the live supplier): balance, catalog, the 4 official test cases
 php artisan app:chip-webhook-smoke-test                     # CHIP success_callback end to end (non-production only)
-php artisan app:gamevion-smoke-test                         # hits the real Gamevion API (integrated, unfunded)
+php artisan app:gamevion-smoke-test                         # real gamevion.cloud API: balance, catalog; --order only at a zero balance (expects 402)
 ```
 
 ## Local dev gotchas (moved from the root `AGENTS.md`, 2026-10-02)

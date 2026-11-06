@@ -809,7 +809,7 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         // ADR-025 decision #8
         Route::get('/pending-price-changes', [PendingPriceChangeController::class, 'index']);
         Route::patch('/pending-price-changes/{pending_price_change}/approve', [PendingPriceChangeController::class, 'approve']);
-        Route::patch('/pending-price-changes/{pending_price_change}/dismiss', [PendingPriceChangeController::class, 'dismiss']);
+        Route::post('/pending-price-changes/approve-all', [PendingPriceChangeController::class, 'approveAll']);
 
         // ADR-033 addendum decision 1 — FX Rate History section.
         Route::get('/fx-rates', [CurrencyRateController::class, 'index']);

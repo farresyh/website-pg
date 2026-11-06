@@ -53,7 +53,7 @@ import {
   restoreDismissedPackage,
   listPendingPriceChanges,
   approvePendingPriceChange,
-  dismissPendingPriceChange,
+  approveAllPendingPriceChanges,
   listCurrencyRates,
 } from "@/lib/price-sync";
 import SyncDetailsModal from "@/components/price-sync/SyncDetailsModal";
@@ -369,18 +369,17 @@ export default function PriceSyncPage() {
     }
   }
 
-  async function handleDismissPriceChange(id: number) {
+  async function handleApproveAllPriceChanges(supplierId: number) {
     if (!session) return;
     setError(null);
-    setPriceChangeBusyId(id);
     try {
-      await dismissPendingPriceChange(id);
-      setPendingPriceChanges((prev) => prev?.filter((p) => p.id !== id) ?? null);
-      refreshStats();
+      await approveAllPendingPriceChanges(supplierId);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not dismiss this price change.");
+      setError(err instanceof ApiError ? err.message : "Could not approve these price changes.");
     } finally {
-      setPriceChangeBusyId(null);
+      // Rows apply one by one, so a failure can leave some done.
+      refreshPendingPriceChanges();
+      refreshStats();
     }
   }
 
@@ -406,9 +405,8 @@ export default function PriceSyncPage() {
           <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Price Sync Center</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Propagates supplier price changes onto every promoted Package and turns off items the supplier can no
-            longer fulfill (ADR-015). Only a swing past the review threshold is gated (ADR-025) — everything else
-            applies with no approval either direction; a deactivated item only ever comes back via the review
-            sections below.
+            longer fulfill (ADR-015). A rise applies at once; a big drop is held and keeps selling at the old cost
+            (ADR-138). A deactivated item only ever comes back via the review sections below.
           </p>
         </div>
         <div className="flex gap-2">
@@ -442,7 +440,7 @@ export default function PriceSyncPage() {
           <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">{stats?.pending_reactivation_count ?? "—"}</p>
         </div>
         <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-          <p className="text-theme-xs text-gray-500 dark:text-gray-400">Pending Price Change</p>
+          <p className="text-theme-xs text-gray-500 dark:text-gray-400">Held Price Changes</p>
           <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">{stats?.pending_price_change_count ?? "—"}</p>
         </div>
         <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
@@ -589,12 +587,12 @@ export default function PriceSyncPage() {
         </div>
       </div>
 
-      {/* Pending Price Change (ADR-025 decision #8) */}
+      {/* Held Price Changes (ADR-138) */}
       <PendingPriceChangeSection
         items={pendingPriceChanges}
         busyId={priceChangeBusyId}
         onApprove={handleApprovePriceChange}
-        onDismiss={handleDismissPriceChange}
+        onApproveAll={handleApproveAllPriceChanges}
       />
 
       {/* Manually Dismissed Packages (ADR-016 decision #3) */}
@@ -623,7 +621,7 @@ export default function PriceSyncPage() {
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <span className="font-medium text-gray-800 dark:text-white/90">{p.name}</span>
                           <br />
-                          <span className="text-theme-xs text-ink-subtle">{p.supplier_package_ref} · {p.supplier?.name}</span>
+                          <span className="text-theme-xs text-ink-subtle">{p.supplier_package_ref ? `${p.supplier_package_ref} · ${p.supplier?.name}` : "Combo"}</span>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{p.game?.name ?? "—"}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.cost_price)}</DataTableCell>

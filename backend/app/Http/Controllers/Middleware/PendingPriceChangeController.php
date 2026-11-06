@@ -4,26 +4,19 @@ namespace App\Http\Controllers\Middleware;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\GameController;
+use App\Http\Requests\Middleware\ApproveAllPendingPriceChangesRequest;
 use App\Models\PendingPriceChange;
-use App\Services\Catalog\PackageActivation;
-use App\Services\Pricing\ComboPricingService;
-use App\Services\Pricing\PackageCostService;
+use App\Services\Sync\PackagePriceSyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * ADR-025 decision #8: sixth Price Sync Center section — a supplier
- * price swing large enough to cross the configured threshold, blocked
- * from PackagePriceSyncService::propagatePrice()'s write until an
- * admin Approves or Dismisses it here.
+ * ADR-138 decisions 12 and 14: a held price, in the Price Sync Center. The
+ * package keeps selling meanwhile; Approve applies the held price now.
  */
 class PendingPriceChangeController extends Controller
 {
-    public function __construct(
-        private readonly PackageCostService $packageCost,
-        private readonly ComboPricingService $comboPricing,
-        private readonly PackageActivation $activation,
-    ) {}
+    public function __construct(private readonly PackagePriceSyncService $priceSync) {}
 
     public function index(): JsonResponse
     {
@@ -37,83 +30,41 @@ class PendingPriceChangeController extends Controller
     }
 
     /**
-     * Decision #6: standard_selling_price is recomputed from the
-     * package's *live* markup_percent at approval time, not whatever
-     * was frozen when the anomaly was first flagged — an admin may
-     * have edited the markup in between.
+     * ADR-025 decision 6: the selling price comes from the package's live
+     * markup at this moment, not from when the swing was first held.
      */
     public function approve(Request $request, PendingPriceChange $pendingPriceChange): JsonResponse
     {
-        $this->assertPending($pendingPriceChange);
+        $package = $this->priceSync->approveHeld($pendingPriceChange, $request->user()?->id);
+        abort_if($package === null, 422, 'This price change has already been resolved.');
 
-        $package = $pendingPriceChange->package;
-        $wasInactive = ! $package->is_active;
-
-        // ADR-125 decision 45: the same seam as Price Sync, with the
-        // approving admin recorded.
-        $this->packageCost->apply(
-            $package,
-            $pendingPriceChange->proposed_cost_price,
-            $pendingPriceChange->price_sync_run_id,
-            $request->user()?->id,
-        );
-
-        $pendingPriceChange->update(['status' => 'approved']);
-
-        // ADR-015 2026-11-05 addendum: only the swing's own switch-off is
-        // undone, and only when nothing else still holds the package off.
-        $activated = $this->activation->activate($package, PackageActivation::PRICE_ANOMALY);
-
-        // ADR-094 decision 6: this is the *other* real "component
-        // cost_price changed" event besides PackagePriceSyncService's
-        // own propagation — approving here bypasses that service
-        // entirely, so any combo referencing this package would
-        // otherwise silently go stale until some unrelated future sync
-        // happened to touch it too.
-        $this->comboPricing->recomputeForComponentChange($package, $pendingPriceChange->price_sync_run_id);
-
-        // ADR-094 addendum (2026-09-24) — this package may itself have
-        // been a `price_anomaly`-deactivated combo component; a combo
-        // depending on it can now complete.
-        if ($wasInactive && $activated) {
-            $this->comboPricing->cascadeReactivate($package, priceSyncRunId: $pendingPriceChange->price_sync_run_id, adminUserId: $request->user()?->id);
-        }
-
-        $this->forgetCaches($package->game_id);
+        $this->forgetCaches([$package->game_id]);
 
         return response()->json($package);
     }
 
-    /**
-     * Decision #7: "the old price was fine all along" — reactivates
-     * at the already-proven-safe price in one action, no separate trip
-     * to /admin/games to flip is_active back on.
-     */
-    public function dismiss(Request $request, PendingPriceChange $pendingPriceChange): JsonResponse
+    /** ponytail: one request, row by row; move to a queued job if a real mass change times out. */
+    public function approveAll(ApproveAllPendingPriceChangesRequest $request): JsonResponse
     {
-        $this->assertPending($pendingPriceChange);
+        $rows = PendingPriceChange::query()
+            ->where('status', 'pending')
+            ->whereHas('package', fn ($q) => $q->where('supplier_id', $request->validated('supplier_id')))
+            ->get();
 
-        $package = $pendingPriceChange->package;
-        $wasInactive = ! $package->is_active;
-        $pendingPriceChange->update(['status' => 'dismissed']);
+        $packages = $rows->map(fn (PendingPriceChange $row) => $this->priceSync->approveHeld($row, $request->user()?->id))->filter();
 
-        if ($wasInactive && $this->activation->activate($package, PackageActivation::PRICE_ANOMALY)) {
-            $this->comboPricing->cascadeReactivate($package, priceSyncRunId: $pendingPriceChange->price_sync_run_id, adminUserId: $request->user()?->id);
+        $this->forgetCaches($packages->pluck('game_id')->unique()->all());
+
+        return response()->json(['approved' => $packages->count()]);
+    }
+
+    /** @param  list<int>  $gameIds */
+    private function forgetCaches(array $gameIds): void
+    {
+        foreach ($gameIds as $gameId) {
+            GameController::forgetPackagesCache($gameId);
         }
 
-        $this->forgetCaches($package->game_id);
-
-        return response()->json($package);
-    }
-
-    private function assertPending(PendingPriceChange $pendingPriceChange): void
-    {
-        abort_unless($pendingPriceChange->status === 'pending', 422, 'This price change has already been resolved.');
-    }
-
-    private function forgetCaches(int $gameId): void
-    {
-        GameController::forgetPackagesCache($gameId);
         GameController::forgetIndexCache();
     }
 }

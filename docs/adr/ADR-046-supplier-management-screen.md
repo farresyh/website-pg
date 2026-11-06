@@ -1,6 +1,6 @@
 # ADR-046: Supplier Management screen — trimmed to config/health (SUPP-1/CRUD/SUPP-5), `Supplier.api_config` becomes the live credential source, per-supplier/per-game bulk deactivation
 
-> **Standing (2026-10-17):** In force; the create form picks a `driver` (not a slug) and a manual supplier names its own slug, since [ADR-125](./ADR-125-login-top-up-manual-supplier.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-06):** In force; the create form picks a `driver` (not a slug) and a manual supplier names its own slug, since [ADR-125](./ADR-125-login-top-up-manual-supplier.md); switching an API supplier off now takes its packages off sale ([ADR-138](./ADR-138-package-sale-lifecycle.md)). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-08-27 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
 
@@ -59,3 +59,7 @@ A second, unrelated operational gap surfaced during grilling: with 500+ packages
 **Consequence to track:**
 - `updated_combos` in the API response is new API surface for the admin frontend to optionally display — not wired into the Supplier Management UI's own confirm/toast copy in this addendum, left for whoever next touches that screen.
 - Same as ADR-094's own addendum: `reactivation_stability_syncs`-style tuning has no equivalent here, since this path is entirely admin-triggered, not automated.
+
+### 2026-11-06 addendum — an API supplier that is off has no package on sale
+
+[ADR-138](./ADR-138-package-sale-lifecycle.md) decisions 20–22: switching an API supplier off also takes its packages and combos off, with a count in the dialog. Switching on restores nothing; Reactivate stays the way back, and it refuses until the supplier has synced within the 90-minute staleness limit. "Deactivate All" and "by Game" stay for acting without switching the supplier off.

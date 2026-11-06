@@ -314,72 +314,12 @@ class PackagePriceSyncServiceTest extends TestCase
         $this->assertSame(0, PendingPriceChange::query()->count());
     }
 
-    /**
-     * ADR-025 decision #2/#3: a swing past the configured threshold
-     * (symmetric) blocks the write, queues a PendingPriceChange, and
-     * deactivates the package under its own distinct reason so
-     * PendingReactivationFinder's 'supplier_sync' filter never picks
-     * it up.
-     */
-    public function test_swing_flags_a_large_increase_and_deactivates_the_package_as_price_anomaly(): void
+    public function test_a_rise_propagates_normally_with_no_pending_row(): void
     {
-        config(['packages.price_swing_threshold_percent' => 50]);
-        $supplier = $this->supplier();
-        $game = $this->game();
-        $package = $this->package($supplier, $game, ['cost_price' => 1000, 'standard_selling_price' => 1150, 'markup_percent' => 15, 'is_active' => true]);
-        $run = PriceSyncRun::query()->create(['status' => 'running']);
-        $syncedAt = now();
-        $this->rawProduct($supplier, $syncedAt, ['price_sen' => 1600]); // +60%, over threshold
-
-        $result = $this->service()->apply($supplier, $syncedAt, priceSyncRunId: $run->id);
-
-        $this->assertSame(1, $result->anomaliesFlagged);
-        $this->assertSame(0, $result->priceChanged);
-        $this->assertSame(0, $result->deactivated); // separate counter from ordinary Deactivation Detection
-
-        $package->refresh();
-        $this->assertSame(1000, $package->cost_price); // unapplied — stays at last-known-good
-        $this->assertFalse($package->is_active);
-        $this->assertSame('price_anomaly', $package->deactivated_reason);
-        $this->assertNotNull($package->deactivated_at);
-        $this->assertSame(0, PriceChangeLog::query()->count());
-
-        $pending = PendingPriceChange::query()->firstOrFail();
-        $this->assertSame($package->id, $pending->package_id);
-        $this->assertSame($run->id, $pending->price_sync_run_id);
-        $this->assertSame(1000, $pending->old_cost_price);
-        $this->assertSame(1600, $pending->proposed_cost_price);
-        $this->assertSame(1150, $pending->old_standard_selling_price);
-        $this->assertSame(1840, $pending->proposed_standard_selling_price); // round(1600 * 1.15)
-        $this->assertSame('pending', $pending->status);
-    }
-
-    /**
-     * Decision 3: a big decrease gets the same treatment as a big
-     * increase — no directional asymmetry.
-     */
-    public function test_swing_flags_a_large_decrease_the_same_as_an_increase(): void
-    {
-        config(['packages.price_swing_threshold_percent' => 50]);
         $supplier = $this->supplier();
         $package = $this->package($supplier, $this->game(), ['cost_price' => 1000]);
         $syncedAt = now();
-        $this->rawProduct($supplier, $syncedAt, ['price_sen' => 400]); // -60%, over threshold
-
-        $result = $this->service()->apply($supplier, $syncedAt, priceSyncRunId: null);
-
-        $this->assertSame(1, $result->anomaliesFlagged);
-        $this->assertSame(1000, $package->refresh()->cost_price);
-        $this->assertSame('price_anomaly', $package->deactivated_reason);
-    }
-
-    public function test_swing_under_threshold_propagates_normally_with_no_pending_row(): void
-    {
-        config(['packages.price_swing_threshold_percent' => 50]);
-        $supplier = $this->supplier();
-        $package = $this->package($supplier, $this->game(), ['cost_price' => 1000]);
-        $syncedAt = now();
-        $this->rawProduct($supplier, $syncedAt, ['price_sen' => 1300]); // +30%, under threshold
+        $this->rawProduct($supplier, $syncedAt, ['price_sen' => 1300]); // +30%
 
         $result = $this->service()->apply($supplier, $syncedAt, priceSyncRunId: null);
 
@@ -388,34 +328,6 @@ class PackagePriceSyncServiceTest extends TestCase
         $this->assertSame(1300, $package->refresh()->cost_price);
         $this->assertTrue($package->is_active);
         $this->assertSame(0, PendingPriceChange::query()->count());
-    }
-
-    /**
-     * Decision 5: a package with an already-unresolved pending anomaly
-     * is skipped on a later run, not re-flagged into a second row.
-     */
-    public function test_swing_skips_a_package_that_already_has_an_unresolved_pending_change(): void
-    {
-        config(['packages.price_swing_threshold_percent' => 50]);
-        $supplier = $this->supplier();
-        $package = $this->package($supplier, $this->game(), [
-            'cost_price' => 1000, 'is_active' => false, 'deactivated_reason' => 'price_anomaly', 'deactivated_at' => now(),
-        ]);
-        PendingPriceChange::query()->create([
-            'package_id' => $package->id,
-            'old_cost_price' => 1000,
-            'proposed_cost_price' => 1600,
-            'old_standard_selling_price' => 1150,
-            'proposed_standard_selling_price' => 1840,
-            'status' => 'pending',
-        ]);
-        $syncedAt = now();
-        $this->rawProduct($supplier, $syncedAt, ['price_sen' => 1700]); // yet another large swing
-
-        $result = $this->service()->apply($supplier, $syncedAt, priceSyncRunId: null);
-
-        $this->assertSame(0, $result->anomaliesFlagged);
-        $this->assertSame(1, PendingPriceChange::query()->count());
     }
 
     /**
@@ -481,7 +393,6 @@ class PackagePriceSyncServiceTest extends TestCase
 
     public function test_applies_directly_when_the_package_has_no_prior_cost_price_to_diff_against(): void
     {
-        config(['packages.price_swing_threshold_percent' => 50]);
         $supplier = $this->supplier();
         $package = $this->package($supplier, $this->game(), ['cost_price' => 0, 'standard_selling_price' => 0]);
         $syncedAt = now();

@@ -5,6 +5,7 @@ namespace Tests\Feature\Models;
 use App\Models\Game;
 use App\Models\Package;
 use App\Models\Supplier;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -71,7 +72,8 @@ class GameTest extends TestCase
         $this->assertCount(1, $game->packages);
     }
 
-    public function test_deleting_a_game_cascades_to_its_packages(): void
+    /** ADR-119 2026-11-05 decision 1: the schema itself refuses to delete a game that still has packages. */
+    public function test_the_database_refuses_to_delete_a_game_that_still_has_packages(): void
     {
         $game = Game::query()->create([
             'name' => 'Free Fire',
@@ -93,8 +95,12 @@ class GameTest extends TestCase
             'supplier_package_ref' => '31478',
         ]);
 
-        $game->delete();
+        $this->expectException(QueryException::class);
 
-        $this->assertNull(Package::query()->find($package->id));
+        try {
+            $game->delete();
+        } finally {
+            $this->assertNotNull(Package::query()->find($package->id));
+        }
     }
 }

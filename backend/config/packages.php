@@ -20,13 +20,6 @@ return [
     // triggerable from the Price Sync Center for an urgent change.
     'price_sync_interval_minutes' => (int) env('PRICE_SYNC_INTERVAL_MINUTES', 60),
 
-    // ADR-025 decision #3: symmetric swing tolerance on a supplier's
-    // incoming cost_price before PackagePriceSyncService::propagatePrice()
-    // blocks the write and queues a PendingPriceChange for review — a
-    // first-cut guess, not data-derived (see that ADR's Consequence to
-    // track), revisit once real sync cycles produce real data.
-    'price_swing_threshold_percent' => (float) env('PRICE_SWING_THRESHOLD_PERCENT', 50),
-
     // ADR-100 — kill-switch for PendingReactivationAutoApprover.
     // Default OFF: Pending Reactivation stays fully manual (the
     // ADR-015 decision #3 behavior this project has always had)

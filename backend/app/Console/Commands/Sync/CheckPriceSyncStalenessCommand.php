@@ -30,8 +30,6 @@ use Illuminate\Console\Command;
 #[Description('Email admins when a supplier\'s prices stop syncing, and when they recover.')]
 class CheckPriceSyncStalenessCommand extends Command
 {
-    public const DEFAULT_THRESHOLD_MINUTES = 90;
-
     public function handle(BackupFailureAlerter $alerter): int
     {
         $suppliers = Supplier::query()->where('is_active', true)->get()
@@ -55,7 +53,7 @@ class CheckPriceSyncStalenessCommand extends Command
                 continue;
             }
 
-            $threshold = $this->thresholdMinutes($supplier);
+            $threshold = $supplier->priceSyncStaleMinutes();
 
             if ($threshold > 0 && $lastSync->lessThanOrEqualTo(now()->subMinutes($threshold)) && $this->transition($supplier, from: null, to: now())) {
                 $minutes = (int) $lastSync->diffInMinutes(now());
@@ -69,13 +67,6 @@ class CheckPriceSyncStalenessCommand extends Command
         }
 
         return self::SUCCESS;
-    }
-
-    private function thresholdMinutes(Supplier $supplier): int
-    {
-        $value = $supplier->api_config['price_sync_stale_alert_minutes'] ?? null;
-
-        return is_numeric($value) ? (int) $value : self::DEFAULT_THRESHOLD_MINUTES;
     }
 
     private function transition(Supplier $supplier, mixed $from, mixed $to): bool

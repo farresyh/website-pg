@@ -110,7 +110,8 @@ export interface DismissedPackage {
   standard_selling_price: number;
   deactivated_reason: "admin";
   deactivated_at: string;
-  supplier_package_ref: string;
+  /** Null on a combo: it has no supplier of its own (ADR-138). */
+  supplier_package_ref: string | null;
   game: { id: number; name: string } | null;
   supplier: { id: number; name: string } | null;
 }
@@ -197,7 +198,7 @@ export interface PendingPriceChange {
   proposed_cost_price: number;
   old_standard_selling_price: number;
   proposed_standard_selling_price: number;
-  status: "pending" | "approved" | "dismissed";
+  status: "pending" | "approved" | "auto_applied" | "superseded" | "dismissed";
   created_at: string;
   package: {
     id: number;
@@ -218,9 +219,10 @@ export function approvePendingPriceChange(id: number) {
   });
 }
 
-export function dismissPendingPriceChange(id: number) {
-  return apiFetch<PendingPriceChange>(`/api/middleware/price-sync/pending-price-changes/${id}/dismiss`, {
-    method: "PATCH",
+export function approveAllPendingPriceChanges(supplierId: number) {
+  return apiFetch<{ approved: number }>("/api/middleware/price-sync/pending-price-changes/approve-all", {
+    method: "POST",
+    body: { supplier_id: supplierId },
   });
 }
 

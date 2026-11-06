@@ -276,7 +276,7 @@ export interface CreateComboPackageValues {
 }
 
 export function createComboPackage(gameId: number, values: CreateComboPackageValues) {
-  return apiFetch<GamePackage>(`/api/games/${gameId}/packages/combo`, { method: "POST", body: values });
+  return apiFetch<GamePackage & { notice: string | null }>(`/api/games/${gameId}/packages/combo`, { method: "POST", body: values });
 }
 
 /** ADR-094 decision 5's second half — mutually exclusive, same as UpdatePackageDenominationValues/UpdatePackageCatalogCodeValues. Passing both null reverts to the default sum-of-components price. */
@@ -327,7 +327,7 @@ export interface CreateManualPackageValues {
 }
 
 export function createManualPackage(gameId: number, values: CreateManualPackageValues) {
-  return apiFetch<GamePackage>(`/api/games/${gameId}/packages/manual`, { method: "POST", body: values });
+  return apiFetch<GamePackage & { notice: string | null }>(`/api/games/${gameId}/packages/manual`, { method: "POST", body: values });
 }
 
 /** ADR-125 decision 34: audited, with the admin recorded. */

@@ -63,7 +63,6 @@ export interface LinkCategoryValues {
  * per-package markup afterward in /admin/games, not here.
  */
 export interface PromoteValues {
-  game_id: number;
   name: string;
   /** ADR-034 decision 3/4: optional, admin-curated, never auto-matched by name — the storefront best-price dedup key. Leave unset to promote exactly as before. */
   denomination?: number | null;
@@ -125,7 +124,7 @@ export function repointSupplierProduct(id: number, packageId: number) {
 }
 
 export function promoteSupplierProduct(id: number, values: PromoteValues) {
-  return apiFetch<{ package: { id: number } }>(`/api/middleware/supplier-products/${id}/promote`, {
+  return apiFetch<{ package: { id: number }; notice: string | null }>(`/api/middleware/supplier-products/${id}/promote`, {
     method: "POST",
     body: values,
   });
