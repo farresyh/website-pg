@@ -128,3 +128,11 @@ Production, read-only, 2026-11-06:
 - **Decision 11, a product that isn't active.** A big drop on one neither applies nor opens a row, because the hold needs an active product. A rise still applies, as Price Propagation always has.
 - **Decision 14.** Approve all runs row by row in one request. Fine at today's scale; move it to a queued job if a real mass change ever times out.
 - **Legacy rows.** A drop row opened before this rule and still open at release has an old `created_at`, so it can apply on first sight. Production had no open row on 2026-11-06.
+
+### 2026-11-06 addendum — PR 3 build notes
+
+- **Decision 16, the seam.** `PackageActivation::activateNew()` wraps `activate($package, null)` and returns `explain()` when the package stays off. The three responses carry it as `notice`, null when on sale, and the admin shows a warning instead of the success toast.
+- **Decision 16, the manual modal.** It lists active suppliers only, so an admin reaches the off case only with a stale modal. A combo's picker lists active components only, for the same reason.
+- **Decision 17.** The request no longer takes `game_id`. A product with no game and a login game are both refused under `supplier_product`.
+- **Decision 19, combos.** A combo order counts as an order on its components, beyond the decision's wording: a leg sends its component's live reference (`OrderFulfillmentService`) and legs exist only once delivery starts, so the leg check can't see a paid combo order that hasn't started.
+- **Decision 19, what doesn't block.** A paid order whose delivery Failed doesn't count: it's final, and a resend uses the package's current reference. Processing, Pending and Needs Review block whatever the payment status, as before.

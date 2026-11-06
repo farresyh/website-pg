@@ -1487,3 +1487,25 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 **Gotchas hit.**
 - The browser check caught what the API tests couldn't: the first `approveAllPendingPriceChanges` passed `JSON.stringify(...)` to `apiFetch`, which stringifies again, so the server answered "supplier id field is required".
 - Local Approve all then answered 500 "cache store does not support tagging" (`backend/AGENTS.md` gotcha 5: local cache is `database`, prod is `redis`, read-only checked), after the rows had applied. That showed the list could go stale on a part failure, so the page now refreshes in `finally`. The final cache forget therefore hasn't run in a browser on Redis; it's the same call single Approve makes.
+
+## 2026-11-06 — Item 166 PR 3: new packages, Promote and repoint (ADR-138)
+
+**#712 (PR 2) merged to `staging`** (`72faf935`) after green CI. Neither PR 1, PR 2 nor #708 is released, by the founder's choice.
+
+**Why.** Seam F: a new package started on sale with no check, Promote trusted the `game_id` the UI sent, and repoint could move a package with orders still to be sent.
+
+**Built.**
+- `PackageActivation::activateNew()`: Promote, `storeCombo` and `storeManual` create off, then pass through `activate()`. No blocker means on sale, so the normal flow is unchanged. Joki's creation paths stay outside.
+- A combo activates after attach and recompute, inside the transaction. One that stays off is still priced.
+- Each response carries `notice`, and the admin shows "Added, but not on sale" with the reason.
+- Promote takes the game from the product and refuses a product with none. The admin no longer sends `game_id`.
+- Repoint refuses a product that isn't active, and an order paid or awaiting payment that hasn't been sent, including a combo order holding the package. Failed payments and finished deliveries don't block.
+
+**Tests.** `PackageCreationTest` (9) and four new repoint tests. Promote's old refusal tests now give the product a game, or they would pass on the missing game instead of what they name.
+
+**Verified:** `php artisan test` 3,735 of 3,735; admin `tsc` and `eslint` clean on the touched files. In a real browser on a built admin, with temporary rows removed afterwards: Promote under a switched-off supplier (package off, `supplier_issue`, warning shown, no `game_id` sent), Promote with no blocker, and a combo whose component went off while the modal was open. The manual warning was not seen in a browser: the modal lists active suppliers only, so it is covered by the backend test.
+
+**Gotchas hit.**
+- `backend/AGENTS.md` gotcha 5 again: the first browser run looked like a missing toast, but the cache forget had answered 500 after the package was saved. `CACHE_STORE=array php artisan serve --no-reload` avoids it without Redis.
+- `:3000` was held by an unrelated process, so the admin ran on `:3010` with Playwright routing `localhost:3000` to it, which keeps the session cookie valid. Chromium then needs `--disable-features=LocalNetworkAccessChecks`.
+- A test helper named `component()` is a fatal error: Laravel's test case already has one.
