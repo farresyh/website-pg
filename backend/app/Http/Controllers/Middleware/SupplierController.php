@@ -366,8 +366,7 @@ class SupplierController extends Controller
      * Reactivate is scoped to deactivated_reason='supplier_issue'
      * only — never a blanket is_active=false→true for the supplier,
      * since that could also re-activate a package Price Sync
-     * deactivated for an unrelated reason (supplier_sync/price_anomaly),
-     * silently bypassing ADR-025's swing-review safety net.
+     * deactivated for an unrelated reason (supplier_sync).
      *
      * ADR-138 decision 22: refused here, not in the service, because Price
      * Sync's own `unfunded` reactivate runs before its run is recorded. An

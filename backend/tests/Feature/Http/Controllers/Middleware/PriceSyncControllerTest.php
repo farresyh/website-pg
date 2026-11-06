@@ -149,7 +149,7 @@ class PriceSyncControllerTest extends TestCase
         $supplier = $this->supplier();
         $package = Package::query()->create([
             'game_id' => $this->game()->id, 'name' => 'Flagged', 'cost_price' => 1000, 'standard_selling_price' => 1150,
-            'is_active' => false, 'deactivated_reason' => 'price_anomaly', 'deactivated_at' => now(),
+            'is_active' => true,
             'supplier_id' => $supplier->id, 'supplier_package_ref' => 'GV1',
         ]);
         PendingPriceChange::query()->create([

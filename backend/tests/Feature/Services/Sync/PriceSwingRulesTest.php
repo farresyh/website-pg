@@ -323,28 +323,6 @@ class PriceSwingRulesTest extends TestCase
         $this->assertSame(3, PendingPriceChange::query()->where('status', 'pending')->count());
     }
 
-    /** ADR-138 build order: a swing flagged by the old rule, still open at release. */
-    public function test_a_package_the_old_rule_switched_off_comes_back_when_its_row_closes(): void
-    {
-        $package = $this->package('GV1', ['is_active' => false, 'deactivated_reason' => PackageActivation::PRICE_ANOMALY, 'cost_price' => 479]);
-        $combo = $this->comboOf($package);
-        $combo->update(['is_active' => false, 'deactivated_reason' => PackageActivation::COMBO_COMPONENT]);
-        PendingPriceChange::query()->create([
-            'package_id' => $package->id, 'old_cost_price' => 479, 'proposed_cost_price' => 949,
-            'old_standard_selling_price' => 551, 'proposed_standard_selling_price' => 1091, 'status' => 'pending',
-        ]);
-
-        $this->sync(['GV1' => 935]);
-
-        $package->refresh();
-        $this->assertSame(935, $package->cost_price);
-        $this->assertTrue($package->is_active);
-        $this->assertSame('superseded', $this->row()->status);
-        $combo->refresh();
-        $this->assertTrue($combo->is_active);
-        $this->assertSame(935, $combo->cost_price);
-    }
-
     public function test_an_admin_can_approve_a_held_drop_early_and_every_row_of_a_supplier_at_once(): void
     {
         $this->actingAsSteppedUp(AdminUser::factory()->create(['role' => 'super_admin']));

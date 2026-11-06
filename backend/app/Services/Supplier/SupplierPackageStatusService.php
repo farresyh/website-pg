@@ -21,8 +21,7 @@ use Illuminate\Validation\ValidationException;
  *
  * Reactivate is scoped to deactivated_reason = 'supplier_issue' only, never
  * a blanket false→true, since that could also re-activate a package Price
- * Sync deactivated for an unrelated reason (supplier_sync/price_anomaly),
- * bypassing ADR-025's swing-review safety net.
+ * Sync deactivated for an unrelated reason (supplier_sync).
  *
  * ADR-134 decision 4: Price Sync uses the same pair, under its own reason
  * `unfunded`, to stop selling a foreign-currency supplier with no deposit

@@ -118,16 +118,6 @@ class PackageActivationTest extends TestCase
         $this->assertSame('admin', $package->fresh()->deactivated_reason);
     }
 
-    public function test_approving_a_swing_still_switches_a_price_anomaly_package_on(): void
-    {
-        $package = $this->package($this->supplier(), 'price_anomaly');
-
-        $this->patchJson('/api/middleware/price-sync/pending-price-changes/'.$this->swing($package)->id.'/approve')->assertOk();
-
-        $this->assertTrue($package->fresh()->is_active);
-        $this->assertNull($package->fresh()->deactivated_reason);
-    }
-
     public function test_an_admin_switch_on_from_games_is_refused_while_the_supplier_is_off(): void
     {
         $package = $this->package($this->supplier(['is_active' => false]), 'admin');
