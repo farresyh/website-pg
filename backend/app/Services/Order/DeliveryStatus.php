@@ -9,6 +9,12 @@ namespace App\Services\Order;
 enum DeliveryStatus: string
 {
     case NotStarted = 'not_started';
+
+    /**
+     * Committed before the supplier call: sent, or about to be, outcome
+     * unknown. On an order, a pass or a call is running. On a combo leg too
+     * (ADR-103 decision 10), and a stale one means the worker died.
+     */
     case Processing = 'processing';
     case Delivered = 'delivered';
     case Failed = 'failed';
@@ -21,7 +27,8 @@ enum DeliveryStatus: string
      * either from Processing (a connection failure exhausted every
      * retry layer, or createOrder() returned a fresh duplicate_reference)
      * or from Failed (a stale duplicate_reference recorded before this
-     * state existed). Never reached from NotStarted.
+     * state existed), or from NotStarted when every job attempt failed
+     * (FulfillOrderJob::failed()).
      */
     case NeedsReview = 'needs_review';
 
@@ -44,6 +51,29 @@ enum DeliveryStatus: string
      * Order-level only; a leg never takes this value.
      */
     case PartiallyDelivered = 'partially_delivered';
+
+    /**
+     * ADR-103 decision 14 — the one rule rolling a combo's legs up to its
+     * order. An outcome is read only from legs that prove it: no legs, or a
+     * mix this doesn't recognise, is NeedsReview, never a known outcome. A
+     * leg at the supplier wins, so the order keeps being polled.
+     *
+     * @param  iterable<self>  $legs
+     */
+    public static function comboRollup(iterable $legs): self
+    {
+        $statuses = collect($legs);
+        $only = fn (self ...$allowed) => $statuses->every(fn (self $status) => in_array($status, $allowed, true));
+
+        return match (true) {
+            $statuses->isEmpty() => self::NeedsReview,
+            $statuses->contains(self::Pending) => self::Pending,
+            $only(self::Delivered) => self::Delivered,
+            $only(self::Failed) => self::Failed,
+            $only(self::Delivered, self::Failed) => self::PartiallyDelivered,
+            default => self::NeedsReview,
+        };
+    }
 
     /** ADR-094 decision 30 — the one rule for "can be compensated". */
     public function isCompensable(): bool

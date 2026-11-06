@@ -30,8 +30,12 @@ use RuntimeException;
  * GamevionAdapter bound in AppServiceProvider) so this test never makes a
  * real network call — the thing being proven is the Order row lock, not
  * supplier connectivity.
+ *
+ * ADR-103 decisions 10-11: `readyFile` and `holdSeconds` park the process
+ * inside the supplier call, so a test can SIGKILL it there, or race a
+ * webhook against it.
  */
-#[Signature('app:order-fulfillment-test-fulfill {orderId} {resultFile}')]
+#[Signature('app:order-fulfillment-test-fulfill {orderId} {resultFile} {readyFile?} {holdSeconds=0}')]
 #[Description('Test-only: attempt to fulfill a single order and write the outcome to a result file.')]
 class OrderFulfillmentTestFulfill extends Command
 {
@@ -40,8 +44,10 @@ class OrderFulfillmentTestFulfill extends Command
         $order = Order::query()->findOrFail((int) $this->argument('orderId'));
         $resultFile = $this->argument('resultFile');
 
-        $adapter = new class implements SupplierAdapter
+        $adapter = new class($this->argument('readyFile'), (int) $this->argument('holdSeconds')) implements SupplierAdapter
         {
+            public function __construct(private readonly ?string $readyFile, private readonly int $holdSeconds) {}
+
             public function checkBalance(): SupplierResponse
             {
                 throw new RuntimeException('not used in this test');
@@ -54,6 +60,12 @@ class OrderFulfillmentTestFulfill extends Command
 
             public function createOrder(SupplierOrderRequest $request): SupplierResponse
             {
+                if ($this->readyFile !== null) {
+                    file_put_contents($this->readyFile, $request->referenceNumber);
+                }
+
+                sleep($this->holdSeconds);
+
                 return SupplierResponse::success(['supplier_ref' => 'GV-CONCURRENCY-TEST']);
             }
 
@@ -71,7 +83,7 @@ class OrderFulfillmentTestFulfill extends Command
         // ADR-094: a combo order has no supplier_id/supplier of its own
         // (decision 3) — bind under its components' shared supplier
         // instead (decision 4: same-supplier-only in v1).
-        $driver = $order->package?->is_combo
+        $driver = $order->isCombo()
             ? $order->package->components->first()->supplier->driver
             : $order->supplier->driver;
 

@@ -94,8 +94,9 @@ class ReconcilePendingDeliveriesCommand extends Command
      * (timeout SIGKILL, OOM) — the outcome is genuinely unknown. The old
      * re-dispatch could never succeed (startDelivery() rejects Processing),
      * so: a plain order on a supplier that replays a known reference goes
-     * to Pending and is polled with that same reference; anything else
-     * (another supplier, a combo mid-legs) goes to NeedsReview.
+     * to Pending and is polled with that same reference; any other plain
+     * order goes to NeedsReview. A combo has one recovery of its own,
+     * leg by leg, under the same rule (ADR-103 decision 13).
      */
     private function retryStuckProcessing(int $staleAfterMinutes, OrderStatusService $orderStatus, OrderFulfillmentService $fulfillment): void
     {
@@ -109,6 +110,12 @@ class ReconcilePendingDeliveriesCommand extends Command
         $this->info("Recovering {$orders->count()} stuck-processing delivery(ies)...");
 
         foreach ($orders as $order) {
+            if ($order->isCombo()) {
+                $fulfillment->recoverDeadComboPass($order);
+
+                continue;
+            }
+
             $parked = DB::transaction(function () use ($order, $orderStatus) {
                 $locked = Order::query()->lockForUpdate()->find($order->id);
 
@@ -116,8 +123,7 @@ class ReconcilePendingDeliveriesCommand extends Command
                     return false;
                 }
 
-                $replaySafe = ! $order->package?->is_combo
-                    && SupplierAdapterFactory::resubmitReplaysOutcome($order->supplier);
+                $replaySafe = SupplierAdapterFactory::resubmitReplaysOutcome($order->supplier);
 
                 $locked->update($replaySafe
                     ? [
