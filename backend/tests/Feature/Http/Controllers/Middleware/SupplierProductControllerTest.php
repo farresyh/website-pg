@@ -465,17 +465,16 @@ class SupplierProductControllerTest extends TestCase
      * every promoted Package gets `config('packages.default_markup_percent')`
      * applied automatically; admin adjusts it afterward in /admin/games.
      */
-    public function test_promote_creates_a_package_under_the_given_game(): void
+    public function test_promote_creates_a_package_under_the_products_game(): void
     {
         config(['packages.default_markup_percent' => 15.0]);
 
         $supplier = $this->supplier();
-        $product = $this->rawProduct($supplier); // price_sen 1164
         $game = Game::query()->create(['name' => 'Mobile Legends (Malaysia)', 'slug' => 'mobile-legends-malaysia']);
+        $product = $this->rawProduct($supplier, ['game_id' => $game->id]); // price_sen 1164
         $this->actingAsAdmin();
 
         $response = $this->postJson("/api/middleware/supplier-products/{$product->id}/promote", [
-            'game_id' => $game->id,
             'name' => '14 Diamond (13+1 Bonus)',
         ]);
 
@@ -500,12 +499,11 @@ class SupplierProductControllerTest extends TestCase
         config(['packages.default_markup_percent' => 15.0]);
 
         $supplier = $this->supplier();
-        $product = $this->rawProduct($supplier);
         $game = Game::query()->create(['name' => 'Mobile Legends (Malaysia)', 'slug' => 'mobile-legends-malaysia']);
+        $product = $this->rawProduct($supplier, ['game_id' => $game->id]);
         $this->actingAsAdmin();
 
         $response = $this->postJson("/api/middleware/supplier-products/{$product->id}/promote", [
-            'game_id' => $game->id,
             'name' => '14 Diamond (13+1 Bonus)',
             'denomination' => 14,
         ]);
@@ -520,32 +518,17 @@ class SupplierProductControllerTest extends TestCase
         config(['packages.default_markup_percent' => 15.0]);
 
         $supplier = $this->supplier();
-        $product = $this->rawProduct($supplier);
         $game = Game::query()->create(['name' => 'Mobile Legends (Malaysia)', 'slug' => 'mobile-legends-malaysia']);
+        $product = $this->rawProduct($supplier, ['game_id' => $game->id]);
         $this->actingAsAdmin();
 
         $response = $this->postJson("/api/middleware/supplier-products/{$product->id}/promote", [
-            'game_id' => $game->id,
             'name' => '14 Diamond (13+1 Bonus)',
         ]);
 
         $response->assertCreated();
         $package = Package::query()->where('supplier_package_ref', 'GV733')->firstOrFail();
         $this->assertNull($package->denomination);
-    }
-
-    public function test_promote_rejects_without_a_game_id(): void
-    {
-        $supplier = $this->supplier();
-        $product = $this->rawProduct($supplier);
-        $this->actingAsAdmin();
-
-        $response = $this->postJson("/api/middleware/supplier-products/{$product->id}/promote", [
-            'name' => '14 Diamond',
-        ]);
-
-        $response->assertUnprocessable();
-        $this->assertSame(0, Package::query()->count());
     }
 
     /**
@@ -555,12 +538,11 @@ class SupplierProductControllerTest extends TestCase
     public function test_promote_rejects_a_product_with_no_price_yet(): void
     {
         $supplier = $this->supplier();
-        $product = $this->rawProduct($supplier, ['price_sen' => null]);
         $game = Game::query()->create(['name' => 'Mobile Legends (Malaysia)', 'slug' => 'mobile-legends-malaysia']);
+        $product = $this->rawProduct($supplier, ['game_id' => $game->id, 'price_sen' => null]);
         $this->actingAsAdmin();
 
         $response = $this->postJson("/api/middleware/supplier-products/{$product->id}/promote", [
-            'game_id' => $game->id,
             'name' => '14 Diamond',
         ]);
 
@@ -575,12 +557,11 @@ class SupplierProductControllerTest extends TestCase
     public function test_promote_rejects_a_product_with_a_zero_price(): void
     {
         $supplier = $this->supplier();
-        $product = $this->rawProduct($supplier, ['price_sen' => 0]);
         $game = Game::query()->create(['name' => 'Mobile Legends (Malaysia)', 'slug' => 'mobile-legends-malaysia']);
+        $product = $this->rawProduct($supplier, ['game_id' => $game->id, 'price_sen' => 0]);
         $this->actingAsAdmin();
 
         $response = $this->postJson("/api/middleware/supplier-products/{$product->id}/promote", [
-            'game_id' => $game->id,
             'name' => '14 Diamond',
         ]);
 
@@ -599,18 +580,16 @@ class SupplierProductControllerTest extends TestCase
     public function test_promote_rejects_an_already_promoted_item(): void
     {
         $supplier = $this->supplier();
-        $product = $this->rawProduct($supplier);
         $game = Game::query()->create(['name' => 'Mobile Legends (Malaysia)', 'slug' => 'mobile-legends-malaysia']);
+        $product = $this->rawProduct($supplier, ['game_id' => $game->id]);
         $this->actingAsAdmin();
 
         $first = $this->postJson("/api/middleware/supplier-products/{$product->id}/promote", [
-            'game_id' => $game->id,
             'name' => '14 Diamond (13+1 Bonus)',
         ]);
         $first->assertCreated();
 
         $second = $this->postJson("/api/middleware/supplier-products/{$product->id}/promote", [
-            'game_id' => $game->id,
             'name' => '14 Diamond (13+1 Bonus) — duplicate attempt',
         ]);
 

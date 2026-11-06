@@ -15,7 +15,9 @@ use App\Models\PackageRefChange;
 use App\Models\PendingPriceChange;
 use App\Models\Supplier;
 use App\Models\SupplierProduct;
+use App\Services\Catalog\PackageActivation;
 use App\Services\Order\DeliveryStatus;
+use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\ComboPricingService;
 use App\Services\Pricing\PackageCostService;
 use App\Services\Pricing\PackageMarkupService;
@@ -195,9 +197,10 @@ class SupplierProductController extends Controller
     }
 
     /**
-     * `game_id` is always required and always an existing Game — the
-     * "which Game" decision was already made once for this item's
-     * whole category (linkCategory), not here. Markup is never set
+     * ADR-138 decision 17: the game is the product's own, decided once
+     * for its whole category (linkCategory); a product with none is
+     * refused by the request. Decision 16: created off, then through the
+     * seam, so a blocker leaves it off and the response says why. Markup is never set
      * here either (founder revision, docs/prd.md §14) — every
      * promoted Package gets the configured default markup applied;
      * admin sets the real per-package markup afterward in
@@ -207,6 +210,7 @@ class SupplierProductController extends Controller
         PromoteSupplierProductRequest $request,
         SupplierProduct $supplierProduct,
         PackageMarkupService $markup,
+        PackageActivation $activation,
     ): JsonResponse {
         if ($supplierProduct->price_sen === null) {
             throw ValidationException::withMessages([
@@ -244,23 +248,31 @@ class SupplierProductController extends Controller
         $data = $request->validated();
         $markupPercent = (float) config('packages.default_markup_percent');
 
-        $package = Package::query()->create([
-            'game_id' => $data['game_id'],
-            'name' => $data['name'],
-            'denomination' => $data['denomination'] ?? null,
-            'cost_price' => $supplierProduct->price_sen,
-            'markup_percent' => $markupPercent,
-            'standard_selling_price' => $markup->calculateStandardSellingPrice($supplierProduct->price_sen, $markupPercent),
-            'supplier_id' => $supplierProduct->supplier_id,
-            'supplier_package_ref' => $supplierProduct->external_ref,
-        ]);
+        $notice = null;
+
+        $package = DB::transaction(function () use ($supplierProduct, $data, $markup, $markupPercent, $activation, &$notice) {
+            $package = Package::query()->create([
+                'game_id' => $supplierProduct->game_id,
+                'name' => $data['name'],
+                'denomination' => $data['denomination'] ?? null,
+                'cost_price' => $supplierProduct->price_sen,
+                'markup_percent' => $markupPercent,
+                'standard_selling_price' => $markup->calculateStandardSellingPrice($supplierProduct->price_sen, $markupPercent),
+                'is_active' => false,
+                'supplier_id' => $supplierProduct->supplier_id,
+                'supplier_package_ref' => $supplierProduct->external_ref,
+            ]);
+            $notice = $activation->activateNew($package);
+
+            return $package;
+        });
 
         // ADR-014: a promoted item is a new row in both GameController's
         // index() (packages_count) and packages($game) listings.
         GameController::forgetIndexCache();
-        GameController::forgetPackagesCache($data['game_id']);
+        GameController::forgetPackagesCache($supplierProduct->game_id);
 
-        return response()->json(['package' => $package], 201);
+        return response()->json(['package' => $package, 'notice' => $notice], 201);
     }
 
     /**
@@ -314,13 +326,22 @@ class SupplierProductController extends Controller
     {
         $unsettled = [DeliveryStatus::Processing->value, DeliveryStatus::Pending->value, DeliveryStatus::NeedsReview->value];
 
+        // ADR-138 decision 19: a combo leg sends its component's live reference, so
+        // a combo order counts too. A failed payment leaves not_started for good.
+        $notYetDelivered = Order::query()
+            ->whereIn('package_id', $package->partOfCombos()->pluck('packages.id')->push($package->id))
+            ->where(fn ($query) => $query->whereIn('delivery_status', $unsettled)->orWhere(fn ($notSent) => $notSent
+                ->where('delivery_status', DeliveryStatus::NotStarted->value)
+                ->where('payment_status', '!=', PaymentStatus::Failed->value)));
+
         return match (true) {
             $product->price_sen === null || $product->price_sen <= 0 => 'This item has no valid supplier price yet.',
+            $product->status_raw !== 'active' => 'The supplier does not list this item as active.',
             Package::query()->where('supplier_id', $product->supplier_id)->where('supplier_package_ref', $product->external_ref)->exists() => 'This item is already in the catalog.',
             $package->is_combo || $package->supplier_id !== $product->supplier_id || ! $package->supplier?->isApiBacked() => 'Only a package from this same API supplier can be linked to this item.',
             $product->game_id === null || $product->game_id !== $package->game_id => 'This item\'s group is not linked to the package\'s game.',
-            Order::query()->where('package_id', $package->id)->whereIn('delivery_status', $unsettled)->exists()
-                || OrderDeliveryLeg::query()->where('component_package_id', $package->id)->whereIn('status', $unsettled)->exists() => 'This package has orders still in Processing, Pending or Needs Review. Settle them first.',
+            $notYetDelivered->exists()
+                || OrderDeliveryLeg::query()->where('component_package_id', $package->id)->whereIn('status', $unsettled)->exists() => 'This package has orders paid or awaiting payment that are not delivered yet. Settle them first.',
             default => null,
         };
     }

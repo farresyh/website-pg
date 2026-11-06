@@ -132,6 +132,59 @@ class SupplierProductRepointTest extends TestCase
         $this->assertSame('15116', $package->fresh()->supplier_package_ref);
     }
 
+    public function test_repoint_refuses_a_product_that_is_not_active(): void
+    {
+        $package = $this->package();
+
+        $this->repoint($this->product(['status_raw' => 'inactive']), $package)->assertUnprocessable();
+
+        $this->assertSame('15116', $package->fresh()->supplier_package_ref);
+    }
+
+    private function order(Package $package, string $payment, string $delivery): Order
+    {
+        $n = uniqid();
+
+        return Order::query()->create(['placed_via' => 'storefront', 'affiliate_id' => $this->primaryAffiliate()->id,
+            'order_number' => "KRS-{$n}", 'reference_number' => "REF-{$n}", 'customer_email' => 'b@example.com', 'player_id' => '1',
+            'package_id' => $package->id, 'supplier_id' => $this->supplier->id, 'supplier_product_ref' => '15116',
+            'cost_price' => 400, 'standard_selling_price' => 480, 'selling_price' => 480, 'transaction_fee' => 0, 'final_amount' => 480,
+            'platform_profit' => 80, 'affiliate_profit' => 0, 'payment_status' => $payment, 'delivery_status' => $delivery]);
+    }
+
+    /** ADR-138 decision 19: its frozen old reference would be sent after the move. */
+    public function test_repoint_refuses_an_order_paid_or_awaiting_payment_and_not_yet_sent(): void
+    {
+        foreach (['paid', 'pending'] as $payment) {
+            $package = $this->package(['supplier_package_ref' => "OLD-{$payment}"]);
+            $this->order($package, $payment, DeliveryStatus::NotStarted->value);
+
+            $this->repoint($this->product(['external_ref' => "ff_my:{$payment}"]), $package)->assertUnprocessable();
+        }
+    }
+
+    /** A failed payment leaves not_started behind for good; it must not block forever. */
+    public function test_repoint_ignores_failed_payments_and_finished_deliveries(): void
+    {
+        $package = $this->package();
+        $this->order($package, 'failed', DeliveryStatus::NotStarted->value);
+        $this->order($package, 'paid', DeliveryStatus::Delivered->value);
+        $this->order($package, 'paid', DeliveryStatus::Failed->value);
+
+        $this->repoint($this->product(), $package)->assertOk();
+    }
+
+    /** A combo leg sends its component's live reference, so a combo order counts as an order on the component. */
+    public function test_repoint_refuses_while_a_combo_holding_the_package_has_an_order_not_yet_sent(): void
+    {
+        $package = $this->package();
+        $combo = $this->package(['name' => 'Combo', 'is_combo' => true, 'supplier_id' => null, 'supplier_package_ref' => null]);
+        $combo->components()->attach($package->id, ['quantity' => 1, 'sort_order' => 0]);
+        $this->order($combo, 'paid', DeliveryStatus::NotStarted->value);
+
+        $this->repoint($this->product(), $package)->assertUnprocessable();
+    }
+
     public function test_the_products_list_marks_a_repointed_product_as_in_the_catalog(): void
     {
         $product = $this->product();

@@ -327,8 +327,9 @@ export default function ProductManagerPage() {
 
   async function handlePromoteSubmit(values: PromoteValues) {
     if (!session || !promoting || !selected) return;
-    await promoteSupplierProduct(promoting.id, values);
-    notify.success("Product promoted");
+    const { notice } = await promoteSupplierProduct(promoting.id, values);
+    if (notice) notify.warn("Added, but not on sale", notice);
+    else notify.success("Product promoted");
     setPromoting(null);
     await openCategory(selected);
     await refreshCategories();
@@ -562,7 +563,6 @@ export default function ProductManagerPage() {
             onClose={() => setPromoting(null)}
             onSubmit={handlePromoteSubmit}
             product={promoting}
-            gameId={selected.game.id}
             gameName={selected.game.name}
           />
         )}
