@@ -67,6 +67,7 @@ export default function SuppliersPage() {
   const [editTarget, setEditTarget] = useState<Supplier | null>(null);
   const [packagesTarget, setPackagesTarget] = useState<Supplier | null>(null);
   const [activateConfirmTarget, setActivateConfirmTarget] = useState<Supplier | null>(null);
+  const [deactivateConfirmTarget, setDeactivateConfirmTarget] = useState<Supplier | null>(null);
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<Supplier | null>(null);
 
   useEffect(() => {
@@ -135,6 +136,7 @@ export default function SuppliersPage() {
     } finally {
       setBusySlug(null);
       setActivateConfirmTarget(null);
+      setDeactivateConfirmTarget(null);
     }
   }
 
@@ -318,7 +320,7 @@ export default function SuppliersPage() {
                   variant="outlined"
                   disabled={busy}
                   onClick={() =>
-                    supplier.is_active ? handleToggleActive(supplier) : setActivateConfirmTarget(supplier)
+                    supplier.is_active ? setDeactivateConfirmTarget(supplier) : setActivateConfirmTarget(supplier)
                   }
                 >
                   {supplier.is_active ? "Deactivate" : "Activate"}
@@ -380,6 +382,11 @@ export default function SuppliersPage() {
                   This supplier will be included in the next scheduled price sync — make sure its credentials are
                   correct first (Edit → Refresh Balance to verify).
                 </p>
+                {activateConfirmTarget?.is_api_backed && (
+                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                    Its packages stay off. After the next sync, use Manage Packages → Reactivate to put them back on sale.
+                  </p>
+                )}
               </DialogContent>
               <DialogFooter>
                 <Button variant="outlined" onClick={() => setActivateConfirmTarget(null)}>
@@ -387,6 +394,43 @@ export default function SuppliersPage() {
                 </Button>
                 <Button disabled={busySlug === activateConfirmTarget?.slug} onClick={() => activateConfirmTarget && handleToggleActive(activateConfirmTarget)}>
                   Activate
+                </Button>
+              </DialogFooter>
+            </DialogPopup>
+          </DialogPositioner>
+        </DialogPortal>
+      </Dialog>
+
+      {/* ADR-138 decision 20: switching a supplier off takes its packages and combos off sale. */}
+      <Dialog open={deactivateConfirmTarget !== null} onOpenChange={(e) => !e.value && setDeactivateConfirmTarget(null)}>
+        <DialogPortal>
+          <DialogBackdrop />
+          <DialogPositioner>
+            <DialogPopup>
+              <DialogHeader>
+                <DialogTitle>Deactivate {deactivateConfirmTarget?.name}?</DialogTitle>
+              </DialogHeader>
+              <DialogContent>
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  On sale now, and going off: {deactivateConfirmTarget?.on_sale.packages} package(s),{" "}
+                  {deactivateConfirmTarget?.on_sale.combos} combo(s).
+                </p>
+                <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                  {deactivateConfirmTarget?.is_api_backed
+                    ? "Activating it again restores nothing: after the next sync, use Manage Packages → Reactivate."
+                    : "They come back when you activate it again."}
+                </p>
+              </DialogContent>
+              <DialogFooter>
+                <Button variant="outlined" onClick={() => setDeactivateConfirmTarget(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  severity="danger"
+                  disabled={busySlug === deactivateConfirmTarget?.slug}
+                  onClick={() => deactivateConfirmTarget && handleToggleActive(deactivateConfirmTarget)}
+                >
+                  Deactivate
                 </Button>
               </DialogFooter>
             </DialogPopup>

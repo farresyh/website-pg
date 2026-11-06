@@ -42,6 +42,11 @@ export interface Supplier {
     supplier_products: number;
     orders: number;
   };
+  /** ADR-138 decision 20: what switching this supplier off takes off sale. */
+  on_sale: {
+    packages: number;
+    combos: number;
+  };
 }
 
 /**
