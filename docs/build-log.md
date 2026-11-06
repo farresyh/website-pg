@@ -1509,3 +1509,23 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 - `backend/AGENTS.md` gotcha 5 again: the first browser run looked like a missing toast, but the cache forget had answered 500 after the package was saved. `CACHE_STORE=array php artisan serve --no-reload` avoids it without Redis.
 - `:3000` was held by an unrelated process, so the admin ran on `:3010` with Playwright routing `localhost:3000` to it, which keeps the session cookie valid. Chromium then needs `--disable-features=LocalNetworkAccessChecks`.
 - A test helper named `component()` is a fatal error: Laravel's test case already has one.
+
+## 2026-11-06 — Item 166 PR 4: the supplier switch (ADR-138)
+
+**#713 (PR 3) merged to `staging`** (`66a77f9b`) after green CI, on the founder's go-ahead.
+
+**Why.** Seam G: an API supplier switched off kept selling but stopped syncing, so its packages sold at costs that grew older. On prod 2026-11-06 DigiFlazz has 1,195 packages on sale, so this switch now stops most of the store, which is why it asks first.
+
+**Built.**
+- Switching an API supplier off writes the flag first, closes its open price rows, then takes its packages and combos off through the seam as `supplier_issue`.
+- Switching it on restores nothing. A manual supplier stays automatic both ways (ADR-125 decision 64).
+- Reactivate is refused until the supplier has synced within its limit (default 90 minutes).
+- `/middleware/suppliers`: Deactivate has a confirm dialog with the counts, and both dialogs say how packages come back.
+- The stale limit moved from `CheckPriceSyncStalenessCommand` to `Supplier::priceSyncStaleMinutes()`, so the email and Reactivate read one setting.
+
+**Tests.** `SupplierSwitchTest` (9). `PackageActivationTest`'s supplier now has a recent sync.
+
+**Verified:** `php artisan test` 3,744 of 3,744; admin `tsc` and `eslint` clean on the touched files. In a real browser on a built admin, with temporary rows removed afterwards and the database read at each step: the dialog's counts, off (package `supplier_issue`, combo `combo_component_deactivated`), on (both stay off), Reactivate refused with a sync five hours old, then allowed after a fresh one (both on). The count line's wording was changed after that run, and only `tsc` and `eslint` saw the new text.
+
+**Open.** A single package switched on after a long stop has no freshness check (ADR-138 PR 4 build notes). For the founder to decide.
+
