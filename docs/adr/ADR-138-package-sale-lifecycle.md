@@ -114,3 +114,9 @@ Production, read-only, 2026-11-06:
 - `DismissedPackage` in `price-sync.ts` types `deactivated_at` and `supplier_package_ref` as non-null; admin-off combos have a null ref.
 - Suspected, not traced: `updateStatus` on a Joki package leaves reason `admin`, which the Joki path never clears.
 - Suspected, not traced: whether a combo can span two suppliers, which the bulk cascade should survive either way.
+
+### 2026-11-06 addendum — PR 1 build notes
+
+- **Decision 2, return values.** `deactivate()` returns a bool, not game ids. A combo shares its components' game (`StoreComboPackageRequest`, and a package can't move games), so the caller's own `game_id` covers the cache forget. `deactivateMany()` returns the combo count that Deactivate All reports.
+- **Decision 3, Dismissed.** The list now also filters on `is_active = false`: an admin can switch a Joki package off in `/admin/games` and Joki settings can switch it back on without clearing the reason, so that package would have shown as dismissed while on sale.
+- **A swing now writes a `DeactivationLog` row,** so it appears in Sync Details. `deactivated` in the run result still excludes it.

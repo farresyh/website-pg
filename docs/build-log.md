@@ -1450,3 +1450,19 @@ Before a repoint, the five Gamevion groups must be linked to their games in Prod
 Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 30% or more reversed within 24 hours, and the 2026-11-01 landed-cost run moved 1,399 packages at a median of 6.76%.
 
 **Next:** build ADR-138 (item 166), then Grill 2 (item 167), Grill 3 (item 168), `max_price` (item 169).
+
+## 2026-11-06 — Item 166 PR 1: one door for switching a package off (ADR-138)
+
+**Why.** Seam A: a price swing switched a component off and left its combo on sale at the old cost, with no price cap sent to the supplier. Every off path also recorded something different.
+
+**Built.**
+- `PackageActivation::deactivate()` and `deactivateMany()` write the reason, the `DeactivationLog` row and the combo cascade in one transaction. The bulk form stays a few statements.
+- The cascade moved out of `ComboPricingService`, which already depended on `PackageActivation`. `cascadeReactivate` stays there because it recomputes.
+- Sync's two off paths, `flagPriceAnomaly`, `SupplierPackageStatusService::deactivate()` and the admin toggle all go through the door.
+- An admin switch-off now stores reason `admin`, a time and a log row, so it reaches Dismissed.
+- Migration `2026_11_11_120000` gives the same reason to packages off with none, leaving the Joki pool out. Sale state doesn't change. On prod 2026-11-06 that selected 85 Digiflazz rows, with 8 pool rows left out.
+- The Dismissed list filters on `is_active = false`; a combo row reads "Combo" (it has no supplier ref).
+
+**Tests.** `PackageSwitchOffTest`: the seam, a failed write changing nothing, the bulk form, swing to combo off to Approve back repriced, the backfill, every off path leaving no combo on sale, and a static check for writes outside the seam. Tests of the old cascade methods moved there.
+
+**Gotcha.** `Package::create()` without `is_active` leaves it null in memory (the default lives in the database), so `deactivate()` sees it as off and returns false. Three combo tests hit this. PR 3's creation change has to pass `is_active` explicitly, as ADR-138 decision 16 says.
