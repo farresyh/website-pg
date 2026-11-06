@@ -271,7 +271,7 @@ final class PackagePriceSyncService
                 }
 
                 if ($row !== null) {
-                    $this->closeRow($locked, $row, 'superseded', $priceSyncRunId, null);
+                    $row->update(['status' => 'superseded']);
                 }
 
                 return $newCostPrice === $cost ? 'skipped' : 'applied';
@@ -279,7 +279,7 @@ final class PackagePriceSyncService
 
             if (! $productActive) {
                 if ($row !== null) {
-                    $this->closeRow($locked, $row, 'superseded', $priceSyncRunId, null);
+                    $row->update(['status' => 'superseded']);
                 }
 
                 return 'skipped';
@@ -330,7 +330,7 @@ final class PackagePriceSyncService
     private function applyHeld(Package $locked, PendingPriceChange $row, string $status, ?int $priceSyncRunId, ?int $adminUserId): void
     {
         $this->packageCost->apply($locked, $row->proposed_cost_price, $priceSyncRunId, $adminUserId);
-        $this->closeRow($locked, $row, $status, $priceSyncRunId, $adminUserId);
+        $row->update(['status' => $status]);
     }
 
     /** Decision 11: a product this run didn't see breaks the hold, so the clock restarts. */
@@ -341,19 +341,8 @@ final class PackagePriceSyncService
             $row = PendingPriceChange::query()->where('package_id', $locked->id)->where('status', 'pending')->first();
 
             if ($row !== null) {
-                $this->closeRow($locked, $row, 'superseded', null, null);
+                $row->update(['status' => 'superseded']);
             }
         });
-    }
-
-    private function closeRow(Package $locked, PendingPriceChange $row, string $status, ?int $priceSyncRunId, ?int $adminUserId): void
-    {
-        $row->update(['status' => $status]);
-
-        // ADR-138 build order: only a swing flagged before this rule can
-        // still hold a package off. Delete once production shows none left.
-        if ($locked->deactivated_reason === PackageActivation::PRICE_ANOMALY && $this->activation->activate($locked, PackageActivation::PRICE_ANOMALY)) {
-            $this->comboPricing->cascadeReactivate($locked, $priceSyncRunId, $adminUserId);
-        }
     }
 }

@@ -114,8 +114,7 @@ class Adr125ManualPackageTest extends TestCase
         $game = Game::query()->create(['name' => 'MLBB', 'slug' => 'mlbb']);
         $package = Package::query()->create([
             'game_id' => $game->id, 'name' => '86 Diamonds', 'cost_price' => 400, 'standard_selling_price' => 460, 'markup_percent' => 15,
-            'supplier_id' => $this->supplier('gamevion')->id, 'supplier_package_ref' => 'GV1', 'is_active' => false,
-            'deactivated_reason' => 'price_anomaly',
+            'supplier_id' => $this->supplier('gamevion')->id, 'supplier_package_ref' => 'GV1', 'is_active' => true,
         ]);
         $pending = PendingPriceChange::query()->create([
             'package_id' => $package->id, 'old_cost_price' => 400, 'proposed_cost_price' => 600,

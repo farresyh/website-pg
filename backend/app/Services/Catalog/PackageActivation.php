@@ -26,9 +26,6 @@ use Illuminate\Support\Facades\DB;
  */
 final class PackageActivation
 {
-    /** ADR-138: retired. Only a swing flagged before that rule can still carry it. */
-    public const PRICE_ANOMALY = 'price_anomaly';
-
     public const SUPPLIER_SYNC = 'supplier_sync';
 
     public const COMBO_COMPONENT = 'combo_component_deactivated';

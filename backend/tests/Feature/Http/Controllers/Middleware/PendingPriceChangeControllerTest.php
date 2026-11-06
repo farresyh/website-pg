@@ -48,9 +48,7 @@ class PendingPriceChangeControllerTest extends TestCase
             'cost_price' => 1000,
             'standard_selling_price' => 1150,
             'markup_percent' => 15,
-            'is_active' => false,
-            'deactivated_reason' => 'price_anomaly',
-            'deactivated_at' => now(),
+            'is_active' => true,
             'supplier_id' => $supplier->id,
             'supplier_package_ref' => 'GV733',
         ], $overrides));

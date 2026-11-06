@@ -1529,3 +1529,23 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 
 **Open.** A single package switched on after a long stop has no freshness check (ADR-138 PR 4 build notes). For the founder to decide.
 
+## 2026-11-06 — Released #715: package sale lifecycle live; Gamevion key rejected; Dismissed list fixed
+
+**#714 merged to `staging`** (`47d7bd61`) after green CI. **#715 released** on the founder's go-ahead: merge `e2a00fcb`, CI and `deploy` green, box release `82286819` at `e2a00fc`.
+
+**Checked read-only before release:** the three foreign keys under their expected names, the app user's ALTER and REFERENCES, the backfill's 85 rows (all DigiFlazz), and nothing open: 0 price rows, 0 `price_anomaly`, 0 orders in flight, 0 running syncs.
+
+**Checked read-only after release:** both migrations `Ran` (batch 67), three delete rules RESTRICT, 85 rows with reason `admin`, `/api/health` 200, Horizon running, 0 active combos with an off component, 0 open price rows, 0 orders in flight.
+
+**Package count 1,277 to 1,265, not from the release.** Run 3336 brought 2 back and run 3338 took 14 Free Fire Malaysia off, all `status_raw` inactive from DigiFlazz and still inactive at 13:00 UTC. The same flapping ran before the release (2 in run 3317, 7 in 3327; 37 in one run in October).
+
+**Gamevion answers 401 `Invalid access token`.** `GET /api/games` returned 200 at 00:30:06 UTC on 2026-11-06 and 401 at 01:00:08, on every run since, ten hours before this release. The stale alert was set at 02:15 UTC. Nothing on our side deployed then, but no table records a credential change, so the cause is unknown. No customer impact: 0 packages on, 0 orders. The founder is generating a new key. An earlier recap this session called Gamevion syncing, from docs, without checking; it wasn't.
+
+**Dismissed list bug, found by the founder.** "There's no Call of Duty there." The backfill gave all 85 rows one `deactivated_at` and the list sorted on that alone, so MySQL's pages overlapped: 43 unique packages over five pages, 28 of them twice, no Call of Duty. Fixed with `id` as a second sort. SQLite doesn't show the overlap, so the new test pins the order, and the new query ran read-only on production: 87 unique, no duplicates, all 42 Call of Duty (2 more had been dismissed by then). Call of Duty Mobile is off as a game, so restoring those packages sells nothing until the game is on.
+
+**Also in that PR:** `closeRow()` and `PRICE_ANOMALY` removed now production holds none, and tests that still set a held package off moved to it staying on sale. `DismissedPackageController`'s comment no longer says a restore ignores the supplier.
+
+**Verified:** `php artisan test` 3,743 of 3,743.
+
+**Gotcha.** Printing even a credential's prefix or length through tinker was refused in this session, rightly. Diagnose a supplier's auth from `supplier_request_logs`' status codes.
+

@@ -145,3 +145,8 @@ Production, read-only, 2026-11-06:
 - **Decision 22, where.** The refusal sits in `SupplierController::updatePackagesStatus`, not the service, because Price Sync's own `unfunded` reactivate runs before its run is recorded. A supplier that is off falls through: its packages stay off and count as skipped.
 - **Not covered by decision 22.** Switching on one package (`/admin/games`, Pending Reactivation, Dismissed) has no freshness check. After a long stop, one package can go on sale at a frozen cost.
 
+### 2026-11-06 addendum — after release
+
+- **Single-package switch-on stays unchecked, by the founder's decision.** The gap in the PR 4 notes needs three things at once: a long stop, a price change during it, and an admin switching a package on before the next sync, which refreshes costs on off packages too. The habit instead: after switching a long-off supplier on, wait one sync before switching any package on.
+- **`closeRow()` and `PRICE_ANOMALY` are gone,** as the build order said: production held none after release.
+

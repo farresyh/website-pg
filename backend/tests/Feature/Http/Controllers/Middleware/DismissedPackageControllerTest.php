@@ -48,6 +48,25 @@ class DismissedPackageControllerTest extends TestCase
     }
 
     /**
+     * ADR-138's backfill gave 85 packages one `deactivated_at`. Sorted on that
+     * alone, MySQL's pages overlapped: 43 packages shown of 85, the rest never.
+     */
+    public function test_pages_list_every_package_once_when_they_share_a_time(): void
+    {
+        $supplier = $this->supplier();
+        $game = $this->game();
+        $ids = collect(range(1, 5))->map(fn (int $n) => $this->dismissedByAdmin($supplier, $game, "GV{$n}")->id);
+        Package::query()->whereIn('id', $ids)->update(['deactivated_at' => now()->subDay()]);
+        $this->actingAsAdmin();
+
+        $listed = collect(range(1, 3))->flatMap(
+            fn (int $page) => $this->getJson("/api/middleware/price-sync/dismissed-packages?per_page=2&page={$page}")->assertOk()->json('data'),
+        )->pluck('id');
+
+        $this->assertSame($ids->sortDesc()->values()->all(), $listed->all());
+    }
+
+    /**
      * ADR-016 decision #3: only deactivated_reason='admin' packages
      * show here — never a supplier_sync one still pending review.
      */
