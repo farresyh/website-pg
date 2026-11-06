@@ -107,3 +107,17 @@
 - A parked leg that never reached the supplier is bought by the poll itself: a same-reference re-submit is its first purchase. The customer has paid, so this is correct, and the real price lands through `finalizePendingDeliveryLeg()`. Same as a plain order since ADR-102's 2026-09-29 addendum.
 - A webhook reaching a leg still at `Processing` after its worker died is refused with "already finalized". The poll recovers it after the reconciler parks the leg, 15 minutes or more later.
 - A rollback of this release with a leg at `Processing` would strand that leg. The window is seconds.
+
+### 2026-11-07 addendum — build notes for decisions 10 to 17
+
+**Method names.** `claimLeg()`, `parkUnknownLeg()`, `recoverDeadComboPass()`, `DeliveryStatus::comboRollup()`, `Order::isCombo()`.
+
+**Smaller than designed.** `recordLegAttempt()` now has one caller and lost its response argument. The outcome branches call `resolvePendingLegAttempt()`, which also records a `pending` response. `fulfillCombo()`'s skip check went too: `claimLeg()` decides that under the lock. `OrderFulfillmentService` shrank by 30 lines.
+
+**Stated more exactly than the addendum.**
+- Decision 16 also refuses a first pass past the window, because the check sits before any leg is read. A paid combo that old has never existed.
+- `confirmComboLegsFailed()` refuses when the rollup gives neither `Failed` nor `PartiallyDelivered`, such as every leg already delivered. It used to mark that partial.
+- `recoverDeadComboPass()` schedules a poll whenever the order ends `Pending`, not only when it parked a leg itself.
+
+**Proof.** All three real-process tests fail on the old `OrderFulfillmentService` and pass on the new one: killed first attempt, killed retry of a `Failed` leg, webhook racing the leg in flight. `OrderFulfillmentTestFulfill` gained optional `readyFile` and `holdSeconds` arguments for them.
+
