@@ -4,7 +4,6 @@ namespace App\Services\Catalog;
 
 use App\Models\DeactivationLog;
 use App\Models\Package;
-use App\Models\PendingPriceChange;
 use App\Models\SupplierProduct;
 use App\Services\Currency\LandedCostRate;
 use App\Services\Supplier\SupplierPackageStatusService;
@@ -17,8 +16,7 @@ use Illuminate\Support\Facades\DB;
  * Checkout sells any package with `is_active`, and several reasons to keep
  * one off can hold at once while the package stores a single reason. So the
  * blockers are computed here when asked. Each maps to the stored reason whose
- * own path brings the package back later (Pending Price Changes, the
- * supplier's Reactivate, the unfunded sync, Pending Reactivation, the combo
+ * own path brings the package back later (the supplier's Reactivate, the unfunded sync, Pending Reactivation, the combo
  * cascade).
  *
  * ADR-138: also the only code that switches a package off. The reason, the
@@ -28,6 +26,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class PackageActivation
 {
+    /** ADR-138: retired. Only a swing flagged before that rule can still carry it. */
     public const PRICE_ANOMALY = 'price_anomaly';
 
     public const SUPPLIER_SYNC = 'supplier_sync';
@@ -37,7 +36,6 @@ final class PackageActivation
     public const ADMIN = 'admin';
 
     private const EXPLANATIONS = [
-        self::PRICE_ANOMALY => 'a supplier price change is waiting for review in the Price Sync Center',
         SupplierPackageStatusService::REASON => 'its supplier is switched off',
         SupplierPackageStatusService::UNFUNDED => 'its supplier has no recorded deposit',
         self::SUPPLIER_SYNC => 'its supplier does not list it as available',
@@ -118,10 +116,6 @@ final class PackageActivation
     {
         if ($package->is_combo) {
             return $package->components()->where('packages.is_active', false)->exists() ? self::COMBO_COMPONENT : null;
-        }
-
-        if (PendingPriceChange::query()->where('package_id', $package->id)->where('status', 'pending')->exists()) {
-            return self::PRICE_ANOMALY;
         }
 
         $supplier = $package->supplier;

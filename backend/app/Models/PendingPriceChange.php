@@ -6,12 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * ADR-025 decision #2: a supplier-sourced price swing large enough to
- * cross `PRICE_SWING_THRESHOLD_PERCENT`, blocked from being applied
- * until an admin reviews it. `status` moves pending -> approved/
- * dismissed and is never deleted — a permanent audit trail of every
- * anomaly ever flagged, mirroring PriceChangeLog/DeactivationLog's own
- * append-only convention.
+ * ADR-138: a supplier price held back while the package keeps selling at
+ * its old cost: a big drop, or any big swing in a mass change. `status`
+ * moves pending -> approved, auto_applied or superseded (older rows may be
+ * dismissed) and is never deleted — a permanent audit trail, mirroring
+ * PriceChangeLog/DeactivationLog's own append-only convention.
  */
 class PendingPriceChange extends Model
 {
