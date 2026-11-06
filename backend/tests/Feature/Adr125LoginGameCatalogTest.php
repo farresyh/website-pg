@@ -192,9 +192,9 @@ class Adr125LoginGameCatalogTest extends TestCase
             'validation_rules' => ['credential_fields' => $this->schema()],
         ])->assertJsonValidationErrors('validation_rules.credential_fields');
 
-        $this->postJson("/api/middleware/supplier-products/{$product->id}/promote", [
-            'game_id' => $game->id, 'name' => '800 Robux',
-        ])->assertJsonValidationErrors('game_id');
+        $product->update(['game_id' => $game->id]);
+        $this->postJson("/api/middleware/supplier-products/{$product->id}/promote", ['name' => '800 Robux'])
+            ->assertJsonValidationErrors('supplier_product');
     }
 
     public function test_a_combo_refuses_a_manual_suppliers_package(): void

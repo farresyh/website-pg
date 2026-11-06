@@ -41,13 +41,15 @@ class PackageController extends Controller
      * `supplier_package_ref` of its own (decision 3). Pricing itself
      * is `ComboPricingService::recompute()`'s job (decision 5/6) — the
      * same computation Price Sync's own per-component-change hook
-     * reuses, not duplicated here.
+     * reuses, not duplicated here. ADR-138 decision 16: created off, and
+     * goes on sale only once its components are attached and priced.
      */
-    public function storeCombo(StoreComboPackageRequest $request, Game $game, ComboPricingService $comboPricing): JsonResponse
+    public function storeCombo(StoreComboPackageRequest $request, Game $game, ComboPricingService $comboPricing, PackageActivation $activation): JsonResponse
     {
         $validated = $request->validated();
+        $notice = null;
 
-        $combo = DB::transaction(function () use ($game, $validated, $comboPricing) {
+        $combo = DB::transaction(function () use ($game, $validated, $comboPricing, $activation, &$notice) {
             $combo = Package::query()->create([
                 'game_id' => $game->id,
                 'name' => $validated['name'],
@@ -55,7 +57,7 @@ class PackageController extends Controller
                 'cost_price' => 0,
                 'standard_selling_price' => 0,
                 'markup_percent' => 0,
-                'is_active' => true,
+                'is_active' => false,
                 'is_combo' => true,
                 'supplier_id' => null,
                 'supplier_package_ref' => null,
@@ -69,42 +71,46 @@ class PackageController extends Controller
             }
 
             $comboPricing->recompute($combo);
+            $notice = $activation->activateNew($combo);
 
             return $combo;
         });
 
         GameController::forgetPackagesCache($game->id);
 
-        return response()->json($combo->load('components'), 201);
+        return response()->json([...$combo->load('components')->toArray(), 'notice' => $notice], 201);
     }
 
     /**
      * ADR-125 decision 4: `supplier_package_ref = MANUAL-{id}`, so the
      * (supplier, ref) unique index holds and the ref names the package.
+     * ADR-138 decision 16: created off, then through the seam.
      */
-    public function storeManual(StoreManualPackageRequest $request, Game $game, PackageMarkupService $markup): JsonResponse
+    public function storeManual(StoreManualPackageRequest $request, Game $game, PackageMarkupService $markup, PackageActivation $activation): JsonResponse
     {
         $data = $request->validated();
+        $notice = null;
 
-        $package = DB::transaction(function () use ($game, $data, $markup) {
+        $package = DB::transaction(function () use ($game, $data, $markup, $activation, &$notice) {
             $package = Package::query()->create([
                 'game_id' => $game->id,
                 'name' => $data['name'],
                 'cost_price' => $data['cost_price'],
                 'markup_percent' => $data['markup_percent'],
                 'standard_selling_price' => $markup->calculateStandardSellingPrice($data['cost_price'], (float) $data['markup_percent']),
-                'is_active' => true,
+                'is_active' => false,
                 'supplier_id' => $data['supplier_id'],
                 'supplier_package_ref' => 'MANUAL-new-'.bin2hex(random_bytes(8)),
             ]);
             $package->update(['supplier_package_ref' => "MANUAL-{$package->id}"]);
+            $notice = $activation->activateNew($package);
 
             return $package;
         });
 
         GameController::forgetPackagesCache($game->id);
 
-        return response()->json($package, 201);
+        return response()->json([...$package->toArray(), 'notice' => $notice], 201);
     }
 
     /**

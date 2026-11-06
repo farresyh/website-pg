@@ -78,6 +78,19 @@ final class PackageActivation
     }
 
     /**
+     * ADR-138 decision 16: a package created off goes on sale here, or stays off
+     * with a reason that has its own way back. The caller passes `is_active =>
+     * false` explicitly: the default lives in the database, and activate()
+     * returns early on anything already on.
+     *
+     * @return ?string why it stayed off, for the admin; null when on sale
+     */
+    public function activateNew(Package $package): ?string
+    {
+        return $this->activate($package, null) ? null : self::explain($package->deactivated_reason);
+    }
+
+    /**
      * Switches one package off under $code, and its combos with it. A package
      * already off keeps its reason.
      *
