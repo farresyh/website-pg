@@ -469,8 +469,9 @@ export default function GamesPage() {
 
   async function handleCreateCombo(values: CreateComboPackageValues) {
     if (!session || !selected) return;
-    await createComboPackage(selected.id, values);
-    notify.success("Combo created");
+    const { notice } = await createComboPackage(selected.id, values);
+    if (notice) notify.warn("Combo created, but not on sale", notice);
+    else notify.success("Combo created");
     setCreatingCombo(false);
     await openGame(selected);
     await refreshGames();
@@ -548,8 +549,9 @@ export default function GamesPage() {
 
   async function handleCreateManualPackage(values: CreateManualPackageValues) {
     if (!selected) return;
-    await createManualPackage(selected.id, values);
-    notify.success("Manual package created");
+    const { notice } = await createManualPackage(selected.id, values);
+    if (notice) notify.warn("Manual package created, but not on sale", notice);
+    else notify.success("Manual package created");
     setAddingManualPackage(false);
     await openGame(selected);
     await refreshGames();

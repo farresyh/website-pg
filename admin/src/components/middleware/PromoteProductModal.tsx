@@ -19,22 +19,19 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import type { SupplierProduct, PromoteValues } from "@/lib/supplier-products";
 
-type ItemValues = Omit<PromoteValues, "game_id">;
-
 interface PromoteProductModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (values: PromoteValues) => Promise<void>;
   product: SupplierProduct | null;
-  gameId: number;
   gameName: string;
 }
 
 /**
  * Renders as a child of <Modal>, which unmounts while closed — same
  * fresh-mount-per-open reasoning as the other *FormFields components.
- * `gameId` is already resolved (LinkCategoryModal, once per category)
- * — this only curates the item's own final name. No markup field
+ * The game is already resolved (LinkCategoryModal, once per category)
+ * and the backend reads it from the product — this only curates the item's own final name. No markup field
  * (founder revision, docs/prd.md §14) — every promoted Package gets
  * the configured default markup automatically; admin sets the real
  * per-package markup afterward in /admin/games.
@@ -46,7 +43,7 @@ function PromoteProductFields({
   gameName,
 }: {
   onClose: () => void;
-  onSubmit: (values: ItemValues) => Promise<void>;
+  onSubmit: (values: PromoteValues) => Promise<void>;
   product: SupplierProduct;
   gameName: string;
 }) {
@@ -124,7 +121,7 @@ function PromoteProductFields({
   );
 }
 
-export default function PromoteProductModal({ isOpen, onClose, onSubmit, product, gameId, gameName }: PromoteProductModalProps) {
+export default function PromoteProductModal({ isOpen, onClose, onSubmit, product, gameName }: PromoteProductModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -143,7 +140,7 @@ export default function PromoteProductModal({ isOpen, onClose, onSubmit, product
               {isOpen && product && (
                 <PromoteProductFields
                   onClose={onClose}
-                  onSubmit={(values) => onSubmit({ ...values, game_id: gameId })}
+                  onSubmit={onSubmit}
                   product={product}
                   gameName={gameName}
                 />
