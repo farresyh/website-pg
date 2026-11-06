@@ -136,3 +136,12 @@ Production, read-only, 2026-11-06:
 - **Decision 17.** The request no longer takes `game_id`. A product with no game and a login game are both refused under `supplier_product`.
 - **Decision 19, combos.** A combo order counts as an order on its components, beyond the decision's wording: a leg sends its component's live reference (`OrderFulfillmentService`) and legs exist only once delivery starts, so the leg check can't see a paid combo order that hasn't started.
 - **Decision 19, what doesn't block.** A paid order whose delivery Failed doesn't count: it's final, and a resend uses the package's current reference. Processing, Pending and Needs Review block whatever the payment status, as before.
+
+### 2026-11-06 addendum — PR 4 build notes
+
+- **Decision 20.** `SupplierPackageStatusService::switchOffApiSupplier()` stays outside a transaction, so the flag is committed before any package goes off. It closes the supplier's open rows itself, because sync skips an off supplier. The dialog's counts are a new `on_sale` field, not `reference_counts`, which the delete rule sums.
+- **Orders already paid still deliver.** Fulfillment, the webhooks and reconciliation never read the supplier's flag (checked by reading the code, not by a test).
+- **Decision 22, the limit.** It reads the same setting as the stale email, `price_sync_stale_alert_minutes`, default 90. There, 0 switches the email off; here 0 keeps the default, so an admin can't remove the check by silencing the email.
+- **Decision 22, where.** The refusal sits in `SupplierController::updatePackagesStatus`, not the service, because Price Sync's own `unfunded` reactivate runs before its run is recorded. A supplier that is off falls through: its packages stay off and count as skipped.
+- **Not covered by decision 22.** Switching on one package (`/admin/games`, Pending Reactivation, Dismissed) has no freshness check. After a long stop, one package can go on sale at a frozen cost.
+
