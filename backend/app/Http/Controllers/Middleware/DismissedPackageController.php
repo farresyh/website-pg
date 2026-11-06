@@ -14,12 +14,10 @@ use Illuminate\Http\Request;
  * ADR-016 decision #3: "Manually Dismissed Packages" — packages an
  * admin explicitly took out of Pending Reactivation monitoring
  * (`deactivated_reason === 'admin'`), browsable in one place instead
- * of hunting through /admin/games individually. Restoring one here is
- * the same effect as PendingReactivationController::approve() (turn
- * back on, clear the deactivation fields) but doesn't require the
- * package's supplier item to currently be active — an admin can
- * restore a dismissed package on their own judgement regardless of
- * live supplier status.
+ * of hunting through /admin/games individually. An admin's own
+ * switch-off lands here too (ADR-138 decision 3). Restoring goes through
+ * PackageActivation like every switch-on, so a blocker refuses it: the
+ * package then carries the blocker's reason and leaves this list.
  */
 class DismissedPackageController extends Controller
 {
@@ -31,7 +29,8 @@ class DismissedPackageController extends Controller
             ->with('game', 'supplier')
             ->where('deactivated_reason', 'admin')
             ->where('is_active', false)
-            ->orderBy('deactivated_at', 'desc');
+            ->orderBy('deactivated_at', 'desc')
+            ->orderByDesc('id'); // pages overlap on a shared time without it
 
         return response()->json($query->paginate($perPage)->withQueryString());
     }
