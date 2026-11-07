@@ -41,13 +41,19 @@ test("a signed-out phone visitor chooses a plan and reaches its payment step", a
   test.slow();
   await page.setViewportSize({ width: 390, height: 844 });
 
-  // A link straight to the calculator keeps its place.
-  await page.goto(`${STOREFRONT_URL}/membership#calculator`);
-  await expect(page.getByRole("heading", { name: "Pay less on every top-up." })).toBeAttached({ timeout: 15_000 });
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
-
+  // Loading the page never moves it: the scroll to top is only for a change of sign-in step.
+  await page.addInitScript(() => {
+    const scrollTo = window.scrollTo.bind(window);
+    (window as unknown as { scrollCalls: number }).scrollCalls = 0;
+    window.scrollTo = ((...args: [number, number]) => {
+      (window as unknown as { scrollCalls: number }).scrollCalls += 1;
+      scrollTo(...args);
+    }) as typeof window.scrollTo;
+  });
   await page.goto(`${STOREFRONT_URL}/membership`);
-  await expect(page.getByRole("heading", { name: "Pay less on every top-up." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pay less on every top-up." })).toBeVisible({ timeout: 15_000 });
+  await page.waitForLoadState("networkidle");
+  expect(await page.evaluate(() => (window as unknown as { scrollCalls: number }).scrollCalls)).toBe(0);
   await expect(page.getByRole("textbox", { name: "Email address" })).toHaveCount(0);
   await expect(page.getByText("E2E 284 Diamonds").first()).toBeVisible();
 
