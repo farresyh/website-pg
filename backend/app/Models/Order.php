@@ -407,6 +407,16 @@ class Order extends Model
     }
 
     /**
+     * The platform's profit is what is left of the revenue after cost and
+     * the affiliate's share. The one formula for every recompute: delivery,
+     * resend, settlement, and the cost basis read back from a stored profit.
+     */
+    public static function residualProfit(int $revenueSen, int $costSen, int $affiliateProfitSen): int
+    {
+        return $revenueSen - $costSen - $affiliateProfitSen;
+    }
+
+    /**
      * @return array{cost: int, basis: string}
      */
     private function costReconciliation(): array
@@ -416,7 +426,7 @@ class Order extends Model
         }
 
         if ($this->real_cost_price_sen !== null
-            && $this->platform_profit === $this->selling_price - $this->real_cost_price_sen - $this->affiliate_profit) {
+            && $this->platform_profit === self::residualProfit($this->selling_price, $this->real_cost_price_sen, $this->affiliate_profit)) {
             return ['cost' => $this->real_cost_price_sen, 'basis' => 'real'];
         }
 
@@ -439,7 +449,7 @@ class Order extends Model
 
         // Item 63: classified by how many legs carry a real cost. With
         // none, the "real" total IS the catalog total — 'estimated'.
-        if ($realLegs > 0 && $this->platform_profit === $revenue - $realTotal - $this->affiliate_profit) {
+        if ($realLegs > 0 && $this->platform_profit === self::residualProfit($revenue, $realTotal, $this->affiliate_profit)) {
             return ['cost' => $realTotal, 'basis' => $realLegs === $legs->count() ? 'real' : 'mixed'];
         }
 
@@ -729,7 +739,9 @@ class Order extends Model
      */
     public static function walletRefundSql(): string
     {
-        return "COALESCE((SELECT SUM(wr.amount) FROM ledger_entries wr WHERE wr.reference_type = 'order' AND wr.reference_id = orders.id AND wr.type = 'wallet_refund'), 0)";
+        $owner = LedgerOwnerType::ResellerWallet->value;
+
+        return "COALESCE((SELECT SUM(wr.amount) FROM ledger_entries wr WHERE wr.owner_type = '{$owner}' AND wr.owner_id = orders.wallet_reseller_id AND wr.type = 'wallet_refund' AND wr.reference_type = 'order' AND wr.reference_id = orders.id), 0)";
     }
 
     /**
@@ -894,6 +906,13 @@ class Order extends Model
     public function promoCodeRedemption(): HasOne
     {
         return $this->hasOne(PromoCodeRedemption::class);
+    }
+
+
+    /** ADR-118 V6: the KOL code this order counts for, redeemed here or earlier. */
+    public function attributedPromoCode(): BelongsTo
+    {
+        return $this->belongsTo(PromoCode::class, 'attributed_promo_code_id');
     }
 
     /** ADR-118 V18: the code applied at checkout, for the admin order detail. */

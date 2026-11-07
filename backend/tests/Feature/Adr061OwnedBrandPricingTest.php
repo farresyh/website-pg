@@ -158,7 +158,7 @@ class Adr061OwnedBrandPricingTest extends TestCase
 
     /**
      * Parity: for a brand that is NOT owned the seam must return exactly
-     * what the old inline expressions did — `wholesaleTierMarkupPct()` and
+     * what the old inline expressions did — the subscribed tier's markup and
      * the raw markup (now clamped to its ceiling; a null ceiling opens no
      * markup, 2026-10-31 addendum).
      */
@@ -193,6 +193,16 @@ class Adr061OwnedBrandPricingTest extends TestCase
     }
 
     // ---- every path that prices a storefront ------------------------------
+
+    public function test_a_deleted_tier_falls_back_to_no_tier(): void
+    {
+        $brand = Affiliate::query()->create(['business_name' => 'Tier gone', 'markup_pct' => 10, 'max_markup_pct' => 30, 'status' => 'active']);
+        $tier = $this->tier(20.0, 'Gone');
+        $this->subscribe($brand, $tier);
+        $tier->delete();
+
+        $this->assertNull($brand->fresh()->storefrontPriceTerms()['tier']);
+    }
 
     public function test_checkout_prices_an_owned_brand_as_the_platform_with_no_affiliate_profit(): void
     {

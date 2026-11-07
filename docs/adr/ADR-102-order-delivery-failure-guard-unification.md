@@ -1,6 +1,6 @@
 # ADR-102: Order delivery-failure guard unification + Digiflazz `rc`-classification correction + admin refund-clarity UI
 
-> **Standing (2026-11-07):** In force; decision 12 reversed by ADR-108; the same-reference age limit holds on every re-submit path (2026-11-05 addendum); for combos, stale `Processing` and the age limit are revised by ADR-103's 2026-11-07 addendum. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-07):** In force; decision 12 reversed by ADR-108; the same-reference age limit holds on every re-submit path (2026-11-05 addendum); for combos, stale `Processing` and the age limit are revised by ADR-103's 2026-11-07 addendum; the limit stays counted from the order's age (2026-11-07 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — grilled (`/mattpocock-skills:grilling`) 2026-09-16. **Phase 1 (decisions 1-2) built + merged to `staging` same day** (PR #225). **Phase 2 (decisions 3-9) built + merged to `staging`** (PR #226). **Phase 3 (decisions 10-13, player/server-ID resend correction + admin refund-info UI) built** — see the 2026-09-16 addenda below. This ADR's own decisions are now fully built; only sibling ADR-103 (combo per-leg reference independence) remains.
 
@@ -116,3 +116,13 @@ It is not enforced on Resend or Retry of a NeedsReview order or combo leg, which
 ### 2026-11-07 addendum — a stale combo and a past-window combo (revises the 2026-09-29 addendum's decision 7 and the 2026-11-05 addendum's decision 3, for combos only)
 
 Decided in full in [ADR-103](./ADR-103-combo-order-per-leg-independence.md)'s 2026-11-07 addendum. A stale `Processing` combo no longer goes straight to NeedsReview: its legs follow the same rule as a plain order, parked at Pending on a replay-safe supplier and polled with the same reference. A combo past the same-reference window sends nothing, even under a fresh reference. Plain orders are unchanged; their window still counts from the order's age (PRD §16 item 170).
+
+### 2026-11-07 addendum — the window stays counted from the order's age (accepted, PRD §16 item 170)
+
+**Context.** `Order::sameReferenceWithinWindow()` counts from `orders.created_at`, not from when the current reference was made. A resend from Failed makes a fresh reference on an old order, so that reference can be younger than the window says.
+
+**Decision.** Keep it. No column, no code change.
+
+**Rationale.** A reference is never older than its order, so the rule can only err by refusing a re-submit that would have been safe, and an admin then uses Confirm Failed. It can't cause a second purchase. Counting from the reference needs a new column and a backfill, for a case production has not had: on 2026-11-07 the oldest order was 66 days old and none was open.
+
+**Consequence to track.** If an admin is ever blocked on a reference that was really inside its window, store the reference's date. Every reader goes through this one predicate, so the change stays in one place.

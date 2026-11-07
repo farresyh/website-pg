@@ -879,7 +879,7 @@ final class OrderFulfillmentService
                 // moment, decision 6). Never a frozen snapshot — there
                 // isn't one for cost, only `selling_price_sen` (decision 1).
                 $costTotal = (int) $legs->sum(fn (OrderDeliveryLeg $leg) => $leg->costSen());
-                $reconciledPlatformProfit = $locked->selling_price - $costTotal - $locked->affiliate_profit;
+                $reconciledPlatformProfit = Order::residualProfit($locked->selling_price, $costTotal, $locked->affiliate_profit);
 
                 // Decision 3: never block delivery over this — a combo
                 // can finalize via webhook/scheduled poll with no admin
@@ -1651,7 +1651,7 @@ final class OrderFulfillmentService
      */
     private function reconcileRealCostProfit(Order $locked, int $realCostPriceSen): array
     {
-        $reconciledProfit = $locked->selling_price - $realCostPriceSen - $locked->affiliate_profit;
+        $reconciledProfit = Order::residualProfit($locked->selling_price, $realCostPriceSen, $locked->affiliate_profit);
         $flagged = $this->isProfitDriftFlagged($locked->platform_profit, $reconciledProfit, $locked->selling_price);
 
         if ($flagged) {

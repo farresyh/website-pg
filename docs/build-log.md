@@ -1644,3 +1644,77 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 
 **Open at release.** Check on prod: 49 links, Umum on Mobile Legends Indonesia, 516 in Dismissed, then the founder's repoint. Product Manager can error for the seconds between the migration and the release switch.
 
+## 2026-11-07 — Released #723: combo leg safety, voucher close guard, group game link
+
+**Released on the founder's go-ahead.** `main` `88edcdea`, box release `82355688`, CI and `deploy` green. #722 merged to `staging` first. Before release, read-only: 0 orders in flight, 0 in `needs_review`, 0 legs at `Processing`, 0 reservations on a merged or revoked voucher.
+
+**Checked after release.** Migration `Ran` (batch 68). 49 group links, the number simulated. `supplier_products.game_id` gone. `MOBILE LEGENDS — Umum` on Mobile Legends Indonesia. Package 516 `admin`, its date, game and reference kept; order `PG-CGDZOLEHAIR8` unchanged; the only package off its group's game. `/api/health` ok, Horizon running. In the live admin through Chrome: Umum and Valorant (Malaysia) show as expected. The 36 `ERROR` lines in the log tail are all from before the release (Gamevion's 401 on 6 November, `CsGameInfo` on 3 November). Items 167, 168 and 172 closed.
+
+**Gamevion's catalog came back by itself.** `/api/games` read 320 from 03:00 UTC and 1,315 at 05:30; new-API rows are 1,164, PUBG's 35 included. So the morning's drop was on Gamevion's side and temporary, and the earlier reading that PUBG had left the catalog was wrong. With prune deleting un-promoted rows, this is exactly the flapping the group link makes harmless for links; it is still open for packages (item 173).
+
+**Not yet seen:** the founder's repoint on prod.
+
+## 2026-11-07 — Item 175 built: KOL attribution gaps (ADR-118 V21 to V25)
+
+**Why.** The founder asked whether every KOL order is really recorded, since reports can only use what the order and the ledger hold. The store was sound: every storefront checkout stamps through one path and profit reaches the order through the ledger. The stress test the founder asked for then found more than the one hole already named:
+- an order placed before the first delivery was never stamped;
+- a partly delivered customer belonged to nobody, though the new-customer rule treated them as existing and the discount they kept was charged to the KOL (item 170's finding, closed here);
+- two matching redemptions had no defined winner;
+- ending a campaign left its fee accruing, in the month close too.
+
+**Built on `fix/kol-attribution-gaps`, into `staging`, not released.** No migration, no env change.
+- `PromoCodeRedemption::kept()` is the one rule; `attributionFor()` and the scorecard read it, oldest first.
+- `claimLaterOrders()` fills empty stamps after the delivery commits, so it holds no other order's row inside a delivery. A stamp with a value is untouched.
+- `PATCH /campaigns/{id}` with `ended: true` needs `last_fee_month` while the fee is open, one transaction, through `setEndMonth()`.
+- Order details always shows Promo Discount, and "Counts for KOL". The campaign page lists its customers, adding up to the scorecard's all-time sales.
+
+**Verified.**
+- `php artisan test` 3,809 of 3,809; promo and voucher concurrency tests on real MySQL 10 of 10.
+- Admin `tsc`, `eslint` on the changed files, 22 of 22 unit tests.
+- In a real browser on a throwaway backend, through the real `commit()`: a first order, a later order and a plain order each show the right rows; the customer row shows RM 36.32 on both sides; ending a campaign asks the month, answers 200, and the fee row shows November to November.
+
+**Not proven on prod:** no code has been redeemed yet, so the first real redemption needs checking in the database.
+
+## 2026-11-07 — Items 170 and 174: small findings, one seam each
+
+**Item 174 closed, no code.** The three packages are `inactive` at DigiFlazz with streak 0 (read-only prod), so nothing holds them. After sync 3375, 0 packages were off with a streak of 6 or more; Twilight Pass came back by itself. The morning's "past 6 syncs" can't be rechecked: the streak keeps no history.
+
+**Item 170, each finding re-verified first.**
+- **Sandbox order:** Issue Voucher had no `is_test` check. `settle()` now refuses one, so every compensation path is covered; `storeFromOrder()` answers 404 like its siblings. Prod: 1 sandbox order, 0 vouchers.
+- **Member above guest:** not reachable. Membership only runs on owned brands, which have no tier. Prod, 1,293 packages, both plans: member cheaper on all. `membershipEnabledEffective()` now checks `is_owned`, as Joki does, so a stale switch can't create the case. No pricing rule added.
+- **Wallet-refund SQL:** Reports had its own stricter copy. `Order::walletRefundSql()` now has the owner check, and Reports calls it. Prod: 4 rows, 0 different.
+- **Profit formula:** six places spelled it out. All go through `Order::residualProfit()`, with a test that fails on a new copy.
+- **Same-reference window:** kept, recorded in ADR-102. It can only refuse, never buy twice.
+
+**Gotcha: a wrong finding of ours.** A read-only simulation first reported OhahaStore's member price 7 sen above guest on one package. It called `wholesaleTierMarkupPct()` directly and so read a leftover "Test Tier" row, which `storefrontPriceTerms()`, the real seam, ignores for an owned brand. Real orders showed the standard price. Simulate through the seam, and compare with a real order, before reporting a number. `wholesaleTierMarkupPct()` is now removed: its one caller, `storefrontPriceTerms()`, holds the lookup, so a brand's tier can't be read past the owned-brand check.
+
+**Tests changed.** Three fixtures sold membership on a third-party brand, which ADR-061 forbids; they are now owned. `test_a_test_order_never_messages_anyone` used Issue Voucher to reach the message code; it now calls `CustomerNotificationService` directly.
+
+**Verified.**
+- `php artisan test` 3,814 of 3,814.
+- Report tests on real MySQL 62 of 62.
+- Concurrency suite 44 of 48, run before the method was removed, which touches no locking; only `BackupRestoreMysqlTest` fails (no local `mysqldump`).
+- A read-only prod check of each finding, above.
+
+**Built on `fix/item-170-small-findings`, into `staging`, not released.** No migration, no env change.
+
+## 2026-11-07 — Items 169 and 173 decided: no grace period, `max_price` parked
+
+**Item 173, closed.** Two tests through `SyncSupplierCatalogJob` prove what the PRD had wrong. A package skipped on a 503 keeps its streak, because its row isn't touched, so it is back on the next good sync, about 30 minutes later. Only Gamevion's own `inactive` resets the streak and costs 6 syncs. The founder chose no grace period: it would sell at an unconfirmed price to save 30 minutes.
+
+**Item 169, parked with a trigger.** The founder challenged the need: a selling price follows cost, so where is the loss? Production agreed. 1 loss in 86 delivered orders, 13 sen, on `PG-HMMEGKPYVN8K`: two failed attempts, then an admin's resend after the cost rose from RM17.94 to RM18.61, which `max_price` wouldn't have stopped. Of 67 orders with a real cost, 4 were above the stored cost, at most 18 sen, and none lost money through it. The design and the trigger are in ADR-137's 2026-11-07 addendum.
+
+**Docs corrected.** The PRD said DigiFlazz doesn't document going over the limit. Its response codes have `rc 69`, Gagal, no transaction formed. Its test cases cover neither `rc 69` nor `max_price`, so the sandbox can't prove it.
+
+**Verified.** `php artisan test` 3,816 of 3,816. Tests and docs only, no product code.
+
+## 2026-11-07 — Item 163's last two inputs: Link dialog no longer edits a live game's checkout
+
+**Why.** The audit report never answered two of its inputs.
+- **A package can't move games:** deliberate, and enforced at the link and the repoint. On prod 1 of 1,477 packages differs from its group's game: package 516, by decision.
+- **A group link merges the game's rules:** the merge is safe and `linkCategory()` is the one writer. The dialog's "Checkout input needed" dropdown, though, edits the whole game. Changing it while linking a Gamevion group could stop checkout asking for a server ID on live DigiFlazz packages.
+
+**Built on `fix/link-modal-keeps-checkout-input`, into `staging`, not released.** Admin only, no migration, no env change. For an existing game the dialog shows the rule as text and sends no `validation_rules`; a new game keeps the dropdown. The Checkout Input tab is the one place an existing game's rule changes.
+
+**Verified.** In a real browser on a throwaway backend: no dropdown for an existing game, the POST body carried only `supplier_id`, `group_label` and `game_id`, the link answered 200, the game stayed on `server_id`, and New game still shows the dropdown. A new backend test covers a link with no rules. `php artisan test` 3,817 of 3,817; admin `tsc`, `eslint` on the changed files, build, 22 of 22 unit tests.
+

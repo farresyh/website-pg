@@ -227,6 +227,10 @@ class VoucherController extends Controller
      */
     public function storeFromOrder(StoreVoucherFromOrderRequest $request, Order $order, OrderSettlementService $settlement): JsonResponse
     {
+        if ($order->is_test) {
+            abort(404);
+        }
+
         if ($order->wallet_reseller_id !== null) {
             throw ValidationException::withMessages([
                 'order' => ['This order belongs to a Reseller wallet — use Refund to Wallet instead of Issue Voucher.'],

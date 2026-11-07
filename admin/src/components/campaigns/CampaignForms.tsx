@@ -268,6 +268,33 @@ export function CodeForm({
 }
 
 /** V12: the one change a fee row allows — its last month (empty keeps it open). */
+/** ADR-118 V24: ending stops the codes and, with `month`, the fee. A fee with a last month keeps it. */
+export function EndCampaignForm({ month, onClose, onSubmit }: { month: string | null; onClose: () => void; onSubmit: (lastFeeMonth?: string) => Promise<void> }) {
+  const [last, setLast] = useState(month ?? "");
+  const { error, busy, run } = useSubmit(onClose);
+
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void run(() => onSubmit(month === null ? undefined : last));
+      }}
+    >
+      <ErrorLine error={error} />
+      <p className="text-theme-sm text-ink-muted">Its codes stop working at once. Customers it brought in keep counting for it.</p>
+      {month !== null && (
+        <div>
+          <Label htmlFor="last-fee-month">Last month paid</Label>
+          <Input id="last-fee-month" type="month" required value={last} onChange={(e) => setLast(e.target.value)} />
+          <p className="mt-1 text-theme-xs text-ink-muted">The fee stops after this month. A month already closed can&apos;t change.</p>
+        </div>
+      )}
+      <Actions busy={busy} onClose={onClose} label="End campaign" />
+    </form>
+  );
+}
+
 export function EndMonthForm({ current, onClose, onSubmit }: { current: string | null; onClose: () => void; onSubmit: (toMonth: string | null) => Promise<unknown> }) {
   const [to, setTo] = useState(current ?? "");
   const { error, busy, run } = useSubmit(onClose);

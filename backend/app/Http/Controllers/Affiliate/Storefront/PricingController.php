@@ -23,7 +23,7 @@ use Illuminate\Support\Collection;
  * The preview reuses `PricingService::calculateForAffiliate` — the exact
  * math the catalog and checkout price against — so a preview can never
  * diverge from the real charge. The wholesale-tier side of that math
- * (`wholesaleTierMarkupPct()`) is null while the subscription is lapsed;
+ * (`storefrontPriceTerms()`'s tier) is null while the subscription is lapsed;
  * the response flags that so the tab can explain the shrunken margin.
  */
 class PricingController extends Controller

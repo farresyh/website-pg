@@ -232,4 +232,13 @@ class OrderSettlementServiceTest extends TestCase
 
         $this->assertSame(['instrument' => 'voucher', 'cash_sen' => 1600, 'voucher_restore_sen' => 400, 'total_sen' => 2000], $preview);
     }
+
+    /** Item 170: a sandbox order moved no real money, so no path may pay it back. */
+    public function test_a_sandbox_order_is_never_compensated(): void
+    {
+        $order = $this->partialComboOrder(['is_test' => true]);
+
+        $this->assertThrows(fn () => $this->service()->settle($order, $this->adminId), OrderFulfillmentException::class);
+        $this->assertSame(0, Voucher::query()->count());
+    }
 }

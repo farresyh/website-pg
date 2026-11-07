@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -37,6 +38,16 @@ class PromoCodeRedemption extends Model
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);
+    }
+
+    /** V21: the customer kept something from the code: delivered, whole or in part. */
+    public function scopeKept(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q
+            ->where('status', self::STATUS_COMMITTED)
+            ->orWhere(fn (Builder $partial) => $partial
+                ->where('status', self::STATUS_RESTORED)
+                ->whereColumn('restored_sen', '<', 'amount_sen')));
     }
 
     /** What this redemption still holds against its code's budget. */

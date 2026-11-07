@@ -1,6 +1,6 @@
 # ADR-067: Digiflazz adapter completion — buyer-area scoping, dual product status, per-supplier Product Manager grouping (built 2026-09-02)
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-07):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — 2026-09-02, grilled with the founder this session via `/mattpocock-skills:grilling` (20 questions over three rounds); **built the same session** (`feature/digiflazz-adapter-completion`, backend 1179/1179 fast + admin tsc/lint/build green — see PRD §14). **Modifies `ADR-030` decision 2** (the "games only" filter mechanism), **extends `ADR-031`'s Product Manager** to be supplier-aware, and builds on `ADR-034`'s denomination dedup. The `DigiflazzWebhookController` half of `ADR-032` decision 4 stays deferred to a future ADR.
 
@@ -61,7 +61,7 @@
 
 **Context.** Linking a group to a Game is one decision per `(supplier_id, group_label)` (decision 6), but it was stored as a copy on every `supplier_products` row. The copy went wrong three ways, all accepted as a "known gap" in this ADR's consequences:
 - **New items are unlinked.** A sync creates a row with no game while `categories()` calls the group linked if any row has one, and the admin hides Link for a linked group. Gamevion's v2 rows (ADR-137) landed in the old groups this way, so repoint refused `valorant_my:1000` with "This item's group is not linked to the package's game" and nothing on screen could fix it. Production 2026-11-07: 3 Gamevion and 5 Digiflazz groups, 217 rows.
-- **A pruned item loses its link.** Gamevion often drops items and whole games (503s, a games list that fell from 1,313 to 320 on 2026-11-07), and an item that comes back is a new row.
+- **A pruned item loses its link.** Gamevion often drops items and whole games (503s, and a games list that fell from 1,313 to 320 for two and a half hours on 2026-11-07), and an item that comes back is a new row.
 - **A relabelled row keeps its old game.** `MLBB_ALL_14_PG1` moved to `MOBILE LEGENDS — Umum` still carrying Mobile Legends Malaysia, so a group of 93 unlinked items showed as linked to the wrong game.
 
 **Decision.**
@@ -82,4 +82,12 @@
 - A group that already has a package on the wrong game still needs case-by-case work. Umum is the only one found.
 - `supplier_products.game_id` goes in the same deploy, so Product Manager can answer an error for the seconds between the migration and the release switch. Admin only.
 - Gamevion's package flapping on a skipped game is separate (ADR-137 2026-11-05 addendum): this keeps links, not packages, through a 503.
+
+### 2026-11-07 addendum — the Link dialog never changes an existing game's checkout rule (PRD §16 item 163)
+
+**Context.** A game's `extra_field` applies to every supplier selling it. The Link dialog offered it on every link, so while linking a Gamevion group an admin could stop checkout asking for a server ID on a live game, for its DigiFlazz packages too. The merge itself was safe, and `linkCategory()` is the only writer. The sharp edge was only where the control sat.
+
+**Decision.** For an existing game the dialog shows the current rule as text and sends no `validation_rules`, so linking keeps them. The dropdown stays for a new game. An existing game's rule changes only in the group's Checkout Input tab, which says it applies to the whole game.
+
+**Rationale.** Removing the control takes the mistake away, where a warning would only describe it. Checking for active packages first wasn't needed: the tab appears as soon as a group is linked, so a game with no rule yet is set there.
 

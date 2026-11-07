@@ -91,8 +91,22 @@ export interface PromoCodeRow {
   tracker_url: string;
 }
 
+/** ADR-118 V25: one customer a campaign brought in, all time. */
+export interface CampaignCustomer {
+  email: string;
+  phone: string | null;
+  code: string;
+  first_order_number: string;
+  first_paid_at: string;
+  first_order_sales_sen: number;
+  later_orders: number;
+  later_sales_sen: number;
+  last_paid_at: string;
+}
+
 export interface CampaignDetail extends Omit<CampaignSummary, "codes"> {
   fees: CampaignFee[];
+  customers: CampaignCustomer[];
   /** Positive balance = prepaid to the KOL; negative = owed. */
   balance: { month: string; accrued_sen: number; paid_sen: number; balance_sen: number };
   codes: PromoCodeRow[];
@@ -119,7 +133,7 @@ export const getCampaign = (id: number, range: RangeQuery) => apiFetch<CampaignD
 export const createCampaign = (body: { name: string; monthly_fee_sen: number; from_month: string; to_month: string | null }) =>
   apiFetch<{ id: number }>("/api/campaigns", { method: "POST", body });
 
-export const updateCampaign = (id: number, body: { name?: string; ended?: boolean }) =>
+export const updateCampaign = (id: number, body: { name?: string; ended?: boolean; last_fee_month?: string }) =>
   apiFetch<unknown>(`/api/campaigns/${id}`, { method: "PATCH", body });
 
 export const addFee = (campaignId: number, body: { monthly_fee_sen: number; from_month: string; to_month: string | null }) =>

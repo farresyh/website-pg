@@ -199,6 +199,7 @@ class AffiliateDomainPaymentGateTest extends TestCase
     {
         PaymentMethod::query()->create(['channel_code' => 'fpx', 'label' => 'FPX', 'category' => 'fpx', 'gateway' => 'chip', 'is_active' => true, 'percentage_rate' => 0.0, 'flat_fee_sen' => 100]);
         [$affiliate] = $this->brand(approved: false);
+        $affiliate->update(['is_owned' => true]); // only an owned brand sells membership (ADR-061 decision 8)
         $token = app(MembershipSessionTokenService::class)->issue($affiliate->id, 'member@example.com');
 
         $this->postJson('/api/membership/subscribe', [

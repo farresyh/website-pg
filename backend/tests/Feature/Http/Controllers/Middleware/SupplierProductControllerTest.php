@@ -684,4 +684,20 @@ class SupplierProductControllerTest extends TestCase
 
         $this->assertSame('text', $game->refresh()->playerIdFormat());
     }
+
+    /** Item 163: the Link dialog sends no rules for an existing game, so a live game's checkout can't change there. */
+    public function test_linking_to_an_existing_game_without_rules_keeps_its_checkout_rules(): void
+    {
+        $supplier = $this->supplier();
+        $this->rawProduct($supplier, ['external_ref' => 'A', 'category_raw' => 'Genshin']);
+        $rules = ['extra_field' => 'zone_id', 'zone_options' => ['Asia'], 'player_id_format' => 'numeric'];
+        $game = Game::query()->create(['name' => 'Genshin', 'slug' => 'genshin', 'validation_rules' => $rules]);
+        $this->actingAsAdmin();
+
+        $this->postJson('/api/middleware/supplier-products/categories/link', [
+            'supplier_id' => $supplier->id, 'group_label' => 'Genshin', 'game_id' => $game->id,
+        ])->assertOk();
+
+        $this->assertSame($rules, $game->refresh()->validation_rules);
+    }
 }

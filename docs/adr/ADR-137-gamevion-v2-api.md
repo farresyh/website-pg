@@ -1,6 +1,6 @@
 # ADR-137: Gamevion v2 API — rewrite the adapter for `gamevion.cloud`, async delivery with a signed webhook and same-reference replay
 
-> **Standing (2026-11-06):** Accepted (2026-11-05 addendum: decisions 13–24 after the grill, money code-trace and stress test; the PR 2 build addendum corrects decisions 17 and 19; the last addendum revisits decision 16: games picker, per-game failure, one sync job per supplier). It replaces the API contract of [ADR-040](./ADR-040-gamevion-sandbox-integration.md) (old `api.gamevion.com`, sandbox header, `telp`, `callback_url`) and, for Gamevion only, the `duplicate_reference` → NeedsReview routing of [ADR-026](./ADR-026-delivery-side-reconciliation-ord-10.md); decision 21 tightened by [ADR-138](./ADR-138-package-sale-lifecycle.md) (repoint refuses an inactive product or an open order). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record.
+> **Standing (2026-11-07):** Accepted (2026-11-05 addendum: decisions 13–24 after the grill, money code-trace and stress test; the PR 2 build addendum corrects decisions 17 and 19; the last addendum revisits decision 16: games picker, per-game failure, one sync job per supplier; the 2026-11-07 addendum decides no grace period and keeps `max_price` out until a real loss). It replaces the API contract of [ADR-040](./ADR-040-gamevion-sandbox-integration.md) (old `api.gamevion.com`, sandbox header, `telp`, `callback_url`) and, for Gamevion only, the `duplicate_reference` → NeedsReview routing of [ADR-026](./ADR-026-delivery-side-reconciliation-ord-10.md); decision 21 tightened by [ADR-138](./ADR-138-package-sale-lifecycle.md) (repoint refuses an inactive product or an open order). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record.
 
 **Status:** Proposed, 2026-11-04. Decisions 1–4 were made with the founder (in Malay) on 2026-11-04. Decisions 5–12 are Claude's draft from the vendor's API document and a first code-trace; they go through the technical grill and the money code-trace (AGENTS.md lifecycle step 2) before Accepted. The open questions at the end are settled in that grill.
 
@@ -198,3 +198,23 @@ No new table, worker or supervisor.
 ### 2026-11-06 addendum — repoint guards
 
 [ADR-138](./ADR-138-package-sale-lifecycle.md) decisions 18–19 add to decision 21: repoint refuses a product that isn't active, and refuses while an order on the package is paid or awaiting payment and not yet delivered. Decision 4 is unchanged and isn't enforced by code, so Promote before the funded test stays the founder's rule.
+
+### 2026-11-07 addendum — no grace period, and `max_price` stays out until a real loss (revisits the 2026-11-05 addendum's decision 2; keeps decision 3)
+
+**Status:** Accepted with the founder, 2026-11-07. PRD §16 items 173 and 169.
+
+**Correction.** The 2026-11-05 addendum's decision 2 says a skipped game's packages return "after 6 consecutive active syncs". That holds only when Gamevion says `inactive`. A skipped game's rows aren't touched, so the streak survives and the package returns on the next good sync, about 30 minutes later. `SyncSupplierPricesJobTest` proves both cases through the real job.
+
+**Decision.**
+1. **No grace period.** A skipped game's packages go off and return by themselves. A grace period would keep selling at an unconfirmed price and stock to save about 30 minutes. In the 38 syncs up to 2026-11-07, `free_fire_instant_my` failed 7 times, `pubgm_global` and `freefire_mysg` 2 each, and the Mobile Legends, Honor of Kings and `valorant_my` games none.
+2. **`max_price` is not built.** A selling price follows cost: a rise auto-applies at the next sync ([ADR-138](./ADR-138-package-sale-lifecycle.md)). What stays open is a customer's frozen price against the supplier's price at delivery, between two syncs or on a later resend. Production on 2026-11-07: 1 loss in 86 delivered orders, 13 sen (`PG-HMMEGKPYVN8K`), an admin's resend at a risen cost, which `max_price` would not have stopped. Of 67 orders with a real cost, 4 came in above the stored cost, at most 18 sen, and none lost money through it. So the feature would have saved RM0, while one surprise from a supplier could affect every live package. This also keeps [ADR-030](./ADR-030-digiflazz-supplier-integration.md) decision 4.
+
+**Trigger.** The first delivered order that loses money because the cost rose after payment with no admin decision behind it. `profit_reconciled_flagged` marks such an order.
+
+**The design, when the trigger comes.**
+- **Limit:** the larger of `selling_price − affiliate_profit` (break-even) and the order's `cost_price`. The second term matters: an admin-approved resend at a loss raises `cost_price` while the selling price stays frozen, so a limit from break-even alone would be refused every time. A combo leg uses its frozen price less its share of the affiliate profit, and its component's cost.
+- **Units:** the supplier's own. DigiFlazz takes an integer IDR limit, from the landed rate. Gamevion takes MYR per unit. A new optional field on `SupplierOrderRequest`, carried on re-submits too, because a poll can create an order that was never made.
+- **A refused order** follows the existing path: Failed, Need action, then Resend or a voucher. DigiFlazz `rc 69` ("Harga seller lebih besar dari ketentuan harga Buyer", Gagal, no transaction formed) and Gamevion's 409 `price_changed` are already read as confirmed failures on a first submit.
+- **Rollout:** a switch per supplier under `/middleware`, default off. DigiFlazz's test cases cover neither `max_price` nor `rc 69`, so first send `max_price: 1` on `xld10` with `testing: true` from the production box, whose IP is listed, with the founder's go-ahead. If it doesn't answer `rc 69`, ask DigiFlazz before switching on.
+
+**Consequence to track.** A Tier Supreme reseller's margin is 1%, so a small rise can already be a loss there.

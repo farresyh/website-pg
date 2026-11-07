@@ -175,41 +175,12 @@ class Affiliate extends Model
     }
 
     /**
-     * ADR-060 PR-4 (2026-09-06 grill addendum, decision 6): the one place
-     * a storefront's wholesale-tier markup is resolved for pricing.
-     * Returns the subscribed tier's `markup_percent` when the subscription
-     * currently grants the wholesale rate — `active` OR `grace` (ADR-056:
-     * grace ≠ lapsed, a few days' billing lag must not re-price a real
-     * brand) — and null when the tier has lapsed or there is no
-     * subscription at all. Null is exactly what `OrderPricingResolver` /
-     * `PricingService::calculateForAffiliate()` already treat as "fall
-     * back to the standard guest chain".
-     *
-     * Consumed by the catalog, checkout, checkout-preview and
-     * voucher-preview paths once ADR-060 PR-4c wires per-`Host` pricing.
-     * Needs `subscription.tier` loaded — `ResolveStorefrontBrand` already
-     * eager-loads it.
-     */
-    /**
      * ADR-133 decision 13: the one answer to "can the monthly payout reach this affiliate". The
      * payout plan, the portal's withdrawal screen and the readiness checklist all call it.
      */
     public function hasBankDetails(): bool
     {
         return $this->bank_name !== null && $this->bank_account_no !== null && $this->bank_account_holder !== null;
-    }
-
-    public function wholesaleTierMarkupPct(): ?float
-    {
-        $subscription = $this->subscription;
-
-        if ($subscription === null
-            || ! $subscription->grantsWholesaleRate()
-            || $subscription->tier === null) {
-            return null;
-        }
-
-        return (float) $subscription->tier->markup_percent;
     }
 
     /**
@@ -233,9 +204,15 @@ class Affiliate extends Model
      * markup whatever the row stores, so it prices exactly as the primary
      * brand and every margin is `platform_profit`. Checkout, checkout
      * preview, the catalog, voucher preview and the portal's preview read
-     * this; nothing prices from `markup_pct` directly. Needs
-     * `subscription.tier` loaded for a non-owned brand (as
-     * `wholesaleTierMarkupPct()` does).
+     * this; nothing prices from `markup_pct` or a subscription directly.
+     *
+     * A third-party brand gets its tier while the subscription grants the
+     * wholesale rate, `active` OR `grace` (ADR-056: grace is not lapsed, a
+     * few days' billing lag must not re-price a real brand). Lapsed, no
+     * subscription or no tier row is null, which `OrderPricingResolver` and
+     * `PricingService::calculateForAffiliate()` treat as the standard guest
+     * chain. Needs `subscription.tier` loaded; `ResolveStorefrontBrand`
+     * eager-loads it.
      *
      * @return array{tier: ?float, markup: float}
      */
@@ -245,22 +222,16 @@ class Affiliate extends Model
             return ['tier' => null, 'markup' => 0.0];
         }
 
+        $subscription = $this->subscription;
+        $tier = $subscription?->grantsWholesaleRate() ? $subscription->tier : null;
         $markup = (float) $this->markup_pct;
 
         return [
-            'tier' => $this->wholesaleTierMarkupPct(),
+            'tier' => $tier === null ? null : (float) $tier->markup_percent,
             'markup' => min($markup, (float) ($this->max_markup_pct ?? 0)),
         ];
     }
 
-    /**
-     * ADR-061 decision 4: consumer Membership (ADR-027) is live for a
-     * storefront only when BOTH the global master kill-switch
-     * (`PlatformSettings.membership_enabled` — flipped off everywhere
-     * during an incident) AND this brand's own `membership_enabled` are
-     * true. Callers that already hold the settings row pass it in to avoid
-     * a second lookup.
-     */
     /**
      * ADR-126 addendum decision 1: the global Joki switch AND this brand's
      * own `joki_enabled`, on an owned brand only (the admin forces it off
@@ -271,10 +242,19 @@ class Affiliate extends Model
         return $this->is_owned && $this->joki_enabled && ($settings ?? JokiSetting::current())->is_enabled;
     }
 
+    /**
+     * ADR-061 decisions 4 and 8: consumer Membership (ADR-027) is live for a
+     * storefront only when BOTH the global master kill-switch
+     * (`PlatformSettings.membership_enabled` — flipped off everywhere
+     * during an incident) AND this brand's own `membership_enabled` are
+     * true, on an owned brand only (the admin forces it off elsewhere;
+     * checked again here so no stale row sells membership). Callers that
+     * already hold the settings row pass it in to avoid a second lookup.
+     */
     public function membershipEnabledEffective(?PlatformSettings $settings = null): bool
     {
         $global = ($settings ?? PlatformSettings::current())->membership_enabled;
 
-        return $this->membership_enabled && $global;
+        return $this->is_owned && $this->membership_enabled && $global;
     }
 }
