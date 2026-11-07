@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Envelope, ShieldCheck, SignOut, SpinnerGap, WarningCircle } from "@phosphor-icons/react/dist/ssr";
 import { ApiError } from "@/lib/api-client";
-import { sendOtp, verifyOtp, getMe, type MembershipMe } from "@/lib/membership";
+import { sendOtp, verifyOtp, getMe, type MembershipMe, type MembershipOffer } from "@/lib/membership";
 import { setMembershipToken, clearMembershipToken } from "@/lib/membership-session";
+import { clearPendingSignIn, savePendingSignIn, usePendingSignIn } from "@/lib/membership-signin";
 import { useMembershipToken } from "@/hooks/useMembershipToken";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/order/StatusBadge";
 import OtpInput from "@/components/order/OtpInput";
+import MembershipLanding from "@/components/order/MembershipLanding";
 import MembershipSubscribe from "@/components/order/MembershipSubscribe";
 
 const POST_PAYMENT_POLL_MS = 3_000;
@@ -33,13 +35,13 @@ const POST_PAYMENT_POLL_MAX = 10; // ~30s before we tell them to check their ema
  * useMembershipToken() (useSyncExternalStore, same shape as admin's
  * useClientSession()) is what makes `token` SSR-safe in the first place.
  */
-export default function MembershipClient({ paymentsEnabled = true }: { paymentsEnabled?: boolean }) {
+export default function MembershipClient({ paymentsEnabled = true, offer }: { paymentsEnabled?: boolean; offer: MembershipOffer | null }) {
   const token = useMembershipToken();
   const router = useRouter();
   const searchParams = useSearchParams();
   const checkoutParam = searchParams.get("checkout"); // "success" | "failed" | null (ADR-068 decision 12)
 
-  const [emailStep, setEmailStep] = useState<"email" | "otp">("email");
+  const pending = usePendingSignIn();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +92,13 @@ export default function MembershipClient({ paymentsEnabled = true }: { paymentsE
       .catch(() => clearMembershipToken());
   }, [token]);
 
+  // Moving between the landing page and a sign-in step replaces the whole
+  // view, often from far down the page.
+  const signInStep = pending?.step ?? null;
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [signInStep]);
+
   async function handleSendCode(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim()) return;
@@ -97,7 +106,7 @@ export default function MembershipClient({ paymentsEnabled = true }: { paymentsE
     setError(null);
     try {
       await sendOtp(email.trim());
-      setEmailStep("otp");
+      savePendingSignIn({ step: "otp", email: email.trim(), planId: pending?.planId ?? null });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not send a code. Try again in a moment.");
     } finally {
@@ -111,7 +120,7 @@ export default function MembershipClient({ paymentsEnabled = true }: { paymentsE
     setVerifying(true);
     setError(null);
     try {
-      const newToken = await verifyOtp(email.trim(), code);
+      const newToken = await verifyOtp(pending?.email ?? "", code);
       setMembershipToken(newToken); // triggers the effect above via useMembershipToken()'s subscription
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "That code didn't work. Check it and try again.");
@@ -123,7 +132,7 @@ export default function MembershipClient({ paymentsEnabled = true }: { paymentsE
   function handleSignOut() {
     clearMembershipToken();
     setDashboard(null);
-    setEmailStep("email");
+    clearPendingSignIn();
     setEmail("");
     setCode("");
   }
@@ -132,16 +141,34 @@ export default function MembershipClient({ paymentsEnabled = true }: { paymentsE
     return <p className="mx-auto max-w-[560px] px-4 py-10 text-sm text-on-surface-variant">Loading…</p>;
   }
 
-  if (token === null && emailStep === "email") {
+  if (token === null && pending === null && offer !== null) {
+    return (
+      <MembershipLanding
+        offer={offer}
+        onSignIn={(planId) => savePendingSignIn({ step: "email", email: "", planId })}
+      />
+    );
+  }
+
+  if (token === null && pending?.step !== "otp") {
+    const chosenPlan = offer?.plans.find((plan) => plan.id === pending?.planId) ?? null;
+
     return (
       <div className="mx-auto max-w-[420px] px-4 py-10 lg:py-16">
-        <h1 className="font-display mb-2 text-3xl font-bold uppercase lg:text-headline-lg tracking-tight">Membership</h1>
-        <p className="mb-6 text-sm text-on-surface-variant">Enter your email, and we&apos;ll send a code to verify it&apos;s you.</p>
+        <h1 className="font-display mb-2 text-3xl font-bold uppercase lg:text-headline-lg tracking-tight">
+          {chosenPlan ? `Subscribe to ${chosenPlan.name}` : "Membership"}
+        </h1>
+        <p className="mb-6 text-sm text-on-surface-variant">
+          {chosenPlan && `RM${chosenPlan.feeRm.toFixed(2)} for 30 days. `}
+          Enter your email, and we&apos;ll send a code to verify it&apos;s you.
+        </p>
         <form onSubmit={handleSendCode} className="flex flex-col gap-3">
           <div className="flex min-h-11 items-center gap-2 rounded-md border-2 border-ink bg-surface-container-lowest px-3.5">
             <Envelope size={16} className="shrink-0 text-on-surface-variant" />
             <input
               type="email"
+              autoComplete="email"
+              aria-label="Email address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
@@ -153,15 +180,27 @@ export default function MembershipClient({ paymentsEnabled = true }: { paymentsE
           </Button>
         </form>
         {error && <p className="mt-4 rounded-md border-2 border-ink bg-surface-container p-4 text-sm text-on-surface-variant">{error}</p>}
+        {offer !== null && (
+          <button
+            type="button"
+            onClick={() => {
+              clearPendingSignIn();
+              setError(null);
+            }}
+            className="mt-4 block min-h-11 w-full text-center text-sm text-on-surface-variant hover:text-on-surface"
+          >
+            Back to membership
+          </button>
+        )}
       </div>
     );
   }
 
-  if (token === null && emailStep === "otp") {
+  if (token === null) {
     return (
       <div className="mx-auto max-w-[420px] px-4 py-10 lg:py-16">
         <h1 className="font-display mb-2 text-3xl font-bold uppercase lg:text-headline-lg tracking-tight">Enter Your Code</h1>
-        <p className="mb-2 text-sm text-on-surface-variant">We sent a 6-digit code to {email}. It expires in 10 minutes.</p>
+        <p className="mb-2 text-sm text-on-surface-variant">We sent a 6-digit code to {pending?.email}. It expires in 10 minutes.</p>
         <p className="mb-6 text-sm text-on-surface-variant">Can&apos;t find it? Check your Spam or Junk folder, and mark the email as Not spam.</p>
         <form onSubmit={handleVerify} className="flex flex-col items-center gap-4">
           <OtpInput value={code} onChange={setCode} disabled={verifying} />
@@ -173,7 +212,7 @@ export default function MembershipClient({ paymentsEnabled = true }: { paymentsE
         <button
           type="button"
           onClick={() => {
-            setEmailStep("email");
+            savePendingSignIn({ step: "email", email: "", planId: pending?.planId ?? null });
             setCode("");
             setError(null);
           }}
@@ -185,10 +224,9 @@ export default function MembershipClient({ paymentsEnabled = true }: { paymentsE
     );
   }
 
-  // Unreachable — every `token === null` path, and the `dashboard === null`
-  // loading path, returned above; this narrows both for the rest of the
-  // render.
-  if (token === null || dashboard === null) return null;
+  // Unreachable — the `dashboard === null` loading path returned above;
+  // this narrows it for the rest of the render.
+  if (dashboard === null) return null;
 
   const orders = dashboard.orderHistory;
 
@@ -265,7 +303,14 @@ export default function MembershipClient({ paymentsEnabled = true }: { paymentsE
       )}
 
       {/* Subscribe / renew / upgrade (ADR-068 decision 13) */}
-      {!awaitingActivation && <MembershipSubscribe token={token} paymentsEnabled={paymentsEnabled} />}
+      {!awaitingActivation && (
+        <MembershipSubscribe
+          token={token}
+          paymentsEnabled={paymentsEnabled}
+          chosenPlanId={pending?.planId ?? null}
+          onChosenPlanRead={clearPendingSignIn}
+        />
+      )}
 
       {/* Order history */}
       <section className="flex flex-col gap-4">

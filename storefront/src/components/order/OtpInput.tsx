@@ -50,6 +50,7 @@ export default function OtpInput({ value, onChange, disabled }: { value: string;
           }}
           type="text"
           inputMode="numeric"
+          autoComplete={i === 0 ? "one-time-code" : "off"}
           maxLength={1}
           value={digit.trim()}
           disabled={disabled}

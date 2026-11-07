@@ -34,7 +34,18 @@ const CTA_LABEL: Record<SubscribePlan["relation"], string> = {
  * the server sets the return URLs back to /membership?checkout=…
  * (handled by MembershipClient).
  */
-export default function MembershipSubscribe({ token, paymentsEnabled = true }: { token: string; paymentsEnabled?: boolean }) {
+export default function MembershipSubscribe({
+  token,
+  paymentsEnabled = true,
+  chosenPlanId = null,
+  onChosenPlanRead,
+}: {
+  token: string;
+  paymentsEnabled?: boolean;
+  /** The plan picked on the signed-out page, picked here once for a new subscriber. */
+  chosenPlanId?: number | null;
+  onChosenPlanRead?: () => void;
+}) {
   const [options, setOptions] = useState<SubscribeOptions | null>(null);
   const [channels, setChannels] = useState<PaymentChannel[]>([]);
   const [loadError, setLoadError] = useState(false);
@@ -56,6 +67,9 @@ export default function MembershipSubscribe({ token, paymentsEnabled = true }: {
   // One key per tier selection — reused if the customer retries the
   // same "Continue to Payment" click, mirroring checkout's idempotency.
   const idemKey = useRef<string>("");
+  const paymentPanel = useRef<HTMLDivElement>(null);
+  // The calculator already chose, so the page stops arguing for the other tier.
+  const [planWasChosen, setPlanWasChosen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,6 +78,13 @@ export default function MembershipSubscribe({ token, paymentsEnabled = true }: {
         if (cancelled) return;
         setOptions(opts);
         setChannels(chans);
+        const chosen = opts.plans.find((plan) => plan.id === chosenPlanId && plan.relation === "subscribe");
+        if (chosen) {
+          idemKey.current = crypto.randomUUID();
+          setSelectedPlanId(chosen.id);
+          setPlanWasChosen(true);
+        }
+        if (chosenPlanId !== null) onChosenPlanRead?.();
       })
       .catch(() => {
         if (!cancelled) setLoadError(true);
@@ -71,12 +92,18 @@ export default function MembershipSubscribe({ token, paymentsEnabled = true }: {
     return () => {
       cancelled = true;
     };
+    // Runs once per token: the chosen plan is cleared as soon as it is read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  useEffect(() => {
+    if (planWasChosen) paymentPanel.current?.scrollIntoView({ block: "center" });
+  }, [planWasChosen]);
+
   const heroPlanId = useMemo(() => {
-    if (!options || options.plans.length === 0) return null;
+    if (!options || options.plans.length === 0 || planWasChosen) return null;
     return options.plans.reduce((a, b) => (b.discountPercent > a.discountPercent ? b : a)).id;
-  }, [options]);
+  }, [options, planWasChosen]);
 
   const selectedPlan = useMemo(
     () => options?.plans.find((p) => p.id === selectedPlanId) ?? null,
@@ -232,7 +259,7 @@ export default function MembershipSubscribe({ token, paymentsEnabled = true }: {
       </div>
 
       {selectedPlan && (
-        <div className="flex flex-col gap-4 rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo">
+        <div ref={paymentPanel} className="flex flex-col gap-4 rounded-lg border-2 border-ink bg-surface-container-lowest p-6 neo">
           <p className="font-display text-sm font-bold">
             Subscribing to {selectedPlan.name}: RM{selectedPlan.feeRm.toFixed(2)}/month
           </p>
