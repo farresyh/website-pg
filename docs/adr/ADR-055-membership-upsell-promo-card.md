@@ -58,3 +58,21 @@ So the card's CTA had nowhere real to send a customer to actually complete a sub
 7. **The scroll offset is computed manually** (`target.getBoundingClientRect().top + window.scrollY - headerHeight - 12`), not bare `element.scrollIntoView({block:"start"})` — the naive version was tried first and overshot past Step 3's own title, because `scrollIntoView` has no awareness of `SiteHeader`'s `sticky top-0` header sitting on top of it. Respects `prefers-reduced-motion` (falls back to `behavior: "auto"`, no smooth animation).
 
 **Consequence to track (this addendum):** none — both additions are pure client-side rendering/UX, no backend surface, no new decision axis to revisit later.
+
+### 2026-11-07 addendum: the signed-out /membership page and `GET /api/membership/offer`
+
+**Context.** A signed-out visitor to `/membership` saw only an email field, so nobody learned what membership was before verifying. The founder designed a page with a calculator and a price comparison. The page needs each plan's `id` and quota, which decision 3 keeps out of `/api/membership/plans`.
+
+**Decision.**
+1. **A separate endpoint, `GET /api/membership/offer`, behind `membership.enabled`.** `plans()` stays narrow, as it is read on every page. The offer is public: nothing in it is cost or margin, and a verified visitor already sees the same plan figures in `subscribe-options`.
+2. **Every figure comes from a money seam, none is typed.** `real_savings_percent` is the figure the subscribe badge already shows. `lowest_charge_sen` is the plan fee through `MembershipSubscriptionService::chargeSen()`, the same call `initiate()` makes, at the cheapest active channel. Example prices come from `calculateMemberPrice()` and `regularPriceSen()`.
+3. **The calculator is an estimate, in the storefront, and never reaches checkout.** Quota is spent in member prices (ADR-027 decision 7), so the spend is converted before the cap: `covered = min(spend x (1 - s), quota)`, `saving = covered x s / (1 - s)`, `net = saving - lowest charge`. One percentage per plan is honest while markup is uniform: 1,361 of 1,363 packages sit at 10%, and the sold-weighted saving on production was 4.55% and 6.37% against 4.5% and 6.4% shown. **If markup starts to differ by game, change this to a sold-weighted average.**
+4. **The saving follows markup.** A tier cuts a share of the package markup, so raising markup raises the percentage saved and also the member's own price. The page needs no change.
+5. **Examples are chosen by rule, not by an admin.** The best sellers of the last 90 days priced RM10 to RM60, on sale, in a game with member pricing, one per game and name. First Topup is left out: one purchase per account, and it is matched by name.
+6. **Mobile first: the offer before the email.** The hero shows the price and one real example, and the email is asked only after a plan is chosen. This departs from the founder's design, which had an email form in the hero and the final band; the founder chose it after a UX review on 2026-11-07. An existing member keeps a sign-in link. See the Difference moves above How It Works.
+7. **The sign-in survives a reload.** The chosen plan, the email and the step sit in `sessionStorage`, because reading the code means leaving for the mail app and a phone's in-app browser can reload on return.
+8. **A chosen plan carries through sign-in** only for a new subscriber (`relation` `subscribe`). The Best Value treatment is dropped for that visit, so the page does not argue against the calculator's answer.
+9. **The copy states the real rules.** 30 days paid once, no auto-renewal, nothing to cancel, an order over the remaining quota pays the regular price in full (`OrderPricingResolver::resolveMember()`), refund as in the live Refund Policy.
+
+**Consequence to track.** On production on 2026-11-07, only 4 of 37 buyers spent RM150 or more in 30 days, so most visitors will see "won't pay off yet". That is intended. Three dark presets (Red Giants, Emerald, Cobalt) pair a bright primary with white text at 1.9 to 3.4:1; the final band uses that pair, as do selected chips across the site, so it is a preset token issue, not this page's.
+

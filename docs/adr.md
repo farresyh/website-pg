@@ -77,7 +77,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-052](./adr/ADR-052-middleware-panel-closure-batch.md) | Middleware Panel closure batch — MUI-7 merged into Validators, MUI-1 as a thin `/middleware` landing page, MUI-4 dropped | In force |  |
 | [ADR-053](./adr/ADR-053-reviews-rev-1-5.md) | Reviews (REV-1..5) — guest, order-linked submission via a real-time delivery-status trigger, admin-only moderation | In force; decision 6 (no public reviews) reversed by ADR-082 |  |
 | [ADR-054](./adr/ADR-054-developer-raw-api-tester-dev-1-2-mui-11.md) | Developer raw API tester (DEV-1/2, MUI-11) — typed-DTO editor over the real adapter seam, backend-driven dry-run, production-mode block on `createOrder` | In force |  |
-| [ADR-055](./adr/ADR-055-membership-upsell-promo-card.md) | Membership upsell promo card — storefront Order Summary, Tier 2 teaser | In force | 2026-09-18 |
+| [ADR-055](./adr/ADR-055-membership-upsell-promo-card.md) | Membership upsell promo card — storefront Order Summary, Tier 2 teaser; signed-out /membership page | In force | 2026-11-07 |
 | [ADR-056](./adr/ADR-056-reseller-wholesale-pricing-subscription-tiers.md) | Reseller wholesale pricing & subscription tiers — `reseller_membership_tiers`, cost-anchored wholesale rate, tier fee from earnings | In force; the tier and its fee do not apply to an owned brand (ADR-061 2026-10-30 addendum) |  |
 | [ADR-057](./adr/ADR-057-tenant-isolation-mechanism.md) | Tenant isolation mechanism — `BelongsToReseller` trait + Eloquent global scope, retrofitted before any reseller-scoped endpoint | In force |  |
 | [ADR-058](./adr/ADR-058-reseller-authentication-admin-reseller.md) | Reseller authentication + admin Reseller Management (RES-1..6) | In force | 2026-10-14 |
