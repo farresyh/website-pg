@@ -713,7 +713,7 @@ affiliate domains are LWF's own brands. The history of the switches is in the bu
 Maybank2u) and DuitNow QR (`PG-L4RCBELJ9RE3`, RM25.70) each completed with
 real money and were delivered.
 
-**Latest release 2026-11-07 (`staging`→`main`, PR #723, founder's go-ahead).** Merge `88edcdea`, CI and `deploy` green, box release `82355688`. It ships item 167 (#720), item 168 (#721) and item 172 (#722). Recorded in the build-log.
+**Latest release 2026-11-07 (`staging`→`main`, PR #728, founder's go-ahead).** Merge `0df8b387`, CI and `deploy` green, box release `82362619`. It ships item 175 (#724), item 170 (#725), the item 169 and 173 decisions (#726) and the Link dialog fix (#727). No migration, no env change. Recorded in `build-log.md`.
 - **Migration, `Ran` (batch 68):** `2026_11_12_120000_move_game_link_to_supplier_groups`. No env change.
 - **Checked read-only after release:** `/api/health` ok, Horizon running, no order in flight, 49 group links, `supplier_products.game_id` gone, Umum on Mobile Legends Indonesia, package 516 Dismissed with its order unchanged and the one package off its group's game.
 
@@ -833,33 +833,6 @@ and the admin-loading investigation (#515, #516). Re-checked again
 moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 closed, item 111's trigger narrowed). Re-checked 2026-11-04 in the full docs audit after release #694, and 2026-11-05 after releases #705 and #707 (item 162 moved to group C, 163 to A, 164 and 165 added). Items 172 to 174 added 2026-11-07 from the item 162 audit. Re-verify before building.
 
 **A. Buildable now: code, no new design**
-- **163** Seam audit (founder, 2026-11-05): a full read-only audit of the
-  system for one decision written in many places, each correct alone but
-  wrong when two cases overlap. Found once already: nine places switched a
-  package on directly ([ADR-015](./adr/ADR-015-price-sync.md) 2026-11-05
-  addendum), and the same-reference age limit sat on two of three re-submit
-  paths ([ADR-102](./adr/ADR-102-order-delivery-failure-guard-unification.md)
-  2026-11-05 addendum). Method: list every writer of each money- or
-  sale-deciding state (order and leg delivery status, voucher status,
-  wallet and ledger writes, package price and activation, supplier and
-  brand switches), find decisions re-made at more than one site, and check
-  each for a single seam plus an invariant test. Output: a report first
-  (no edits), then one PR per seam the founder approves. **Report done
-  2026-11-06** (`build-log.md`): seven seams, A to G, plus six small items.
-  A, E, F and G became ADR-138 (item 166), C is item 167, D is item 168.
-  B (a Paid after a Failed) was downgraded to watch only. **Scope widened 2026-11-05:** catalog structure
-  too (game, package, group link, supplier reference). Its first finding is
-  fixed: deleting a game bypassed ADR-119's guard and cascaded to used
-  packages ([ADR-119](./adr/ADR-119-package-delete-guards.md) 2026-11-05
-  addendum). Inputs already found: repoint is allowed on a live package; a
-  package cannot move between games; a group link also merges the game's
-  validation rules; promote trusts the `game_id` the UI sends. **Last two
-  inputs checked 2026-11-07:** a package staying on its game is a deliberate
-  rule (1 of 1,477 packages differs from its group's game, package 516, by
-  decision). The rule merge was safe, but the Link dialog could change a live
-  game's checkout, so it no longer can ([ADR-067](./adr/ADR-067-digiflazz-adapter-completion.md)
-  2026-11-07 addendum). Closes when items 170 and 175 and this change are released.
-
 - **158** Customer-support assistant on the CS number ([ADR-136](./adr/ADR-136-customer-support-assistant.md),
   Accepted 2026-11-03 after the grill and a stress test). PR 1 (#672), PR 2
   and PR 3a (#677, fixes #680), the run #3 candidates (#684) and PR 3b Shadow
@@ -880,10 +853,6 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   screenshot against admin `/orders`; Suppliers and Price Sync first. Ready
   to build (item 162's code is done); the Gamevion games picker is already on
   the tokens.
-
-- **175** KOL attribution gaps ([ADR-118](./adr/ADR-118-marketing-campaigns.md) 2026-11-07 addendum, V21 to V25; reporting and fees). **Built on `fix/kol-attribution-gaps`, not released.** A customer who kept anything from a code is the KOL's, an order placed before the first delivery is filled in, the oldest redemption wins, ending a campaign sets the fee's last month, and the admin shows the KOL on an order and a campaign's customers. No migration, no env change. Closes at release, then check the first real redemption.
-
-- **170** Item 163's small findings. **Built on `fix/item-170-small-findings`, not released.** A sandbox order is never compensated ([ADR-094](./adr/ADR-094-combo-package.md) 2026-11-07 addendum), membership is checked as owned-brand-only when read ([ADR-061](./adr/ADR-061-every-storefront-is-a-reseller.md) 2026-11-07 addendum), one wallet-refund SQL, one profit formula (`Order::residualProfit()`, guarded by a test), and a brand's tier read only through `storefrontPriceTerms()`. The same-reference window stays as it is ([ADR-102](./adr/ADR-102-order-delivery-failure-guard-unification.md) 2026-11-07 addendum). No migration, no env change. Closes at release.
 
 **B. Needs a short grill / ADR addendum first**
 - **165** KOL fee as a share of profit ([ADR-118](./adr/ADR-118-marketing-campaigns.md) addendum, money-critical; founder, 2026-11-05). A KOL may ask for no monthly fee but a share of the profit their sales bring (70/30 was only a proposal). Today a campaign knows only a fixed monthly fee schedule (`CampaignFeeSchedule`, RM0 allowed), so neither way of paying such a KOL is right: a payment tagged to an RM0 campaign leaves both the envelope expenses (`whereNull('campaign_id')`) and the accrued KOL fee line, so the cost disappears from the month-close net and shows as a growing "prepaid"; tagged "Not a KOL fee", the books are right on a cash basis but the scorecard counts no fee (net and CAC overstated). **Until built, pay such a KOL as "Not a KOL fee".** Proposed: a "profit share %" fee type whose accrued fee per Malaysia month is computed from the campaign's attributed ledger profit (the scorecard's own number), never typed. Open for the founder: orders that used the code only, or every attributed order; a loss month as 0 or carried; a monthly cap; simulate the share on real order data first.
@@ -1217,6 +1186,9 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-28, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **175** 2026-11-07: KOL attribution gaps ([ADR-118](./adr/ADR-118-marketing-campaigns.md) 2026-11-07 addendum, V21 to V25), released via #728. No code has been redeemed yet, so the first real redemption still needs checking in the database.
+- **170** 2026-11-07: item 163's small findings, released via #728: a sandbox order is never compensated ([ADR-094](./adr/ADR-094-combo-package.md) addendum), membership checked as owned-brand-only on read and a brand's tier read only through `storefrontPriceTerms()` ([ADR-061](./adr/ADR-061-every-storefront-is-a-reseller.md) addendum), one wallet-refund SQL, one profit formula. The same-reference window stays ([ADR-102](./adr/ADR-102-order-delivery-failure-guard-unification.md) addendum).
+- **163** 2026-11-07: seam audit finished, released via #728. Seams A, E, F and G were item 166, C item 167, D item 168, the small findings items 170 and 175, and B was downgraded to watch only. Its last two inputs: a package staying on its game is a deliberate rule (1 of 1,477 differs, package 516, by decision), and the Link dialog no longer changes an existing game's checkout ([ADR-067](./adr/ADR-067-digiflazz-adapter-completion.md) 2026-11-07 addendum).
 - **173** 2026-11-07: no grace period for Gamevion ([ADR-137](./adr/ADR-137-gamevion-v2-api.md) 2026-11-07 addendum). A package skipped on a 503 is back on the next good sync, about 30 minutes later, proved by test through the real job.
 - **174** 2026-11-07: closed with no code. The three packages (Free Fire Thailand 1052 Diamond, Blood Strike 200 and 600 Gold) are `inactive` at DigiFlazz, streak 0, so off is right. After sync 3375 no package was off with a streak of 6 or more, and Twilight Pass came back by itself at its sixth sync. The streak keeps no history, so the earlier reading can't be rechecked.
 - **172** 2026-11-07: a game link belongs to the group ([ADR-067](./adr/ADR-067-digiflazz-adapter-completion.md) 2026-11-07 addendum), released via #723.
