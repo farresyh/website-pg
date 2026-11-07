@@ -5,12 +5,14 @@ import type { MembershipOfferPlan } from "@/lib/membership";
  * addendum). Display only: the real price is always computed server-side
  * at checkout. A plan's quota is spent in member prices (ADR-027 decision
  * 7), so the spend is converted before the cap is applied, and the fee is
- * the least the customer can really pay, payment fee included.
+ * the least the customer can really pay, payment fee included. The fee is
+ * always shown beside the saving, and the break-even stays visible: the
+ * page leads with what a plan gives, it never hides what it costs.
  */
-export const SPEND_MIN_RM = 20;
+export const SPEND_MIN_RM = 100;
 export const SPEND_MAX_RM = 1000;
 export const SPEND_DEFAULT_RM = 300;
-export const SPEND_PICKS_RM = [50, 100, 300, 600];
+export const SPEND_PICKS_RM = [100, 200, 300, 600];
 
 export interface PlanEstimate {
   plan: MembershipOfferPlan;
@@ -40,13 +42,23 @@ export function estimatePlan(plan: MembershipOfferPlan, spendRm: number): PlanEs
   };
 }
 
-/** Best plan first; `best` is null when no plan pays for itself at this spend. */
-export function comparePlans(plans: MembershipOfferPlan[], spendRm: number): { best: PlanEstimate | null; estimates: PlanEstimate[] } {
-  const estimates = plans.map((plan) => estimatePlan(plan, spendRm));
-  const ranked = [...estimates].sort((a, b) => b.netRm - a.netRm);
-  const best = ranked[0] && ranked[0].netRm > 0 ? ranked[0] : null;
+export interface PlanComparison {
+  /** The plan that leaves the most after its fee, when one pays for itself at this spend. */
+  best: PlanEstimate | null;
+  /** The plan the page leads with: `best`, else the one that pays for itself soonest. */
+  featured: PlanEstimate;
+  /** Featured plan first. */
+  estimates: PlanEstimate[];
+}
 
-  return { best, estimates: best ? ranked : estimates };
+export function comparePlans(plans: MembershipOfferPlan[], spendRm: number): PlanComparison {
+  const estimates = plans.map((plan) => estimatePlan(plan, spendRm));
+  const byNet = [...estimates].sort((a, b) => b.netRm - a.netRm);
+  const best = byNet[0].netRm > 0 ? byNet[0] : null;
+  const soonest = [...estimates].sort((a, b) => (a.breakEvenRm ?? Infinity) - (b.breakEvenRm ?? Infinity))[0];
+  const featured = best ?? soonest;
+
+  return { best, featured, estimates: [featured, ...estimates.filter((estimate) => estimate !== featured)] };
 }
 
 export function formatRm(amountRm: number): string {

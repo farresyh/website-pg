@@ -1758,6 +1758,8 @@ Items 163, 170 and 175 closed.
 
 **Departures from the founder's design, after a mobile UX review the founder accepted.** The hero shows the price and a real example instead of an email form. The final band has a button, not an email field. On a phone only the winning plan is a full card. See the Difference comes before How It Works. Copy changed from "billed monthly" to "30 days", because nothing renews by itself. The founder dropped the desktop mascot after seeing it, so the desktop hero shows the example on a plain panel, and that example uses the top plan.
 
+**Calculator changed after the founder's review.** Showing a loss at low spend worked against the point of membership, so the page now shows saving and fee side by side, the break-even as a goal, and a 30-day try with no auto-renewal (ADR-055 addendum, decision 10).
+
 **Verified.** Backend 3,824 tests pass. `tsc` and `eslint` clean. Playwright: the calculator's maths on production's plan figures, and a 390px visitor going from the offer through a reload at the OTP step to the plan's payment step. The existing subscribe spec still passes. Screenshots at 390px and 1440px with production's plans; no sideways scroll; hero and FAQ are in the server HTML.
 
 **Gotchas.**

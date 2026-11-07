@@ -18,7 +18,7 @@ import MembershipCalculator from "@/components/order/MembershipCalculator";
  */
 export default function MembershipLanding({ offer, onSignIn }: { offer: MembershipOffer; onSignIn: (planId: number | null) => void }) {
   const [spendRm, setSpendRm] = useState(SPEND_DEFAULT_RM);
-  const { best, estimates } = useMemo(() => comparePlans(offer.plans, spendRm), [offer.plans, spendRm]);
+  const { best, featured, estimates } = useMemo(() => comparePlans(offer.plans, spendRm), [offer.plans, spendRm]);
 
   const calculatorRef = useRef<HTMLElement>(null);
   const finalCtaRef = useRef<HTMLElement>(null);
@@ -118,8 +118,8 @@ export default function MembershipLanding({ offer, onSignIn }: { offer: Membersh
       </section>
 
       <section id="calculator" ref={calculatorRef} className="scroll-mt-32">
-        <Heading title="How much will you save?" subtitle="Pick your usual monthly top-up spend. We show what you really keep after the membership fee." />
-        <MembershipCalculator spendRm={spendRm} onSpendChange={setSpendRm} best={best} estimates={estimates} onChoosePlan={onSignIn} />
+        <Heading title="How much will you save?" subtitle="Pick your usual monthly top-up spend. We show your saving next to the membership fee." />
+        <MembershipCalculator spendRm={spendRm} onSpendChange={setSpendRm} best={best} estimates={estimates} example={example} onChoosePlan={onSignIn} />
         <p className="mt-3 text-[13px] text-on-surface-variant">
           Estimates, using each plan&apos;s typical saving and the lowest payment fee. Your actual saving depends on the packages you buy.
         </p>
@@ -170,26 +170,22 @@ export default function MembershipLanding({ offer, onSignIn }: { offer: Membersh
 
       <section ref={finalCtaRef} className="flex flex-col gap-5 rounded-lg border-2 border-ink bg-primary p-6 text-on-primary neo lg:flex-row lg:items-center lg:justify-between lg:p-10">
         <div>
-          <p className="font-display text-[32px] font-bold uppercase leading-tight tracking-tight">{best ? "Ready to pay less?" : "Top up more often?"}</p>
+          <p className="font-display text-[32px] font-bold uppercase leading-tight tracking-tight">{best ? "Ready to pay less?" : "Not sure yet?"}</p>
           <p className="mt-1 text-[15px]">
-            {best ? `${best.plan.name} keeps about ${formatRm(best.netRm)} for you every 30 days at your spend.` : "Check which plan pays off at your monthly spend."}
+            {best
+              ? `${best.plan.name} keeps about ${formatRm(best.netRm)} for you every 30 days at your spend.`
+              : `Try ${featured.plan.name} for 30 days, from ${formatRm(featured.chargeRm)}. One payment, no auto-renewal.`}
           </p>
         </div>
-        {best ? (
-          <FinalButton onClick={() => onSignIn(best.plan.id)}>
-            Subscribe to {best.plan.name} <ArrowRight size={16} weight="bold" />
-          </FinalButton>
-        ) : (
-          <a href="#calculator" className={FINAL_BUTTON_CLASS}>
-            Back to the calculator
-          </a>
-        )}
+        <button type="button" onClick={() => onSignIn(featured.plan.id)} className={FINAL_BUTTON_CLASS}>
+          {best ? "Subscribe to" : "Try"} {featured.plan.name} <ArrowRight size={16} weight="bold" />
+        </button>
       </section>
 
-      {best && pastCalculator && !atEnd && (
+      {pastCalculator && !atEnd && (
         <div className="fixed inset-x-4 bottom-[calc(6rem+env(safe-area-inset-bottom))] z-40 lg:hidden">
-          <Button onClick={() => onSignIn(best.plan.id)} className="w-full justify-center">
-            {best.plan.name} · keep {formatRm(best.netRm)} <ArrowRight size={16} weight="bold" />
+          <Button onClick={() => onSignIn(featured.plan.id)} className="w-full justify-center">
+            {best ? `${best.plan.name} · keep ${formatRm(best.netRm)}` : `Try ${featured.plan.name} for 30 days`} <ArrowRight size={16} weight="bold" />
           </Button>
         </div>
       )}
@@ -202,14 +198,6 @@ const STAR_SHAPE =
 
 const FINAL_BUTTON_CLASS =
   "flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-md border-2 border-ink bg-warning px-6 py-3 font-display text-[15px] font-bold uppercase tracking-wide text-on-warning neo-sm";
-
-function FinalButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button type="button" onClick={onClick} className={FINAL_BUTTON_CLASS}>
-      {children}
-    </button>
-  );
-}
 
 function Heading({ title, subtitle }: { title: string; subtitle?: string }) {
   return (

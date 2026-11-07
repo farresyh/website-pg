@@ -14,10 +14,11 @@ test("the calculator keeps what a plan really leaves after its fee and its limit
   expect(at300.best?.netRm).toBeCloseTo(6.53, 2);
   expect(estimatePlan(tier2, 300).netRm).toBeCloseTo(-0.9, 2);
 
-  // Nothing pays off: no plan is pushed, and the order stays as the plans are listed.
-  const at20 = comparePlans([tier1, tier2], 20);
-  expect(at20.best).toBeNull();
-  expect(at20.estimates.map((estimate) => estimate.plan.name)).toEqual(["Tier 1", "Tier 2"]);
+  // Nothing pays off yet: the plan that gets there soonest leads, and none is called best.
+  const at100 = comparePlans([tier1, tier2], 100);
+  expect(at100.best).toBeNull();
+  expect(at100.featured.plan.name).toBe("Tier 1");
+  expect(at100.featured.savingRm).toBeCloseTo(4.5, 2);
 
   expect(estimatePlan(tier1, 300).breakEvenRm).toBe(155);
   expect(estimatePlan(tier2, 300).breakEvenRm).toBe(314);
@@ -46,9 +47,12 @@ test("a signed-out phone visitor chooses a plan and reaches its payment step", a
   await expect(page.getByRole("textbox", { name: "Email address" })).toHaveCount(0);
   await expect(page.getByText("E2E 284 Diamonds").first()).toBeVisible();
 
-  await page.getByRole("button", { name: "RM50", exact: true }).click();
-  await expect(page.getByText("Membership won't pay off at this spend yet.")).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Subscribe to/ })).toHaveCount(0);
+  // Below break-even: the saving, the fee and the break-even are all on show, no loss figure, and a plan can still be tried.
+  await page.getByRole("button", { name: "RM100", exact: true }).click();
+  await expect(page.getByText(/pays for itself at about RM\d+ a month/)).toBeVisible();
+  await expect(page.getByText("Membership cost").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Try .+ for 30 days$/ }).first()).toBeVisible();
+  await expect(page.locator("#calculator").getByText(/-RM/)).toHaveCount(0);
 
   await page.getByRole("button", { name: "RM600", exact: true }).click();
 
