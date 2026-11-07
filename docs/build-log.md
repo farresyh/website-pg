@@ -1644,3 +1644,34 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 
 **Open at release.** Check on prod: 49 links, Umum on Mobile Legends Indonesia, 516 in Dismissed, then the founder's repoint. Product Manager can error for the seconds between the migration and the release switch.
 
+## 2026-11-07 — Released #723: combo leg safety, voucher close guard, group game link
+
+**Released on the founder's go-ahead.** `main` `88edcdea`, box release `82355688`, CI and `deploy` green. #722 merged to `staging` first. Before release, read-only: 0 orders in flight, 0 in `needs_review`, 0 legs at `Processing`, 0 reservations on a merged or revoked voucher.
+
+**Checked after release.** Migration `Ran` (batch 68). 49 group links, the number simulated. `supplier_products.game_id` gone. `MOBILE LEGENDS — Umum` on Mobile Legends Indonesia. Package 516 `admin`, its date, game and reference kept; order `PG-CGDZOLEHAIR8` unchanged; the only package off its group's game. `/api/health` ok, Horizon running. In the live admin through Chrome: Umum and Valorant (Malaysia) show as expected. The 36 `ERROR` lines in the log tail are all from before the release (Gamevion's 401 on 6 November, `CsGameInfo` on 3 November). Items 167, 168 and 172 closed.
+
+**Gamevion's catalog came back by itself.** `/api/games` read 320 from 03:00 UTC and 1,315 at 05:30; new-API rows are 1,164, PUBG's 35 included. So the morning's drop was on Gamevion's side and temporary, and the earlier reading that PUBG had left the catalog was wrong. With prune deleting un-promoted rows, this is exactly the flapping the group link makes harmless for links; it is still open for packages (item 173).
+
+**Not yet seen:** the founder's repoint on prod.
+
+## 2026-11-07 — Item 175 built: KOL attribution gaps (ADR-118 V21 to V25)
+
+**Why.** The founder asked whether every KOL order is really recorded, since reports can only use what the order and the ledger hold. The store was sound: every storefront checkout stamps through one path and profit reaches the order through the ledger. The stress test the founder asked for then found more than the one hole already named:
+- an order placed before the first delivery was never stamped;
+- a partly delivered customer belonged to nobody, though the new-customer rule treated them as existing and the discount they kept was charged to the KOL (item 170's finding, closed here);
+- two matching redemptions had no defined winner;
+- ending a campaign left its fee accruing, in the month close too.
+
+**Built on `fix/kol-attribution-gaps`, into `staging`, not released.** No migration, no env change.
+- `PromoCodeRedemption::kept()` is the one rule; `attributionFor()` and the scorecard read it, oldest first.
+- `claimLaterOrders()` fills empty stamps after the delivery commits, so it holds no other order's row inside a delivery. A stamp with a value is untouched.
+- `PATCH /campaigns/{id}` with `ended: true` needs `last_fee_month` while the fee is open, one transaction, through `setEndMonth()`.
+- Order details always shows Promo Discount, and "Counts for KOL". The campaign page lists its customers, adding up to the scorecard's all-time sales.
+
+**Verified.**
+- `php artisan test` 3,809 of 3,809; promo and voucher concurrency tests on real MySQL 10 of 10.
+- Admin `tsc`, `eslint` on the changed files, 22 of 22 unit tests.
+- In a real browser on a throwaway backend, through the real `commit()`: a first order, a later order and a plain order each show the right rows; the customer row shows RM 36.32 on both sides; ending a campaign asks the month, answers 200, and the fee row shows November to November.
+
+**Not proven on prod:** no code has been redeemed yet, so the first real redemption needs checking in the database.
+
