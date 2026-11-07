@@ -853,7 +853,12 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   packages ([ADR-119](./adr/ADR-119-package-delete-guards.md) 2026-11-05
   addendum). Inputs already found: repoint is allowed on a live package; a
   package cannot move between games; a group link also merges the game's
-  validation rules; promote trusts the `game_id` the UI sends.
+  validation rules; promote trusts the `game_id` the UI sends. **Last two
+  inputs checked 2026-11-07:** a package staying on its game is a deliberate
+  rule (1 of 1,477 packages differs from its group's game, package 516, by
+  decision). The rule merge was safe, but the Link dialog could change a live
+  game's checkout, so it no longer can ([ADR-067](./adr/ADR-067-digiflazz-adapter-completion.md)
+  2026-11-07 addendum). Closes when items 170 and 175 and this change are released.
 
 - **158** Customer-support assistant on the CS number ([ADR-136](./adr/ADR-136-customer-support-assistant.md),
   Accepted 2026-11-03 after the grill and a stress test). PR 1 (#672), PR 2

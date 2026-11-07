@@ -1708,3 +1708,13 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 
 **Verified.** `php artisan test` 3,816 of 3,816. Tests and docs only, no product code.
 
+## 2026-11-07 — Item 163's last two inputs: Link dialog no longer edits a live game's checkout
+
+**Why.** The audit report never answered two of its inputs.
+- **A package can't move games:** deliberate, and enforced at the link and the repoint. On prod 1 of 1,477 packages differs from its group's game: package 516, by decision.
+- **A group link merges the game's rules:** the merge is safe and `linkCategory()` is the one writer. The dialog's "Checkout input needed" dropdown, though, edits the whole game. Changing it while linking a Gamevion group could stop checkout asking for a server ID on live DigiFlazz packages.
+
+**Built on `fix/link-modal-keeps-checkout-input`, into `staging`, not released.** Admin only, no migration, no env change. For an existing game the dialog shows the rule as text and sends no `validation_rules`; a new game keeps the dropdown. The Checkout Input tab is the one place an existing game's rule changes.
+
+**Verified.** In a real browser on a throwaway backend: no dropdown for an existing game, the POST body carried only `supplier_id`, `group_label` and `game_id`, the link answered 200, the game stayed on `server_id`, and New game still shows the dropdown. A new backend test covers a link with no rules. `php artisan test` 3,817 of 3,817; admin `tsc`, `eslint` on the changed files, build, 22 of 22 unit tests.
+

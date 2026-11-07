@@ -110,9 +110,9 @@ class SupplierProductController extends Controller
      * (ADR-067 decision 6). The request refuses a change of game that
      * would leave a package behind.
      *
-     * `validation_rules` is stamped onto the Game here too (existing
-     * or newly-created) — saving the same link again is the supported
-     * way to correct it later.
+     * `validation_rules`, when sent, is stamped onto the Game too: the Link
+     * dialog sends it for a new game only, the Checkout Input tab for an
+     * existing one. Sent without it, the game's rules stay as they are.
      */
     public function linkCategory(LinkSupplierProductCategoryRequest $request): JsonResponse
     {

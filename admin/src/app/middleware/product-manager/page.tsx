@@ -96,10 +96,9 @@ function sameGroup(a: SupplierProductCategory, b: SupplierProductCategory): bool
 
 /**
  * The admin, not any supplier API, decides what a game's checkout
- * needs (ADR-005 addendum) — LinkCategoryModal sets it once at
- * link time, but until this editor existed there was no way to
- * correct a wrong choice afterward (the "Link to Game" button
- * goes once a group has a package). Reuses linkSupplierProductCategory
+ * needs (ADR-005 addendum). LinkCategoryModal sets it for a new game
+ * only; this editor is the one place an existing game's rule changes
+ * (ADR-067 2026-11-07 addendum). Reuses linkSupplierProductCategory
  * directly — game_id doesn't change, only validation_rules.
  *
  * ADR-097 decision 16: ONE "Update" button saves the WHOLE
