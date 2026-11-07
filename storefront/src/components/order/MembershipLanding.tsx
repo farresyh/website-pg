@@ -56,7 +56,9 @@ export default function MembershipLanding({ offer, onSignIn }: { offer: Membersh
           <span className="rounded-md border-2 border-ink bg-warning px-3 py-1 font-display text-xs font-bold uppercase tracking-[0.08em] text-on-warning">
             Membership
           </span>
-          <h1 className="font-display text-[38px] font-bold uppercase leading-[1.05] tracking-tight lg:text-[56px]">Pay less on every top-up.</h1>
+          <h1 className="font-display text-[38px] font-bold uppercase leading-[1.05] tracking-tight lg:text-[56px]">
+            Pay less on every <span className="whitespace-nowrap">top-up.</span>
+          </h1>
           <p className="text-[15px] leading-normal text-on-surface-variant lg:text-lg">
             Member prices applied at checkout, on every game that shows one.
             {cheapest && (
