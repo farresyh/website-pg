@@ -3,12 +3,14 @@
 namespace Database\Seeders;
 
 use App\Models\Affiliate;
+use App\Models\Campaign;
 use App\Models\Game;
 use App\Models\MembershipOtpCode;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\PaymentMethod;
 use App\Models\PlatformSettings;
+use App\Models\PromoCode;
 use App\Models\Supplier;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -190,6 +192,13 @@ class E2ESeeder extends Seeder
                 'payment_gateway' => 'chip',
                 'paid_at' => now(),
             ],
+        );
+
+        // A KOL code for the promo link spec (ADR-118).
+        $campaign = Campaign::query()->firstOrCreate(['affiliate_id' => $affiliate->id, 'name' => 'E2E KOL']);
+        PromoCode::query()->firstOrCreate(
+            ['code' => 'E2EKOL'],
+            ['campaign_id' => $campaign->id, 'discount_percent' => 5, 'budget_sen' => 100000, 'is_active' => true],
         );
 
         // Fixture for the "admin → failed order → Issue Voucher"

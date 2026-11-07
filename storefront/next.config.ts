@@ -76,6 +76,11 @@ const nextConfig: NextConfig = {
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
         ],
       },
+      {
+        // A repeat visit shouldn't fetch 20 bank logos again. Rename a file to replace it sooner.
+        source: "/images/banks/:file*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=2592000" }],
+      },
     ];
   },
   images: {

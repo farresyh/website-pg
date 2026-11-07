@@ -1771,3 +1771,15 @@ Items 163, 170 and 175 closed.
 
 **Not yet seen:** the page on a real phone, the mail-app round trip in a TikTok or Instagram in-app browser, or OhahaStore itself: local has no such brand, so its panel was checked by forcing the non-primary branch with the Bumblebee theme.
 
+## 2026-11-07 — KOL link applies its code; bank logos load up front
+
+**Why.** 109 KOL clicks, 0 redemptions. The check found the codes work on production and end to end in e2e, but a phone customer could pay full price without noticing the code wasn't applied. Most visitors never reach checkout, so this alone won't fix redemptions. The founder also saw blank bank tiles in TikTok's browser.
+
+**Built on `feature/kol-code-auto-apply`, into `staging`, not released.** Storefront only, no migration, no env change. A link's code applies once email and phone are in; a note under the header says the code is saved (ADR-118 2026-11-07 addendum). Bank logos are webp, unoptimized, eager, cached 30 days (ADR-130 2026-11-07 addendum).
+
+**Verified.** Playwright: link to note to auto-apply, Remove stays removed, note stays closed, no note without a link; the checkout spec still passes. Production read-only: all four codes quote RM1.07 on RM21.55.
+
+**Gotcha.** A failed tinker seed looked like an "invalid code" bug: `createCampaign()` needs an admin id, and the error was hidden. Prod's real codes were checked before blaming the code path.
+
+**Not yet seen:** either change in a real TikTok or Instagram browser.
+
