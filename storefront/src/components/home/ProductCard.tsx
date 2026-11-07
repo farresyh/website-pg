@@ -18,7 +18,13 @@ export default function ProductCard({ game }: { game: Game }) {
     >
       <div className="relative aspect-16/10">
         {game.imageUrl ? (
-          <Image src={game.imageUrl} alt={game.name} fill className="border-b-2 border-ink object-cover" />
+          <Image
+            src={game.imageUrl}
+            alt={game.name}
+            fill
+            sizes="(min-width: 1024px) 280px, calc(50vw - 24px)"
+            className="border-b-2 border-ink object-cover"
+          />
         ) : (
           <PlaceholderTile label={game.name} />
         )}

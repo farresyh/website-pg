@@ -118,6 +118,7 @@ jobs:
           cache-dependency-path: storefront/package-lock.json
       - run: npm ci
       - run: node scripts/check-loading-boundaries.mjs
+      - run: npm test
       - run: npx tsc --noEmit
       - run: npm run build
       - run: npx eslint .
