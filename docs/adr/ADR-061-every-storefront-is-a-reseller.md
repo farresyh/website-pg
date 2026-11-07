@@ -1,6 +1,6 @@
 # ADR-061: Every storefront is a Reseller — abolish the platform-owner special-case
 
-> **Standing (2026-10-30):** In force, except decision 7's `('platform', null)` withdrawal from `/admin`: retired by [ADR-083](./ADR-083-internal-accounting-financial-reconciliation.md)'s 2026-10-10 addendum, decision 17 (money leaving to a director is an Envelope Ledger repayment or dividend). Decision 8's owned-brand-only rule also gates Joki (`joki_enabled`, [ADR-126](./ADR-126-joki-mlbb.md)). Decision 2's null ceiling means "no markup opened" (**2026-10-31 addendum**). Decisions 2 and 6 are revised for pricing by the **2026-10-30 addendum**: an owned brand has no tier and no brand markup. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-07):** In force, except decision 7's `('platform', null)` withdrawal from `/admin`: retired by [ADR-083](./ADR-083-internal-accounting-financial-reconciliation.md)'s 2026-10-10 addendum, decision 17 (money leaving to a director is an Envelope Ledger repayment or dividend). Decision 8's owned-brand-only rule also gates Joki (`joki_enabled`, [ADR-126](./ADR-126-joki-mlbb.md)). Decision 2's null ceiling means "no markup opened" (**2026-10-31 addendum**). Decisions 2 and 6 are revised for pricing by the **2026-10-30 addendum**: an owned brand has no tier and no brand markup. Decision 8 is also checked on read (2026-11-07 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 >
 > **Terminology:** written before [ADR-072](./ADR-072-reseller-system-split.md); "Reseller" in this file means today's **Affiliate** (whitelabel storefront owner).
 
@@ -131,3 +131,11 @@
 **Rationale.** Customers of every affiliate brand pay through LWF Group's own CHIP merchant account, so an unbounded markup puts the platform's complaints and chargebacks at the affiliate's discretion. Failing closed costs nothing today (no affiliate relies on a null ceiling) and needs no migration.
 
 **Consequence to track.** An affiliate created with a blank ceiling sells at its wholesale price until the admin opens a range.
+
+### 2026-11-07 addendum — decision 8 is also checked when membership is read (PRD §16 item 170)
+
+**Context.** Decision 8 keeps consumer Membership to owned brands, but only the admin's save enforced it. `membershipEnabledEffective()` read the brand's switch alone, while `jokiEnabledEffective()`, its neighbour, also checks `is_owned`.
+
+**Decision.** `membershipEnabledEffective()` checks `is_owned` too. Every membership path (checkout, preview, catalog, subscribe, reminders) already reads it.
+
+**Rationale.** Item 170's "a member can pay more than a guest on a low tier" needs a third-party brand's wholesale price next to a member price. An owned brand has no tier (2026-10-30 addendum), so its guest price is the standard price, and a member paid less on all 1,293 packages checked on 2026-11-07. With this check a stale switch can't create the case, so no pricing rule is needed.
