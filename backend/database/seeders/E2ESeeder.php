@@ -3,12 +3,14 @@
 namespace Database\Seeders;
 
 use App\Models\Affiliate;
+use App\Models\Campaign;
 use App\Models\Game;
 use App\Models\MembershipOtpCode;
 use App\Models\Order;
 use App\Models\Package;
 use App\Models\PaymentMethod;
 use App\Models\PlatformSettings;
+use App\Models\PromoCode;
 use App\Models\Supplier;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -68,6 +70,13 @@ class E2ESeeder extends Seeder
 
         MembershipOtpCode::query()->firstOrCreate(
             ['affiliate_id' => $affiliate->id, 'email' => 'e2e-member@example.com', 'consumed_at' => null],
+            ['code_hash' => Hash::make('123456'), 'expires_at' => now()->addYear()],
+        );
+
+        // The landing spec signs in through the real page with its own code,
+        // so it never spends the one the subscribe spec uses.
+        MembershipOtpCode::query()->firstOrCreate(
+            ['affiliate_id' => $affiliate->id, 'email' => 'e2e-landing@example.com', 'consumed_at' => null],
             ['code_hash' => Hash::make('123456'), 'expires_at' => now()->addYear()],
         );
 
@@ -142,6 +151,54 @@ class E2ESeeder extends Seeder
                 // — never reaches a real Gamevion catalog lookup.
                 'supplier_package_ref' => 'E2E-TEST-REF',
             ],
+        );
+
+        // A best seller in the price band the signed-out /membership page
+        // compares (ADR-055 2026-11-07 addendum).
+        $bestSeller = Package::query()->firstOrCreate(
+            ['game_id' => $game->id, 'name' => 'E2E 284 Diamonds'],
+            [
+                'cost_price' => 1959,
+                'standard_selling_price' => 2155,
+                'markup_percent' => 10,
+                'is_active' => true,
+                'supplier_id' => $supplier->id,
+                'supplier_package_ref' => 'E2E-BESTSELLER-REF',
+            ],
+        );
+        Order::query()->firstOrCreate(
+            ['order_number' => 'PG-E2E-BESTSELLER-FIXTURE'],
+            [
+                'affiliate_id' => $affiliate->id,
+                'reference_number' => 'REF-E2E-BESTSELLER-FIXTURE',
+                'is_test' => false,
+                'placed_via' => 'storefront',
+                'customer_email' => 'e2e-bestseller-fixture@example.com',
+                'customer_name' => 'E2E Best Seller Fixture',
+                'customer_phone' => '0100000009',
+                'player_id' => '000009',
+                'game_id' => $game->id,
+                'package_id' => $bestSeller->id,
+                'supplier_id' => $supplier->id,
+                'cost_price' => $bestSeller->cost_price,
+                'standard_selling_price' => $bestSeller->standard_selling_price,
+                'selling_price' => $bestSeller->standard_selling_price,
+                'transaction_fee' => 100,
+                'final_amount' => $bestSeller->standard_selling_price + 100,
+                'platform_profit' => 196,
+                'affiliate_profit' => 0,
+                'payment_status' => PaymentStatus::Paid->value,
+                'delivery_status' => DeliveryStatus::Delivered->value,
+                'payment_gateway' => 'chip',
+                'paid_at' => now(),
+            ],
+        );
+
+        // A KOL code for the promo link spec (ADR-118).
+        $campaign = Campaign::query()->firstOrCreate(['affiliate_id' => $affiliate->id, 'name' => 'E2E KOL']);
+        PromoCode::query()->firstOrCreate(
+            ['code' => 'E2EKOL'],
+            ['campaign_id' => $campaign->id, 'discount_percent' => 5, 'budget_sen' => 100000, 'is_active' => true],
         );
 
         // Fixture for the "admin → failed order → Issue Voucher"

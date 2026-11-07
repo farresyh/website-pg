@@ -1718,3 +1718,68 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 
 **Verified.** In a real browser on a throwaway backend: no dropdown for an existing game, the POST body carried only `supplier_id`, `group_label` and `game_id`, the link answered 200, the game stayed on `server_id`, and New game still shows the dropdown. A new backend test covers a link with no rules. `php artisan test` 3,817 of 3,817; admin `tsc`, `eslint` on the changed files, build, 22 of 22 unit tests.
 
+## 2026-11-07 — Released #728: KOL attribution, item 170, Link dialog
+
+**Released on the founder's go-ahead.** `main` `0df8b387`, box release `82362619`, CI and `deploy` green. Before release, read-only: 0 orders and 0 legs in flight, no migration in the diff. Ships #724 (item 175), #725 (item 170), #726 (items 169 and 173 decided) and #727 (Link dialog).
+
+**Checked after release, read-only.**
+- `/api/health` ok and `/api/health/whatsapp` 200. No `ERROR` in the log tail since the deploy.
+- `Order::residualProfit()` present, `wholesaleTierMarkupPct()` gone.
+- `storefrontPriceTerms()`: PekanGame and OhahaStore no tier and no markup, FixFast Demo tier 5 and markup 5, unchanged.
+- Membership effective on PekanGame and OhahaStore, off on FixFast Demo.
+- `Order::walletRefundSql()` totals 43,004 sen, equal to the ledger's `wallet_refund` total.
+- All four Vercel projects success on the merge commit.
+
+Items 163, 170 and 175 closed.
+
+**Package count 1,389 to 1,365, not from the release.** Run 3378 at 08:30 UTC, before the merge, took 26 DigiFlazz packages off (Valorant Indonesia 17, Mobile Legends Global 5, Mobile Legends Brazil 4), all `inactive` at the supplier.
+
+**Gotcha.** `gh pr checks --watch` right after opening a release PR exited 0 on the Vercel checks alone, before the Actions jobs had registered. The merge guard read the real checks and held. Watch the Actions run itself with `gh run watch <id> --exit-status`.
+
+**Not yet seen:** the Link dialog on the live admin, and the first real KOL redemption.
+
+## 2026-11-07 — Gamevion order test at RM0 balance; item 162 moved to group D
+
+**Why.** The founder is not using Gamevion yet, so the repoint stops at 6 of 71 packages. Before parking it, one order at RM0 balance, as ADR-137 decision 11 planned: `supplier_request_logs` held no `createOrder` call for Gamevion, so the order path had never been exercised.
+
+**What ran on production.** The founder ran the tinker script themselves: read the live balance, stop unless it was exactly 0, then `createOrder` through `SupplierAdapterFactory` for `hok:16`, reference `PG-GV402-20261107`, a made-up player ID. Before it: balance 0, debt 0, credit off.
+
+**Result.** `POST /api/order` answered 402 at 10:40:03 UTC, log row 8095: `insufficient_balance`, "Insufficient balance (RM 0.00 < RM 0.71). Please top up." The adapter returned `outcomeConfirmedFailed: true`, `resendUnsafeWithSameReference: false`. RM 0.71 matches the synced price of `hok:16`. Checked afterwards, read-only: 0 orders with that reference, 0 Gamevion packages on.
+
+**What it proves.** The key, the IP allowlist, the order endpoint and our error mapping work. With a made-up player ID it answered 402, not 422, so the balance check appears to come first, which answers ADR-137's open question. Not proven: a delivery, its webhook, drawdown and real cost. Those wait for the funded test order.
+
+**Gotcha.** Supplier Reactivate would not switch on all 71, as earlier notes said. Through `PackageActivation::blocker()` on production today: 6 repointed packages have no blocker, 65 are blocked `supplier_sync`. At RM0 balance those 6 would still sell, so the warning stays, with the right number.
+
+## 2026-11-07 — Signed-out membership page
+
+**Why.** A visitor to `/membership` saw only an email field and learned nothing about the offer. The founder designed a new page; the content and calculation come from the backend (ADR-055 2026-11-07 addendum).
+
+**Built on `feature/membership-page-v2`, into `staging`, not released.** No migration, no env change. New public `GET /api/membership/offer`. New `MembershipLanding` and `MembershipCalculator`, `lib/membership-calculator.ts`, and `lib/membership-signin.ts` so a sign-in survives a reload. The plan chosen in the calculator carries through to its payment step. `chargeSen()` is extracted so subscribe and the page share one charge calculation.
+
+**Departures from the founder's design, after a mobile UX review the founder accepted.** The hero shows the price and a real example instead of an email form. The final band has a button, not an email field. On a phone only the winning plan is a full card. See the Difference comes before How It Works. Copy changed from "billed monthly" to "30 days", because nothing renews by itself. The hero example uses the top plan. The desktop mascot is the kit's `pointing-camera` pose on a flat yellow panel, primary brand only: the design's thumbs-up wasn't in the package, the `hype` pose was cut at its edges, and the founder found the lavender panel with its diagonal stripe generic.
+
+**Calculator changed after the founder's review.** Showing a loss at low spend worked against the point of membership, so the page now shows one number, the saving, with the cost under it, the break-even as a goal, and a 30-day try with no auto-renewal. Copy was rewritten in the plainest words (ADR-055 addendum, decision 10).
+
+**Verified.** Backend 3,825 tests pass. `tsc` and `eslint` clean. Playwright: the calculator's maths on production's plan figures, and a 390px visitor going from the offer through a reload at the OTP step to the plan's payment step. The existing subscribe spec still passes. Screenshots at 390px and 1440px with production's plans; no sideways scroll; hero and FAQ are in the server HTML.
+
+**Gotchas.**
+- A throwaway fixture with a mispriced representative package produced a negative saving, shown as `+-RM22.50`. The storefront now floors the percentage at 0.
+- An `IntersectionObserver` misses a jump straight past a section, so the sticky button stayed on at the page end. A very large `rootMargin` makes "above the viewport" count as intersecting.
+- `text-tertiary` fell to about 2:1 on the light Bumblebee, Red Giants, Emerald and Cobalt presets, so the page doesn't use it.
+
+- The first offer was cached once for every brand, so a game hidden on a brand could still appear as an example there. OhahaStore hid nothing on 2026-11-07, so nothing showed; a test now covers it.
+
+**Not yet seen:** the page on a real phone, the mail-app round trip in a TikTok or Instagram in-app browser, or OhahaStore itself: local has no such brand, so its panel was checked by forcing the non-primary branch with the Bumblebee theme.
+
+## 2026-11-07 — KOL link applies its code; bank logos load up front
+
+**Why.** 109 KOL clicks, 0 redemptions. The check found the codes work on production and end to end in e2e, but a phone customer could pay full price without noticing the code wasn't applied. Most visitors never reach checkout, so this alone won't fix redemptions. The founder also saw blank bank tiles in TikTok's browser.
+
+**Built on `feature/kol-code-auto-apply`, into `staging`, not released.** Storefront only, no migration, no env change. A link's code applies once email and phone are in; a note under the header says the code is saved (ADR-118 2026-11-07 addendum). Bank logos are webp, unoptimized, eager, cached 30 days (ADR-130 2026-11-07 addendum).
+
+**Verified.** Playwright: link to note to auto-apply, Remove stays removed, note stays closed, no note without a link; the checkout spec still passes. Production read-only: all four codes quote RM1.07 on RM21.55.
+
+**Gotcha.** A failed tinker seed looked like an "invalid code" bug: `createCampaign()` needs an admin id, and the error was hidden. Prod's real codes were checked before blaming the code path.
+
+**Not yet seen:** either change in a real TikTok or Instagram browser.
+

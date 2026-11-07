@@ -38,10 +38,15 @@ function FpxBankGrid({
             className={`${TILE} flex h-10 items-center justify-center rounded-md px-1.5 ${tileState(selected && bankCode === bank.code)}`}
           >
             <Image
-              src={`/images/banks/${bank.code.toLowerCase()}.png`}
+              src={`/images/banks/${bank.code.toLowerCase()}.webp`}
               alt=""
               width={240}
               height={96}
+              // Already small webp files: a trip through the image optimizer
+              // adds nothing, and lazy loading left blank tiles while the
+              // customer scrolled to them.
+              unoptimized
+              loading="eager"
               className="h-auto max-h-5 w-auto max-w-full object-contain"
             />
           </button>

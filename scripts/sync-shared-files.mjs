@@ -62,8 +62,8 @@ copies.push(
   { source: FPX_BANKS, target: "storefront/src/lib/fpx-banks.json", banner: "" },
   { source: FPX_BANKS, target: "reseller/src/lib/fpx-banks.json", banner: "" },
   ...JSON.parse(readFileSync(join(repoRoot, FPX_BANKS), "utf8")).map(({ code }) => ({
-    source: `storefront/public/images/banks/${code.toLowerCase()}.png`,
-    target: `reseller/public/images/banks/${code.toLowerCase()}.png`,
+    source: `storefront/public/images/banks/${code.toLowerCase()}.webp`,
+    target: `reseller/public/images/banks/${code.toLowerCase()}.webp`,
     banner: null,
   })),
 );

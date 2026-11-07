@@ -2,13 +2,16 @@ import { apiFetch } from "@/lib/api-client";
 
 /**
  * ADR-118 V16: a KOL's `?promo=CODE` link. The code is kept in this
- * browser for 7 days to prefill the checkout's promo field; it never
- * attributes an order (the server does that from the code the customer
- * applies). Storage can be blocked or cleared, so every read and write
- * is best-effort.
+ * browser for 7 days for the checkout's promo field, which applies it
+ * once the contact details are in (2026-11-07 addendum); it never
+ * attributes an order (the server does that from the code on the order).
+ * Storage can be blocked or cleared, so every read and write is
+ * best-effort.
  */
 const STORAGE_KEY = "pg_promo_code";
 const CLICKED_KEY = "pg_promo_clicked";
+const NOTE_DISMISSED_KEY = "pg_promo_note_dismissed";
+const CHANGE_EVENT = "pg-promo-change";
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** V17: 3–20 letters and digits; anything else is not a code and is ignored. */
@@ -23,6 +26,41 @@ export function rememberPromoCode(code: string): void {
   } catch {
     // Storage blocked: the customer can still type the code.
   }
+  window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+
+/** The code has been used, so nothing is left to prefill or announce. */
+export function forgetPromoCode(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Storage blocked: nothing was kept.
+  }
+  window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+
+export function dismissPromoNote(code: string): void {
+  try {
+    localStorage.setItem(NOTE_DISMISSED_KEY, code);
+  } catch {
+    // Storage blocked: the note returns on the next page.
+  }
+  window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+
+/** The code the "saved" note announces, unless this visitor closed it. */
+export function promoNoteCode(): string | null {
+  const code = rememberedPromoCode();
+  try {
+    return code !== null && localStorage.getItem(NOTE_DISMISSED_KEY) === code ? null : code;
+  } catch {
+    return code;
+  }
+}
+
+export function subscribeToPromo(callback: () => void): () => void {
+  window.addEventListener(CHANGE_EVENT, callback);
+  return () => window.removeEventListener(CHANGE_EVENT, callback);
 }
 
 export function rememberedPromoCode(): string | null {

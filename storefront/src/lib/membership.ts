@@ -58,6 +58,85 @@ export async function listPlans(): Promise<MembershipPlan[]> {
   );
 }
 
+/** ADR-055 2026-11-07 addendum: what the signed-out /membership page shows. */
+const MembershipOfferWireSchema = z.object({
+  plans: z.array(
+    z.object({
+      id: z.number(),
+      name: z.string(),
+      fee_sen: z.number(),
+      lowest_charge_sen: z.number(),
+      quota_sen: z.number(),
+      real_savings_percent: z.number().nullable(),
+    }),
+  ),
+  examples: z.array(
+    z.object({
+      game_name: z.string(),
+      package_name: z.string(),
+      regular_sen: z.number(),
+      member_sen: z.array(z.number()),
+    }),
+  ),
+  is_primary_brand: z.boolean(),
+});
+
+export interface MembershipOfferPlan {
+  id: number;
+  name: string;
+  feeRm: number;
+  /** The fee plus the cheapest active payment channel's fee. */
+  lowestChargeRm: number;
+  quotaRm: number;
+  realSavingsPercent: number | null;
+}
+
+export interface MembershipExample {
+  gameName: string;
+  packageName: string;
+  regularRm: number;
+  /** One price per plan, in the same order as `plans`. */
+  memberRm: number[];
+}
+
+export interface MembershipOffer {
+  plans: MembershipOfferPlan[];
+  examples: MembershipExample[];
+  /** The mascot is PekanGame's: another brand never shows it. */
+  isPrimaryBrand: boolean;
+}
+
+/** Null on a backend blip: the page then falls back to the plain email form. */
+export async function getMembershipOffer(): Promise<MembershipOffer | null> {
+  const path = "/api/membership/offer";
+  return safeRead(
+    "getMembershipOffer",
+    async () => {
+      const raw = await apiFetch<unknown>(path, { next: catalogCache });
+      const wire = parseResponse(MembershipOfferWireSchema, raw, "MembershipOfferWire", path);
+      return {
+        plans: wire.plans.map((plan) => ({
+          id: plan.id,
+          name: plan.name,
+          feeRm: plan.fee_sen / 100,
+          lowestChargeRm: plan.lowest_charge_sen / 100,
+          quotaRm: plan.quota_sen / 100,
+          // A package priced under its own markup rule could read negative; a plan never adds to the price.
+          realSavingsPercent: plan.real_savings_percent === null ? null : Math.max(0, plan.real_savings_percent),
+        })),
+        examples: wire.examples.map((example) => ({
+          gameName: example.game_name,
+          packageName: example.package_name,
+          regularRm: example.regular_sen / 100,
+          memberRm: example.member_sen.map((sen) => sen / 100),
+        })),
+        isPrimaryBrand: wire.is_primary_brand,
+      };
+    },
+    null,
+  );
+}
+
 export async function verifyOtp(email: string, code: string): Promise<string> {
   const raw = await apiFetch<unknown>("/api/membership/otp/verify", { method: "POST", body: { email, code } });
   const wire = parseResponse(VerifyOtpWireSchema, raw, "VerifyOtpWire", "/api/membership/otp/verify");

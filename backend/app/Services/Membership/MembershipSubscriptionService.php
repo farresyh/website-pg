@@ -98,11 +98,7 @@ final class MembershipSubscriptionService
             ->where('is_active', true)
             ->firstOrFail();
 
-        // S6 — the channel fee, on the same round-half-away-from-zero
-        // formula every order uses, but nothing else from the order
-        // total path (no voucher, no velocity).
-        $feeConfig = $this->fees->resolve($channelCode);
-        $totalChargedSen = $this->totals->calculate($plan->fee_sen, 0, $feeConfig)->finalAmount;
+        $totalChargedSen = $this->chargeSen($plan, $channelCode);
 
         $attempt = MembershipCheckoutAttempt::query()->create([
             'affiliate_id' => $affiliateId,
@@ -126,6 +122,26 @@ final class MembershipSubscriptionService
      * webhook and the reconcile sweep can both run this for the same
      * attempt without doubling anything.
      */
+    /**
+     * S6 — the channel fee, on the same round-half-away-from-zero formula
+     * every order uses, but nothing else from the order total path (no
+     * voucher, no velocity).
+     */
+    private function chargeSen(MembershipPlan $plan, string $channelCode): int
+    {
+        return $this->totals->calculate($plan->fee_sen, 0, $this->fees->resolve($channelCode))->finalAmount;
+    }
+
+    /** ADR-055 2026-11-07 addendum: the least a customer can pay for this plan today. */
+    public function lowestChargeSen(MembershipPlan $plan): int
+    {
+        return PaymentMethod::query()
+            ->where('is_active', true)
+            ->pluck('channel_code')
+            ->map(fn (string $channelCode) => $this->chargeSen($plan, $channelCode))
+            ->min() ?? $plan->fee_sen;
+    }
+
     /**
      * ADR-135 decision 11: the one place a gateway's "paid" answer about a
      * membership attempt is applied. The CHIP webhook, the reconcile sweep

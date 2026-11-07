@@ -7,6 +7,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import WebVitals from "@/components/WebVitals";
 import PromoLinkCapture from "@/components/PromoLinkCapture";
+import PromoSavedNote from "@/components/PromoSavedNote";
 import { SearchProvider } from "@/context/SearchContext";
 import { SiteConfigProvider } from "@/context/SiteConfigContext";
 import SiteHeader from "@/components/layout/SiteHeader";
@@ -160,6 +161,7 @@ export default async function RootLayout({
         <SiteConfigProvider value={{ membershipEnabled, priceListEnabled, checkIdEnabled, jokiEnabled, branding }}>
           <SearchProvider>
             <SiteHeader />
+            <PromoSavedNote />
             {children}
             <BottomNav />
           </SearchProvider>
