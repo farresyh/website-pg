@@ -1796,3 +1796,35 @@ Items 163, 170 and 175 closed.
 - `npx lighthouse` is blocked in auto mode, and the PageSpeed API hit its daily quota. Expanding the rows on `pagespeed.web.dev` with Playwright reads the same detail.
 
 **Not yet seen:** the same measurements on production after release, and a refresh running behind a response on Vercel. If one never ran, the hour limit would still force a fresh read.
+
+## 2026-11-08 — OPcache was full; cleared by hand; a full cache now shows
+
+**Why.** While measuring the slow pages, an empty route took 340 ms straight to PHP-FPM and 1 ms inside Laravel. OPcache was on and full. Cause and decisions: ADR-066 2026-11-08 addendum.
+
+**What ran on production.** The founder ran both, 2026-11-07 about 16:15 to 16:20 UTC. Each wrote one temp PHP file in `~`, outside the web root, ran it through the FPM socket, and deleted it.
+1. A read of `opcache_get_status()`: enabled, full, 128 of 128 MB, strings 8 of 8 MB, wasted 0%, 4,520 scripts, hit rate 22.64%, 0 restarts of any kind, started 2026-11-04 06:21 UTC.
+2. `opcache_reset()`: returned true. No restart; running requests were untouched.
+
+**Before and after.**
+
+| Measure | Before | After |
+| --- | --- | --- |
+| `/up`, straight to PHP-FPM | 340 ms | 17 ms |
+| `/api/catalog/seo/redirects`, straight to PHP-FPM | 430 ms | 45 ms |
+| Public API | about 450 ms | about 100 ms |
+| Page, warm | 0.5 s | 0.2 s |
+| Page after 18 s of quiet | 0.9 to 3.0 s | 0.3 to 0.5 s |
+| 20 bank logos after 17 s of quiet | about 10 s | 0.7 to 1.7 s |
+
+`/api/health` ok afterwards, no new `ERROR`. The reset doesn't last: each release adds to the cache again, which is §16 item 176.
+
+**Built on `fix/opcache-full-is-visible`, into `staging`, not released.** No migration, no env change. `PhpCodeCache` reads OPcache inside PHP-FPM. A full cache fails `/api/health` as `php_code_cache`, and the Dashboard's System details shows size and hit rate.
+
+**Verified.** Tests red first. A full cache fails health, a cache with room passes, and OPcache off, as in the console and the tests, never counts as full. Backend suite, admin `tsc`, `eslint` and unit tests pass.
+
+**Gotchas.**
+- Reading OPcache from the console says nothing: it is off there, and FPM's memory is its own. Timing a large file through the FPM socket showed it with no write: 40 to 47 ms against 58 ms with no cache at all, and 5 ms after the reset.
+- A reload isn't free: `process_control_timeout` was 0, so the obvious one-line fix would have ended running requests. That setting goes first.
+
+**Not yet seen:** the row on the live Dashboard, and a release clearing the cache by itself.
+

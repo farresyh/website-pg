@@ -88,7 +88,7 @@ Each decision is one file in [`docs/adr/`](./adr/), named `ADR-NNN-short-slug.md
 | [ADR-063](./adr/ADR-063-storefront-visual-system-replacement.md) | Storefront visual system replacement — light neo-brutalist "Digital Architect" world | In force |  |
 | [ADR-064](./adr/ADR-064-storefront-per-surface-redesign-component.md) | Storefront per-surface redesign + component rebuild | In force | 2026-10-30 |
 | [ADR-065](./adr/ADR-065-guest-order-status-detail.md) | Guest order-status detail — masked contact + payment breakdown on a track-by-number view | In force |  |
-| [ADR-066](./adr/ADR-066-production-deploy-via-laravel-forge.md) | Production deploy via Laravel Forge — reverses ADR-020's Docker Compose containerisation | In force | 2026-09-02 |
+| [ADR-066](./adr/ADR-066-production-deploy-via-laravel-forge.md) | Production deploy via Laravel Forge — reverses ADR-020's Docker Compose containerisation | In force; every release must clear OPcache (2026-11-08 addendum) | 2026-11-08 |
 | [ADR-067](./adr/ADR-067-digiflazz-adapter-completion.md) | Digiflazz adapter completion — buyer-area scoping, dual product status, per-supplier Product Manager grouping; a game link belongs to the group | In force | 2026-11-07 |
 | [ADR-068](./adr/ADR-068-self-serve-membership-subscription-payment.md) | Self-serve membership subscription payment — customer pays for a tier through the CHIP checkout, membership auto-created on webhook (ADR-027 Phase 7); renewal reminders by email, WhatsApp designed (2026-10-13 addendum) | In force | 2026-10-13 |
 | [ADR-069](./adr/ADR-069-digiflazz-supplier-hardening.md) | Digiflazz supplier hardening — inbound webhook, credential-rotation surfacing, raw-price visibility, balance freshness | In force | 2026-10-23 |

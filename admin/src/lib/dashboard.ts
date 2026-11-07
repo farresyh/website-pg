@@ -97,6 +97,8 @@ export interface DashboardHealth {
   joki: JokiCounts;
   pending_payments: { value: number; definition: string };
   queue: { pending: number; failed: number; definition: string };
+  /** ADR-066 2026-11-08 addendum: `active` is false where OPcache is off (local dev). */
+  php_code_cache: { active: boolean; full: boolean; used_mb: number; size_mb: number; hit_rate: number; definition: string };
   /** ADR-122 — per-task scheduler heartbeat; a stale critical task also fails /api/health. */
   scheduled_tasks: { tasks: ScheduledTaskHealth[]; definition: string };
   /**
