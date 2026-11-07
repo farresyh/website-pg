@@ -1635,8 +1635,9 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 
 **Verified.**
 - `php artisan test` 3,799 of 3,799.
+- Concurrency suite on real MySQL: 44 of 48, only `BackupRestoreMysqlTest` fails (no local `mysqldump`).
 - Migration and rollback on a throwaway real MySQL database: the em-dash label matched, Umum to Indonesia, 516 to `admin` with its date kept, unique and `game_id` indexes present.
-- Admin `tsc` and `eslint` on the changed files clean.
+- Admin `tsc` and `eslint` on the changed files clean, 22 of 22 unit tests.
 - In a real browser on a throwaway backend: the founder's exact repoint answered 200 with a success toast and the package stayed off; a group with packages shows only View, one with none shows Change with its current game selected, an unlinked one shows Link.
 
 **Gotcha.** sqlite refuses the table rebuild under the `llm_report_*` views, so the migration reuses `underViews()` from `2026_11_10_120000`.
