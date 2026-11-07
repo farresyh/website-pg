@@ -14,6 +14,7 @@ use App\Models\Package;
 use App\Models\PackageRefChange;
 use App\Models\PendingPriceChange;
 use App\Models\Supplier;
+use App\Models\SupplierGroupLink;
 use App\Models\SupplierProduct;
 use App\Services\Catalog\PackageActivation;
 use App\Services\Order\DeliveryStatus;
@@ -48,12 +49,8 @@ class SupplierProductController extends Controller
 {
     /**
      * One row per distinct `(supplier_id, group_label)` — the
-     * group-level view an admin lands on first. `game_id` reflects
-     * whatever any row in the group was last linked to
-     * (LinkSupplierProductCategoryRequest stamps every row in the group
-     * uniformly, so this is consistent unless a later Stage 1 sync adds
-     * a brand-new item to an already-linked group before anyone
-     * re-links it — a known, accepted gap, not a bug).
+     * group-level view an admin lands on first. `game_id` is the group's
+     * link (ADR-067 2026-11-07 addendum).
      */
     public function categories(Request $request): JsonResponse
     {
@@ -63,13 +60,14 @@ class SupplierProductController extends Controller
             $query->where('group_label', 'like', "%{$search}%");
         }
 
-        $products = $query->get(['supplier_id', 'group_label', 'external_ref', 'game_id']);
+        $products = $query->get(['supplier_id', 'group_label', 'external_ref']);
         $promotedRefs = Package::query()->pluck('supplier_package_ref')->all();
         $suppliers = Supplier::query()->get(['id', 'slug', 'name'])->keyBy('id');
+        $links = SupplierGroupLink::query()->get()->keyBy(fn (SupplierGroupLink $l) => $l->supplier_id.'|'.$l->group_label);
 
         $categories = $products
             ->groupBy(fn (SupplierProduct $p) => $p->supplier_id.'|'.$p->group_label)
-            ->map(function ($group) use ($promotedRefs, $suppliers) {
+            ->map(function ($group, string $key) use ($promotedRefs, $suppliers, $links) {
                 $first = $group->first();
                 $supplier = $suppliers->get($first->supplier_id);
 
@@ -82,7 +80,7 @@ class SupplierProductController extends Controller
                     'promoted_count' => $group->filter(
                         fn (SupplierProduct $p) => in_array($p->external_ref, $promotedRefs, true),
                     )->count(),
-                    'game_id' => $group->pluck('game_id')->filter()->first(),
+                    'game_id' => $links->get($key)?->game_id,
                 ];
             })
             ->values();
@@ -105,18 +103,16 @@ class SupplierProductController extends Controller
     }
 
     /**
-     * Links every raw item in one `(supplier_id, group_label)` group to
-     * a Game in one action. Safe to call again later (e.g. after Stage
-     * 1 re-syncs new items into an already-linked group) — always
-     * re-stamps the whole group, not just unlinked rows. Scoped to one
-     * supplier: linking Gamevion's "Mobile Legends" group never touches
-     * Digiflazz's "MOBILE LEGENDS" group even though both point at the
-     * same Game (ADR-067 decision 6).
+     * Links one `(supplier_id, group_label)` group to a Game; every item
+     * in the group, now or later, follows it. Scoped to one supplier:
+     * linking Gamevion's "Mobile Legends" group never touches Digiflazz's
+     * "MOBILE LEGENDS" group even though both point at the same Game
+     * (ADR-067 decision 6). The request refuses a change of game that
+     * would leave a package behind.
      *
      * `validation_rules` is stamped onto the Game here too (existing
-     * or newly-created) — re-linking is the supported way to correct
-     * it later, same "always re-stamps, safe to repeat" idempotency
-     * already documented for `game_id` above.
+     * or newly-created) — saving the same link again is the supported
+     * way to correct it later.
      */
     public function linkCategory(LinkSupplierProductCategoryRequest $request): JsonResponse
     {
@@ -141,10 +137,10 @@ class SupplierProductController extends Controller
         }
         $game->update(['validation_rules' => $rules === [] ? null : $rules]);
 
-        SupplierProduct::query()
-            ->where('supplier_id', $data['supplier_id'])
-            ->where('group_label', $data['group_label'])
-            ->update(['game_id' => $game->id]);
+        SupplierGroupLink::query()->updateOrCreate(
+            ['supplier_id' => $data['supplier_id'], 'group_label' => $data['group_label']],
+            ['game_id' => $game->id],
+        );
 
         return response()->json(['game' => $game]);
     }
@@ -197,9 +193,9 @@ class SupplierProductController extends Controller
     }
 
     /**
-     * ADR-138 decision 17: the game is the product's own, decided once
-     * for its whole category (linkCategory); a product with none is
-     * refused by the request. Decision 16: created off, then through the
+     * ADR-138 decision 17: the game is decided once for the product's
+     * whole group (linkCategory); a product with none is refused by the
+     * request. Decision 16: created off, then through the
      * seam, so a blocker leaves it off and the response says why. Markup is never set
      * here either (founder revision, docs/prd.md §14) — every
      * promoted Package gets the configured default markup applied;
@@ -247,12 +243,13 @@ class SupplierProductController extends Controller
 
         $data = $request->validated();
         $markupPercent = (float) config('packages.default_markup_percent');
+        $gameId = $supplierProduct->groupLink()->game_id;
 
         $notice = null;
 
-        $package = DB::transaction(function () use ($supplierProduct, $data, $markup, $markupPercent, $activation, &$notice) {
+        $package = DB::transaction(function () use ($supplierProduct, $gameId, $data, $markup, $markupPercent, $activation, &$notice) {
             $package = Package::query()->create([
-                'game_id' => $supplierProduct->game_id,
+                'game_id' => $gameId,
                 'name' => $data['name'],
                 'denomination' => $data['denomination'] ?? null,
                 'cost_price' => $supplierProduct->price_sen,
@@ -270,7 +267,7 @@ class SupplierProductController extends Controller
         // ADR-014: a promoted item is a new row in both GameController's
         // index() (packages_count) and packages($game) listings.
         GameController::forgetIndexCache();
-        GameController::forgetPackagesCache($supplierProduct->game_id);
+        GameController::forgetPackagesCache($gameId);
 
         return response()->json(['package' => $package, 'notice' => $notice], 201);
     }
@@ -339,7 +336,7 @@ class SupplierProductController extends Controller
             $product->status_raw !== 'active' => 'The supplier does not list this item as active.',
             Package::query()->where('supplier_id', $product->supplier_id)->where('supplier_package_ref', $product->external_ref)->exists() => 'This item is already in the catalog.',
             $package->is_combo || $package->supplier_id !== $product->supplier_id || ! $package->supplier?->isApiBacked() => 'Only a package from this same API supplier can be linked to this item.',
-            $product->game_id === null || $product->game_id !== $package->game_id => 'This item\'s group is not linked to the package\'s game.',
+            $product->groupLink()?->game_id !== $package->game_id => 'This item\'s group is not linked to the package\'s game.',
             $notYetDelivered->exists()
                 || OrderDeliveryLeg::query()->where('component_package_id', $package->id)->whereIn('status', $unsettled)->exists() => 'This package has orders paid or awaiting payment that are not delivered yet. Settle them first.',
             default => null,

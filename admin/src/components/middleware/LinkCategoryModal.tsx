@@ -29,6 +29,8 @@ interface LinkCategoryModalProps {
   groupLabel: string | null;
   itemCount: number;
   games: Game[];
+  /** The group's current game, when this corrects a link. */
+  currentGameId?: number;
 }
 
 /**
@@ -45,14 +47,16 @@ function LinkCategoryFields({
   groupLabel,
   itemCount,
   games,
+  currentGameId,
 }: Omit<LinkCategoryModalProps, "isOpen" | "supplierId" | "groupLabel"> & { supplierId: number; groupLabel: string }) {
+  const initialGame = games.find((g) => g.id === currentGameId) ?? games[0];
   const [gameMode, setGameMode] = useState<"existing" | "new">(games.length > 0 ? "existing" : "new");
-  const [gameId, setGameId] = useState(games[0] ? String(games[0].id) : "");
+  const [gameId, setGameId] = useState(initialGame ? String(initialGame.id) : "");
   const [newGameName, setNewGameName] = useState(groupLabel);
   const [newGameCategory, setNewGameCategory] = useState("");
   // Defaults to whatever the initially-selected existing game already
   // has set — re-linking is the supported way to review/correct it.
-  const [extraField, setExtraField] = useState(games[0]?.validation_rules?.extra_field ?? "");
+  const [extraField, setExtraField] = useState(initialGame?.validation_rules?.extra_field ?? "");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -167,7 +171,7 @@ function LinkCategoryFields({
   );
 }
 
-export default function LinkCategoryModal({ isOpen, onClose, onSubmit, supplierId, groupLabel, itemCount, games }: LinkCategoryModalProps) {
+export default function LinkCategoryModal({ isOpen, onClose, onSubmit, supplierId, groupLabel, itemCount, games, currentGameId }: LinkCategoryModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(e) => { if (!e.value) onClose(); }}>
       <DialogPortal>
@@ -191,6 +195,7 @@ export default function LinkCategoryModal({ isOpen, onClose, onSubmit, supplierI
                   groupLabel={groupLabel}
                   itemCount={itemCount}
                   games={games}
+                  currentGameId={currentGameId}
                 />
               )}
             </DialogContent>

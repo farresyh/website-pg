@@ -9,6 +9,7 @@ use App\Models\Package;
 use App\Models\PendingPriceChange;
 use App\Models\PriceChangeLog;
 use App\Models\Supplier;
+use App\Models\SupplierGroupLink;
 use App\Models\SupplierProduct;
 use App\Services\Order\DeliveryStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -42,8 +43,13 @@ class SupplierProductRepointTest extends TestCase
 
     private function product(array $overrides = []): SupplierProduct
     {
+        SupplierGroupLink::query()->firstOrCreate(
+            ['supplier_id' => $this->supplier->id, 'group_label' => 'Free Fire (Malaysia)'],
+            ['game_id' => $this->game->id],
+        );
+
         return SupplierProduct::query()->create(array_merge([
-            'supplier_id' => $this->supplier->id, 'game_id' => $this->game->id, 'external_ref' => 'ff_my:100',
+            'supplier_id' => $this->supplier->id, 'external_ref' => 'ff_my:100',
             'name' => '100 Diamonds', 'group_label' => 'Free Fire (Malaysia)', 'price_sen' => 450,
             'status_raw' => 'active', 'last_synced_at' => now(),
         ], $overrides));
@@ -116,7 +122,7 @@ class SupplierProductRepointTest extends TestCase
 
     public function test_repoint_refuses_a_product_whose_group_is_not_linked_to_the_package_game(): void
     {
-        $this->repoint($this->product(['game_id' => null]), $this->package())->assertUnprocessable();
+        $this->repoint($this->product(['group_label' => 'Not Linked']), $this->package())->assertUnprocessable();
     }
 
     public function test_repoint_refuses_while_an_order_on_the_package_is_unsettled(): void
