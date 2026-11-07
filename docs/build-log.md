@@ -1828,3 +1828,63 @@ Items 163, 170 and 175 closed.
 
 **Not yet seen:** the row on the live Dashboard, and a release clearing the cache by itself.
 
+## 2026-11-07 — Released #733: membership page, KOL auto-apply, bank logos
+
+**Released on the founder's go-ahead.** `main` `45561549`, box release `82375880`, CI, `deploy` and all four Vercel projects green. Ships #731 and #732, plus the docs of #729 and #730. No migration, no env change. Recorded late, in the 2026-11-08 docs audit.
+
+**Checked after release, read-only.**
+- `/api/health` ok, Horizon running, 0 failed jobs in 24 hours, no paid order undelivered. Order 133, created after the deploy, was paid and delivered.
+- `/membership` loads with no console error on PekanGame and OhahaStore at phone width, with no sideways scroll. `/api/membership/offer` answers on both with the same plans.
+- All 20 bank logos answer 200 as webp with a 30-day cache on the storefront. No code refers to the old `.png` files, which now 404.
+
+**Not checked:** auto-apply and the saved note on production, because opening a KOL link records a click; a real TikTok or Instagram browser; a paid checkout.
+
+**Seen by chance.** `/order/<a wrong slug>` shows "Page not found" with HTTP 200, not 404.
+
+## 2026-11-08 — Item 176 on the box: FPM timeout, OPcache size, reload in the deploy script
+
+**What ran on production.** The founder ran these in the droplet console, 2026-11-07 17:18 UTC, then edited the Forge deploy script. Exact values: ADR-066 2026-11-08 addendum.
+- `process_control_timeout = 35s` in `php-fpm.conf`, was 0.
+- New `conf.d/99-pekangame-opcache.ini`: `memory_consumption=256`, `interned_strings_buffer=32`, `max_accelerated_files=32531`, were 128, 8 and 10000.
+- `php-fpm8.4 -t`, then a restart.
+- Forge deploy script: the reload right after `$ACTIVATE_RELEASE()`, and `/up` at `--max-time 40`. The script as it stood had no reload.
+
+**Checked after, read-only.** PHP-FPM reports all three values; `process_control_timeout` reads 35s. `/api/health` ok, Horizon running, 0 failed jobs in 2 hours, no paid order undelivered. `/up` straight to PHP-FPM 16 to 21 ms, and the public API 0.06 to 0.09 s, so the gain held through the restart.
+
+**Not yet seen:** a release running the reload line and emptying the cache. If it doesn't, the socket reset in the ADR comes back.
+
+## 2026-11-08 — Docs audit after release #733
+
+**Why.** The founder asked for one after the release: nothing outdated or contradictory against the live system.
+
+**Corrected in `prd.md`.** §14's latest release, whose "no migration" sat over a migration bullet that belonged to #723. "Not released" on three §15 rows, one of them (ADR-119) out of date since #715. Customer and KOL figures, with the fourth campaign and two missing fees. The domain list, missing `admin.` and `onboarding.`. A Digiflazz SKU count that had drifted. Item 159: OpenWA had shipped the fix, and the doc still called v0.27.1 the latest; it is now upgraded and closed.
+
+**Fired for the first time.** The low-balance alert (ADR-115), 2026-11-07 15:59 UTC: DigiFlazz at about RM 2,375 against the RM 2,391 floor. So it left §14's "not yet seen". The log line is proven; the email's arrival is not.
+
+**Checked and right.** The ADR index, 138 rows for 138 files, no duplicates, no last-addendum date older than its file. No broken doc link, no missing path in the guides. Stack versions, the eight required checks, API v1.5.0, region `sin1`. Payment methods, October's close at RM129.22, CS in Shadow with 9 knowledge entries, no Joki order or partner application, 3 resellers, Gamevion 0 of 71, 1 active member. No §16 item both open and closed.
+
+**Not audited.** The text of each ADR against the code, `docs-site` content, and §6 to §9 requirement by requirement.
+
+## 2026-11-08 — OpenWA v0.29.1: the chat list survives a restart (item 159)
+
+**Why.** rmyndharis/OpenWA#1992, the founder's own request, ships from v0.28.0. v0.29.1 also stops a Baileys start blocking on a large store.
+
+**Checked first.** Release notes for v0.28.0 to v0.29.1 against what we use: five API calls and three webhook events. Our session ids are UUIDs, so the new `404` doesn't apply. `message.ack` now fires for group messages, and neither webhook subscribes to it. The daemon stops on `SIGTERM`, and it can read `.env` and `data/.env.generated`.
+
+**What ran on production.** The founder ran each step at 01:50 MYT with 0 orders in the last hour, 0 open payments and 0 notifications waiting: `scripts/openwa-upgrade.sh build v0.29.1`, daemon stopped in Forge, `switch v0.29.1`, daemon started. Backup: `~/openwa-backups/openwa-v0.27.1-20261107-1751.tar.gz` (62 MB). Rollback is `switch v0.27.1` plus that tarball.
+
+**Checked after, read-only.** Offline 17:51:31 to 17:53:06 UTC for `reseller-bot`, 17:53:11 for `customer-support`, about 1m40s. `/api/health/whatsapp` 200, both `ready`. Laravel recorded both `ready` from the `session.status` webhook, so the webhook path works. No webhook delivery failure. Horizon and `/api/health` untouched; no process was killed by the build. The index migration ran at boot.
+
+| Chats listed after a restart | v0.27.1 (2026-11-04) | v0.29.1 |
+| --- | --- | --- |
+| `reseller-bot` | not recorded | 19, 10 one-to-one |
+| `customer-support` | 8, 1 one-to-one | 38, 31 one-to-one |
+
+The 2026-11-04 row is as item 159 recorded it, without naming the session; it is shown under `customer-support` as the nearest match.
+
+**Gotchas.**
+- Auto mode refuses piped remote scripts, so the founder ran `build` and `switch` with `!`. `build` passes the 120 s command limit and carries on in the background: that isn't a failure, and running it twice would stop on "already exists".
+- `API_KEY_PEPPER is not set` is a boot warning, not new (22 earlier boots). Leave it: setting it now locks out every key.
+
+**Not yet seen:** a real message in and out on v0.29.1. Nothing has arrived at this hour.
+
