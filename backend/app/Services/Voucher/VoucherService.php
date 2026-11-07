@@ -124,6 +124,8 @@ final class VoucherService
             }
 
             foreach ($vouchers as $voucher) {
+                $this->assertNoOpenRedemption($voucher);
+
                 if ($voucher->status !== 'active') {
                     throw new InvalidVoucherException("Voucher {$voucher->code} is not active and cannot be merged.");
                 }
@@ -138,6 +140,12 @@ final class VoucherService
 
             $this->assertSameCustomer($vouchers);
             $this->assertSameBrand($vouchers);
+
+            // ADR-036 2026-11-07 addendum: credit with no expiry is the
+            // customer's own money, and a merge must not put a date on it.
+            if ($expiresAt !== null && $vouchers->contains(fn (Voucher $voucher) => $voucher->expires_at === null)) {
+                throw new InvalidVoucherException('These vouchers include credit with no expiry date, so the merged voucher can\'t have one.');
+            }
 
             $reference = $vouchers->first();
             $totalRemaining = (int) $vouchers->sum('remaining');
@@ -171,6 +179,31 @@ final class VoucherService
 
             return $target;
         });
+    }
+
+    /**
+     * ADR-036 2026-11-07 addendum (PRD §16 item 168): a voucher an order is
+     * still using can't be merged or revoked, because restore() would give
+     * that value back to a voucher nobody can spend, and the books would
+     * lose it too. Caller holds the voucher lock.
+     *
+     * A plain read on purpose. restore() locks the redemption and then the
+     * voucher, so a locking read here would deadlock with it. A plain read
+     * is enough: every reservation takes the voucher lock, so it committed
+     * before ours, and this is the transaction's first plain read, so its
+     * snapshot starts after that lock. A stale `reserved` can only refuse.
+     */
+    private function assertNoOpenRedemption(Voucher $voucher): void
+    {
+        $open = VoucherRedemption::query()
+            ->with('order:id,order_number')
+            ->where('voucher_id', $voucher->id)
+            ->where('status', 'reserved')
+            ->first();
+
+        if ($open !== null) {
+            throw new InvalidVoucherException("Order {$open->order->order_number} is still using voucher {$voucher->code}. Wait for it to finish, or resolve the order first.");
+        }
     }
 
     /**
@@ -263,6 +296,8 @@ final class VoucherService
                 throw ValidationException::withMessages(['status' => ['Only an active voucher can be revoked.']]);
             }
 
+            $this->assertNoOpenRedemption($locked);
+
             $locked->update(['status' => 'revoked', 'revoked_at' => now()]);
 
             return $locked;
@@ -348,12 +383,12 @@ final class VoucherService
      * this unconditionally without checking first.
      *
      * Deliberately only reactivates an `exhausted` voucher back to
-     * `active` — a voucher an admin separately `revoke()`d or that
-     * expired in the meantime stays exactly that; the balance is still
-     * credited back for accounting correctness (the liability is real
-     * regardless of whether the code is currently redeemable), but
-     * `redeem()`'s own status guard keeps it un-spendable, respecting
-     * whatever the admin/expiry already decided.
+     * `active`. A voucher here can't be merged or revoked: merge() and
+     * revoke() refuse one with an open redemption. It can have expired
+     * meanwhile; the balance is still credited back, `redeem()` keeps it
+     * unspendable, and the Monthly Summary books it as breakage of this
+     * month (ADR-127). Only gift credit can expire (ADR-036 2026-11-07
+     * addendum), so this never takes a customer's own money.
      */
     public function restore(int $orderId, ?int $amount = null): void
     {

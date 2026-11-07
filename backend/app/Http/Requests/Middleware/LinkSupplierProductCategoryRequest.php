@@ -3,16 +3,18 @@
 namespace App\Http\Requests\Middleware;
 
 use App\Models\Game;
+use App\Models\Package;
 use App\Models\Supplier;
+use App\Models\SupplierGroupLink;
+use App\Models\SupplierProduct;
 use App\Services\Catalog\GameFulfilmentRule;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * Links every raw `supplier_products` row in one
- * `(supplier_id, group_label)` group (e.g. Gamevion / "Free Fire
- * Global", ~15 items) to a Game in one action — either an existing
+ * Links one `(supplier_id, group_label)` group (e.g. Gamevion / "Free
+ * Fire Global", ~15 items) to a Game in one action — either an existing
  * Game or a brand-new one created inline. This decision is made ONCE
  * per group, not per item (founder feedback, docs/prd.md §14).
  * ADR-067 decision 6 replaced the old bare `category_raw` key with
@@ -129,6 +131,31 @@ class LinkSupplierProductCategoryRequest extends FormRequest
                     'zone_options only applies when extra_field is zone_id.',
                 );
             }
+
+            if ($validator->errors()->isEmpty() && $this->leavesAPackageBehind()) {
+                $validator->errors()->add('game_id', 'This group has packages on another game, and a package can\'t move between games, so its game can\'t change.');
+            }
         });
+    }
+
+    /** ADR-067 2026-11-07 addendum, decision 13. Saving the group's own game is never a change. */
+    private function leavesAPackageBehind(): bool
+    {
+        $supplierId = (int) $this->input('supplier_id');
+        $groupLabel = (string) $this->input('group_label');
+        $gameId = $this->filled('game_id') ? (int) $this->input('game_id') : null;
+
+        if ($gameId !== null && $gameId === SupplierGroupLink::for($supplierId, $groupLabel)?->game_id) {
+            return false;
+        }
+
+        return Package::query()
+            ->where('supplier_id', $supplierId)
+            ->whereIn('supplier_package_ref', SupplierProduct::query()
+                ->where('supplier_id', $supplierId)
+                ->where('group_label', $groupLabel)
+                ->select('external_ref'))
+            ->when($gameId !== null, fn ($query) => $query->where('game_id', '!=', $gameId))
+            ->exists();
     }
 }

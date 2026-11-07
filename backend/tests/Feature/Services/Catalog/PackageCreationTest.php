@@ -6,6 +6,7 @@ use App\Models\AdminUser;
 use App\Models\Game;
 use App\Models\Package;
 use App\Models\Supplier;
+use App\Models\SupplierGroupLink;
 use App\Models\SupplierProduct;
 use App\Services\Catalog\PackageActivation;
 use App\Services\Supplier\SupplierPackageStatusService;
@@ -41,8 +42,13 @@ class PackageCreationTest extends TestCase
 
     private function product(Supplier $supplier, array $overrides = []): SupplierProduct
     {
+        SupplierGroupLink::query()->firstOrCreate(
+            ['supplier_id' => $supplier->id, 'group_label' => 'Mobile Legends'],
+            ['game_id' => $this->game->id],
+        );
+
         return SupplierProduct::query()->create(array_merge([
-            'supplier_id' => $supplier->id, 'game_id' => $this->game->id, 'external_ref' => 'mlbb:86', 'name' => '86 Diamonds',
+            'supplier_id' => $supplier->id, 'external_ref' => 'mlbb:86', 'name' => '86 Diamonds',
             'group_label' => 'Mobile Legends', 'price_sen' => 1000, 'status_raw' => 'active', 'last_synced_at' => now(),
         ], $overrides));
     }
@@ -110,7 +116,7 @@ class PackageCreationTest extends TestCase
 
     public function test_promote_refuses_a_product_whose_group_has_no_game(): void
     {
-        $this->promote($this->product($this->supplier(), ['game_id' => null]))
+        $this->promote($this->product($this->supplier(), ['group_label' => 'Not Linked']))
             ->assertUnprocessable()->assertJsonValidationErrors('supplier_product');
 
         $this->assertSame(0, Package::query()->count());

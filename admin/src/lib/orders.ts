@@ -187,6 +187,9 @@ export interface OrderDetail extends OrderListItem {
   voucher_redemption: { amount: number; restored_amount: number | null; status: string } | null;
   // ADR-094 decision 12: empty for every ordinary order.
   delivery_legs: OrderDeliveryLeg[];
+  // ADR-103 decision 17: true with or without seeded legs. Decide on this,
+  // not on `delivery_legs`: a paid combo can have none yet.
+  is_combo: boolean;
   // ADR-116 decision 9 — WhatsApp messages sent (or skipped) to the customer.
   customer_notifications: CustomerNotification[];
   // ADR-094 decision 30 — failed or partially_delivered, and not yet
@@ -422,8 +425,8 @@ export function validatePlayerForResend(gameId: number, playerId: string, server
  * always rejects one (422, "use the ordinary Resend Delivery retry
  * instead"), since its package-swap tool assumes exactly one
  * supplier_product_ref to copy onto the Order, meaningless for a
- * multi-leg combo. The orders page routes combo orders (`delivery_legs.
- * length > 0`) here instead of opening ResendDeliveryModal.
+ * multi-leg combo. The orders page routes combo orders (`is_combo`) here
+ * instead of opening ResendDeliveryModal.
  */
 export function retryOrderDelivery(id: number, values: { override_reason?: string } = {}) {
   return apiFetch<{ message: string }>(`/api/orders/${id}/retry-delivery`, { method: "POST", body: values });

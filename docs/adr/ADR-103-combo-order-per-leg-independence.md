@@ -1,6 +1,6 @@
 # ADR-103: Combo order per-leg `reference_number` independence
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-07):** In force; a leg's outcome-unknown state and the combo rollup are revised by the 2026-11-07 addendum. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — grilled (`/mattpocock-skills:grilling`) 2026-09-16. **Built + merged to `staging` 2026-09-17** (PR TBD, branch `feature/adr-103-combo-leg-reference`) — all 9 decisions, full backend suite (2071/2071) + concurrency suite (17/17, real MySQL, including a new leg-level finalize race test) green, migration applied to the local dev DB.
 
@@ -44,3 +44,80 @@
 - **New leg-level concurrency test added** (`OrderDeliveryLegFinalizeConcurrencyTest` + its `app:order-delivery-leg-finalize-test-finalize` test-only command) — two concurrent `finalizePendingDeliveryLeg()` calls on the same leg (duplicate webhook), proving the leg's own `lockForUpdate()` (already used by ADR-094 for `status`) also serializes decision 2's new column write. The order-level lock proven by `OrderFulfillmentComboConcurrencyTest` already fully serializes any admin double-click retry before it ever reaches the leg loop, so this was the one genuinely new race surface worth a dedicated proof.
 - Several existing tests (`DigiflazzWebhookControllerTest`'s combo fixtures, `SupplierDeliveryCheckServiceTest`'s combo test, `CheckSupplierDeliveryJobTest`'s combo fixtures, `OrderManualCheckTest`'s combo test) had to start setting `reference_number` explicitly on their hand-built `OrderDeliveryLeg` fixtures — decision 6's direct-lookup webhook resolution and decision 5's read-only `checkComboLegs()` both now depend on that column actually being populated, which a real `attemptLeg()` call always does but a bare test fixture didn't.
 - Migration applied to the local dev DB (`php artisan migrate`, plain, not `:fresh`) — zero existing `order_delivery_legs` rows there, so the backfill was a no-op locally; verified the backfill logic itself via the full test suite's combo fixtures instead.
+
+### 2026-11-07 addendum — a leg's outcome-unknown state is durable, and one rule rolls legs up (PRD §16 item 167)
+
+**Status:** Accepted 2026-11-07. Grilled with the founder (Q1 to Q7), code-traced, and stress-tested by three read-only forks (delivery state, money, readers and operations), whose top findings were re-run or re-read before this was written. Design only: nothing here is built yet. Revises decisions 3 and the 2026-09-17 reference re-persist in this file, [ADR-094](./ADR-094-combo-package.md) decisions 7, 9 and 31, and for combos [ADR-102](./ADR-102-order-delivery-failure-guard-unification.md)'s 2026-09-29 addendum decision 7 and 2026-11-05 addendum decision 3.
+
+**Context.** Item 163's seam C named three things: a leg's reference isn't durable before the supplier call, a `NotStarted` leg rolls up as partial, and "is this a combo" is decided two ways. Tracing them found the root cause is wider, and two worse paths:
+
+1. **Nothing durable says "sent, outcome unknown".** `attemptLeg()` writes the reference in the same transaction as the supplier call (proven: transaction level 2 during the call). Only a PHP exception reaches the catch block's re-persist. A killed worker rolls the write back.
+   - A first attempt returns to `NotStarted` with no reference. Confirm Failed then skips that leg as never sent, and a voucher can cover a leg the supplier delivered (proven: no supplier query, 750 of 1,500 sen offered).
+   - **A retry of a `Failed` leg loses its fresh ULID.** The next Retry mints another, so one leg can be bought twice under two references, and the lost one can never be asked about. This path was not in the audit.
+2. **The rollup treats what it doesn't recognise as partial delivery, and a webhook can run it mid-pass.** A webhook for leg 1 arriving while leg 2 is in flight sees `[Delivered, NotStarted]` and sets `PartiallyDelivered`. The pass then throws on `markPending()`, and leg 2's own success is rolled back by `markDelivered()`. Proven: the order ends `partially_delivered`, legs `delivered,pending`, settlement preview RM0, though the customer has everything. This path was not in the audit either.
+
+**Production, read-only 2026-11-06.** 6 combo orders, 15 legs, all delivered; 3 of the 6 came on 2026-11-06. 2 retries of a `Failed` leg, both by an admin, on orders 111 and 121. 101 combos, 67 on sale, 19 with 4 or 5 legs. No worker-stop or stuck-processing line in the retained logs. A leg's `createOrder` took 146 to 245 ms, and the fastest final webhook came about 9 seconds after it. No retry happened later than the order's first hour; the oldest resend was 13 days after the order. So nothing has gone wrong yet: this is rare timing with a high cost, on a path now in daily use.
+
+**Principle.** ADR-094's own: a combo must behave like an ordinary package. `fulfill()` already commits its reference and `Processing` before the call, and locks the order. A leg now does the same.
+
+**Decisions (continuing this ADR's numbering):**
+
+10. **`Processing` is a leg state: sent, or about to be, with the outcome unknown.** `attemptLeg()` splits into two phases, the shape `fulfill()` has.
+    - **Phase 1, its own transaction, outside the `try`:** lock order then leg, decide the reference and `resubmit` from the status before the claim, then commit the reference, `status = Processing` and a `pending` attempt row together.
+    - **Phase 2, its own transaction, inside the `try`:** lock order then leg, make the one supplier call, write the outcome onto the leg and that attempt row.
+    - A pass skips `Delivered`, `Pending` and `Processing` legs. A leg with no reference has now truly never been sent, which makes `checkComboLegs()`'s existing comment true.
+11. **Every transaction touching a leg locks the order first.** Phase 2 used to hold the leg, then insert an attempt row, whose foreign key needs a shared lock on the order, while a webhook holds the order and waits for the leg. Reference visibility during the call would make that reachable (proven on MySQL 8.4: `ERROR 1213`). ADR-094 decision 7's concern stands: the lock lasts one call and is released between legs, never across the loop. Another leg's webhook waits at most one call.
+12. **One rule parks a leg whose outcome is unknown.** A replay-safe supplier: `Pending`, keeping the reference, with the auto-recovery note. Any other: `NeedsReview`, keeping the reference. The supplier is read from the leg's component, not from the order. The catch block and decision 13 both call it. The catch block's reference re-persist and `$wasLegNotStarted` plumbing are deleted.
+13. **An order at `Processing` always means a live pass.** `retryStuckProcessing()` sends a stale combo to one public `OrderFulfillmentService` method. In one transaction it parks every `Processing` leg, moves the order to `Pending` if any leg is `Pending` and otherwise to `NeedsReview`, then runs `resolveComboOutcome()`. So a dead pass ends one of three ways: all legs delivered gives `Delivered` with profit credited, a leg in flight gets polled with its reference, a leg never tried gives `NeedsReview` for an admin's Retry. A leg is never resumed automatically (founder, Q3): the case is rare, and a new automatic path that buys is not worth having for it.
+14. **One pure rollup, `DeliveryStatus::comboRollup()`,** the home `isCompensable()` already sets. In order:
+
+    | Leg statuses | Rollup |
+    | --- | --- |
+    | none | `NeedsReview` |
+    | any `Pending` | `Pending` |
+    | any `NeedsReview`, `NotStarted` or `Processing` | `NeedsReview` |
+    | all `Delivered` | `Delivered` |
+    | all `Failed` | `Failed` |
+    | only `Delivered` and `Failed` | `PartiallyDelivered` |
+    | anything else | `NeedsReview` |
+
+    An unknown mix can no longer read as a known outcome. An empty set no longer reads as all delivered (proven: a combo with no components delivered and credited 1,500 sen; unreachable today, 101 of 101 have components). `resolveComboOutcome()` keeps the side effects (profit, voucher, promo) and adds two guards before it: a terminal order is left alone, and an order at `Processing` with a `NotStarted` or `Processing` leg is left alone, because the pass still owns it. A webhook then records its leg and nothing more. `confirmComboLegsFailed()` uses the same rollup, retiring its second copy.
+15. **Confirm Failed refuses a leg at `Processing` as well as `Pending`.** Decision 13 means an admin can't normally meet one.
+16. **A combo past the same-reference window sends nothing at all.** The check moves from `attemptLeg()`'s per-leg `return` to `fulfillCombo()`'s first transaction, and `retryDelivery()` refuses a past-window combo from `Failed` and `PartiallyDelivered` too, with `Order::PAST_WINDOW_MESSAGE`. An admin settles it with Confirm Failed and a voucher. Without this, a fresh ULID on an old order could be killed, age out at once, and reach Confirm Failed unasked, because the window counts from the order's age. For a combo this revises ADR-102's 2026-11-05 addendum decision 3. A plain order keeps that gap: it stays in item 170.
+17. **`Order::isCombo()` is the one test, reading `package.is_combo`,** which never changes once created and whose package can't be deleted once used.
+    - It replaces `Order.php:147`, `FulfillOrderJob:69`, `OrderFulfillmentService:97`, `OrderController:578,689`, `OrderResendService:251` (order side), `SupplierDeliveryCheckService:51,96,134`, the reconciler and the test command.
+    - "Has legs" stays where the code means the rows: `Order.php:367,404,424,540`, `FundedCostOfSales:43`.
+    - `OrderController:689` was the live gap: a paid combo with no legs could be marked delivered with 0 legs and 0 drawdowns (proven). The admin detail payload gains `is_combo`, and `orders/page.tsx`'s two `delivery_legs.length` checks read it.
+    - A package loaded with a partial `select` silently answers false, so `isCombo()` never goes in `$appends` or a list payload.
+    - An invariant test fails on any new `package?->is_combo` in `app/` outside this method.
+
+**Proof required at build.** The proofs above become red tests. A table test covers every status mix of `comboRollup()`. A concurrency test on real MySQL sends SIGKILL to a worker inside a hanging test adapter and asserts the leg stayed `Processing` with its reference, for a first attempt and for a retry of a `Failed` leg. Lock order gets its own concurrency test.
+
+**No migration.** `status` is a plain string, and no production leg is in flight. One PR, per the founder's one-PR-per-design rule. Legs are shown to admins only, and the admin type already has `processing`, so the portal, API, bot and storefront are unchanged. `hasUnsettledDeliveries()` and repoint already count `Processing`.
+
+**Rejected.**
+- *Mark the leg `Pending` before the call.* Less code, but `Pending` means the supplier accepted it, and a late response could overwrite a webhook's result.
+- *A new `sent_at` column.* A migration and a second source of truth.
+- *A `passOver` flag on the rollup.* Decision 13 carries the same fact in the order's status, with nothing to thread through callers.
+- *Resuming a never-tried leg automatically* (decision 13).
+- *Measuring the window per reference, with a timestamp on orders and legs.* Most exact, but a migration and every window reader, for a case that has never been near the limit. Revisit with item 170 for plain orders.
+- *Recording the drawdown inside the delivery transaction* (founder, Q6). Different class of problem: `recordOrderDrawdown()` is one writer, and [ADR-083](./ADR-083-internal-accounting-financial-reconciliation.md) decision 3 keeps it out of the fulfillment transaction on purpose. All 89 delivered units on production have their drawdown, and variance reads 0.
+
+**Consequence to track.**
+- A parked leg that never reached the supplier is bought by the poll itself: a same-reference re-submit is its first purchase. The customer has paid, so this is correct, and the real price lands through `finalizePendingDeliveryLeg()`. Same as a plain order since ADR-102's 2026-09-29 addendum.
+- A webhook reaching a leg still at `Processing` after its worker died is refused with "already finalized". The poll recovers it after the reconciler parks the leg, 15 minutes or more later.
+- A rollback of this release with a leg at `Processing` would strand that leg. The window is seconds.
+
+### 2026-11-07 addendum — build notes for decisions 10 to 17
+
+**Method names.** `claimLeg()`, `parkUnknownLeg()`, `recoverDeadComboPass()`, `DeliveryStatus::comboRollup()`, `Order::isCombo()`.
+
+**Smaller than designed.** `recordLegAttempt()` now has one caller and lost its response argument. The outcome branches call `resolvePendingLegAttempt()`, which also records a `pending` response. `fulfillCombo()`'s skip check went too: `claimLeg()` decides that under the lock. `OrderFulfillmentService` shrank by 30 lines.
+
+**Stated more exactly than the addendum.**
+- Decision 16 also refuses a first pass past the window, because the check sits before any leg is read. A paid combo that old has never existed.
+- `confirmComboLegsFailed()` refuses when the rollup gives neither `Failed` nor `PartiallyDelivered`, such as every leg already delivered. It used to mark that partial.
+- `recoverDeadComboPass()` schedules a poll whenever the order ends `Pending`, not only when it parked a leg itself.
+
+**Proof.** All three real-process tests fail on the old `OrderFulfillmentService` and pass on the new one: killed first attempt, killed retry of a `Failed` leg, webhook racing the leg in flight. `OrderFulfillmentTestFulfill` gained optional `readyFile` and `holdSeconds` arguments for them.
+

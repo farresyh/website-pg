@@ -1549,3 +1549,98 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 
 **Gotcha.** Printing even a credential's prefix or length through tinker was refused in this session, rightly. Diagnose a supplier's auth from `supplier_request_logs`' status codes.
 
+## 2026-11-06 — Released #717: Dismissed list fix live; Gamevion syncing again
+
+**#716 merged to `staging`** (`06826a8d`), **#717 released** on the founder's go-ahead: merge `73008972`, CI and `deploy` green, box release `82305761`. No migration, no env change.
+
+**Checked read-only after release:** the real controller's pages list 87 packages, each once, 42 of them Call of Duty; `closeRow()` and `PRICE_ANOMALY` are gone; `/api/health` ok; 0 open price rows; 0 active combos with an off component.
+
+**Gamevion recovered.** `GET /api/games` still answered 401 at 13:57:20 UTC, `/api/balance` answered 200 at 13:59:17, and run 3341 at 14:00 UTC read `success` with both suppliers synced and `price_sync_alerted_at` cleared. That matches the founder saving a new key; the cause of the first 401 stays unknown.
+
+**Packages on sale 1,265 to 1,248.** An admin switched two Mobile Legends Malaysia packages off at 13:20:36 UTC, and five combos went with them. Run 3340 then took 11 DigiFlazz packages off, Valorant among them, reported unavailable. That is 18 off; the net of 17 leaves one back on, with no reactivation log, so it was not through sync.
+
+
+## 2026-11-07 — Item 167 designed: ADR-103 addendum Accepted (design only, no code)
+
+**Trigger.** The founder asked to double-check item 163's seam C before fixing it. Combo volume had also changed: 6 combo orders, 3 of them on 2026-11-06, and an admin Retry on orders 111 and 121 that day.
+
+**The audit undersold it.** Proofs run from a scratch test, repo untouched, found two paths it missed: a killed retry of a `Failed` leg loses its fresh reference, so a leg can be bought twice; and a webhook during the pass marks a fully delivered order partial, with RM0 settlement and a stuck leg. No production harm: all 15 legs delivered, and no worker-stop line in the retained logs.
+
+**Grill, Q1 to Q7.** Leg `Processing` committed before the call; a dead pass parks legs and polls; a never-tried leg waits for an admin; one rollup; `Order::isCombo()`; drawdown left as ADR-083 decided (a crash window, not a seam: one writer, 89 of 89 delivered units recorded, variance 0); a past-window combo sends nothing.
+
+**The stress test changed the design.** Three forks broke the first version:
+- All three found the "wait while unfinished" rule stranded a dead pass at `Processing`, which can't be retried or settled. Now `Processing` always means a live pass, and the reconciler moves the order out before rolling up. Two forks proposed a flag; the order's status already carries the fact.
+- The agreed leg lock deadlocks with a webhook once the reference is visible during the call (`ERROR 1213` on MySQL 8.4, in replica tables). Order then leg, as `fulfill()`.
+- The reconciler couldn't write the attempt row correctly, so the row is written at the claim.
+- An empty leg set counted as all delivered, with 1,500 sen credited in a test.
+- `isCombo()` needed the admin payload and two `page.tsx` checks too.
+
+**Next:** build it from ADR-103 decisions 10 to 17, tests first.
+
+## 2026-11-07 — Item 167 built: combo leg safety (ADR-103 decisions 10 to 17)
+
+**Built on `fix/combo-leg-safety`, into `staging`, not released.** No migration, no env change.
+- A leg commits its reference, `Processing` and a `pending` attempt row before the supplier call (`claimLeg()`), then makes the call under order then leg locks.
+- `DeliveryStatus::comboRollup()` is the one rule, and `confirmComboLegsFailed()` uses it too. A webhook during a pass records its leg and decides nothing.
+- `recoverDeadComboPass()` is the reconciler's way out for a stale combo: it parks legs through `parkUnknownLeg()`, the same rule as the catch block, moves the order out of `Processing`, then rolls up.
+- A combo past the same-reference window starts no pass, and Retry refuses it from any status.
+- `Order::isCombo()` replaces the `package?->is_combo` reads, and the admin payload carries `is_combo`, so a paid combo with no legs can't be marked delivered.
+
+**Verified.**
+- `php artisan test` 3,776 of 3,776.
+- Concurrency suite on real MySQL: only `BackupRestoreMysqlTest` fails, the known local gap (no `mysqldump`).
+- The three new real-process tests (SIGKILL during a first attempt, SIGKILL during a retry, a webhook racing the leg in flight) fail on the old service and pass on the new one.
+- Admin `tsc` and `eslint` clean, admin unit tests pass.
+- In a real browser on a throwaway backend: a combo with no legs shows Retry Delivery and Confirm Failed, with no Mark as Delivered; a `processing` leg shows in the breakdown; a plain order keeps Resend Delivery and Mark as Delivered.
+
+**One existing test changed:** `test_a_combo_leg_past_the_window_is_not_re_submitted` became `test_a_combo_past_the_window_sends_nothing`, the decision itself. No other existing test needed changing.
+
+**Open at release:** the release needs no prod step. Confirm afterwards that no leg sits at `Processing` for long.
+
+## 2026-11-07 — Item 168 built: a voucher in use can't be closed (ADR-036 2026-11-07 addendum)
+
+**#720 merged to `staging`** (item 167, not released; the founder wants several items done before a release).
+
+**The hole, proven.** A RM100 voucher with RM40 reserved, then merged or revoked, then the order fails: the RM40 lands on a voucher nobody can spend, and Cash Position and breakage both miss it. Production untouched: 0 reserved, one merge, 0 revokes.
+
+**Built on `fix/voucher-close-guard`, into `staging`, not released.** No migration, no env change.
+- `merge()` and `revoke()` refuse a voucher an order is using, and the message names both.
+- A no-expiry source keeps the merged voucher without one. The founder asked whether expiry should go and giveaways move to Campaign; the check showed Campaign can't do a fixed-RM gift to a named person, so the line is: customer money never expires, gifts may, public discounts are Campaign.
+- The panel hides "Valid until" when the rule applies.
+- `/admin/vouchers`: Total Issued and Total Used count a merge once. They were overstated by RM460.42 each, display only.
+
+**The stress test changed the design.** Two forks independently found the agreed locking read deadlocks with `restore()` (`ERROR 1213`, on replica tables), so it is a plain read after the voucher lock. Also: a revoke refusal would have been a 500, the "settle" wording was wrong for an unpaid order, and "Valid until" would have refused every date on today's vouchers. Two claims made to the founder were corrected: a refused revoke does leave the unreserved balance spendable, and Campaign covers the primary brand only (item 171).
+
+**Verified.**
+- `php artisan test` 3,785 of 3,785.
+- Concurrency suite on real MySQL: 44 of 48, only `BackupRestoreMysqlTest` fails (no local `mysqldump`). It includes a new real-process race of `redeem` against `merge`.
+- Admin `tsc`, `eslint` on the changed file, and 22 of 22 unit tests.
+- In a real browser on a throwaway backend: "Valid until" hidden for no-expiry vouchers and kept for gifts; a revoke of a voucher in use shows the message naming the order, and the voucher stays active.
+
+**One existing test changed:** `test_a_merge_uses_the_same_end_of_day_rule` now merges vouchers that have an expiry, because the old setup is what this rule refuses.
+
+**Open at release:** confirm no reservation sits on a merged or revoked voucher.
+
+## 2026-11-07 — Item 172 built: a game link belongs to the group (ADR-067 2026-11-07 addendum)
+
+**Found.** The founder's first repoint (item 162) failed: `valorant_my:1000` to `1000 VP`, "This item's group is not linked to the package's game", and the group had no Link button. Confirmed in the live admin through Chrome (read-only, Link package not pressed). `Valorant (Malaysia)` held 6 old items linked since September and 6 new ones with no game; `categories()` calls a group linked if any row is, and the admin hides Link then. Release #705 didn't link anything.
+
+**The audit (read-only prod).** Every package on sale sits in the right region's group, no duplicate references, no package on sale against an inactive item. 3 Gamevion and 5 Digiflazz groups were half-linked (217 rows, including 58 on-sale packages' rows, harmless: selling never reads the link). `MOBILE LEGENDS — Umum` showed as linked to Malaysia on the strength of one stale row, and the founder says it is Indonesia stock. Separately, Gamevion's catalog is shrinking (item 162) and its pricelist answers 503 (item 173).
+
+**The stress test changed the design.** First proposal: a "link the rest" button plus a reactivation guard. Rejected at the founder's request to test it: every sync and returning item would bring the half-linked state back, and the guard protected one package. Trace showed one writer and three readers, all in `SupplierProductController`, so the link moved to the group. Simulated on prod data first: 49 groups, 0 with two games, 217 rows gain a link, 0 packages disagree, no case variants. The founder then asked what a change-game button would risk: a free one strands packages on the old game, so a group changes game only while no package would be left behind.
+
+**Package 516.** The founder pointed out it can't be deleted, it has their failed test order. It isn't: only its reason moves to `admin`, the same write as Dismiss in Pending Reactivation, and the migration test proves the order row is identical afterwards.
+
+**Built on `fix/group-level-supplier-link`, into `staging`, not released.** One migration, `2026_11_12_120000_move_game_link_to_supplier_groups`, which also drops `supplier_products.game_id`. No env change.
+
+**Verified.**
+- `php artisan test` 3,799 of 3,799.
+- Concurrency suite on real MySQL: 44 of 48, only `BackupRestoreMysqlTest` fails (no local `mysqldump`).
+- Migration and rollback on a throwaway real MySQL database: the em-dash label matched, Umum to Indonesia, 516 to `admin` with its date kept, unique and `game_id` indexes present.
+- Admin `tsc` and `eslint` on the changed files clean, 22 of 22 unit tests.
+- In a real browser on a throwaway backend: the founder's exact repoint answered 200 with a success toast and the package stayed off; a group with packages shows only View, one with none shows Change with its current game selected, an unlinked one shows Link.
+
+**Gotcha.** sqlite refuses the table rebuild under the `llm_report_*` views, so the migration reuses `underViews()` from `2026_11_10_120000`.
+
+**Open at release.** Check on prod: 49 links, Umum on Mobile Legends Indonesia, 516 in Dismissed, then the founder's repoint. Product Manager can error for the seconds between the migration and the release switch.
+

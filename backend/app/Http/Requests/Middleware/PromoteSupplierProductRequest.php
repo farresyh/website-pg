@@ -43,7 +43,7 @@ class PromoteSupplierProductRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator) {
-            $game = $this->route('supplier_product')->game;
+            $game = $this->route('supplier_product')->groupLink()?->game;
 
             if ($game === null) {
                 $validator->errors()->add('supplier_product', 'This item\'s group is not linked to a game yet.');

@@ -15,7 +15,6 @@ class SupplierProduct extends Model
 {
     protected $fillable = [
         'supplier_id',
-        'game_id',
         'external_ref',
         'name',
         'category_raw',
@@ -43,8 +42,9 @@ class SupplierProduct extends Model
         return $this->belongsTo(Supplier::class);
     }
 
-    public function game(): BelongsTo
+    /** ADR-067 2026-11-07 addendum: an item has a game only through its group. */
+    public function groupLink(): ?SupplierGroupLink
     {
-        return $this->belongsTo(Game::class);
+        return SupplierGroupLink::for($this->supplier_id, $this->group_label);
     }
 }

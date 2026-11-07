@@ -43,7 +43,7 @@ class SupplierSwitchTest extends TestCase
     private function package(string $ref, array $overrides = []): Package
     {
         SupplierProduct::query()->create([
-            'supplier_id' => $this->supplier->id, 'game_id' => $this->game->id, 'external_ref' => $ref, 'name' => $ref,
+            'supplier_id' => $this->supplier->id, 'external_ref' => $ref, 'name' => $ref,
             'group_label' => 'Mobile Legends', 'price_sen' => 1000, 'status_raw' => 'active', 'last_synced_at' => now(),
         ]);
 

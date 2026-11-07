@@ -1,6 +1,6 @@
 # ADR-024: Voucher-at-Checkout — redemption timing, wallet model, and admin visibility (built 2026-08-14)
 
-> **Standing (2026-11-01):** In force; a percentage fee is grossed up to what CHIP takes (2026-11-01 addendum); a restore and a revoke are dated facts and a revoke is locked ([ADR-127](./ADR-127-financial-truth-dated-facts.md), 2026-10-24 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-07):** In force; a percentage fee is grossed up to what CHIP takes (2026-11-01 addendum); a restore and a revoke are dated facts and a revoke is locked ([ADR-127](./ADR-127-financial-truth-dated-facts.md), 2026-10-24 addendum); a voucher in use can't be revoked ([ADR-036](./ADR-036-voucher-merge.md) 2026-11-07 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-08-13 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, before any code touched)
 
@@ -189,3 +189,8 @@ The full-cover path (M-6) already failed closed on the voucher, but still decrem
 ### 2026-11-01 addendum — a percentage fee is grossed up to what CHIP takes
 
 Decision 4 took the transaction fee as `percentage × feeBase`. CHIP takes its percentage of what the customer pays, fee included, so on DuitNow (1%) we charged a sen short on many orders and absorbed it (production settlements: RM40.19 → we charged 40 sen, CHIP took 41; RM25.45 → 25 vs 26; 2 sen over October). The customer still pays the gateway's fee, now the fee CHIP will actually take: `fee = (feeBase × rate + 100 × flat) ÷ (100 − rate)`, checked against CHIP's own rounding on the total (`CheckoutTotalService::grossedUpFee`). Reproduces all seven production DuitNow settlements. A flat-only fee (FPX) is unchanged; voucher full-cover still charges no fee. `percentage_rate` must now be below 100 (`lt:100`). One seam: checkout, membership and wallet top-up all price their fee through `CheckoutTotalService`.
+
+### 2026-11-07 addendum — a voucher in use can't be revoked
+
+Decided in full in [ADR-036](./ADR-036-voucher-merge.md)'s 2026-11-07 addendum. `restore()` used to credit a revoked voucher for accounting correctness, but the books read a revoked voucher as 0 from its revoke, so that value reached neither the customer nor breakage. `revoke()` now refuses while an order holds a reservation, so a restore can't land on one. Restoring onto an expired voucher is unchanged.
+

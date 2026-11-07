@@ -650,12 +650,12 @@ function OrdersPageInner() {
 
             <div className="flex flex-wrap items-center gap-3">
               {/* ADR-017: one action for "fix a failed delivery" — defaults to resending the same package (the old plain "Retry Delivery" behavior), with the option to swap packages inside the modal. A failed or needs_review delivery can be resent (ADR-026 decision 4b) — mirrors the backend guard exactly.
-                  ADR-094 decision 10 (found live, 2026-09-15): a combo order (`delivery_legs.length > 0`) can never swap package — resendOrderDelivery() always 422s for one — so it gets the plain retry action instead, never this modal. */}
+                  ADR-094 decision 10 (found live, 2026-09-15): a combo order (`is_combo`) can never swap package — resendOrderDelivery() always 422s for one — so it gets the plain retry action instead, never this modal. */}
               {(selected.delivery_status === "failed" || selected.delivery_status === "needs_review" || selected.delivery_status === "partially_delivered") && (
                 <>
                   {/* ADR-102 decision 1: hidden once this order is already compensated (voucher issued or wallet refunded) — mirrors the backend's own hard block, so an admin never sees a button that would just 400. */}
                   {!selected.voucher && !selected.wallet_refunded && !selected.has_voucher_restored && (
-                    selected.delivery_legs.length > 0 ? (
+                    selected.is_combo ? (
                       <div className="flex flex-wrap items-center gap-2">
                         {/* ADR-102 decision 3: a combo order still checks the futile flag regardless of failed/needs_review — the plain Retry button requires the same mandatory override reason the Resend Delivery modal collects for a non-combo order. */}
                         {selected.resend_unsafe_to_override && (
@@ -698,7 +698,7 @@ function OrdersPageInner() {
                     </Button>
                   )}
                   {/* ADR-026 decision 4a — the one needs_review exit that isn't a retry. ADR-102 decision 1: hidden once already compensated, same reasoning as the Retry/Resend button above. ADR-094's 2026-09-21 addendum decision 24: hidden for any combo order (`delivery_legs.length > 0`) — this action force-sets the WHOLE order Delivered with no per-leg awareness, never safe for a multi-leg entity; a combo resolves outstanding legs via Retry Delivery instead, or the partial-delivery Issue Voucher path once genuinely mixed Delivered+Failed/NeedsReview. */}
-                  {selected.delivery_status === "needs_review" && selected.delivery_legs.length === 0 && !selected.voucher && !selected.wallet_refunded && !selected.is_manual_supplier && (
+                  {selected.delivery_status === "needs_review" && !selected.is_combo && !selected.voucher && !selected.wallet_refunded && !selected.is_manual_supplier && (
                     <Button size="small" variant="outlined" onClick={() => setMarkDeliveredModalOpen(true)}>
                       Mark as Delivered…
                     </Button>

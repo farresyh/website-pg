@@ -6,6 +6,7 @@ use App\Models\AdminUser;
 use App\Models\Game;
 use App\Models\Package;
 use App\Models\Supplier;
+use App\Models\SupplierGroupLink;
 use App\Models\SupplierProduct;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -192,7 +193,7 @@ class Adr125LoginGameCatalogTest extends TestCase
             'validation_rules' => ['credential_fields' => $this->schema()],
         ])->assertJsonValidationErrors('validation_rules.credential_fields');
 
-        $product->update(['game_id' => $game->id]);
+        SupplierGroupLink::query()->create(['supplier_id' => $supplier->id, 'group_label' => 'Roblox', 'game_id' => $game->id]);
         $this->postJson("/api/middleware/supplier-products/{$product->id}/promote", ['name' => '800 Robux'])
             ->assertJsonValidationErrors('supplier_product');
     }

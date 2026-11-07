@@ -43,6 +43,8 @@ function MergeVouchersFields({ vouchers, onClose, onSubmit }: Omit<MergeVouchers
   const [submitting, setSubmitting] = useState(false);
 
   const totalRemaining = vouchers.reduce((sum, v) => sum + v.remaining, 0);
+  // ADR-036 2026-11-07 addendum: credit with no expiry never gains one here.
+  const canExpire = vouchers.every((v) => v.expires_at !== null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -52,7 +54,7 @@ function MergeVouchersFields({ vouchers, onClose, onSubmit }: Omit<MergeVouchers
       await onSubmit({
         voucher_ids: vouchers.map((v) => v.id),
         reason,
-        expires_at: expiresAt || null,
+        expires_at: canExpire && expiresAt ? expiresAt : null,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -94,11 +96,15 @@ function MergeVouchersFields({ vouchers, onClose, onSubmit }: Omit<MergeVouchers
           <Label htmlFor="reason">Reason (required — the audit trail for this merge)</Label>
           <Input id="reason" value={reason} onChange={(e) => setReason(e.target.value)} required />
         </div>
-        <div>
-          {/* ADR-024 2026-10-13 addendum: valid through the end of this Malaysia day. */}
-          <Label htmlFor="expires_at">Valid until (optional)</Label>
-          <Input id="expires_at" type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} min={todayInKL()} />
-        </div>
+        {canExpire ? (
+          <div>
+            {/* ADR-024 2026-10-13 addendum: valid through the end of this Malaysia day. */}
+            <Label htmlFor="expires_at">Valid until (optional)</Label>
+            <Input id="expires_at" type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} min={todayInKL()} />
+          </div>
+        ) : (
+          <p className="text-theme-xs text-ink-muted">The merged voucher will have no expiry date, because these vouchers include credit with no expiry date.</p>
+        )}
 
         <div className="flex items-center justify-end gap-3 pt-2">
           <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
