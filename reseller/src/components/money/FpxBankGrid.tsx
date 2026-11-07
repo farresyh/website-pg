@@ -37,7 +37,7 @@ export default function FpxBankGrid({
               }`}
             >
               <Image
-                src={`/images/banks/${bank.code.toLowerCase()}.png`}
+                src={`/images/banks/${bank.code.toLowerCase()}.webp`}
                 alt=""
                 width={240}
                 height={96}

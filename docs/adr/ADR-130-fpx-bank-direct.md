@@ -67,5 +67,5 @@ The first plan appended the parameter inside `ChipGateway::createPayment` and ca
 
 ### 2026-11-07 addendum: bank logos load up front
 
-A customer saw blank bank tiles in TikTok's browser. The logos were small and fast from the server, but `next/image` loaded them lazily, one by one as the customer scrolled, and served them with `max-age=0`, so every visit repeated it. The storefront's logos are now webp files (238 KB to 103 KB for 20), served directly with `unoptimized`, loaded eagerly, and cached for 30 days. Rename a file to replace it sooner. The partner portal keeps its own PNG copies.
+A customer saw blank bank tiles in TikTok's browser. The logos were small and fast from the server, but `next/image` loaded them lazily, one by one as the customer scrolled, and served them with `max-age=0`, so every visit repeated it. The storefront's logos are now webp files (238 KB to 103 KB for 20), served directly with `unoptimized`, loaded eagerly, and cached for 30 days. Rename a file to replace it sooner. The portal's logos are generated copies (`scripts/sync-shared-files.mjs`), so they moved to webp too; the portal still sends them through `next/image`, as it has no reported delay.
 
