@@ -862,7 +862,7 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
 
 
 **C. Founder actions (no code)**
-- **176** Finish the OPcache fix on the box ([ADR-066](./adr/ADR-066-production-deploy-via-laravel-forge.md) 2026-11-08 addendum): `process_control_timeout`, the three OPcache values, a restart, then the reload line in Forge's deploy script, in that order. Until then the cache refills after a few releases, and `/api/health` will say so once this code is live.
+- **176** Finish the OPcache fix on the box ([ADR-066](./adr/ADR-066-production-deploy-via-laravel-forge.md) 2026-11-08 addendum): `process_control_timeout`, the three OPcache values, a restart, then the reload line and the longer `/up` limit in Forge's deploy script, in that order. Until then the cache refills after a few releases, and `/api/health` will say so once this code is live.
 - **11** Sentry (error tracking) is still not set up. UptimeRobot watches
   `/api/health`, the OpenWA gateway and `/api/health/whatsapp` (third monitor
   added and alert-tested by the founder 2026-10-14).

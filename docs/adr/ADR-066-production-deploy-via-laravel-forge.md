@@ -77,7 +77,7 @@
 
 Each zero-downtime release runs from a new path, so OPcache holds its files as new entries beside the old release's. Old entries never count as wasted (0%), so OPcache never restarts itself, and once full it stops storing what it compiles.
 
-This decision's reload was meant to clear it, but the deploy output on the Forge box (ADR-114) has no reload step, and the cache lived through 9 releases. Its last clear was the system's own PHP update on 2026-11-04 06:21 UTC. The live script itself was not read.
+This decision's reload was meant to clear it, but the live deploy script on the Forge box (ADR-114) has no reload line, read 2026-11-08. The cache lived through 9 releases, and its last clear was the system's own PHP update on 2026-11-04 06:21 UTC.
 
 **Decision.**
 
@@ -98,7 +98,10 @@ This decision's reload was meant to clear it, but the deploy output on the Forge
 1. In `/etc/php/8.4/fpm/php-fpm.conf`, set `process_control_timeout = 35s`.
 2. In Forge's PHP-FPM settings, add the three values of decision 3.
 3. Restart PHP-FPM, at a quiet moment with no order in flight.
-4. At the end of the deploy script, add:
+4. In the deploy script, straight after `$ACTIVATE_RELEASE()`, add:
    `( flock -w 10 9 || exit 1; echo 'Restarting FPM...'; sudo -S service $FORGE_PHP_FPM reload ) 9>/tmp/fpmlock`
+5. Raise the closing `/up` check to `--max-time 40`.
+
+The reload goes before the `/up` check so that check proves PHP-FPM came back. The longer limit is because a reload can hold new requests for up to 35 s behind a slow one, and `/up` must not fail a good release for that.
 
 **Consequence to track.** After the next release, confirm the Dashboard shows a nearly empty cache. If it doesn't, the reload isn't clearing it on this box, and the socket reset above comes back.
