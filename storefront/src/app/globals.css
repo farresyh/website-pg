@@ -203,6 +203,50 @@
   padding-bottom: calc(6rem + env(safe-area-inset-bottom));
 }
 
+/* The membership calculator's slider: a neo-brutalist track filled up to
+ * `--fill`, on a 44px-tall input so the whole row is the touch target. */
+@utility range-neo {
+  appearance: none;
+  height: 2.75rem;
+  width: 100%;
+  background: transparent;
+  cursor: pointer;
+
+  &::-webkit-slider-runnable-track {
+    height: 0.875rem;
+    border: 2px solid var(--color-ink);
+    border-radius: 9999px;
+    background: linear-gradient(to right, var(--color-primary) var(--fill), var(--color-surface-container-highest) var(--fill));
+  }
+  &::-moz-range-track {
+    height: 0.625rem;
+    border: 2px solid var(--color-ink);
+    border-radius: 9999px;
+    background: linear-gradient(to right, var(--color-primary) var(--fill), var(--color-surface-container-highest) var(--fill));
+  }
+  &::-webkit-slider-thumb {
+    appearance: none;
+    height: 1.75rem;
+    width: 1.75rem;
+    margin-top: -0.5625rem;
+    border: 2px solid var(--color-ink);
+    border-radius: 9999px;
+    background: var(--color-warning);
+  }
+  &::-moz-range-thumb {
+    height: 1.5rem;
+    width: 1.5rem;
+    border: 2px solid var(--color-ink);
+    border-radius: 9999px;
+    background: var(--color-warning);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--color-secondary);
+    outline-offset: 2px;
+    border-radius: 0.375rem;
+  }
+}
+
 /* ---- Loading skeletons (ADR-071 PR1a) ----------------------------
  * A skeleton is a filled paper block that sweeps a soft highlight
  * left-to-right — the same warm-paper world as the real content, so

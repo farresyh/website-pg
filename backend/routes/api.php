@@ -288,6 +288,8 @@ Route::middleware('storefront.brand')->group(function () {
     // from the admin-only membership-plans prefix (same controller family,
     // different gate — this route is on the public MembershipController).
     Route::get('/membership/plans', [MembershipController::class, 'plans']);
+    Route::get('/membership/offer', [MembershipController::class, 'offer'])
+        ->middleware('membership.enabled');
 
     // Decisions 13/24/25 — the /membership dashboard's data. Auth is the
     // session token (Authorization: Bearer), not auth:sanctum — resolved

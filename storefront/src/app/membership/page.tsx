@@ -6,7 +6,7 @@ import SiteFooter from "@/components/layout/SiteFooter";
 import MembershipClient from "@/components/order/MembershipClient";
 import { MembershipFormSkeleton } from "@/components/skeletons/ContentPageSkeletons";
 import { getBranding } from "@/lib/branding";
-import { listPlans } from "@/lib/membership";
+import { getMembershipOffer, listPlans } from "@/lib/membership";
 
 export async function generateMetadata(_props: unknown, parent: ResolvingMetadata): Promise<Metadata> {
   const branding = await getBranding();
@@ -28,14 +28,14 @@ export default async function MembershipPage() {
   // called it this request, so this is a cache hit, not a round-trip.
   // The backend `/api/membership/me` stays reachable for an existing
   // member's own read-only view — this only removes the storefront page.
-  const [plans, branding] = await Promise.all([listPlans(), getBranding()]);
+  const [plans, branding, offer] = await Promise.all([listPlans(), getBranding(), getMembershipOffer()]);
   if (plans.length === 0) notFound();
 
   return (
     <>
       <main className="pb-nav lg:pb-0">
         <Suspense fallback={<MembershipFormSkeleton />}>
-          <MembershipClient paymentsEnabled={branding.paymentsEnabled} />
+          <MembershipClient paymentsEnabled={branding.paymentsEnabled} offer={offer} />
         </Suspense>
       </main>
       <SiteFooter />

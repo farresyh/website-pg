@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\Membership\SubscribeRequest;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
+use App\Models\Package;
 use App\Models\Order;
 use App\Services\Membership\MembershipAttemptClosedException;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
@@ -81,6 +82,51 @@ class MembershipController extends Controller
             );
 
         return response()->json($plans);
+    }
+
+    /**
+     * ADR-055 2026-11-07 addendum: what the signed-out /membership page
+     * needs, kept apart from plans() because that one is read on every
+     * page and stays narrow. Every figure comes from the seams checkout
+     * and subscribe use. Prices need no brand terms: Membership only runs
+     * on our own brands, which add no markup (ADR-061). The examples do
+     * depend on the brand, which may hide a game (ADR-060 PR-6).
+     */
+    public function offer(MembershipSubscriptionService $subscriptions): JsonResponse
+    {
+        $brand = $this->brand->get();
+
+        $offer = Cache::store(config('cache.catalog_packages_store'))
+            ->tags(['catalog.packages', 'catalog.public.membership.offer'])
+            ->remember("catalog.public.membership.offer.{$brand->id}", 60, function () use ($subscriptions, $brand) {
+                $plans = MembershipPlan::query()->orderBy('id')->get();
+                $representative = $this->membershipPricing->representativePackage();
+
+                return [
+                    'plans' => $plans->map(fn (MembershipPlan $plan) => [
+                        'id' => $plan->id,
+                        'name' => $plan->name,
+                        'fee_sen' => $plan->fee_sen,
+                        'lowest_charge_sen' => $subscriptions->lowestChargeSen($plan),
+                        'quota_sen' => $plan->quota_sen,
+                        'real_savings_percent' => $representative !== null
+                            ? $this->membershipPricing->realSavingsPercent($representative, (float) $plan->discount_percent)
+                            : null,
+                    ])->all(),
+                    'examples' => $this->membershipPricing->examplePackages($brand->id)->map(fn (Package $package) => [
+                        'game_name' => $package->game->name,
+                        'package_name' => $package->name,
+                        'regular_sen' => $this->membershipPricing->regularPriceSen($package),
+                        'member_sen' => $plans->map(fn (MembershipPlan $plan) => $this->membershipPricing->calculateMemberPrice(
+                            $package->cost_price,
+                            (float) $package->markup_percent,
+                            (float) $plan->discount_percent,
+                        ))->all(),
+                    ])->all(),
+                ];
+            });
+
+        return response()->json([...$offer, 'is_primary_brand' => (bool) $brand->is_primary]);
     }
 
     public function me(Request $request): JsonResponse
