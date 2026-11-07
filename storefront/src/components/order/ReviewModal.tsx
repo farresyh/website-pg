@@ -120,10 +120,16 @@ export default function ReviewModal({
   const [voucherError, setVoucherError] = useState<string | null>(null);
   const [appliedVoucher, setAppliedVoucher] = useState<{ code: string; result: VoucherPreviewResult } | null>(null);
 
-  // ADR-118 V16: a KOL link's code is prefilled (never applied for the customer).
-  const [promoInput, setPromoInput] = useState(() => rememberedPromoCode() ?? "");
+  // ADR-118 2026-11-07 addendum: a KOL link's code is prefilled, then applied
+  // once the contact details are in, because the server's new-customer rule
+  // needs them. Paying without it was too easy: the pay button stays on screen
+  // with the full price while the field sits below it on a phone. A code the
+  // customer types still takes Apply.
+  const [linkCode] = useState(() => rememberedPromoCode() ?? "");
+  const [promoInput, setPromoInput] = useState(linkCode);
   const [promoOpen, setPromoOpen] = useState(() => promoInput.length > 0);
   const [promoHint, setPromoHint] = useState<string | null>(null);
+  const autoTriedFor = useRef<string | null>(null);
 
   function handleConfirmWithRemember() {
     try {
@@ -206,6 +212,23 @@ export default function ReviewModal({
       previouslyFocused?.focus?.();
     };
   }, [open]);
+
+  const contactReady = /^\S+@\S+\.\S+$/.test(customerEmail.trim()) && customerPhone.replace(/\D/g, "").length >= 9;
+  // A member's price beats a promo (ADR-118 decision 4), and a voucher already
+  // applied was quoted without one, so both stay the customer's own choice.
+  const autoApply = onPromoChange && linkCode !== "" && promoInput === linkCode && promoCode === null && contactReady && !isMember && appliedVoucher === null;
+  useEffect(() => {
+    if (!autoApply) return;
+    // Once per email and phone: a refusal must not retry forever, but a
+    // corrected phone number gets its own try. Waits out the last keystroke.
+    const contactKey = `${customerEmail.trim()}|${customerPhone.trim()}`;
+    if (autoTriedFor.current === contactKey) return;
+    const timer = setTimeout(() => {
+      autoTriedFor.current = contactKey;
+      onPromoChange(linkCode);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [autoApply, customerEmail, customerPhone, linkCode, onPromoChange]);
 
   if (!open) return null;
 
@@ -494,6 +517,9 @@ export default function ReviewModal({
                       Apply
                     </Button>
                   </div>
+                )}
+                {promoCode === null && promoInput === linkCode && linkCode !== "" && !contactReady && !promoHint && !promoError && (
+                  <p className="mt-1.5 text-[12.5px] text-on-surface-variant">This applies once your email and phone number are in.</p>
                 )}
                 {promoChecking && <p className="mt-1.5 text-[12.5px] text-on-surface-variant">Checking…</p>}
                 {promoCode !== null && preview === null && previewFailed && (

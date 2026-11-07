@@ -28,6 +28,7 @@ import MembershipPromoCard from "@/components/order/MembershipPromoCard";
 import ReviewModal from "@/components/order/ReviewModal";
 import PaymentChannelPicker from "@/components/order/PaymentChannelPicker";
 import PaymentsUnavailableNotice from "@/components/order/PaymentsUnavailableNotice";
+import { dismissPromoNote, forgetPromoCode } from "@/lib/promo";
 
 interface OrderFormProps {
   /** ADR-097 decision 9 — needs GameDetail (not the narrower Game), for zoneOptions. */
@@ -371,6 +372,8 @@ export default function OrderForm({
           // total shown is again the one checkout will charge.
           if (!cancelled && err instanceof ApiError && err.errors?.promo_code) {
             idempotencyKeyRef.current = crypto.randomUUID();
+            // The note promised a saving this customer won't get.
+            if (promoCode) dismissPromoNote(promoCode);
             setPromoCode(null);
             setPromoError(err.errors.promo_code[0]);
           } else if (!cancelled) {
@@ -504,6 +507,7 @@ export default function OrderForm({
         },
       }, getMembershipToken() ?? undefined);
 
+      if (promoCode) forgetPromoCode();
       const redirectUrl = extractCheckoutRedirectUrl(result.payment_actions);
       setRedirecting(true);
       if (redirectUrl) {
