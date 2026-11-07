@@ -6,8 +6,10 @@ use App\Models\AdminUser;
 use App\Models\Game;
 use App\Models\Package;
 use App\Models\Supplier;
+use App\Models\SupplierGroupLink;
 use App\Models\SupplierProduct;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Arr;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -41,8 +43,18 @@ class SupplierProductControllerTest extends TestCase
         // so a test that only sets `category_raw` still groups the way
         // Gamevion's real sync does (ADR-067 decision 4).
         $attributes['group_label'] ??= $attributes['category_raw'] ?? '';
+        $gameId = Arr::pull($attributes, 'game_id');
 
-        return SupplierProduct::query()->create($attributes);
+        $product = SupplierProduct::query()->create($attributes);
+
+        if ($gameId !== null) {
+            SupplierGroupLink::query()->updateOrCreate(
+                ['supplier_id' => $product->supplier_id, 'group_label' => $product->group_label],
+                ['game_id' => $gameId],
+            );
+        }
+
+        return $product;
     }
 
     private function actingAsAdmin(): void
@@ -269,9 +281,9 @@ class SupplierProductControllerTest extends TestCase
         $game = Game::query()->where('name', 'Free Fire Global')->firstOrFail();
         $this->assertSame('Battle Royale', $game->category);
 
-        $this->assertSame($game->id, SupplierProduct::query()->where('external_ref', 'A')->firstOrFail()->game_id);
-        $this->assertSame($game->id, SupplierProduct::query()->where('external_ref', 'B')->firstOrFail()->game_id);
-        $this->assertNull(SupplierProduct::query()->where('external_ref', 'C')->firstOrFail()->game_id);
+        $this->assertSame($game->id, SupplierProduct::query()->where('external_ref', 'A')->firstOrFail()->groupLink()?->game_id);
+        $this->assertSame($game->id, SupplierProduct::query()->where('external_ref', 'B')->firstOrFail()->groupLink()?->game_id);
+        $this->assertNull(SupplierProduct::query()->where('external_ref', 'C')->firstOrFail()->groupLink()?->game_id);
     }
 
     public function test_link_category_links_to_an_existing_game(): void
@@ -289,7 +301,7 @@ class SupplierProductControllerTest extends TestCase
 
         $response->assertOk();
         $this->assertSame(1, Game::query()->count()); // no duplicate created
-        $this->assertSame($game->id, SupplierProduct::query()->where('external_ref', 'A')->firstOrFail()->game_id);
+        $this->assertSame($game->id, SupplierProduct::query()->where('external_ref', 'A')->firstOrFail()->groupLink()?->game_id);
     }
 
     /**

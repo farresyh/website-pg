@@ -437,14 +437,14 @@ class GameControllerTest extends TestCase
         ]);
         $combo = Package::query()->create(['game_id' => $game->id, 'name' => 'Combo', 'cost_price' => 0, 'standard_selling_price' => 0, 'is_combo' => true]);
         $combo->components()->attach($component->id, ['quantity' => 2, 'sort_order' => 0]);
-        $item = SupplierProduct::query()->create(['supplier_id' => $supplier->id, 'game_id' => $game->id, 'external_ref' => 'A', 'name' => '100 Diamonds', 'group_label' => 'Free Fire', 'price_sen' => 421, 'last_synced_at' => now()]);
+        $item = SupplierProduct::query()->create(['supplier_id' => $supplier->id, 'external_ref' => 'A', 'name' => '100 Diamonds', 'group_label' => 'Free Fire', 'price_sen' => 421, 'last_synced_at' => now()]);
         $this->actingAsAdmin();
 
         $this->deleteJson("/api/games/{$game->id}")->assertNoContent();
 
         $this->assertSame(0, Game::query()->count());
         $this->assertSame(0, Package::query()->count());
-        $this->assertNull($item->fresh()->game_id);
+        $this->assertNotNull($item->fresh());
     }
 
     /** ADR-119 2026-11-05: a game whose packages were bought is never deleted; nothing is removed. */

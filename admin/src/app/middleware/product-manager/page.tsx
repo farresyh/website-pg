@@ -85,6 +85,11 @@ function groupKey(c: SupplierProductCategory): string {
   return `${c.supplier?.id ?? "?"}:${c.group_label}`;
 }
 
+/** ADR-067 2026-11-07 addendum: a package can't change game, so a group with one keeps its link. */
+function canLink(c: SupplierProductCategory): boolean {
+  return !c.game || c.promoted_count === 0;
+}
+
 function sameGroup(a: SupplierProductCategory, b: SupplierProductCategory): boolean {
   return groupKey(a) === groupKey(b);
 }
@@ -94,7 +99,7 @@ function sameGroup(a: SupplierProductCategory, b: SupplierProductCategory): bool
  * needs (ADR-005 addendum) — LinkCategoryModal sets it once at
  * link time, but until this editor existed there was no way to
  * correct a wrong choice afterward (the "Link to Game" button
- * disappears once a category is linked). Reuses linkSupplierProductCategory
+ * goes once a group has a package). Reuses linkSupplierProductCategory
  * directly — game_id doesn't change, only validation_rules.
  *
  * ADR-097 decision 16: ONE "Update" button saves the WHOLE
@@ -362,9 +367,9 @@ export default function ProductManagerPage() {
               )}
             </p>
           </div>
-          {!selected.game && (
+          {canLink(selected) && (
             <Button size="small" onClick={() => setLinkingCategory(selected)}>
-              Link to Game
+              {selected.game ? "Change Game" : "Link to Game"}
             </Button>
           )}
         </div>
@@ -652,9 +657,9 @@ export default function ProductManagerPage() {
                             <Button size="small" variant="outlined" onClick={() => session && openCategory(category)}>
                               View
                             </Button>
-                            {!category.game && (
+                            {canLink(category) && (
                               <Button size="small" onClick={() => setLinkingCategory(category)}>
-                                Link
+                                {category.game ? "Change" : "Link"}
                               </Button>
                             )}
                           </div>
@@ -683,6 +688,7 @@ export default function ProductManagerPage() {
         supplierId={linkingCategory?.supplier?.id ?? null}
         groupLabel={linkingCategory?.group_label ?? null}
         itemCount={linkingCategory?.total ?? 0}
+        currentGameId={linkingCategory?.game?.id}
         games={games}
       />
     </div>
