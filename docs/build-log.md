@@ -1718,3 +1718,23 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 
 **Verified.** In a real browser on a throwaway backend: no dropdown for an existing game, the POST body carried only `supplier_id`, `group_label` and `game_id`, the link answered 200, the game stayed on `server_id`, and New game still shows the dropdown. A new backend test covers a link with no rules. `php artisan test` 3,817 of 3,817; admin `tsc`, `eslint` on the changed files, build, 22 of 22 unit tests.
 
+## 2026-11-07 — Released #728: KOL attribution, item 170, Link dialog
+
+**Released on the founder's go-ahead.** `main` `0df8b387`, box release `82362619`, CI and `deploy` green. Before release, read-only: 0 orders and 0 legs in flight, no migration in the diff. Ships #724 (item 175), #725 (item 170), #726 (items 169 and 173 decided) and #727 (Link dialog).
+
+**Checked after release, read-only.**
+- `/api/health` ok and `/api/health/whatsapp` 200. No `ERROR` in the log tail since the deploy.
+- `Order::residualProfit()` present, `wholesaleTierMarkupPct()` gone.
+- `storefrontPriceTerms()`: PekanGame and OhahaStore no tier and no markup, FixFast Demo tier 5 and markup 5, unchanged.
+- Membership effective on PekanGame and OhahaStore, off on FixFast Demo.
+- `Order::walletRefundSql()` totals 43,004 sen, equal to the ledger's `wallet_refund` total.
+- All four Vercel projects success on the merge commit.
+
+Items 163, 170 and 175 closed.
+
+**Package count 1,389 to 1,365, not from the release.** Run 3378 at 08:30 UTC, before the merge, took 26 DigiFlazz packages off (Valorant Indonesia 17, Mobile Legends Global 5, Mobile Legends Brazil 4), all `inactive` at the supplier.
+
+**Gotcha.** `gh pr checks --watch` right after opening a release PR exited 0 on the Vercel checks alone, before the Actions jobs had registered. The merge guard read the real checks and held. Watch the Actions run itself with `gh run watch <id> --exit-status`.
+
+**Not yet seen:** the Link dialog on the live admin, and the first real KOL redemption.
+
