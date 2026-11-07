@@ -11,6 +11,7 @@ use App\Models\Package;
 use App\Models\PaymentMethod;
 use App\Models\PlatformSettings;
 use App\Models\PromoCode;
+use App\Models\Redirect;
 use App\Models\Supplier;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
@@ -49,6 +50,14 @@ class E2ESeeder extends Seeder
         // order below is the primary brand's (the one `DatabaseSeeder`
         // just seeded).
         $affiliate = Affiliate::primary();
+
+        // ADR-078 2026-11-08 addendum: storefront-proxy.spec's saved redirect.
+        Redirect::create([
+            'affiliate_id' => $affiliate->id,
+            'from_path' => '/e2e-old-path',
+            'to_path' => '/track-order',
+            'status_code' => 301,
+        ]);
 
         // CHIP FPX (`fpx`) — the one channel the golden-path checkout
         // spec drives through. Every other seeded row stays
