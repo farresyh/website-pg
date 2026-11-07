@@ -1620,3 +1620,26 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 **One existing test changed:** `test_a_merge_uses_the_same_end_of_day_rule` now merges vouchers that have an expiry, because the old setup is what this rule refuses.
 
 **Open at release:** confirm no reservation sits on a merged or revoked voucher.
+
+## 2026-11-07 — Item 172 built: a game link belongs to the group (ADR-067 2026-11-07 addendum)
+
+**Found.** The founder's first repoint (item 162) failed: `valorant_my:1000` to `1000 VP`, "This item's group is not linked to the package's game", and the group had no Link button. Confirmed in the live admin through Chrome (read-only, Link package not pressed). `Valorant (Malaysia)` held 6 old items linked since September and 6 new ones with no game; `categories()` calls a group linked if any row is, and the admin hides Link then. Release #705 didn't link anything.
+
+**The audit (read-only prod).** Every package on sale sits in the right region's group, no duplicate references, no package on sale against an inactive item. 3 Gamevion and 5 Digiflazz groups were half-linked (217 rows, including 58 on-sale packages' rows, harmless: selling never reads the link). `MOBILE LEGENDS — Umum` showed as linked to Malaysia on the strength of one stale row, and the founder says it is Indonesia stock. Separately, Gamevion's catalog is shrinking (item 162) and its pricelist answers 503 (item 173).
+
+**The stress test changed the design.** First proposal: a "link the rest" button plus a reactivation guard. Rejected at the founder's request to test it: every sync and returning item would bring the half-linked state back, and the guard protected one package. Trace showed one writer and three readers, all in `SupplierProductController`, so the link moved to the group. Simulated on prod data first: 49 groups, 0 with two games, 217 rows gain a link, 0 packages disagree, no case variants. The founder then asked what a change-game button would risk: a free one strands packages on the old game, so a group changes game only while no package would be left behind.
+
+**Package 516.** The founder pointed out it can't be deleted, it has their failed test order. It isn't: only its reason moves to `admin`, the same write as Dismiss in Pending Reactivation, and the migration test proves the order row is identical afterwards.
+
+**Built on `fix/group-level-supplier-link`, into `staging`, not released.** One migration, `2026_11_12_120000_move_game_link_to_supplier_groups`, which also drops `supplier_products.game_id`. No env change.
+
+**Verified.**
+- `php artisan test` 3,799 of 3,799.
+- Migration and rollback on a throwaway real MySQL database: the em-dash label matched, Umum to Indonesia, 516 to `admin` with its date kept, unique and `game_id` indexes present.
+- Admin `tsc` and `eslint` on the changed files clean.
+- In a real browser on a throwaway backend: the founder's exact repoint answered 200 with a success toast and the package stayed off; a group with packages shows only View, one with none shows Change with its current game selected, an unlinked one shows Link.
+
+**Gotcha.** sqlite refuses the table rebuild under the `llm_report_*` views, so the migration reuses `underViews()` from `2026_11_10_120000`.
+
+**Open at release.** Check on prod: 49 links, Umum on Mobile Legends Indonesia, 516 in Dismissed, then the founder's repoint. Product Manager can error for the seconds between the migration and the release switch.
+
