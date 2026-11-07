@@ -21,8 +21,6 @@ export interface PlanEstimate {
   netRm: number;
   /** The monthly spend where the saving covers the fee; null if the plan's cap comes first. */
   breakEvenRm: number | null;
-  /** The spend is past the plan's cap, so the rest is at the regular price. */
-  capped: boolean;
 }
 
 export function estimatePlan(plan: MembershipOfferPlan, spendRm: number): PlanEstimate {
@@ -38,7 +36,6 @@ export function estimatePlan(plan: MembershipOfferPlan, spendRm: number): PlanEs
     chargeRm,
     netRm: savingRm - chargeRm,
     breakEvenRm: breakEvenRm !== null && breakEvenRm * (1 - rate) <= plan.quotaRm ? Math.round(breakEvenRm) : null,
-    capped: memberSpendRm > plan.quotaRm,
   };
 }
 

@@ -1760,7 +1760,7 @@ Items 163, 170 and 175 closed.
 
 **Calculator changed after the founder's review.** Showing a loss at low spend worked against the point of membership, so the page now shows one number, the saving, with the cost under it, the break-even as a goal, and a 30-day try with no auto-renewal. Copy was rewritten in the plainest words (ADR-055 addendum, decision 10).
 
-**Verified.** Backend 3,824 tests pass. `tsc` and `eslint` clean. Playwright: the calculator's maths on production's plan figures, and a 390px visitor going from the offer through a reload at the OTP step to the plan's payment step. The existing subscribe spec still passes. Screenshots at 390px and 1440px with production's plans; no sideways scroll; hero and FAQ are in the server HTML.
+**Verified.** Backend 3,825 tests pass. `tsc` and `eslint` clean. Playwright: the calculator's maths on production's plan figures, and a 390px visitor going from the offer through a reload at the OTP step to the plan's payment step. The existing subscribe spec still passes. Screenshots at 390px and 1440px with production's plans; no sideways scroll; hero and FAQ are in the server HTML.
 
 **Gotchas.**
 - A throwaway fixture with a mispriced representative package produced a negative saving, shown as `+-RM22.50`. The storefront now floors the percentage at 0.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Envelope, ShieldCheck, SignOut, SpinnerGap, WarningCircle } from "@phosphor-icons/react/dist/ssr";
 import { ApiError } from "@/lib/api-client";
@@ -95,7 +95,10 @@ export default function MembershipClient({ paymentsEnabled = true, offer }: { pa
   // Moving between the landing page and a sign-in step replaces the whole
   // view, often from far down the page.
   const signInStep = pending?.step ?? null;
+  const shownStep = useRef(signInStep);
   useEffect(() => {
+    if (shownStep.current === signInStep) return;
+    shownStep.current = signInStep;
     window.scrollTo(0, 0);
   }, [signInStep]);
 
@@ -122,6 +125,8 @@ export default function MembershipClient({ paymentsEnabled = true, offer }: { pa
     try {
       const newToken = await verifyOtp(pending?.email ?? "", code);
       setMembershipToken(newToken); // triggers the effect above via useMembershipToken()'s subscription
+      // A chosen plan stays until MembershipSubscribe has read it.
+      if (pending?.planId == null) clearPendingSignIn();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "That code didn't work. Check it and try again.");
     } finally {

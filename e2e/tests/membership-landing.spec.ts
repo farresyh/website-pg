@@ -25,7 +25,6 @@ test("the calculator keeps what a plan really leaves after its fee and its limit
 
   // Past Tier 1's limit its saving stops, so Tier 2 overtakes and is listed first.
   const at600 = comparePlans([tier1, tier2], 600);
-  expect(estimatePlan(tier1, 600).capped).toBe(true);
   expect(estimatePlan(tier1, 600).savingRm).toBeCloseTo(15.79, 2);
   expect(at600.best?.plan.name).toBe("Tier 2");
   expect(at600.estimates[0].plan.name).toBe("Tier 2");
@@ -42,8 +41,13 @@ test("a signed-out phone visitor chooses a plan and reaches its payment step", a
   test.slow();
   await page.setViewportSize({ width: 390, height: 844 });
 
+  // A link straight to the calculator keeps its place.
+  await page.goto(`${STOREFRONT_URL}/membership#calculator`);
+  await expect(page.getByRole("heading", { name: "Pay less on every top-up." })).toBeAttached({ timeout: 15_000 });
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
   await page.goto(`${STOREFRONT_URL}/membership`);
-  await expect(page.getByRole("heading", { name: "Pay less on every top-up." })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Pay less on every top-up." })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Email address" })).toHaveCount(0);
   await expect(page.getByText("E2E 284 Diamonds").first()).toBeVisible();
 
@@ -87,4 +91,7 @@ test("a signed-out phone visitor chooses a plan and reaches its payment step", a
 
   await expect(page.getByText(`Subscribing to ${planName}`)).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("Best value")).toHaveCount(0);
+
+  // Nothing of the sign-in is left behind for a later visit.
+  expect(await page.evaluate(() => sessionStorage.getItem("krs_membership_signin"))).toBeNull();
 });
