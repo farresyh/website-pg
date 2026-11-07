@@ -1738,3 +1738,14 @@ Items 163, 170 and 175 closed.
 
 **Not yet seen:** the Link dialog on the live admin, and the first real KOL redemption.
 
+## 2026-11-07 — Gamevion order test at RM0 balance; item 162 moved to group D
+
+**Why.** The founder is not using Gamevion yet, so the repoint stops at 6 of 71 packages. Before parking it, one order at RM0 balance, as ADR-137 decision 11 planned: `supplier_request_logs` held no `createOrder` call for Gamevion, so the order path had never been exercised.
+
+**What ran on production.** The founder ran the tinker script themselves: read the live balance, stop unless it was exactly 0, then `createOrder` through `SupplierAdapterFactory` for `hok:16`, reference `PG-GV402-20261107`, a made-up player ID. Before it: balance 0, debt 0, credit off.
+
+**Result.** `POST /api/order` answered 402 at 10:40:03 UTC, log row 8095: `insufficient_balance`, "Insufficient balance (RM 0.00 < RM 0.71). Please top up." The adapter returned `outcomeConfirmedFailed: true`, `resendUnsafeWithSameReference: false`. RM 0.71 matches the synced price of `hok:16`. Checked afterwards, read-only: 0 orders with that reference, 0 Gamevion packages on.
+
+**What it proves.** The key, the IP allowlist, the order endpoint and our error mapping work. With a made-up player ID it answered 402, not 422, so the balance check appears to come first, which answers ADR-137's open question. Not proven: a delivery, its webhook, drawdown and real cost. Those wait for the funded test order.
+
+**Gotcha.** Supplier Reactivate would not switch on all 71, as earlier notes said. Through `PackageActivation::blocker()` on production today: 6 repointed packages have no blocker, 65 are blocked `supplier_sync`. At RM0 balance those 6 would still sell, so the warning stays, with the right number.
