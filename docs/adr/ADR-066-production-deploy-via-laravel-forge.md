@@ -1,6 +1,6 @@
 # ADR-066: Production deploy via Laravel Forge — reverses ADR-020's Docker Compose containerisation
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-08):** In force; every release must clear OPcache (2026-11-08 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — 2026-09-02, grilled with the founder one decision at a time via `/mattpocock-skills:grilling`. Reverses parts of `ADR-020` (decisions 4, 5, and decision 9's image-pipeline / SSH-deploy half); the reliability core of `ADR-020` and every one of its addenda is unchanged.
 
@@ -68,3 +68,37 @@
 - **Frontends:** 3 Vercel projects on `JW Brothers` (Pro) from `farresyh/topup-website` — `pekangame-storefront` (root `storefront`), `pekangame-admin` (`admin`), `pekangame-reseller` (`reseller`). `NEXT_PUBLIC_API_URL=https://api.pekangame.space` on all three; `NEXT_PUBLIC_SITE_URL=https://pekangame.space` on storefront; `NEXT_PUBLIC_PRIMEUI_LICENSE_KEY` on admin + reseller; `NEXT_PUBLIC_REVERB_*` omitted (Reverb deferred). Domains: `pekangame.space` → storefront (apex canonical, `www` → 307 → apex), `admin.` / `reseller.` → their apps, all "Valid Configuration". DNS was already on Vercel nameservers.
 - **Post-cutover cleanup done by the founder:** `FORGE_DEPLOY_HOOK` GitHub secret added (CI `deploy` job on push to `main` now live); old droplet `topup-prod-sgp1` (id 596906796) destroyed; DO Container Registry `pekangame` deleted. **Still open:** DO Resource Alerts (CPU / memory / disk on `pekangame-prod`) + a DO **Uptime** check on `/up` — DO has a native Uptime tab, so no external UptimeRobot is needed; delete the now-unused `DIGITALOCEAN_ACCESS_TOKEN` GitHub secret.
 - **Missing `APP_KEY` gotcha (found 2026-09-02 via the Price Sync pile-up).** Every scheduled `SyncSupplierPricesJob` had been failing since the cutover with `Illuminate\Encryption\MissingAppKeyException` — the Horizon worker's resolved config had no `APP_KEY`, so the first thing to touch an `encrypted:*` cast (`Supplier.api_config`) threw. It would also have blocked `/admin/suppliers` from saving any supplier. Not caught earlier because nothing on the login / seeder / catalog path exercises encryption (bcrypt + hashed Sanctum tokens don't need `APP_KEY`). Fix: `php artisan key:generate` (if `.env` genuinely had none) → `config:clear && config:cache` → `php artisan horizon:terminate`. Safe when found — **no encrypted rows existed in the prod DB yet**. Lesson for any future fresh-env bring-up: after setting `.env`, run `php artisan tinker --execute="var_dump(config('app.key'))"` **and** bounce Horizon before trusting the queue. See PRD §14's 2026-09-02 Price Sync entry + PR #53.
+
+### 2026-11-08 addendum — a release must clear OPcache, and a full cache must be visible
+
+**Status:** Accepted 2026-11-08 by the founder.
+
+**Context.** Every Laravel call spent about 340 ms starting up, while the code itself took 1 to 6 ms. OPcache was on but full: 128 of 128 MB, interned strings 8 of 8 MB, hit rate 22.6%, 75.6M misses against 22.1M hits. Clearing it took `/up` straight to PHP-FPM from 340 ms to 17 ms and the public API from about 450 ms to about 100 ms.
+
+Each zero-downtime release runs from a new path, so OPcache holds its files as new entries beside the old release's. Old entries never count as wasted (0%), so OPcache never restarts itself, and once full it stops storing what it compiles.
+
+This decision's reload was meant to clear it, but the deploy output on the Forge box (ADR-114) has no reload step, and the cache lived through 9 releases. Its last clear was the system's own PHP update on 2026-11-04 06:21 UTC. The live script itself was not read.
+
+**Decision.**
+
+1. **Every release reloads PHP-FPM**, with Forge's own line. No tool of ours: `$FORGE_PHP_FPM` follows a PHP upgrade by itself, which a script of ours with a socket path would not.
+2. **`process_control_timeout = 35s` goes in first.** At `0`, a reload ends running requests at once, and one of them can be a checkout or a CHIP webhook. 35 s sits above `max_execution_time` (30). The reload can then hold new requests until the slowest one finishes.
+3. **OPcache gets room:** `memory_consumption=256`, `interned_strings_buffer=32`, `max_accelerated_files=32531`. The box has 17,794 PHP files, over the old limit of 10,000. This alone only delays a full cache; decision 1 is the fix.
+4. **`validate_timestamps` stays on.** A wrong-code risk isn't worth the saving.
+5. **A full cache fails `/api/health`** (`php_code_cache`), so UptimeRobot says so, and the Dashboard's System details shows size and hit rate. A dropped reload line once went unseen for weeks; this is the check that catches it. `PhpCodeCache` reads it inside PHP-FPM, the only place it can be seen. Where OPcache is off, it counts as fine.
+
+**Rejected.**
+
+- A scheduled or deploy-time `opcache_reset()` through the FPM socket: no stall at all, and proven on production, but it needs a FastCGI client of ours tied to a PHP version's socket path, to replace one standard line.
+- Clearing from `/api/health` when full: a public read with a side effect, relying on an outside monitor to call it.
+- More memory alone: full again after more releases.
+
+**Founder's steps, in order** (root or Forge; §16 item 176).
+
+1. In `/etc/php/8.4/fpm/php-fpm.conf`, set `process_control_timeout = 35s`.
+2. In Forge's PHP-FPM settings, add the three values of decision 3.
+3. Restart PHP-FPM, at a quiet moment with no order in flight.
+4. At the end of the deploy script, add:
+   `( flock -w 10 9 || exit 1; echo 'Restarting FPM...'; sudo -S service $FORGE_PHP_FPM reload ) 9>/tmp/fpmlock`
+
+**Consequence to track.** After the next release, confirm the Dashboard shows a nearly empty cache. If it doesn't, the reload isn't clearing it on this box, and the socket reset above comes back.
