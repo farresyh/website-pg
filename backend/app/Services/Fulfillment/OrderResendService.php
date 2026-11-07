@@ -53,7 +53,7 @@ final class OrderResendService
             costPriceSen: $liveCostPrice,
             costDiffSen: $liveCostPrice - $order->cost_price,
             affiliateProfitSen: $order->affiliate_profit,
-            platformProfitSen: $order->selling_price - $liveCostPrice - $order->affiliate_profit,
+            platformProfitSen: Order::residualProfit($order->selling_price, $liveCostPrice, $order->affiliate_profit),
             blockedField: $blockedField,
             blockedReason: $blockedReason,
         );

@@ -193,7 +193,8 @@ final class OrderSettlementService
             ->sum(fn (OrderDeliveryLeg $leg) => $leg->costSen());
 
         $affiliateProfit = $locked->affiliate_profit - (int) round($locked->affiliate_profit * $amounts['num'] / $amounts['den']);
-        $platformProfit = ($locked->selling_price - $amounts['cash'] - $amounts['voucher']) - $deliveredCost - $affiliateProfit;
+        $keptRevenue = $locked->selling_price - $amounts['cash'] - $amounts['voucher'];
+        $platformProfit = Order::residualProfit($keptRevenue, $deliveredCost, $affiliateProfit);
 
         $locked->update([
             'platform_profit' => $platformProfit,

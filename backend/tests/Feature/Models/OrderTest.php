@@ -509,4 +509,25 @@ class OrderTest extends TestCase
 
         $this->assertSame(1150, $order->fresh()->effectiveCostPriceSen());
     }
+
+    public function test_residual_profit_is_what_is_left_after_cost_and_the_affiliate(): void
+    {
+        $this->assertSame(500, Order::residualProfit(5000, 4200, 300));
+        $this->assertSame(-100, Order::residualProfit(1000, 1050, 50));
+    }
+
+    /** Item 170: a rule change must not be able to miss a copy of the formula. */
+    public function test_profit_is_computed_only_through_residual_profit(): void
+    {
+        $offenders = [];
+
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(app_path())) as $file) {
+            if ($file->getExtension() === 'php'
+                && preg_match('/selling_price\b[^;\n]*\s-\s[^;\n]*affiliate_?[pP]rofit/', file_get_contents($file->getRealPath()))) {
+                $offenders[] = str_replace(base_path().'/', '', $file->getRealPath());
+            }
+        }
+
+        $this->assertSame([], $offenders, 'Compute profit through Order::residualProfit().');
+    }
 }
