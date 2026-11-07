@@ -78,6 +78,7 @@ class RouteAccessTest extends TestCase
             'GET api/health/whatsapp',
             'GET api/joki/catalog',
             'GET api/membership/me',
+            'GET api/membership/offer',
             'GET api/membership/plans',
             'GET api/membership/subscribe-options',
             'GET api/onboarding/stage-two/{token}',

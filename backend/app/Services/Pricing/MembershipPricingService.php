@@ -3,7 +3,9 @@
 namespace App\Services\Pricing;
 
 use App\Models\Affiliate;
+use App\Models\Order;
 use App\Models\Package;
+use Illuminate\Support\Collection;
 
 /**
  * ADR-027 decision 5, narrowed by its 2026-08-29 addendum decision 16:
@@ -79,11 +81,7 @@ final class MembershipPricingService
      */
     public function realSavingsPercent(Package $package, float $discountPercent): float
     {
-        $normalPriceSen = $this->pricing->calculate(
-            $package->cost_price,
-            $package->standard_selling_price,
-            Affiliate::primary()->storefrontPriceTerms()['markup'],
-        )->sellingPrice;
+        $normalPriceSen = $this->regularPriceSen($package);
 
         if ($normalPriceSen <= 0) {
             return 0.0;
@@ -92,5 +90,50 @@ final class MembershipPricingService
         $memberPriceSen = $this->calculateMemberPrice($package->cost_price, (float) $package->markup_percent, $discountPercent);
 
         return round((1 - $memberPriceSen / $normalPriceSen) * 100, 1);
+    }
+
+    /** What a guest pays for this package: the price a member's saving is measured against. */
+    public function regularPriceSen(Package $package): int
+    {
+        return $this->pricing->calculate(
+            $package->cost_price,
+            $package->standard_selling_price,
+            Affiliate::primary()->storefrontPriceTerms()['markup'],
+        )->sellingPrice;
+    }
+
+    /**
+     * ADR-055 2026-11-07 addendum: the packages the signed-out /membership
+     * page compares, the best sellers of the last 90 days a visitor can
+     * really buy. The price band keeps out the RM1 packages whose saving
+     * is a few sen. First Topup is left out: one purchase per account, so
+     * it says nothing about what a member keeps saving.
+     *
+     * ponytail: First Topup is matched by name, the only mark it has; a package flag if another one-time kind appears.
+     *
+     * @return Collection<int, Package>
+     */
+    public function examplePackages(int $limit = 4): Collection
+    {
+        $sold = Order::query()
+            ->paidAndReal()
+            ->where('paid_at', '>=', now()->subDays(90))
+            ->whereNotNull('package_id')
+            ->selectRaw('package_id, count(*) as sold')
+            ->groupBy('package_id')
+            ->pluck('sold', 'package_id');
+
+        return Package::query()
+            ->whereIn('id', $sold->keys())
+            ->where('is_active', true)
+            ->whereBetween('standard_selling_price', [1_000, 6_000])
+            ->where('name', 'not like', 'First Topup%')
+            ->whereHas('game', fn ($q) => $q->where('is_active', true)->where('member_pricing_enabled', true))
+            ->with('game:id,name')
+            ->get()
+            ->sortByDesc(fn (Package $package) => $sold[$package->id])
+            ->unique(fn (Package $package) => "{$package->game_id}|{$package->name}")
+            ->take($limit)
+            ->values();
     }
 }
