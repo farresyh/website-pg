@@ -388,7 +388,7 @@ class CatalogController extends Controller
     /**
      * ADR-060 PR-4c: the customer-facing price for the `Host`-resolved
      * storefront brand. `calculateForAffiliate` with a null
-     * `wholesaleTierMarkupPct()` (primary brand / lapsed tier) is
+     * `storefrontPriceTerms()` tier (primary brand / lapsed tier) is
      * byte-identical to the old `calculate()` — the primary storefront's
      * listing does not shift by a sen (ADR-060 PR-4b).
      */

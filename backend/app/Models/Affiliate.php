@@ -175,41 +175,12 @@ class Affiliate extends Model
     }
 
     /**
-     * ADR-060 PR-4 (2026-09-06 grill addendum, decision 6): the one place
-     * a storefront's wholesale-tier markup is resolved for pricing.
-     * Returns the subscribed tier's `markup_percent` when the subscription
-     * currently grants the wholesale rate — `active` OR `grace` (ADR-056:
-     * grace ≠ lapsed, a few days' billing lag must not re-price a real
-     * brand) — and null when the tier has lapsed or there is no
-     * subscription at all. Null is exactly what `OrderPricingResolver` /
-     * `PricingService::calculateForAffiliate()` already treat as "fall
-     * back to the standard guest chain".
-     *
-     * Consumed by the catalog, checkout, checkout-preview and
-     * voucher-preview paths once ADR-060 PR-4c wires per-`Host` pricing.
-     * Needs `subscription.tier` loaded — `ResolveStorefrontBrand` already
-     * eager-loads it.
-     */
-    /**
      * ADR-133 decision 13: the one answer to "can the monthly payout reach this affiliate". The
      * payout plan, the portal's withdrawal screen and the readiness checklist all call it.
      */
     public function hasBankDetails(): bool
     {
         return $this->bank_name !== null && $this->bank_account_no !== null && $this->bank_account_holder !== null;
-    }
-
-    public function wholesaleTierMarkupPct(): ?float
-    {
-        $subscription = $this->subscription;
-
-        if ($subscription === null
-            || ! $subscription->grantsWholesaleRate()
-            || $subscription->tier === null) {
-            return null;
-        }
-
-        return (float) $subscription->tier->markup_percent;
     }
 
     /**
@@ -233,9 +204,15 @@ class Affiliate extends Model
      * markup whatever the row stores, so it prices exactly as the primary
      * brand and every margin is `platform_profit`. Checkout, checkout
      * preview, the catalog, voucher preview and the portal's preview read
-     * this; nothing prices from `markup_pct` directly. Needs
-     * `subscription.tier` loaded for a non-owned brand (as
-     * `wholesaleTierMarkupPct()` does).
+     * this; nothing prices from `markup_pct` or a subscription directly.
+     *
+     * A third-party brand gets its tier while the subscription grants the
+     * wholesale rate, `active` OR `grace` (ADR-056: grace is not lapsed, a
+     * few days' billing lag must not re-price a real brand). Lapsed, no
+     * subscription or no tier row is null, which `OrderPricingResolver` and
+     * `PricingService::calculateForAffiliate()` treat as the standard guest
+     * chain. Needs `subscription.tier` loaded; `ResolveStorefrontBrand`
+     * eager-loads it.
      *
      * @return array{tier: ?float, markup: float}
      */
@@ -245,10 +222,12 @@ class Affiliate extends Model
             return ['tier' => null, 'markup' => 0.0];
         }
 
+        $subscription = $this->subscription;
+        $tier = $subscription?->grantsWholesaleRate() ? $subscription->tier : null;
         $markup = (float) $this->markup_pct;
 
         return [
-            'tier' => $this->wholesaleTierMarkupPct(),
+            'tier' => $tier === null ? null : (float) $tier->markup_percent,
             'markup' => min($markup, (float) ($this->max_markup_pct ?? 0)),
         ];
     }

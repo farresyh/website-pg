@@ -39,7 +39,7 @@ final class CheckoutRequest
         public readonly ?int $affiliateId = null,
         public readonly ?int $membershipId = null,
         // ADR-060 PR-4c: the `Host`-resolved storefront brand's active
-        // wholesale-tier markup (`Affiliate::wholesaleTierMarkupPct()`).
+        // wholesale-tier markup (`Affiliate::storefrontPriceTerms()`).
         // Null (the default) means the primary brand / no tier / a lapsed
         // tier — priced exactly as the plain guest chain.
         public readonly ?float $tierMarkupPct = null,
