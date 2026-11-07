@@ -852,6 +852,8 @@ class OrderController extends Controller
             'paidWithVoucher',
             // ADR-118 V18: the KOL code behind `promo_discount_sen`.
             'promoCode:id,code',
+            'attributedPromoCode:id,code,campaign_id',
+            'attributedPromoCode.campaign:id,name',
             // ADR-073 decision 7: which Reseller (wallet) account placed
             // this order, if any — the admin detail screen swaps "Issue
             // Voucher" for "Refund to Wallet" when this is set.

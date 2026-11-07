@@ -18,6 +18,7 @@ class UpdateCampaignRequest extends FormRequest
         return [
             'name' => ['sometimes', 'string', 'max:120'],
             'ended' => ['sometimes', 'boolean'],
+            'last_fee_month' => ['sometimes', 'date_format:Y-m'],
         ];
     }
 }

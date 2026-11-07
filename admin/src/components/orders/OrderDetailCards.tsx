@@ -217,10 +217,18 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
           {!isWalletOrder && (
             <>
               {/* ADR-118 V18: already taken off Selling Price above. */}
-              {order.promo_discount_sen > 0 && (
+              <div className="flex justify-between items-center">
+                <dt className="text-ink-muted">Promo Discount{order.promo_code ? ` (${order.promo_code.code})` : ""}</dt>
+                <dd className={order.promo_discount_sen > 0 ? "font-medium text-success-ink" : "text-ink-muted"}>
+                  {order.promo_discount_sen > 0 ? `-${formatRm(order.promo_discount_sen)}` : "—"}
+                </dd>
+              </div>
+              {order.attributed_promo_code && (
                 <div className="flex justify-between items-center">
-                  <dt className="text-ink-muted">Promo Discount{order.promo_code ? ` (${order.promo_code.code})` : ""}</dt>
-                  <dd className="font-medium text-success-ink">-{formatRm(order.promo_discount_sen)}</dd>
+                  <dt className="text-ink-muted">Counts for KOL</dt>
+                  <dd className="font-medium text-ink">
+                    {order.attributed_promo_code.campaign?.name ?? "—"} ({order.attributed_promo_code.code})
+                  </dd>
                 </div>
               )}
               <div className="flex justify-between items-center">

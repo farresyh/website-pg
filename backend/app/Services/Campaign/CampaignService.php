@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * ADR-118 (2026-11-04 addendum V1–V20): the one owner of KOL promo codes
@@ -145,6 +146,8 @@ final class CampaignService
             return;
         }
 
+        $this->claimLaterOrders($redemption);
+
         if ($redemption->status === PromoCodeRedemption::STATUS_RESERVED) {
             $redemption->update(['status' => PromoCodeRedemption::STATUS_COMMITTED]);
 
@@ -185,17 +188,23 @@ final class CampaignService
 
         if ($restored <= 0) {
             $redemption->update(['status' => PromoCodeRedemption::STATUS_COMMITTED]);
+            $this->claimLaterOrders($redemption);
 
             return;
         }
 
         $redemption->update(['status' => PromoCodeRedemption::STATUS_RESTORED, 'restored_sen' => $restored, 'restored_at' => now()]);
+
+        if ($redemption->heldSen() > 0) {
+            $this->claimLaterOrders($redemption);
+        }
     }
 
     /**
-     * V6: the code a new order on this brand counts for — the one the
-     * customer redeemed and had delivered. Null for a customer no KOL
-     * brought in. Stamped once at order creation, never rewritten.
+     * V6/V21: the code a new order on this brand counts for — the one
+     * the customer kept something from, the oldest if two match (V23).
+     * Null for a customer no KOL brought in. Stamped at order creation; a
+     * stamp with a value is never rewritten.
      */
     public function attributionFor(int $brandId, PromoCustomer $customer): ?int
     {
@@ -204,10 +213,45 @@ final class CampaignService
         }
 
         return $this->redemptionsOnBrand($brandId)
-            ->where('status', PromoCodeRedemption::STATUS_COMMITTED)
+            ->kept()
+            ->orderBy('id')
             ->get()
             ->first(fn (PromoCodeRedemption $r) => PromoCustomer::forOrder($r->order)->sameAs($customer))
             ?->promo_code_id;
+    }
+
+    /**
+     * V22: orders the customer placed before this redemption was kept were
+     * stamped with nothing. After the delivery commits, so it never waits on
+     * another order's row inside a delivery, and a failure can't undo one.
+     *
+     * ponytail: an order committing in the same milliseconds stays unstamped;
+     * a nightly sweep if it is ever seen.
+     */
+    private function claimLaterOrders(PromoCodeRedemption $redemption): void
+    {
+        DB::afterCommit(function () use ($redemption) {
+            try {
+                $first = Order::query()->with('game:id,family')->findOrFail($redemption->order_id);
+                $customer = PromoCustomer::forOrder($first);
+
+                $ids = Order::query()
+                    ->with('game:id,family')
+                    ->where('affiliate_id', $first->affiliate_id)
+                    ->where('id', '>', $first->id)
+                    ->whereNull('attributed_promo_code_id')
+                    ->whereNull('wallet_reseller_id')
+                    ->where('is_test', false)
+                    ->get(['id', 'game_id', 'customer_email', 'customer_phone', 'player_id', 'server_id'])
+                    ->filter(fn (Order $order) => PromoCustomer::forOrder($order)->sameAs($customer))
+                    ->modelKeys();
+
+                Order::query()->whereKey($ids)->whereNull('attributed_promo_code_id')
+                    ->update(['attributed_promo_code_id' => $redemption->promo_code_id]);
+            } catch (Throwable $e) {
+                report($e);
+            }
+        });
     }
 
     public function usedSen(PromoCode $promo, bool $locking = false): int
