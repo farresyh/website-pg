@@ -139,3 +139,5 @@
 **Decision.** `membershipEnabledEffective()` checks `is_owned` too. Every membership path (checkout, preview, catalog, subscribe, reminders) already reads it.
 
 **Rationale.** Item 170's "a member can pay more than a guest on a low tier" needs a third-party brand's wholesale price next to a member price. An owned brand has no tier (2026-10-30 addendum), so its guest price is the standard price, and a member paid less on all 1,293 packages checked on 2026-11-07. With this check a stale switch can't create the case, so no pricing rule is needed.
+
+**`wholesaleTierMarkupPct()` is removed.** It was public, knew nothing of owned brands, and read OhahaStore's leftover subscription (decision 5 of the 2026-10-30 addendum) as a live 5% tier. `storefrontPriceTerms()` was its only caller, so the lookup now sits there and the seam is the only way to read a brand's tier for pricing. `private` would have left a door inside the class for no gain.
