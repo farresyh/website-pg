@@ -198,7 +198,7 @@ export default function MembershipLanding({ offer, onSignIn }: { offer: Membersh
 }
 
 const BUBBLE_CLASS =
-  "relative rounded-lg border-2 border-ink bg-surface-container-lowest px-5 py-4 font-display text-[22px] font-bold uppercase leading-tight text-on-surface neo-sm";
+  "rounded-lg border-2 border-ink bg-surface-container-lowest px-5 py-4 font-display text-[22px] font-bold uppercase leading-tight text-on-surface neo-sm";
 
 const FINAL_BUTTON_CLASS =
   "flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-md border-2 border-ink bg-warning px-6 py-3 font-display text-[15px] font-bold uppercase tracking-wide text-on-warning neo-sm";
