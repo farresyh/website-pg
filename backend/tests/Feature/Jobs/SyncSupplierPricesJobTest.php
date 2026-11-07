@@ -22,6 +22,7 @@ use App\Services\Sync\ProductSyncResult;
 use App\Services\Sync\ProductSyncService;
 use Illuminate\Bus\PendingBatch;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -560,5 +561,74 @@ class SyncSupplierPricesJobTest extends TestCase
         $this->assertSame('failed', $run->status);
         $this->assertSame('Gamevion did not respond', $run->error_message);
         $this->assertNotNull($run->finished_at);
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
+    /** One 30-minute sync of the given catalog, the way the batch runs it. */
+    private function syncAt(Supplier $supplier, array $items, int $minutes): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-07 00:00:00')->addMinutes($minutes));
+        $this->bindFakeAdapter(true, $items);
+        app()->call([new SyncSupplierCatalogJob(PriceSyncRun::query()->create(['status' => 'running']), $supplier), 'handle']);
+    }
+
+    /** @return array{0: Supplier, 1: Package} a package on sale whose item has been active for 6 syncs */
+    private function establishedPackage(array $items): array
+    {
+        config(['packages.pending_reactivation_auto_approve' => true, 'packages.reactivation_stability_syncs' => 6]);
+        $supplier = Supplier::query()->create(['name' => 'Gamevion', 'slug' => 'gamevion', 'api_config' => self::FAKE_CONFIG, 'currency' => 'MYR']);
+        $game = Game::query()->create(['name' => 'PUBG', 'slug' => 'pubg']);
+        $package = Package::query()->create([
+            'game_id' => $game->id, 'name' => '60 UC', 'cost_price' => 1200, 'standard_selling_price' => 1320, 'markup_percent' => 10,
+            'is_active' => true, 'supplier_id' => $supplier->id, 'supplier_package_ref' => 'pubgm_global:60',
+        ]);
+
+        foreach (range(0, 5) as $sync) {
+            $this->syncAt($supplier, $items, $sync * 30);
+        }
+
+        return [$supplier, $package];
+    }
+
+    /**
+     * Item 173: a game skipped on a 503 leaves its row untouched, so the
+     * streak survives and the package is back on the next good sync, not
+     * after 6 more (ADR-137 2026-11-05 addendum, decision 2).
+     */
+    public function test_a_package_skipped_by_one_failed_game_is_back_on_the_next_good_sync(): void
+    {
+        $items = [new SupplierCatalogItem('pubgm_global:60', '60 UC', 'PUBG', 12.0, 'active'), new SupplierCatalogItem('other:1', 'Other', 'Other', 5.0, 'active')];
+        [$supplier, $package] = $this->establishedPackage($items);
+        $this->assertTrue($package->fresh()->is_active);
+
+        $this->syncAt($supplier, [$items[1]], 180);
+        $this->assertFalse($package->fresh()->is_active);
+        $this->assertSame('supplier_sync', $package->fresh()->deactivated_reason);
+
+        $this->syncAt($supplier, $items, 210);
+        $this->assertTrue($package->fresh()->is_active);
+    }
+
+    /** Item 173: the supplier saying inactive is real evidence, so the package waits out the full streak. */
+    public function test_a_package_the_supplier_marks_inactive_waits_six_syncs(): void
+    {
+        $active = new SupplierCatalogItem('pubgm_global:60', '60 UC', 'PUBG', 12.0, 'active');
+        [$supplier, $package] = $this->establishedPackage([$active]);
+
+        $this->syncAt($supplier, [new SupplierCatalogItem('pubgm_global:60', '60 UC', 'PUBG', 12.0, 'inactive')], 180);
+        $this->assertFalse($package->fresh()->is_active);
+
+        foreach (range(1, 5) as $sync) {
+            $this->syncAt($supplier, [$active], 180 + $sync * 30);
+            $this->assertFalse($package->fresh()->is_active, "sync {$sync}");
+        }
+
+        $this->syncAt($supplier, [$active], 360);
+        $this->assertTrue($package->fresh()->is_active);
     }
 }
