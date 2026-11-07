@@ -1888,3 +1888,29 @@ The 2026-11-04 row is as item 159 recorded it, without naming the session; it is
 
 **Not yet seen:** a real message in and out on v0.29.1. Nothing has arrived at this hour.
 
+## 2026-11-08 — Released #737: storefront speed, code cache check, docs audit
+
+**Released on the founder's go-ahead.** `main` `dc828aee`, box release `82383059`, CI, `deploy` and all four Vercel projects green. Ships #734, #735 and #736. No migration, no env change. 0 paid orders undelivered before it.
+
+**Measured after release, the same way as before.**
+
+| Measure | Before the work | After |
+| --- | --- | --- |
+| Order page, load event, desktop | 9 to 14 s | 0.5 to 0.7 s |
+| Order page, load event, phone | 4 to 6 s | 0.5 to 0.6 s |
+| Page after 18 s of quiet | 0.9 to 3.0 s | 0.22 to 0.29 s |
+| 20 bank logos after 17 s of quiet | about 10 s | 0.19 to 0.40 s |
+| `/up`, straight to PHP-FPM | 340 ms | 18 to 21 ms |
+
+**Item 176 closed.** The deploy output shows `Restarting FPM...` for the first time. A read of OPcache through FPM, run by the founder: started 2026-11-07 18:43:55 UTC, the deploy's moment, not full, 73 of 256 MB, strings 15.7 of 32 MB, 1,581 scripts, hit rate 99.18%. So a reload does clear it on this box, and the socket reset stays unneeded.
+
+**OpenWA v0.29.1 proven both ways.** The founder's test message reached `cs_messages` (272) with a Shadow draft. Three notifications went out with a WhatsApp id: a status card, a voucher and a delivered receipt.
+
+**Seen while checking, not from this work.**
+- Order `PG-7JUVSOBGJWJJ` failed at DigiFlazz, `rc` 02, on First Top Up 250+250. Voucher 13 (RM17.69) was issued and spent on order 137, which delivered.
+- The low-balance alert fired at 15:59, 18:33 and 18:43 UTC, and then cleared: DigiFlazz's floor went from IDR 10,000,000 to 5,000,000, and 9,533,687 is above the 7,581,286 forecast. Recovery resets the claim, so a floor moved up and down can send it twice in one day. By design.
+
+**Gotcha.** `gh run list --limit 1` straight after a push returned the previous run, so a watch finished early. The merge guard read the real checks and held. Pick the run by `--commit`.
+
+**Not yet seen:** a KOL link and the bank logos in a real TikTok or Instagram browser.
+
