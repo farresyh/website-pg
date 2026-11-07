@@ -1783,6 +1783,20 @@ Items 163, 170 and 175 closed.
 
 **Not yet seen:** either change in a real TikTok or Instagram browser.
 
+## 2026-11-08 — The proxy stops holding visitors, and the game card stops over-downloading
+
+**Why.** The founder still felt pages load slowly. PageSpeed scored the homepage 95 and 96 on mobile, because it tests one page once, and it had no real-user data. A read-only stress test found the waits it couldn't see: see the ADR-078 2026-11-08 addendum for the measurements.
+
+**Built on `fix/storefront-proxy-off-the-hot-path`, into `staging`, not released.** No migration, no env change. `lib/stale-cache.ts` serves an expired answer and refreshes behind it, one load per key; `proxy.ts` uses it for both reads, reads them together, and times out at 2 s. `images/` leaves the matcher. `ProductCard` has `sizes`, and an ESLint rule requires `sizes` on a `fill` Image. The storefront gains `npm test`, run in CI.
+
+**Verified.** 8 unit tests, red first. New `storefront-proxy.spec.ts` drives the real file: a saved redirect fires, an unknown host gets 503, and an image on that host gets 200. With the old matcher put back, that last test failed 503 against 200, so it can fail. The checkout, SEO, membership and promo-link specs pass. `tsc` and `eslint` clean; a test file with a bare `fill` Image failed lint.
+
+**Gotchas.**
+- The first origin control was wrong: `api.pekangame.space/robots.txt` answered `cf-cache-status: HIT`, so it never reached the box. A unique query string forces a real origin read.
+- `npx lighthouse` is blocked in auto mode, and the PageSpeed API hit its daily quota. Expanding the rows on `pagespeed.web.dev` with Playwright reads the same detail.
+
+**Not yet seen:** the same measurements on production after release, and a refresh running behind a response on Vercel. If one never ran, the hour limit would still force a fresh read.
+
 ## 2026-11-08 — OPcache was full; cleared by hand; a full cache now shows
 
 **Why.** While measuring the slow pages, an empty route took 340 ms straight to PHP-FPM and 1 ms inside Laravel. OPcache was on and full. Cause and decisions: ADR-066 2026-11-08 addendum.
