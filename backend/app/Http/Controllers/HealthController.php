@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Cache\PhpCodeCache;
 use App\Services\OpenWa\OpenWaClient;
 use App\Services\OpenWa\OpenWaSessionStatus;
 use App\Services\Scheduling\SchedulerLiveness;
@@ -27,16 +28,21 @@ use Throwable;
  *
  * `scheduler` (ADR-122): cron can stop, or one task can be held off by a
  * stuck lock, and nothing inside the app can alert on that.
+ *
+ * `php_code_cache` (ADR-066 2026-11-08 addendum): a full OPcache leaves the
+ * site working and every API call about four times slower, which nothing
+ * else reports.
  */
 class HealthController extends Controller
 {
-    public function check(SchedulerLiveness $liveness): JsonResponse
+    public function check(SchedulerLiveness $liveness, PhpCodeCache $codeCache): JsonResponse
     {
         $checks = [
             'database' => $this->checkDatabase(),
             'queue' => $this->checkQueue(),
             'horizon' => config('queue.default') !== 'redis' || $this->checkHorizon(),
             'scheduler' => $this->checkScheduler($liveness),
+            'php_code_cache' => ! $codeCache->isFull(),
         ];
 
         $healthy = ! in_array(false, $checks, true);

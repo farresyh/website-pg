@@ -15,6 +15,7 @@ use App\Models\Withdrawal;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Currency\LandedCostRate;
+use App\Services\Cache\PhpCodeCache;
 use App\Services\Dashboard\DashboardService;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\OpenWa\OpenWaSessionStatus;
@@ -44,7 +45,7 @@ class DashboardServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->dashboard = new DashboardService(new OpenWaSessionStatus, app(LandedCostRate::class), new SchedulerLiveness, app(SupplierBufferService::class));
+        $this->dashboard = new DashboardService(new OpenWaSessionStatus, app(LandedCostRate::class), new SchedulerLiveness, app(SupplierBufferService::class), new PhpCodeCache);
     }
 
     /**
