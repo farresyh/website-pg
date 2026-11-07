@@ -64,3 +64,8 @@ The first plan appended the parameter inside `ChipGateway::createPayment` and ca
 - **What this accepts:** a customer whose bank is not one of the 20 (a bank CHIP adds later, or the corporate Maybank2E) has no FPX path on our page and pays by DuitNow QR instead. The "A new CHIP bank" line under Consequence to track is now: one JSON line, one logo, one release, and until then those customers cannot use FPX.
 - **Unchanged:** the backend still accepts an FPX request with no `fpx_bank_code` (the helper adds none), and the plain FPX button still shows when the bank list is empty.
 - **Also in the same change:** the tiles are smaller (storefront: 6 columns on desktop, 4 on mobile, tile `h-10`, logo `max-h-5`; the portal grid is unchanged in size).
+
+### 2026-11-07 addendum: bank logos load up front
+
+A customer saw blank bank tiles in TikTok's browser. The logos were small and fast from the server, but `next/image` loaded them lazily, one by one as the customer scrolled, and served them with `max-age=0`, so every visit repeated it. The storefront's logos are now webp files (238 KB to 103 KB for 20), served directly with `unoptimized`, loaded eagerly, and cached for 30 days. Rename a file to replace it sooner. The partner portal keeps its own PNG copies.
+

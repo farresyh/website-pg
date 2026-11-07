@@ -444,3 +444,15 @@ Refinements made while building PR 1, test-first against V1–V20. None changes 
 - The customer list has no profit column: profit stays on the scorecard, from the ledger.
 - Customer Analytics' campaign filter is still out (V20).
 
+### 2026-11-07 addendum: a link's code applies itself, and says so (revises V16)
+
+**Context.** Read-only check on production: 109 clicks, 0 redemptions, and PekanGame took 3 checkouts in that time, so most visitors stop before checkout. All four live codes quoted correctly through `preview-totals`, and the whole flow works in e2e. One real flaw: V16 only prefilled the code. On a phone the field sits below the pay button, which stays on screen showing the full price, and paying without pressing Apply sent no code at all. A customer who came for a discount could pay full price without noticing, and the sale wouldn't count for the KOL.
+
+**Decision.**
+1. **A link's code applies itself once the email and phone are in.** It can't apply sooner: the new-customer rule needs them. It waits 500 ms after the last keystroke and tries once per email and phone, so a refusal doesn't loop and a corrected number gets a new try. The customer can Remove it, and it stays removed. A code the customer types still takes Apply.
+2. **Not for a signed-in member, or with a voucher applied.** A member's price beats a promo (decision 4), and a voucher was quoted without one, so both stay the customer's choice.
+3. **A note under the header says the code is saved,** on every page, in the page flow, closable. It names no amount or percent: the code is for new customers, and CAMP-3 shows RM saved, never a percentage. It stops when the code is refused or used. It can't tell whether a code is real, because `POST /api/promo-clicks` is deliberately no oracle, so a typed-in fake code shows it until checkout refuses the code.
+4. **Nothing changes on the server.** The trigger is client-side; `preview-totals`, checkout, reservation and attribution all run as before, so V16's rule stands: storage never attributes an order, the code on the order does.
+
+**Consequence to track.** Clicks are the only signal before checkout, so this can't show where the other visitors stop. Watch redemptions against checkouts after release. The in-app browsers of TikTok and Instagram keep their own storage, so a code does not follow a customer into Chrome.
+
