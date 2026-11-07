@@ -3,6 +3,7 @@
 namespace App\Services\Pricing;
 
 use App\Models\Affiliate;
+use App\Models\AffiliateGame;
 use App\Models\Order;
 use App\Models\Package;
 use Illuminate\Support\Collection;
@@ -113,7 +114,7 @@ final class MembershipPricingService
      *
      * @return Collection<int, Package>
      */
-    public function examplePackages(int $limit = 4): Collection
+    public function examplePackages(int $brandId, int $limit = 4): Collection
     {
         $sold = Order::query()
             ->paidAndReal()
@@ -128,6 +129,7 @@ final class MembershipPricingService
             ->where('is_active', true)
             ->whereBetween('standard_selling_price', [1_000, 6_000])
             ->where('name', 'not like', 'First Topup%')
+            ->whereNotIn('game_id', AffiliateGame::hiddenGameIdsFor($brandId))
             ->whereHas('game', fn ($q) => $q->where('is_active', true)->where('member_pricing_enabled', true))
             ->with('game:id,name')
             ->get()

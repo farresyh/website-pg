@@ -100,22 +100,25 @@ export default function MembershipLanding({ offer, onSignIn }: { offer: Membersh
           </ul>
         </div>
 
-        {example && topPlan && (
-          <div className="relative hidden h-[440px] overflow-hidden rounded-lg border-2 border-ink bg-warning neo-lg lg:block">
-            {offer.isPrimaryBrand && (
-              <>
-                <Image src="/images/membership/mascot-pointing.png" alt="" width={397} height={760} priority className="absolute -bottom-3 left-6 h-[430px] w-auto" />
-                <p className="absolute right-6 top-8 w-[230px] rounded-lg border-2 border-ink bg-surface-container-lowest px-5 py-4 font-display text-[22px] font-bold uppercase leading-tight text-on-surface neo-sm">
-                  You could be paying less.
-                  <span aria-hidden className="absolute -left-[9px] top-8 size-4 rotate-45 border-b-2 border-l-2 border-ink bg-surface-container-lowest" />
-                </p>
-              </>
-            )}
-            <div className={`absolute w-[268px] ${offer.isPrimaryBrand ? "bottom-7 right-6" : "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"}`}>
+        {example && topPlan &&
+          (offer.isPrimaryBrand ? (
+            <div className="relative hidden h-[440px] overflow-hidden rounded-lg border-2 border-ink bg-warning neo-lg lg:block">
+              <Image src="/images/membership/mascot-pointing.png" alt="" width={397} height={760} priority className="absolute -bottom-3 left-6 h-[430px] w-auto" />
+              <p className={`absolute right-6 top-8 w-[230px] ${BUBBLE_CLASS}`}>
+                You could be paying less.
+                <span aria-hidden className="absolute -left-[9px] top-8 size-4 rotate-45 border-b-2 border-l-2 border-ink bg-surface-container-lowest" />
+              </p>
+              <div className="absolute bottom-7 right-6 w-[268px]">
+                <SampleReceipt example={example} plan={topPlan} planIndex={topPlanIndex} />
+              </div>
+            </div>
+          ) : (
+            // Another brand's panel: its own theme tint, and no PekanGame mascot.
+            <div className="hidden h-[440px] flex-col justify-center gap-5 rounded-lg border-2 border-ink bg-primary-fixed px-14 neo-lg lg:flex">
+              <p className={BUBBLE_CLASS}>You could be paying less.</p>
               <SampleReceipt example={example} plan={topPlan} planIndex={topPlanIndex} />
             </div>
-          </div>
-        )}
+          ))}
       </section>
 
       <section id="calculator" ref={calculatorRef} className="scroll-mt-32">
@@ -193,6 +196,9 @@ export default function MembershipLanding({ offer, onSignIn }: { offer: Membersh
     </div>
   );
 }
+
+const BUBBLE_CLASS =
+  "relative rounded-lg border-2 border-ink bg-surface-container-lowest px-5 py-4 font-display text-[22px] font-bold uppercase leading-tight text-on-surface neo-sm";
 
 const FINAL_BUTTON_CLASS =
   "flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-md border-2 border-ink bg-warning px-6 py-3 font-display text-[15px] font-bold uppercase tracking-wide text-on-warning neo-sm";

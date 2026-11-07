@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Http\Controllers;
 
+use App\Models\AffiliateGame;
 use App\Models\Game;
 use App\Models\MembershipPlan;
 use App\Models\Order;
@@ -158,6 +159,18 @@ class MembershipOfferTest extends TestCase
         $this->sold($two, 1);
 
         $this->assertCount(1, $this->getJson('/api/membership/offer')->assertOk()->json('examples'));
+    }
+
+    public function test_a_game_this_brand_hides_is_never_an_example(): void
+    {
+        $hidden = $this->package('Hidden here', 2000);
+        $this->sold($hidden, 5);
+        $this->sold($this->package('Sold here', 2000), 1);
+        AffiliateGame::query()->create(['affiliate_id' => $this->primaryAffiliate()->id, 'game_id' => $hidden->game_id, 'is_visible' => false]);
+
+        $examples = $this->getJson('/api/membership/offer')->assertOk()->json('examples');
+
+        $this->assertSame(['Sold here'], array_column($examples, 'package_name'));
     }
 
     public function test_only_the_primary_brand_is_flagged_for_its_mascot(): void

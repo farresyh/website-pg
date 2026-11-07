@@ -88,14 +88,17 @@ class MembershipController extends Controller
      * ADR-055 2026-11-07 addendum: what the signed-out /membership page
      * needs, kept apart from plans() because that one is read on every
      * page and stays narrow. Every figure comes from the seams checkout
-     * and subscribe use. Prices are brand-free: Membership only runs on
-     * our own brands, which add no markup (ADR-061).
+     * and subscribe use. Prices need no brand terms: Membership only runs
+     * on our own brands, which add no markup (ADR-061). The examples do
+     * depend on the brand, which may hide a game (ADR-060 PR-6).
      */
     public function offer(MembershipSubscriptionService $subscriptions): JsonResponse
     {
+        $brand = $this->brand->get();
+
         $offer = Cache::store(config('cache.catalog_packages_store'))
             ->tags(['catalog.packages', 'catalog.public.membership.offer'])
-            ->remember('catalog.public.membership.offer', 60, function () use ($subscriptions) {
+            ->remember("catalog.public.membership.offer.{$brand->id}", 60, function () use ($subscriptions, $brand) {
                 $plans = MembershipPlan::query()->orderBy('id')->get();
                 $representative = $this->membershipPricing->representativePackage();
 
@@ -110,7 +113,7 @@ class MembershipController extends Controller
                             ? $this->membershipPricing->realSavingsPercent($representative, (float) $plan->discount_percent)
                             : null,
                     ])->all(),
-                    'examples' => $this->membershipPricing->examplePackages()->map(fn (Package $package) => [
+                    'examples' => $this->membershipPricing->examplePackages($brand->id)->map(fn (Package $package) => [
                         'game_name' => $package->game->name,
                         'package_name' => $package->name,
                         'regular_sen' => $this->membershipPricing->regularPriceSen($package),
@@ -123,7 +126,7 @@ class MembershipController extends Controller
                 ];
             });
 
-        return response()->json([...$offer, 'is_primary_brand' => (bool) $this->brand->get()->is_primary]);
+        return response()->json([...$offer, 'is_primary_brand' => (bool) $brand->is_primary]);
     }
 
     public function me(Request $request): JsonResponse

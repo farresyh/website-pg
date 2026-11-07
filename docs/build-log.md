@@ -1767,5 +1767,7 @@ Items 163, 170 and 175 closed.
 - An `IntersectionObserver` misses a jump straight past a section, so the sticky button stayed on at the page end. A very large `rootMargin` makes "above the viewport" count as intersecting.
 - `text-tertiary` fell to about 2:1 on the light Bumblebee, Red Giants, Emerald and Cobalt presets, so the page doesn't use it.
 
-**Not yet seen:** the page on a real phone, or the mail-app round trip in a TikTok or Instagram in-app browser.
+- The first offer was cached once for every brand, so a game hidden on a brand could still appear as an example there. OhahaStore hid nothing on 2026-11-07, so nothing showed; a test now covers it.
+
+**Not yet seen:** the page on a real phone, the mail-app round trip in a TikTok or Instagram in-app browser, or OhahaStore itself: local has no such brand, so its panel was checked by forcing the non-primary branch with the Bumblebee theme.
 
