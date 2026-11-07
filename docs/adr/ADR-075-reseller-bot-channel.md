@@ -1,6 +1,6 @@
 # ADR-075: Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology
 
-> **Standing (2026-11-04):** In force; group registry generalised to resellers and suppliers by [ADR-125](./ADR-125-login-top-up-manual-supplier.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-08):** In force; group registry generalised to resellers and suppliers by [ADR-125](./ADR-125-login-top-up-manual-supplier.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-09-04, same grill session as ADR-072/073/074. Depends on ADR-073 (consumes the same order-placement contract as ADR-074, over a different transport).
 
@@ -132,3 +132,9 @@ above stays as the starting point if it is ever reopened.
 ### 2026-11-02 addendum — chat-list rehydration asked for upstream
 
 Still true on OpenWA v0.27.1 (`SessionService.listChats()` reads only the engine's in-memory list): after the 2026-11-02 restart the `customer-support` dashboard showed its 5 groups and none of its 20 one-to-one chats (187 messages, all still in `messages`). Instead of the dropped fork, the founder filed the 2026-10-02 design upstream as rmyndharis/OpenWA#1978 (seed chat summaries from `messages` at session ready, honouring `chat_states` and `lid_mappings`). If it ships, it arrives through a normal upgrade (`scripts/openwa-upgrade.sh`); nothing is patched locally.
+
+### 2026-11-08 addendum — the chat list survives a restart, on OpenWA v0.29.1
+
+The gap in the 2026-11-02 addendum is closed upstream by rmyndharis/OpenWA#1992, which ships from v0.28.0. Production moved from v0.27.1 to v0.29.1 on 2026-11-07 through `scripts/openwa-upgrade.sh`. After the restart the sessions list 19 chats (`reseller-bot`, 10 of them one-to-one) and 38 (`customer-support`, 31), where the list had fallen to 8 with one one-to-one chat on 2026-11-04. The advice not to pin, mute or archive customer chats no longer has a reason to come up.
+
+A Baileys group message now also produces `message.ack`. Neither of our webhooks subscribes to it. Keep it that way, or expect a call to Laravel per group member receipt.

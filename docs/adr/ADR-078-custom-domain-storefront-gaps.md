@@ -1,6 +1,6 @@
 # ADR-078: Custom-domain storefront gaps — dynamic CORS, edge-cache staleness, membership-toggle visibility
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-08):** In force; decision 2's blocking refresh replaced by the 2026-11-08 addendum. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-09-07, grilled with the founder in the same three-round session as ADR-077, split out by natural boundary (this is ADR-060's lineage — the gaps that surfaced once a real custom affiliate domain went live — not the platform-wide cache work). No code in this ADR.
 
@@ -77,3 +77,36 @@ Shipped as decision 2 specified, with the propagation hook covering PR-1's CORS 
 - **Correction to the decision's premise:** `php artisan route:cache` does **not** currently throw on this Laravel version — a closure `GET /` route serialises fine via `Laravel\SerializableClosure` (verified locally before and after the change). The `RouteNotFoundException` from `welcome.blade.php`'s guarded `route('login')` path on bot traffic is the real, reproduced motivation; removing the Blade view also removes the only closure/`route()` call from `routes/web.php`, so the change still stands on cleanliness grounds — just not because `route:cache` was broken.
 - Nothing depends on `GET /` returning HTML: the DO uptime check + Forge health probe target `/up` (framework health route) and `/api/health`; a JSON 200 satisfies a plain reachability probe too.
 - `php artisan route:cache` run clean locally; CI's existing steps cover it on deploy.
+
+### 2026-11-08 addendum — the proxy never makes a visitor wait for a refresh
+
+**Status:** Accepted 2026-11-08 by the founder, after a read-only stress test on production. Revises decision 2. Its 15 s freshness and the primary-host short-circuit stand.
+
+**Context.** Decision 2 called the extra backend calls negligible. Measured on production, they weren't. The cost was never the number of calls: each one held the request behind it.
+
+- When the 15 s expired, every request waited for Laravel, with no timeout and no sharing between concurrent requests. A page after 18 s of quiet took 0.9 to 3.0 s against about 0.5 s straight after. On a low-traffic site most visitors arrive after a quiet gap.
+- The matcher covered `public/`, so a page's 20 bank logos each ran the proxy even when Vercel held the file. After 17 s of quiet those 20 took about 10 s, from Malaysia and from the Singapore box alike. The partner portal excludes `images/` and served the same files in 0.1 to 0.4 s.
+- The rule list being fetched was empty: `redirects` has 0 rows.
+- A separate cause made every Laravel call slow while this was measured (OPcache full, [ADR-066](./ADR-066-production-deploy-via-laravel-forge.md) 2026-11-08 addendum). Clearing it took the 20 logos from about 10 s to 0.7 to 1.7 s, so both causes were real and neither alone explained the delay.
+
+**Decision.**
+
+1. **An expired answer is served at once and replaced behind it.** `lib/stale-cache.ts` holds this for both the redirect rules and the host verdicts, using the proxy's `event.waitUntil`.
+2. **One load at a time per key.** Concurrent readers share it, so a burst of requests can't become a burst on the API.
+3. **A reader waits only when there is no answer, or the answer is over an hour old.** A brand-new instance still blocks once: serving a first request with no rules, or no verdict on a suspended domain, is worse than one short wait.
+4. **Every proxy read has a 2 s timeout.** Past it the request goes on as a failed read does today: redirects keep the last rules, the host check serves.
+5. **A failed redirect read keeps the last rules.** A non-200 used to replace them with nothing.
+6. **`images/` leaves the matcher**, the same exclusion the portal has. A redirect can't be set on a file under `public/`, and an image on an unknown host is harmless.
+7. **A `fill` Image must have `sizes`.** Without it the browser assumes the image fills the screen: the game card downloaded a 1920px file for a 280px slot (2.5 MB on the desktop homepage). `ProductCard` was the one offender of 25 tags, and an ESLint rule now fails the build on another.
+
+**Stale answers are safe here.** A redirect one refresh late costs nothing. A suspended domain may show one more page, but `ResolveStorefrontBrand` still refuses it on every API call, `/checkout` included, so it can't sell. A newly verified domain may show the unavailable page once more; the next request is right.
+
+**Rejected.**
+
+- A longer TTL: the same wait, less often, and slower for the admin.
+- Next's Data Cache: fetch cache options have no effect in Proxy (Next's own docs).
+- Skipping by file extension in the matcher: `llms.txt` would lose its checks, and a future `.html` redirect would never fire.
+- Adding `ohahastore.com` to `NEXT_PUBLIC_PRIMARY_HOSTS`: that list must match the backend's, which means something else there.
+- Reading redirects only when a page is not found: it changes what a redirect means, and a rule may sit on a live path.
+
+**Consequence to track.** Rules are still read without a host, so only the primary brand's redirects exist, and they fire on every brand. No effect at 0 rows; it matters at the first affiliate redirect. A file later added at the top of `public/`, outside `images/`, runs the proxy until it is excluded too.

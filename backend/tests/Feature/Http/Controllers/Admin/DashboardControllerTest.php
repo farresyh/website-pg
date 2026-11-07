@@ -28,6 +28,7 @@ class DashboardControllerTest extends TestCase
             'stuck_orders' => ['value', 'definition'],
             'pending_payments' => ['value', 'definition'],
             'queue' => ['pending', 'failed', 'definition'],
+            'php_code_cache' => ['active', 'full', 'used_mb', 'size_mb', 'hit_rate', 'definition'],
             'scheduled_tasks' => ['tasks' => [['name', 'tier', 'stale', 'last_ok_at', 'last_failed_at', 'last_error', 'last_runtime_seconds']], 'definition'],
         ]);
     }

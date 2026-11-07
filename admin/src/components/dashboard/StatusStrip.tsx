@@ -203,6 +203,17 @@ export function StatusStrip({ health }: { health: DashboardHealth }) {
           <Group title="Orders & queue">
             <Row label={<>Stuck or needs review <InfoTooltip definition={health.stuck_orders.definition} /></>} value={health.stuck_orders.value} />
             <Row label={<>Pending payments <InfoTooltip definition={health.pending_payments.definition} /></>} value={health.pending_payments.value} />
+            {health.php_code_cache.active && (
+              <Row
+                label={
+                  <>
+                    Code cache {health.php_code_cache.full && <Pill tone="danger">Full</Pill>}{" "}
+                    <InfoTooltip definition={health.php_code_cache.definition} />
+                  </>
+                }
+                value={`${health.php_code_cache.used_mb} of ${health.php_code_cache.size_mb} MB · ${health.php_code_cache.hit_rate}% hits`}
+              />
+            )}
             <Row
               label={<>Queue <InfoTooltip definition={health.queue.definition} /></>}
               value={

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Http\Controllers;
 
+use App\Services\Cache\PhpCodeCache;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -38,6 +39,26 @@ class HealthControllerTest extends TestCase
         $this->getJson('/api/health')
             ->assertStatus(503)
             ->assertJsonPath('checks.horizon', false);
+    }
+
+    /**
+     * ADR-066 2026-11-08 addendum: the site still answers with a full code
+     * cache, only about four times slower, so nothing else would ever say so.
+     */
+    public function test_reports_degraded_when_the_php_code_cache_is_full(): void
+    {
+        $this->mock(PhpCodeCache::class, fn ($mock) => $mock->shouldReceive('isFull')->andReturn(true));
+
+        $this->getJson('/api/health')
+            ->assertStatus(503)
+            ->assertJsonPath('checks.php_code_cache', false);
+    }
+
+    public function test_reports_ok_with_room_in_the_php_code_cache(): void
+    {
+        $this->getJson('/api/health')
+            ->assertOk()
+            ->assertJsonPath('checks.php_code_cache', true);
     }
 
     public function test_reports_ok_when_horizon_is_running(): void

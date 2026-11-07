@@ -13,6 +13,7 @@ use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppPendingLink;
 use App\Models\Withdrawal;
 use App\Services\Accounting\SupplierLedgerEntryType;
+use App\Services\Cache\PhpCodeCache;
 use App\Services\CircuitBreaker\CircuitBreaker;
 use App\Services\Currency\LandedCostRate;
 use App\Services\Joki\JokiBoard;
@@ -54,6 +55,7 @@ final class DashboardService
         private readonly LandedCostRate $landedCost,
         private readonly SchedulerLiveness $schedulerLiveness,
         private readonly SupplierBufferService $buffers,
+        private readonly PhpCodeCache $codeCache,
     ) {}
 
     /**
@@ -68,6 +70,7 @@ final class DashboardService
         'stuck_orders' => 'Paid orders that have not finished as expected: the supplier gave an unclear answer (you need to confirm it), still processing after %d minutes, or still waiting longer than that supplier usually takes. The system keeps re-checking them; open any that stay here in Orders. Joki orders are counted on the Joki card instead.',
         'pending_payments' => 'Orders where the customer started paying but CHIP has not confirmed it yet. The system re-checks them with CHIP automatically. Most are customers who left the payment page, which is normal.',
         'queue' => 'Order deliveries waiting to be sent to a supplier right now, and ones that failed to run. A few waiting is normal and clears within seconds. Any failed one means a delivery job crashed: tell the developer.',
+        'php_code_cache' => 'Memory where the server keeps its code ready to run. When it is full, every order, payment and page takes about four times longer, though nothing shows an error. Each release should clear it, so a full one means a release did not.',
         'scheduled_tasks' => 'Jobs the system runs automatically on a timer: checking supplier balances, backups, price sync, payment checks and more. "Late" means a job missed its usual run. A late critical job also turns the public health check red, which sends an UptimeRobot alert. This shows that a job ran, not that everything inside it went well.',
     ];
 
@@ -231,6 +234,11 @@ final class DashboardService
                 'pending' => (int) collect(self::MONITORED_QUEUES)->sum(fn (string $queue) => Queue::size($queue)),
                 'failed' => $failedJobs,
                 'definition' => self::DEFINITIONS['queue'],
+            ],
+            // ADR-066 2026-11-08 addendum — the detail behind /api/health's `php_code_cache` boolean.
+            'php_code_cache' => [
+                ...$this->codeCache->status(),
+                'definition' => self::DEFINITIONS['php_code_cache'],
             ],
             // ADR-122 — the detail behind /api/health's `scheduler` boolean.
             'scheduled_tasks' => [
