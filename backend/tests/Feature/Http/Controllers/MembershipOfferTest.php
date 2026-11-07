@@ -159,4 +159,9 @@ class MembershipOfferTest extends TestCase
 
         $this->assertCount(1, $this->getJson('/api/membership/offer')->assertOk()->json('examples'));
     }
+
+    public function test_only_the_primary_brand_is_flagged_for_its_mascot(): void
+    {
+        $this->getJson('/api/membership/offer')->assertOk()->assertJsonPath('is_primary_brand', true);
+    }
 }

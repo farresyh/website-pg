@@ -50,14 +50,14 @@ test("a signed-out phone visitor chooses a plan and reaches its payment step", a
   // Below break-even: the saving, the fee and the break-even are all on show, no loss figure, and a plan can still be tried.
   await page.getByRole("button", { name: "RM100", exact: true }).click();
   await expect(page.getByText(/pays for itself at about RM\d+ a month/)).toBeVisible();
-  await expect(page.getByText("Membership cost").first()).toBeVisible();
+  await expect(page.getByText("Membership costs").first()).toBeVisible();
   await expect(page.getByRole("button", { name: /^Try .+ for 30 days$/ }).first()).toBeVisible();
   await expect(page.locator("#calculator").getByText(/-RM/)).toHaveCount(0);
 
   await page.getByRole("button", { name: "RM600", exact: true }).click();
 
   // The sticky button waits until the calculator is gone and clears the page end.
-  const sticky = page.getByRole("button", { name: /keep RM/ });
+  const sticky = page.locator("div.fixed").getByRole("button", { name: /^Subscribe to/ });
   await expect(sticky).toHaveCount(0);
   await page.getByRole("heading", { name: "How it works" }).evaluate((e) => window.scrollTo(0, e.getBoundingClientRect().top + scrollY - 120));
   await expect(sticky).toBeVisible();

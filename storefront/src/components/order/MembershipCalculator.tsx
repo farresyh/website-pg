@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, CaretDown } from "@phosphor-icons/react/dist/ssr";
+import { ArrowRight, CaretDown, Check } from "@phosphor-icons/react/dist/ssr";
 import type { MembershipExample } from "@/lib/membership";
 import { formatRm, SPEND_MAX_RM, SPEND_MIN_RM, SPEND_PICKS_RM, type PlanEstimate } from "@/lib/membership-calculator";
 import Button from "@/components/ui/Button";
@@ -9,9 +9,9 @@ import Button from "@/components/ui/Button";
  * The plan chooser. The first estimate is the featured plan, a full card
  * with a button at every spend. On a phone the other plan is a row that
  * opens, so the answer stays on the slider's screen; on desktop every plan
- * is a card. Below break-even it leads with the saving and shows the fee
- * and the break-even beside it, never a net loss figure (ADR-055
- * 2026-11-07 addendum).
+ * is a card. One headline number, the saving, rises smoothly with the
+ * spend. The cost sits under it, and what is left appears once a plan
+ * pays for itself (ADR-055 2026-11-07 addendum).
  */
 export default function MembershipCalculator({
   spendRm,
@@ -76,7 +76,7 @@ export default function MembershipCalculator({
         {!best && featured.breakEvenRm !== null && (
           <p className="mt-3 text-sm leading-normal">
             {featured.plan.name} pays for itself at about RM{featured.breakEvenRm} a month
-            {example && `, around ${Math.ceil(featured.breakEvenRm / example.regularRm)} top-ups of ${example.packageName}`}.
+            {example && `. That's around ${Math.ceil(featured.breakEvenRm / example.regularRm)} top-ups of ${example.packageName}`}.
           </p>
         )}
       </div>
@@ -89,7 +89,10 @@ export default function MembershipCalculator({
             <details className="group rounded-lg border-2 border-ink bg-surface-container-low lg:hidden">
               <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5">
                 <span className="font-display text-[15px] font-bold">{estimate.plan.name}</span>
-                <span className="ml-auto font-mono text-[15px] font-bold text-on-surface-variant">saves {formatRm(estimate.savingRm)}</span>
+                <span className="ml-auto text-right font-mono text-on-surface-variant">
+                  <span className="block text-[15px] font-bold">saves {formatRm(estimate.savingRm)}</span>
+                  <span className="block text-xs">costs {formatRm(estimate.chargeRm)}</span>
+                </span>
                 <CaretDown size={16} weight="bold" className="shrink-0 transition-transform group-open:rotate-180" />
               </summary>
               <div className="border-t-2 border-ink p-4">
@@ -119,12 +122,12 @@ function PlanCard({
   best: PlanEstimate | null;
   onChoosePlan: (planId: number) => void;
 }) {
-  const paysOff = estimate.netRm > 0;
+  const { plan } = estimate;
 
   return (
     <div className={`flex h-full flex-col gap-1 rounded-lg border-2 border-ink p-4 lg:p-5 ${isFeatured ? "bg-primary-fixed text-on-primary-fixed" : "bg-surface-container-low"}`}>
       <div className="flex items-center justify-between gap-2">
-        <p className="font-display text-headline-sm font-bold">{estimate.plan.name}</p>
+        <p className="font-display text-headline-sm font-bold">{plan.name}</p>
         {isBest && (
           <span className="rounded-sm border-2 border-ink bg-warning px-2 py-0.5 font-display text-[11px] font-bold uppercase tracking-wide text-on-warning">
             Best for you
@@ -132,12 +135,10 @@ function PlanCard({
         )}
       </div>
       <p className="text-[13px] opacity-80">
-        RM{estimate.plan.feeRm.toFixed(2)} for 30 days · up to RM{estimate.plan.quotaRm.toFixed(0)}
+        {plan.realSavingsPercent ?? 0}% off your first RM{plan.quotaRm.toFixed(0)} of top-ups
       </p>
-      <p className="mt-1 font-display text-[11px] font-bold uppercase tracking-wide opacity-80">
-        {paysOff ? "You keep, every 30 days" : "You save, every 30 days"}
-      </p>
-      <p className={`font-mono text-[38px] font-bold leading-tight ${isFeatured ? "text-primary-on-surface" : ""}`}>{formatRm(paysOff ? estimate.netRm : estimate.savingRm)}</p>
+      <p className="mt-1 font-display text-[11px] font-bold uppercase tracking-wide opacity-80">You save about</p>
+      <p className={`font-mono text-[38px] font-bold leading-tight ${isFeatured ? "text-primary-on-surface" : ""}`}>{formatRm(estimate.savingRm)}</p>
       <PlanDetails estimate={estimate} best={best} isFeatured={isFeatured} onChoosePlan={onChoosePlan} />
     </div>
   );
@@ -154,27 +155,25 @@ function PlanDetails({
   isFeatured?: boolean;
   onChoosePlan: (planId: number) => void;
 }) {
-  const { plan, savingRm, chargeRm, netRm, breakEvenRm, capped } = estimate;
+  const { plan, chargeRm, netRm, breakEvenRm } = estimate;
   const paysOff = netRm > 0;
 
   return (
     <div className="mt-auto flex flex-col gap-1.5 text-sm">
-      <dl className="flex flex-col gap-1 border-t border-ink pt-2">
-        <div className="flex justify-between gap-3">
-          <dt>Member prices save ({plan.realSavingsPercent ?? 0}%)</dt>
-          <dd className="font-mono font-bold">{formatRm(savingRm)}</dd>
-        </div>
-        <div className="flex justify-between gap-3">
-          <dt>Membership cost</dt>
-          <dd className="font-mono font-bold">{formatRm(chargeRm)}</dd>
-        </div>
-      </dl>
+      <div className="flex justify-between gap-3 border-t border-ink pt-2">
+        <span>Membership costs</span>
+        <span className="font-mono font-bold">{formatRm(chargeRm)}</span>
+      </div>
 
-      {capped && <p className="text-[13px] opacity-80">Past this plan&apos;s RM{plan.quotaRm.toFixed(0)} limit, the rest is at the regular price.</p>}
+      {paysOff && (
+        <p className="flex items-center gap-1.5 font-semibold">
+          <Check size={16} weight="bold" className="shrink-0" /> {formatRm(netRm)} left after paying for membership
+        </p>
+      )}
 
       {isFeatured ? (
         <>
-          {!paysOff && <p className="text-[13px] opacity-80">Not sure yet? Try it for 30 days. One payment, no auto-renewal.</p>}
+          {!paysOff && <p className="text-[13px] opacity-80">Not sure yet? Try it for 30 days. You pay once, and it never renews by itself.</p>}
           <Button onClick={() => onChoosePlan(plan.id)} className="mt-1.5 w-full justify-center">
             {paysOff ? `Subscribe to ${plan.name}` : `Try ${plan.name} for 30 days`}
           </Button>
@@ -182,7 +181,7 @@ function PlanDetails({
       ) : (
         <>
           <p className="text-[13px] opacity-80">
-            {paysOff && best ? `${best.plan.name} keeps you more at this spend.` : breakEvenRm !== null ? `Pays for itself from about RM${breakEvenRm} a month.` : ""}
+            {paysOff && best ? `You'd have more left with ${best.plan.name}.` : breakEvenRm !== null ? `Pays for itself at about RM${breakEvenRm} a month.` : ""}
           </p>
           <button
             type="button"

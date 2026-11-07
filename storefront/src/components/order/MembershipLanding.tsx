@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { ArrowDown, ArrowRight, CaretDown, Check } from "@phosphor-icons/react/dist/ssr";
 import type { MembershipExample, MembershipOffer, MembershipOfferPlan } from "@/lib/membership";
@@ -51,7 +52,7 @@ export default function MembershipLanding({ offer, onSignIn }: { offer: Membersh
 
   return (
     <div className="mx-auto flex max-w-[1200px] flex-col gap-12 px-4 py-6 lg:gap-20 lg:py-14">
-      <section className="grid gap-8 lg:grid-cols-[1fr_460px] lg:items-center">
+      <section className="grid gap-8 lg:grid-cols-[1fr_520px] lg:items-center">
         <div className="flex flex-col items-start gap-4">
           <span className="rounded-md border-2 border-ink bg-warning px-3 py-1 font-display text-xs font-bold uppercase tracking-[0.08em] text-on-warning">
             Membership
@@ -60,7 +61,7 @@ export default function MembershipLanding({ offer, onSignIn }: { offer: Membersh
             Pay less on every <span className="whitespace-nowrap">top-up.</span>
           </h1>
           <p className="text-[15px] leading-normal text-on-surface-variant lg:text-lg">
-            Member prices applied at checkout, on every game that shows one.
+            Become a member and pay less for your top-ups.
             {cheapest && (
               <>
                 {" "}
@@ -100,17 +101,11 @@ export default function MembershipLanding({ offer, onSignIn }: { offer: Membersh
         </div>
 
         {example && topPlan && (
-          <div className="relative hidden items-center justify-center rounded-lg border-2 border-ink bg-primary-fixed px-12 py-16 neo-lg lg:flex">
-            <span
-              aria-hidden
-              style={{ clipPath: STAR_SHAPE }}
-              className="absolute -right-6 -top-8 flex size-32 rotate-[-8deg] items-center justify-center bg-warning text-center font-display text-sm font-bold uppercase leading-tight text-on-warning"
-            >
-              Member
-              <br />
-              price
-            </span>
-            <div className="w-full max-w-[360px]">
+          <div className="relative hidden h-[440px] overflow-hidden rounded-lg border-2 border-ink bg-warning neo-lg lg:block">
+            {offer.isPrimaryBrand && (
+              <Image src="/images/membership/mascot-pointing.png" alt="" width={397} height={760} priority className="absolute -bottom-3 left-6 h-[430px] w-auto" />
+            )}
+            <div className={`absolute w-[268px] ${offer.isPrimaryBrand ? "bottom-7 right-6" : "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"}`}>
               <SampleReceipt example={example} plan={topPlan} planIndex={topPlanIndex} />
             </div>
           </div>
@@ -118,10 +113,10 @@ export default function MembershipLanding({ offer, onSignIn }: { offer: Membersh
       </section>
 
       <section id="calculator" ref={calculatorRef} className="scroll-mt-32">
-        <Heading title="How much will you save?" subtitle="Pick your usual monthly top-up spend. We show your saving next to the membership fee." />
+        <Heading title="How much will you save?" subtitle="Pick how much you top up in a month." />
         <MembershipCalculator spendRm={spendRm} onSpendChange={setSpendRm} best={best} estimates={estimates} example={example} onChoosePlan={onSignIn} />
         <p className="mt-3 text-[13px] text-on-surface-variant">
-          Estimates, using each plan&apos;s typical saving and the lowest payment fee. Your actual saving depends on the packages you buy.
+          These are estimates. What you save depends on what you buy. Membership cost uses the lowest payment fee.
         </p>
       </section>
 
@@ -136,9 +131,9 @@ export default function MembershipLanding({ offer, onSignIn }: { offer: Membersh
         <Heading title="How it works" />
         <ol className="grid gap-3 lg:grid-cols-3 lg:gap-6">
           {[
-            ["Pick a plan", "The calculator above shows which one suits your spend."],
-            ["Verify your email", "We send a one-time code. No password to remember."],
-            ["Pay once, then pay less", "One payment covers 30 days. Member prices apply at checkout when you're signed in."],
+            ["Pick a plan", "The calculator above shows which one suits you."],
+            ["Check your email", "We send you a code. No password to remember."],
+            ["Pay once, then pay less", "One payment covers 30 days. Sign in with your email and member prices show up at checkout."],
           ].map(([title, body], index) => (
             <li key={title} className="flex gap-3 rounded-lg border-2 border-ink bg-surface-container-lowest p-4 neo lg:flex-col lg:p-6">
               <span className="flex size-9 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-secondary-container font-display font-bold text-on-secondary-container">
@@ -173,8 +168,8 @@ export default function MembershipLanding({ offer, onSignIn }: { offer: Membersh
           <p className="font-display text-[32px] font-bold uppercase leading-tight tracking-tight">{best ? "Ready to pay less?" : "Not sure yet?"}</p>
           <p className="mt-1 text-[15px]">
             {best
-              ? `${best.plan.name} keeps about ${formatRm(best.netRm)} for you every 30 days at your spend.`
-              : `Try ${featured.plan.name} for 30 days, from ${formatRm(featured.chargeRm)}. One payment, no auto-renewal.`}
+              ? `With ${best.plan.name}, you'd have about ${formatRm(best.netRm)} left after paying for membership.`
+              : `Try ${featured.plan.name} for 30 days, from ${formatRm(featured.chargeRm)}. You pay once, and it never renews by itself.`}
           </p>
         </div>
         <button type="button" onClick={() => onSignIn(featured.plan.id)} className={FINAL_BUTTON_CLASS}>
@@ -185,16 +180,13 @@ export default function MembershipLanding({ offer, onSignIn }: { offer: Membersh
       {pastCalculator && !atEnd && (
         <div className="fixed inset-x-4 bottom-[calc(6rem+env(safe-area-inset-bottom))] z-40 lg:hidden">
           <Button onClick={() => onSignIn(featured.plan.id)} className="w-full justify-center">
-            {best ? `${best.plan.name} · keep ${formatRm(best.netRm)}` : `Try ${featured.plan.name} for 30 days`} <ArrowRight size={16} weight="bold" />
+            {best ? `Subscribe to ${best.plan.name}` : `Try ${featured.plan.name} for 30 days`} <ArrowRight size={16} weight="bold" />
           </Button>
         </div>
       )}
     </div>
   );
 }
-
-const STAR_SHAPE =
-  "polygon(50% 0, 61% 12%, 75% 7%, 79% 21%, 93% 25%, 88% 39%, 100% 50%, 88% 61%, 93% 75%, 79% 79%, 75% 93%, 61% 88%, 50% 100%, 39% 88%, 25% 93%, 21% 79%, 7% 75%, 12% 61%, 0 50%, 12% 39%, 7% 25%, 21% 21%, 25% 7%, 39% 12%)";
 
 const FINAL_BUTTON_CLASS =
   "flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-md border-2 border-ink bg-warning px-6 py-3 font-display text-[15px] font-bold uppercase tracking-wide text-on-warning neo-sm";
@@ -296,34 +288,34 @@ function PriceComparison({ examples, plans }: { examples: MembershipExample[]; p
 }
 
 function faqs(plans: MembershipOfferPlan[]): { question: string; answer: React.ReactNode }[] {
-  const limits = plans.map((plan) => `RM${plan.quotaRm.toFixed(0)} on ${plan.name}`).join(" and ");
+  const limits = plans.map((plan) => `RM${plan.quotaRm.toFixed(0)} with ${plan.name}`).join(" or ");
 
   return [
     {
-      question: "What is a cycle?",
-      answer: `A cycle is 30 days from the day your membership starts. In each cycle you can buy up to ${limits} at member prices, and the limit fills up again at the start of the next cycle.`,
+      question: "How long does membership last?",
+      answer: `30 days from the day you join. In that time you get member prices on up to ${limits}. Your limit fills up again every 30 days while you're a member.`,
     },
     {
-      question: "How do I pay? Does it renew by itself?",
-      answer: "You pay once for 30 days, by online banking or QR. There is no card on file and no auto-renewal. We email you before it ends, and you renew only if you want to.",
+      question: "Will it charge me again?",
+      answer: "No. You pay once for 30 days, by online banking or QR. We don't keep your card, and nothing renews by itself. We email you before it ends, so you can renew if you want to.",
     },
     {
       question: "Can I cancel?",
-      answer: "There is nothing to cancel. If you don't renew, your membership simply ends after the days you paid for.",
+      answer: "There's nothing to cancel. If you don't renew, it just ends after 30 days.",
     },
     {
       question: "What happens when I reach my limit?",
-      answer: "An order bigger than what's left of your limit is charged the regular price for the whole order. Checkout is never blocked, and member prices return when the next cycle starts.",
+      answer: "You can still top up, at the regular price. If an order costs more than what's left of your limit, the whole order is at the regular price. Member prices come back when your limit fills up again.",
     },
     {
       question: "Does it work on every game?",
-      answer: "Member prices apply to top-ups on every game that shows one. Services such as joki are not included.",
+      answer: "It works on every game that shows a member price. Services like joki aren't included.",
     },
     {
       question: "Can I get a refund?",
       answer: (
         <>
-          If a membership can&apos;t be activated after payment, we fix it or issue a store voucher for the membership fee. See our{" "}
+          If your membership can&apos;t be switched on after you pay, we&apos;ll fix it or give you a store voucher for the fee. See our{" "}
           <Link href="/refund-policy" className="font-semibold text-primary-on-surface underline underline-offset-2">
             Refund Policy
           </Link>
@@ -333,7 +325,7 @@ function faqs(plans: MembershipOfferPlan[]): { question: string; answer: React.R
     },
     {
       question: "How is my email used?",
-      answer: "To send your sign-in code, your receipts and your renewal reminders. Your email is also how we recognise you as a member at checkout.",
+      answer: "We use it to send your sign-in code, receipts and renewal reminders, and to recognise you as a member at checkout.",
     },
   ];
 }
