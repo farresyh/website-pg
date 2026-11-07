@@ -54,17 +54,14 @@ function LinkCategoryFields({
   const [gameId, setGameId] = useState(initialGame ? String(initialGame.id) : "");
   const [newGameName, setNewGameName] = useState(groupLabel);
   const [newGameCategory, setNewGameCategory] = useState("");
-  // Defaults to whatever the initially-selected existing game already
-  // has set — re-linking is the supported way to review/correct it.
-  const [extraField, setExtraField] = useState(initialGame?.validation_rules?.extra_field ?? "");
+  // A new game only. An existing game's checkout rule applies to every
+  // supplier selling it, so it changes in the Checkout Input tab, never here.
+  const [extraField, setExtraField] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  function handleGameIdChange(value: string) {
-    setGameId(value);
-    const selected = games.find((g) => String(g.id) === value);
-    setExtraField(selected?.validation_rules?.extra_field ?? "");
-  }
+  const selectedGame = games.find((g) => String(g.id) === gameId);
+  const currentInput = EXTRA_FIELD_OPTIONS.find((o) => o.value === (selectedGame?.validation_rules?.extra_field ?? ""));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -86,8 +83,10 @@ function LinkCategoryFields({
         group_label: groupLabel,
         ...(gameMode === "existing"
           ? { game_id: Number(gameId) }
-          : { new_game: { name: newGameName, category: newGameCategory || undefined } }),
-        validation_rules: { extra_field: extraField === "" ? null : (extraField as "server_id" | "zone_id") },
+          : {
+              new_game: { name: newGameName, category: newGameCategory || undefined },
+              validation_rules: { extra_field: extraField === "" ? null : (extraField as "server_id" | "zone_id") },
+            }),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -129,7 +128,7 @@ function LinkCategoryFields({
         {gameMode === "existing" ? (
           <SimpleSelect
             value={gameId}
-            onChange={handleGameIdChange}
+            onChange={setGameId}
             options={games.map((g) => ({ value: String(g.id), label: g.name }))}
           />
         ) : (
@@ -150,13 +149,20 @@ function LinkCategoryFields({
           </div>
         )}
 
-        <div>
-          <Label htmlFor="extra_field">Checkout input needed</Label>
-          <SimpleSelect id="extra_field" value={extraField} onChange={setExtraField} options={EXTRA_FIELD_OPTIONS} />
-          <p className="mt-1 text-theme-xs text-ink-subtle">
-            What Gamevion needs beyond Player ID for orders in this category — e.g. Mobile Legends needs a Zone ID.
+        {gameMode === "new" ? (
+          <div>
+            <Label htmlFor="extra_field">Checkout input needed</Label>
+            <SimpleSelect id="extra_field" value={extraField} onChange={setExtraField} options={EXTRA_FIELD_OPTIONS} />
+            <p className="mt-1 text-theme-xs text-ink-subtle">
+              What the supplier needs beyond Player ID for orders in this category.
+            </p>
+          </div>
+        ) : (
+          <p className="text-theme-xs text-ink-subtle">
+            Checkout input: {currentInput?.label}. Linking keeps it. To change it for the whole game, use this group&apos;s
+            Checkout Input tab.
           </p>
-        </div>
+        )}
 
         <div className="flex items-center justify-end gap-3 pt-2">
           <Button type="button" variant="outlined" onClick={onClose} disabled={submitting}>
