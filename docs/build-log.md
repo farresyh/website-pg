@@ -1828,3 +1828,40 @@ Items 163, 170 and 175 closed.
 
 **Not yet seen:** the row on the live Dashboard, and a release clearing the cache by itself.
 
+## 2026-11-07 — Released #733: membership page, KOL auto-apply, bank logos
+
+**Released on the founder's go-ahead.** `main` `45561549`, box release `82375880`, CI, `deploy` and all four Vercel projects green. Ships #731 and #732, plus the docs of #729 and #730. No migration, no env change. Recorded late, in the 2026-11-08 docs audit.
+
+**Checked after release, read-only.**
+- `/api/health` ok, Horizon running, 0 failed jobs in 24 hours, no paid order undelivered. Order 133, created after the deploy, was paid and delivered.
+- `/membership` loads with no console error on PekanGame and OhahaStore at phone width, with no sideways scroll. `/api/membership/offer` answers on both with the same plans.
+- All 20 bank logos answer 200 as webp with a 30-day cache on the storefront. No code refers to the old `.png` files, which now 404.
+
+**Not checked:** auto-apply and the saved note on production, because opening a KOL link records a click; a real TikTok or Instagram browser; a paid checkout.
+
+**Seen by chance.** `/order/<a wrong slug>` shows "Page not found" with HTTP 200, not 404.
+
+## 2026-11-08 — Item 176 on the box: FPM timeout, OPcache size, reload in the deploy script
+
+**What ran on production.** The founder ran these in the droplet console, 2026-11-07 17:18 UTC, then edited the Forge deploy script. Exact values: ADR-066 2026-11-08 addendum.
+- `process_control_timeout = 35s` in `php-fpm.conf`, was 0.
+- New `conf.d/99-pekangame-opcache.ini`: `memory_consumption=256`, `interned_strings_buffer=32`, `max_accelerated_files=32531`, were 128, 8 and 10000.
+- `php-fpm8.4 -t`, then a restart.
+- Forge deploy script: the reload right after `$ACTIVATE_RELEASE()`, and `/up` at `--max-time 40`. The script as it stood had no reload.
+
+**Checked after, read-only.** PHP-FPM reports all three values; `process_control_timeout` reads 35s. `/api/health` ok, Horizon running, 0 failed jobs in 2 hours, no paid order undelivered. `/up` straight to PHP-FPM 16 to 21 ms, and the public API 0.06 to 0.09 s, so the gain held through the restart.
+
+**Not yet seen:** a release running the reload line and emptying the cache. If it doesn't, the socket reset in the ADR comes back.
+
+## 2026-11-08 — Docs audit after release #733
+
+**Why.** The founder asked for one after the release: nothing outdated or contradictory against the live system.
+
+**Corrected in `prd.md`.** §14's latest release, whose "no migration" sat over a migration bullet that belonged to #723. "Not released" on three §15 rows, one of them (ADR-119) out of date since #715. Customer and KOL figures, with the fourth campaign and two missing fees. The domain list, missing `admin.` and `onboarding.`. A Digiflazz SKU count that had drifted. Item 159 to group A: OpenWA shipped the fix, and the doc still called v0.27.1 the latest.
+
+**Fired for the first time.** The low-balance alert (ADR-115), 2026-11-07 15:59 UTC: DigiFlazz at about RM 2,375 against the RM 2,391 floor. So it left §14's "not yet seen". The log line is proven; the email's arrival is not.
+
+**Checked and right.** The ADR index, 138 rows for 138 files, no duplicates, no last-addendum date older than its file. No broken doc link, no missing path in the guides. Stack versions, the eight required checks, API v1.5.0, region `sin1`. Payment methods, October's close at RM129.22, CS in Shadow with 9 knowledge entries, no Joki order or partner application, 3 resellers, Gamevion 0 of 71, 1 active member. No §16 item both open and closed.
+
+**Not audited.** The text of each ADR against the code, `docs-site` content, and §6 to §9 requirement by requirement.
+
