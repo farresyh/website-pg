@@ -884,4 +884,15 @@ class VoucherControllerTest extends TestCase
         $sourceDetail->assertOk();
         $sourceDetail->assertJsonPath('voucher.merge_as_source.target_voucher_id', $merged->json('id'));
     }
+
+    /** Item 170: same answer as every other admin action on a sandbox order. */
+    public function test_issue_voucher_does_not_see_a_sandbox_order(): void
+    {
+        $order = $this->makeOrder(['is_test' => true]);
+        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'admin']));
+
+        $this->postJson("/api/orders/{$order->id}/voucher")->assertNotFound();
+
+        $this->assertSame(0, Voucher::query()->count());
+    }
 }

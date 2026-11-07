@@ -169,7 +169,7 @@ class MembershipSubscriptionControllerTest extends TestCase
         $this->assertDatabaseCount('membership_checkout_attempts', 0);
 
         // And the other way round: the affiliate sells membership while the platform brand does not.
-        $affiliate->update(['membership_enabled' => true]);
+        $affiliate->update(['is_owned' => true, 'membership_enabled' => true]);
         $this->primaryAffiliate()->update(['membership_enabled' => false]);
         $this->getJson('/api/membership/subscribe-options', $headers)->assertOk();
     }
@@ -210,6 +210,7 @@ class MembershipSubscriptionControllerTest extends TestCase
         $affiliate = Affiliate::query()->create([
             'business_name' => 'Acme Resell', 'markup_pct' => 10, 'max_markup_pct' => 30, 'status' => 'active',
             // The brand sells membership; this test passed without it only while the gate judged the platform brand.
+            'is_owned' => true,
             'membership_enabled' => true,
         ]);
         AffiliateDomain::query()->create([

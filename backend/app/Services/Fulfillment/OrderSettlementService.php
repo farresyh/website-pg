@@ -77,6 +77,11 @@ final class OrderSettlementService
         $result = DB::transaction(function () use ($order, $adminUserId, $reason) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
+            // A sandbox order moved no real money, so nothing is owed on it.
+            if ($locked->is_test) {
+                throw new OrderFulfillmentException("Order #{$locked->id} is a sandbox order, so it is never compensated");
+            }
+
             if (! $locked->delivery_status->isCompensable()) {
                 throw new OrderFulfillmentException("Order #{$locked->id} is {$locked->delivery_status->value} — only a failed or partially delivered order can be compensated");
             }

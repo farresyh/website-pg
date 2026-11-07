@@ -17,6 +17,7 @@ use App\Models\Supplier;
 use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Services\Affiliate\AffiliateDomainStatus;
+use App\Services\Notification\CustomerNotificationService;
 use App\Services\Notification\OrderStatusCard;
 use App\Services\OpenWa\OpenWaRecipientNotOnWhatsAppException;
 use App\Services\Order\DeliveryStatus;
@@ -171,8 +172,20 @@ class CustomerWhatsAppNotificationTest extends TestCase
     {
         Queue::fake();
         $order = $this->failedOrder(['is_test' => true]);
+        $voucher = Voucher::query()->create([
+            'order_id' => $order->id,
+            'affiliate_id' => $order->affiliate_id,
+            'code' => 'VC-SANDBOX',
+            'customer_email' => $order->customer_email,
+            'customer_phone' => $order->customer_phone,
+            'amount' => 1000,
+            'remaining' => 1000,
+            'status' => 'active',
+            'reason' => 'test',
+        ]);
 
-        $this->postJson("/api/orders/{$order->id}/voucher")->assertCreated();
+        app(CustomerNotificationService::class)->voucherIssued($voucher);
+        app(CustomerNotificationService::class)->voucherRestored($order);
 
         $this->assertSame(0, CustomerNotification::query()->count());
         Queue::assertNothingPushed();

@@ -254,14 +254,6 @@ class Affiliate extends Model
     }
 
     /**
-     * ADR-061 decision 4: consumer Membership (ADR-027) is live for a
-     * storefront only when BOTH the global master kill-switch
-     * (`PlatformSettings.membership_enabled` — flipped off everywhere
-     * during an incident) AND this brand's own `membership_enabled` are
-     * true. Callers that already hold the settings row pass it in to avoid
-     * a second lookup.
-     */
-    /**
      * ADR-126 addendum decision 1: the global Joki switch AND this brand's
      * own `joki_enabled`, on an owned brand only (the admin forces it off
      * elsewhere; checked again here so no stale row sells joki).
@@ -271,10 +263,19 @@ class Affiliate extends Model
         return $this->is_owned && $this->joki_enabled && ($settings ?? JokiSetting::current())->is_enabled;
     }
 
+    /**
+     * ADR-061 decisions 4 and 8: consumer Membership (ADR-027) is live for a
+     * storefront only when BOTH the global master kill-switch
+     * (`PlatformSettings.membership_enabled` — flipped off everywhere
+     * during an incident) AND this brand's own `membership_enabled` are
+     * true, on an owned brand only (the admin forces it off elsewhere;
+     * checked again here so no stale row sells membership). Callers that
+     * already hold the settings row pass it in to avoid a second lookup.
+     */
     public function membershipEnabledEffective(?PlatformSettings $settings = null): bool
     {
         $global = ($settings ?? PlatformSettings::current())->membership_enabled;
 
-        return $this->membership_enabled && $global;
+        return $this->is_owned && $this->membership_enabled && $global;
     }
 }

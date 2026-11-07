@@ -123,4 +123,13 @@ class AffiliateTest extends TestCase
             );
         }
     }
+
+    /** Item 170 / ADR-061 decision 8: a stale switch on a third-party brand sells no membership. */
+    public function test_membership_is_never_effective_on_a_brand_that_is_not_owned(): void
+    {
+        PlatformSettings::current()->update(['membership_enabled' => true]);
+        $affiliate = Affiliate::query()->create(['business_name' => 'Third party', 'markup_pct' => 5, 'membership_enabled' => true]);
+
+        $this->assertFalse($affiliate->membershipEnabledEffective());
+    }
 }
