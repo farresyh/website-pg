@@ -78,7 +78,6 @@ const MembershipOfferWireSchema = z.object({
       member_sen: z.array(z.number()),
     }),
   ),
-  is_primary_brand: z.boolean(),
 });
 
 export interface MembershipOfferPlan {
@@ -102,7 +101,6 @@ export interface MembershipExample {
 export interface MembershipOffer {
   plans: MembershipOfferPlan[];
   examples: MembershipExample[];
-  isPrimaryBrand: boolean;
 }
 
 /** Null on a backend blip: the page then falls back to the plain email form. */
@@ -129,7 +127,6 @@ export async function getMembershipOffer(): Promise<MembershipOffer | null> {
           regularRm: example.regular_sen / 100,
           memberRm: example.member_sen.map((sen) => sen / 100),
         })),
-        isPrimaryBrand: wire.is_primary_brand,
       };
     },
     null,

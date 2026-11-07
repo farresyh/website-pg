@@ -93,7 +93,7 @@ class MembershipController extends Controller
      */
     public function offer(MembershipSubscriptionService $subscriptions): JsonResponse
     {
-        $offer = Cache::store(config('cache.catalog_packages_store'))
+        return response()->json(Cache::store(config('cache.catalog_packages_store'))
             ->tags(['catalog.packages', 'catalog.public.membership.offer'])
             ->remember('catalog.public.membership.offer', 60, function () use ($subscriptions) {
                 $plans = MembershipPlan::query()->orderBy('id')->get();
@@ -121,9 +121,7 @@ class MembershipController extends Controller
                         ))->all(),
                     ])->all(),
                 ];
-            });
-
-        return response()->json([...$offer, 'is_primary_brand' => (bool) $this->brand->get()->is_primary]);
+            }));
     }
 
     public function me(Request $request): JsonResponse

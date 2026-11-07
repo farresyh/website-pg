@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { ArrowDown, ArrowRight, CaretDown, Check } from "@phosphor-icons/react/dist/ssr";
 import type { MembershipExample, MembershipOffer, MembershipOfferPlan } from "@/lib/membership";
@@ -43,11 +42,16 @@ export default function MembershipLanding({ offer, onSignIn }: { offer: Membersh
 
   const example = offer.examples[0] ?? null;
   const cheapest = offer.plans.reduce<MembershipOfferPlan | null>((low, plan) => (low === null || plan.feeRm < low.feeRm ? plan : low), null);
-  const cheapestIndex = cheapest ? offer.plans.indexOf(cheapest) : 0;
+  // The hero's example shows the deepest saving; the fee line stays the entry price.
+  const topPlan = offer.plans.reduce<MembershipOfferPlan | null>(
+    (top, plan) => (top === null || (plan.realSavingsPercent ?? 0) > (top.realSavingsPercent ?? 0) ? plan : top),
+    null,
+  );
+  const topPlanIndex = topPlan ? offer.plans.indexOf(topPlan) : 0;
 
   return (
     <div className="mx-auto flex max-w-[1200px] flex-col gap-12 px-4 py-6 lg:gap-20 lg:py-14">
-      <section className="grid gap-8 lg:grid-cols-[1fr_520px] lg:items-center">
+      <section className="grid gap-8 lg:grid-cols-[1fr_460px] lg:items-center">
         <div className="flex flex-col items-start gap-4">
           <span className="rounded-md border-2 border-ink bg-warning px-3 py-1 font-display text-xs font-bold uppercase tracking-[0.08em] text-on-warning">
             Membership
@@ -63,9 +67,9 @@ export default function MembershipLanding({ offer, onSignIn }: { offer: Membersh
             )}
           </p>
 
-          {example && cheapest && (
+          {example && topPlan && (
             <div className="w-full lg:hidden">
-              <SampleReceipt example={example} plan={cheapest} planIndex={cheapestIndex} />
+              <SampleReceipt example={example} plan={topPlan} planIndex={topPlanIndex} />
             </div>
           )}
 
@@ -93,26 +97,22 @@ export default function MembershipLanding({ offer, onSignIn }: { offer: Membersh
           </ul>
         </div>
 
-        <div className="relative hidden h-[440px] overflow-hidden rounded-lg border-2 border-ink bg-primary-fixed neo-lg lg:block">
-          <div aria-hidden className="absolute -right-24 -top-10 h-[620px] w-44 rotate-[22deg] bg-secondary-container" />
-          <span
-            aria-hidden
-            style={{ clipPath: STAR_SHAPE }}
-            className="absolute right-5 top-5 flex size-32 rotate-[-8deg] items-center justify-center bg-warning text-center font-display text-sm font-bold uppercase leading-tight text-on-warning"
-          >
-            Member
-            <br />
-            price
-          </span>
-          {offer.isPrimaryBrand && (
-            <Image src="/images/membership/mascot-hype.png" alt="" width={477} height={720} priority className="absolute -bottom-10 left-8 h-[440px] w-auto" />
-          )}
-          {example && cheapest && (
-            <div className="absolute bottom-6 right-6 w-64">
-              <SampleReceipt example={example} plan={cheapest} planIndex={cheapestIndex} />
+        {example && topPlan && (
+          <div className="relative hidden items-center justify-center rounded-lg border-2 border-ink bg-primary-fixed px-12 py-16 neo-lg lg:flex">
+            <span
+              aria-hidden
+              style={{ clipPath: STAR_SHAPE }}
+              className="absolute -right-6 -top-8 flex size-32 rotate-[-8deg] items-center justify-center bg-warning text-center font-display text-sm font-bold uppercase leading-tight text-on-warning"
+            >
+              Member
+              <br />
+              price
+            </span>
+            <div className="w-full max-w-[360px]">
+              <SampleReceipt example={example} plan={topPlan} planIndex={topPlanIndex} />
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </section>
 
       <section id="calculator" ref={calculatorRef} className="scroll-mt-32">
