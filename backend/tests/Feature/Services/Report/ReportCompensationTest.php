@@ -227,4 +227,17 @@ class ReportCompensationTest extends TestCase
 
         $this->assertSame(250, (new ReportService)->outstandingStoreCredit($other->id));
     }
+
+    /** Item 170: the SQL reads the same entries as the model, so a refund on another wallet isn't this order's. */
+    public function test_wallet_refund_sql_counts_only_the_orders_own_wallet(): void
+    {
+        $own = Reseller::query()->create(['business_name' => 'Own', 'is_active' => true]);
+        $other = Reseller::query()->create(['business_name' => 'Other', 'is_active' => true]);
+        $order = $this->order(['delivery_status' => DeliveryStatus::Failed, 'wallet_reseller_id' => $own->id]);
+        (new LedgerService)->credit(LedgerOwnerType::ResellerWallet, $own->id, 700, 'wallet_refund', 'order', $order->id);
+        (new LedgerService)->credit(LedgerOwnerType::ResellerWallet, $other->id, 300, 'wallet_refund', 'order', $order->id);
+
+        $this->assertSame(700, (int) Order::query()->whereKey($order->id)->selectRaw(Order::walletRefundSql().' as refund')->value('refund'));
+        $this->assertSame(700, $order->cashCompensationSen());
+    }
 }

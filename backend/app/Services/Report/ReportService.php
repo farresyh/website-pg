@@ -946,8 +946,7 @@ final class ReportService
     public function failedAndCompensated(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
         $voucher = '(SELECT v.amount FROM vouchers v WHERE v.order_id = orders.id)';
-        $walletRefund = "(SELECT SUM(wr.amount) FROM ledger_entries wr WHERE wr.owner_type = '".LedgerOwnerType::ResellerWallet->value."'"
-            ." AND wr.owner_id = orders.wallet_reseller_id AND wr.type = 'wallet_refund' AND wr.reference_type = 'order' AND wr.reference_id = orders.id)";
+        $walletRefund = Order::walletRefundSql();
         $restored = '(SELECT vr.restored_amount FROM voucher_redemptions vr WHERE vr.order_id = orders.id)';
         $compensation = "COALESCE({$voucher}, 0) + COALESCE({$walletRefund}, 0) + COALESCE({$restored}, 0)";
 

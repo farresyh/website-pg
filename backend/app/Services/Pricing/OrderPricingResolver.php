@@ -52,7 +52,7 @@ final class OrderPricingResolver
 
     /**
      * @param  float|null  $tierMarkupPct  the storefront brand's active
-     *                                     wholesale tier markup (`Affiliate::wholesaleTierMarkupPct()`),
+     *                                     wholesale tier markup (`Affiliate::storefrontPriceTerms()`),
      *                                     or null when the brand has no tier / the tier lapsed. Null is
      *                                     behaviourally identical to the pre-ADR-060 guest chain.
      */

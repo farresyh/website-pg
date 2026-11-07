@@ -1675,3 +1675,25 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 
 **Not proven on prod:** no code has been redeemed yet, so the first real redemption needs checking in the database.
 
+## 2026-11-07 — Items 170 and 174: small findings, one seam each
+
+**Item 174 closed, no code.** The three packages are `inactive` at DigiFlazz with streak 0 (read-only prod), so nothing holds them. After sync 3375, 0 packages were off with a streak of 6 or more; Twilight Pass came back by itself. The morning's "past 6 syncs" can't be rechecked: the streak keeps no history.
+
+**Item 170, each finding re-verified first.**
+- **Sandbox order:** Issue Voucher had no `is_test` check. `settle()` now refuses one, so every compensation path is covered; `storeFromOrder()` answers 404 like its siblings. Prod: 1 sandbox order, 0 vouchers.
+- **Member above guest:** not reachable. Membership only runs on owned brands, which have no tier. Prod, 1,293 packages, both plans: member cheaper on all. `membershipEnabledEffective()` now checks `is_owned`, as Joki does, so a stale switch can't create the case. No pricing rule added.
+- **Wallet-refund SQL:** Reports had its own stricter copy. `Order::walletRefundSql()` now has the owner check, and Reports calls it. Prod: 4 rows, 0 different.
+- **Profit formula:** six places spelled it out. All go through `Order::residualProfit()`, with a test that fails on a new copy.
+- **Same-reference window:** kept, recorded in ADR-102. It can only refuse, never buy twice.
+
+**Gotcha: a wrong finding of ours.** A read-only simulation first reported OhahaStore's member price 7 sen above guest on one package. It called `wholesaleTierMarkupPct()` directly and so read a leftover "Test Tier" row, which `storefrontPriceTerms()`, the real seam, ignores for an owned brand. Real orders showed the standard price. Simulate through the seam, and compare with a real order, before reporting a number. `wholesaleTierMarkupPct()` is now removed: its one caller, `storefrontPriceTerms()`, holds the lookup, so a brand's tier can't be read past the owned-brand check.
+
+**Tests changed.** Three fixtures sold membership on a third-party brand, which ADR-061 forbids; they are now owned. `test_a_test_order_never_messages_anyone` used Issue Voucher to reach the message code; it now calls `CustomerNotificationService` directly.
+
+**Verified.**
+- `php artisan test` 3,814 of 3,814.
+- Report tests on real MySQL 62 of 62.
+- Concurrency suite 44 of 48, run before the method was removed, which touches no locking; only `BackupRestoreMysqlTest` fails (no local `mysqldump`).
+- A read-only prod check of each finding, above.
+
+**Built on `fix/item-170-small-findings`, into `staging`, not released.** No migration, no env change.
