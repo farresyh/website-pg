@@ -1697,3 +1697,14 @@ Measured for the breaker: at most 3 packages at 30% or more per run, no rise of 
 - A read-only prod check of each finding, above.
 
 **Built on `fix/item-170-small-findings`, into `staging`, not released.** No migration, no env change.
+
+## 2026-11-07 — Items 169 and 173 decided: no grace period, `max_price` parked
+
+**Item 173, closed.** Two tests through `SyncSupplierCatalogJob` prove what the PRD had wrong. A package skipped on a 503 keeps its streak, because its row isn't touched, so it is back on the next good sync, about 30 minutes later. Only Gamevion's own `inactive` resets the streak and costs 6 syncs. The founder chose no grace period: it would sell at an unconfirmed price to save 30 minutes.
+
+**Item 169, parked with a trigger.** The founder challenged the need: a selling price follows cost, so where is the loss? Production agreed. 1 loss in 86 delivered orders, 13 sen, on `PG-HMMEGKPYVN8K`: two failed attempts, then an admin's resend after the cost rose from RM17.94 to RM18.61, which `max_price` wouldn't have stopped. Of 67 orders with a real cost, 4 were above the stored cost, at most 18 sen, and none lost money through it. The design and the trigger are in ADR-137's 2026-11-07 addendum.
+
+**Docs corrected.** The PRD said DigiFlazz doesn't document going over the limit. Its response codes have `rc 69`, Gagal, no transaction formed. Its test cases cover neither `rc 69` nor `max_price`, so the sandbox can't prove it.
+
+**Verified.** `php artisan test` 3,816 of 3,816. Tests and docs only, no product code.
+
