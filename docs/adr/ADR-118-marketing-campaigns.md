@@ -418,3 +418,29 @@ Refinements made while building PR 1, test-first against V1–V20. None changes 
   - Sales are on `paid_at` and profit on the ledger's recognition date, as on Reports.
   - Fees are the accrued fee of every Malaysia month the range touches.
 - **No code delete in v1 (V17).** A code is paused or left to end. Its string stays used forever, so a mistyped unused code is simply paused.
+
+### 2026-11-07 addendum — attribution has no gaps, and ending a campaign ends its fee
+
+**Context.** No code has been redeemed on production yet, so these are found by tracing, before they can cost data. The founder's concern: the order and the ledger are what reports are built from, so anything not recorded at the time can't be reported later. Every storefront checkout, Joki included, stamps through `CheckoutService`, and profit joins to the order through the ledger, so the store itself is sound. The trace found these holes:
+- **An order placed before the first one is delivered is never counted.** `attributionFor()` reads committed redemptions only, and the stamp is written once.
+- **A partly delivered customer belongs to nobody.** Compensating the undelivered share moves the redemption to `restored`, so V6 and the scorecard skip them, while the new-customer rule counts them as an existing customer and the discount they kept is in the KOL's cost (item 170's finding).
+- **Two redemptions can match one customer** (email from one, phone from the other). `first()` has no order, so which KOL wins isn't defined.
+- **Ending a campaign leaves its fee running.** `ended_at` stops codes only; `feeIn()` reads the fee rows, so the month close and the scorecard keep accruing.
+- **The admin can't see a later order's KOL, or a KOL's customers.** The data is on the order; no screen shows it.
+
+**Decision.**
+
+- **V21. A customer belongs to a KOL once they kept something from the code: `PromoCodeRedemption::kept()`.** That is a committed redemption, or a restored one holding a share of its discount. `attributionFor()` and the scorecard both read it, so the three rules that ask "is this a KOL's customer" agree. A wholly restored redemption is not kept.
+- **V22. The moment a redemption is kept, the customer's later orders with no stamp are filled in** (`claimLaterOrders()`). This narrows V6's "stamped once": an empty stamp may be filled once; a stamp with a value is still never rewritten. It runs after the delivery transaction commits, so it never holds another order's row inside a delivery and a failure can't undo one; a failure is reported, not raised.
+- **V23. The oldest redemption wins** when two match: `orderBy('id')`.
+- **V24. Ending a campaign ends its fee.** `PATCH /campaigns/{id}` with `ended: true` needs `last_fee_month` when the latest fee row is open, and sets it through `setEndMonth()`, so a closed month stays protected. Ending and setting the fee are one transaction. Reopening leaves the fee row as it is: a new deal is a new row.
+- **V25. Admin.** Order details always shows the Promo Discount row, and shows the KOL an order counts for. The campaign page lists its customers: first order, later orders and sales, all time, on the same orders as the scorecard.
+
+**Rejected.** Stamping from a reserved redemption, then clearing on failure: a stamp that can be taken back is what V6 exists to avoid. Working attribution out when reports run: decision 11's reason stands, a report must not change after the fact. Stopping the fee inside `feeIn()` from `ended_at`: it would change closed months silently and ignore a final month the KOL is still owed.
+
+**Consequence to track.**
+- ponytail: an order placed in the milliseconds between `claimLaterOrders()` reading and that order committing stays unstamped. Rare on top of rare; a nightly sweep if it is ever seen.
+- ponytail: `attributionFor()` and `claimLaterOrders()` compare customers in PHP through the one `PromoCustomer` seam, as V14 does. Fine at thousands of redemptions; a normalised phone column and an indexed lookup past that.
+- The customer list has no profit column: profit stays on the scorecard, from the ledger.
+- Customer Analytics' campaign filter is still out (V20).
+

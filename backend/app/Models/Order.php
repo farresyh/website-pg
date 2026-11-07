@@ -896,6 +896,13 @@ class Order extends Model
         return $this->hasOne(PromoCodeRedemption::class);
     }
 
+
+    /** ADR-118 V6: the KOL code this order counts for, redeemed here or earlier. */
+    public function attributedPromoCode(): BelongsTo
+    {
+        return $this->belongsTo(PromoCode::class, 'attributed_promo_code_id');
+    }
+
     /** ADR-118 V18: the code applied at checkout, for the admin order detail. */
     public function promoCode(): BelongsTo
     {

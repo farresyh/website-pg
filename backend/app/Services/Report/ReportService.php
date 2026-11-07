@@ -1119,7 +1119,7 @@ final class ReportService
         $discounts = app(RecognisedRevenue::class)->promoDiscountByCode($from, $toExclusive);
 
         $redemptions = PromoCodeRedemption::query()
-            ->where('status', PromoCodeRedemption::STATUS_COMMITTED)
+            ->kept()
             ->whereHas('order', fn ($q) => $q->where('is_test', false)->whereNotNull('paid_at')
                 ->when($from, fn ($q) => $q->where('paid_at', '>=', $from))
                 ->when($toExclusive, fn ($q) => $q->where('paid_at', '<', $toExclusive)))
@@ -1193,6 +1193,57 @@ final class ReportService
         }
 
         return $rows;
+    }
+
+    /**
+     * ADR-118 V25: who a campaign brought in, on the scorecard's own orders,
+     * so its rows add up to the campaign's all-time sales.
+     *
+     * ponytail: the same PHP pass as campaignBreakdown(); fine at a few hundred KOL customers.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function campaignCustomers(Campaign $campaign): array
+    {
+        $codes = $campaign->promoCodes->pluck('code', 'id');
+
+        $orders = $this->scopedOrders(null, null, null)
+            ->whereIn('attributed_promo_code_id', $codes->keys())
+            ->with('game:id,family')
+            ->select(['id', 'order_number', 'game_id', 'customer_email', 'customer_phone', 'player_id', 'server_id', 'paid_at', 'promo_code_id', 'attributed_promo_code_id'])
+            ->selectRaw(Order::netSalesSql().' as net_sales_sen')
+            ->get()
+            ->keyBy('id');
+
+        $unclaimed = $orders->whereNull('promo_code_id');
+
+        return PromoCodeRedemption::query()
+            ->kept()
+            ->whereIn('promo_code_id', $codes->keys())
+            ->whereIn('order_id', $orders->keys())
+            ->orderBy('id')
+            ->get()
+            ->map(function (PromoCodeRedemption $redemption) use ($orders, $codes, &$unclaimed) {
+                $first = $orders->get($redemption->order_id);
+                $customer = PromoCustomer::forOrder($first);
+                $later = $unclaimed->filter(fn (Order $o) => $o->attributed_promo_code_id === $redemption->promo_code_id
+                    && PromoCustomer::forOrder($o)->sameAs($customer));
+                $unclaimed = $unclaimed->diffKeys($later);
+
+                return [
+                    'email' => $first->customer_email,
+                    'phone' => $first->customer_phone,
+                    'code' => $codes->get($redemption->promo_code_id),
+                    'first_order_number' => $first->order_number,
+                    'first_paid_at' => $first->paid_at->toIso8601String(),
+                    'first_order_sales_sen' => (int) $first->net_sales_sen,
+                    'later_orders' => $later->count(),
+                    'later_sales_sen' => (int) $later->sum('net_sales_sen'),
+                    'last_paid_at' => ($later->max('paid_at') ?? $first->paid_at)->toIso8601String(),
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     /** V5's identity seam: customers matching on any detail count once. */

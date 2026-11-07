@@ -140,6 +140,8 @@ export interface OrderDetail extends OrderListItem {
   /** ADR-118: a KOL promo's discount, already taken off `selling_price`. */
   promo_discount_sen: number;
   promo_code: { id: number; code: string } | null;
+  /** ADR-118 V6: the KOL this order counts for, redeemed here or earlier. */
+  attributed_promo_code: { id: number; code: string; campaign: { id: number; name: string } | null } | null;
   affiliate_profit: number;
   pricing_basis: "standard" | "member" | "reseller-wallet" | "affiliate" | "fixed";
   member_discount_percent: string | null;

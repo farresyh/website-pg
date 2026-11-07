@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Tag } from "@/components/ui/tag";
 import { notify } from "@/components/ui/toast";
 import { KpiCard, Pending, ReportCard, ReportTable, type ReportColumn } from "@/components/reports/ReportKit";
-import { CodeForm, EndMonthForm, FeeForm, FormDialog } from "@/components/campaigns/CampaignForms";
+import { CodeForm, EndCampaignForm, EndMonthForm, FeeForm, FormDialog } from "@/components/campaigns/CampaignForms";
 import { useRange } from "@/components/campaigns/RangeFilter";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
@@ -31,6 +31,7 @@ import {
   updateCampaign,
   updateCode,
   verdictLabel,
+  type CampaignCustomer,
   type CampaignDetail,
   type CampaignFee,
   type CodeScore,
@@ -38,7 +39,9 @@ import {
   type Scorecard,
 } from "@/lib/campaigns";
 
-type Editing = { kind: "fee" } | { kind: "feeEnd"; fee: CampaignFee } | { kind: "code"; code: PromoCodeRow | null } | null;
+type Editing = { kind: "end" } | { kind: "fee" } | { kind: "feeEnd"; fee: CampaignFee } | { kind: "code"; code: PromoCodeRow | null } | null;
+
+const dateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-MY", { timeZone: "Asia/Kuala_Lumpur", day: "numeric", month: "short", year: "numeric" });
 
 const pct = (part: number, whole: number) => (whole > 0 ? `${Math.round((part / whole) * 100)}%` : "—");
 
@@ -117,6 +120,33 @@ export default function CampaignDetailPage() {
     },
   ];
 
+  const customerColumns: ReportColumn<CampaignCustomer>[] = [
+    {
+      key: "customer",
+      header: "Customer",
+      render: (c) => (
+        <>
+          <span className="text-ink">{c.email}</span>
+          {c.phone && <span className="block text-theme-xs text-ink-muted">{c.phone}</span>}
+        </>
+      ),
+    },
+    { key: "code", header: "Code", render: (c) => c.code },
+    {
+      key: "first",
+      header: "First order",
+      render: (c) => (
+        <>
+          {c.first_order_number}
+          <span className="block text-theme-xs text-ink-muted">{dateLabel(c.first_paid_at)}</span>
+        </>
+      ),
+    },
+    { key: "later", header: "Later orders", align: "right", render: (c) => c.later_orders.toLocaleString() },
+    { key: "sales", header: "Sales", align: "right", render: (c) => rm(c.first_order_sales_sen + c.later_sales_sen) },
+    { key: "last", header: "Last order", align: "right", render: (c) => dateLabel(c.last_paid_at) },
+  ];
+
   const codeColumns: ReportColumn<PromoCodeRow>[] = [
     {
       key: "code",
@@ -188,9 +218,8 @@ export default function CampaignDetailPage() {
           variant="outlined"
           severity={campaign.ended_at ? "secondary" : "danger"}
           onClick={() => {
-            const ending = !campaign.ended_at;
-            if (ending && !window.confirm("End this campaign? Its codes stop working at once. Customers it brought in keep counting.")) return;
-            void act(() => updateCampaign(campaign.id, { ended: ending }), ending ? "Campaign ended" : "Campaign reopened");
+            if (campaign.ended_at) void act(() => updateCampaign(campaign.id, { ended: false }), "Campaign reopened");
+            else setEditing({ kind: "end" });
           }}
         >
           {campaign.ended_at ? "Reopen campaign" : "End campaign"}
@@ -254,8 +283,23 @@ export default function CampaignDetailPage() {
             </p>
           </ReportCard>
         </div>
+
+        <ReportCard title="Customers" subtitle="All time, from their first KOL order. Sales match the scorecard." flush>
+          <ReportTable columns={customerColumns} rows={campaign.customers} rowKey={(c) => c.first_order_number} />
+        </ReportCard>
       </div>
 
+      <FormDialog open={editing?.kind === "end"} title="End this campaign?" onClose={() => setEditing(null)}>
+        <EndCampaignForm
+          month={lastFee?.to_month ? null : campaign.balance.month}
+          onClose={() => setEditing(null)}
+          onSubmit={async (lastFeeMonth) => {
+            await updateCampaign(campaign.id, { ended: true, last_fee_month: lastFeeMonth });
+            notify.success("Campaign ended");
+            load();
+          }}
+        />
+      </FormDialog>
       <FormDialog open={editing?.kind === "fee"} title="New fee row" onClose={() => setEditing(null)}>
         <FeeForm
           withName={false}

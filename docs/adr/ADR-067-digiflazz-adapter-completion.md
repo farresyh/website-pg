@@ -61,7 +61,7 @@
 
 **Context.** Linking a group to a Game is one decision per `(supplier_id, group_label)` (decision 6), but it was stored as a copy on every `supplier_products` row. The copy went wrong three ways, all accepted as a "known gap" in this ADR's consequences:
 - **New items are unlinked.** A sync creates a row with no game while `categories()` calls the group linked if any row has one, and the admin hides Link for a linked group. Gamevion's v2 rows (ADR-137) landed in the old groups this way, so repoint refused `valorant_my:1000` with "This item's group is not linked to the package's game" and nothing on screen could fix it. Production 2026-11-07: 3 Gamevion and 5 Digiflazz groups, 217 rows.
-- **A pruned item loses its link.** Gamevion often drops items and whole games (503s, a games list that fell from 1,313 to 320 on 2026-11-07), and an item that comes back is a new row.
+- **A pruned item loses its link.** Gamevion often drops items and whole games (503s, and a games list that fell from 1,313 to 320 for two and a half hours on 2026-11-07), and an item that comes back is a new row.
 - **A relabelled row keeps its old game.** `MLBB_ALL_14_PG1` moved to `MOBILE LEGENDS — Umum` still carrying Mobile Legends Malaysia, so a group of 93 unlinked items showed as linked to the wrong game.
 
 **Decision.**

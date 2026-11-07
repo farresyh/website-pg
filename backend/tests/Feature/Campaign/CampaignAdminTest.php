@@ -112,7 +112,7 @@ class CampaignAdminTest extends TestCase
         $code = PromoCode::query()->create(['campaign_id' => $campaign->id, 'code' => 'KOL5', 'discount_percent' => 5, 'budget_sen' => 10_000, 'is_active' => true]);
         $this->assertTrue($code->isRedeemableNow());
 
-        $this->patchJson("/api/campaigns/{$campaign->id}", ['ended' => true])->assertOk();
+        $this->patchJson("/api/campaigns/{$campaign->id}", ['ended' => true, 'last_fee_month' => now('Asia/Kuala_Lumpur')->format('Y-m')])->assertOk();
 
         $this->assertFalse($code->fresh()->isRedeemableNow());
     }

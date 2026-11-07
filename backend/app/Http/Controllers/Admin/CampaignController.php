@@ -25,6 +25,7 @@ use App\Support\MalaysiaTime;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -64,6 +65,22 @@ class CampaignController extends Controller
         $campaign = $this->fees->createCampaign($data['name'], $data['monthly_fee_sen'], $data['from_month'], $data['to_month'] ?? null, $request->user()->id);
 
         return response()->json(['id' => $campaign->id], 201);
+    }
+
+    /** V24: an ended campaign stops accruing. A fee with a last month keeps it. */
+    private function endFee(Campaign $campaign, ?string $lastMonth): void
+    {
+        $fee = $campaign->fees->last();
+
+        if ($fee === null || $fee->to_month !== null) {
+            return;
+        }
+
+        if ($lastMonth === null) {
+            throw ValidationException::withMessages(['last_fee_month' => 'Choose the last month this KOL is paid for.']);
+        }
+
+        $this->fees->setEndMonth($fee, $lastMonth);
     }
 
     public function show(Request $request, Campaign $campaign): JsonResponse
@@ -106,6 +123,7 @@ class CampaignController extends Controller
             'range' => $range[$campaign->id],
             'cumulative' => $cumulative[$campaign->id],
             'verdict' => $this->verdict($campaign, $cumulative[$campaign->id], PlatformSettings::current()),
+            'customers' => $this->reports->campaignCustomers($campaign),
         ]);
     }
 
@@ -117,11 +135,17 @@ class CampaignController extends Controller
             $campaign->name = $data['name'];
         }
 
-        if (array_key_exists('ended', $data)) {
-            $campaign->ended_at = $data['ended'] ? ($campaign->ended_at ?? now()) : null;
-        }
+        DB::transaction(function () use ($campaign, $data) {
+            if (($data['ended'] ?? false) && $campaign->ended_at === null) {
+                $this->endFee($campaign, $data['last_fee_month'] ?? null);
+            }
 
-        $campaign->save();
+            if (array_key_exists('ended', $data)) {
+                $campaign->ended_at = $data['ended'] ? ($campaign->ended_at ?? now()) : null;
+            }
+
+            $campaign->save();
+        });
 
         return response()->json($this->summary($campaign->load('fees', 'promoCodes:id,campaign_id,code,is_active')));
     }
