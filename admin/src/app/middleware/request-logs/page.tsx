@@ -91,7 +91,7 @@ function FilterSelect({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="text-theme-xs text-gray-500 dark:text-gray-400">{label}</span>
+      <span className="text-theme-xs text-ink-muted">{label}</span>
       <SimpleSelect value={value} onChange={onChange} options={options} className="min-w-[10rem]" />
     </div>
   );
@@ -174,8 +174,8 @@ export default function RequestLogsPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Request Logs</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        <h1 className="text-page-title font-semibold text-ink">Request Logs</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Every outbound supplier-adapter call (or circuit-breaker-preempted skip). Payloads are redacted before
           they&apos;re ever written — credentials never reach this table. Default retention: 30 days (7 days for
           Validate Player).
@@ -183,7 +183,7 @@ export default function RequestLogsPage() {
       </div>
 
       {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-4 py-3 text-sm text-danger-ink">
           {error}
         </p>
       )}
@@ -217,10 +217,10 @@ export default function RequestLogsPage() {
           options={OUTCOME_OPTIONS}
         />
         <div className="flex items-center gap-2">
-          <span className="text-theme-xs text-gray-500 dark:text-gray-400">From</span>
+          <span className="text-theme-xs text-ink-muted">From</span>
           <input
             type="date"
-            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-theme-sm text-gray-800 dark:border-gray-800 dark:bg-white/[0.03] dark:text-white/90"
+            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-theme-sm text-ink"
             value={from}
             onChange={(e) => {
               setFrom(e.target.value);
@@ -229,10 +229,10 @@ export default function RequestLogsPage() {
           />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-theme-xs text-gray-500 dark:text-gray-400">To</span>
+          <span className="text-theme-xs text-ink-muted">To</span>
           <input
             type="date"
-            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-theme-sm text-gray-800 dark:border-gray-800 dark:bg-white/[0.03] dark:text-white/90"
+            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-theme-sm text-ink"
             value={to}
             onChange={(e) => {
               setTo(e.target.value);
@@ -242,21 +242,21 @@ export default function RequestLogsPage() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
         <div className="max-w-full overflow-x-auto">
           <DataTable data={page?.data ?? []} dataKey="id">
             <DataTableTableContainer>
               <DataTableTable>
                 <DataTableTHead>
                   <DataTableTHeadRow>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Time</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Supplier</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Call Type</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Outcome</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Duration</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Order</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Time</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Supplier</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Call Type</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Outcome</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Status</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Duration</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Order</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
                 </DataTableTHead>
                 <DataTableTBody>
@@ -265,23 +265,23 @@ export default function RequestLogsPage() {
 
                     return (
                       <DataTableRow key={row.id}>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {formatDateTime(row.created_at)}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-ink">
                           {row.supplier?.name ?? "—"}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{row.call_type}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{row.call_type}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <Tag severity={outcomeSeverity[row.outcome]}>{row.outcome}</Tag>
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {row.status_code ?? "—"}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {row.duration_ms !== null ? `${row.duration_ms}ms` : "—"}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {row.order_id ?? "—"}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
@@ -297,14 +297,14 @@ export default function RequestLogsPage() {
             </DataTableTableContainer>
           </DataTable>
           {page?.data.length === 0 && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No request logs yet.</p>
+            <p className="p-6 text-center text-sm text-ink-muted">No request logs yet.</p>
           )}
-          {page === null && !error && <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>}
+          {page === null && !error && <p className="p-6 text-center text-sm text-ink-muted">Loading…</p>}
         </div>
       </div>
 
       {page && page.last_page > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+        <div className="mt-4 flex items-center justify-between text-sm text-ink-muted">
           <span>
             Page {page.current_page} of {page.last_page} ({page.total} total)
           </span>
@@ -339,27 +339,27 @@ export default function RequestLogsPage() {
                   <div className="space-y-4 text-theme-sm">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <p className="text-theme-xs text-gray-500 dark:text-gray-400">Outcome</p>
+                        <p className="text-theme-xs text-ink-muted">Outcome</p>
                         <Tag severity={outcomeSeverity[detailLog.outcome]}>{detailLog.outcome}</Tag>
                       </div>
                       <div>
-                        <p className="text-theme-xs text-gray-500 dark:text-gray-400">Status code</p>
-                        <p className="text-gray-800 dark:text-white/90">{detailLog.status_code ?? "—"}</p>
+                        <p className="text-theme-xs text-ink-muted">Status code</p>
+                        <p className="text-ink">{detailLog.status_code ?? "—"}</p>
                       </div>
                       <div>
-                        <p className="text-theme-xs text-gray-500 dark:text-gray-400">Duration</p>
-                        <p className="text-gray-800 dark:text-white/90">{detailLog.duration_ms !== null ? `${detailLog.duration_ms}ms` : "—"}</p>
+                        <p className="text-theme-xs text-ink-muted">Duration</p>
+                        <p className="text-ink">{detailLog.duration_ms !== null ? `${detailLog.duration_ms}ms` : "—"}</p>
                       </div>
                       <div>
-                        <p className="text-theme-xs text-gray-500 dark:text-gray-400">Order</p>
-                        <p className="text-gray-800 dark:text-white/90">{detailLog.order_id ?? "—"}</p>
+                        <p className="text-theme-xs text-ink-muted">Order</p>
+                        <p className="text-ink">{detailLog.order_id ?? "—"}</p>
                       </div>
                     </div>
 
                     {detailLog.method && detailLog.url && (
                       <div>
-                        <p className="text-theme-xs text-gray-500 dark:text-gray-400">Request</p>
-                        <p className="break-all font-mono text-theme-xs text-gray-800 dark:text-white/90">
+                        <p className="text-theme-xs text-ink-muted">Request</p>
+                        <p className="break-all font-mono text-theme-xs text-ink">
                           {detailLog.method} {detailLog.url}
                         </p>
                       </div>
@@ -367,15 +367,15 @@ export default function RequestLogsPage() {
 
                     {detailLog.error_message && (
                       <div>
-                        <p className="text-theme-xs text-gray-500 dark:text-gray-400">Error</p>
-                        <p className="text-error-600 dark:text-error-400">{detailLog.error_message}</p>
+                        <p className="text-theme-xs text-ink-muted">Error</p>
+                        <p className="text-danger-ink">{detailLog.error_message}</p>
                       </div>
                     )}
 
                     {detailLog.request_payload && (
                       <div>
-                        <p className="mb-1 text-theme-xs text-gray-500 dark:text-gray-400">Request payload (redacted)</p>
-                        <pre className="max-h-48 overflow-auto rounded-lg bg-gray-50 p-3 text-theme-xs dark:bg-white/[0.03]">
+                        <p className="mb-1 text-theme-xs text-ink-muted">Request payload (redacted)</p>
+                        <pre className="max-h-48 overflow-auto rounded-lg bg-subtle p-3 text-theme-xs text-ink">
                           {JSON.stringify(detailLog.request_payload, null, 2)}
                         </pre>
                       </div>
@@ -383,8 +383,8 @@ export default function RequestLogsPage() {
 
                     {detailLog.response_payload && (
                       <div>
-                        <p className="mb-1 text-theme-xs text-gray-500 dark:text-gray-400">Response payload</p>
-                        <pre className="max-h-48 overflow-auto rounded-lg bg-gray-50 p-3 text-theme-xs dark:bg-white/[0.03]">
+                        <p className="mb-1 text-theme-xs text-ink-muted">Response payload</p>
+                        <pre className="max-h-48 overflow-auto rounded-lg bg-subtle p-3 text-theme-xs text-ink">
                           {JSON.stringify(detailLog.response_payload, null, 2)}
                         </pre>
                       </div>
