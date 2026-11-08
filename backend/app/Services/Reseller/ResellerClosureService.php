@@ -97,7 +97,7 @@ final class ResellerClosureService
                     LedgerOwnerType::ResellerWallet,
                     $locked->id,
                     $balance,
-                    'wallet_closure_refund',
+                    WalletEntryType::ClosureRefund->value,
                     'reseller',
                     $locked->id,
                     $adminUserId,

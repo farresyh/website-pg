@@ -125,7 +125,7 @@ final class ResellerOrderPlacementService
                     LedgerOwnerType::ResellerWallet,
                     $reseller->id,
                     $pricing->sellingPriceSen,
-                    'wallet_debit',
+                    WalletEntryType::Debit->value,
                     referenceType: 'order',
                     referenceId: $order->id,
                 );

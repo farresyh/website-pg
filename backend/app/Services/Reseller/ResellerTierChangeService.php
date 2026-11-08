@@ -5,6 +5,7 @@ namespace App\Services\Reseller;
 use App\Models\Reseller;
 use App\Models\ResellerWalletTierChange;
 use App\Support\MalaysiaTime;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -60,6 +61,22 @@ final class ResellerTierChangeService
                 'admin_user_id' => $adminUserId,
             ]);
         });
+    }
+
+    /**
+     * ADR-139 decision 7: the tier a month is rewarded on — the latest change
+     * effective on or before its 1st; for a reseller who joined later in the
+     * month (decision 31), its first tier.
+     */
+    public function tierForMonth(Reseller $reseller, CarbonInterface $monthStart): ?int
+    {
+        $first = $monthStart->toDateString();
+
+        return ResellerWalletTierChange::query()->where('reseller_id', $reseller->id)->whereDate('effective_on', '<=', $first)
+            ->orderByDesc('effective_on')->orderByDesc('id')->value('to_tier_id')
+            ?? ResellerWalletTierChange::query()->where('reseller_id', $reseller->id)
+                ->whereDate('effective_on', '<', $monthStart->copy()->addMonthNoOverflow()->toDateString())
+                ->orderBy('effective_on')->orderBy('id')->value('to_tier_id');
     }
 
     /** @return int how many changes were applied */

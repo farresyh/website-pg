@@ -372,3 +372,26 @@ The founder approved the programme terms that the accountant addendum's decision
    - `app:apply-reseller-tier-changes` runs hourly as `CRITICAL` (`reseller-tier-change-apply`), so 16:00 UTC is exactly 00:00 KL and a missed run catches up.
    - Reading a month's tier from the history is left to PR 3, which is its first reader.
 3. **Gotcha.** The `date` cast stores `Y-m-d H:i:s` on sqlite, so `where('effective_on', '<=', 'Y-m-d')` missed the change at exactly midnight on the 1st. The comparison uses `whereDate`. A test pins 23:59 and 00:00 KL.
+
+### 2026-11-08 addendum — PR 3a build notes (ladder, entitlement, claim)
+
+1. **Built.**
+   - Tables: `reseller_rebate_ladders`, `reseller_rebate_milestones`, `reseller_rebate_terms_acceptances`, and `resellers.rebate_eligible` (default true, decision 36).
+   - `RebateLadderService` is the one writer of ladder versions. It validates each version and sets `effective_from` to the first 1st at least 7 days away.
+   - `RebateEntitlement` returns a `RebateStanding`, the decision 12 function.
+   - `RebateClaimService` is the only writer of `wallet_rebate`.
+   - `RecognisedRevenue::walletResellerTotals()` gives one reseller's recognised sales and profit.
+   - `ResellerTierChangeService::tierForMonth()` gives the tier a month is rewarded on.
+   - `WalletEntryType` enum: all four existing writers now use it (stress test F5).
+   - The `dedupe_key` backstop now includes `wallet_rebate`.
+   - Programme terms v1 live in `RebateTerms`.
+2. **Changes from the text above, decided at build:**
+   - **The ladder grid is JSON on the version row**, not a second table. It is written once, validated as a whole and never queried by cell. The table count is 5, not 6.
+   - **Steps are claimed in order.** A claim of step k pays `min(ladder cumulative at k, cap) − already paid this month`. Claiming out of order would let one claim swallow the earlier steps and leave rows paying 0. The portal can offer "claim all", which claims in order.
+   - **The claiming login must be an active portal user of that reseller.** This defends the service even if a controller were wrong.
+   - **Saving a ladder enforces the ceiling on paper:** each tier's cumulative reward must be ≤ 50% × threshold × m/(100+m), using that tier's fixed markup. At runtime the cap still reads actual profit.
+   - **The master switch is the ladder itself.** No version in force means no rebate. Turning the rebate off is a version with no steps, which gets the same 7-day notice. No separate flag can disagree with the ladder.
+3. **Proven by:**
+   - 14 feature tests: credit once with stored inputs; steps in order; a capped claim is adjusted and the shortfall comes back on the next claim; negative profit pays nothing; terms accepted once per version; the window closes at 00:00 KL on the 1st of M+2; month bounds; sandbox orders are excluded; deactivated, ineligible or foreign logins are refused; a tier with no column earns nothing; the month's tier comes from history; the 7-day notice and the ceiling.
+   - A two-process MySQL test (`RebateClaimConcurrencyTest`): two simultaneous claims of a step give one credit.
+4. **Not in 3a:** the finalise, expire and notify tasks, `UnspentRebate` with the closure forfeit, the accounting lines and the month-close gate are PR 3b. The HTTP endpoints, admin ladder editor and portal screens are PR 4. Nothing calls the claim from outside yet, and no ladder version exists in production, so this PR changes no live behaviour.

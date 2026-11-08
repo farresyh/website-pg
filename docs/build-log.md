@@ -2110,3 +2110,24 @@ Branch `feature/reseller-tier-from-the-1st`, into `staging` (not released).
   - cancelled the test change by choosing the current tier, leaving 0 pending rows.
 - Fixed an outdated "direct FK assignment" line under Wallet tiers.
 
+## 2026-11-08 — ADR-139 PR 3a: rebate core (ladder, entitlement, claim)
+
+Branch `feature/rebate-core`, into `staging` (not released). It changes no live behaviour: production has no ladder version, and nothing calls the claim yet.
+
+**Shipped:**
+- Ladder versions with notice and on-paper ceiling validation.
+- `RebateEntitlement`, the one function every amount comes from.
+- `RebateClaimService`: claims in order, pays `min(ladder at k, cap) − paid`, accepts terms once per version, and refuses after the window, for an inactive or ineligible account, or for a login of another account.
+- `WalletEntryType` across all wallet writers.
+- `wallet_rebate` added to the ledger dedupe backstop.
+
+**Build decisions** (ADR-139 PR 3a addendum): the ladder grid is JSON (5 tables, not 6); claims go in order; the master switch is the ladder itself.
+
+**Verified:**
+- `php artisan test`: 3,858 passed (14 new).
+- On MySQL, `RebateClaimConcurrencyTest` gives one credit from two simultaneous claims. `RefundToWalletConcurrencyTest` and `OrderSettlementConcurrencyTest` still pass after the dedupe-key rebuild.
+- Full local concurrency run: 45 of 49 passed. The 4 errors are `BackupRestoreMysqlTest`, which needs `mysqldump`; that tool is not installed on this machine but is in CI's `backend-concurrency` job.
+- Local dev DB migrated with a plain `migrate`.
+
+**Gotcha:** the docker MySQL still held the `llm_report_*` views from an earlier killed run (backend AGENTS gotcha 8). Dropped them before the run.
+

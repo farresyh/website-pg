@@ -33,6 +33,7 @@ class Reseller extends Model
         'phone',
         'reseller_tier_id',
         'is_active',
+        'rebate_eligible',
         'notes',
         'balance_cap_sen',
         'internal_reason',
@@ -40,6 +41,7 @@ class Reseller extends Model
 
     protected $casts = [
         'is_active' => 'boolean',
+        'rebate_eligible' => 'boolean',
         'balance_cap_sen' => 'integer',
     ];
 

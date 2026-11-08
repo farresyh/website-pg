@@ -236,7 +236,7 @@ final class ResellerWalletService
                 LedgerOwnerType::ResellerWallet,
                 $reseller->id,
                 $amountSen,
-                'wallet_topup',
+                WalletEntryType::Topup->value,
                 referenceType: $receiptRow !== null ? 'wallet_topup_receipt' : null,
                 referenceId: $receiptRow?->id,
                 createdBy: $adminUserId,
@@ -346,7 +346,7 @@ final class ResellerWalletService
                 LedgerOwnerType::ResellerWallet,
                 $locked->reseller_id,
                 $locked->amount_sen,
-                'wallet_topup',
+                WalletEntryType::Topup->value,
                 referenceType: 'wallet_topup_attempt',
                 referenceId: $locked->id,
             );
