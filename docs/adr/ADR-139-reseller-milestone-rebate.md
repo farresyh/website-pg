@@ -356,3 +356,19 @@ The founder approved the programme terms that the accountant addendum's decision
    - `settle()` takes `?int $adminUserId`; null means the system, and is allowed only for a wallet order (a voucher keeps a named issuer).
    - The `wallet_refund` ledger row now carries `created_by` (the admin, or null for the system). Before, no refund row recorded who gave it.
 3. **Failure counting.** A per-order counter in the cache sends one email on the third failed run. A cache flush can only repeat that email, never skip a refund.
+
+### 2026-11-08 addendum — PR 2 build notes (tier from the 1st, fixed markup)
+
+1. **A tier's markup is fixed once the tier exists** (founder, option (b) of three; the alternatives were five hard-coded 1–5% tiers with rename only, or leaving markup editable).
+   - Why: a markup edit re-priced every reseller on that tier at once, mid-month. That bypasses decision 7, and it detaches that tier's ladder column from the margin it was set on, so the cap would cut it every month.
+   - `UpdateResellerTierRequest` now marks `markup_percent` as `prohibited`, with a message saying how to get a different markup: create a new tier and move resellers to it from the 1st.
+   - Adding a tier and soft-deleting an empty one stay. A tier that a pending change points to cannot be deleted.
+2. **Built as decision 7 describes.**
+   - The table `reseller_wallet_tier_changes` is backfilled with each existing reseller's current tier, effective on its creation day (KL) and already applied.
+   - `ResellerTierChangeService` is the one writer:
+     - `recordInitial()` is called from `ResellerProvisioningService::create()`, which every creation path goes through;
+     - `change()` holds one pending change per reseller: a new choice replaces it, choosing the current tier cancels it, and a reseller with no tier gets the new one at once;
+     - `applyDue()` applies due changes.
+   - `app:apply-reseller-tier-changes` runs hourly as `CRITICAL` (`reseller-tier-change-apply`), so 16:00 UTC is exactly 00:00 KL and a missed run catches up.
+   - Reading a month's tier from the history is left to PR 3, which is its first reader.
+3. **Gotcha.** The `date` cast stores `Y-m-d H:i:s` on sqlite, so `where('effective_on', '<=', 'Y-m-d')` missed the change at exactly midnight on the 1st. The comparison uses `whereDate`. A test pins 23:59 and 00:00 KL.
