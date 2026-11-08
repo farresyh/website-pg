@@ -2011,3 +2011,11 @@ The 2026-11-04 row is as item 159 recorded it, without naming the session; it is
 **Built** on `style/orders-components-tokens`, the same pure reskin as item 164 for the three admin Orders components the Middleware Sandbox reuses: `DeliveryLogsTable`, `OrderDetailCards` and `ResendDeliveryModal`. They were already on `ink` / `surface`; the cards, table rules and Resend option boxes still drew `border-gray-*` / `divide-gray-*` with `dark:` pairs, now `border-border` / `divide-border`. The negative profit figure and the Resend error banners move to `danger-ink` / `danger-surface`, and the Resend warning banner to `warning-surface` / `warning-ink` (its dark text had been `orange-400`).
 
 **Verified** with Playwright, light and dark, on a failed order's detail page (cards and Delivery & Activity Logs). The Resend modal could not be opened locally: every failed order in the dev DB is already compensated, so the button is hidden; its change is borders and banners only, with the mapping checked on the other pages. `tsc`, `eslint` and `color-tokens.test.ts` pass.
+
+## 2026-11-08 — Released #755: middleware restyle, panel switch link, dialog widths
+
+**Released on the founder's go-ahead.** `main` `261345ca`, box release `82402542`, CI (all jobs) and `deploy` green, Vercel production rebuilt admin and portal from that commit (storefront and docs skipped by their ignore step, as intended). Ships #738 to #754: item 164 (#740 to #751), the panel switch link (#739), the middleware dialog widths and Payment Methods chips (#752), the `DialogPopup` default width (#753) and the admin Orders detail components (#754). Frontend only: no backend change, no migration, no env change. 0 paid orders in flight before it.
+
+**Checked after release.** `/api/health` ok, `php_code_cache` true; `/api/health/whatsapp` 200; storefront, admin, portal, docs and onboarding all 200; the box's `current` at `261345c`; 0 paid orders in flight.
+
+**Gotcha.** Thirteen page PRs that each appended a build-log entry would conflict with each other at every merge and re-run CI each time. Moving the entries to one docs PR left the page PRs touching disjoint files, so they merged in any order on their first green run.
