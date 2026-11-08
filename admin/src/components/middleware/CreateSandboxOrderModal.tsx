@@ -100,18 +100,18 @@ function CreateSandboxOrderFields({ onClose, onSubmit }: Omit<CreateSandboxOrder
 
   return (
     <>
-      <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
+      <p className="mb-5 text-sm text-ink-muted">
         Creates a real Order row, marked as sandbox-only (is_test), paid immediately with no payment-gateway call, and starting
         already at a &quot;failed delivery&quot; state so it&apos;s instantly usable with Resend Delivery below.
       </p>
 
       {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
           {error}
         </p>
       )}
       {gamesError && (
-        <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
           {gamesError}
         </p>
       )}
@@ -120,7 +120,7 @@ function CreateSandboxOrderFields({ onClose, onSubmit }: Omit<CreateSandboxOrder
         <div>
           <Label htmlFor="sandbox_game">Game</Label>
           {games === null ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">Loading games…</p>
+            <p className="text-sm text-ink-muted">Loading games…</p>
           ) : (
             <SimpleSelect
               id="sandbox_game"
@@ -134,9 +134,9 @@ function CreateSandboxOrderFields({ onClose, onSubmit }: Omit<CreateSandboxOrder
         <div>
           <Label htmlFor="sandbox_package">Package</Label>
           {!gameId ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">Select a game first.</p>
+            <p className="text-sm text-ink-muted">Select a game first.</p>
           ) : packages === null ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">Loading packages…</p>
+            <p className="text-sm text-ink-muted">Loading packages…</p>
           ) : (
             <SimpleSelect
               id="sandbox_package"
