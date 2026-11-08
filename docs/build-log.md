@@ -1914,7 +1914,6 @@ The 2026-11-04 row is as item 159 recorded it, without naming the session; it is
 
 **Not yet seen:** a KOL link and the bank logos in a real TikTok or Instagram browser.
 
-
 ## 2026-11-08 — Admin ↔ Middleware switch link under the sidebar brand
 
 **Asked by the founder.** Switching panels meant editing the URL by hand. A small link now sits under each panel's brand: "Middleware Panel" under "PekanGame Admin" (super_admin only, since the Middleware layout sends anyone else back to `/admin`) and "Admin Panel" under "Middleware Panel". It opens in a new tab (founder's choice). It first sat in a "Panels" section at the foot of the menu; the founder moved it up because the admin menu needs scrolling to reach its end. `PanelSidebar` takes an optional `switchTo`; collapsed, the link shows its icon only.
@@ -1928,3 +1927,63 @@ The 2026-11-04 row is as item 159 recorded it, without naming the session; it is
 **Verified** with Playwright screenshots, light and dark, of the page and all three modals beside `/orders`; `getComputedStyle` on the title (26 px), labels and values in both themes; 390 px phone width with no horizontal scroll. `tsc`, `eslint` and `color-tokens.test.ts` pass.
 
 **Gotcha.** A Next dev server left running across a `git checkout` threw a sidebar hydration error (the server still rendered the other branch's module). A fresh load on each branch had none: not a bug.
+
+## 2026-11-08 — Item 164: Price Sync Center on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-price-sync-restyle`, a pure reskin of `/middleware/price-sync` and its three parts (`SyncDetailsModal`, `PendingPriceChangeSection`, `FxRateHistorySection`): 160 old classes, now none. Same mapping as Suppliers, plus table rules `divide-border` / `border-border`, the empty-state box `bg-subtle`, the "Combo — recomputed" pill `cyan-50` / `cyan-ink`, and the run errors and flags `danger-ink` / `warning-ink`. Section headings take `text-section-title`. One layout touch: "Refresh" and "Sync All Prices Now" were squeezed to three lines beside the description; the header now wraps like `/orders` (buttons stay right on desktop, drop below the text on a phone).
+
+**Verified** with Playwright, light and dark, the full page and the Sync Details modal, and the header at 1440, 1024 and 390 px (no horizontal scroll). `tsc`, `eslint` and `color-tokens.test.ts` pass. Checked against the founder's own `./scripts/dev.sh` servers, which had taken `:3000` and `:8000`.
+
+## 2026-11-08 — Item 164: Middleware Dashboard on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-dashboard-restyle`, a pure reskin of `/middleware` (34 old classes, now none), same mapping as Suppliers and Price Sync: page title, section titles, `surface` cards on `border-border`, inner tiles and API-call rows on `border-border`, muted text `ink-muted`, the error banner `danger-surface` / `danger-ink`.
+
+**Verified** with Playwright, light and dark at 1440 px and light at 390 px (no horizontal scroll), against the founder's `./scripts/dev.sh` servers. `tsc`, `eslint` and `color-tokens.test.ts` pass.
+
+## 2026-11-08 — Item 164: Payment Gateways on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-payment-gateways-restyle`, a pure reskin of `/middleware/payment-gateways` and its Edit modal (33 old classes, now none), same mapping as Suppliers: the card title takes `text-section-title`, the modal's inputs the kit input's colours and `focus-ring` outline, the Configured / Not configured pills `success-*` / `neutral-*`, errors `danger-*`.
+
+**Verified** with Playwright, light and dark at 1440 px with the Edit modal open, and light at 390 px (no horizontal scroll). `tsc`, `eslint` and `color-tokens.test.ts` pass. **Seen, not changed:** this modal and the supplier Edit modal are narrow (about 210 px of input), so placeholders cut off; that is layout, outside a reskin.
+
+## 2026-11-08 — Item 164: Validators on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-validators-restyle`, a pure reskin of `/middleware/validators`, `ValidatorCard`, `CreateValidatorModal` and `ValidateByGamePanel` (about 80 old classes, now none). Beyond the shared mapping: the country chips and their arrow on `cyan-50` / `cyan-ink` / `cyan-600`, the text actions (Edit, Game ID Checker, Test this validator) `text-cyan-ink` with an underline on hover, Delete `danger-ink`, the dashed "Add Country" button and add form on `border-border-strong`, result pills on the `success` / `danger` / `warning` surface and ink pairs, the inline inputs on `border-border-control`.
+
+**Verified** with Playwright, light and dark at 1440 px and light at 390 px. The local dev DB has no validator, so the cards were rendered from a mocked `GET /api/middleware/validators` (route interception, nothing written to the DB) with the add-country form open. `tsc`, `eslint` and `color-tokens.test.ts` pass.
+
+## 2026-11-08 — Item 164: Payment Methods on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-payment-methods-restyle`, a pure reskin of `/middleware/payment-methods` (42 old classes, now none): shared mapping, the fee inputs on `border-border-control` / `surface`, the active category chip `bg-cyan-600 text-on-cyan` (the kit's primary button colours), the failed test result `danger-ink`.
+
+**Verified** with Playwright, light and dark at 1440 px and light at 390 px. `tsc`, `eslint` and `color-tokens.test.ts` pass. **Seen, not changed (layout, not colour):** at 390 px the channel table is clipped inside its card (Last Test and Actions are off to the right) and the category chips wrap.
+
+## 2026-11-08 — Item 164: Developer / API Tester on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-developer-tools-restyle`, a pure reskin of `/middleware/developer-tools` (54 old classes, now none): shared mapping, the selected endpoint `bg-cyan-50 text-cyan-ink` (the sidebar's active look) with `hover:bg-subtle` on the rest, the Create Order note `warning-surface` / `warning-ink`.
+
+**Verified** with Playwright, light and dark at 1440 px with Digiflazz chosen and an endpoint selected, and light at 390 px. `tsc`, `eslint` and `color-tokens.test.ts` pass. The screenshot script now signs in once and reuses the session: the fifth sign-in in a few minutes hit the login rate limit.
+
+## 2026-11-08 — Item 164: Backups on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-backups-restyle`, a pure reskin of `/middleware/backups` (68 old classes, now none), the shared mapping only: stat cards and the table card on `surface` / `border-border`, muted labels and cells `ink-muted`, the error banner `danger-*`.
+
+**Verified** with Playwright, light and dark at 1440 px and light at 390 px. The local DB has no backup, so the table showed its empty state; its row cells use the same classes as the header and stat cards. `tsc`, `eslint` and `color-tokens.test.ts` pass.
+
+## 2026-11-08 — Item 164: Request Logs on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-request-logs-restyle`, a pure reskin of `/middleware/request-logs` and its View modal (85 old classes, now none), the shared mapping, plus `text-ink` on the payload `<pre>` blocks: they had no text colour of their own, the gap ADR-104 found rendering black on a dark card.
+
+**Verified** with Playwright, light and dark at 1440 px with a log's View modal open (52 local rows, payloads readable in both themes), and light at 390 px. `tsc`, `eslint` and `color-tokens.test.ts` pass.
+
+## 2026-11-08 — Item 164: Sandbox on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-sandbox-restyle`, a pure reskin of `/middleware/sandbox` and `CreateSandboxOrderModal` (about 60 old classes, now none): the shared mapping, the search box on `border-border-control` / `surface` with the `focus-ring`, the back link `hover:text-ink`. The order detail it opens reuses the admin Orders components, which are not touched here.
+
+**Verified** with Playwright, light and dark at 1440 px (page, and the Create Test Order modal open), and light at 390 px. The local DB has no test order, so the list showed its empty state. `tsc`, `eslint` and `color-tokens.test.ts` pass.
+
+## 2026-11-08 — Item 164: Product Manager on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-product-manager-restyle`, a pure reskin of `/middleware/product-manager` and its Link Category, Promote and Repoint modals (about 150 old classes, now none): the shared mapping, the group search and the in-group search on `border-border-control` / `surface` with a cyan focus, the three group tabs on `/orders`' own active style (`border-cyan-600 text-cyan-ink`, `hover:text-ink` on the rest), the back link `hover:text-ink`.
+
+**Verified** with Playwright, light and dark at 1440 px: the group list (21 local groups), a group's Available Packages tab, and the Link Category modal; light at 390 px. `tsc`, `eslint` and `color-tokens.test.ts` pass.
