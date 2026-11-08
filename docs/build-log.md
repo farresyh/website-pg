@@ -1987,3 +1987,13 @@ The 2026-11-04 row is as item 159 recorded it, without naming the session; it is
 **Built** on `feature/164-middleware-product-manager-restyle`, a pure reskin of `/middleware/product-manager` and its Link Category, Promote and Repoint modals (about 150 old classes, now none): the shared mapping, the group search and the in-group search on `border-border-control` / `surface` with a cyan focus, the three group tabs on `/orders`' own active style (`border-cyan-600 text-cyan-ink`, `hover:text-ink` on the rest), the back link `hover:text-ink`.
 
 **Verified** with Playwright, light and dark at 1440 px: the group list (21 local groups), a group's Available Packages tab, and the Link Category modal; light at 390 px. `tsc`, `eslint` and `color-tokens.test.ts` pass.
+
+## 2026-11-08 — Middleware dialogs get a width; Payment Methods chips stop wrapping
+
+**Found during item 164.** A `DialogPopup` with no width class sizes to its content, so the supplier Edit modal and the Payment Gateway Edit modal shrank to about 210 px of input and cut every placeholder, while Manage Packages stretched to about 950 px around its one long note. Fifty-seven dialogs in the admin already pass `w-full max-w-*`; ten did not, seven of them under `/middleware`.
+
+**Fixed** on `fix/middleware-modal-and-table-layout`: the supplier Create, Edit and Manage Packages modals take `max-w-lg`; the Payment Gateway Edit modal and the Activate / Deactivate / Delete / backup confirms on the Suppliers and Backups pages take `max-w-md`. On Payment Methods the category chips no longer break "E-Wallet" over two lines (`flex-wrap`, `whitespace-nowrap`).
+
+**Corrected claim.** The Payment Methods table at 390 px was not clipped, as an earlier entry said: the DataTable's own container scrolls sideways (356 px wide, 600 px of table) and the Test button is reachable by a swipe, the same as admin `/orders`.
+
+**Verified** with Playwright: dialog widths 512 / 448 px at 1440 (inputs 474 and 410 px, from about 210), 326 px at 390; every chip 32 px tall at 390. `tsc` and `eslint` clean. **Left:** the three dialogs without a width outside `/middleware` (admin Resellers, admin Suppliers, Affiliates, Partner Applications).

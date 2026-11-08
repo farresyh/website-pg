@@ -373,7 +373,7 @@ export default function SuppliersPage() {
         <DialogPortal>
           <DialogBackdrop />
           <DialogPositioner>
-            <DialogPopup>
+            <DialogPopup className="w-full max-w-md">
               <DialogHeader>
                 <DialogTitle>Activate {activateConfirmTarget?.name}?</DialogTitle>
               </DialogHeader>
@@ -406,7 +406,7 @@ export default function SuppliersPage() {
         <DialogPortal>
           <DialogBackdrop />
           <DialogPositioner>
-            <DialogPopup>
+            <DialogPopup className="w-full max-w-md">
               <DialogHeader>
                 <DialogTitle>Deactivate {deactivateConfirmTarget?.name}?</DialogTitle>
               </DialogHeader>
@@ -442,7 +442,7 @@ export default function SuppliersPage() {
         <DialogPortal>
           <DialogBackdrop />
           <DialogPositioner>
-            <DialogPopup>
+            <DialogPopup className="w-full max-w-md">
               <DialogHeader>
                 <DialogTitle>Delete {deleteConfirmTarget?.name}?</DialogTitle>
               </DialogHeader>

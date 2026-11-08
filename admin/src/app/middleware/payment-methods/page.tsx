@@ -186,12 +186,12 @@ export default function PaymentMethodsPage() {
         </p>
       )}
 
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex flex-wrap gap-2">
         {categories.map((c) => (
           <button
             key={c}
             onClick={() => setCategory(c)}
-            className={`rounded-lg px-3 py-1.5 text-sm capitalize ${category === c ? "bg-cyan-600 text-on-cyan" : "bg-subtle text-ink-muted"}`}
+            className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm capitalize ${category === c ? "bg-cyan-600 text-on-cyan" : "bg-subtle text-ink-muted"}`}
           >
             {c === "all" ? "All" : (CATEGORY_LABELS[c] ?? c)}
           </button>

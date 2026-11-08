@@ -151,7 +151,7 @@ export default function EditPaymentGatewayModal({ isOpen, onClose, onSubmit, gat
       <DialogPortal>
         <DialogBackdrop />
         <DialogPositioner>
-          <DialogPopup>
+          <DialogPopup className="w-full max-w-md">
             {isOpen && gatewayKey && (
               <EditPaymentGatewayFields onClose={onClose} onSubmit={onSubmit} gatewayKey={gatewayKey} gateway={gateway} />
             )}
