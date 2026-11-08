@@ -2019,3 +2019,51 @@ The 2026-11-04 row is as item 159 recorded it, without naming the session; it is
 **Checked after release.** `/api/health` ok, `php_code_cache` true; `/api/health/whatsapp` 200; storefront, admin, portal, docs and onboarding all 200; the box's `current` at `261345c`; 0 paid orders in flight.
 
 **Gotcha.** Thirteen page PRs that each appended a build-log entry would conflict with each other at every merge and re-run CI each time. Moving the entries to one docs PR left the page PRs touching disjoint files, so they merged in any order on their first green run.
+
+## 2026-11-08 — ADR-139 proposed: reseller milestone rebate and automatic refund (docs only)
+
+The founder reopened item 161. Asked why they won't switch, agents said our price is about the same as their leader's (both at the floor). They proposed a rebate themselves: reach a monthly milestone, claim it, credited to Purchase Balance, "like a battle pass".
+
+**Decided with the founder:**
+- A monthly ladder (RM500 to RM20k to start), with a fixed RM reward per step that is set per tier.
+- The reward is funded from a share of our own actual profit, rising from 10% to 35%. We keep at least 65%, and a 50% hard ceiling sits in code.
+- The reseller claims every step in the portal only.
+- Claims are open until the end of the next month.
+- Unspent rebate is forfeited at account closure.
+- Tier changes take effect on the 1st.
+- The ladder is changed only with MFA, effective next month.
+- The automatic refund is only for a supplier-confirmed Failed. Tier SSS is the one at the leader's price.
+
+**Code trace:** three read-only forks (pricing; ledger; readers and accounting), with the top findings re-checked in code. It found:
+- Closure would have cashed out rebate credit.
+- A `wallet_topup` row reads as bank cash in the Register.
+- No profit report or month-close line sees a wallet credit.
+- Delivery rewrites `platform_profit` from real cost. Production has a delivered wallet order at −13 sen.
+- Splitting the wallet into two ledger accounts would touch about 26 balance readers. Unspent rebate is therefore derived by replaying the ledger instead.
+
+**Production, read-only:** 3 resellers, 1 buying (Tier SS, RM446.56 sales / RM12.69 profit to date). 4 failed wallet orders and 4 manual refunds (RM430.04). 0 late contradicting supplier results in 138 orders.
+
+**Grill (three rounds, 18 questions) and simulation, same day:**
+- **Simulation:** read-only on production through `OrderPricingResolver::resolveResellerWallet()`.
+  - 9 of 11 delivered wallet orders reproduce their selling price exactly.
+  - Actual profit is 94.56% of formula profit, which is real-cost drift.
+  - Repricing 100 delivered orders shows no rounding loss at any tier.
+  - So the ladder top share went from 35% to 32% under a 35% cap. We keep 70% at RM10k and 68% at RM20k.
+- **Final stress test, eight findings folded in:**
+  - one entitlement function, so an early cut self-heals and is never "claim late, get more";
+  - tier change history, so finalise reads the right tier;
+  - the claim deadline is checked by date;
+  - the refund sweep skips sandbox orders and closed resellers, which `settle()` refuses;
+  - a `WalletEntryType` enum makes the unspent-rebate replay exhaustive;
+  - step notifications come from a scheduled task, not the money path.
+- **Accepted.** The accountant confirms the accounting decisions before PR 3.
+- **Accountant review, same day.** The accountant confirmed the treatment: a revenue reduction recognised at reach; a claim moves the liability to Purchase Balance; revenue is recognised on use. Two changes:
+  - an unclaimed reward that expires reverses the revenue reduction rather than being breakage;
+  - the open month's rebate line is live from `RebateEntitlement` rather than provisional.
+
+  Added:
+  - versioned programme terms, accepted at the first claim;
+  - per-row calculation inputs and a CSV export, for income tax.
+
+  The founder confirmed there is no marketing obligation and that the business charges no SST (a scope check with a tax agent is company-level, not a gate). ADR-139 addendum; PR 3 unblocked.
+- **Programme terms version 1 approved by the founder** and recorded verbatim in the ADR-139 addendum. Clause 2 was aligned with mid-month claims and the monthly cap. Clause 7's notice promise is enforced in code: a ladder version must be saved at least 7 days before its month, and saving it notifies every eligible reseller (portal banner and bot).
