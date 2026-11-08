@@ -7,6 +7,7 @@ use App\Http\Controllers\ResellerApi\CatalogController as ResellerApiCatalogCont
 use App\Http\Requests\Admin\StoreResellerTierRequest;
 use App\Http\Requests\Admin\UpdateResellerTierRequest;
 use App\Models\ResellerTier;
+use App\Models\ResellerWalletTierChange;
 use App\Services\Cache\NextRevalidation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
@@ -50,16 +51,14 @@ class ResellerTierController extends Controller
     {
         $reseller_tier->update($request->validated());
 
-        // ADR-091: covers show_on_price_list / markup_percent / sort_order
-        // changes — called unconditionally rather than special-casing
-        // which fields changed, same as every other admin write that
-        // touches public-facing content.
+        // ADR-091: covers show_on_price_list / sort_order changes — called
+        // unconditionally, same as every other admin write that touches
+        // public-facing content. (markup_percent is fixed since ADR-139 PR 2.)
         NextRevalidation::purge();
 
-        // A1 hardening (2026-09-10 reseller-family audit): a markup_percent
-        // change re-prices this tier's Reseller API catalog cache without
-        // touching any Package/Game row, so the catalog-write choke point
-        // alone wouldn't invalidate it — flush explicitly here too.
+        // A1 hardening (2026-09-10 reseller-family audit): flush the Reseller
+        // API's per-tier catalog cache on any tier edit. Markup can no longer
+        // change (ADR-139 PR 2); the flush stays as a cheap guard.
         ResellerApiCatalogController::forgetPricedCache();
 
         return response()->json($reseller_tier->fresh());
@@ -72,6 +71,13 @@ class ResellerTierController extends Controller
         if ($blocking > 0) {
             throw ValidationException::withMessages([
                 'tier' => ["{$blocking} reseller(s) are assigned to this tier. Move them to another tier first."],
+            ]);
+        }
+
+        // ADR-139 decision 7: a change waiting for its 1st must still find its tier.
+        if (ResellerWalletTierChange::query()->where('to_tier_id', $reseller_tier->id)->whereNull('applied_at')->exists()) {
+            throw ValidationException::withMessages([
+                'tier' => ['A reseller is due to move to this tier on the 1st. Cancel that change first.'],
             ]);
         }
 
