@@ -2067,3 +2067,23 @@ The founder reopened item 161. Asked why they won't switch, agents said our pric
 
   The founder confirmed there is no marketing obligation and that the business charges no SST (a scope check with a tax agent is company-level, not a gate). ADR-139 addendum; PR 3 unblocked.
 - **Programme terms version 1 approved by the founder** and recorded verbatim in the ADR-139 addendum. Clause 2 was aligned with mid-month claims and the monthly cap. Clause 7's notice promise is enforced in code: a ladder version must be saved at least 7 days before its month, and saving it notifies every eligible reseller (portal banner and bot).
+
+## 2026-11-08 — ADR-139 PR 1: automatic refund of a Failed wallet order
+
+Branch `feature/auto-refund-failed-wallet-orders`, into `staging` (not released).
+
+**Shipped:**
+- `app:refund-failed-wallet-orders` runs every minute (`CRITICAL`, `wallet-order-auto-refund`). It settles each uncompensated Failed wallet order through `OrderSettlementService::settle()`, with the system as actor.
+- It reuses `Order::needsAction()`. It skips sandbox orders, closed resellers (which `settle()` refuses) and orders with a late supplier Success.
+- Each order is isolated, and an email goes out on the third failed run.
+- `settle()` accepts a null actor for wallet orders only. The `wallet_refund` row now records `created_by`.
+- `finalizePendingDelivery()` emails every admin on any late contradicting Success.
+
+**Found while building:** a Success arriving after Failed but before the sweep would have been refunded on top of a possible delivery. It is now skipped and alerted (ADR-139 PR 1 addendum).
+
+**Tests:**
+- 7 new, using a sqlite trigger for a real failure inside `settle()`.
+- Full suite: 3,837 passed.
+- The concurrency suite was not run: no locking changed, and `settle()`'s lock is already proven by `RefundToWalletConcurrencyTest`.
+- Production has 0 uncompensated Failed wallet orders (all 4 refunded by hand), so the first run after release refunds nothing old.
+
