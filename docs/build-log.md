@@ -2019,3 +2019,28 @@ The 2026-11-04 row is as item 159 recorded it, without naming the session; it is
 **Checked after release.** `/api/health` ok, `php_code_cache` true; `/api/health/whatsapp` 200; storefront, admin, portal, docs and onboarding all 200; the box's `current` at `261345c`; 0 paid orders in flight.
 
 **Gotcha.** Thirteen page PRs that each appended a build-log entry would conflict with each other at every merge and re-run CI each time. Moving the entries to one docs PR left the page PRs touching disjoint files, so they merged in any order on their first green run.
+
+## 2026-11-08 — ADR-139 proposed: reseller milestone rebate and automatic refund (docs only)
+
+The founder reopened item 161. Asked why they won't switch, agents said our price is about the same as their leader's (both at the floor). They proposed a rebate themselves: reach a monthly milestone, claim it, credited to Purchase Balance, "like a battle pass".
+
+**Decided with the founder:**
+- A monthly ladder (RM500 to RM20k to start), with a fixed RM reward per step that is set per tier.
+- The reward is funded from a share of our own actual profit, rising from 10% to 35%. We keep at least 65%, and a 50% hard ceiling sits in code.
+- The reseller claims every step in the portal only.
+- Claims are open until the end of the next month.
+- Unspent rebate is forfeited at account closure.
+- Tier changes take effect on the 1st.
+- The ladder is changed only with MFA, effective next month.
+- The automatic refund is only for a supplier-confirmed Failed. Tier SSS is the one at the leader's price.
+
+**Code trace:** three read-only forks (pricing; ledger; readers and accounting), with the top findings re-checked in code. It found:
+- Closure would have cashed out rebate credit.
+- A `wallet_topup` row reads as bank cash in the Register.
+- No profit report or month-close line sees a wallet credit.
+- Delivery rewrites `platform_profit` from real cost. Production has a delivered wallet order at −13 sen.
+- Splitting the wallet into two ledger accounts would touch about 26 balance readers. Unspent rebate is therefore derived by replaying the ledger instead.
+
+**Production, read-only:** 3 resellers, 1 buying (Tier SS, RM446.56 sales / RM12.69 profit to date). 4 failed wallet orders and 4 manual refunds (RM430.04). 0 late contradicting supplier results in 138 orders.
+
+**Next:** the grill, then the ladder simulation through `PricingService` on real orders (ADR-139 decision 30). ADR-139 stays Proposed until both are done.

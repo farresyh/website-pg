@@ -1,6 +1,6 @@
 # ADR-131: CHIP activation conditions — "Purchase Balance", top-up and balance limits, top-up receipts, account closure, and a payment gate on affiliate domains
 
-> **Standing (2026-11-01):** In force. Extends [ADR-073](./ADR-073-reseller-wallet.md) (the prepaid balance gets a display name, limits, receipts and a closure path) and adds an addendum-level change to [ADR-060](./ADR-060-multi-tenant-branded-storefront-custom-domain.md) decision D ("no admin gate" no longer holds for *payments*). Does not touch [ADR-004](./ADR-004-no-cash-refunds-ever.md) or PRD §16 item 129. Condition 4's reseller documents are collected in the system since [ADR-133](./ADR-133-partner-onboarding.md) (its decision 24's "outside the repo" now covers only the procedure and written confirmations). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-08):** In force; decision 14 (closure forfeits unspent rebate) revised by the 2026-11-08 addendum, proposed with [ADR-139](./ADR-139-reseller-milestone-rebate.md). Extends [ADR-073](./ADR-073-reseller-wallet.md) (the prepaid balance gets a display name, limits, receipts and a closure path) and adds an addendum-level change to [ADR-060](./ADR-060-multi-tenant-branded-storefront-custom-domain.md) decision D ("no admin gate" no longer holds for *payments*). Does not touch [ADR-004](./ADR-004-no-cash-refunds-ever.md) or PRD §16 item 129. Condition 4's reseller documents are collected in the system since [ADR-133](./ADR-133-partner-onboarding.md) (its decision 24's "outside the repo" now covers only the procedure and written confirmations). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-10-29. Grilled with the founder (two rounds, `/mattpocock-skills:grilling`), then code-traced by three read-only reviewers, one per layer (limits and checkout; ledger and closure; downstream readers and public surface), per the money-critical rule in the root `AGENTS.md`. The reviewers' top findings were re-checked against code by the author (`LedgerService::credit()` takes no lock; `OrderSettlementService::settle()` has no reseller-state check; `ResellerController::destroy()` is a non-atomic read that revokes nothing). Build and live status: PRD §15.
 
@@ -124,3 +124,14 @@ Decision 8 had the receipt end with "An invoice is issued for each order." The s
 ### 2026-10-30 addendum (later) — what was dropped
 
 The three receipt parts left open above (a stored snapshot of the company details, an admin download of a closed reseller's receipts, an automatic email) are **not planned** (founder, 2026-10-30): none is needed now. Decision 11's `ponytail:` note stands as the rule if one is ever wanted: an old receipt reprints the current company details and reseller name. The same decision closed PRD item 143: the partner portal footer keeps its hard-coded company name and SSM number (it also shows on the login page, so reading it from the setting would need a public endpoint), to be changed by hand if the details change.
+
+### 2026-11-08 addendum — closure forfeits unspent rebate (ADR-139)
+
+Proposed with [ADR-139](./ADR-139-reseller-milestone-rebate.md) (founder, 2026-11-08); it takes effect when ADR-139 is Accepted.
+
+1. **Decision 14 revised.** Closure no longer refunds the whole balance. Under the same lock, `close()` computes the reseller's unspent rebate (ADR-139 decision 14) and writes two debits:
+   - `wallet_rebate_forfeit` for the unspent rebate;
+   - `wallet_closure_refund` for the rest.
+
+   The closure form shows and requires a transfer of only the rest. Decision 1's "cannot be cashed out" then holds for rebate credit too. Paid-in money is still refunded to the original payment method on closure (decision 24).
+2. **The balance cap (decisions 5–6) never refuses a `wallet_rebate` credit.** It is owed, in the same class as `wallet_refund`.
