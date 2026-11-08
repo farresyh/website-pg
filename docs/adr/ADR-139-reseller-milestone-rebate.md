@@ -395,3 +395,21 @@ The founder approved the programme terms that the accountant addendum's decision
    - 14 feature tests: credit once with stored inputs; steps in order; a capped claim is adjusted and the shortfall comes back on the next claim; negative profit pays nothing; terms accepted once per version; the window closes at 00:00 KL on the 1st of M+2; month bounds; sandbox orders are excluded; deactivated, ineligible or foreign logins are refused; a tier with no column earns nothing; the month's tier comes from history; the 7-day notice and the ceiling.
    - A two-process MySQL test (`RebateClaimConcurrencyTest`): two simultaneous claims of a step give one credit.
 4. **Not in 3a:** the finalise, expire and notify tasks, `UnspentRebate` with the closure forfeit, the accounting lines and the month-close gate are PR 3b. The HTTP endpoints, admin ladder editor and portal screens are PR 4. Nothing calls the claim from outside yet, and no ladder version exists in production, so this PR changes no live behaviour.
+
+### 2026-11-08 addendum — PR 3b split; PR 3b-i build notes (month end, closure)
+
+1. **PR 3b is split in two.** 3b-i (this PR) covers the money rows: finalise, expire, claiming finalised rows, `UnspentRebate` and the closure forfeit. 3b-ii covers the accounting lines (Monthly Summary, Cash Position payable, Reports bridge), the month-close gate, the `FinancialScenario` step and their admin display. Reason: the accounting lines also need admin display, or the Reports bridge would show a false unexplained difference. Keeping them together in one smaller PR keeps each PR checkable.
+2. **Built.**
+   - `RebateMonthService`:
+     - `finalize()` writes each reached but unclaimed step as `available`, with amounts allocated in order from the final entitlement, then an `adjustment` row (step 0) for any remaining shortfall. A cut, an adjustment or an overpayment emails every admin. It runs under the same wallet mutex as a claim.
+     - `finalizeDue()` catches up every ended month since the first ladder that has no `reseller_rebate_months` row.
+     - `expireDue()` expires rows dated at the deadline instant, not the run time (stress test F3).
+   - Scheduled tasks, both `CRITICAL` and daily: `rebate-reward-expiry` at 16:05 UTC and `rebate-month-finalize` at 16:10 UTC.
+   - A claim on a finalised row pays its stored amount. Step 0 claims the adjustment row.
+   - `UnspentRebate` replays the wallet ledger with `WalletEntryType::from()`, which throws on an unknown type (fail closed).
+   - `ResellerClosureService::refundable()` and `close()`:
+     - forfeit the unspent rebate as `wallet_rebate_forfeit`;
+     - refund only the rest;
+     - expire the closed reseller's unclaimed rows at closure time.
+   - The admin `close-check` returns `balance_sen`, `unspent_rebate_sen` and `refund_sen`. The close modal shows the refund and explains the forfeited part.
+3. **Who is finalised:** every reseller with recognised wallet sales or rebate rows in the month, except closed or ineligible ones. A deactivated reseller still gets its rows, because it may claim if reactivated before the deadline (decision 34).
