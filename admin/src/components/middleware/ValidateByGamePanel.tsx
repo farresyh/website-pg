@@ -20,7 +20,7 @@ import { validatePlayerForResend, type ValidatePlayerForResendResult } from "@/l
 import type { Game } from "@/lib/games";
 
 const inputClasses =
-  "h-9 w-full rounded-lg border border-gray-300 px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
+  "h-9 w-full rounded-lg border border-border-control bg-surface px-3 text-sm text-ink placeholder:text-ink-subtle";
 
 const STATUS_LABEL: Record<ValidatePlayerForResendResult["status"], string> = {
   valid: "Valid",
@@ -30,10 +30,10 @@ const STATUS_LABEL: Record<ValidatePlayerForResendResult["status"], string> = {
 };
 
 const STATUS_CLASSES: Record<ValidatePlayerForResendResult["status"], string> = {
-  valid: "bg-success-50 text-success-600 dark:bg-success-500/10 dark:text-success-400",
-  invalid: "bg-error-50 text-error-600 dark:bg-error-500/10 dark:text-error-400",
-  region_unknown: "bg-warning-50 text-warning-600 dark:bg-warning-500/10 dark:text-warning-400",
-  wrong_region: "bg-warning-50 text-warning-600 dark:bg-warning-500/10 dark:text-warning-400",
+  valid: "bg-success-surface text-success-ink",
+  invalid: "bg-danger-surface text-danger-ink",
+  region_unknown: "bg-warning-surface text-warning-ink",
+  wrong_region: "bg-warning-surface text-warning-ink",
 };
 
 export default function ValidateByGamePanel({ games }: { games: Game[] }) {
@@ -69,9 +69,9 @@ export default function ValidateByGamePanel({ games }: { games: Game[] }) {
   }
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-      <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">Validate Player (by Game)</h3>
-      <p className="mb-4 text-xs text-gray-500 dark:text-gray-400">
+    <div className="rounded-2xl border border-border bg-surface p-5">
+      <h3 className="mb-1 text-lg font-semibold text-ink">Validate Player (by Game)</h3>
+      <p className="mb-4 text-xs text-ink-muted">
         Runs the same public, no-auth check the storefront wizard uses — resolves the game&apos;s validator and
         region mapping, exactly what a customer would see, rather than testing a validator key directly.
       </p>
@@ -116,19 +116,19 @@ export default function ValidateByGamePanel({ games }: { games: Game[] }) {
       </div>
 
       {staticallyUnsupported && (
-        <p className="mt-3 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 dark:bg-white/5 dark:text-gray-400">
+        <p className="mt-3 rounded-lg bg-subtle px-3 py-2 text-sm text-ink-muted">
           Not supported for this game — player-ID validation isn&apos;t enabled on {selectedGame?.name}.
         </p>
       )}
 
       {notSupported && !staticallyUnsupported && (
-        <p className="mt-3 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600 dark:bg-white/5 dark:text-gray-400">
+        <p className="mt-3 rounded-lg bg-subtle px-3 py-2 text-sm text-ink-muted">
           Not supported for this game.
         </p>
       )}
 
       {error && (
-        <p className="mt-3 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mt-3 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
           {error}
         </p>
       )}
