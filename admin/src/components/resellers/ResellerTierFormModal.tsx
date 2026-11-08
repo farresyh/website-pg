@@ -42,13 +42,14 @@ function Fields({ onClose, onSubmit, editing }: Omit<Props, "isOpen">) {
     const markupPct = parseFloat(markup);
     const sort = parseInt(sortOrder, 10);
 
-    if (!Number.isFinite(markupPct) || markupPct < 0) return setError("Enter a valid markup %.");
+    if (!editing && (!Number.isFinite(markupPct) || markupPct < 0)) return setError("Enter a valid markup %.");
 
     setSubmitting(true);
     try {
       await onSubmit({
         name,
-        markup_percent: markupPct,
+        // ADR-139 PR 2: a tier's markup is fixed once it exists.
+        ...(editing ? {} : { markup_percent: markupPct }),
         is_active: isActive,
         sort_order: Number.isFinite(sort) ? sort : 0,
         show_on_price_list: showOnPriceList,
@@ -75,7 +76,12 @@ function Fields({ onClose, onSubmit, editing }: Omit<Props, "isOpen">) {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <Label htmlFor="tier_markup">Markup % over cost</Label>
-            <Input id="tier_markup" value={markup} onChange={(e) => setMarkup(e.target.value)} placeholder="5" />
+            <Input id="tier_markup" value={markup} onChange={(e) => setMarkup(e.target.value)} placeholder="5" disabled={editing !== null} />
+            {editing && (
+              <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
+                Fixed once a tier exists. For a different markup, add a new tier and move resellers to it.
+              </p>
+            )}
           </div>
           <div>
             <Label htmlFor="tier_sort">Sort order</Label>
