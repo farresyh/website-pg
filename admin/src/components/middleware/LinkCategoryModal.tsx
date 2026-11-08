@@ -97,19 +97,19 @@ function LinkCategoryFields({
 
   return (
     <>
-      <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
+      <p className="mb-5 text-sm text-ink-muted">
         &quot;{groupLabel}&quot; — {itemCount} raw item{itemCount === 1 ? "" : "s"}. Every item in this group
         will use the game you pick here — you won&apos;t be asked again per item.
       </p>
 
       {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
           {error}
         </p>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="mb-2 flex gap-4 text-sm text-gray-600 dark:text-gray-400">
+        <div className="mb-2 flex gap-4 text-sm text-ink-muted">
           <label className="flex items-center gap-1.5">
             <input
               type="radio"
