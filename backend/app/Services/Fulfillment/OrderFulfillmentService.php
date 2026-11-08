@@ -8,6 +8,7 @@ use App\Models\OrderDeliveryLeg;
 use App\Models\OrderResendAttempt;
 use App\Models\Supplier;
 use App\Services\Accounting\SupplierFundingService;
+use App\Services\Backup\BackupFailureAlerter;
 use App\Services\Campaign\CampaignService;
 use App\Services\Currency\LandedCostRate;
 use App\Services\Ledger\LedgerService;
@@ -60,6 +61,8 @@ final class OrderFulfillmentService
         // fixtures build this service by hand, and CampaignService has no
         // dependencies of its own.
         private readonly CampaignService $campaigns = new CampaignService,
+        // Same reason: resolved from the container when a fixture builds this by hand.
+        private readonly ?BackupFailureAlerter $alerter = null,
     ) {}
 
     /**
@@ -1201,6 +1204,10 @@ final class OrderFulfillmentService
         });
 
         if ($contradicted) {
+            if ($outcome === SupplierOutcome::Success) {
+                $this->alertLateSuccess($finalized);
+            }
+
             throw new InvalidOrderTransitionException("Order #{$order->id} is already final ({$finalized->delivery_status->value}); a contradicting supplier result was recorded");
         }
 
@@ -1209,6 +1216,25 @@ final class OrderFulfillmentService
         }
 
         return $finalized;
+    }
+
+    /**
+     * ADR-139 decision 29: a Success after Failed or after compensation may
+     * mean the customer has the credit and the refund too. The automatic
+     * wallet refund skips such an order; a person decides. Best effort: an
+     * alert failure never changes the outcome above.
+     */
+    private function alertLateSuccess(Order $order): void
+    {
+        try {
+            ($this->alerter ?? app(BackupFailureAlerter::class))->alert(
+                'Supplier reported success after the order failed',
+                "Order {$order->order_number} is {$order->delivery_status->value}".($order->isAlreadyCompensated() ? ' and already compensated' : '').', but its supplier later reported success. The credit may have been delivered. Check with the supplier and the customer before any refund or resend; the supplier result is kept on the order.',
+                'Late supplier result',
+            );
+        } catch (Throwable $e) {
+            Log::error('Late-success alert failed', ['order_id' => $order->id, 'exception' => $e->getMessage()]);
+        }
     }
 
     /** ADR-102 2026-10-05 addendum, decision 3 — Sukses after a Gagal-backed status, or Gagal after Delivered. */

@@ -35,6 +35,7 @@ class TaskSchedule
         'payment-reconciliation',
         'delivery-reconciliation',
         'wallet-topup-reconciliation',
+        'wallet-order-auto-refund',
         'database-backup',
         'database-backup-cleanup',
         'openwa-backup',
@@ -137,6 +138,13 @@ class TaskSchedule
         $schedule->command('app:reconcile-pending-wallet-topups')
             ->cron('*/15 * * * *')
             ->name('wallet-topup-reconciliation')
+            ->withoutOverlapping($overlap);
+
+        // ADR-139 decisions 26–29: a Failed wallet order goes back to the
+        // reseller's Purchase Balance within a minute, with no admin click.
+        $schedule->command('app:refund-failed-wallet-orders')
+            ->everyMinute()
+            ->name('wallet-order-auto-refund')
             ->withoutOverlapping($overlap);
 
         // ADR-021 — prunes player_validations PII past its retention window —

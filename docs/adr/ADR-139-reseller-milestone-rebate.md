@@ -344,3 +344,15 @@ The founder approved the programme terms that the accountant addendum's decision
    - A new ladder version (thresholds, grid or max share) can take effect from a month only if it is saved **at least 7 days before that month starts** (KL). A version saved later takes effect a month later. The panel shows the effective month before the admin confirms with MFA.
    - Saving a version notifies every eligible reseller at once through a portal banner and one bot message ("A new rebate table takes effect on 1 <month>").
    - Turning the master switch on is the first version, and it gets the same notice. Decision 35's "from the following 1st" becomes "from the first 1st at least 7 days away".
+
+### 2026-11-08 addendum — PR 1 build notes (automatic refund)
+
+1. **A late Success on a still-Failed order is skipped too, which closes a gap in decisions 27 and 29.**
+   - Without this, a supplier Success arriving between Failed and the next sweep is kept as evidence (`supplier_response.late_supplier_result`) while the order stays Failed and uncompensated.
+   - The sweep would then refund an order whose credit may have been delivered.
+   - The sweep therefore skips any order carrying that evidence. `OrderFulfillmentService::finalizePendingDelivery()` emails every admin on **any** contradicted Success (Failed, PartiallyDelivered or compensated, wallet or retail), so a person decides.
+   - The alert is best effort: a mail failure never changes the outcome.
+2. **The actor is recorded.**
+   - `settle()` takes `?int $adminUserId`; null means the system, and is allowed only for a wallet order (a voucher keeps a named issuer).
+   - The `wallet_refund` ledger row now carries `created_by` (the admin, or null for the system). Before, no refund row recorded who gave it.
+3. **Failure counting.** A per-order counter in the cache sends one email on the third failed run. A cache flush can only repeat that email, never skip a refund.
