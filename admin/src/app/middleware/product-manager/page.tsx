@@ -157,38 +157,38 @@ function CheckoutInputEditor({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-3">
-        <label className="w-40 text-sm text-gray-600 dark:text-gray-300">Checkout field</label>
+        <label className="w-40 text-sm text-ink-muted">Checkout field</label>
         <SimpleSelect value={extraField} onChange={setExtraField} options={EXTRA_FIELD_OPTIONS} className="w-56" />
       </div>
       <div className="flex flex-col gap-1.5">
         <div className="flex flex-wrap items-center gap-3">
-          <label className="w-40 text-sm text-gray-600 dark:text-gray-300">User ID format</label>
+          <label className="w-40 text-sm text-ink-muted">User ID format</label>
           <SimpleSelect value={playerIdFormat} onChange={setPlayerIdFormat} options={PLAYER_ID_FORMAT_OPTIONS} className="w-56" />
         </div>
-        <p className="ml-[10.75rem] text-theme-xs text-gray-500 dark:text-gray-400">
+        <p className="ml-[10.75rem] text-theme-xs text-ink-muted">
           Checked on every channel (storefront, Reseller API, WhatsApp bot). Text allows letters, digits and # . _ -
           (e.g. a Riot ID, JettMain#1234). Server ID is always digits only.
         </p>
       </div>
       {isDigiflazz && (
         <div className="flex flex-wrap items-center gap-3">
-          <label className="w-40 text-sm text-gray-600 dark:text-gray-300">customer_no separator</label>
+          <label className="w-40 text-sm text-ink-muted">customer_no separator</label>
           <SimpleSelect value={separator} onChange={setSeparator} options={CUSTOMER_NO_SEPARATOR_OPTIONS} className="w-56" />
         </div>
       )}
       {isZoneId && (
         <div className="flex flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-3">
-            <label className="w-40 text-sm text-gray-600 dark:text-gray-300">Zone ID options</label>
+            <label className="w-40 text-sm text-ink-muted">Zone ID options</label>
             <input
               type="text"
               value={zoneOptionsText}
               onChange={(e) => setZoneOptionsText(e.target.value)}
               placeholder="e.g. SouthEastAsia, MENA, Europe"
-              className="w-96 rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm text-gray-800 outline-none focus:border-brand-300 dark:border-gray-700 dark:text-white/90"
+              className="w-96 rounded-lg border border-border-control bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle outline-none focus:border-cyan-600"
             />
           </div>
-          <p className="ml-[10.75rem] text-theme-xs text-gray-500 dark:text-gray-400">
+          <p className="ml-[10.75rem] text-theme-xs text-ink-muted">
             Comma-separated. Whatever string is entered here is forwarded to the supplier verbatim — customers pick
             from this exact list on checkout. Leave empty to keep today&apos;s free-text input for this game.
           </p>
@@ -198,7 +198,7 @@ function CheckoutInputEditor({
         <Button size="small" disabled={saving} onClick={handleUpdate}>
           {saving ? "Saving…" : "Update"}
         </Button>
-        <code className="rounded bg-gray-100 px-1.5 py-0.5 text-theme-xs text-gray-500 dark:bg-white/5 dark:text-gray-400">
+        <code className="rounded bg-subtle px-1.5 py-0.5 text-theme-xs text-ink-muted">
           {JSON.stringify({
             extra_field: extraField === "" ? null : extraField,
             player_id_format: playerIdFormat,
@@ -344,17 +344,17 @@ export default function ProductManagerPage() {
       <div>
         <button
           onClick={() => setSelected(null)}
-          className="mb-4 text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white"
+          className="mb-4 text-sm text-ink-muted hover:text-ink"
         >
           ← Back to categories
         </button>
 
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">
+            <h1 className="text-page-title font-semibold text-ink">
               {selected.group_label || "Uncategorized"}
             </h1>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            <p className="mt-1 text-sm text-ink-muted">
               <span className="font-medium">{selected.supplier?.name ?? "Unknown supplier"}</span>
               {" · "}
               {selected.game ? (
@@ -374,66 +374,66 @@ export default function ProductManagerPage() {
         </div>
 
         {error && (
-          <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+          <p className="mb-4 rounded-lg bg-danger-surface px-4 py-3 text-sm text-danger-ink">
             {error}
           </p>
         )}
 
         {!selected.game ? (
-          <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center dark:border-gray-800 dark:bg-white/[0.03]">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+          <div className="rounded-2xl border border-border bg-surface p-8 text-center">
+            <p className="text-sm text-ink-muted">
               Link this group to a Game before curating its {selected.total} item{selected.total === 1 ? "" : "s"}.
             </p>
           </div>
         ) : (
           <>
-            <div className="mb-4 flex gap-2 border-b border-gray-200 dark:border-gray-800">
+            <div className="mb-4 flex gap-2 border-b border-border">
               <button
                 onClick={() => setTab("available")}
-                className={`px-4 py-2 text-sm font-medium ${tab === "available" ? "border-b-2 border-brand-500 text-brand-500" : "text-gray-500 dark:text-gray-400"}`}
+                className={`px-4 py-2 text-sm font-medium ${tab === "available" ? "border-b-2 border-cyan-600 text-cyan-ink" : "text-ink-muted hover:text-ink"}`}
               >
                 Available Packages
               </button>
               <button
                 onClick={() => setTab("catalog")}
-                className={`px-4 py-2 text-sm font-medium ${tab === "catalog" ? "border-b-2 border-brand-500 text-brand-500" : "text-gray-500 dark:text-gray-400"}`}
+                className={`px-4 py-2 text-sm font-medium ${tab === "catalog" ? "border-b-2 border-cyan-600 text-cyan-ink" : "text-ink-muted hover:text-ink"}`}
               >
                 Catalog ({catalogPackages?.length ?? 0})
               </button>
               <button
                 onClick={() => setTab("checkout_input")}
-                className={`px-4 py-2 text-sm font-medium ${tab === "checkout_input" ? "border-b-2 border-brand-500 text-brand-500" : "text-gray-500 dark:text-gray-400"}`}
+                className={`px-4 py-2 text-sm font-medium ${tab === "checkout_input" ? "border-b-2 border-cyan-600 text-cyan-ink" : "text-ink-muted hover:text-ink"}`}
               >
                 Checkout Input
               </button>
             </div>
 
             {tab === "available" && (
-              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+              <div className="overflow-hidden rounded-2xl border border-border bg-surface">
                 <div className="max-w-full overflow-x-auto">
                   <DataTable data={items ?? []} dataKey="id">
                     <DataTableTableContainer>
                       <DataTableTable>
-                        <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                        <DataTableTHead className="border-b border-border">
                           <DataTableTHeadRow>
-                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Name</DataTableTHeadCell>
-                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Supplier Cost</DataTableTHeadCell>
-                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Catalog</DataTableTHeadCell>
-                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Name</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Supplier Cost</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Catalog</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Actions</DataTableTHeadCell>
                           </DataTableTHeadRow>
                         </DataTableTHead>
-                        <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                        <DataTableTBody className="divide-y divide-border">
                           {({ item }) => {
                             const product = item as unknown as SupplierProduct;
 
                             return (
                               <DataTableRow key={product.id}>
                                 <DataTableCell className="px-5 py-4 text-theme-sm">
-                                  <span className="font-medium text-gray-800 dark:text-white/90">{product.name}</span>
+                                  <span className="font-medium text-ink">{product.name}</span>
                                   <br />
                                   <span className="text-theme-xs text-ink-subtle">ID: {product.external_ref}</span>
                                 </DataTableCell>
-                                <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                                <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                                   {formatRm(product.price_sen)}
                                   {formatRaw(product.raw_price, product.raw_currency, product.price_sen) && (
                                     <>
@@ -479,38 +479,38 @@ export default function ProductManagerPage() {
                       </DataTableTable>
                     </DataTableTableContainer>
                   </DataTable>
-                  {items === null && <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>}
+                  {items === null && <p className="p-6 text-center text-sm text-ink-muted">Loading…</p>}
                 </div>
               </div>
             )}
 
             {tab === "catalog" && (
-              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+              <div className="overflow-hidden rounded-2xl border border-border bg-surface">
                 <div className="max-w-full overflow-x-auto">
                   <DataTable data={catalogPackages ?? []} dataKey="id">
                     <DataTableTableContainer>
                       <DataTableTable>
-                        <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                        <DataTableTHead className="border-b border-border">
                           <DataTableTHeadRow>
-                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Final Name</DataTableTHeadCell>
-                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost Price</DataTableTHeadCell>
-                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Standard Selling Price</DataTableTHeadCell>
-                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Final Name</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Cost Price</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Standard Selling Price</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Status</DataTableTHeadCell>
                           </DataTableTHeadRow>
                         </DataTableTHead>
-                        <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                        <DataTableTBody className="divide-y divide-border">
                           {({ item }) => {
                             const pkg = item as unknown as GamePackage;
 
                             return (
                               <DataTableRow key={pkg.id}>
                                 <DataTableCell className="px-5 py-4 text-theme-sm">
-                                  <span className="font-medium text-gray-800 dark:text-white/90">{pkg.name}</span>
+                                  <span className="font-medium text-ink">{pkg.name}</span>
                                   <br />
                                   <span className="text-theme-xs text-ink-subtle">Supplier ID: {pkg.supplier_package_ref}</span>
                                 </DataTableCell>
-                                <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(pkg.cost_price)}</DataTableCell>
-                                <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatRm(pkg.standard_selling_price)}</DataTableCell>
+                                <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{formatRm(pkg.cost_price)}</DataTableCell>
+                                <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{formatRm(pkg.standard_selling_price)}</DataTableCell>
                                 <DataTableCell className="px-5 py-4 text-theme-sm">
                                   <Tag severity={pkg.is_active ? "success" : "secondary"}>
                                     {pkg.is_active ? "Active" : "Inactive"}
@@ -524,7 +524,7 @@ export default function ProductManagerPage() {
                     </DataTableTableContainer>
                   </DataTable>
                   {catalogPackages?.length === 0 && (
-                    <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                    <p className="p-6 text-center text-sm text-ink-muted">
                       No packages in catalog yet. Go to &quot;Available Packages&quot; and add some.
                     </p>
                   )}
@@ -533,11 +533,11 @@ export default function ProductManagerPage() {
             )}
 
             {tab === "checkout_input" && selected.game && (
-              <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
-                <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+              <div className="rounded-2xl border border-border bg-surface p-6">
+                <p className="mb-4 text-sm text-ink-muted">
                   What the supplier needs beyond Player ID (UID) for orders in this group — the admin decides this,
                   not a supplier API (ADR-005 addendum). Applies to every package under{" "}
-                  <span className="font-medium text-gray-700 dark:text-gray-300">{selected.game.name}</span>.
+                  <span className="font-medium text-ink">{selected.game.name}</span>.
                 </p>
                 <CheckoutInputEditor
                   key={`${groupKey(selected)}-${selected.game.id}`}
@@ -589,8 +589,8 @@ export default function ProductManagerPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Product Manager</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          <h1 className="text-page-title font-semibold text-ink">Product Manager</h1>
+          <p className="mt-1 text-sm text-ink-muted">
             Raw supplier catalogs, grouped per supplier ({categories ? categories.length : "…"} groups). Link a
             group to a Game once, then curate its packages. Gamevion and Digiflazz can each carry the same game —
             link both groups to one Game (ADR-067).
@@ -599,7 +599,7 @@ export default function ProductManagerPage() {
       </div>
 
       {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-4 py-3 text-sm text-danger-ink">
           {error}
         </p>
       )}
@@ -610,40 +610,40 @@ export default function ProductManagerPage() {
           placeholder="Search groups…"
           value={categorySearch}
           onChange={(e) => setCategorySearch(e.target.value)}
-          className="h-11 w-full max-w-sm rounded-lg border border-gray-300 px-4 py-2.5 text-sm shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+          className="h-11 w-full max-w-sm rounded-lg border border-border-control bg-surface px-4 py-2.5 text-sm text-ink placeholder:text-ink-subtle focus:border-cyan-600 focus:outline-hidden focus:ring-3 focus:ring-focus-ring/10"
         />
         <SimpleSelect value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} className="w-48" />
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
         <div className="max-w-full overflow-x-auto">
           <DataTable data={visibleCategories} dataKey="_key">
             <DataTableTableContainer>
               <DataTableTable>
-                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                <DataTableTHead className="border-b border-border">
                   <DataTableTHeadRow>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Supplier</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Group</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Items</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">In Catalog</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Linked Game</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Supplier</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Group</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Items</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">In Catalog</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Linked Game</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
                 </DataTableTHead>
-                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <DataTableTBody className="divide-y divide-border">
                   {({ item }) => {
                     const category = item as unknown as SupplierProductCategory;
 
                     return (
                       <DataTableRow key={groupKey(category)}>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {category.supplier?.name ?? "—"}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-ink">
                           {category.group_label || "Uncategorized"}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{category.total}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{category.promoted_count}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{category.total}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{category.promoted_count}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           {category.game ? (
                             <Tag severity="success">{category.game.name}</Tag>
@@ -672,10 +672,10 @@ export default function ProductManagerPage() {
           </DataTable>
 
           {categories !== null && visibleCategories.length === 0 && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No groups found.</p>
+            <p className="p-6 text-center text-sm text-ink-muted">No groups found.</p>
           )}
           {categories === null && !error && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+            <p className="p-6 text-center text-sm text-ink-muted">Loading…</p>
           )}
         </div>
       </div>

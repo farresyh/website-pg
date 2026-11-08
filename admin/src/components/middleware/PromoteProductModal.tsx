@@ -68,13 +68,13 @@ function PromoteProductFields({
 
   return (
     <>
-      <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+      <p className="mb-4 text-sm text-ink-muted">
         {product.name} → <span className="font-medium">{gameName}</span>
       </p>
 
-      <div className="mb-4 rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-white/5">
-        <span className="text-gray-500 dark:text-gray-400">Supplier Cost (from Gamevion, not editable): </span>
-        <span className="font-medium text-gray-800 dark:text-white/90">
+      <div className="mb-4 rounded-lg bg-subtle px-3 py-2 text-sm">
+        <span className="text-ink-muted">Supplier Cost (from Gamevion, not editable): </span>
+        <span className="font-medium text-ink">
           {product.price_sen !== null ? `RM ${(product.price_sen / 100).toFixed(2)}` : "unknown"}
         </span>
       </div>
@@ -84,7 +84,7 @@ function PromoteProductFields({
       </p>
 
       {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
           {error}
         </p>
       )}
