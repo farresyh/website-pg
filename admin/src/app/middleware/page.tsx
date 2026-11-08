@@ -70,8 +70,8 @@ export default function MiddlewareDashboardPage() {
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Middleware Dashboard</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          <h1 className="text-page-title font-semibold text-ink">Middleware Dashboard</h1>
+          <p className="mt-1 text-sm text-ink-muted">
             MUI-1 — at-a-glance supplier health and recent activity. Circuit state and balance are cached snapshots
             (`CircuitBreaker::state()`), never a live ping.
           </p>
@@ -82,34 +82,34 @@ export default function MiddlewareDashboardPage() {
       </div>
 
       {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-4 py-3 text-sm text-danger-ink">
           {error}
         </p>
       )}
 
-      <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="mb-6 rounded-2xl border border-border bg-surface p-5">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Suppliers</h2>
+          <h2 className="text-section-title font-semibold text-ink">Suppliers</h2>
           <Button size="small" variant="outlined" onClick={() => router.push("/middleware/suppliers")}>
             Manage Suppliers →
           </Button>
         </div>
 
-        {suppliers === null && !error && <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>}
+        {suppliers === null && !error && <p className="text-sm text-ink-muted">Loading…</p>}
         {suppliers?.length === 0 && (
-          <p className="text-sm text-gray-500 dark:text-gray-400">No suppliers configured yet.</p>
+          <p className="text-sm text-ink-muted">No suppliers configured yet.</p>
         )}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {suppliers?.map((s) => (
-            <div key={s.id} className="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+            <div key={s.id} className="rounded-lg border border-border p-4">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-gray-800 dark:text-white/90">{s.name}</span>
+                <span className="font-semibold text-ink">{s.name}</span>
                 <Tag severity={!s.is_api_backed ? "secondary" : s.circuit_state === "closed" ? "success" : "danger"}>
                   {!s.is_api_backed ? "Manual" : s.circuit_state === "closed" ? "Healthy" : "Circuit Open"}
                 </Tag>
               </div>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              <p className="mt-1 text-sm text-ink-muted">
                 Balance: {supplierBalanceLabel(s.balance, s.currency, s.is_pay_after)}
                 {formatMyrEquivalent(s.balance_myr_equivalent, s.currency) && (
                   <span className="ml-1 text-theme-xs text-ink-subtle">{formatMyrEquivalent(s.balance_myr_equivalent, s.currency)}</span>
@@ -120,32 +120,32 @@ export default function MiddlewareDashboardPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="rounded-2xl border border-border bg-surface p-5">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Recent API Calls</h2>
+          <h2 className="text-section-title font-semibold text-ink">Recent API Calls</h2>
           <Button size="small" variant="outlined" onClick={() => router.push("/middleware/request-logs")}>
             View all →
           </Button>
         </div>
 
-        {recentCalls === null && !error && <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>}
+        {recentCalls === null && !error && <p className="text-sm text-ink-muted">Loading…</p>}
         {recentCalls?.length === 0 && (
-          <p className="text-sm text-gray-500 dark:text-gray-400">No supplier calls logged yet.</p>
+          <p className="text-sm text-ink-muted">No supplier calls logged yet.</p>
         )}
 
         <div className="space-y-2">
           {recentCalls?.map((log) => (
             <div
               key={log.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-gray-700"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
             >
-              <span className="font-medium text-gray-800 dark:text-white/90">
+              <span className="font-medium text-ink">
                 {log.supplier?.name ?? "—"} · {log.call_type}
               </span>
               <Tag severity={log.outcome === "success" ? "success" : "danger"}>
                 {log.outcome}
               </Tag>
-              <span className="text-gray-500 dark:text-gray-400">{new Date(log.created_at).toLocaleString()}</span>
+              <span className="text-ink-muted">{new Date(log.created_at).toLocaleString()}</span>
             </div>
           ))}
         </div>
