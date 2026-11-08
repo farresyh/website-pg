@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useSidebar } from "@/context/SidebarContext";
 import { ChevronDown as ChevronDownIcon } from "@primeicons/react/chevron-down";
 import { EllipsisH as HorizontaLDots } from "@primeicons/react/ellipsis-h";
+import { ExternalLink as ExternalLinkIcon } from "@primeicons/react/external-link";
 
 /**
  * The shared collapsible/drawer sidebar for both the Admin Panel
@@ -46,9 +47,11 @@ interface PanelSidebarProps {
   brandLabel: string;
   shortLabel: string;
   sections: PanelNavSection[];
+  /** The other panel, opened in a new tab from under the brand (founder, 2026-11-08). */
+  switchTo?: { name: string; href: string };
 }
 
-export default function PanelSidebar({ homeHref, brandLabel, shortLabel, sections }: PanelSidebarProps) {
+export default function PanelSidebar({ homeHref, brandLabel, shortLabel, sections, switchTo }: PanelSidebarProps) {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
 
@@ -66,13 +69,25 @@ export default function PanelSidebar({ homeHref, brandLabel, shortLabel, section
       {/* ADR-104 Phase 4: logo-box treatment (short-label in a filled
           square, matching the artifact) — same homeHref/brandLabel prop
           values, no new content. */}
-      <div className={`flex items-center gap-2.5 py-8 ${!showLabels ? "lg:justify-center" : "justify-start"}`}>
+      <div className={`flex flex-col gap-3 py-8 ${!showLabels ? "lg:items-center" : "items-start"}`}>
         <Link href={homeHref} className="flex items-center gap-2.5">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-ink text-sm font-bold text-canvas">
             {shortLabel}
           </span>
           {showLabels && <span className="text-lg font-semibold text-ink">{brandLabel}</span>}
         </Link>
+        {switchTo && (
+          <a
+            href={switchTo.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={`Open ${switchTo.name} in a new tab`}
+            className="flex items-center gap-1.5 text-theme-xs font-medium text-ink-muted hover:text-ink"
+          >
+            <ExternalLinkIcon className="h-3.5 w-3.5 shrink-0" />
+            {showLabels && <span>{switchTo.name}</span>}
+          </a>
+        )}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto pb-8 no-scrollbar">
