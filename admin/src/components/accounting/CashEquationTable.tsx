@@ -52,6 +52,7 @@ export function CashEquationTable({ position, cashAccountsSen }: Props) {
           <Row label="Vouchers customers can still spend" sen={claims.vouchers_outstanding_sen} />
           <Row label="Orders paid, not delivered or compensated" sen={claims.orders_undelivered_sen} />
           <Row label="Owed to pay-after suppliers" sen={claims.supplier_payable_sen ?? 0} />
+          <Row label="Reseller rebates earned, not claimed yet" sen={claims.reseller_rebates_payable_sen ?? 0} />
         </div>
       </div>
       <div
