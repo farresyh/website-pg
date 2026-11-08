@@ -1888,3 +1888,126 @@ The 2026-11-04 row is as item 159 recorded it, without naming the session; it is
 
 **Not yet seen:** a real message in and out on v0.29.1. Nothing has arrived at this hour.
 
+## 2026-11-08 — Released #737: storefront speed, code cache check, docs audit
+
+**Released on the founder's go-ahead.** `main` `dc828aee`, box release `82383059`, CI, `deploy` and all four Vercel projects green. Ships #734, #735 and #736. No migration, no env change. 0 paid orders undelivered before it.
+
+**Measured after release, the same way as before.**
+
+| Measure | Before the work | After |
+| --- | --- | --- |
+| Order page, load event, desktop | 9 to 14 s | 0.5 to 0.7 s |
+| Order page, load event, phone | 4 to 6 s | 0.5 to 0.6 s |
+| Page after 18 s of quiet | 0.9 to 3.0 s | 0.22 to 0.29 s |
+| 20 bank logos after 17 s of quiet | about 10 s | 0.19 to 0.40 s |
+| `/up`, straight to PHP-FPM | 340 ms | 18 to 21 ms |
+
+**Item 176 closed.** The deploy output shows `Restarting FPM...` for the first time. A read of OPcache through FPM, run by the founder: started 2026-11-07 18:43:55 UTC, the deploy's moment, not full, 73 of 256 MB, strings 15.7 of 32 MB, 1,581 scripts, hit rate 99.18%. So a reload does clear it on this box, and the socket reset stays unneeded.
+
+**OpenWA v0.29.1 proven both ways.** The founder's test message reached `cs_messages` (272) with a Shadow draft. Three notifications went out with a WhatsApp id: a status card, a voucher and a delivered receipt.
+
+**Seen while checking, not from this work.**
+- Order `PG-7JUVSOBGJWJJ` failed at DigiFlazz, `rc` 02, on First Top Up 250+250. Voucher 13 (RM17.69) was issued and spent on order 137, which delivered.
+- The low-balance alert fired at 15:59, 18:33 and 18:43 UTC, and then cleared: DigiFlazz's floor went from IDR 10,000,000 to 5,000,000, and 9,533,687 is above the 7,581,286 forecast. Recovery resets the claim, so a floor moved up and down can send it twice in one day. By design.
+
+**Gotcha.** `gh run list --limit 1` straight after a push returned the previous run, so a watch finished early. The merge guard read the real checks and held. Pick the run by `--commit`.
+
+**Not yet seen:** a KOL link and the bank logos in a real TikTok or Instagram browser.
+
+## 2026-11-08 — Admin ↔ Middleware switch link under the sidebar brand
+
+**Asked by the founder.** Switching panels meant editing the URL by hand. A small link now sits under each panel's brand: "Middleware Panel" under "PekanGame Admin" (super_admin only, since the Middleware layout sends anyone else back to `/admin`) and "Admin Panel" under "Middleware Panel". It opens in a new tab (founder's choice). It first sat in a "Panels" section at the foot of the menu; the founder moved it up because the admin menu needs scrolling to reach its end. `PanelSidebar` takes an optional `switchTo`; collapsed, the link shows its icon only.
+
+**Verified** on a local admin dev server (`:3005`, the API given `ADMIN_URL` / `SANCTUM_STATEFUL_DOMAINS` for that port because `:3000` was busy with a video render): signed in as super_admin, light and dark, expanded and collapsed. The link carries `target="_blank" rel="noopener noreferrer"`, the click opens `/middleware` in a new tab with the original left on `/admin`, and the way back works the same. Computed colour `ink-muted` on `surface` in both themes. `tsc` and `eslint` clean.
+
+## 2026-11-08 — Item 164: Suppliers page on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-suppliers-restyle`, a pure reskin: `/middleware/suppliers` and its Create, Edit and Manage Packages modals carry no `gray-*`, `brand-*` or `white/[…]` class any more. Mapping, benchmarked on admin `/orders`: page title `text-page-title text-ink`, card title `text-section-title`, labels `text-ink-muted`, values and form labels `text-ink`, cards `bg-surface border-border`, hand-rolled inputs on the kit input's colours (`border-border-control`, `focus-ring` outline), error banner `danger-surface/ink`, the Reactivate note `info-surface/ink`, the "Not configured" pill `neutral-surface/ink`. The one layout touch: "Add Supplier" no longer wraps to two lines beside the long description (`gap-3`, `shrink-0`).
+
+**Verified** with Playwright screenshots, light and dark, of the page and all three modals beside `/orders`; `getComputedStyle` on the title (26 px), labels and values in both themes; 390 px phone width with no horizontal scroll. `tsc`, `eslint` and `color-tokens.test.ts` pass.
+
+**Gotcha.** A Next dev server left running across a `git checkout` threw a sidebar hydration error (the server still rendered the other branch's module). A fresh load on each branch had none: not a bug.
+
+## 2026-11-08 — Item 164: Price Sync Center on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-price-sync-restyle`, a pure reskin of `/middleware/price-sync` and its three parts (`SyncDetailsModal`, `PendingPriceChangeSection`, `FxRateHistorySection`): 160 old classes, now none. Same mapping as Suppliers, plus table rules `divide-border` / `border-border`, the empty-state box `bg-subtle`, the "Combo — recomputed" pill `cyan-50` / `cyan-ink`, and the run errors and flags `danger-ink` / `warning-ink`. Section headings take `text-section-title`. One layout touch: "Refresh" and "Sync All Prices Now" were squeezed to three lines beside the description; the header now wraps like `/orders` (buttons stay right on desktop, drop below the text on a phone).
+
+**Verified** with Playwright, light and dark, the full page and the Sync Details modal, and the header at 1440, 1024 and 390 px (no horizontal scroll). `tsc`, `eslint` and `color-tokens.test.ts` pass. Checked against the founder's own `./scripts/dev.sh` servers, which had taken `:3000` and `:8000`.
+
+## 2026-11-08 — Item 164: Middleware Dashboard on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-dashboard-restyle`, a pure reskin of `/middleware` (34 old classes, now none), same mapping as Suppliers and Price Sync: page title, section titles, `surface` cards on `border-border`, inner tiles and API-call rows on `border-border`, muted text `ink-muted`, the error banner `danger-surface` / `danger-ink`.
+
+**Verified** with Playwright, light and dark at 1440 px and light at 390 px (no horizontal scroll), against the founder's `./scripts/dev.sh` servers. `tsc`, `eslint` and `color-tokens.test.ts` pass.
+
+## 2026-11-08 — Item 164: Payment Gateways on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-payment-gateways-restyle`, a pure reskin of `/middleware/payment-gateways` and its Edit modal (33 old classes, now none), same mapping as Suppliers: the card title takes `text-section-title`, the modal's inputs the kit input's colours and `focus-ring` outline, the Configured / Not configured pills `success-*` / `neutral-*`, errors `danger-*`.
+
+**Verified** with Playwright, light and dark at 1440 px with the Edit modal open, and light at 390 px (no horizontal scroll). `tsc`, `eslint` and `color-tokens.test.ts` pass. **Seen, not changed:** this modal and the supplier Edit modal are narrow (about 210 px of input), so placeholders cut off; that is layout, outside a reskin.
+
+## 2026-11-08 — Item 164: Validators on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-validators-restyle`, a pure reskin of `/middleware/validators`, `ValidatorCard`, `CreateValidatorModal` and `ValidateByGamePanel` (about 80 old classes, now none). Beyond the shared mapping: the country chips and their arrow on `cyan-50` / `cyan-ink` / `cyan-600`, the text actions (Edit, Game ID Checker, Test this validator) `text-cyan-ink` with an underline on hover, Delete `danger-ink`, the dashed "Add Country" button and add form on `border-border-strong`, result pills on the `success` / `danger` / `warning` surface and ink pairs, the inline inputs on `border-border-control`.
+
+**Verified** with Playwright, light and dark at 1440 px and light at 390 px. The local dev DB has no validator, so the cards were rendered from a mocked `GET /api/middleware/validators` (route interception, nothing written to the DB) with the add-country form open. `tsc`, `eslint` and `color-tokens.test.ts` pass.
+
+## 2026-11-08 — Item 164: Payment Methods on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-payment-methods-restyle`, a pure reskin of `/middleware/payment-methods` (42 old classes, now none): shared mapping, the fee inputs on `border-border-control` / `surface`, the active category chip `bg-cyan-600 text-on-cyan` (the kit's primary button colours), the failed test result `danger-ink`.
+
+**Verified** with Playwright, light and dark at 1440 px and light at 390 px. `tsc`, `eslint` and `color-tokens.test.ts` pass. **Seen, not changed (layout, not colour):** at 390 px the channel table is clipped inside its card (Last Test and Actions are off to the right) and the category chips wrap.
+
+## 2026-11-08 — Item 164: Developer / API Tester on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-developer-tools-restyle`, a pure reskin of `/middleware/developer-tools` (54 old classes, now none): shared mapping, the selected endpoint `bg-cyan-50 text-cyan-ink` (the sidebar's active look) with `hover:bg-subtle` on the rest, the Create Order note `warning-surface` / `warning-ink`.
+
+**Verified** with Playwright, light and dark at 1440 px with Digiflazz chosen and an endpoint selected, and light at 390 px. `tsc`, `eslint` and `color-tokens.test.ts` pass. The screenshot script now signs in once and reuses the session: the fifth sign-in in a few minutes hit the login rate limit.
+
+## 2026-11-08 — Item 164: Backups on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-backups-restyle`, a pure reskin of `/middleware/backups` (68 old classes, now none), the shared mapping only: stat cards and the table card on `surface` / `border-border`, muted labels and cells `ink-muted`, the error banner `danger-*`.
+
+**Verified** with Playwright, light and dark at 1440 px and light at 390 px. The local DB has no backup, so the table showed its empty state; its row cells use the same classes as the header and stat cards. `tsc`, `eslint` and `color-tokens.test.ts` pass.
+
+## 2026-11-08 — Item 164: Request Logs on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-request-logs-restyle`, a pure reskin of `/middleware/request-logs` and its View modal (85 old classes, now none), the shared mapping, plus `text-ink` on the payload `<pre>` blocks: they had no text colour of their own, the gap ADR-104 found rendering black on a dark card.
+
+**Verified** with Playwright, light and dark at 1440 px with a log's View modal open (52 local rows, payloads readable in both themes), and light at 390 px. `tsc`, `eslint` and `color-tokens.test.ts` pass.
+
+## 2026-11-08 — Item 164: Sandbox on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-sandbox-restyle`, a pure reskin of `/middleware/sandbox` and `CreateSandboxOrderModal` (about 60 old classes, now none): the shared mapping, the search box on `border-border-control` / `surface` with the `focus-ring`, the back link `hover:text-ink`. The order detail it opens reuses the admin Orders components, which are not touched here.
+
+**Verified** with Playwright, light and dark at 1440 px (page, and the Create Test Order modal open), and light at 390 px. The local DB has no test order, so the list showed its empty state. `tsc`, `eslint` and `color-tokens.test.ts` pass.
+
+## 2026-11-08 — Item 164: Product Manager on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-product-manager-restyle`, a pure reskin of `/middleware/product-manager` and its Link Category, Promote and Repoint modals (about 150 old classes, now none): the shared mapping, the group search and the in-group search on `border-border-control` / `surface` with a cyan focus, the three group tabs on `/orders`' own active style (`border-cyan-600 text-cyan-ink`, `hover:text-ink` on the rest), the back link `hover:text-ink`.
+
+**Verified** with Playwright, light and dark at 1440 px: the group list (21 local groups), a group's Available Packages tab, and the Link Category modal; light at 390 px. `tsc`, `eslint` and `color-tokens.test.ts` pass.
+
+## 2026-11-08 — Middleware dialogs get a width; Payment Methods chips stop wrapping
+
+**Found during item 164.** A `DialogPopup` with no width class sizes to its content, so the supplier Edit modal and the Payment Gateway Edit modal shrank to about 210 px of input and cut every placeholder, while Manage Packages stretched to about 950 px around its one long note. Fifty-seven dialogs in the admin already pass `w-full max-w-*`; ten did not, seven of them under `/middleware`.
+
+**Fixed** on `fix/middleware-modal-and-table-layout`: the supplier Create, Edit and Manage Packages modals take `max-w-lg`; the Payment Gateway Edit modal and the Activate / Deactivate / Delete / backup confirms on the Suppliers and Backups pages take `max-w-md`. On Payment Methods the category chips no longer break "E-Wallet" over two lines (`flex-wrap`, `whitespace-nowrap`).
+
+**Corrected claim.** The Payment Methods table at 390 px was not clipped, as an earlier entry said: the DataTable's own container scrolls sideways (356 px wide, 600 px of table) and the Test button is reachable by a swipe, the same as admin `/orders`.
+
+**Verified** with Playwright: dialog widths 512 / 448 px at 1440 (inputs 474 and 410 px, from about 210), 326 px at 390; every chip 32 px tall at 390. `tsc` and `eslint` clean. **Left:** the four dialogs without a width outside `/middleware` (admin Resellers, admin Suppliers, Affiliates, Partner Applications).
+
+## 2026-11-08 — `DialogPopup` gets a default width
+
+**Why.** The entry above fixed the seven width-less dialogs under `/middleware` one by one; the cause is the kit itself, where a `DialogPopup` with no width class sized to its content. The founder asked for the fix at the source so a new dialog can't repeat it.
+
+**Built** on `fix/dialog-popup-default-width`: `admin/src/components/ui/dialog.tsx` now defaults to `w-full max-w-md`. A caller's own `max-w-*` still wins (`cn` runs tailwind-merge). The portal copy was regenerated with `node scripts/sync-shared-files.mjs`; the portal uses no `DialogPopup` today, so no portal screen changes. Affected in the admin: the four width-less dialogs left outside `/middleware` (Resellers: Deactivate, Change tier, Delete tier; Suppliers: Reply SLA, Deactivate; Affiliates: Deactivate, Delete, Delete tier; Partner Applications: Approve / Decline / Delete), now 448 px instead of content width, and the Request Logs View modal, which passed `max-w-2xl` without `w-full` and now opens at 672 px instead of about 310 px, so payloads read without wrapping.
+
+**Verified** with Playwright at 1440 and 390 px: each of those dialogs 448 px (Request Logs 672 px), 326 px on a phone; a dialog with its own width keeps it (Repoint `max-w-lg` 512 px, Promote `max-w-md` 448 px). `tsc` for admin and portal, `eslint` clean.
+
+## 2026-11-08 — Admin Orders components: the last old colour classes
+
+**Built** on `style/orders-components-tokens`, the same pure reskin as item 164 for the three admin Orders components the Middleware Sandbox reuses: `DeliveryLogsTable`, `OrderDetailCards` and `ResendDeliveryModal`. They were already on `ink` / `surface`; the cards, table rules and Resend option boxes still drew `border-gray-*` / `divide-gray-*` with `dark:` pairs, now `border-border` / `divide-border`. The negative profit figure and the Resend error banners move to `danger-ink` / `danger-surface`, and the Resend warning banner to `warning-surface` / `warning-ink` (its dark text had been `orange-400`).
+
+**Verified** with Playwright, light and dark, on a failed order's detail page (cards and Delivery & Activity Logs). The Resend modal could not be opened locally: every failed order in the dev DB is already compensated, so the button is hidden; its change is borders and banners only, with the mapping checked on the other pages. `tsc`, `eslint` and `color-tokens.test.ts` pass.

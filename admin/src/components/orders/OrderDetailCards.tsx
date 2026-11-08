@@ -30,7 +30,7 @@ function ProfitRow({ label, sen, expected }: { label: string; sen: number | null
     <div className="flex justify-between items-start">
       <dt className="text-ink-muted text-xs">{label}</dt>
       <dd className="text-right">
-        <span className={`font-semibold font-mono ${sen !== null && sen < 0 ? "text-error-600 dark:text-error-400" : sen === null ? "text-ink-muted" : "text-ink"}`}>
+        <span className={`font-semibold font-mono ${sen !== null && sen < 0 ? "text-danger-ink" : sen === null ? "text-ink-muted" : "text-ink"}`}>
           {sen === null ? "—" : sen < 0 ? formatRm(sen) : `+${formatRm(sen)}`}
         </span>
         {showExpected && (
@@ -66,7 +66,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      <div className="rounded-2xl border border-gray-200 bg-surface p-6 dark:border-gray-800">
+      <div className="rounded-2xl border border-border bg-surface p-6">
         <h2 className="mb-4 flex items-center gap-2 text-section-title font-semibold text-ink"><User className="h-4 w-4 text-ink-muted" />Customer Details</h2>
         {/* ADR-104 D1 fix: every <dd> here now carries an explicit
             `text-ink` color — unstyled, it silently inherited the
@@ -92,7 +92,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
           is newly surfaced here but derived from `wallet_reseller`
           (already fetched, already used elsewhere on this page to tell
           a Reseller-channel order apart from a Direct one) — no new data. */}
-      <div className="rounded-2xl border border-gray-200 bg-surface p-6 dark:border-gray-800">
+      <div className="rounded-2xl border border-border bg-surface p-6">
         <h2 className="mb-4 flex items-center gap-2 text-section-title font-semibold text-ink"><Box className="h-4 w-4 text-ink-muted" />Game & fulfillment</h2>
         {/* ADR-104 D1 fix: same explicit `text-ink` addition as Customer
             Details above — same confirmed rgb(0,0,0)-on-dark-card bug. */}
@@ -115,7 +115,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
         </dl>
       </div>
 
-      <div className="rounded-2xl border border-gray-200 bg-surface p-6 dark:border-gray-800">
+      <div className="rounded-2xl border border-border bg-surface p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-section-title font-semibold text-ink"><TagIcon className="h-4 w-4 text-ink-muted" />Pricing Details</h2>
           <div className="flex items-center gap-1.5">
@@ -248,14 +248,14 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
             </>
           )}
 
-          <div className="border-t border-gray-100 pt-1.5 dark:border-gray-800" />
+          <div className="border-t border-border pt-1.5" />
 
           <div className="flex justify-between items-center py-0.5">
             <dt className="font-semibold text-ink text-base">Final Amount</dt>
             <dd className="font-bold text-ink text-base font-mono">{formatRm(order.final_amount)}</dd>
           </div>
 
-          <div className="border-t border-gray-100 pt-1.5 dark:border-gray-800" />
+          <div className="border-t border-border pt-1.5" />
 
           {/* ADR-104 correction — same reasoning as the markup rows above:
               purple is Reports' profit-chart convention, not an Orders one.
@@ -292,7 +292,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
           new data, just this card's own presentation of it instead of an
           always-open raw dump. The raw JSON itself is kept, just behind a
           native <details> disclosure instead of permanently visible. */}
-      <div className="rounded-2xl border border-gray-200 bg-surface p-6 dark:border-gray-800">
+      <div className="rounded-2xl border border-border bg-surface p-6">
         <h2 className="mb-4 flex items-center gap-2 text-section-title font-semibold text-ink"><CreditCard className="h-4 w-4 text-ink-muted" />Payment & supplier</h2>
         {/* ADR-104 D1 fix: same explicit `text-ink` addition as the cards
             above — same confirmed rgb(0,0,0)-on-dark-card bug. */}
@@ -317,7 +317,7 @@ export default function OrderDetailCards({ order }: { order: OrderDetail }) {
           const confirmedBy = response.confirmed_failed_by as string | undefined;
 
           return (
-            <div className="mt-4 rounded-lg border border-gray-200 bg-subtle p-3 dark:border-gray-800">
+            <div className="mt-4 rounded-lg border border-border bg-subtle p-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-ink">Latest supplier result</p>
                 {order.delivery_status === "failed" && (

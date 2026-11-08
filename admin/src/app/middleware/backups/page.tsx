@@ -224,8 +224,8 @@ export default function BackupsPage() {
     <div>
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Backups</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          <h1 className="text-page-title font-semibold text-ink">Backups</h1>
+          <p className="mt-1 text-sm text-ink-muted">
             Database: full dump (excluding <code>player_validations</code>, per ADR-021&apos;s PII-retention
             guarantee). OpenWA: the WhatsApp gateway&apos;s data and sessions, kept 14 days — back it up before
             every OpenWA upgrade. Both are encrypted and restore-tested on every run (ADR-039). Restore is
@@ -243,20 +243,20 @@ export default function BackupsPage() {
       </div>
 
       {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-4 py-3 text-sm text-danger-ink">
           {error}
         </p>
       )}
 
       {/* BAK-1: stat cards */}
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-          <p className="text-theme-xs text-gray-500 dark:text-gray-400">Total Backups</p>
-          <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">{stats?.total_count ?? "—"}</p>
+        <div className="rounded-2xl border border-border bg-surface p-4">
+          <p className="text-theme-xs text-ink-muted">Total Backups</p>
+          <p className="mt-1 text-lg font-semibold text-ink">{stats?.total_count ?? "—"}</p>
         </div>
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-          <p className="text-theme-xs text-gray-500 dark:text-gray-400">Total Size</p>
-          <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">
+        <div className="rounded-2xl border border-border bg-surface p-4">
+          <p className="text-theme-xs text-ink-muted">Total Size</p>
+          <p className="mt-1 text-lg font-semibold text-ink">
             {stats ? formatBytes(stats.total_size_bytes) : "—"}
           </p>
         </div>
@@ -264,12 +264,12 @@ export default function BackupsPage() {
           const last = stats?.last_runs[source] ?? null;
 
           return (
-            <div key={source} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-              <p className="text-theme-xs text-gray-500 dark:text-gray-400">{sourceLabel[source]} — Last Run</p>
-              <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">
+            <div key={source} className="rounded-2xl border border-border bg-surface p-4">
+              <p className="text-theme-xs text-ink-muted">{sourceLabel[source]} — Last Run</p>
+              <p className="mt-1 text-lg font-semibold text-ink">
                 {last ? <Tag severity={statusSeverity[last.status]}>{last.status}</Tag> : "—"}
               </p>
-              <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">{formatDateTime(last?.at ?? null)}</p>
+              <p className="mt-1 text-theme-xs text-ink-muted">{formatDateTime(last?.at ?? null)}</p>
             </div>
           );
         })}
@@ -290,22 +290,22 @@ export default function BackupsPage() {
       </div>
 
       {/* BAK-2: unified run history */}
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
         <div className="max-w-full overflow-x-auto">
           <DataTable data={historyPage?.data ?? []} dataKey="id">
             <DataTableTableContainer>
               <DataTableTable>
                 <DataTableTHead>
                   <DataTableTHeadRow>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Source</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Filename</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Type</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Restore Test</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Size</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Created</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Created By</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Source</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Filename</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Type</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Status</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Restore Test</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Size</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Created</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Created By</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
                 </DataTableTHead>
                 <DataTableTBody>
@@ -314,13 +314,13 @@ export default function BackupsPage() {
 
                     return (
                       <DataTableRow key={run.id}>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {sourceLabel[run.source]}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-ink">
                           {filenameOf(run)}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {run.triggered_by === "system" ? "Automatic" : "Manual"}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
@@ -335,13 +335,13 @@ export default function BackupsPage() {
                             <Tag severity="danger">failed</Tag>
                           )}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {formatBytes(run.size_bytes)}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {formatDateTime(run.created_at)}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {run.triggered_by}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
@@ -373,16 +373,16 @@ export default function BackupsPage() {
             </DataTableTableContainer>
           </DataTable>
           {historyPage?.data.length === 0 && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No backups yet.</p>
+            <p className="p-6 text-center text-sm text-ink-muted">No backups yet.</p>
           )}
           {historyPage === null && !error && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+            <p className="p-6 text-center text-sm text-ink-muted">Loading…</p>
           )}
         </div>
       </div>
 
       {historyPage && historyPage.last_page > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+        <div className="mt-4 flex items-center justify-between text-sm text-ink-muted">
           <span>
             Page {historyPage.current_page} of {historyPage.last_page} ({historyPage.total} total)
           </span>
@@ -419,12 +419,12 @@ export default function BackupsPage() {
         <DialogPortal>
           <DialogBackdrop />
           <DialogPositioner>
-            <DialogPopup>
+            <DialogPopup className="w-full max-w-md">
               <DialogHeader>
                 <DialogTitle>Delete this backup?</DialogTitle>
               </DialogHeader>
               <DialogContent>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
+                <p className="text-sm text-ink-muted">
                   Permanently deletes {confirmDeleteRun ? filenameOf(confirmDeleteRun) : "this archive"} from disk.
                   This cannot be undone.
                 </p>

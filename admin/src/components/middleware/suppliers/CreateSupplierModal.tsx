@@ -32,8 +32,8 @@ interface CreateSupplierModalProps {
 }
 
 const INPUT =
-  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-theme-sm text-gray-800 shadow-theme-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 disabled:opacity-60 dark:border-gray-800 dark:bg-white/[0.03] dark:text-white/90";
-const LABEL = "mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300";
+  "w-full rounded-lg border border-border-control bg-surface px-3 py-2 text-theme-sm text-ink placeholder:text-ink-subtle focus-visible:outline-2 focus-visible:outline-offset-[-1px] focus-visible:outline-focus-ring disabled:opacity-60";
+const LABEL = "mb-1.5 block text-theme-sm font-medium text-ink";
 
 function driverLabel(driver: string): string {
   return driver === "manual" ? "Manual (no API — a person fulfils each order)" : driver;
@@ -96,7 +96,7 @@ function CreateSupplierFields({ onClose, onSubmit, availableDrivers }: Omit<Crea
       </DialogHeader>
       <DialogContent>
         {error && (
-          <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+          <p className="mb-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
             {error}
           </p>
         )}
@@ -166,7 +166,7 @@ function CreateSupplierFields({ onClose, onSubmit, availableDrivers }: Omit<Crea
           )}
 
           {isManual && fundingMode === "pay_after" && (
-            <label className="flex items-start gap-2 text-theme-sm text-gray-700 dark:text-gray-300">
+            <label className="flex items-start gap-2 text-theme-sm text-ink">
               <input type="checkbox" className="mt-1" checked={isPenjoki} onChange={(e) => setIsPenjoki(e.target.checked)} />
               <span>
                 A penjoki (Joki player)
@@ -205,7 +205,7 @@ export default function CreateSupplierModal({ isOpen, onClose, onSubmit, availab
       <DialogPortal>
         <DialogBackdrop />
         <DialogPositioner>
-          <DialogPopup>
+          <DialogPopup className="w-full max-w-lg">
             {isOpen && (
               <CreateSupplierFields onClose={onClose} onSubmit={onSubmit} availableDrivers={availableDrivers} />
             )}

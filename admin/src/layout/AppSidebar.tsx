@@ -2,6 +2,7 @@
 
 import React from "react";
 import PanelSidebar, { type PanelNavSection } from "@/layout/PanelSidebar";
+import { useClientSession } from "@/hooks/useClientSession";
 import { Grid2 as GridIcon } from "@primeicons/react/grid-2";
 import { User as UserCircleIcon } from "@primeicons/react/user";
 import { Dollar as DollarLineIcon } from "@primeicons/react/dollar";
@@ -117,5 +118,8 @@ const sections: PanelNavSection[] = [
 ];
 
 export default function AppSidebar() {
-  return <PanelSidebar homeHref="/admin" brandLabel="PekanGame Admin" shortLabel="PG" sections={sections} />;
+  // The Middleware Panel is super_admin only (its layout redirects anyone else), so only they see the way in.
+  const session = useClientSession();
+  const switchTo = session?.role === "super_admin" ? { name: "Middleware Panel", href: "/middleware" } : undefined;
+  return <PanelSidebar homeHref="/admin" brandLabel="PekanGame Admin" shortLabel="PG" sections={sections} switchTo={switchTo} />;
 }

@@ -78,7 +78,7 @@ export default function PendingPriceChangeSection({ items, busyId, onApprove, on
     <>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Held Price Changes</h2>
+          <h2 className="text-section-title font-semibold text-ink">Held Price Changes</h2>
           <p className="text-theme-xs text-ink-subtle">These packages keep selling at their current cost. A held drop applies by itself once it stays low.</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -89,36 +89,36 @@ export default function PendingPriceChangeSection({ items, busyId, onApprove, on
           ))}
         </div>
       </div>
-      <div className="mb-8 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="mb-8 overflow-hidden rounded-2xl border border-border bg-surface">
         <div className="max-w-full overflow-x-auto">
           <DataTable data={items ?? []} dataKey="id">
             <DataTableTableContainer>
               <DataTableTable>
-                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                <DataTableTHead className="border-b border-border">
                   <DataTableTHeadRow>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Current Cost</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Held Price</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Swing</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Package</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Game</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Current Cost</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Held Price</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Swing</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
                 </DataTableTHead>
-                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <DataTableTBody className="divide-y divide-border">
                   {({ item }) => {
                     const p = item as unknown as PendingPriceChange;
 
                     return (
                       <DataTableRow key={p.id}>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <span className="font-medium text-gray-800 dark:text-white/90">{p.package.name}</span>
+                          <span className="font-medium text-ink">{p.package.name}</span>
                           <br />
                           <span className="text-theme-xs text-ink-subtle">{p.package.supplier_package_ref} · {p.package.supplier?.name}</span>
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{p.package.game?.name ?? "—"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{p.package.game?.name ?? "—"}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.old_cost_price)}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.proposed_cost_price)}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-error-600 dark:text-error-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-danger-ink">
                           {swingPercent(p.old_cost_price, p.proposed_cost_price)}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
@@ -134,12 +134,12 @@ export default function PendingPriceChangeSection({ items, busyId, onApprove, on
             </DataTableTableContainer>
           </DataTable>
           {items?.length === 0 && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
+            <p className="p-6 text-center text-sm text-ink-muted">
               Nothing held. No supplier price is waiting to apply.
             </p>
           )}
           {items === null && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+            <p className="p-6 text-center text-sm text-ink-muted">Loading…</p>
           )}
         </div>
       </div>
@@ -157,7 +157,7 @@ export default function PendingPriceChangeSection({ items, busyId, onApprove, on
                 </DialogHeaderActions>
               </DialogHeader>
               <DialogContent>
-                <p className="mb-4 text-sm text-gray-600 dark:text-gray-300">
+                <p className="mb-4 text-sm text-ink-muted">
                   {confirming?.count} packages will change to their held price now. If many moved at once, check the latest deposit first: a mistyped transfer moves every price.
                 </p>
                 <div className="flex justify-end gap-2">

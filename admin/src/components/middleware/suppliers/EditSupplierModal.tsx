@@ -24,7 +24,7 @@ interface EditSupplierModalProps {
 }
 
 const inputClass =
-  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-theme-sm text-gray-800 shadow-theme-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:border-gray-800 dark:bg-white/[0.03] dark:text-white/90";
+  "w-full rounded-lg border border-border-control bg-surface px-3 py-2 text-theme-sm text-ink placeholder:text-ink-subtle focus-visible:outline-2 focus-visible:outline-offset-[-1px] focus-visible:outline-focus-ring";
 
 /**
  * ADR-046 decision 3 — structured per-supplier form, not a blind JSON
@@ -122,19 +122,19 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
       </DialogHeader>
       <DialogContent>
         {error && (
-          <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+          <p className="mb-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
             {error}
           </p>
         )}
 
         <form id="edit-supplier-form" onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">Name</label>
+            <label className="mb-1.5 block text-theme-sm font-medium text-ink">Name</label>
             <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+            <label className="mb-1.5 block text-theme-sm font-medium text-ink">
               Currency
             </label>
             <input className={inputClass} value={currency} onChange={(e) => setCurrency(e.target.value)} maxLength={3} disabled={isManual} required />
@@ -143,7 +143,7 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
 
           {isManual && (
             <div>
-              <label htmlFor="edit_funding_mode" className="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+              <label htmlFor="edit_funding_mode" className="mb-1.5 block text-theme-sm font-medium text-ink">
                 How it is paid
               </label>
               <select
@@ -160,15 +160,15 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
           )}
 
           <div>
-            <label className="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+            <label className="mb-1.5 block text-theme-sm font-medium text-ink">
               Logo URL
             </label>
             <input className={inputClass} value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
           </div>
 
           {fields.length > 0 && (
-            <div className="space-y-4 border-t border-gray-200 pt-4 dark:border-gray-800">
-              <p className="text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+            <div className="space-y-4 border-t border-border pt-4">
+              <p className="text-theme-xs font-medium text-ink-muted">
                 {isManual ? "Settings" : "Credentials & connection settings"}
               </p>
 
@@ -181,13 +181,13 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
                   const isConfigured = supplier.configured_secret_keys.includes(field.key);
                   return (
                     <div key={field.key}>
-                      <label className="mb-1.5 flex items-center gap-2 text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+                      <label className="mb-1.5 flex items-center gap-2 text-theme-sm font-medium text-ink">
                         {field.label}
                         <span
                           className={`rounded-full px-2 py-0.5 text-theme-xs ${
                             isConfigured
-                              ? "bg-success-50 text-success-600 dark:bg-success-500/15 dark:text-success-400"
-                              : "bg-gray-100 text-gray-500 dark:bg-white/[0.05] dark:text-gray-400"
+                              ? "bg-success-surface text-success-ink"
+                              : "bg-neutral-surface text-neutral-ink"
                           }`}
                         >
                           {isConfigured ? "Configured" : "Not configured"}
@@ -207,7 +207,7 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
 
                 if (field.type === "boolean") {
                   return (
-                    <label key={field.key} className="flex items-center gap-2 text-theme-sm text-gray-700 dark:text-gray-300">
+                    <label key={field.key} className="flex items-center gap-2 text-theme-sm text-ink">
                       <input
                         type="checkbox"
                         checked={Boolean(visibleValue(field.key, false))}
@@ -223,7 +223,7 @@ function EditSupplierFields({ onClose, onSubmit, supplier }: Omit<EditSupplierMo
 
                 return (
                   <div key={field.key}>
-                    <label className="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+                    <label className="mb-1.5 block text-theme-sm font-medium text-ink">
                       {field.label}
                     </label>
                     <input
@@ -257,7 +257,7 @@ export default function EditSupplierModal({ isOpen, onClose, onSubmit, supplier 
       <DialogPortal>
         <DialogBackdrop />
         <DialogPositioner>
-          <DialogPopup>
+          <DialogPopup className="w-full max-w-lg">
             {isOpen && supplier && <EditSupplierFields onClose={onClose} onSubmit={onSubmit} supplier={supplier} />}
           </DialogPopup>
         </DialogPositioner>

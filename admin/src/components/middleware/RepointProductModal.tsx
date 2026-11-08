@@ -81,12 +81,12 @@ function RepointFields({
 
   return (
     <>
-      <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+      <p className="mb-4 text-sm text-ink-muted">
         {product.name} ({product.external_ref}) → an existing <span className="font-medium">{gameName}</span> package
       </p>
 
       {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
           {error}
         </p>
       )}
@@ -104,12 +104,12 @@ function RepointFields({
         </div>
 
         {chosen && (
-          <div className="rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-white/5">
+          <div className="rounded-lg bg-subtle px-3 py-2 text-sm">
             <p>
-              <span className="text-gray-500 dark:text-gray-400">Cost now: </span>
-              <span className="font-medium text-gray-800 dark:text-white/90">{rm(chosen.cost_price)}</span>
-              <span className="text-gray-500 dark:text-gray-400"> → new supplier price: </span>
-              <span className="font-medium text-gray-800 dark:text-white/90">{rm(product.price_sen)}</span>
+              <span className="text-ink-muted">Cost now: </span>
+              <span className="font-medium text-ink">{rm(chosen.cost_price)}</span>
+              <span className="text-ink-muted"> → new supplier price: </span>
+              <span className="font-medium text-ink">{rm(product.price_sen)}</span>
             </p>
             <p className="mt-1 text-theme-xs text-ink-subtle">
               Its name, markup ({chosen.markup_percent}%), history and combos stay. It stays {chosen.is_active ? "on" : "off"}.

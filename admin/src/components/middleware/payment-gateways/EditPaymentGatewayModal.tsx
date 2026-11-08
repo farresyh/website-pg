@@ -24,7 +24,7 @@ interface EditPaymentGatewayModalProps {
 }
 
 const inputClass =
-  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-theme-sm text-gray-800 shadow-theme-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:border-gray-800 dark:bg-white/[0.03] dark:text-white/90";
+  "w-full rounded-lg border border-border-control bg-surface px-3 py-2 text-theme-sm text-ink placeholder:text-ink-subtle focus-visible:outline-2 focus-visible:outline-offset-[-1px] focus-visible:outline-focus-ring";
 
 /**
  * ADR-110 PR-C decision 6 — mirrors `EditSupplierModal`'s own
@@ -82,7 +82,7 @@ function EditPaymentGatewayFields({
       </DialogHeader>
       <DialogContent>
         {error && (
-          <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+          <p className="mb-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
             {error}
           </p>
         )}
@@ -93,13 +93,13 @@ function EditPaymentGatewayFields({
               const isConfigured = gateway?.configured_secret_keys.includes(field.key) ?? false;
               return (
                 <div key={field.key}>
-                  <label className="mb-1.5 flex items-center gap-2 text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+                  <label className="mb-1.5 flex items-center gap-2 text-theme-sm font-medium text-ink">
                     {field.label}
                     <span
                       className={`rounded-full px-2 py-0.5 text-theme-xs ${
                         isConfigured
-                          ? "bg-success-50 text-success-600 dark:bg-success-500/15 dark:text-success-400"
-                          : "bg-gray-100 text-gray-500 dark:bg-white/[0.05] dark:text-gray-400"
+                          ? "bg-success-surface text-success-ink"
+                          : "bg-neutral-surface text-neutral-ink"
                       }`}
                     >
                       {isConfigured ? "Configured" : "Not configured"}
@@ -119,7 +119,7 @@ function EditPaymentGatewayFields({
 
             return (
               <div key={field.key}>
-                <label className="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+                <label className="mb-1.5 block text-theme-sm font-medium text-ink">
                   {field.label}
                 </label>
                 <input
@@ -151,7 +151,7 @@ export default function EditPaymentGatewayModal({ isOpen, onClose, onSubmit, gat
       <DialogPortal>
         <DialogBackdrop />
         <DialogPositioner>
-          <DialogPopup>
+          <DialogPopup className="w-full max-w-md">
             {isOpen && gatewayKey && (
               <EditPaymentGatewayFields onClose={onClose} onSubmit={onSubmit} gatewayKey={gatewayKey} gateway={gateway} />
             )}

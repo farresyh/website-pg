@@ -194,22 +194,22 @@ function ResendDeliveryFields({ onClose, onResent, order, sandbox }: Omit<Resend
       </p>
 
       {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
           {error}
         </p>
       )}
       {packagesError && (
-        <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
           {packagesError}
         </p>
       )}
       {originalPackageNoLongerActive && (
-        <p className="mb-4 rounded-lg bg-warning-50 px-3 py-2 text-sm text-warning-600 dark:bg-warning-500/15 dark:text-orange-400">
+        <p className="mb-4 rounded-lg bg-warning-surface px-3 py-2 text-sm text-warning-ink">
           This order&apos;s original package is no longer active — choose a replacement package below.
         </p>
       )}
       {blockedReason && (
-        <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
           {blockedReason}
         </p>
       )}
@@ -217,7 +217,7 @@ function ResendDeliveryFields({ onClose, onResent, order, sandbox }: Omit<Resend
         // ADR-105 decision 11 — a genuine loss on any basis, distinct
         // from ADR-102's "unlikely to help" warning below: this one is
         // about money, not futility, so it gets its own copy and tone.
-        <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
           This resend would record a platform loss of {formatRm(Math.abs(impact.platform_profit))} — this package&apos;s catalog cost
           now exceeds what was actually collected for this order. Provide a reason below to proceed anyway and accept the loss.
         </p>
@@ -278,13 +278,13 @@ function ResendDeliveryFields({ onClose, onResent, order, sandbox }: Omit<Resend
               </div>
             )}
             <div
-              className={`flex justify-between font-medium ${impact.platform_profit < 0 ? "text-error-600 dark:text-error-400" : "text-ink"}`}
+              className={`flex justify-between font-medium ${impact.platform_profit < 0 ? "text-danger-ink" : "text-ink"}`}
             >
               <span>Estimated platform profit (this attempt)</span>
               <span>{impact.platform_profit < 0 ? formatRm(impact.platform_profit) : `+${formatRm(impact.platform_profit)}`}</span>
             </div>
             <div
-              className={`flex justify-between font-medium ${impact.platform_profit < order.platform_profit ? "text-error-600 dark:text-error-400" : impact.platform_profit > order.platform_profit ? "text-success-600 dark:text-success-400" : "text-ink-muted"}`}
+              className={`flex justify-between font-medium ${impact.platform_profit < order.platform_profit ? "text-danger-ink" : impact.platform_profit > order.platform_profit ? "text-success-ink" : "text-ink-muted"}`}
             >
               <span>Change vs expected ({formatRm(order.platform_profit)})</span>
               <span>
@@ -296,7 +296,7 @@ function ResendDeliveryFields({ onClose, onResent, order, sandbox }: Omit<Resend
         )}
 
         {/* ADR-102 decision 10 — closes the "a wrong-ID failure can only be resolved by Issue Voucher + a brand new customer-placed order" gap. Available regardless of whether this game requires validation — a typo'd ID can cause a plain supplier rejection too. */}
-        <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+        <div className="rounded-lg border border-border p-3">
           <Label>{order.customer_login ? "Login Correction (Optional)" : "Player ID / Server ID Correction (Optional)"}</Label>
           <p className="mb-2 text-sm text-ink-muted">
             Currently on this order: <span className="font-medium">{order.player_id}</span>
@@ -328,7 +328,7 @@ function ResendDeliveryFields({ onClose, onResent, order, sandbox }: Omit<Resend
         </div>
 
         {requiresPlayerValidation && (
-          <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+          <div className="rounded-lg border border-border p-3">
             <p className="mb-2 text-sm text-ink-muted">
               This game requires Player ID validation before resending — Player ID{" "}
               <span className="font-medium">{effectivePlayerId}</span>
@@ -338,14 +338,14 @@ function ResendDeliveryFields({ onClose, onResent, order, sandbox }: Omit<Resend
               <Button type="button" size="small" variant="outlined" onClick={handleVerify} disabled={verifying}>
                 {verifying ? "Verifying…" : "Verify Player ID"}
               </Button>
-              {verifyResult === "valid" && <span className="text-sm text-success-600 dark:text-success-400">Verified</span>}
-              {verifyResult === "invalid" && <span className="text-sm text-error-600 dark:text-error-400">Not valid — cannot resend</span>}
+              {verifyResult === "valid" && <span className="text-sm text-success-ink">Verified</span>}
+              {verifyResult === "invalid" && <span className="text-sm text-danger-ink">Not valid — cannot resend</span>}
             </div>
           </div>
         )}
 
         {sandbox && (
-          <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+          <div className="rounded-lg border border-border p-3">
             <Label>Simulated Outcome (sandbox only)</Label>
             <div className="mt-1 flex gap-2">
               <button

@@ -185,8 +185,8 @@ export default function ValidatorsPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Validators</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        <h1 className="text-page-title font-semibold text-ink">Validators</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           MUI-5 — a validator&apos;s <code>key</code> only ever comes from the finite set with a real backend
           implementation, so it can never point at nothing. Use &quot;Test this validator&quot; on any card to prove
           it&apos;s genuinely working, not just configured.
@@ -209,7 +209,7 @@ export default function ValidatorsPage() {
       />
 
       {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-4 py-3 text-sm text-danger-ink">
           {error}
         </p>
       )}
@@ -233,12 +233,12 @@ export default function ValidatorsPage() {
       </div>
 
       {validators?.length === 0 && (
-        <p className="rounded-2xl border border-gray-200 p-6 text-center text-sm text-gray-500 dark:border-gray-800 dark:text-gray-400">
+        <p className="rounded-2xl border border-border p-6 text-center text-sm text-ink-muted">
           No validators yet — create one above.
         </p>
       )}
       {validators === null && !error && (
-        <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <p className="p-6 text-center text-sm text-ink-muted">Loading…</p>
       )}
 
       <div className="mt-8">

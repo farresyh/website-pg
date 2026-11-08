@@ -80,7 +80,7 @@ function FeeCell({
           type="text"
           value={percentage}
           onChange={(e) => setPercentage(e.target.value)}
-          className="h-9 w-16 rounded-lg border border-gray-300 px-2 pr-4 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+          className="h-9 w-16 rounded-lg border border-border-control bg-surface px-2 pr-4 text-sm text-ink"
         />
         <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-ink-subtle">%</span>
       </div>
@@ -91,7 +91,7 @@ function FeeCell({
           type="text"
           value={flatSen}
           onChange={(e) => setFlatSen(e.target.value)}
-          className="h-9 w-16 rounded-lg border border-gray-300 pl-4 pr-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+          className="h-9 w-16 rounded-lg border border-border-control bg-surface pl-4 pr-2 text-sm text-ink"
         />
       </div>
       <Button size="small" disabled={saving} onClick={handleUpdate}>
@@ -173,46 +173,46 @@ export default function PaymentMethodsPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Payment Methods</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        <h1 className="text-page-title font-semibold text-ink">Payment Methods</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Per-channel activation and fee rates (SET-7/SET-11). Every channel starts inactive — confirm it actually
           works with &quot;Test&quot; before turning it on for checkout.
         </p>
       </div>
 
       {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-4 py-3 text-sm text-danger-ink">
           {error}
         </p>
       )}
 
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex flex-wrap gap-2">
         {categories.map((c) => (
           <button
             key={c}
             onClick={() => setCategory(c)}
-            className={`rounded-lg px-3 py-1.5 text-sm capitalize ${category === c ? "bg-brand-500 text-white" : "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400"}`}
+            className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm capitalize ${category === c ? "bg-cyan-600 text-on-cyan" : "bg-subtle text-ink-muted"}`}
           >
             {c === "all" ? "All" : (CATEGORY_LABELS[c] ?? c)}
           </button>
         ))}
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
         <div className="max-w-full overflow-x-auto">
           <DataTable data={methods ?? []} dataKey="id">
             <DataTableTableContainer>
               <DataTableTable>
-                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                <DataTableTHead className="border-b border-border">
                   <DataTableTHeadRow>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Active</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Channel</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Fee</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Last Test</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Active</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Channel</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Fee</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Last Test</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
                 </DataTableTHead>
-                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <DataTableTBody className="divide-y divide-border">
                   {({ item }) => {
                     const method = item as unknown as PaymentMethod;
 
@@ -222,7 +222,7 @@ export default function PaymentMethodsPage() {
                           <Switch checked={method.is_active} onChange={() => handleToggleStatus(method)} />
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <span className="font-medium text-gray-800 dark:text-white/90">{method.label}</span>
+                          <span className="font-medium text-ink">{method.label}</span>
                           <br />
                           <span className="text-theme-xs text-ink-subtle">{method.channel_code} · {method.gateway}</span>
                         </DataTableCell>
@@ -233,9 +233,9 @@ export default function PaymentMethodsPage() {
                             onUpdate={(percentageRate, flatFeeSen) => handleUpdateFee(method, percentageRate, flatFeeSen)}
                           />
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {method.last_test_result ? (
-                            <span className={method.last_test_result === "success" ? "text-success-600 dark:text-success-400" : "text-error-600 dark:text-error-400"}>
+                            <span className={method.last_test_result === "success" ? "text-success-ink" : "text-danger-ink"}>
                               {method.last_test_result}
                             </span>
                           ) : (
@@ -255,10 +255,10 @@ export default function PaymentMethodsPage() {
             </DataTableTableContainer>
           </DataTable>
           {methods?.length === 0 && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No channels in this category.</p>
+            <p className="p-6 text-center text-sm text-ink-muted">No channels in this category.</p>
           )}
           {methods === null && !error && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+            <p className="p-6 text-center text-sm text-ink-muted">Loading…</p>
           )}
         </div>
       </div>

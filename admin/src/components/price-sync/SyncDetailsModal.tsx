@@ -59,21 +59,21 @@ function SyncDetailsContent({ runId }: { runId: number }) {
   return (
     <>
       {error && (
-        <p className="mt-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mt-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
           {error}
         </p>
       )}
 
-      {!details && !error && <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">Loading…</p>}
+      {!details && !error && <p className="mt-4 text-sm text-ink-muted">Loading…</p>}
 
       {details && (
         <>
-          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+          <p className="mb-4 text-sm text-ink-muted">
             {details.games_touched} game{details.games_touched === 1 ? "" : "s"} touched · {details.run.status}
           </p>
 
           {details.games.length === 0 && (
-            <p className="rounded-lg bg-gray-50 px-3 py-4 text-center text-sm text-gray-500 dark:bg-white/5 dark:text-gray-400">
+            <p className="rounded-lg bg-subtle px-3 py-4 text-center text-sm text-ink-muted">
               No price changes or deactivations were recorded for this run.
             </p>
           )}
@@ -81,9 +81,9 @@ function SyncDetailsContent({ runId }: { runId: number }) {
           {details.games.map((entry) => (
             <div
               key={entry.game?.id ?? "unknown"}
-              className="mb-4 overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800"
+              className="mb-4 overflow-hidden rounded-2xl border border-border"
             >
-              <div className="border-b border-gray-100 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-800 dark:border-gray-800 dark:bg-white/5 dark:text-white/90">
+              <div className="border-b border-border bg-subtle px-4 py-2 text-sm font-medium text-ink">
                 {entry.game?.name ?? "Unknown game"}
               </div>
 
@@ -92,29 +92,29 @@ function SyncDetailsContent({ runId }: { runId: number }) {
                   <DataTable data={entry.price_changes} dataKey="package.id">
                     <DataTableTableContainer>
                       <DataTableTable>
-                        <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                        <DataTableTHead className="border-b border-border">
                           <DataTableTHeadRow>
-                            <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</DataTableTHeadCell>
-                            <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Code</DataTableTHeadCell>
-                            <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost</DataTableTHeadCell>
-                            <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Affiliate Price</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-ink-muted">Package</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-ink-muted">Code</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-ink-muted">Cost</DataTableTHeadCell>
+                            <DataTableTHeadCell className="px-4 py-2 text-start text-theme-xs font-medium text-ink-muted">Affiliate Price</DataTableTHeadCell>
                           </DataTableTHeadRow>
                         </DataTableTHead>
-                        <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                        <DataTableTBody className="divide-y divide-border">
                           {({ item }) => {
                             const change = item as unknown as SyncDetailsGame["price_changes"][number];
 
                             return (
                               <DataTableRow key={change.package.id}>
-                                <DataTableCell className="px-4 py-2 text-theme-sm text-gray-800 dark:text-white/90">
+                                <DataTableCell className="px-4 py-2 text-theme-sm text-ink">
                                   {change.package.name}
                                   {change.package.is_combo && (
-                                    <span className="ml-2 rounded-full bg-brand-50 px-2 py-0.5 text-theme-xs font-medium text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">
+                                    <span className="ml-2 rounded-full bg-cyan-50 px-2 py-0.5 text-theme-xs font-medium text-cyan-ink">
                                       Combo — recomputed
                                     </span>
                                   )}
                                 </DataTableCell>
-                                <DataTableCell className="px-4 py-2 text-theme-sm text-gray-500 dark:text-gray-400">
+                                <DataTableCell className="px-4 py-2 text-theme-sm text-ink-muted">
                                   {change.package.code ?? "—"}
                                 </DataTableCell>
                                 <DataTableCell className="px-4 py-2 text-theme-sm">
@@ -134,9 +134,9 @@ function SyncDetailsContent({ runId }: { runId: number }) {
               )}
 
               {entry.deactivated_packages.length > 0 && (
-                <div className="border-t border-gray-100 px-4 py-2 text-sm dark:border-gray-800">
-                  <span className="text-gray-500 dark:text-gray-400">Deactivated: </span>
-                  <span className="text-gray-800 dark:text-white/90">
+                <div className="border-t border-border px-4 py-2 text-sm">
+                  <span className="text-ink-muted">Deactivated: </span>
+                  <span className="text-ink">
                     {entry.deactivated_packages.map((p) => p.name).join(", ")}
                   </span>
                 </div>
