@@ -322,3 +322,25 @@ The founder sent the accountant a one-page note on decisions 20–25 and receive
    - If the business is ever registered for SST, the rebate's tax effect (credit notes) is reviewed before anything else changes.
    - Whether the business falls within SST scope is a company-level question for a tax agent, not part of this ADR.
 8. **Framework.** The treatment is consistent with MFRS 15, MPERS (2025) Section 23 (effective for periods beginning on or after 1 January 2027, ADR-127), and the earlier MPERS Section 23, under which volume rebates reduce revenue. The founder confirms the financial-year start with the accountant to know which MPERS version applies; this is information only, with no design change.
+
+### 2026-11-08 addendum — programme terms version 1 and ladder-change notice
+
+The founder approved the programme terms that the accountant addendum's decision 5 requires. The text below is **version 1**; PR 4 seeds it verbatim as the first terms version. Clause 2 was reconciled with decision 4 (claimable as soon as a step is reached) and decision 12 (the monthly cap). Clause 7's promise of notice is enforced in code by decision 2 of this addendum.
+
+1. **Terms, version 1 (Malay, shown to resellers as is):**
+
+   > **Terma Program Rebate PekanGame**
+   > 1. Rebate dikira berdasarkan jumlah belian layak reseller dalam setiap bulan kalendar. Belian layak ialah belian yang berjaya diproses dan kreditnya telah dihantar. Belian yang dibatalkan, dipulangkan atau dikenakan chargeback tidak dikira.
+   > 2. Jumlah belian layak dan ganjaran bagi setiap tier adalah seperti yang disenaraikan dalam jadual Program Rebate PekanGame. Sebaik sahaja jumlah belian layak bulan itu mencapai sesuatu tier, ganjaran tier tersebut boleh dituntut. Ganjaran tertakluk kepada had bulanan program dan mungkin dilaraskan.
+   > 3. Ganjaran yang layak diterima boleh dituntut sehingga hari terakhir bulan berikutnya. Ganjaran yang tidak dituntut sebelum tarikh itu akan luput.
+   > 4. Ganjaran yang dituntut akan dikreditkan ke Purchase Balance dan hanya boleh digunakan untuk belian di platform PekanGame. Ganjaran tidak boleh ditunaikan, dikeluarkan sebagai wang tunai atau dipindahkan kepada akaun lain.
+   > 5. Jika akaun reseller ditutup, baki ganjaran rebate yang masih ada akan luput. Baki Purchase Balance daripada top-up tunai akan dipulangkan selepas semakan akaun dan sebarang amaun yang masih perlu dibayar diselesaikan.
+   > 6. PekanGame boleh membetulkan pengiraan ganjaran jika terdapat kesilapan atau transaksi yang tidak layak, seperti transaksi yang dibatalkan atau dipulangkan. Sebarang pembetulan akan dimaklumkan kepada reseller.
+   > 7. PekanGame boleh mengubah tier atau jumlah ganjaran dengan memberikan notis. Perubahan hanya berkuat kuasa mulai bulan berikutnya dan tidak mengubah ganjaran yang reseller sudah layak terima bagi bulan sebelumnya.
+
+   - Clause 6 is a reserved right. The system has no clawback (Rejected alternatives), and delivered orders are final, so it is rarely needed. A correction is a deliberate admin decision outside the claim flow.
+   - Changing the terms text creates a new version, which needs re-acceptance at the next claim.
+2. **Decision 6 extended: the ladder needs notice.**
+   - A new ladder version (thresholds, grid or max share) can take effect from a month only if it is saved **at least 7 days before that month starts** (KL). A version saved later takes effect a month later. The panel shows the effective month before the admin confirms with MFA.
+   - Saving a version notifies every eligible reseller at once through a portal banner and one bot message ("A new rebate table takes effect on 1 <month>").
+   - Turning the master switch on is the first version, and it gets the same notice. Decision 35's "from the following 1st" becomes "from the first 1st at least 7 days away".

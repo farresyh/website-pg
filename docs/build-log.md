@@ -2066,3 +2066,4 @@ The founder reopened item 161. Asked why they won't switch, agents said our pric
   - per-row calculation inputs and a CSV export, for income tax.
 
   The founder confirmed there is no marketing obligation and that the business charges no SST (a scope check with a tax agent is company-level, not a gate). ADR-139 addendum; PR 3 unblocked.
+- **Programme terms version 1 approved by the founder** and recorded verbatim in the ADR-139 addendum. Clause 2 was aligned with mid-month claims and the monthly cap. Clause 7's notice promise is enforced in code: a ladder version must be saved at least 7 days before its month, and saving it notifies every eligible reseller (portal banner and bot).
