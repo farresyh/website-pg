@@ -192,14 +192,14 @@ export default function SandboxOrdersPage() {
               // outcome is already known by the time this is clicked.
               refreshList();
             }}
-            className="mb-4 text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white"
+            className="mb-4 text-sm text-ink-muted hover:text-ink"
           >
             ← Back to test orders
           </button>
 
           <div className="mb-6">
-            <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">{selected.order_number}</h1>
-            <p className="mt-1 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+            <h1 className="text-page-title font-semibold text-ink">{selected.order_number}</h1>
+            <p className="mt-1 flex items-center gap-2 text-sm text-ink-muted">
               <Tag severity="warn">sandbox</Tag>
               <Tag severity={paymentStatusSeverity[selected.payment_status]}>
                 payment: {selected.payment_status}
@@ -226,8 +226,8 @@ export default function SandboxOrdersPage() {
               <Button size="small" variant="outlined" onClick={() => handleDelete(selected.id)}>
                 Delete Test Order
               </Button>
-              {resendMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{resendMessage}</span>}
-              {markDeliveredMessage && <span className="text-sm text-gray-500 dark:text-gray-400">{markDeliveredMessage}</span>}
+              {resendMessage && <span className="text-sm text-ink-muted">{resendMessage}</span>}
+              {markDeliveredMessage && <span className="text-sm text-ink-muted">{markDeliveredMessage}</span>}
             </div>
           </div>
 
@@ -261,8 +261,8 @@ export default function SandboxOrdersPage() {
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Sandbox Test Orders</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          <h1 className="text-page-title font-semibold text-ink">Sandbox Test Orders</h1>
+          <p className="mt-1 text-sm text-ink-muted">
             ADR-018 — real Order rows, fully isolated from real data and real money. Never visible on /admin/orders,
             never touches the real ledger, delivery is always simulated (FakeSupplierAdapter), never the real
             Gamevion.
@@ -279,7 +279,7 @@ export default function SandboxOrdersPage() {
       </div>
 
       {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-4 py-3 text-sm text-danger-ink">
           {error}
         </p>
       )}
@@ -290,41 +290,41 @@ export default function SandboxOrdersPage() {
           placeholder="Search order #…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="h-11 w-full max-w-sm rounded-lg border border-gray-300 px-4 py-2.5 text-sm shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+          className="h-11 w-full max-w-sm rounded-lg border border-border-control bg-surface px-4 py-2.5 text-sm text-ink placeholder:text-ink-subtle focus:border-cyan-600 focus:outline-hidden focus:ring-3 focus:ring-focus-ring/10"
         />
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
         <div className="max-w-full overflow-x-auto">
           <DataTable data={page?.data ?? []} dataKey="id">
             <DataTableTableContainer>
               <DataTableTable>
-                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                <DataTableTHead className="border-b border-border">
                   <DataTableTHeadRow>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Order #</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game / Package</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Final Amount</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Delivery</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Date</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Order #</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Game / Package</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Final Amount</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Delivery</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Date</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
                 </DataTableTHead>
-                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <DataTableTBody className="divide-y divide-border">
                   {({ item }) => {
                     const order = item as unknown as OrderListItem;
 
                     return (
                       <DataTableRow key={order.id}>
-                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{order.order_number}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-ink">{order.order_number}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {order.game?.name ?? "—"}
                           {order.package?.name && <span className="text-theme-xs text-ink-subtle"> · {order.package.name}</span>}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{formatRm(order.final_amount)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-ink">{formatRm(order.final_amount)}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <Tag severity={deliveryStatusSeverity[order.delivery_status]}>{order.delivery_status}</Tag>
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">
                           {new Date(order.created_at).toLocaleString()}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
@@ -341,16 +341,16 @@ export default function SandboxOrdersPage() {
           </DataTable>
 
           {page?.data.length === 0 && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No test orders yet.</p>
+            <p className="p-6 text-center text-sm text-ink-muted">No test orders yet.</p>
           )}
           {page === null && !error && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+            <p className="p-6 text-center text-sm text-ink-muted">Loading…</p>
           )}
         </div>
       </div>
 
       {page && page.last_page > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+        <div className="mt-4 flex items-center justify-between text-sm text-ink-muted">
           <span>Page {page.current_page} of {page.last_page} ({page.total} total)</span>
           <div className="flex gap-2">
             <Button size="small" variant="outlined" disabled={page.current_page <= 1} onClick={() => setPageNumber((p) => p - 1)}>
