@@ -1,6 +1,6 @@
 # ADR-073: Reseller wallet — fee-less tiers, prepaid-deposit ledger, order-placement contract, profit booking, delivery-failure handling
 
-> **Standing (2026-11-08):** In force; extended by [ADR-131](./ADR-131-chip-activation-conditions.md) (2026-10-29 addendum): display name, limits, receipts, closure. Decision 7 (refund) revised and two ledger types added by the 2026-11-08 addendum, proposed with [ADR-139](./ADR-139-reseller-milestone-rebate.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-08):** In force; extended by [ADR-131](./ADR-131-chip-activation-conditions.md) (2026-10-29 addendum): display name, limits, receipts, closure. Decision 7 (refund) revised and two ledger types added by the 2026-11-08 addendum, decided with [ADR-139](./ADR-139-reseller-milestone-rebate.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-09-04, same grill session as ADR-072. Depends on ADR-072 (the `Reseller` entity must exist before its money mechanics do).
 
@@ -80,10 +80,10 @@ The customer-visible name of the wallet is now "Purchase Balance" (internal name
 
 ### 2026-11-08 addendum — automatic refund of a Failed wallet order; a rebate credit type (ADR-139)
 
-Proposed with [ADR-139](./ADR-139-reseller-milestone-rebate.md) (founder, 2026-11-08); it takes effect when ADR-139 is Accepted.
+Decided with [ADR-139](./ADR-139-reseller-milestone-rebate.md) (founder, 2026-11-08; Accepted after the grill, simulation and stress test).
 
 1. **Decision 7 revised: a wallet order that ends `Failed` is refunded to Purchase Balance automatically**, no longer by an admin choosing to stop retrying.
-   - A scheduled sweep (every minute, `CRITICAL` in `TaskSchedule`) settles each uncompensated `Failed` wallet order through `OrderSettlementService::settle()`, with the system as the actor.
+   - A scheduled sweep (every minute, `CRITICAL` in `TaskSchedule`) settles each uncompensated `Failed` wallet order through `OrderSettlementService::settle()`, with the system as the actor. It skips sandbox orders and closed resellers, which `settle()` refuses.
    - `PartiallyDelivered` stays a manual "Refund to Wallet". `NeedsReview` and `Pending` are never refunded (ADR-102).
    - A refunded order can no longer be resent; the reseller places a new order.
    - Full design: ADR-139 decisions 26–29.

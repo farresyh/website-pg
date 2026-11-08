@@ -2043,4 +2043,17 @@ The founder reopened item 161. Asked why they won't switch, agents said our pric
 
 **Production, read-only:** 3 resellers, 1 buying (Tier SS, RM446.56 sales / RM12.69 profit to date). 4 failed wallet orders and 4 manual refunds (RM430.04). 0 late contradicting supplier results in 138 orders.
 
-**Next:** the grill, then the ladder simulation through `PricingService` on real orders (ADR-139 decision 30). ADR-139 stays Proposed until both are done.
+**Grill (three rounds, 18 questions) and simulation, same day:**
+- **Simulation:** read-only on production through `OrderPricingResolver::resolveResellerWallet()`.
+  - 9 of 11 delivered wallet orders reproduce their selling price exactly.
+  - Actual profit is 94.56% of formula profit, which is real-cost drift.
+  - Repricing 100 delivered orders shows no rounding loss at any tier.
+  - So the ladder top share went from 35% to 32% under a 35% cap. We keep 70% at RM10k and 68% at RM20k.
+- **Final stress test, eight findings folded in:**
+  - one entitlement function, so an early cut self-heals and is never "claim late, get more";
+  - tier change history, so finalise reads the right tier;
+  - the claim deadline is checked by date;
+  - the refund sweep skips sandbox orders and closed resellers, which `settle()` refuses;
+  - a `WalletEntryType` enum makes the unspent-rebate replay exhaustive;
+  - step notifications come from a scheduled task, not the money path.
+- **Accepted.** The accountant confirms the accounting decisions before PR 3.
