@@ -2131,3 +2131,24 @@ Branch `feature/rebate-core`, into `staging` (not released). It changes no live 
 
 **Gotcha:** the docker MySQL still held the `llm_report_*` views from an earlier killed run (backend AGENTS gotcha 8). Dropped them before the run.
 
+## 2026-11-08 — ADR-139 PR 3b-i: rebate month end and the closure forfeit
+
+Branch `feature/rebate-month-close`, into `staging` (not released). It is inert until a ladder version exists.
+
+**Shipped:**
+- `RebateMonthService`: finalise writes available rows and the adjustment row, and alerts on a cut, an adjustment or an overpayment. Expire dates each row at its deadline.
+- Two daily `CRITICAL` tasks.
+- Claims of finalised and adjustment rows.
+- `UnspentRebate`, the ledger replay, which fails closed on an unknown type.
+- Closure forfeits unspent rebate, refunds only the rest, and lapses unclaimed rewards.
+- `close-check` returns the refund. The admin close modal shows it, with the forfeited part explained.
+
+**PR 3b is split in two** (ADR-139 addendum). 3b-ii carries the accounting lines together with their admin display.
+
+**Verified:**
+- `php artisan test`: 3,865 passed (7 new).
+- `ResellerClosureConcurrencyTest` and `RebateClaimConcurrencyTest` pass on MySQL.
+- Admin: `tsc`, lint and 22 unit tests pass.
+- Local dev DB migrated.
+- Browser, on a local build with a throwaway admin deleted afterwards: the close modal shows "Balance to refund" from `refund_sen`.
+

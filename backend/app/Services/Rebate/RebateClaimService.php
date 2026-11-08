@@ -56,21 +56,34 @@ final class RebateClaimService
             $this->refuseUnless($period->lessThanOrEqualTo($now), 'That month has not started.');
             $this->refuseUnless($now->lessThan($period->addMonthsNoOverflow(2)), 'The claim window for that month has closed.');
 
-            $standing = $this->entitlement->standing($fresh, $year, $month, now());
-            $this->refuseUnless($standing->earnsRebate(), 'There is no rebate for this account in that month.');
-            $this->refuseUnless($step >= 1 && $step <= $standing->reachedStep, 'That reward has not been reached yet.');
-
-            $claimed = ResellerRebateMilestone::query()
+            $rows = ResellerRebateMilestone::query()
                 ->where('reseller_id', $fresh->id)
                 ->whereDate('period', $period->toDateString())
-                ->where('kind', ResellerRebateMilestone::KIND_STEP)
                 ->lockForUpdate()
-                ->get()
-                ->keyBy('step');
+                ->get();
+
+            // Step 0 = the month's adjustment row, written only by the month finalise (decision 12).
+            if ($step === 0) {
+                $row = $rows->firstWhere('kind', ResellerRebateMilestone::KIND_ADJUSTMENT);
+                $this->refuseUnless($row?->state === ResellerRebateMilestone::AVAILABLE, 'There is no adjustment to claim for that month.');
+
+                return $this->pay($row, $user);
+            }
+
+            $claimed = $rows->where('kind', ResellerRebateMilestone::KIND_STEP)->keyBy('step');
             $this->refuseUnless(($claimed[$step]->state ?? ResellerRebateMilestone::AVAILABLE) === ResellerRebateMilestone::AVAILABLE, 'That reward was already claimed.');
             for ($earlier = 1; $earlier < $step; $earlier++) {
                 $this->refuseUnless(($claimed[$earlier]->state ?? null) === ResellerRebateMilestone::CLAIMED, 'Claim the earlier rewards first.');
             }
+
+            // A finalised month's row carries its amount, allocated from the final entitlement: pay exactly that.
+            if (isset($claimed[$step])) {
+                return $this->pay($claimed[$step], $user);
+            }
+
+            $standing = $this->entitlement->standing($fresh, $year, $month, now());
+            $this->refuseUnless($standing->earnsRebate(), 'There is no rebate for this account in that month.');
+            $this->refuseUnless($step >= 1 && $step <= $standing->reachedStep, 'That reward has not been reached yet.');
 
             $pay = max(0, $standing->entitlementThrough($step) - $standing->paidSen);
             $values = [
@@ -88,25 +101,33 @@ final class RebateClaimService
                 'claimed_by' => $user->id,
             ];
 
-            $row = $claimed[$step] ?? null;
-            if ($row === null) {
-                $row = ResellerRebateMilestone::query()->create([
-                    'reseller_id' => $fresh->id,
-                    'period' => $period->toDateString(),
-                    'kind' => ResellerRebateMilestone::KIND_STEP,
-                    'step' => $step,
-                    ...$values,
-                ]);
-            } else {
-                $row->update($values);
-            }
-
-            if ($pay > 0) {
-                $this->ledger->credit(LedgerOwnerType::ResellerWallet, $fresh->id, $pay, WalletEntryType::Rebate->value, 'rebate_milestone', $row->id);
-            }
+            $row = ResellerRebateMilestone::query()->create([
+                'reseller_id' => $fresh->id,
+                'period' => $period->toDateString(),
+                'kind' => ResellerRebateMilestone::KIND_STEP,
+                'step' => $step,
+                ...$values,
+            ]);
+            $this->credit($row);
 
             return $row;
         });
+    }
+
+    /** Claims a row the month finalise already wrote, at its stored amount. */
+    private function pay(ResellerRebateMilestone $row, AffiliateUser $user): ResellerRebateMilestone
+    {
+        $row->update(['state' => ResellerRebateMilestone::CLAIMED, 'claimed_at' => now(), 'claimed_by' => $user->id]);
+        $this->credit($row);
+
+        return $row;
+    }
+
+    private function credit(ResellerRebateMilestone $row): void
+    {
+        if ($row->amount_sen > 0) {
+            $this->ledger->credit(LedgerOwnerType::ResellerWallet, $row->reseller_id, $row->amount_sen, WalletEntryType::Rebate->value, 'rebate_milestone', $row->id);
+        }
     }
 
     private function acceptTerms(Reseller $reseller, AffiliateUser $user, bool $accept): void
