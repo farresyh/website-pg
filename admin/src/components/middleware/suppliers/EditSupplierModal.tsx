@@ -257,7 +257,7 @@ export default function EditSupplierModal({ isOpen, onClose, onSubmit, supplier 
       <DialogPortal>
         <DialogBackdrop />
         <DialogPositioner>
-          <DialogPopup>
+          <DialogPopup className="w-full max-w-lg">
             {isOpen && supplier && <EditSupplierFields onClose={onClose} onSubmit={onSubmit} supplier={supplier} />}
           </DialogPopup>
         </DialogPositioner>

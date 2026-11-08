@@ -205,7 +205,7 @@ export default function CreateSupplierModal({ isOpen, onClose, onSubmit, availab
       <DialogPortal>
         <DialogBackdrop />
         <DialogPositioner>
-          <DialogPopup>
+          <DialogPopup className="w-full max-w-lg">
             {isOpen && (
               <CreateSupplierFields onClose={onClose} onSubmit={onSubmit} availableDrivers={availableDrivers} />
             )}

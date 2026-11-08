@@ -419,7 +419,7 @@ export default function BackupsPage() {
         <DialogPortal>
           <DialogBackdrop />
           <DialogPositioner>
-            <DialogPopup>
+            <DialogPopup className="w-full max-w-md">
               <DialogHeader>
                 <DialogTitle>Delete this backup?</DialogTitle>
               </DialogHeader>

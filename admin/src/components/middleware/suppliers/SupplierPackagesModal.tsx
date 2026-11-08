@@ -189,7 +189,7 @@ export default function SupplierPackagesModal({ isOpen, onClose, onSubmit, suppl
       <DialogPortal>
         <DialogBackdrop />
         <DialogPositioner>
-          <DialogPopup>
+          <DialogPopup className="w-full max-w-lg">
             {isOpen && supplier && (
               <SupplierPackagesFields onClose={onClose} onSubmit={onSubmit} supplier={supplier} games={games} />
             )}
