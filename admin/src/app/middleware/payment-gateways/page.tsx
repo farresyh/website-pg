@@ -74,20 +74,20 @@ export default function PaymentGatewaysPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Payment Gateways</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        <h1 className="text-page-title font-semibold text-ink">Payment Gateways</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Credentials for each payment gateway (ADR-110 PR-C) — moved off <code>.env</code> so a rotation takes
           effect immediately, no redeploy needed.
         </p>
       </div>
 
       {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-4 py-3 text-sm text-danger-ink">
           {error}
         </p>
       )}
 
-      {gateways === null && !error && <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>}
+      {gateways === null && !error && <p className="text-sm text-ink-muted">Loading…</p>}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {gateways !== null &&
@@ -97,10 +97,10 @@ export default function PaymentGatewaysPage() {
             return (
               <div
                 key={key}
-                className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]"
+                className="rounded-2xl border border-border bg-surface p-5"
               >
                 <div className="mb-3 flex items-start justify-between">
-                  <p className="font-medium capitalize text-gray-800 dark:text-white/90">{key}</p>
+                  <p className="text-section-title font-semibold capitalize text-ink">{key}</p>
                   <Tag severity={gateway?.has_credentials ? "success" : "secondary"}>
                     {gateway?.has_credentials ? "Configured" : "Not configured"}
                   </Tag>
@@ -111,15 +111,15 @@ export default function PaymentGatewaysPage() {
                     .filter((field) => field.type !== "secret")
                     .map((field) => (
                       <div key={field.key} className="flex justify-between gap-2">
-                        <dt className="shrink-0 text-gray-500 dark:text-gray-400">{field.label}</dt>
-                        <dd className="truncate text-right text-gray-800 dark:text-white/90">
+                        <dt className="shrink-0 text-ink-muted">{field.label}</dt>
+                        <dd className="truncate text-right text-ink">
                           {gateway?.visible_config[field.key] ?? "—"}
                         </dd>
                       </div>
                     ))}
                   <div className="flex justify-between">
-                    <dt className="text-gray-500 dark:text-gray-400">Last updated</dt>
-                    <dd className="text-gray-800 dark:text-white/90">{formatDateTime(gateway?.updated_at ?? null)}</dd>
+                    <dt className="text-ink-muted">Last updated</dt>
+                    <dd className="text-ink">{formatDateTime(gateway?.updated_at ?? null)}</dd>
                   </div>
                 </dl>
 
