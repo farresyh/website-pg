@@ -82,6 +82,12 @@ export default function MiddlewareSidebar() {
   ];
 
   return (
-    <PanelSidebar homeHref="/middleware" brandLabel="Middleware Panel" shortLabel="MW" sections={sections} />
+    <PanelSidebar
+      homeHref="/middleware"
+      brandLabel="Middleware Panel"
+      shortLabel="MW"
+      sections={sections}
+      switchTo={{ name: "Admin Panel", href: "/admin" }}
+    />
   );
 }

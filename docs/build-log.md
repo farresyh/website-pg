@@ -1914,3 +1914,9 @@ The 2026-11-04 row is as item 159 recorded it, without naming the session; it is
 
 **Not yet seen:** a KOL link and the bank logos in a real TikTok or Instagram browser.
 
+
+## 2026-11-08 — Admin ↔ Middleware switch link under the sidebar brand
+
+**Asked by the founder.** Switching panels meant editing the URL by hand. A small link now sits under each panel's brand: "Middleware Panel" under "PekanGame Admin" (super_admin only, since the Middleware layout sends anyone else back to `/admin`) and "Admin Panel" under "Middleware Panel". It opens in a new tab (founder's choice). It first sat in a "Panels" section at the foot of the menu; the founder moved it up because the admin menu needs scrolling to reach its end. `PanelSidebar` takes an optional `switchTo`; collapsed, the link shows its icon only.
+
+**Verified** on a local admin dev server (`:3005`, the API given `ADMIN_URL` / `SANCTUM_STATEFUL_DOMAINS` for that port because `:3000` was busy with a video render): signed in as super_admin, light and dark, expanded and collapsed. The link carries `target="_blank" rel="noopener noreferrer"`, the click opens `/middleware` in a new tab with the original left on `/admin`, and the way back works the same. Computed colour `ink-muted` on `surface` in both themes. `tsc` and `eslint` clean.
