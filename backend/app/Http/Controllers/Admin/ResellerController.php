@@ -143,7 +143,8 @@ class ResellerController extends Controller
         $blockers = $this->closures->blockers($reseller);
 
         return response()->json([
-            'balance_sen' => $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id),
+            // ADR-139 decision 15: balance_sen = refund + unspent rebate (forfeited).
+            ...$this->closures->refundable($reseller),
             'blockers' => $blockers,
             'can_close' => $blockers === [],
         ]);
