@@ -413,3 +413,42 @@ The founder approved the programme terms that the accountant addendum's decision
      - expire the closed reseller's unclaimed rows at closure time.
    - The admin `close-check` returns `balance_sen`, `unspent_rebate_sen` and `refund_sen`. The close modal shows the refund and explains the forfeited part.
 3. **Who is finalised:** every reseller with recognised wallet sales or rebate rows in the month, except closed or ineligible ones. A deactivated reseller still gets its rows, because it may claim if reactivated before the deadline (decision 34).
+
+### 2026-11-09 addendum — PR 3b-ii build notes (accounting lines, month-close gate)
+
+1. **Built.**
+   - `RebateLiability` gives the three figures:
+     - `reductionSen(from, to)`: the rows of every finalised month whose 1st (KL) is in the range, plus the live total of every month not finalised yet, less the rows that expired in the range;
+     - `breakageSen(from, to)`: `wallet_rebate_forfeit` entries in the range, as a positive amount;
+     - `payableSen(asOf)`: rows of started, finalised months neither claimed nor expired before the instant, plus each open month's live total less what was claimed before it.
+   - `RebateMonthService::liveTotalSen()` is what finalise would leave as the month's row total: per reseller, max(final entitlement, claimed), or only the claimed amount for a reseller finalise skips. It uses finalise's own reseller set and skip rule, so finalising moves no figure.
+   - Monthly Summary: `reseller_rebates_sen` (subtracted in `operatingProfit()`) and `reseller_rebate_breakage_sen` (added).
+   - Cash Position: the `reseller_rebates_payable_sen` claim. A month closed before it existed reads it as 0.
+   - Reports profit Bridge: the rows `reseller_rebates` (negative) and `reseller_rebate_breakage`.
+   - `MonthCloseService` refuses month M while a ladder is in force for M and M has no `reseller_rebate_months` row.
+   - Admin: the two Summary lines with definitions, the payable row on the cash equation, and the two Bridge rows.
+2. **Decided at build:**
+   - **A finalised month takes no claim for a step finalise did not write.** The code trace found that making a reseller eligible again after finalise let a claim add a new row to that month, which may already be closed. That breaks invariant 2. The claim now refuses with "That reward was not reached by the end of that month."
+   - **A Reports range that cuts through a month** counts that month's rebate where the month's 1st (KL) falls. The Summary and the month close always use whole months.
+   - **The expiry instant is still owed at the end of M+1.** A row expires at 00:00 KL on the 1st of M+2. It stays in the payable at the end of M+1, and its reversal falls in M+2, as the accountant addendum says.
+   - **An account closed, or made ineligible, before its month is finalised.** Its unclaimed entitlement leaves the open month's live figure directly, because finalise skips that reseller. It does not appear as a reversal. The payable falls by the same amount, so the gap is unchanged.
+3. **Proven by:**
+   - `RebateAccountingTest`, 8 tests:
+     - the open month is live, and a claim moves the payable into the balance;
+     - finalise moves neither figure, including with an adjustment row;
+     - an overpayment stays on the line;
+     - an expiry reverses in its expiry month;
+     - a closure forfeit is breakage, and the lapsed rewards reverse in the closure month;
+     - the month-close gate;
+     - the claim refusal above;
+     - the Bridge explains both lines.
+   - A `FinancialScenario` step, run on data the real system produced. The October gap does not move when a ladder starts, a step is claimed, the account closes with rebate unspent, or the month is finalised. October cannot close before finalise. The Bridge has nothing unexplained.
+4. **Moved to PR 4 (screens):**
+   - decision 24's rebate line in Reports' profit totals, export and reseller-wallet channel split;
+   - the gross-profit labels on Customer Analytics and the Report Assistant;
+   - the notify tasks.
+   Until then, Reports' profit figures are before rebate. Only the Bridge and the month-level lines show it after. Nothing changes in production before PR 4, because no ladder can exist before then.
+5. **PR 4 open points settled by the founder (2026-11-09):**
+   - The tier is shown on the portal's Rebate page. There is no separate tier page.
+   - The reseller is **not** notified when a tier change is scheduled. The 7-day ladder notice stays, because it is part of the programme terms.
+   - A reseller sees only their own tier's ladder.

@@ -2152,3 +2152,33 @@ Branch `feature/rebate-month-close`, into `staging` (not released). It is inert 
 - Local dev DB migrated.
 - Browser, on a local build with a throwaway admin deleted afterwards: the close modal shows "Balance to refund" from `refund_sen`.
 
+
+## 2026-11-09 — ADR-139 PR 3b-ii: rebate accounting lines and the month-close gate
+
+Branch `feature/rebate-accounting`, into `staging` (not released). It is inert until a ladder version exists, and no ladder can exist before PR 4.
+
+**Shipped:**
+- `RebateLiability`: the revenue reduction, breakage and payable. A month not finalised yet is live, through `RebateMonthService::liveTotalSen()`. That method shares finalise's reseller set and skip rule, so finalising moves no figure.
+- Monthly Summary: "Less: reseller rebates" (subtracted in operating profit) and "Reseller rebate breakage" (added).
+- Cash Position: the rebate payable claim.
+- Reports profit Bridge: both rows.
+- A month cannot close while its ladder month is not finalised.
+- Admin: definitions for both lines, the cash-equation row and the Bridge rows.
+
+**Found in the code trace, fixed here:** making a reseller eligible again after its month was finalised let a claim add a new row to that month, which may already be closed (invariant 2). A finalised month now takes no claim for a step finalise did not write.
+
+**Moved to PR 4** (ADR-139 2026-11-09 addendum): decision 24's rebate line in Reports' profit totals, export and channel split; the Customer Analytics and Report Assistant labels; the notify tasks. The founder's answers on PR 4's three open points are recorded in the same addendum.
+
+**Verified:**
+- `php artisan test`: 3,874 passed (9 new).
+- `RebateClaimConcurrencyTest` passes on MySQL.
+- The new `FinancialScenario` step: the October gap does not move when a ladder starts, a step is claimed, the account closes with rebate unspent, or the month is finalised; the Bridge has nothing unexplained.
+- Admin: `tsc`, lint and the unit tests pass.
+- Browser, on a throwaway sqlite backend and admin deleted afterwards:
+  - the Summary shows "Less: reseller rebates RM 6.00";
+  - September's cash equation shows "Reseller rebates earned, not claimed yet RM 6.00", with the envelopes RM 6.00 lower;
+  - the Reports Profit bridge shows the "−" rebate row;
+  - the close is blocked with the rebate message until finalise runs.
+- No migration in this PR.
+
+**Gotcha.** The first scenario run expected a 25 sen reward and got 21: the scenario reseller's October profit is 43 sen, so the 50% cap applied. That is correct behaviour; the test's rewards were lowered below the cap.
