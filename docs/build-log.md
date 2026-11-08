@@ -1996,4 +1996,4 @@ The 2026-11-04 row is as item 159 recorded it, without naming the session; it is
 
 **Corrected claim.** The Payment Methods table at 390 px was not clipped, as an earlier entry said: the DataTable's own container scrolls sideways (356 px wide, 600 px of table) and the Test button is reachable by a swipe, the same as admin `/orders`.
 
-**Verified** with Playwright: dialog widths 512 / 448 px at 1440 (inputs 474 and 410 px, from about 210), 326 px at 390; every chip 32 px tall at 390. `tsc` and `eslint` clean. **Left:** the three dialogs without a width outside `/middleware` (admin Resellers, admin Suppliers, Affiliates, Partner Applications).
+**Verified** with Playwright: dialog widths 512 / 448 px at 1440 (inputs 474 and 410 px, from about 210), 326 px at 390; every chip 32 px tall at 390. `tsc` and `eslint` clean. **Left:** the four dialogs without a width outside `/middleware` (admin Resellers, admin Suppliers, Affiliates, Partner Applications).
