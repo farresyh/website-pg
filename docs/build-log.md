@@ -1997,3 +1997,9 @@ The 2026-11-04 row is as item 159 recorded it, without naming the session; it is
 **Corrected claim.** The Payment Methods table at 390 px was not clipped, as an earlier entry said: the DataTable's own container scrolls sideways (356 px wide, 600 px of table) and the Test button is reachable by a swipe, the same as admin `/orders`.
 
 **Verified** with Playwright: dialog widths 512 / 448 px at 1440 (inputs 474 and 410 px, from about 210), 326 px at 390; every chip 32 px tall at 390. `tsc` and `eslint` clean. **Left:** the four dialogs without a width outside `/middleware` (admin Resellers, admin Suppliers, Affiliates, Partner Applications).
+
+## 2026-11-08 — Admin Orders components: the last old colour classes
+
+**Built** on `style/orders-components-tokens`, the same pure reskin as item 164 for the three admin Orders components the Middleware Sandbox reuses: `DeliveryLogsTable`, `OrderDetailCards` and `ResendDeliveryModal`. They were already on `ink` / `surface`; the cards, table rules and Resend option boxes still drew `border-gray-*` / `divide-gray-*` with `dark:` pairs, now `border-border` / `divide-border`. The negative profit figure and the Resend error banners move to `danger-ink` / `danger-surface`, and the Resend warning banner to `warning-surface` / `warning-ink` (its dark text had been `orange-400`).
+
+**Verified** with Playwright, light and dark, on a failed order's detail page (cards and Delivery & Activity Logs). The Resend modal could not be opened locally: every failed order in the dev DB is already compensated, so the button is hidden; its change is borders and banners only, with the mapping checked on the other pages. `tsc`, `eslint` and `color-tokens.test.ts` pass.

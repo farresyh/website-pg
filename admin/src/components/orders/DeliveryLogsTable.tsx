@@ -88,8 +88,8 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
 
   return (
     <>
-      <div className="mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-surface dark:border-gray-800">
-        <div className="border-b border-gray-100 p-6 pb-4 dark:border-gray-800">
+      <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface">
+        <div className="border-b border-border p-6 pb-4">
           <h2 className="text-section-title font-semibold text-ink">Delivery & Activity Logs</h2>
           <p className="mt-1 text-xs text-ink-muted">
             Chronological audit trail of all automated and manual supplier delivery attempts.
@@ -105,7 +105,7 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
             <DataTable data={entries} dataKey="id">
               <DataTableTableContainer>
                 <DataTableTable>
-                  <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                  <DataTableTHead className="border-b border-border">
                     <DataTableTHeadRow>
                       <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Date & Time</DataTableTHeadCell>
                       <DataTableTHeadCell className="px-3 py-2 text-start text-theme-xs font-medium text-ink-muted">Event</DataTableTHeadCell>
@@ -118,7 +118,7 @@ export default function DeliveryLogsTable({ order, attempts = [] }: DeliveryLogs
                       <DataTableTHeadCell className="px-3 py-2 text-end text-theme-xs font-medium text-ink-muted">Details</DataTableTHeadCell>
                     </DataTableTHeadRow>
                   </DataTableTHead>
-                  <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  <DataTableTBody className="divide-y divide-border">
                     {({ item }) => {
                       const entry = item as unknown as DeliveryLogEntry;
 
