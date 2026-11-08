@@ -1998,6 +1998,14 @@ The 2026-11-04 row is as item 159 recorded it, without naming the session; it is
 
 **Verified** with Playwright: dialog widths 512 / 448 px at 1440 (inputs 474 and 410 px, from about 210), 326 px at 390; every chip 32 px tall at 390. `tsc` and `eslint` clean. **Left:** the four dialogs without a width outside `/middleware` (admin Resellers, admin Suppliers, Affiliates, Partner Applications).
 
+## 2026-11-08 — `DialogPopup` gets a default width
+
+**Why.** The entry above fixed the seven width-less dialogs under `/middleware` one by one; the cause is the kit itself, where a `DialogPopup` with no width class sized to its content. The founder asked for the fix at the source so a new dialog can't repeat it.
+
+**Built** on `fix/dialog-popup-default-width`: `admin/src/components/ui/dialog.tsx` now defaults to `w-full max-w-md`. A caller's own `max-w-*` still wins (`cn` runs tailwind-merge). The portal copy was regenerated with `node scripts/sync-shared-files.mjs`; the portal uses no `DialogPopup` today, so no portal screen changes. Affected in the admin: the four width-less dialogs left outside `/middleware` (Resellers: Deactivate, Change tier, Delete tier; Suppliers: Reply SLA, Deactivate; Affiliates: Deactivate, Delete, Delete tier; Partner Applications: Approve / Decline / Delete), now 448 px instead of content width, and the Request Logs View modal, which passed `max-w-2xl` without `w-full` and now opens at 672 px instead of about 310 px, so payloads read without wrapping.
+
+**Verified** with Playwright at 1440 and 390 px: each of those dialogs 448 px (Request Logs 672 px), 326 px on a phone; a dialog with its own width keeps it (Repoint `max-w-lg` 512 px, Promote `max-w-md` 448 px). `tsc` for admin and portal, `eslint` clean.
+
 ## 2026-11-08 — Admin Orders components: the last old colour classes
 
 **Built** on `style/orders-components-tokens`, the same pure reskin as item 164 for the three admin Orders components the Middleware Sandbox reuses: `DeliveryLogsTable`, `OrderDetailCards` and `ResendDeliveryModal`. They were already on `ink` / `surface`; the cards, table rules and Resend option boxes still drew `border-gray-*` / `divide-gray-*` with `dark:` pairs, now `border-border` / `divide-border`. The negative profit figure and the Resend error banners move to `danger-ink` / `danger-surface`, and the Resend warning banner to `warning-surface` / `warning-ink` (its dark text had been `orange-400`).

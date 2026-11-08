@@ -65,11 +65,12 @@ function DialogPositioner({ className, ...props }: DialogPositionerProps) {
     );
 }
 
+// Default width so a popup never sizes to its content (a narrow form cut its placeholders); pass max-w-* to change it.
 function DialogPopup({ className, ...props }: DialogPopupProps) {
     return (
         <PRDialog.Popup
             className={cn(
-                `relative flex flex-col max-h-full pointer-events-auto rounded-lg border border-border
+                `relative flex flex-col w-full max-w-md max-h-full pointer-events-auto rounded-lg border border-border
         bg-surface text-ink shadow-md
         [translate:var(--px-drag-x)_var(--px-drag-y)]
         data-maximized:w-screen! data-maximized:h-screen data-maximized:max-h-full data-maximized:rounded-none data-maximized:translate-none
