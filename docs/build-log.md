@@ -1997,3 +1997,11 @@ The 2026-11-04 row is as item 159 recorded it, without naming the session; it is
 **Corrected claim.** The Payment Methods table at 390 px was not clipped, as an earlier entry said: the DataTable's own container scrolls sideways (356 px wide, 600 px of table) and the Test button is reachable by a swipe, the same as admin `/orders`.
 
 **Verified** with Playwright: dialog widths 512 / 448 px at 1440 (inputs 474 and 410 px, from about 210), 326 px at 390; every chip 32 px tall at 390. `tsc` and `eslint` clean. **Left:** the four dialogs without a width outside `/middleware` (admin Resellers, admin Suppliers, Affiliates, Partner Applications).
+
+## 2026-11-08 — `DialogPopup` gets a default width
+
+**Why.** The entry above fixed the seven width-less dialogs under `/middleware` one by one; the cause is the kit itself, where a `DialogPopup` with no width class sized to its content. The founder asked for the fix at the source so a new dialog can't repeat it.
+
+**Built** on `fix/dialog-popup-default-width`: `admin/src/components/ui/dialog.tsx` now defaults to `w-full max-w-md`. A caller's own `max-w-*` still wins (`cn` runs tailwind-merge). The portal copy was regenerated with `node scripts/sync-shared-files.mjs`; the portal uses no `DialogPopup` today, so no portal screen changes. Affected in the admin: the four width-less dialogs left outside `/middleware` (Resellers: Deactivate, Change tier, Delete tier; Suppliers: Reply SLA, Deactivate; Affiliates: Deactivate, Delete, Delete tier; Partner Applications: Approve / Decline / Delete), now 448 px instead of content width, and the Request Logs View modal, which passed `max-w-2xl` without `w-full` and now opens at 672 px instead of about 310 px, so payloads read without wrapping.
+
+**Verified** with Playwright at 1440 and 390 px: each of those dialogs 448 px (Request Logs 672 px), 326 px on a phone; a dialog with its own width keeps it (Repoint `max-w-lg` 512 px, Promote `max-w-md` 448 px). `tsc` for admin and portal, `eslint` clean.
