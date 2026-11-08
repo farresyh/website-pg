@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Services\Fulfillment;
 
+use App\Models\AdminUser;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\OrderResendAttempt;
@@ -18,6 +19,7 @@ use App\Services\Order\PaymentStatus;
 use App\Services\Supplier\SupplierOutcome;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
 use Tests\Support\OrderFulfillmentFixtures;
 use Tests\TestCase;
@@ -374,6 +376,28 @@ class OrderFulfillmentServiceManualResolutionTest extends TestCase
         $this->assertNull($fresh->delivered_at);
         $this->assertSame(0, LedgerEntry::query()->count());
         $this->assertSame(0, SupplierLedgerEntry::query()->count());
+    }
+
+    /**
+     * ADR-139 decision 29: a Success after Failed may mean the credit arrived
+     * after all. The automatic refund sweep skips such an order (the
+     * evidence below), and every admin is told so a person decides.
+     */
+    public function test_a_late_success_on_a_failed_order_alerts_every_admin(): void
+    {
+        Http::fake();
+        AdminUser::factory()->create(['email' => 'founder@example.com', 'is_active' => true]);
+        $order = $this->paidOrder(['delivery_status' => DeliveryStatus::Failed->value]);
+
+        try {
+            $this->service($this->fakeSupplierAdapter(true))
+                ->finalizePendingDelivery($order, SupplierOutcome::Success, 'DGFLZ-LATE-2', ['status' => 'Sukses']);
+            $this->fail('A failed order was finalized as delivered.');
+        } catch (InvalidOrderTransitionException) {
+        }
+
+        $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
+        Http::assertSent(fn ($request) => str_contains((string) $request->body(), $order->order_number));
     }
 
     /** ADR-127 decision 11: the database keeps an order to one drawdown; a transfer may still take several corrections. */
