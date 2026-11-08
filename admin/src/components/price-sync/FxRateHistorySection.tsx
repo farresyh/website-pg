@@ -36,32 +36,32 @@ interface Props {
 export default function FxRateHistorySection({ page, onPrevious, onNext }: Props) {
   return (
     <>
-      <h2 className="mb-3 text-base font-semibold text-gray-800 dark:text-white/90">FX Rate History</h2>
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+      <h2 className="mb-3 text-section-title font-semibold text-ink">FX Rate History</h2>
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
         <div className="max-w-full overflow-x-auto">
           <DataTable data={page?.data ?? []} dataKey="id">
             <DataTableTableContainer>
               <DataTableTable>
-                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                <DataTableTHead className="border-b border-border">
                   <DataTableTHeadRow>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Pair</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Rate</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Source</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Fetched</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Pair</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Rate</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Source</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Fetched</DataTableTHeadCell>
                   </DataTableTHeadRow>
                 </DataTableTHead>
-                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <DataTableTBody className="divide-y divide-border">
                   {({ item }) => {
                     const r = item as unknown as CurrencyRate;
 
                     return (
                       <DataTableRow key={r.id}>
-                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-ink">
                           {r.from} → {r.to}
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{r.rate}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{r.source}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatDateTime(r.fetched_at)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{r.rate}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{r.source}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{formatDateTime(r.fetched_at)}</DataTableCell>
                       </DataTableRow>
                     );
                   }}
@@ -70,17 +70,17 @@ export default function FxRateHistorySection({ page, onPrevious, onNext }: Props
             </DataTableTableContainer>
           </DataTable>
           {page?.data.length === 0 && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
+            <p className="p-6 text-center text-sm text-ink-muted">
               No FX rate fetched yet — this fills in once a non-MYR supplier&apos;s price sync runs for real.
             </p>
           )}
           {page === null && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+            <p className="p-6 text-center text-sm text-ink-muted">Loading…</p>
           )}
         </div>
       </div>
       {page && page.last_page > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+        <div className="mt-4 flex items-center justify-between text-sm text-ink-muted">
           <span>Page {page.current_page} of {page.last_page} ({page.total} total)</span>
           <div className="flex gap-2">
             <Button size="small" variant="outlined" disabled={page.current_page <= 1} onClick={onPrevious}>
