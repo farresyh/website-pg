@@ -2057,3 +2057,12 @@ The founder reopened item 161. Asked why they won't switch, agents said our pric
   - a `WalletEntryType` enum makes the unspent-rebate replay exhaustive;
   - step notifications come from a scheduled task, not the money path.
 - **Accepted.** The accountant confirms the accounting decisions before PR 3.
+- **Accountant review, same day.** The accountant confirmed the treatment: a revenue reduction recognised at reach; a claim moves the liability to Purchase Balance; revenue is recognised on use. Two changes:
+  - an unclaimed reward that expires reverses the revenue reduction rather than being breakage;
+  - the open month's rebate line is live from `RebateEntitlement` rather than provisional.
+
+  Added:
+  - versioned programme terms, accepted at the first claim;
+  - per-row calculation inputs and a CSV export, for income tax.
+
+  The founder confirmed there is no marketing obligation and that the business charges no SST (a scope check with a tax agent is company-level, not a gate). ADR-139 addendum; PR 3 unblocked.

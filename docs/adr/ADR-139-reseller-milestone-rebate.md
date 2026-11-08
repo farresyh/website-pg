@@ -1,6 +1,6 @@
 # ADR-139: Reseller milestone rebate — a monthly battle-pass ladder paid from our own profit, claimed by the reseller into Purchase Balance
 
-> **Standing (2026-11-08):** Accepted. Extends [ADR-073](./ADR-073-reseller-wallet.md) (a new wallet credit type; decision 7 revised by its 2026-11-08 addendum: automatic refund) and [ADR-131](./ADR-131-chip-activation-conditions.md) (decision 14: closure forfeits unspent rebate, 2026-11-08 addendum). Adds a line to [ADR-083](./ADR-083-internal-accounting-financial-reconciliation.md)'s monthly summary under [ADR-127](./ADR-127-financial-truth-dated-facts.md)'s dated-fact rules. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-08):** Accepted; accountant review addendum (2026-11-08) revises decision 22 and replaces stress test F8. Extends [ADR-073](./ADR-073-reseller-wallet.md) (a new wallet credit type; decision 7 revised by its 2026-11-08 addendum: automatic refund) and [ADR-131](./ADR-131-chip-activation-conditions.md) (decision 14: closure forfeits unspent rebate, 2026-11-08 addendum). Adds a line to [ADR-083](./ADR-083-internal-accounting-financial-reconciliation.md)'s monthly summary under [ADR-127](./ADR-127-financial-truth-dated-facts.md)'s dated-fact rules. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted, 2026-11-08. PRD §16 item 161. The process was:
 1. Designed with the founder in Malay.
@@ -281,3 +281,44 @@ The founder says Tier SSS is the tier closest to the leader's price.
      - a two-process claim concurrency test (`DatabaseMigrations`).
   4. Admin ladder editor (MFA), claims view and alerts; portal progress and claim; bot step notification.
 - **Glossary (PRD §13).** "Rebate milestone", "Unspent rebate" and "Rebate breakage" are pinned at build time.
+
+### 2026-11-08 addendum — accountant review (decision 45 met)
+
+The founder sent the accountant a one-page note on decisions 20–25 and received a reply the same day. This addendum records the result. Decision 45 is met, so PR 3 is no longer blocked.
+
+1. **Confirmed by the accountant:**
+   - the rebate is a revenue reduction, not a marketing expense;
+   - it is recognised when the step is reached, not when it is claimed;
+   - a claim moves the liability from rebate payable to Purchase Balance;
+   - game-credit revenue is recognised when the credit is used.
+
+   **The programme is purely purchase-volume-based (founder):** it is an appreciation for buying with us, and the reseller has no marketing obligation. If a reseller is ever paid for marketing work, that is a separate payment recorded as an expense, never paid through the rebate.
+2. **Decision 22 revised: an unclaimed reward that expires is a reversal of the revenue reduction, not breakage.**
+   - It is written as a negative amount on `reseller_rebates_sen`, dated at the deadline (the start of M+2, KL), so it falls in the expiry month. The original month may already be closed, and a change in estimate is prospective.
+   - `reseller_rebate_breakage_sen` now covers only rebate credit already in Purchase Balance that is forfeited at closure.
+   - Decision 21's cash-equation arithmetic is unchanged. Only the line the +x lands on changes.
+3. **No pattern-based breakage on credited rebate.** There is no usage history to estimate from. Credited rebate is derecognised only at closure, when the terms end the reseller's right and the chance of use is nil (IFRS 15 B44–B47).
+4. **Decision 20 extended; stress test F8 replaced: the open month is live, not provisional.**
+   - For a month not yet finalised, `reseller_rebates_sen` and `reseller_rebates_payable_sen` come straight from `RebateEntitlement` over every eligible reseller: reached steps to date, less what is claimed for the payable. A finalised month reads the milestone rows.
+   - Both come from the one function, so they agree at finalise (decision 12's adjustment row).
+   - Steps not yet reached are not forecast. The ladder resets monthly and reach is known exactly at month end, so every monthly figure is exact, not an estimate.
+5. **Programme terms, required for the closure forfeit.**
+   - Versioned rebate terms are shown on the portal's Rebate page.
+   - A reseller's first claim, and the first claim after a new terms version, requires ticking acceptance. A new table, `reseller_rebate_terms_acceptances`, stores reseller, terms version, user and `accepted_at`.
+   - The terms state:
+     - purchases on the platform only;
+     - never cash, withdrawal or transfer;
+     - claim by the end of the next month or it lapses;
+     - unspent rebate is forfeited when the account is closed;
+     - rewards are limited to a monthly cap;
+     - the ladder can change from a following month.
+   - The founder approves the text before PR 4. New tables: 6.
+6. **Records for income tax.**
+   - Each milestone row stores its calculation inputs at the time it was written: recognised sales, recognised profit, the ladder cumulative amount, the cap and the as-of instant.
+   - The admin view (PR 4) exports a month's rows, claims, expiries and forfeits as CSV.
+   - Ledger rows are never deleted (ADR-002).
+7. **SST: the business charges no SST today (founder, 2026-11-08).**
+   - The rebate issues no tax document or credit note, and there is no SST gate on the master switch.
+   - If the business is ever registered for SST, the rebate's tax effect (credit notes) is reviewed before anything else changes.
+   - Whether the business falls within SST scope is a company-level question for a tax agent, not part of this ADR.
+8. **Framework.** The treatment is consistent with MFRS 15, MPERS (2025) Section 23 (effective for periods beginning on or after 1 January 2027, ADR-127), and the earlier MPERS Section 23, under which volume rebates reduce revenue. The founder confirms the financial-year start with the accountant to know which MPERS version applies; this is information only, with no design change.
