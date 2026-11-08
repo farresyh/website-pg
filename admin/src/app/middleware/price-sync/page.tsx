@@ -400,16 +400,16 @@ export default function PriceSyncPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Price Sync Center</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 basis-80">
+          <h1 className="text-page-title font-semibold text-ink">Price Sync Center</h1>
+          <p className="mt-1 text-sm text-ink-muted">
             Propagates supplier price changes onto every promoted Package and turns off items the supplier can no
             longer fulfill (ADR-015). A rise applies at once; a big drop is held and keeps selling at the old cost
             (ADR-138). A deactivated item only ever comes back via the review sections below.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex shrink-0 gap-2">
           <Button variant="outlined" onClick={handleRefresh}>
             Refresh
           </Button>
@@ -420,32 +420,32 @@ export default function PriceSyncPage() {
       </div>
 
       {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-4 py-3 text-sm text-danger-ink">
           {error}
         </p>
       )}
 
       {/* ADR-016 decision #1: stat cards */}
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-6">
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-          <p className="text-theme-xs text-gray-500 dark:text-gray-400">Total Games</p>
-          <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">{stats?.total_games ?? "—"}</p>
+        <div className="rounded-2xl border border-border bg-surface p-4">
+          <p className="text-theme-xs text-ink-muted">Total Games</p>
+          <p className="mt-1 text-lg font-semibold text-ink">{stats?.total_games ?? "—"}</p>
         </div>
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-          <p className="text-theme-xs text-gray-500 dark:text-gray-400">Active Packages</p>
-          <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">{stats?.active_packages ?? "—"}</p>
+        <div className="rounded-2xl border border-border bg-surface p-4">
+          <p className="text-theme-xs text-ink-muted">Active Packages</p>
+          <p className="mt-1 text-lg font-semibold text-ink">{stats?.active_packages ?? "—"}</p>
         </div>
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-          <p className="text-theme-xs text-gray-500 dark:text-gray-400">Pending Reactivation</p>
-          <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">{stats?.pending_reactivation_count ?? "—"}</p>
+        <div className="rounded-2xl border border-border bg-surface p-4">
+          <p className="text-theme-xs text-ink-muted">Pending Reactivation</p>
+          <p className="mt-1 text-lg font-semibold text-ink">{stats?.pending_reactivation_count ?? "—"}</p>
         </div>
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-          <p className="text-theme-xs text-gray-500 dark:text-gray-400">Held Price Changes</p>
-          <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">{stats?.pending_price_change_count ?? "—"}</p>
+        <div className="rounded-2xl border border-border bg-surface p-4">
+          <p className="text-theme-xs text-ink-muted">Held Price Changes</p>
+          <p className="mt-1 text-lg font-semibold text-ink">{stats?.pending_price_change_count ?? "—"}</p>
         </div>
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-          <p className="text-theme-xs text-gray-500 dark:text-gray-400">Last Sync Status</p>
-          <p className="mt-1 text-lg font-semibold text-gray-800 dark:text-white/90">
+        <div className="rounded-2xl border border-border bg-surface p-4">
+          <p className="text-theme-xs text-ink-muted">Last Sync Status</p>
+          <p className="mt-1 text-lg font-semibold text-ink">
             {stats?.last_sync_status ? (
               <Tag severity={runStatusSeverity[stats.last_sync_status]}>{stats.last_sync_status}</Tag>
             ) : (
@@ -453,28 +453,28 @@ export default function PriceSyncPage() {
             )}
           </p>
         </div>
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-          <p className="text-theme-xs text-gray-500 dark:text-gray-400">Last Sync</p>
-          <p className="mt-1 text-sm font-medium text-gray-800 dark:text-white/90">{formatDateTime(stats?.last_sync_at ?? null)}</p>
+        <div className="rounded-2xl border border-border bg-surface p-4">
+          <p className="text-theme-xs text-ink-muted">Last Sync</p>
+          <p className="mt-1 text-sm font-medium text-ink">{formatDateTime(stats?.last_sync_at ?? null)}</p>
         </div>
       </div>
 
       {/* Last Sync Details — a freshly-triggered run this session takes priority (live status), otherwise the newest Sync History row. */}
       {(run || lastHistoryRun) && (
-        <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-          <h2 className="mb-2 text-sm font-semibold text-gray-800 dark:text-white/90">Last Sync Details</h2>
+        <div className="mb-6 rounded-2xl border border-border bg-surface p-5">
+          <h2 className="mb-2 text-sm font-semibold text-ink">Last Sync Details</h2>
           {(() => {
             const shown = run ?? lastHistoryRun!;
             return (
               <>
-                <p className="text-sm font-medium text-gray-800 dark:text-white/90">
+                <p className="text-sm font-medium text-ink">
                   Run #{shown.id} — <Tag severity={runStatusSeverity[shown.status]}>{shown.status}</Tag>
                   {shown.triggered_by && (
                     <span className="ml-2 text-theme-xs text-ink-subtle">triggered by {shown.triggered_by}</span>
                   )}
                 </p>
                 {shown.stats?.failed_suppliers?.length ? (
-                  <ul className="mt-1 text-sm text-error-600 dark:text-error-400">
+                  <ul className="mt-1 text-sm text-danger-ink">
                     {shown.stats.failed_suppliers.map((f) => (
                       <li key={f.slug}>
                         {f.slug} failed: {f.error}
@@ -483,24 +483,24 @@ export default function PriceSyncPage() {
                   </ul>
                 ) : (
                   shown.status === "failed" &&
-                  shown.error_message && <p className="mt-1 text-sm text-error-600 dark:text-error-400">{shown.error_message}</p>
+                  shown.error_message && <p className="mt-1 text-sm text-danger-ink">{shown.error_message}</p>
                 )}
                 {(shown.status === "success" || shown.status === "partial") && shown.stats && (
-                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  <p className="mt-1 text-sm text-ink-muted">
                     Catalog: {shown.stats.catalog_total} total ({shown.stats.catalog_created} new,{" "}
                     {shown.stats.catalog_updated} updated) · {shown.stats.price_changed} package
                     {shown.stats.price_changed === 1 ? "" : "s"} repriced · {shown.stats.deactivated} deactivated
                     {!!shown.stats.price_anomalies && (
-                      <span className="text-warning-600 dark:text-warning-400"> · {shown.stats.price_anomalies} flagged (price anomaly)</span>
+                      <span className="text-warning-ink"> · {shown.stats.price_anomalies} flagged (price anomaly)</span>
                     )}
                     {!!shown.stats.floor_rejected && (
-                      <span className="text-error-600 dark:text-error-400"> · {shown.stats.floor_rejected} rejected (invalid price)</span>
+                      <span className="text-danger-ink"> · {shown.stats.floor_rejected} rejected (invalid price)</span>
                     )}
                   </p>
                 )}
                 {/* ADR-033 addendum decision 1/3: only ever non-empty once a real non-MYR supplier's sync runs. ADR-134 decision 15: the deposit's rate, with the market and the spread beside it. */}
                 {(shown.status === "success" || shown.status === "partial") && !!shown.stats?.fx_rates_used?.length && (
-                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  <p className="mt-1 text-sm text-ink-muted">
                     Rate used: {shown.stats.fx_rates_used.map(describeRateUsed).join("; ")}
                   </p>
                 )}
@@ -512,7 +512,7 @@ export default function PriceSyncPage() {
 
       {/* Pending Reactivation (SYNC-5/6, ADR-015) */}
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Pending Reactivation</h2>
+        <h2 className="text-section-title font-semibold text-ink">Pending Reactivation</h2>
         {selected.size > 0 && (
           <div className="flex gap-2">
             <Button size="small" variant="outlined" disabled={bulkBusy} onClick={() => handleBulk("approve")}>
@@ -525,23 +525,23 @@ export default function PriceSyncPage() {
         )}
       </div>
 
-      <div className="mb-8 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+      <div className="mb-8 overflow-hidden rounded-2xl border border-border bg-surface">
         <div className="max-w-full overflow-x-auto">
           <DataTable data={pending ?? []} dataKey="id">
             <DataTableTableContainer>
               <DataTableTable>
-                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                <DataTableTHead className="border-b border-border">
                   <DataTableTHeadRow>
                     <DataTableTHeadCell className="w-10 px-5 py-3">{null}</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Selling Price</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Days Inactive</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Package</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Game</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Cost</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Selling Price</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Days Inactive</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
                 </DataTableTHead>
-                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <DataTableTBody className="divide-y divide-border">
                   {({ item }) => {
                     const p = item as unknown as PendingReactivation;
 
@@ -551,14 +551,14 @@ export default function PriceSyncPage() {
                           <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelected(p.id)} />
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <span className="font-medium text-gray-800 dark:text-white/90">{p.name}</span>
+                          <span className="font-medium text-ink">{p.name}</span>
                           <br />
                           <span className="text-theme-xs text-ink-subtle">{p.supplier_package_ref} · {p.supplier?.name}</span>
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{p.game?.name ?? "—"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{p.game?.name ?? "—"}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.cost_price)}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.standard_selling_price)}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{daysInactive(p.deactivated_at)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{daysInactive(p.deactivated_at)}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <div className="flex gap-2">
                             <Button size="small" disabled={rowBusyId === p.id} onClick={() => handleApprove(p.id)}>
@@ -577,12 +577,12 @@ export default function PriceSyncPage() {
             </DataTableTableContainer>
           </DataTable>
           {pending?.length === 0 && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
+            <p className="p-6 text-center text-sm text-ink-muted">
               Nothing pending — no deactivated package&apos;s supplier item has come back active.
             </p>
           )}
           {pending === null && !error && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+            <p className="p-6 text-center text-sm text-ink-muted">Loading…</p>
           )}
         </div>
       </div>
@@ -596,37 +596,37 @@ export default function PriceSyncPage() {
       />
 
       {/* Manually Dismissed Packages (ADR-016 decision #3) */}
-      <h2 className="mb-3 text-base font-semibold text-gray-800 dark:text-white/90">Manually Dismissed Packages</h2>
-      <div className="mb-8 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+      <h2 className="mb-3 text-section-title font-semibold text-ink">Manually Dismissed Packages</h2>
+      <div className="mb-8 overflow-hidden rounded-2xl border border-border bg-surface">
         <div className="max-w-full overflow-x-auto">
           <DataTable data={dismissedPage?.data ?? []} dataKey="id">
             <DataTableTableContainer>
               <DataTableTable>
-                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                <DataTableTHead className="border-b border-border">
                   <DataTableTHeadRow>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Package</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Cost</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Selling Price</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Days Inactive</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Package</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Game</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Cost</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Selling Price</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Days Inactive</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
                 </DataTableTHead>
-                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <DataTableTBody className="divide-y divide-border">
                   {({ item }) => {
                     const p = item as unknown as DismissedPackage;
 
                     return (
                       <DataTableRow key={p.id}>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <span className="font-medium text-gray-800 dark:text-white/90">{p.name}</span>
+                          <span className="font-medium text-ink">{p.name}</span>
                           <br />
                           <span className="text-theme-xs text-ink-subtle">{p.supplier_package_ref ? `${p.supplier_package_ref} · ${p.supplier?.name}` : "Combo"}</span>
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{p.game?.name ?? "—"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{p.game?.name ?? "—"}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.cost_price)}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">{formatRm(p.standard_selling_price)}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{daysInactive(p.deactivated_at)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{daysInactive(p.deactivated_at)}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <Button size="small" variant="outlined" disabled={restoringId === p.id} onClick={() => handleRestore(p)}>
                             Restore
@@ -640,17 +640,17 @@ export default function PriceSyncPage() {
             </DataTableTableContainer>
           </DataTable>
           {dismissedPage?.data.length === 0 && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
+            <p className="p-6 text-center text-sm text-ink-muted">
               No packages have been manually dismissed.
             </p>
           )}
           {dismissedPage === null && !error && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+            <p className="p-6 text-center text-sm text-ink-muted">Loading…</p>
           )}
         </div>
       </div>
       {dismissedPage && dismissedPage.last_page > 1 && (
-        <div className="mb-8 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+        <div className="mb-8 flex items-center justify-between text-sm text-ink-muted">
           <span>Page {dismissedPage.current_page} of {dismissedPage.last_page} ({dismissedPage.total} total)</span>
           <div className="flex gap-2">
             <Button size="small" variant="outlined" disabled={dismissedPage.current_page <= 1} onClick={() => setDismissedPageNumber((p) => p - 1)}>
@@ -664,37 +664,37 @@ export default function PriceSyncPage() {
       )}
 
       {/* Sync History (ADR-016 decision #1) */}
-      <h2 className="mb-3 text-base font-semibold text-gray-800 dark:text-white/90">Sync History</h2>
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+      <h2 className="mb-3 text-section-title font-semibold text-ink">Sync History</h2>
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
         <div className="max-w-full overflow-x-auto">
           <DataTable data={historyPage?.data ?? []} dataKey="id">
             <DataTableTableContainer>
               <DataTableTable>
-                <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
+                <DataTableTHead className="border-b border-border">
                   <DataTableTHeadRow>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Run</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Triggered By</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Finished</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Price Changed</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Deactivated</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Run</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Status</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Triggered By</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Finished</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Price Changed</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Deactivated</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-ink-muted">Actions</DataTableTHeadCell>
                   </DataTableTHeadRow>
                 </DataTableTHead>
-                <DataTableTBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <DataTableTBody className="divide-y divide-border">
                   {({ item }) => {
                     const h = item as unknown as PriceSyncRun;
 
                     return (
                       <DataTableRow key={h.id}>
-                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">#{h.id}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-ink">#{h.id}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <Tag severity={runStatusSeverity[h.status]}>{h.status}</Tag>
                         </DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{h.triggered_by ?? "system"}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{formatDateTime(h.finished_at)}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{h.stats?.price_changed ?? "—"}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{h.stats?.deactivated ?? "—"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{h.triggered_by ?? "system"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{formatDateTime(h.finished_at)}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{h.stats?.price_changed ?? "—"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-ink-muted">{h.stats?.deactivated ?? "—"}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <Button size="small" variant="outlined" onClick={() => setDetailsRunId(h.id)}>
                             View Details
@@ -708,15 +708,15 @@ export default function PriceSyncPage() {
             </DataTableTableContainer>
           </DataTable>
           {historyPage?.data.length === 0 && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">No sync runs yet.</p>
+            <p className="p-6 text-center text-sm text-ink-muted">No sync runs yet.</p>
           )}
           {historyPage === null && !error && (
-            <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+            <p className="p-6 text-center text-sm text-ink-muted">Loading…</p>
           )}
         </div>
       </div>
       {historyPage && historyPage.last_page > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+        <div className="mt-4 flex items-center justify-between text-sm text-ink-muted">
           <span>Page {historyPage.current_page} of {historyPage.last_page} ({historyPage.total} total)</span>
           <div className="flex gap-2">
             <Button size="small" variant="outlined" disabled={historyPage.current_page <= 1} onClick={() => setHistoryPageNumber((p) => p - 1)}>
