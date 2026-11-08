@@ -103,6 +103,9 @@ export function setResellerBalanceCap(id: number, balanceCapSen: number | null) 
 /** ADR-131 decision 12: what a closure would refund and what still blocks it. No side effects. */
 export interface ResellerCloseCheck {
   balance_sen: number;
+  /** ADR-139 decision 15: rebate credit not yet spent is forfeited at closure, never refunded. */
+  unspent_rebate_sen: number;
+  refund_sen: number;
   blockers: string[];
   can_close: boolean;
 }
