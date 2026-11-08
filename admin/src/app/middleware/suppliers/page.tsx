@@ -185,29 +185,29 @@ export default function SuppliersPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-start justify-between">
+      <div className="mb-6 flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Suppliers</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          <h1 className="text-page-title font-semibold text-ink">Suppliers</h1>
+          <p className="mt-1 text-sm text-ink-muted">
             Connection status, balance, and credentials per supplier (ADR-046). Browsing/adding games from a
             supplier&apos;s catalog stays on Product Manager — this screen is config/health only.
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>Add Supplier</Button>
+        <Button className="shrink-0" onClick={() => setCreateOpen(true)}>Add Supplier</Button>
       </div>
 
       {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-4 py-3 text-sm text-danger-ink">
           {error}
         </p>
       )}
 
       {suppliers === null && !error && (
-        <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <p className="text-sm text-ink-muted">Loading…</p>
       )}
 
       {suppliers?.length === 0 && (
-        <p className="text-sm text-gray-500 dark:text-gray-400">No suppliers yet — add one to get started.</p>
+        <p className="text-sm text-ink-muted">No suppliers yet — add one to get started.</p>
       )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -218,7 +218,7 @@ export default function SuppliersPage() {
           return (
             <div
               key={supplier.id}
-              className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]"
+              className="rounded-2xl border border-border bg-surface p-5"
             >
               <div className="mb-3 flex items-start justify-between">
                 <div className="flex items-center gap-3">
@@ -226,12 +226,12 @@ export default function SuppliersPage() {
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={supplier.logo_url} alt="" className="h-10 w-10 rounded-lg object-cover" />
                   ) : (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-theme-xs font-medium text-gray-500 dark:bg-white/[0.05] dark:text-gray-400">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-subtle text-theme-xs font-medium text-ink-muted">
                       {supplier.name.slice(0, 2).toUpperCase()}
                     </div>
                   )}
                   <div>
-                    <p className="font-medium text-gray-800 dark:text-white/90">{supplier.name}</p>
+                    <p className="text-section-title font-semibold text-ink">{supplier.name}</p>
                     <p className="text-theme-xs text-ink-subtle">{supplier.slug}</p>
                   </div>
                 </div>
@@ -250,7 +250,7 @@ export default function SuppliersPage() {
 
               <dl className="mb-4 space-y-1.5 text-theme-sm">
                 <div className="flex justify-between">
-                  <dt className="text-gray-500 dark:text-gray-400">Status</dt>
+                  <dt className="text-ink-muted">Status</dt>
                   <dd>
                     <Tag severity={supplier.is_active ? "success" : "secondary"}>
                       {supplier.is_active ? "active" : "inactive"}
@@ -259,7 +259,7 @@ export default function SuppliersPage() {
                 </div>
                 {supplier.is_api_backed ? (
                   <div className="flex justify-between">
-                    <dt className="text-gray-500 dark:text-gray-400">Credentials</dt>
+                    <dt className="text-ink-muted">Credentials</dt>
                     <dd>
                       <Tag severity={supplier.is_fully_configured ? "success" : supplier.has_credentials ? "warn" : "secondary"}>
                         {supplier.is_fully_configured ? "Configured" : supplier.has_credentials ? "Partial" : "Not configured"}
@@ -268,13 +268,13 @@ export default function SuppliersPage() {
                   </div>
                 ) : (
                   <div className="flex justify-between">
-                    <dt className="text-gray-500 dark:text-gray-400">Type</dt>
-                    <dd className="text-gray-800 dark:text-white/90">Manual · {fundingModeLabel(supplier)}</dd>
+                    <dt className="text-ink-muted">Type</dt>
+                    <dd className="text-ink">Manual · {fundingModeLabel(supplier)}</dd>
                   </div>
                 )}
                 {supplier.slug === "digiflazz" && (
                   <div className="flex justify-between">
-                    <dt className="text-gray-500 dark:text-gray-400">Webhook</dt>
+                    <dt className="text-ink-muted">Webhook</dt>
                     <dd>
                       <Tag severity={isWebhookConfigured(supplier) ? "success" : "warn"}>
                         {isWebhookConfigured(supplier) ? "configured" : "not configured"}
@@ -283,26 +283,26 @@ export default function SuppliersPage() {
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <dt className="text-gray-500 dark:text-gray-400">Balance</dt>
-                  <dd className="text-gray-800 dark:text-white/90">
+                  <dt className="text-ink-muted">Balance</dt>
+                  <dd className="text-ink">
                     {supplierDisplayBalance(supplier)}
                   </dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-gray-500 dark:text-gray-400">Last checked</dt>
-                  <dd className="text-gray-800 dark:text-white/90">{formatDateTime(supplier.last_tested_at)}</dd>
+                  <dt className="text-ink-muted">Last checked</dt>
+                  <dd className="text-ink">{formatDateTime(supplier.last_tested_at)}</dd>
                 </div>
                 {supplier.last_test_result && (
                   <div className="flex justify-between gap-2">
-                    <dt className="shrink-0 text-gray-500 dark:text-gray-400">Last result</dt>
-                    <dd className="truncate text-right text-gray-800 dark:text-white/90" title={supplier.last_test_result}>
+                    <dt className="shrink-0 text-ink-muted">Last result</dt>
+                    <dd className="truncate text-right text-ink" title={supplier.last_test_result}>
                       {supplier.last_test_result}
                     </dd>
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <dt className="text-gray-500 dark:text-gray-400">Packages</dt>
-                  <dd className="text-gray-800 dark:text-white/90">{supplier.reference_counts.packages}</dd>
+                  <dt className="text-ink-muted">Packages</dt>
+                  <dd className="text-ink">{supplier.reference_counts.packages}</dd>
                 </div>
               </dl>
 
@@ -378,12 +378,12 @@ export default function SuppliersPage() {
                 <DialogTitle>Activate {activateConfirmTarget?.name}?</DialogTitle>
               </DialogHeader>
               <DialogContent>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
+                <p className="text-sm text-ink-muted">
                   This supplier will be included in the next scheduled price sync — make sure its credentials are
                   correct first (Edit → Refresh Balance to verify).
                 </p>
                 {activateConfirmTarget?.is_api_backed && (
-                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                  <p className="mt-2 text-sm text-ink-muted">
                     Its packages stay off. After the next sync, use Manage Packages → Reactivate to put them back on sale.
                   </p>
                 )}
@@ -411,11 +411,11 @@ export default function SuppliersPage() {
                 <DialogTitle>Deactivate {deactivateConfirmTarget?.name}?</DialogTitle>
               </DialogHeader>
               <DialogContent>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
+                <p className="text-sm text-ink-muted">
                   On sale now, and going off: {deactivateConfirmTarget?.on_sale.packages} package(s),{" "}
                   {deactivateConfirmTarget?.on_sale.combos} combo(s).
                 </p>
-                <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                <p className="mt-2 text-sm text-ink-muted">
                   {deactivateConfirmTarget?.is_api_backed
                     ? "Activating it again restores nothing: after the next sync, use Manage Packages → Reactivate."
                     : "They come back when you activate it again."}
@@ -447,7 +447,7 @@ export default function SuppliersPage() {
                 <DialogTitle>Delete {deleteConfirmTarget?.name}?</DialogTitle>
               </DialogHeader>
               <DialogContent>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
+                <p className="text-sm text-ink-muted">
                   Permanently removes this supplier row. This cannot be undone.
                 </p>
               </DialogContent>

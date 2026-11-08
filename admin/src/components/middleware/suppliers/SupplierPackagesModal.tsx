@@ -94,12 +94,12 @@ function SupplierPackagesFields({
       </DialogHeader>
       <DialogContent>
         {error && (
-          <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+          <p className="mb-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
             {error}
           </p>
         )}
         <form id="supplier-packages-form" onSubmit={handleSubmit} className="space-y-4">
-          <div className="flex gap-4 text-sm text-gray-600 dark:text-gray-400">
+          <div className="flex gap-4 text-sm text-ink-muted">
             <label className="flex items-center gap-1.5">
               <input type="radio" checked={mode === "deactivate"} onChange={() => setMode("deactivate")} />
               Deactivate
@@ -111,13 +111,13 @@ function SupplierPackagesFields({
           </div>
 
           {mode === "reactivate" && (
-            <p className="rounded-lg bg-brand-50 px-3 py-2 text-theme-xs text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+            <p className="rounded-lg bg-info-surface px-3 py-2 text-theme-xs text-info-ink">
               Only restores packages this same tool previously deactivated — a package Price Sync turned off for an
               unrelated reason (e.g. a price anomaly) is never swept up here.
             </p>
           )}
 
-          <div className="flex gap-4 text-sm text-gray-600 dark:text-gray-400">
+          <div className="flex gap-4 text-sm text-ink-muted">
             <label className="flex items-center gap-1.5">
               <input type="radio" checked={scope === "all"} onChange={() => setScope("all")} />
               All packages
@@ -152,11 +152,11 @@ function SupplierPackagesFields({
 
           {mode === "deactivate" && (
             <div>
-              <label className="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+              <label className="mb-1.5 block text-theme-sm font-medium text-ink">
                 Reason
               </label>
               <textarea
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-theme-sm text-gray-800 shadow-theme-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:border-gray-800 dark:bg-white/[0.03] dark:text-white/90"
+                className="w-full rounded-lg border border-border-control bg-surface px-3 py-2 text-theme-sm text-ink placeholder:text-ink-subtle focus-visible:outline-2 focus-visible:outline-offset-[-1px] focus-visible:outline-focus-ring"
                 rows={2}
                 placeholder="e.g. Gamevion delay reported by customers, 2026-08-27"
                 value={reason}

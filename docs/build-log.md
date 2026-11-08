@@ -1914,3 +1914,11 @@ The 2026-11-04 row is as item 159 recorded it, without naming the session; it is
 
 **Not yet seen:** a KOL link and the bank logos in a real TikTok or Instagram browser.
 
+
+## 2026-11-08 — Item 164: Suppliers page on the ADR-104 tokens
+
+**Built** on `feature/164-middleware-suppliers-restyle`, a pure reskin: `/middleware/suppliers` and its Create, Edit and Manage Packages modals carry no `gray-*`, `brand-*` or `white/[…]` class any more. Mapping, benchmarked on admin `/orders`: page title `text-page-title text-ink`, card title `text-section-title`, labels `text-ink-muted`, values and form labels `text-ink`, cards `bg-surface border-border`, hand-rolled inputs on the kit input's colours (`border-border-control`, `focus-ring` outline), error banner `danger-surface/ink`, the Reactivate note `info-surface/ink`, the "Not configured" pill `neutral-surface/ink`. The one layout touch: "Add Supplier" no longer wraps to two lines beside the long description (`gap-3`, `shrink-0`).
+
+**Verified** with Playwright screenshots, light and dark, of the page and all three modals beside `/orders`; `getComputedStyle` on the title (26 px), labels and values in both themes; 390 px phone width with no horizontal scroll. `tsc`, `eslint` and `color-tokens.test.ts` pass.
+
+**Gotcha.** A Next dev server left running across a `git checkout` threw a sidebar hydration error (the server still rendered the other branch's module). A fresh load on each branch had none: not a bug.
