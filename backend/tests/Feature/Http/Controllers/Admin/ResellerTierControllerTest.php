@@ -36,10 +36,11 @@ class ResellerTierControllerTest extends TestCase
 
         $id = $create->json('id');
 
-        $this->putJson("/api/reseller-tiers/{$id}", ['markup_percent' => 7])->assertOk()
-            ->assertJsonPath('markup_percent', '7.00');
+        // ADR-139 PR 2: the markup is fixed; the name is not.
+        $this->putJson("/api/reseller-tiers/{$id}", ['name' => 'Tier Silver'])->assertOk()
+            ->assertJsonPath('markup_percent', '5.00');
 
-        $this->getJson('/api/reseller-tiers')->assertOk()->assertJsonPath('tiers.0.name', 'Silver');
+        $this->getJson('/api/reseller-tiers')->assertOk()->assertJsonPath('tiers.0.name', 'Tier Silver');
 
         $this->deleteJson("/api/reseller-tiers/{$id}")->assertOk();
         $this->assertSoftDeleted('reseller_tiers', ['id' => $id]);
@@ -114,8 +115,8 @@ class ResellerTierControllerTest extends TestCase
             ->assertOk();
     }
 
-    /** A1 hardening: a markup_percent edit invalidates the Reseller API's per-tier priced-catalog cache. */
-    public function test_update_invalidates_the_reseller_api_priced_catalog_cache(): void
+    /** ADR-139 PR 2: a markup edit is refused, so the Reseller API's cached tier price never goes stale (was A1 hardening's flush). */
+    public function test_a_refused_markup_edit_leaves_the_reseller_api_price_unchanged(): void
     {
         $tier = ResellerTier::query()->create(['name' => 'Gold', 'markup_percent' => 10, 'is_active' => true, 'sort_order' => 1]);
         $reseller = Reseller::query()->create(['business_name' => 'Acme', 'reseller_tier_id' => $tier->id, 'is_active' => true]);
@@ -133,9 +134,9 @@ class ResellerTierControllerTest extends TestCase
             ->assertJsonPath('games.0.packages.0.price_sen', 1100); // 1000 * 1.10
 
         $this->actAsSuperAdmin();
-        $this->putJson("/api/reseller-tiers/{$tier->id}", ['markup_percent' => 20])->assertOk();
+        $this->putJson("/api/reseller-tiers/{$tier->id}", ['markup_percent' => 20])->assertUnprocessable();
 
         $this->getJson('/api/reseller/v1/catalog', ['Authorization' => "Bearer {$key}"])
-            ->assertJsonPath('games.0.packages.0.price_sen', 1200); // 1000 * 1.20, not the stale cache
+            ->assertJsonPath('games.0.packages.0.price_sen', 1100);
     }
 }

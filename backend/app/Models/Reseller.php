@@ -48,6 +48,12 @@ class Reseller extends Model
         return $this->belongsTo(ResellerTier::class, 'reseller_tier_id');
     }
 
+    /** ADR-139 decision 7: the one tier change waiting for its 1st (KL), if any. */
+    public function pendingTierChange(): HasOne
+    {
+        return $this->hasOne(ResellerWalletTierChange::class)->whereNull('applied_at');
+    }
+
     /** ADR-133: the application this account was approved from, if it came through the KYC form. */
     public function partnerApplication(): HasOne
     {

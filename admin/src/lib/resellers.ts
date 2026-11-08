@@ -1,4 +1,5 @@
 import { apiFetch, apiUpload, apiDownload } from "@/lib/api-client";
+import { todayInKL } from "@/lib/date-range";
 import type { Readiness } from "@/lib/readiness";
 import type { WhatsAppGroup } from "@/lib/whatsapp-groups";
 
@@ -34,6 +35,8 @@ export interface ResellerRow {
   /** ADR-133 decision 12: "on_file" = approved from an application still held; "none" = an internal account; "outside_system" = documents collected outside the system. */
   kyc: "on_file" | "none" | "outside_system";
   internal_reason: string | null;
+  /** ADR-139 decision 7: a change on a reseller with a tier waits for the next 1st (KL). */
+  pending_tier_change: { to_tier_id: number; to_tier_name: string | null; effective_on: string } | null;
 }
 
 export interface ResellerTier {
@@ -122,7 +125,8 @@ export function listResellerTiers() {
 
 export interface ResellerTierValues {
   name: string;
-  markup_percent: number;
+  /** Sent on create only: a tier's markup is fixed once it exists (ADR-139 PR 2). */
+  markup_percent?: number;
   is_active: boolean;
   sort_order: number;
   show_on_price_list: boolean;
@@ -356,4 +360,16 @@ export function resendResellerUserInvite(id: number, userId: number) {
  */
 export async function downloadWalletTopupReceipt(receiptId: number, filename: string): Promise<void> {
   await apiDownload(`/api/wallet-topup-receipts/${receiptId}/download`, filename);
+}
+
+/** "2026-12-01" → "1 Dec 2026". */
+export function formatTierDate(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
+/** ADR-139 decision 7: the 1st (KL) a tier change on a reseller with a tier takes effect. */
+export function nextFirstInKL(): string {
+  const [y, m] = todayInKL().split("-").map(Number);
+  return new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
 }

@@ -8,9 +8,12 @@ use Illuminate\Validation\Validator;
 
 /**
  * ADR-072/073 PR-B: edit a `reseller_tiers` row. All fields optional — a
- * PATCH-style partial update. Changing `markup_percent` affects every
- * assigned reseller's wallet-debit price on their next order (ADR-073
- * decision 4, pricing resolved at order-placement time).
+ * PATCH-style partial update.
+ *
+ * ADR-139 2026-11-08 (PR 2) addendum: `markup_percent` is fixed once the
+ * tier exists. An edit would re-price every reseller on it mid-month and
+ * detach the rebate ladder from the margin it was set on. A different
+ * markup is a new tier, moved to from the next 1st.
  *
  * ADR-091: same 3-tier cap on `show_on_price_list` as
  * `StoreResellerTierRequest`, excluding this row itself so re-saving an
@@ -30,11 +33,17 @@ class UpdateResellerTierRequest extends FormRequest
     {
         return [
             'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'markup_percent' => ['sometimes', 'required', 'numeric', 'min:0', 'max:999.99'],
+            'markup_percent' => ['prohibited'],
             'is_active' => ['sometimes', 'boolean'],
             'sort_order' => ['sometimes', 'integer', 'min:0'],
             'show_on_price_list' => ['sometimes', 'boolean'],
         ];
+    }
+
+    /** @return array<string, string> */
+    public function messages(): array
+    {
+        return ['markup_percent.prohibited' => 'A tier\'s markup is fixed. Create a new tier with the markup you want and move resellers to it (it takes effect on the 1st).'];
     }
 
     public function withValidator(Validator $validator): void

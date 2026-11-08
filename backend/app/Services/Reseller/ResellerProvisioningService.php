@@ -23,6 +23,7 @@ final class ResellerProvisioningService
     public function __construct(
         private readonly LedgerService $ledger,
         private readonly AffiliateInviteService $invites,
+        private readonly ResellerTierChangeService $tierChanges,
     ) {}
 
     /**
@@ -101,6 +102,8 @@ final class ResellerProvisioningService
         ]);
 
         $this->ledger->openAccount(LedgerOwnerType::ResellerWallet, $reseller->id);
+        // ADR-139 decision 7: the first tier is history too, effective at once.
+        $this->tierChanges->recordInitial($reseller);
 
         return $reseller;
     }

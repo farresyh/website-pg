@@ -91,3 +91,10 @@ Decided with [ADR-139](./ADR-139-reseller-milestone-rebate.md) (founder, 2026-11
    - `wallet_rebate` is a credit, written only by a rebate claim.
    - `wallet_rebate_forfeit` is a debit, written only at account closure.
    - The wallet stays one ledger account. Unspent rebate is derived by replaying the ledger (ADR-139 decision 14).
+
+### 2026-11-08 addendum (later) — decision 1 revised: a tier change waits for the 1st; markup is fixed per tier (ADR-139 PR 2)
+
+- Decision 1's "direct FK swap, effective immediately" now holds only for a reseller's **first** tier.
+- A change on a reseller that already has a tier takes effect at 00:00 KL on the next 1st and is recorded in `reseller_wallet_tier_changes`.
+- A tier's `markup_percent` can no longer be edited after the tier is created; a different markup is a new tier.
+- Full detail: [ADR-139](./ADR-139-reseller-milestone-rebate.md), decision 7 and the PR 2 addendum.

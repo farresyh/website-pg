@@ -2087,3 +2087,26 @@ Branch `feature/auto-refund-failed-wallet-orders`, into `staging` (not released)
 - The concurrency suite was not run: no locking changed, and `settle()`'s lock is already proven by `RefundToWalletConcurrencyTest`.
 - Production has 0 uncompensated Failed wallet orders (all 4 refunded by hand), so the first run after release refunds nothing old.
 
+## 2026-11-08 — ADR-139 PR 2: wallet tier changes take effect on the 1st; markup fixed per tier
+
+Branch `feature/reseller-tier-from-the-1st`, into `staging` (not released).
+
+**Shipped:**
+- `reseller_wallet_tier_changes`, backfilled with each reseller's current tier. The local dev DB has 1 row for 1 tiered reseller after a plain `migrate`.
+- `ResellerTierChangeService` is the one writer. A reseller's first tier is immediate. A later change waits for the next 1st (KL); a new choice replaces it and the current tier cancels it.
+- An hourly `CRITICAL` `app:apply-reseller-tier-changes`.
+- The admin list shows "→ Tier X from 1 Dec 2026". The Change Tier dialog says when the change takes effect.
+- A tier's markup is fixed after creation: the API answers 422 with guidance, and the admin edit form disables the field. The founder chose this over hard-coding five 1–5% tiers.
+- A tier that a pending change points to can't be deleted.
+
+**Gotcha:** the sqlite `date` cast stores a time, so a string `<=` on `effective_on` missed midnight on the 1st. The comparison uses `whereDate`. Caught by a test pinning 23:59 and 00:00 KL.
+
+**Verified:**
+- `php artisan test`: 3,844 passed. Two old tier tests that edited markup now assert the refusal.
+- Admin: `tsc`, lint, 22 unit tests and a build.
+- Browser, on a local built admin and backend with a throwaway admin, deleted afterwards:
+  - scheduled Scenario Reseller → Tier SS and saw it pending until 1 Dec 2026;
+  - the Edit Tier form shows markup disabled with the note;
+  - cancelled the test change by choosing the current tier, leaving 0 pending rows.
+- Fixed an outdated "direct FK assignment" line under Wallet tiers.
+

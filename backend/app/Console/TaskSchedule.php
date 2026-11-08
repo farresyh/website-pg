@@ -36,6 +36,7 @@ class TaskSchedule
         'delivery-reconciliation',
         'wallet-topup-reconciliation',
         'wallet-order-auto-refund',
+        'reseller-tier-change-apply',
         'database-backup',
         'database-backup-cleanup',
         'openwa-backup',
@@ -145,6 +146,13 @@ class TaskSchedule
         $schedule->command('app:refund-failed-wallet-orders')
             ->everyMinute()
             ->name('wallet-order-auto-refund')
+            ->withoutOverlapping($overlap);
+
+        // ADR-139 decision 7: a tier change takes effect at 00:00 KL on the
+        // 1st (16:00 UTC); hourly so a missed run catches up.
+        $schedule->command('app:apply-reseller-tier-changes')
+            ->hourly()
+            ->name('reseller-tier-change-apply')
             ->withoutOverlapping($overlap);
 
         // ADR-021 — prunes player_validations PII past its retention window —
