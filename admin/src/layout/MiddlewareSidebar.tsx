@@ -14,6 +14,7 @@ import { Pencil as PencilIcon } from "@primeicons/react/pencil";
 import { Cog as SettingsIcon } from "@primeicons/react/cog";
 import { User as UserCircleIcon } from "@primeicons/react/user";
 import { ChartLine as ChartLineIcon } from "@primeicons/react/chart-line";
+import { ExternalLink as ExternalLinkIcon } from "@primeicons/react/external-link";
 
 /**
  * Middleware Panel nav — same shell as the Admin Panel (PanelSidebar),
@@ -78,6 +79,10 @@ export default function MiddlewareSidebar() {
         busy: openingTarget === item.target,
         busyLabel: "Opening…",
       })),
+    },
+    {
+      title: "Panels",
+      items: [{ kind: "link", name: "Admin Panel", href: "/admin", icon: <ExternalLinkIcon />, newTab: true }],
     },
   ];
 

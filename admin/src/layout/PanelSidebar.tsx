@@ -21,7 +21,7 @@ import { EllipsisH as HorizontaLDots } from "@primeicons/react/ellipsis-h";
  * viewport with no way to reach them.
  */
 
-type LinkItem = { kind: "link"; name: string; href: string; icon: React.ReactNode };
+type LinkItem = { kind: "link"; name: string; href: string; icon: React.ReactNode; newTab?: boolean };
 type PlaceholderItem = { kind: "placeholder"; name: string; icon: React.ReactNode };
 type ButtonItem = {
   kind: "button";
@@ -154,7 +154,11 @@ function PanelItem({
   const active = isActive(item.href);
   return (
     <li>
-      <Link href={item.href} className={`menu-item group ${active ? "menu-item-active" : "menu-item-inactive"}`}>
+      <Link
+        href={item.href}
+        {...(item.newTab && { target: "_blank", rel: "noopener noreferrer" })}
+        className={`menu-item group ${active ? "menu-item-active" : "menu-item-inactive"}`}
+      >
         <span className={active ? "menu-item-icon-active" : "menu-item-icon-inactive"}>{item.icon}</span>
         {showLabels && <span className="menu-item-text">{item.name}</span>}
       </Link>

@@ -1914,3 +1914,9 @@ The 2026-11-04 row is as item 159 recorded it, without naming the session; it is
 
 **Not yet seen:** a KOL link and the bank logos in a real TikTok or Instagram browser.
 
+
+## 2026-11-08 — Admin ↔ Middleware switch link in both sidebars
+
+**Asked by the founder.** Switching panels meant editing the URL by hand. Each sidebar now ends with a "Panels" section: "Middleware Panel" in the admin (super_admin only, since the Middleware layout sends anyone else back to `/admin`) and "Admin Panel" in the middleware. Both open in a new tab (founder's choice over same-tab). `PanelSidebar` link items take `newTab`.
+
+**Verified** on a local admin dev server (`:3005`, the API given `ADMIN_URL` / `SANCTUM_STATEFUL_DOMAINS` for that port because `:3000` was busy with a video render): signed in as super_admin, both links carry `target="_blank" rel="noopener noreferrer"`, the click opens `/middleware` in a new tab with the original tab left on `/admin`, and the way back works the same. `tsc` and `eslint` clean.
