@@ -73,20 +73,20 @@ function CreateValidatorFields({
 
   return (
     <>
-      <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
+      <p className="mb-5 text-sm text-ink-muted">
         The key you pick here must already have a real implementation on the backend
         (app/Services/PlayerValidation/) — this list only shows keys that do, so a validator can never be created
         pointing at nothing.
       </p>
 
       {error && (
-        <p className="mb-4 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <p className="mb-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
           {error}
         </p>
       )}
 
       {selectableKeys.length === 0 ? (
-        <p className="mb-4 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-500 dark:bg-white/5 dark:text-gray-400">
+        <p className="mb-4 rounded-lg bg-subtle px-3 py-2 text-sm text-ink-muted">
           Every implemented key already has a validator profile.
         </p>
       ) : (

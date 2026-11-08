@@ -12,7 +12,7 @@ import type {
 } from "@/lib/player-validators";
 
 const inputClasses =
-  "h-9 w-full rounded-lg border border-gray-300 px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
+  "h-9 w-full rounded-lg border border-border-control bg-surface px-3 text-sm text-ink placeholder:text-ink-subtle";
 
 function MappingChip({
   mapping,
@@ -35,11 +35,11 @@ function MappingChip({
     return (
       <button
         onClick={() => setEditing(true)}
-        className="rounded-lg bg-brand-50 px-3 py-1.5 text-sm text-brand-700 hover:bg-brand-100 dark:bg-brand-500/10 dark:text-brand-400 dark:hover:bg-brand-500/20"
+        className="rounded-lg bg-cyan-50 px-3 py-1.5 text-sm text-cyan-ink hover:opacity-80"
         title={mapping.country_name}
       >
         <span className="font-semibold">{mapping.country_code}</span>
-        <span className="mx-1.5 text-brand-400">→</span>
+        <span className="mx-1.5 text-cyan-600">→</span>
         {mapping.game.slug}
       </button>
     );
@@ -65,8 +65,8 @@ function MappingChip({
   }
 
   return (
-    <div className="col-span-full flex flex-wrap items-end gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-white/5">
-      <span className="flex h-9 items-center px-1 text-sm font-semibold text-gray-500 dark:text-gray-400">
+    <div className="col-span-full flex flex-wrap items-end gap-2 rounded-lg border border-border bg-subtle p-3">
+      <span className="flex h-9 items-center px-1 text-sm font-semibold text-ink-muted">
         {mapping.country_code}
       </span>
       <input
@@ -111,7 +111,7 @@ function AddMappingRow({
     return (
       <button
         onClick={() => setOpen(true)}
-        className="rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-sm text-gray-500 hover:border-brand-400 hover:text-brand-500 dark:border-gray-600 dark:text-gray-400"
+        className="rounded-lg border border-dashed border-border-strong px-3 py-1.5 text-sm text-ink-muted hover:border-cyan-600 hover:text-cyan-ink"
       >
         + Add Country
       </button>
@@ -137,7 +137,7 @@ function AddMappingRow({
   return (
     <form
       onSubmit={handleSubmit}
-      className="col-span-full flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-gray-300 p-3 dark:border-gray-600"
+      className="col-span-full flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-border-strong p-3"
     >
       <input
         placeholder="MY"
@@ -199,14 +199,14 @@ function TestPanel({
     <div className="mt-3">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="text-sm font-medium text-brand-500 hover:text-brand-600 dark:text-brand-400"
+        className="text-sm font-medium text-cyan-ink hover:underline"
       >
         {open ? "Hide test" : "Test this validator"}
       </button>
 
       {open && (
-        <div className="mt-2 space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-white/5">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+        <div className="mt-2 space-y-2 rounded-lg border border-border bg-subtle p-3">
+          <p className="text-xs text-ink-muted">
             Runs a real validate() call against whatever this key resolves to on the backend — proves the validator
             is genuinely plugged in, not just that this row exists.
           </p>
@@ -231,8 +231,8 @@ function TestPanel({
             <pre
               className={`overflow-x-auto rounded-lg p-3 text-xs ${
                 outcome.success
-                  ? "bg-success-50 text-success-600 dark:bg-success-500/10 dark:text-success-400"
-                  : "bg-error-50 text-error-600 dark:bg-error-500/10 dark:text-error-400"
+                  ? "bg-success-surface text-success-ink"
+                  : "bg-danger-surface text-danger-ink"
               }`}
             >
               {JSON.stringify(outcome.result ?? { error: outcome.error }, null, 2)}
@@ -279,7 +279,7 @@ function PublicCheckerPanel({
     <div className="mt-3">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="text-sm font-medium text-brand-500 hover:text-brand-600 dark:text-brand-400"
+        className="text-sm font-medium text-cyan-ink hover:underline"
       >
         {open ? "Hide Game ID Checker" : "Game ID Checker"}
         <span className="ml-2 text-xs font-normal text-ink-subtle">
@@ -288,13 +288,13 @@ function PublicCheckerPanel({
       </button>
 
       {open && (
-        <div className="mt-2 space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-white/5">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+        <div className="mt-2 space-y-3 rounded-lg border border-border bg-subtle p-3">
+          <p className="text-xs text-ink-muted">
             Shown on the public Game ID Checker when a slug is set and this family has an active store with
             validation on. Changing the slug changes the page&apos;s URL, so set it once.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm text-gray-700 dark:text-gray-300">
+            <label className="block text-sm text-ink">
               Public name
               <input
                 value={publicName}
@@ -303,7 +303,7 @@ function PublicCheckerPanel({
                 className={`${inputClasses} mt-1`}
               />
             </label>
-            <label className="block text-sm text-gray-700 dark:text-gray-300">
+            <label className="block text-sm text-ink">
               URL slug
               <input
                 value={publicSlug}
@@ -313,7 +313,7 @@ function PublicCheckerPanel({
               />
             </label>
           </div>
-          <div className="text-sm text-gray-700 dark:text-gray-300">
+          <div className="text-sm text-ink">
             <label htmlFor={`validator-${validator.id}-image`}>Image</label>
             <div className="mt-1">
               <ImageUrlInput id={`validator-${validator.id}-image`} value={imageUrl} onChange={setImageUrl} />
@@ -372,7 +372,7 @@ export default function ValidatorCard({
   }
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+    <div className="rounded-2xl border border-border bg-surface p-5">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {renaming ? (
@@ -387,8 +387,8 @@ export default function ValidatorCard({
             </>
           ) : (
             <>
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">{validator.name}</h3>
-              <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-500 dark:bg-white/10 dark:text-gray-400">
+              <h3 className="text-lg font-semibold text-ink">{validator.name}</h3>
+              <span className="rounded bg-subtle px-2 py-0.5 font-mono text-xs text-ink-muted">
                 {validator.key}
               </span>
             </>
@@ -396,13 +396,13 @@ export default function ValidatorCard({
         </div>
         {!renaming && (
           <div className="flex items-center gap-3 text-sm">
-            <button onClick={() => setRenaming(true)} className="text-brand-500 hover:text-brand-600 dark:text-brand-400">
+            <button onClick={() => setRenaming(true)} className="text-cyan-ink hover:underline">
               Edit
             </button>
             <button
               onClick={handleDelete}
               disabled={deleting}
-              className="text-danger-ink hover:text-error-600 disabled:opacity-50 dark:text-error-400"
+              className="text-danger-ink hover:underline disabled:opacity-50"
             >
               {deleting ? "…" : "Delete"}
             </button>
