@@ -852,7 +852,8 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   A pure reskin (no behaviour change), one PR per page, benchmarked by
   screenshot against admin `/orders`; Suppliers and Price Sync first. Ready
   to build (item 162's code is done); the Gamevion games picker is already on
-  the tokens.
+  the tokens. **Done:** Suppliers with its three modals (2026-11-08,
+  `feature/164-middleware-suppliers-restyle`). Next: Price Sync.
 
 **B. Needs a short grill / ADR addendum first**
 - **165** KOL fee as a share of profit ([ADR-118](./adr/ADR-118-marketing-campaigns.md) addendum, money-critical; founder, 2026-11-05). A KOL may ask for no monthly fee but a share of the profit their sales bring (70/30 was only a proposal). Today a campaign knows only a fixed monthly fee schedule (`CampaignFeeSchedule`, RM0 allowed), so neither way of paying such a KOL is right: a payment tagged to an RM0 campaign leaves both the envelope expenses (`whereNull('campaign_id')`) and the accrued KOL fee line, so the cost disappears from the month-close net and shows as a growing "prepaid"; tagged "Not a KOL fee", the books are right on a cash basis but the scorecard counts no fee (net and CAC overstated). **Until built, pay such a KOL as "Not a KOL fee".** Proposed: a "profit share %" fee type whose accrued fee per Malaysia month is computed from the campaign's attributed ledger profit (the scorecard's own number), never typed. Open for the founder: orders that used the code only, or every attributed order; a loss month as 0 or carried; a monthly cap; simulate the share on real order data first.
