@@ -104,6 +104,8 @@ final class ReportService
             'voucher_breakage' => $lines['voucher_breakage_sen'],
             'admin_issued_vouchers' => -$lines['admin_issued_vouchers_sen'],
             'supplier_manual_adjustments' => $lines['supplier_manual_adjustments_sen'],
+            'reseller_rebates' => -$lines['reseller_rebates_sen'],
+            'reseller_rebate_breakage' => $lines['reseller_rebate_breakage_sen'],
             'cogs_funding_difference' => -$lines['cogs_funding_difference_sen'],
             'ledger_vs_order_figures' => $lines['sales_revenue_sen'] - $lines['cogs_at_order_cost_sen'] - $lines['affiliate_commission_expense_sen'] - $ownerProfit,
         ];

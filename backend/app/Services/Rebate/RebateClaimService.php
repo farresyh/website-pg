@@ -6,6 +6,7 @@ use App\Models\AffiliateUser;
 use App\Models\LedgerAccount;
 use App\Models\Reseller;
 use App\Models\ResellerRebateMilestone;
+use App\Models\ResellerRebateMonth;
 use App\Models\ResellerRebateTermsAcceptance;
 use App\Services\Auth\AccountOwnerType;
 use App\Services\Ledger\LedgerOwnerType;
@@ -80,6 +81,9 @@ final class RebateClaimService
             if (isset($claimed[$step])) {
                 return $this->pay($claimed[$step], $user);
             }
+
+            // A finalised month is fixed (its month may be closed): only the rows finalise wrote can be claimed.
+            $this->refuseUnless(! ResellerRebateMonth::query()->whereDate('period', $period->toDateString())->exists(), 'That reward was not reached by the end of that month.');
 
             $standing = $this->entitlement->standing($fresh, $year, $month, now());
             $this->refuseUnless($standing->earnsRebate(), 'There is no rebate for this account in that month.');

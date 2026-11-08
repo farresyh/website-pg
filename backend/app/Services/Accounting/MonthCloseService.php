@@ -5,6 +5,8 @@ namespace App\Services\Accounting;
 use App\Models\AccountingPeriodClose;
 use App\Models\BudgetEnvelope;
 use App\Models\CashAccount;
+use App\Models\ResellerRebateLadder;
+use App\Models\ResellerRebateMonth;
 use App\Support\MalaysiaTime;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -172,6 +174,12 @@ final class MonthCloseService
         $previous = Carbon::create($year, $month, 1)->subMonthNoOverflow();
         if ($previous->toDateString() >= self::FIRST_PERIOD && $this->activeClose($previous->year, $previous->month) === null) {
             return 'Close '.self::label($previous->year, $previous->month).' first.';
+        }
+
+        // ADR-139 decision 23: the month's rebate payable and line come from its finalised rows.
+        if (ResellerRebateLadder::query()->whereDate('effective_from', '<=', $start)->exists()
+            && ! ResellerRebateMonth::query()->whereDate('period', $start)->exists()) {
+            return 'The reseller rebate for '.self::label($year, $month).' has not been finalised yet. It runs daily at 00:10 Kuala Lumpur time; close after it has run.';
         }
 
         return null;

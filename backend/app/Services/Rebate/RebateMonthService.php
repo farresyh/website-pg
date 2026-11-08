@@ -13,6 +13,7 @@ use App\Services\Backup\BackupFailureAlerter;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Support\MalaysiaTime;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -61,20 +62,12 @@ final class RebateMonthService
     public function finalize(int $year, int $month): void
     {
         $period = CarbonImmutable::create($year, $month, 1, 0, 0, 0, MalaysiaTime::TIMEZONE);
-        [$from, $toExclusive] = MonthlyAccountingSummaryService::monthBounds($year, $month);
-
-        $resellerIds = Order::query()
-            ->where('is_test', false)->whereNotNull('wallet_reseller_id')
-            ->where('recognised_at', '>=', $from)->where('recognised_at', '<', $toExclusive)
-            ->distinct()->pluck('wallet_reseller_id')
-            ->merge(ResellerRebateMilestone::query()->whereDate('period', $period->toDateString())->distinct()->pluck('reseller_id'))
-            ->unique()->sort()->values();
 
         $notes = [];
-        foreach ($resellerIds as $id) {
-            $reseller = Reseller::query()->find($id);
-            if ($reseller === null || ! $reseller->rebate_eligible) {
-                continue; // closed (its rows were expired at closure) or out of the programme
+        foreach ($this->resellerIds($year, $month) as $id) {
+            $reseller = self::finalisable($id);
+            if ($reseller === null) {
+                continue;
             }
 
             $note = DB::transaction(fn () => $this->finalizeReseller($reseller, $year, $month, $period));
@@ -92,6 +85,29 @@ final class RebateMonthService
                 'Rebate',
             );
         }
+    }
+
+    /**
+     * PR 3b-ii, accountant addendum item 4: what finalize() would leave as
+     * the month's row total, for a month not finalised yet. Per reseller:
+     * max(final entitlement, claimed), as finalizeReseller() allocates; only
+     * what is claimed for a reseller it skips. One function, so the live
+     * figure and the finalised rows agree.
+     */
+    public function liveTotalSen(int $year, int $month): int
+    {
+        $total = 0;
+        foreach ($this->resellerIds($year, $month) as $id) {
+            $reseller = self::finalisable($id);
+            $claimed = (int) ResellerRebateMilestone::query()->where('reseller_id', $id)
+                ->whereDate('period', sprintf('%04d-%02d-01', $year, $month))
+                ->where('state', ResellerRebateMilestone::CLAIMED)->sum('amount_sen');
+            $standing = $reseller === null ? null : $this->entitlement->standing($reseller, $year, $month);
+
+            $total += $standing?->earnsRebate() ? max($claimed, $standing->entitlementSen()) : $claimed;
+        }
+
+        return $total;
     }
 
     /** @return int rows expired */
@@ -112,6 +128,32 @@ final class RebateMonthService
             });
 
         return $expired;
+    }
+
+    /**
+     * Who a month's finalise looks at: every reseller with recognised wallet
+     * sales or rebate rows in it.
+     *
+     * @return Collection<int, int>
+     */
+    private function resellerIds(int $year, int $month): Collection
+    {
+        [$from, $toExclusive] = MonthlyAccountingSummaryService::monthBounds($year, $month);
+
+        return Order::query()
+            ->where('is_test', false)->whereNotNull('wallet_reseller_id')
+            ->where('recognised_at', '>=', $from)->where('recognised_at', '<', $toExclusive)
+            ->distinct()->pluck('wallet_reseller_id')
+            ->merge(ResellerRebateMilestone::query()->whereDate('period', sprintf('%04d-%02d-01', $year, $month))->distinct()->pluck('reseller_id'))
+            ->map(fn ($id) => (int) $id)->unique()->sort()->values();
+    }
+
+    /** Null when finalise skips the reseller: closed (its rows were expired at closure) or out of the programme. */
+    private static function finalisable(int $id): ?Reseller
+    {
+        $reseller = Reseller::query()->find($id);
+
+        return $reseller !== null && $reseller->rebate_eligible ? $reseller : null;
     }
 
     private function finalizeReseller(Reseller $reseller, int $year, int $month, CarbonImmutable $period): ?string
