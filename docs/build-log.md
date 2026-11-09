@@ -2192,3 +2192,27 @@ Branch `feature/rebate-accounting`, into `staging` (not released). It is inert u
 Read-only production check: wallet ledger types are only `wallet_topup`, `wallet_debit` and `wallet_refund`.
 
 `php artisan test`: 3,877 passed (3 new). The MySQL concurrency tests for rebate and closure pass. Admin `tsc` and lint pass.
+
+## 2026-11-09 — ADR-139 PR 4a: rebate admin and portal API, bot messages
+
+Branch `feature/rebate-api`, into `staging` (not released). PR 4 is split in three (4a API, 4b admin screens, 4c portal screens; ADR-139 addendum). Nothing reaches resellers yet: no ladder can be saved without 4b's screen, except by a super admin with MFA calling the API directly.
+
+**Shipped:**
+- Admin endpoints: ladders (list, plus save behind the step-up, which sends the notice), month view, CSV export, and an eligibility switch behind the step-up with a recorded reason.
+- Portal endpoints: the Rebate page data, with the reseller's own tier only and no share, and the claim.
+- Rebate detail on statement lines.
+- `RebateNotifier` and the `rebate-progress-notify` task (`ROUTINE`, every 10 minutes).
+- The `reseller_rebate_eligibility_changes` table.
+
+**Found while building:**
+- `SendCustomerWhatsAppJob` sent every bot-session message through `SupplierGroupNotifier::prepare()`, which skips anything without an order, so rebate messages would never have been sent. It now routes by event.
+- The `dedupe_key` backstop applies only when `reason` is null, so the statement label is read from the milestone row rather than stored as a reason.
+
+**Gotcha:** a Pint run given the whole `app/` folder reformatted about 30 unrelated files. I reverted them before committing; run Pint only on changed files.
+
+**Verified:**
+- `php artisan test`: 3,888 passed (11 new).
+- Local dev DB migrated.
+- A live check with `curl` on a throwaway sqlite backend (deleted afterwards): the page, the terms refusal, a claim (+RM1.00), a repeat refused, the statement detail, and 401 without a portal login.
+
+**For the founder:** the three draft bot messages are in the ADR-139 PR 4a addendum, item 4.
