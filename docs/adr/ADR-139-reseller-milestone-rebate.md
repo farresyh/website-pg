@@ -576,3 +576,21 @@ The founder approved the programme terms that the accountant addendum's decision
    - It gains `reseller_rebate` (a claim, with its step and month) and `reseller_rebate_forfeit` (closure).
    - Both are non-cash, like `wallet_refund`, so the year-end record holds every wallet movement (ADR-083 decision 9).
 4. **Reports wording.** A month's rebate counts in full in the range holding its 1st (`RebateLiability::reductionSen`). The owner-profit note now says so, and the Partners figure reads "net of lapsed rewards".
+
+### 2026-11-09 addendum — decision 46: the simulation re-run
+
+The simulation was re-run before the first ladder is saved.
+
+1. **Production (read-only; it still runs `main`, which has no rebate code):**
+   - The data has not changed since 2026-11-08: 11 delivered and 4 failed wallet orders across 3 resellers, and none yet in November.
+   - The largest month is Tier SS in October: RM336.10 of sales and RM9.47 of profit, below the first step (RM500). No reseller would have earned a reward in any month so far.
+   - Actual profit against the formula profit (selling × m/(1+m)) is 97.6% on SS. Decision 30's 94.56% therefore stays as the cautious figure. Eleven orders are too few to move it.
+2. **Decision 3's grid through the real `RebateEntitlement`.** Five tiers × six steps, each reseller exactly at the threshold, with profit at each drift:
+
+   | Drift | Steps cut by the 35% cap | Profit we keep |
+   |---|---|---|
+   | 94.56% | none of 30 | 66.2% (RM20k) to 94.5% |
+   | 90% | the RM20k step, every tier | ≥ 65.0% |
+   | 85% | RM10k (SS, S, A) and RM20k | ≥ 65.0% |
+
+3. **Outcome:** the grid is used as is. At the design drift a reseller is paid the ladder exactly. If real costs drift further, the cap holds us at ≥ 65%, and each cut emails the admins (decision 12).

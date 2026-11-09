@@ -2297,6 +2297,22 @@ The founder asked whether rebate profit, accounting and ledger are right. Three 
 - Admin: `tsc`, lint and 22 unit tests pass.
 - Pint is clean.
 
+## 2026-11-09 — ADR-139 decision 46: ladder simulation re-run
+
+The re-run happened before the first ladder is saved. Result: decision 3's grid is used as is. Numbers are in the ADR-139 addendum.
+
+**Production, read-only:**
+- Nothing new since 2026-11-08: 11 delivered wallet orders, none in November, and every month below RM500.
+- SS drift is 97.6%, so the 94.56% design figure stays.
+
+**Grid through the real `RebateEntitlement`** (a scratch test on sqlite, deleted afterwards):
+- At 94.56% drift, none of 30 tier/step points is cut, and we keep 66.2–94.5%.
+- At 90% and 85% drift, the 35% cap cuts the top steps and holds us at ≥ 65%.
+
+**Gotcha:** on `main`, `monthBounds()` lives on `MonthlyAccountingSummaryService`, not `RecognisedRevenue`. A production script written against staging failed on it first.
+
+**#765 (portal screens) and #766 (review fixes) were merged to `staging`.**
+
 ## 2026-11-10 — Cyber Bumblebee dark: the "Bumblebee Dark v3" palette
 
 Branch `feature/bumblebee-dark-v3-palette`, into `staging`. The founder sent a Figma redesign of Bumblebee dark and asked for its colours only; layout, borders and shadows are unchanged. `tokensDark` in `storefront/src/lib/theme-presets.ts` was changed and synced to the portal copy. Affects PajoStore and FixFast Demo (production branding, read-only); PekanGame stays on Digital Architect light. Decision and deviations: ADR-113 2026-11-10 addendum. DESIGN.md's Tinted-Surface Rule names the exception.
