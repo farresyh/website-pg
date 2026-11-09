@@ -86,6 +86,8 @@ const sections: PanelNavSection[] = [
     title: "Partners",
     items: [
       { kind: "link", name: "Resellers", href: "/admin/resellers", icon: <DollarLineIcon /> },
+      // ADR-139 decision 18: the milestone rebate's ladder and months.
+      { kind: "link", name: "Reseller Rebate", href: "/admin/resellers/rebate", icon: <TrendUpIcon /> },
       // ADR-133 decision 6: the public reseller application with KYC.
       { kind: "link", name: "Applications", href: "/admin/applications", icon: <FileIcon /> },
       { kind: "link", name: "Affiliates", href: "/admin/affiliates", icon: <UserCircleIcon /> },

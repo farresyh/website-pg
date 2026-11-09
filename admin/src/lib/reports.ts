@@ -28,6 +28,8 @@ export interface ReportSummary {
   avg_order_value: number;
   /** ADR-134 decision 13: orders in range whose profit rests on the market mid-rate, not the deposit's landed cost. */
   market_rate_orders: number;
+  /** ADR-139 decision 24: rebate earned in the range less rewards that lapsed in it; not in platform_profit. Null under an affiliate filter. */
+  reseller_rebates: number | null;
   latest_order: {
     id: number;
     order_number: string;
@@ -150,6 +152,8 @@ export interface ReportChannelBreakdown {
     orders_count: number;
     platform_profit: number;
     affiliate_profit: number;
+    /** ADR-139 decision 24: set on the reseller_wallet channel only. */
+    reseller_rebates: number | null;
   }[];
   reseller_wallet_by_placed_via: { placed_via: PlacedVia; sales: number; orders_count: number }[];
   /** R13 — each channel's sales change; present only when `compare` was requested, null for "All time". */
@@ -402,6 +406,17 @@ export async function exportReport(
 }
 
 /** ADR-134 decision 13: said under owner profit while the range holds orders costed before the landed rate. */
+/** ADR-139 decision 24: owner profit is per order, before the month-level reseller rebate. */
+export function resellerRebateNote(rebatesSen: number | null | undefined): string | undefined {
+  if (!rebatesSen) return undefined;
+  return `Before reseller rebates of ${formatRebateRm(rebatesSen)}, a month-level reduction (Accounting › Monthly Summary).`;
+}
+
+function formatRebateRm(sen: number): string {
+  const rm = `RM ${(Math.abs(sen) / 100).toFixed(2)}`;
+  return sen < 0 ? `(${rm})` : rm;
+}
+
 export function marketRateNote(s: ReportSummary | null | undefined): string | undefined {
   const n = s?.market_rate_orders ?? 0;
   if (n === 0) return undefined;

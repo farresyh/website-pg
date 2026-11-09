@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
+import { rebateEntryLabel } from "@/lib/rebate";
 import { notify } from "@/components/ui/toast";
 import {
   getResellerWallet,
@@ -57,6 +58,8 @@ const typeLabel: Record<string, string> = {
   wallet_debit: "Order debit",
   wallet_refund: "Refund",
   wallet_closure_refund: "Closure refund",
+  wallet_rebate: "Rebate",
+  wallet_rebate_forfeit: "Rebate forfeited at closure",
 };
 
 function Content({ reseller, onCredited }: Omit<Props, "isOpen" | "onClose">) {
@@ -242,7 +245,7 @@ function Content({ reseller, onCredited }: Omit<Props, "isOpen" | "onClose">) {
                       {formatRm(entry.amount)}
                     </td>
                     <td className="px-4 py-2 text-gray-500 dark:text-gray-400">
-                      {entry.reason ?? "—"}
+                      {entry.reason ?? (entry.rebate ? rebateEntryLabel(entry.rebate) : "—")}
                       {entry.receipt_name && (
                         <Button
                           type="button"
