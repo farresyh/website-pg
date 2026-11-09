@@ -34,3 +34,35 @@ Mid-build, the founder made a separate policy call: Digital Architect is PekanGa
 - The reseller `ThemeTab.tsx` live preview panel still hardcodes a few cosmetic details outside the injected tokens (the "Official Partners" strip background, noted as a known preview-fidelity gap in ADR-090's own Consequence-to-track) — unchanged by this ADR, still tracked, not a storefront-accuracy issue.
 - This ADR's branch (`fix/affiliate-theme-contrast-bugs`) had not been pushed or opened as a PR as of session end — still owed: push, PR into `staging`, CI green, founder-driven Preview-deploy spot check before merge.
 - If Digital Architect is ever made affiliate-selectable again (not currently planned), re-derive its dark palette from the other 4 presets' now-established pattern in `theme-presets.ts` rather than resurrecting the deleted values, which predate the border-mute/no-diluted-container fixes this ADR made to the other 4.
+
+### 2026-11-10 addendum — Cyber Bumblebee dark takes the "Bumblebee Dark v3" palette
+
+**Context.** The founder redesigned Bumblebee dark in Figma ("Bumblebee Dark v3", page 12583): charcoal layers instead of amber-brown, text never pure white, and yellow kept for action and product. They asked for the colours only, not the v3 layout, hairline borders or shadow changes. The preset is used by PajoStore and FixFast Demo. PekanGame itself stays on Digital Architect light.
+
+**Decision.**
+1. **Bumblebee `tokensDark` takes the v3 hexes:**
+   - page `#111113`, card `#18181B`, band `#16161A`, raised `#202024`, image tile `#2A2A2F`, footer `#0B0B0D`;
+   - text `#F2F0EA`, muted `#A6A39B`;
+   - yellow `#FFC700` with ink `#111113` on it, a `#B38B00` container, and the 14% yellow tint flattened to `#383017`;
+   - green `#5BD08A` for success.
+2. **Three deviations from the v3 hexes, each for contrast:**
+   - `ink` is `#8C8983`, not v3's 8% white line. It is both the 2px border and the bottom-nav pill under `surface` labels, which need 4.5:1 (5.4:1 here; the border reads 5.1:1 on a card).
+   - `outline` is `#8C8983`, because it is used as text (v3's dim `#77746E` is 3.8:1).
+   - Warning and success text take the yellow and the green, because the light defaults are unreadable on charcoal.
+3. **The Tinted-Surface Rule** (`storefront/DESIGN.md`) no longer applies to Cyber Bumblebee dark. Its identity is yellow on ink black, so a neutral charcoal is its own hue family. The rule's guard against a generic palette is met by the yellow budget instead. It still applies to the other presets.
+
+4. **The bottom nav and the More drawer's backdrop get their own roles.** The founder reviewed the screens and approved this.
+   - The roles are `--color-nav`, `--color-on-nav`, `--color-on-nav-muted` and `--color-scrim`, declared in `storefront/src/app/globals.css`.
+   - Their defaults reproduce the old look: ink pills, `surface` labels, an ink scrim.
+   - Bumblebee dark sets:
+     - a charcoal pill `#18181B`;
+     - the active label in yellow, 11.3:1 (v3's "yellow = active nav");
+     - the inactive labels `#A6A39B`, 7.0:1 (was 2.9:1);
+     - a black scrim, so the drawer dims the page instead of lightening it.
+   - Measured live with `getComputedStyle`, the other presets are unchanged:
+     - Digital Architect light: pill `#19192f`, 6.32 / 15.64;
+     - Bumblebee light: 6.52 / 16.18, the ADR-090 values.
+
+**Consequences to track.**
+- Red Giants, Emerald and Cobalt dark still use the default nav: a light `ink` pill with inactive labels at about 2.7:1 (Red Giants measured: 2.69 / 4.55), and a scrim that lightens. Setting the four roles in each dark set fixes it, with no component change.
+- `text-danger` (`#ba1a1a`, global) is 2.9:1 on charcoal, as it was on the old brown. No dark preset overrides it.

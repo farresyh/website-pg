@@ -2312,3 +2312,25 @@ The re-run happened before the first ladder is saved. Result: decision 3's grid 
 **Gotcha:** on `main`, `monthBounds()` lives on `MonthlyAccountingSummaryService`, not `RecognisedRevenue`. A production script written against staging failed on it first.
 
 **#765 (portal screens) and #766 (review fixes) were merged to `staging`.**
+
+## 2026-11-10 — Cyber Bumblebee dark: the "Bumblebee Dark v3" palette
+
+Branch `feature/bumblebee-dark-v3-palette`, into `staging`. The founder sent a Figma redesign of Bumblebee dark and asked for its colours only; layout, borders and shadows are unchanged. `tokensDark` in `storefront/src/lib/theme-presets.ts` was changed and synced to the portal copy. Affects PajoStore and FixFast Demo (production branding, read-only); PekanGame stays on Digital Architect light. Decision and deviations: ADR-113 2026-11-10 addendum. DESIGN.md's Tinted-Surface Rule names the exception.
+
+**Constraint found:** `--color-ink` is both the 2px border and the bottom-nav pill whose labels are `surface`. A hairline-dark ink (v3's 8% white) would put the labels at 2.4:1, so ink is `#8C8983`.
+
+**Verified** (throwaway e2e backend with the primary brand on Bumblebee dark; production storefront build on :3011; both deleted afterwards):
+- Before and after screenshots of home, order and track order, at 1440 and 390. Layout is identical and there is no horizontal overflow.
+- Measured with `getComputedStyle`: heading 15.8:1, muted 7.0:1.
+- Computed: bottom-nav active label 5.4:1 (was 4.8). Inactive label 2.9:1 (was 2.7), below 4.5 before and after.
+
+**Then the bottom nav** (founder reviewed the mobile screens and approved it):
+- What was wrong: the grey `ink` pill looked off on charcoal, and the More drawer's backdrop lightened the page.
+- The fix: `BottomNav` now reads `nav` / `on-nav` / `on-nav-muted` / `scrim`. Their defaults are the old ink and `surface`.
+- Bumblebee dark: a charcoal pill, the active label in yellow (11.3:1), the inactive labels at 7.0:1, and a black scrim.
+- Regression check with `getComputedStyle` on each preset: Digital Architect light and Bumblebee light are identical to before (6.32 / 15.64 and 6.52 / 16.18).
+- Red Giants dark is unchanged (2.69 / 4.55). The same four tokens would fix it and the other dark presets.
+
+**Gotchas:**
+- A `git worktree` with a symlinked `node_modules` fails `next build`, because Turbopack refuses a `node_modules` outside its root. Build in the real checkout instead.
+- Switching a throwaway brand's preset needs `.next/cache/fetch-cache` cleared and both servers restarted; this is the "scripted loop did not switch" mystery in the verification recipes. In zsh, pass `${=t}` to split a "preset mode" pair; a plain `$t` writes one bad value, which the storefront's schema check rejects, so it falls back to the default.
