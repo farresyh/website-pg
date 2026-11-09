@@ -2334,3 +2334,34 @@ Branch `feature/bumblebee-dark-v3-palette`, into `staging`. The founder sent a F
 **Gotchas:**
 - A `git worktree` with a symlinked `node_modules` fails `next build`, because Turbopack refuses a `node_modules` outside its root. Build in the real checkout instead.
 - Switching a throwaway brand's preset needs `.next/cache/fetch-cache` cleared and both servers restarted; this is the "scripted loop did not switch" mystery in the verification recipes. In zsh, pass `${=t}` to split a "preset mode" pair; a plain `$t` writes one bad value, which the storefront's schema check rejects, so it falls back to the default.
+## 2026-11-10 — Release #769: ADR-139 reseller rebate and the Bumblebee Dark v3 palette
+
+The founder asked for it. `staging` → `main`, merge `aac82832`, carrying #756–#768.
+
+**Pre-release checks (production, read-only):**
+- 5 new migrations;
+- `ledger_entries` holds 267 rows, so the `dedupe_key` rebuild is instant;
+- 0 failed wallet orders would be picked by the auto-refund sweep (the 4 Failed are already refunded);
+- no pending migrations; health 200.
+
+**CI incident:**
+- The `main` run's `backend-concurrency` died after 50 minutes with "The hosted runner lost communication with the server". It was a GitHub runner failure: the same code passed on `staging` 20 minutes earlier, in 19 minutes.
+- `deploy` was skipped as a result. The backend stayed on the old release (`/api/reseller-portal/rebate` answered 404) while Vercel had already deployed the frontends from `main`. No money was at risk: no ladder existed and no claim was possible.
+- `gh run rerun --failed`: concurrency passed in 15 minutes and `deploy` succeeded.
+- The workflow has no `timeout-minutes`, so a hung job would hold a deploy for up to 6 hours. A 30-minute limit is proposed.
+
+**Checked after release (production, read-only):**
+- `current` is `aac8283`. The 5 migrations ran in batch 69.
+- `reseller_wallet_tier_changes` backfilled 3 rows (resellers 1, 2, 3 on tiers 4, 1, 5).
+- `dedupe_key` includes `wallet_rebate`, and its unique index is present; 267 ledger rows, unchanged.
+- 0 ladders and 0 milestones; all 3 resellers are eligible.
+- Scheduler: `refund-failed-wallet-orders` (every minute), `apply-reseller-tier-changes` (hourly), `expire-rebate-rewards` 16:05 UTC and `finalize-rebate-months` 16:10 UTC (00:05 and 00:10 KL), `notify-rebate-progress` every 10 minutes.
+- `/api/health`: ok (database, queue, Horizon, scheduler). `/api/reseller-portal/rebate` answers 401 (live).
+- The laravel.log errors are all from before the release: 9 Nov 03:38 memory exhaustion (admin user 2) and a 13:02 Plunk 422.
+- Storefront: pajostore.com serves `--color-surface: #111113` and `--color-nav: #18181B`; ohahastore.com (Bumblebee light) still `#fff8e1`. The Vercel production deployments for admin, portal and storefront are on `aac8283`.
+
+**Next:** the founder saves the first ladder by 24 Nov (KL) for 1 Dec, then announces it to agents.
+
+**Separate findings:**
+- The 9 Nov dependency audit lists 7 advisories in 4 Symfony packages (for example `symfony/http-foundation`, `symfony/filesystem`).
+- A memory-exhaustion error hit an admin request on 9 Nov at 03:38.
