@@ -78,6 +78,17 @@
   --color-outline: #7b7486;
   --color-outline-variant: #cbc3b7;
 
+  /* ADR-113 2026-11-10 addendum: the mobile bottom nav's pills and the More
+     drawer's backdrop have their own roles. The defaults reproduce the old
+     look (ink pills, `surface` labels, an ink scrim), so a preset changes
+     them only by setting these. A dark preset needs them because its `ink`
+     is a light stroke (the Light-Ink Rule): a light pill and a scrim that
+     lightens the page instead of dimming it. */
+  --color-nav: var(--color-ink);
+  --color-on-nav: var(--color-surface);
+  --color-on-nav-muted: color-mix(in srgb, var(--color-surface) 60%, transparent);
+  --color-scrim: var(--color-ink);
+
   /* ---- Radius: limited, squared-leaning ---- */
   --radius-sm: 0.25rem;
   --radius-md: 0.375rem; /* 6px — buttons, inputs */

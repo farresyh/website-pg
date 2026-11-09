@@ -128,6 +128,7 @@ export const THEME_PRESETS: Record<string, ThemePreset> = {
     //   flattened onto a card (#383017), so they render the same anywhere.
     // `surface-container-highest` is the footer (v3 "deep", darker than
     // the page); the slider track that also reads it has its own border.
+    // `nav`/`on-nav`/`scrim` (bottom nav and More backdrop) are set below.
     tokensDark: {
       "--color-primary": "#FFC700",
       "--color-on-primary": "#111113",
@@ -163,6 +164,13 @@ export const THEME_PRESETS: Record<string, ThemePreset> = {
       "--color-surface-variant": "#202024",
       "--color-outline": "#8C8983",
       "--color-outline-variant": "#2A2A2F",
+      // The bottom nav as a charcoal pill, the active item in yellow (v3's
+      // "yellow = active nav"), the rest muted (7.0:1); the More drawer's
+      // backdrop dims the page instead of lightening it.
+      "--color-nav": "#18181B",
+      "--color-on-nav": "#FFC700",
+      "--color-on-nav-muted": "#A6A39B",
+      "--color-scrim": "#000000",
     },
   },
   redgiants: {
