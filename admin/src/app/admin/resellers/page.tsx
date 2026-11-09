@@ -68,6 +68,7 @@ import ResellerFormModal, { type ResellerFormSubmitValues } from "@/components/r
 import ResellerTierFormModal from "@/components/resellers/ResellerTierFormModal";
 import ResellerWalletModal from "@/components/resellers/ResellerWalletModal";
 import ResellerCloseModal from "@/components/resellers/ResellerCloseModal";
+import ResellerRebateEligibilityModal from "@/components/resellers/ResellerRebateEligibilityModal";
 import ResellerApiKeysModal from "@/components/resellers/ResellerApiKeysModal";
 import ReadinessCell from "@/components/partners/ReadinessCell";
 import ResellerWebhookModal from "@/components/resellers/ResellerWebhookModal";
@@ -98,6 +99,7 @@ export default function ResellersPage() {
   const [editingTier, setEditingTier] = useState<ResellerTier | null>(null);
   const [statusTarget, setStatusTarget] = useState<ResellerRow | null>(null);
   const [closeTarget, setCloseTarget] = useState<ResellerRow | null>(null);
+  const [rebateTarget, setRebateTarget] = useState<ResellerRow | null>(null);
   const [deleteTierTarget, setDeleteTierTarget] = useState<ResellerTier | null>(null);
   const [tierTarget, setTierTarget] = useState<ResellerRow | null>(null);
   const [tierSelectValue, setTierSelectValue] = useState<string>("");
@@ -258,6 +260,7 @@ export default function ResellersPage() {
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4">
                           <Tag severity={r.is_active ? "success" : "secondary"}>{r.is_active ? "active" : "inactive"}</Tag>
+                          {!r.rebate_eligible && <p className="mt-1 text-theme-xs text-ink-subtle">rebate off</p>}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4">
                           <div className="flex flex-wrap gap-1.5">
@@ -303,6 +306,9 @@ export default function ResellersPage() {
                               }
                             >
                               {r.is_active ? "Deactivate" : "Activate"}
+                            </Button>
+                            <Button size="small" variant="outlined" onClick={() => setRebateTarget(r)}>
+                              Rebate
                             </Button>
                             <Button size="small" variant="outlined" severity="danger" onClick={() => setCloseTarget(r)}>
                               Close account
@@ -558,6 +564,18 @@ export default function ResellersPage() {
           reseller={closeTarget}
           onClosed={() => {
             setCloseTarget(null);
+            refresh();
+          }}
+        />
+      )}
+
+      {rebateTarget && (
+        <ResellerRebateEligibilityModal
+          isOpen={rebateTarget !== null}
+          onClose={() => setRebateTarget(null)}
+          reseller={rebateTarget}
+          onChanged={() => {
+            setRebateTarget(null);
             refresh();
           }}
         />

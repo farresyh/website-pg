@@ -37,6 +37,8 @@ export interface ResellerRow {
   internal_reason: string | null;
   /** ADR-139 decision 7: a change on a reseller with a tier waits for the next 1st (KL). */
   pending_tier_change: { to_tier_id: number; to_tier_name: string | null; effective_on: string } | null;
+  /** ADR-139 decision 36: changed only through setRebateEligibility (step-up, reason recorded). */
+  rebate_eligible: boolean;
 }
 
 export interface ResellerTier {
@@ -162,6 +164,8 @@ export interface WalletLedgerEntry {
   receipt_name: string | null;
   /** Only set when reference_type is "order" — the customer-facing order number, not the internal id. */
   order_number: string | null;
+  /** ADR-139 decision 43: set on a wallet_rebate line, read from its milestone. */
+  rebate: { period: string; kind: "step" | "adjustment"; step: number; threshold_sen: number | null } | null;
   reason: string | null;
   created_at: string;
 }

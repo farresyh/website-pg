@@ -30,25 +30,32 @@ final class RebateMonthReport
         $period = CarbonImmutable::create($year, $month, 1, 0, 0, 0, MalaysiaTime::TIMEZONE)->toDateString();
         $rows = ResellerRebateMilestone::query()->with('reseller')->whereDate('period', $period)
             ->orderBy('reseller_id')->orderBy('kind')->orderBy('step')->get();
+        $finalised = ResellerRebateMonth::query()->whereDate('period', $period)->exists();
 
-        $resellers = $this->months->resellerIds($year, $month)->map(function (int $id) use ($year, $month, $rows) {
+        $resellers = $this->months->resellerIds($year, $month)->map(function (int $id) use ($year, $month, $rows, $finalised) {
             $reseller = Reseller::withTrashed()->find($id);
             $standing = $this->entitlement->standing($reseller, $year, $month);
             $own = $rows->where('reseller_id', $id);
+            $claimed = (int) $own->where('state', ResellerRebateMilestone::CLAIMED)->sum('amount_sen');
+            $inProgramme = $reseller->rebate_eligible && ! $reseller->trashed();
 
             return [
                 'reseller_id' => $id,
                 'business_name' => $reseller->business_name,
                 'tier_id' => $standing->tierId,
-                'eligible' => $reseller->rebate_eligible && ! $reseller->trashed(),
+                'eligible' => $inProgramme,
                 'closed' => $reseller->trashed(),
                 'sales_sen' => $standing->salesSen,
                 'profit_sen' => $standing->profitSen,
                 'reached_step' => $standing->reachedStep,
                 'cap_sen' => $standing->capSen,
                 'entitlement_sen' => $standing->entitlementSen(),
-                'claimed_sen' => (int) $own->where('state', ResellerRebateMilestone::CLAIMED)->sum('amount_sen'),
-                'available_sen' => (int) $own->where('state', ResellerRebateMilestone::AVAILABLE)->sum('amount_sen'),
+                'claimed_sen' => $claimed,
+                // Waiting to be claimed: the rows finalise wrote, or, while the month is live, what is
+                // reached and not claimed yet (the same figure as RebateLiability's payable).
+                'available_sen' => $finalised
+                    ? (int) $own->where('state', ResellerRebateMilestone::AVAILABLE)->sum('amount_sen')
+                    : ($inProgramme && $standing->earnsRebate() ? max(0, $standing->entitlementSen() - $claimed) : 0),
                 'expired_sen' => (int) $own->where('state', ResellerRebateMilestone::EXPIRED)->sum('amount_sen'),
                 'adjusted' => $own->where('adjusted', true)->isNotEmpty(),
             ];
@@ -56,7 +63,7 @@ final class RebateMonthReport
 
         return [
             'period' => sprintf('%04d-%02d', $year, $month),
-            'finalised' => ResellerRebateMonth::query()->whereDate('period', $period)->exists(),
+            'finalised' => $finalised,
             'claim_deadline' => ResellerRebateMilestone::claimDeadline(CarbonImmutable::parse($period))->toIso8601String(),
             'resellers' => $resellers,
             'rows' => $rows->map(fn (ResellerRebateMilestone $row) => self::rowShape($row))->values()->all(),

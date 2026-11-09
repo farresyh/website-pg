@@ -91,6 +91,7 @@ class RebateApiTest extends TestCase
             ->assertJsonPath('resellers.0.reached_step', 2)
             ->assertJsonPath('resellers.0.entitlement_sen', 600)
             ->assertJsonPath('resellers.0.claimed_sen', 100)
+            ->assertJsonPath('resellers.0.available_sen', 500)
             ->assertJsonPath('rows.0.step', 1)
             ->assertJsonPath('rows.0.cap_sen', 1624);
     }

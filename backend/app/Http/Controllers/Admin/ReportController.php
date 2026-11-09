@@ -211,9 +211,12 @@ class ReportController extends Controller
         $rangeLabel = $this->rangeLabel($from, $toExclusive);
         $affiliateLabel = $affiliateId ? Affiliate::query()->find($affiliateId)?->business_name : null;
 
+        // ADR-139 decision 24: the rebate is month-level, so it is a closing line, never in an order's row.
+        $rebates = $this->reports->resellerRebates($from, $toExclusive, $affiliateId) ?: null;
+
         return $format === 'pdf'
-            ? $this->exportPdf($rows, $rangeLabel, $affiliateLabel)
-            : $this->exportCsv($rows, $rangeLabel);
+            ? $this->exportPdf($rows, $rangeLabel, $affiliateLabel, $rebates)
+            : $this->exportCsv($rows, $rangeLabel, $rebates);
     }
 
     /**
@@ -267,11 +270,11 @@ class ReportController extends Controller
         return $fromKl === $toKl ? $fromKl : "{$fromKl}_to_{$toKl}";
     }
 
-    private function exportCsv(array $rows, string $rangeLabel): StreamedResponse
+    private function exportCsv(array $rows, string $rangeLabel, ?int $resellerRebates): StreamedResponse
     {
         $filename = 'sales-report-'.str_replace(' ', '-', strtolower($rangeLabel)).'.csv';
 
-        return response()->streamDownload(function () use ($rows) {
+        return response()->streamDownload(function () use ($rows, $resellerRebates) {
             $out = fopen('php://output', 'w');
             fputcsv($out, [
                 'Order #', 'Paid At', 'Customer', 'Affiliate', 'Game', 'Package', 'Payment Method',
@@ -299,11 +302,16 @@ class ReportController extends Controller
                 ]);
             }
 
+            if ($resellerRebates !== null) {
+                // Under Platform Profit, negative: a reduction of revenue (ADR-139 decision 20).
+                fputcsv($out, ['Reseller rebates (month-level revenue reduction; not in the rows above)', '', '', '', '', '', '', '', '', '', '', '', '', number_format(-$resellerRebates / 100, 2, '.', ''), '']);
+            }
+
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv']);
     }
 
-    private function exportPdf(array $rows, string $rangeLabel, ?string $affiliateLabel): Response
+    private function exportPdf(array $rows, string $rangeLabel, ?string $affiliateLabel, ?int $resellerRebates): Response
     {
         $filename = 'sales-report-'.str_replace(' ', '-', strtolower($rangeLabel)).'.pdf';
 
@@ -313,6 +321,7 @@ class ReportController extends Controller
             'rows' => $rows,
             'rangeLabel' => $rangeLabel,
             'affiliateLabel' => $affiliateLabel,
+            'resellerRebates' => $resellerRebates,
         ])->setPaper('a4', 'landscape')->download($filename);
     }
 }
