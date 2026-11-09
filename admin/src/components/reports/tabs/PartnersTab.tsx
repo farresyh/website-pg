@@ -70,7 +70,7 @@ export function PartnersTab(props: ReportTabProps) {
                 footer={
                   <>
                     {cmp && <ChangeLine change={cmp.changes[ch.channel]} previousLabel={previousLabel} />}
-                    {ch.reseller_rebates ? <p className="mt-1 text-theme-xs text-ink-muted">Reseller rebates earned: {formatRm(ch.reseller_rebates)}</p> : null}
+                    {ch.reseller_rebates ? <p className="mt-1 text-theme-xs text-ink-muted">Reseller rebates, net of lapsed rewards: {formatRm(ch.reseller_rebates)}</p> : null}
                     {ch.channel === "reseller_wallet" && c.reseller_wallet_by_placed_via.length > 0 && (
                       <p className="mt-1 text-theme-xs text-ink-muted">
                         {c.reseller_wallet_by_placed_via

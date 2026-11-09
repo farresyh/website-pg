@@ -565,3 +565,14 @@ The founder approved the programme terms that the accountant addendum's decision
    - The portal's `rebate.test.ts`: claim order, the claim-by date in KL, the statement label and the KL month.
    - `format.test.ts`: the rebate ledger labels.
    - A Playwright check on a throwaway backend: the terms on the first claim only, "Claim all" in order, unspent rebate, the statement labels, dark mode, and 390px.
+
+### 2026-11-09 addendum — money review after PR 4c
+
+1. **A three-layer review found no wrong money** (build-log, 2026-11-09): entitlement, claim and ledger; accounting invariants over three months; and every reader of the wallet ledger.
+2. **Two behaviours, by design and now on record:**
+   - An overpayment against the month's final cap, after a negative-profit order, is not clawed back (Rejected alternatives); admins are emailed.
+   - Turning eligibility off is final for a month that has ended, because finalise writes no rows for an ineligible account (decision 36: "off can only reduce").
+3. **The Transaction Register lists rebate movements.**
+   - It gains `reseller_rebate` (a claim, with its step and month) and `reseller_rebate_forfeit` (closure).
+   - Both are non-cash, like `wallet_refund`, so the year-end record holds every wallet movement (ADR-083 decision 9).
+4. **Reports wording.** A month's rebate counts in full in the range holding its 1st (`RebateLiability::reductionSen`). The owner-profit note now says so, and the Partners figure reads "net of lapsed rewards".

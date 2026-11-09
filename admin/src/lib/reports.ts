@@ -409,7 +409,8 @@ export async function exportReport(
 /** ADR-139 decision 24: owner profit is per order, before the month-level reseller rebate. */
 export function resellerRebateNote(rebatesSen: number | null | undefined): string | undefined {
   if (!rebatesSen) return undefined;
-  return `Before reseller rebates of ${formatRebateRm(rebatesSen)}, a month-level reduction (Accounting › Monthly Summary).`;
+  // A month's rebate counts in full in the range holding its 1st (RebateLiability::reductionSen), so say so.
+  return `Before reseller rebates of ${formatRebateRm(rebatesSen)}: each month whose 1st is in this range counts in full, less rewards that lapsed in it (Accounting › Monthly Summary).`;
 }
 
 function formatRebateRm(sen: number): string {

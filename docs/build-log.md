@@ -2265,3 +2265,34 @@ Branch `feature/rebate-portal-screens`, into `staging` (not released). This comp
   - unspent rebate reached RM7.00;
   - the statement labels were right;
   - checked in light and dark, and at 390px with no horizontal overflow.
+
+## 2026-11-09 — ADR-139 money review: no wrong money; three small fixes
+
+The founder asked whether rebate profit, accounting and ledger are right. Three read-only forks ran in parallel (entitlement/claim/ledger, accounting, downstream readers). Each simulated through the real services on a throwaway sqlite DB.
+
+**Found no wrong money.** Proven with numbers:
+- an early capped claim pays itself back, and finalise writes an adjustment;
+- double claims are blocked, and claims must go in order;
+- closure forfeit + closure refund = balance;
+- over three months, Σ reduction = Σ claimed, and the payable rolls forward exactly and equals Cash Position;
+- the cash equation does not move;
+- operating profit = profit − rebate + breakage, and the Bridge's unexplained difference stays 0;
+- a claim at 00:00 KL lands in the right month;
+- no reader counts a rebate as a cash top-up, a CHIP payment or a receipt.
+
+**Accepted risks, unchanged** (ADR-139 by design):
+- an overpayment against the final cap after a negative-profit order is not clawed back; admins get an email;
+- turning eligibility off is final for a month that has ended.
+
+**Fixed, branch `fix/rebate-report-labels`:**
+- The Reports "Before reseller rebates" note now says which months count: each month whose 1st is in the range, less lapses. A range such as 2–30 Nov shows RM0 by design.
+- Partners tab: "Reseller rebates, net of lapsed rewards". The figure can be negative.
+- Transaction Register: rows for a rebate claim (`reseller_rebate`, with its step and month) and a closure forfeit (`reseller_rebate_forfeit`). Before, the year-end record had no trace of either. `RebateRegisterTest` covers it.
+- `RebateLiability::payableSen`: a `ponytail` note. For an open month it uses entitlement as of now, which is exact for every reader today (month-end only).
+
+**Gotcha:** `RebateFixtures::delivered()` writes no `paid_at`, so any test that reaches the register's `orderRecognitionRows` must set one. Real orders always have one.
+
+**Verified:**
+- `php artisan test`: 3,891 passed.
+- Admin: `tsc`, lint and 22 unit tests pass.
+- Pint is clean.
