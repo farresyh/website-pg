@@ -541,3 +541,27 @@ The founder approved the programme terms that the accountant addendum's decision
      - the month cards (waiting RM5.00 after the fix), the CSV download and the eligibility dialog (also `mfa_not_enabled`);
      - the wallet history label;
      - the Reports Profit note "Before reseller rebates of RM 6.00".
+
+### 2026-11-09 addendum — PR 4c build notes (portal screens)
+
+1. **Built.**
+   - **Portal → Rebate** (`/rebate`, reseller nav only):
+     - the new-table notice (terms addendum, decision 2), own tier only;
+     - unspent rebate;
+     - this month and last month: purchases counted, progress to the next target, and each step with its target, its reward and its state;
+     - Claim in step order and "Claim all";
+     - the terms dialog;
+     - reward history and the terms text.
+   - **Dashboard:** a Rebate card ("RM X more to reach RM Y", plus a Claim button with the count) that also carries the new-table notice. It is hidden for an account outside the programme.
+   - **Statement:** labels for `wallet_rebate` (its step and month, the admin's wording) and `wallet_rebate_forfeit`.
+2. **Decided at build:**
+   - **"Claim all" is the browser calling the one claim endpoint step by step, in order.** It stops at the first refusal. There is no batch endpoint, so the claim stays the single writer with one rule set (decision 11).
+   - **Only the first claimable step has a Claim button**, because the server refuses claims out of order. The month's adjustment can be claimed on its own.
+   - **The terms dialog opens before a claim when the page says the terms are not accepted.** A 422 keyed `terms` reopens it for the steps not yet claimed.
+   - **Portal history rows carry `threshold_sen`**, read from the version the step was reached on, so a history line matches its statement line (decision 43). A target is not a share, so decision 8 holds.
+   - **An account outside the programme** sees a notice and no Claim buttons. The server refuses such a claim anyway (decision 36).
+3. **Proven by:**
+   - `RebateApiTest`: one new assertion, that the history line carries its target.
+   - The portal's `rebate.test.ts`: claim order, the claim-by date in KL, the statement label and the KL month.
+   - `format.test.ts`: the rebate ledger labels.
+   - A Playwright check on a throwaway backend: the terms on the first claim only, "Claim all" in order, unspent rebate, the statement labels, dark mode, and 390px.
