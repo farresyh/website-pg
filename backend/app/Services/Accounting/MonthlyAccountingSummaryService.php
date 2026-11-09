@@ -86,6 +86,9 @@ final class MonthlyAccountingSummaryService
     /** @return array<string, int> */
     private function profitLinesBefore(Carbon $from, Carbon $toExclusive): array
     {
+        // Resolved here, like kolFeeLines()'s schedule: the constructor's defaults let tests build this service with `new`.
+        $rebates = app(RebateLiability::class);
+
         return [
             'sales_revenue_sen' => $this->salesRevenue($from, $toExclusive),
             'membership_revenue_sen' => $this->membershipRevenue($from, $toExclusive),
@@ -101,8 +104,8 @@ final class MonthlyAccountingSummaryService
             'supplier_manual_adjustments_sen' => $this->supplierManualAdjustments($from, $toExclusive),
             'failed_order_credit_issued_sen' => $this->failedOrderCreditIssued($from, $toExclusive),
             // ADR-139 decisions 20 and 22: a revenue reduction (subtracted below) and its breakage (added).
-            'reseller_rebates_sen' => app(RebateLiability::class)->reductionSen($from, $toExclusive),
-            'reseller_rebate_breakage_sen' => app(RebateLiability::class)->breakageSen($from, $toExclusive),
+            'reseller_rebates_sen' => $rebates->reductionSen($from, $toExclusive),
+            'reseller_rebate_breakage_sen' => $rebates->breakageSen($from, $toExclusive),
         ];
     }
 

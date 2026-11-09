@@ -34,6 +34,7 @@ final class CashPositionService
     public function __construct(
         private readonly FundedCostOfSales $costOfSales,
         private readonly SettlementReconciliationService $settlements,
+        private readonly RebateLiability $rebates,
     ) {}
 
     /**
@@ -65,7 +66,7 @@ final class CashPositionService
                 // month closed before this key existed reads it as 0.
                 'supplier_payable_sen' => $suppliers['payable'],
                 // ADR-139 decision 21: rebate earned but neither claimed nor expired. A month closed before this key existed reads it as 0.
-                'reseller_rebates_payable_sen' => app(RebateLiability::class)->payableSen($toExclusive),
+                'reseller_rebates_payable_sen' => $this->rebates->payableSen($toExclusive),
             ],
             'envelope_identity_sen' => $this->envelopeIdentity($lastDay) + $pendingAllocationSen,
             'chip_unsettled_count' => count($unsettled),

@@ -13,6 +13,7 @@ use App\Services\Backup\BackupFailureAlerter;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Support\MalaysiaTime;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -97,17 +98,47 @@ final class RebateMonthService
     public function liveTotalSen(int $year, int $month): int
     {
         $total = 0;
+        // ponytail: one standing (~6 queries) per reseller with sales that month, on every Summary / Cash Position load; group the reach and profit query if resellers reach the hundreds.
         foreach ($this->resellerIds($year, $month) as $id) {
             $reseller = self::finalisable($id);
-            $claimed = (int) ResellerRebateMilestone::query()->where('reseller_id', $id)
-                ->whereDate('period', sprintf('%04d-%02d-01', $year, $month))
-                ->where('state', ResellerRebateMilestone::CLAIMED)->sum('amount_sen');
-            $standing = $reseller === null ? null : $this->entitlement->standing($reseller, $year, $month);
+            if ($reseller === null) {
+                $total += (int) ResellerRebateMilestone::query()->where('reseller_id', $id)
+                    ->whereDate('period', self::period($year, $month))
+                    ->where('state', ResellerRebateMilestone::CLAIMED)->sum('amount_sen');
 
-            $total += $standing?->earnsRebate() ? max($claimed, $standing->entitlementSen()) : $claimed;
+                continue;
+            }
+
+            $standing = $this->entitlement->standing($reseller, $year, $month);
+            $total += $standing->earnsRebate() ? max($standing->paidSen, $standing->entitlementSen()) : $standing->paidSen;
         }
 
         return $total;
+    }
+
+    /**
+     * Decision 23 and the 2026-11-09 review: why month M cannot close yet
+     * for the rebate, or null. M's figures come from rows, so finalise must
+     * have run for M, and every reward that lapsed by M's end must be
+     * expired (otherwise a late expiry run would date a reversal into M
+     * after it closed).
+     */
+    public function closeBlocker(int $year, int $month): ?string
+    {
+        $period = self::period($year, $month);
+        [, $toExclusive] = MonthlyAccountingSummaryService::monthBounds($year, $month);
+        $label = CarbonImmutable::parse($period)->format('F Y');
+
+        if (ResellerRebateLadder::query()->whereDate('effective_from', '<=', $period)->exists()
+            && ! ResellerRebateMonth::query()->whereDate('period', $period)->exists()) {
+            return "The reseller rebate for {$label} has not been finalised yet. It runs daily at 00:10 Kuala Lumpur time; close after it has run.";
+        }
+
+        if (self::dueBy($toExclusive->copy()->subSecond())->exists()) {
+            return "Reseller rebate rewards that lapsed by the end of {$label} have not been expired yet. The expiry runs daily at 00:05 Kuala Lumpur time; close after it has run.";
+        }
+
+        return null;
     }
 
     /** @return int rows expired */
@@ -116,13 +147,11 @@ final class RebateMonthService
         $now = CarbonImmutable::now(MalaysiaTime::TIMEZONE);
         $expired = 0;
 
-        ResellerRebateMilestone::query()
-            ->where('state', ResellerRebateMilestone::AVAILABLE)
-            ->whereDate('period', '<=', $now->subMonthsNoOverflow(2)->startOfMonth()->toDateString())
+        self::dueBy($now)
             ->orderBy('id')
             ->get()
             ->each(function (ResellerRebateMilestone $row) use (&$expired) {
-                $deadline = CarbonImmutable::parse($row->period->toDateString(), MalaysiaTime::TIMEZONE)->addMonthsNoOverflow(2)->utc();
+                $deadline = ResellerRebateMilestone::claimDeadline($row->period)->utc();
                 $expired += ResellerRebateMilestone::query()->whereKey($row->id)->where('state', ResellerRebateMilestone::AVAILABLE)
                     ->update(['state' => ResellerRebateMilestone::EXPIRED, 'expired_at' => $deadline]);
             });
@@ -144,8 +173,22 @@ final class RebateMonthService
             ->where('is_test', false)->whereNotNull('wallet_reseller_id')
             ->where('recognised_at', '>=', $from)->where('recognised_at', '<', $toExclusive)
             ->distinct()->pluck('wallet_reseller_id')
-            ->merge(ResellerRebateMilestone::query()->whereDate('period', sprintf('%04d-%02d-01', $year, $month))->distinct()->pluck('reseller_id'))
+            ->merge(ResellerRebateMilestone::query()->whereDate('period', self::period($year, $month))->distinct()->pluck('reseller_id'))
             ->map(fn ($id) => (int) $id)->unique()->sort()->values();
+    }
+
+    /** Unclaimed rows whose claim deadline is at or before an instant. */
+    private static function dueBy(\DateTimeInterface $instant): Builder
+    {
+        return ResellerRebateMilestone::query()
+            ->where('state', ResellerRebateMilestone::AVAILABLE)
+            ->whereDate('period', '<=', ResellerRebateMilestone::lastPeriodDueBy(CarbonImmutable::instance($instant))->toDateString());
+    }
+
+    /** A month's period date, as the milestone and month tables store it. */
+    private static function period(int $year, int $month): string
+    {
+        return CarbonImmutable::create($year, $month, 1, 0, 0, 0, MalaysiaTime::TIMEZONE)->toDateString();
     }
 
     /** Null when finalise skips the reseller: closed (its rows were expired at closure) or out of the programme. */

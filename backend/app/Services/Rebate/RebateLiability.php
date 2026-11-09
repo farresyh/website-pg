@@ -115,6 +115,6 @@ final class RebateLiability
 
     private static function period(CarbonInterface $monthStart): string
     {
-        return $monthStart->format('Y-m-01');
+        return $monthStart->toDateString();
     }
 }

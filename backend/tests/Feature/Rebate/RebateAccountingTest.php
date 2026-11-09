@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Rebate;
 
+use App\Models\AccountingPeriodClose;
 use App\Models\AdminUser;
 use App\Models\AffiliateUser;
 use App\Models\Order;
@@ -237,5 +238,24 @@ class RebateAccountingTest extends TestCase
             $this->assertSame([$rebates, $breakage], [$bridge['reseller_rebates'], $bridge['reseller_rebate_breakage']], "{$year}-{$month}");
             $this->assertSame(0, $bridge['unexplained_difference'], "{$year}-{$month}");
         }
+    }
+
+    /** A reward lapsing in month M must be expired before M closes, or a late expiry run would move the closed month (review 2026-11-09). */
+    public function test_a_month_cannot_close_while_a_reward_due_to_lapse_in_it_is_unexpired(): void
+    {
+        $this->ladder('2026-09-01');
+        $this->delivered(60000, 1740, '2026-09-10 04:00:00');
+        Carbon::setTestNow(Carbon::parse('2026-11-30 16:05:00', 'UTC')); // 1 Dec, 00:05 KL
+        app(RebateMonthService::class)->finalizeDue(); // Sep, Oct, Nov; September's step lapsed at 00:00 KL on 1 Nov
+        AccountingPeriodClose::query()->create([
+            'period_month' => '2026-10-01', 'operating_profit_sen' => 0, 'prior_adjustment_sen' => 0, 'allocated_sen' => 0,
+            'profit_lines' => [], 'cash_balances' => [], 'equation' => [], 'gap_sen' => 0, 'closed_by' => AdminUser::query()->first()->id,
+        ]);
+
+        $this->assertStringContainsString('expired', (string) app(MonthCloseService::class)->preview(2026, 11)['blocked_reason']);
+
+        $this->artisan('app:expire-rebate-rewards')->assertSuccessful();
+
+        $this->assertNull(app(MonthCloseService::class)->preview(2026, 11)['blocked_reason']);
     }
 }
