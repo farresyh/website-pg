@@ -250,6 +250,8 @@ class ResellerController extends Controller
             'balance_cap_sen' => $reseller->balance_cap_sen,
             'effective_balance_cap_sen' => $reseller->balance_cap_sen
                 ?? ($this->defaultBalanceCapSen ??= (int) PlatformSettings::current()->balance_cap_default_sen),
+            // ADR-139 decision 36: changed only through PATCH rebate-eligibility.
+            'rebate_eligible' => (bool) $reseller->rebate_eligible,
             'users' => $reseller->relationLoaded('users')
                 ? $reseller->users->map(fn (AffiliateUser $u) => [
                     'id' => $u->id,

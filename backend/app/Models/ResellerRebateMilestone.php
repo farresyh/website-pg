@@ -61,6 +61,11 @@ class ResellerRebateMilestone extends Model
         return CarbonImmutable::instance($instant)->setTimezone(MalaysiaTime::TIMEZONE)->startOfMonth()->subMonthsNoOverflow(2);
     }
 
+    public function ladder(): BelongsTo
+    {
+        return $this->belongsTo(ResellerRebateLadder::class, 'ladder_id');
+    }
+
     public function reseller(): BelongsTo
     {
         return $this->belongsTo(Reseller::class)->withTrashed();

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * ADR-139 decisions 3, 6: one ladder version, effective from a 1st (KL).
@@ -21,6 +22,11 @@ class ResellerRebateLadder extends Model
     ];
 
     /** Cumulative reward (sen) at 1-based step $step for a tier; null if the tier has no column (decision 44). */
+    public function admin(): BelongsTo
+    {
+        return $this->belongsTo(AdminUser::class, 'admin_user_id');
+    }
+
     public function cumulativeFor(int $tierId, int $step): ?int
     {
         if ($step === 0) {

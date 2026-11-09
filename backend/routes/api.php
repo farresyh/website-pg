@@ -29,6 +29,7 @@ use App\Http\Controllers\Admin\OrderCredentialController;
 use App\Http\Controllers\Admin\PartnerApplicationController;
 use App\Http\Controllers\Admin\PartnerSupplierController;
 use App\Http\Controllers\Admin\PaymentSettlementController;
+use App\Http\Controllers\Admin\RebateController;
 use App\Http\Controllers\Admin\RedirectController;
 use App\Http\Controllers\Admin\ReportAssistantController;
 use App\Http\Controllers\Admin\ReportController;
@@ -103,6 +104,7 @@ use App\Http\Controllers\ResellerPortal\ApiKeyController as ResellerPortalApiKey
 use App\Http\Controllers\ResellerPortal\OnboardingController as ResellerPortalOnboardingController;
 use App\Http\Controllers\ResellerPortal\OrderController as ResellerPortalOrderController;
 use App\Http\Controllers\ResellerPortal\ProfileController as ResellerPortalProfileController;
+use App\Http\Controllers\ResellerPortal\RebateController as ResellerPortalRebateController;
 use App\Http\Controllers\ResellerPortal\WalletController as ResellerPortalWalletController;
 use App\Http\Controllers\ResellerPortal\WalletReceiptController as ResellerPortalWalletReceiptController;
 use App\Http\Controllers\ResellerPortal\WebhookController as ResellerPortalWebhookController;
@@ -475,6 +477,10 @@ Route::prefix('reseller-portal')->middleware(['auth:affiliate', 'account.type:re
     Route::post('/wallet/topup/{reference}/resume', [ResellerPortalWalletController::class, 'resume'])->middleware('throttle:10,1,reseller-topup-resume');
     Route::post('/wallet/topup/{reference}/cancel', [ResellerPortalWalletController::class, 'cancel'])->middleware('throttle:5,1,reseller-topup-cancel');
     Route::get('/wallet/receipts/{number}', [ResellerPortalWalletReceiptController::class, 'show']);
+
+    // ADR-139 decisions 16, 41: the Rebate page and its claim (portal only).
+    Route::get('/rebate', [ResellerPortalRebateController::class, 'show']);
+    Route::post('/rebate/claim', [ResellerPortalRebateController::class, 'claim'])->middleware('throttle:20,1,reseller-rebate-claim');
 
     Route::get('/orders', [ResellerPortalOrderController::class, 'index']);
     Route::get('/orders/{orderNumber}', [ResellerPortalOrderController::class, 'show']);
@@ -1018,6 +1024,14 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
             Route::post('/{partnerApplication}/documents/{document}/link', [PartnerApplicationController::class, 'fileLink']);
         });
 
+        // ADR-139 decisions 17, 18 (PR 4a): the reseller rebate. A ladder version needs the step-up.
+        Route::prefix('rebate')->group(function () {
+            Route::get('/ladders', [RebateController::class, 'ladders']);
+            Route::post('/ladders', [RebateController::class, 'storeLadder'])->middleware('mfa.stepup');
+            Route::get('/months/{year}/{month}', [RebateController::class, 'month'])->whereNumber(['year', 'month']);
+            Route::get('/months/{year}/{month}/export', [RebateController::class, 'export'])->whereNumber(['year', 'month']);
+        });
+
         Route::prefix('resellers')->group(function () {
             Route::get('/', [ResellerController::class, 'index']);
             // ADR-133 2026-11-01: a real reseller comes from an application (Invite directly or the
@@ -1031,6 +1045,8 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
             // ADR-131 decision 12 — the only way to remove a Reseller (no bare DELETE).
             Route::get('/{reseller}/close-check', [ResellerController::class, 'closeCheck']);
             Route::post('/{reseller}/close', [ResellerController::class, 'close'])->middleware('mfa.stepup');
+            // ADR-139 decision 36: in or out of the rebate programme, recorded with a reason.
+            Route::patch('/{reseller}/rebate-eligibility', [RebateController::class, 'updateEligibility'])->middleware('mfa.stepup');
 
             // PR-G — this account's portal login (ADR-072 decision 5),
             // mirrors AffiliateController's own staff-login actions.

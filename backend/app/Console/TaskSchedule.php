@@ -68,6 +68,7 @@ class TaskSchedule
         'stale-cache-pruning',
         'affiliate-domain-status-sync',
         'horizon-snapshot',
+        'rebate-progress-notify',
         'price-sync-staleness-check',
     ];
 
@@ -168,6 +169,12 @@ class TaskSchedule
         $schedule->command('app:finalize-rebate-months')
             ->dailyAt('16:10')
             ->name('rebate-month-finalize')
+            ->withoutOverlapping($overlap);
+
+        // ADR-139 decision 47: step and reminder messages, off the money path.
+        $schedule->command('app:notify-rebate-progress')
+            ->everyTenMinutes()
+            ->name('rebate-progress-notify')
             ->withoutOverlapping($overlap);
 
         // ADR-021 — prunes player_validations PII past its retention window —
