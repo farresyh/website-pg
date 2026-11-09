@@ -8,6 +8,7 @@ use App\Models\MembershipCheckoutAttempt;
 use App\Models\MembershipFeeRecord;
 use App\Models\Order;
 use App\Models\Reseller;
+use App\Models\ResellerRebateMilestone;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\Voucher;
@@ -16,6 +17,7 @@ use App\Models\Withdrawal;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\PaymentStatus;
 use App\Services\Report\ReportService;
+use App\Services\Reseller\WalletEntryType;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use App\Services\Withdrawal\WithdrawalStatus;
 use App\Support\MalaysiaTime;
@@ -68,6 +70,7 @@ final class TransactionRegisterService
             ...$this->walletManualCreditRows($from, $toExclusive),
             ...$this->walletClosureRows($from, $toExclusive),
             ...$this->walletRefundRows($from, $toExclusive),
+            ...$this->walletRebateRows($from, $toExclusive),
             ...$this->withdrawalRows($from, $toExclusive),
         ];
 
@@ -664,6 +667,67 @@ final class TransactionRegisterService
                 'funding_source' => null,
             ])
             ->all();
+    }
+
+    /**
+     * ADR-139 (2026-11-09 review): a rebate claim credits Purchase Balance and a
+     * closure forfeits the unspent part. Neither is cash, like `wallet_refund`,
+     * but both move a wallet balance, so the year-end record lists them. The
+     * claim's step and month come from its milestone (decision 43's wording).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function walletRebateRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
+    {
+        $entries = LedgerEntry::query()
+            ->where('owner_type', LedgerOwnerType::ResellerWallet->value)
+            ->whereIn('type', [WalletEntryType::Rebate->value, WalletEntryType::RebateForfeit->value])
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
+            ->get();
+
+        $names = Reseller::withTrashed()->whereIn('id', $entries->pluck('owner_id')->unique())->pluck('business_name', 'id');
+        $milestones = ResellerRebateMilestone::query()->with('ladder')
+            ->whereIn('id', $entries->where('type', WalletEntryType::Rebate->value)->pluck('reference_id'))->get()->keyBy('id');
+
+        return $entries
+            ->map(function (LedgerEntry $entry) use ($names, $milestones) {
+                $name = $names[$entry->owner_id] ?? 'unknown reseller';
+                $claim = $entry->type === WalletEntryType::Rebate->value;
+
+                return [
+                    'date' => $entry->created_at->toIso8601String(),
+                    'type' => $claim ? 'reseller_rebate' : 'reseller_rebate_forfeit',
+                    'reference' => 'Ledger entry #'.$entry->id,
+                    'description' => $claim
+                        ? 'Reseller rebate claimed — '.$name.self::rebateStep($milestones->get($entry->reference_id))
+                        : 'Unspent rebate forfeited at account closure — '.$name,
+                    'supplier' => null,
+                    'currency' => 'MYR',
+                    'gross_sen' => null,
+                    'fee_sen' => null,
+                    'cost_sen' => null,
+                    'net_sen' => $entry->amount,
+                    'amount_foreign' => null,
+                    'status' => 'active',
+                    'funding_source' => null,
+                ];
+            })
+            ->all();
+    }
+
+    /** ", RM5,000.00 step (December 2026)" or ", monthly adjustment (December 2026)". */
+    private static function rebateStep(?ResellerRebateMilestone $m): string
+    {
+        if ($m === null) {
+            return '';
+        }
+        $month = $m->period->format('F Y');
+        if ($m->kind !== ResellerRebateMilestone::KIND_STEP) {
+            return ", monthly adjustment ({$month})";
+        }
+
+        return ', RM'.number_format(((int) ($m->ladder?->steps[$m->step - 1]['threshold_sen'] ?? 0)) / 100, 2)." step ({$month})";
     }
 
     /**

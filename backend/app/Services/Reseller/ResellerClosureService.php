@@ -6,12 +6,14 @@ use App\Models\LedgerAccount;
 use App\Models\Order;
 use App\Models\Reseller;
 use App\Models\ResellerApiKey;
+use App\Models\ResellerRebateMilestone;
 use App\Models\ResellerWebhook;
 use App\Models\WalletTopupAttempt;
 use App\Models\WhatsAppGroup;
 use App\Services\Accounting\AccountingPeriod;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
+use App\Services\Rebate\UnspentRebate;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -36,7 +38,24 @@ use Illuminate\Validation\ValidationException;
  */
 final class ResellerClosureService
 {
-    public function __construct(private readonly LedgerService $ledger) {}
+    public function __construct(
+        private readonly LedgerService $ledger,
+        private readonly UnspentRebate $unspentRebate,
+    ) {}
+
+    /**
+     * ADR-139 decision 15: what a closure refunds. Unspent rebate credit is
+     * forfeited, so only the rest of the balance goes back to the payer.
+     *
+     * @return array{balance_sen: int, unspent_rebate_sen: int, refund_sen: int}
+     */
+    public function refundable(Reseller $reseller): array
+    {
+        $balance = $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id);
+        $unspent = min(max(0, $balance), $this->unspentRebate->forReseller($reseller->id));
+
+        return ['balance_sen' => $balance, 'unspent_rebate_sen' => $unspent, 'refund_sen' => $balance - $unspent];
+    }
 
     /**
      * What still stands between this reseller and a closure, as sentences.
@@ -91,13 +110,29 @@ final class ResellerClosureService
                 throw ValidationException::withMessages(['reseller' => $blockers]);
             }
 
-            $balance = $this->ledger->balance(LedgerOwnerType::ResellerWallet, $locked->id);
-            if ($balance > 0) {
+            ['unspent_rebate_sen' => $unspent, 'refund_sen' => $refund] = $this->refundable($locked);
+            if ($unspent > 0) {
                 $this->ledger->debit(
                     LedgerOwnerType::ResellerWallet,
                     $locked->id,
-                    $balance,
-                    'wallet_closure_refund',
+                    $unspent,
+                    WalletEntryType::RebateForfeit->value,
+                    'reseller',
+                    $locked->id,
+                    $adminUserId,
+                    'Account closed. Unspent rebate credit forfeited (ADR-139 decision 15).',
+                );
+            }
+            // An unclaimed reward lapses with the account: a reversal of the revenue reduction, dated now.
+            ResellerRebateMilestone::query()->where('reseller_id', $locked->id)->where('state', ResellerRebateMilestone::AVAILABLE)
+                ->update(['state' => ResellerRebateMilestone::EXPIRED, 'expired_at' => now()]);
+
+            if ($refund > 0) {
+                $this->ledger->debit(
+                    LedgerOwnerType::ResellerWallet,
+                    $locked->id,
+                    $refund,
+                    WalletEntryType::ClosureRefund->value,
                     'reseller',
                     $locked->id,
                     $adminUserId,
@@ -116,7 +151,7 @@ final class ResellerClosureService
             $locked->update(['is_active' => false]);
             $locked->delete();
 
-            return $balance;
+            return $refund;
         });
 
         Log::info('Reseller account closed', [

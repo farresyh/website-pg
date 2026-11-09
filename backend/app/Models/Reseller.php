@@ -33,6 +33,7 @@ class Reseller extends Model
         'phone',
         'reseller_tier_id',
         'is_active',
+        'rebate_eligible',
         'notes',
         'balance_cap_sen',
         'internal_reason',
@@ -40,12 +41,19 @@ class Reseller extends Model
 
     protected $casts = [
         'is_active' => 'boolean',
+        'rebate_eligible' => 'boolean',
         'balance_cap_sen' => 'integer',
     ];
 
     public function tier(): BelongsTo
     {
         return $this->belongsTo(ResellerTier::class, 'reseller_tier_id');
+    }
+
+    /** ADR-139 decision 7: the one tier change waiting for its 1st (KL), if any. */
+    public function pendingTierChange(): HasOne
+    {
+        return $this->hasOne(ResellerWalletTierChange::class)->whereNull('applied_at');
     }
 
     /** ADR-133: the application this account was approved from, if it came through the KYC form. */

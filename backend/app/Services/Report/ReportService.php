@@ -20,6 +20,7 @@ use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Pricing\PricingBasis;
+use App\Services\Rebate\RebateLiability;
 use App\Support\MalaysiaTime;
 use App\Support\PeriodComparison;
 use Carbon\CarbonImmutable;
@@ -90,8 +91,7 @@ final class ReportService
      */
     public function profitBridge(?CarbonImmutable $from, ?CarbonImmutable $toExclusive): array
     {
-        $from ??= CarbonImmutable::create(2000, 1, 1, 0, 0, 0, 'UTC');
-        $toExclusive ??= CarbonImmutable::now()->addSecond()->startOfSecond();
+        [$from, $toExclusive] = self::boundedRange($from, $toExclusive);
         $lines = app(MonthlyAccountingSummaryService::class)->profitLines(Carbon::instance($from), Carbon::instance($toExclusive));
         $ownerProfit = $this->profitTotals($from, $toExclusive, null)['platform'];
 
@@ -104,6 +104,8 @@ final class ReportService
             'voucher_breakage' => $lines['voucher_breakage_sen'],
             'admin_issued_vouchers' => -$lines['admin_issued_vouchers_sen'],
             'supplier_manual_adjustments' => $lines['supplier_manual_adjustments_sen'],
+            'reseller_rebates' => -$lines['reseller_rebates_sen'],
+            'reseller_rebate_breakage' => $lines['reseller_rebate_breakage_sen'],
             'cogs_funding_difference' => -$lines['cogs_funding_difference_sen'],
             'ledger_vs_order_figures' => $lines['sales_revenue_sen'] - $lines['cogs_at_order_cost_sen'] - $lines['affiliate_commission_expense_sen'] - $ownerProfit,
         ];
@@ -163,6 +165,28 @@ final class ReportService
         return [$from, $toExclusive ?? $todayKl->addDay()->setTimezone('UTC')];
     }
 
+    /** "All time" as a bounded range, for the month-level lines that need one. */
+    private static function boundedRange(?CarbonImmutable $from, ?CarbonImmutable $toExclusive): array
+    {
+        return [$from ?? CarbonImmutable::create(2000, 1, 1, 0, 0, 0, 'UTC'), $toExclusive ?? CarbonImmutable::now()->addSecond()->startOfSecond()];
+    }
+
+    /**
+     * ADR-139 decision 24: the reseller rebate earned in the range, less
+     * rewards that lapsed in it (the Monthly Summary's `reseller_rebates_sen`).
+     * A month counts where its 1st falls. Per-order profit is unchanged; this
+     * is a separate line. Null under an affiliate filter: it is reseller-level.
+     */
+    public function resellerRebates(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): ?int
+    {
+        if ($affiliateId !== null) {
+            return null;
+        }
+        [$from, $toExclusive] = self::boundedRange($from, $toExclusive);
+
+        return app(RebateLiability::class)->reductionSen($from, $toExclusive);
+    }
+
     public function summary(?CarbonImmutable $from, ?CarbonImmutable $toExclusive, ?int $affiliateId): array
     {
         // One pass for the two aggregates (was a separate ->sum() and
@@ -186,6 +210,7 @@ final class ReportService
             'platform_profit' => $profit['platform'],
             'affiliate_profit' => $profit['affiliate'],
             'margin_pct' => $totalSales > 0 ? round($profit['platform'] / $totalSales * 100, 2) : 0.0,
+            'reseller_rebates' => $this->resellerRebates($from, $toExclusive, $affiliateId),
             // ADR-134 decision 13: orders whose profit rests on the market mid-rate, not the deposit's landed cost; the page says so when any are in range.
             'market_rate_orders' => (int) $totals->market_rate_orders,
             'avg_order_value' => $ordersCount > 0 ? (int) round($totalSales / $ordersCount) : 0,
@@ -744,6 +769,8 @@ final class ReportService
             'orders_count' => (int) ($sales->get($channel)->orders_count ?? 0),
             'platform_profit' => $profit->get($channel)['platform'] ?? 0,
             'affiliate_profit' => $profit->get($channel)['affiliate'] ?? 0,
+            // ADR-139 decision 24: only the wallet channel has a rebate.
+            'reseller_rebates' => $channel === 'reseller_wallet' ? $this->resellerRebates($from, $toExclusive, $affiliateId) : null,
         ], ['own_brand', 'reseller_wallet', 'external_affiliate']);
 
         $byPlacedVia = $this->salesByGroup(

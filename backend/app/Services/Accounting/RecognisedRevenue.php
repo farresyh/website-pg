@@ -113,6 +113,28 @@ final class RecognisedRevenue
             ->values();
     }
 
+    /**
+     * ADR-139 decision 5: one reseller's recognised wallet sales and platform
+     * profit in the range — the rebate's reach and cap read the same set the
+     * Monthly Summary recognises, never a second definition.
+     *
+     * @return array{sales_sen: int, profit_sen: int}
+     */
+    public function walletResellerTotals(int $resellerId, ?CarbonInterface $from, ?CarbonInterface $toExclusive): array
+    {
+        $delivered = $this->inRange(Order::query(), $from, $toExclusive)
+            ->where('wallet_reseller_id', $resellerId)
+            ->where('delivery_status', DeliveryStatus::Delivered->value)
+            ->selectRaw('COALESCE(SUM(selling_price), 0) AS sales, COALESCE(SUM(platform_profit), 0) AS profit')
+            ->first();
+        $partial = $this->settledPartialOrders($from, $toExclusive)->where('wallet_reseller_id', $resellerId);
+
+        return [
+            'sales_sen' => (int) $delivered->sales + (int) $partial->sum(fn (Order $o) => $this->keptSen($o)),
+            'profit_sen' => (int) $delivered->profit + (int) $partial->sum('platform_profit'),
+        ];
+    }
+
     private function inRange(Builder $query, ?CarbonInterface $from, ?CarbonInterface $toExclusive): Builder
     {
         return $query

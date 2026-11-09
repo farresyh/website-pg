@@ -101,6 +101,9 @@ final class ReportAssistantService
             is delivered, so "profit in September" means rows whose recognised_at_kl is in September,
             not paid_at_kl); margin % = that profit / SUM(net_sales) * 100.
           Never compute profit or margin yourself from cost_price/final_amount/transaction_fee.
+          platform_profit is per order and BEFORE reseller rebates (ADR-139): a month-level
+            reduction of revenue that is in no view here. When you report profit, say it is before
+            reseller rebates and that the Monthly Summary has the figure after them.
 
         llm_report_membership_fees — one row per membership subscription/renewal fee
         actually booked (ledger type=membership_fee).

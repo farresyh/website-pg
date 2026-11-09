@@ -4,10 +4,13 @@ namespace Tests\Feature\Accounting;
 
 use App\Models\AccountingPeriodClose;
 use App\Models\Affiliate;
+use App\Models\AffiliateUser;
 use App\Models\BudgetEnvelopePosting;
 use App\Models\LedgerEntry;
 use App\Models\MembershipPlan;
 use App\Models\Order;
+use App\Models\ResellerRebateLadder;
+use App\Models\ResellerWalletTierChange;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
@@ -15,11 +18,13 @@ use App\Models\Voucher;
 use App\Models\Withdrawal;
 use App\Services\Accounting\CashPositionService;
 use App\Services\Accounting\EnvelopePostingType;
+use App\Services\Accounting\MonthCloseService;
 use App\Services\Accounting\MonthlyAccountingSummaryService;
 use App\Services\Accounting\RecognisedRevenue;
 use App\Services\Accounting\SupplierFundingService;
 use App\Services\Accounting\TransactionRegisterService;
 use App\Services\Affiliate\AffiliateEarningsService;
+use App\Services\Auth\AccountOwnerType;
 use App\Services\CustomerAnalytics\CustomerAnalyticsService;
 use App\Services\CustomerAnalytics\CustomerFilters;
 use App\Services\Dashboard\DashboardService;
@@ -27,6 +32,8 @@ use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Pricing\PricingBasis;
+use App\Services\Rebate\RebateClaimService;
+use App\Services\Rebate\RebateMonthService;
 use App\Services\Report\ReportService;
 use App\Services\Reseller\ResellerWalletService;
 use App\Services\Withdrawal\WithdrawalStatus;
@@ -34,6 +41,7 @@ use Carbon\CarbonImmutable;
 use Database\Seeders\FinancialScenario\FinancialScenario;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -453,7 +461,7 @@ class FinancialScenarioTest extends TestCase
         try {
             $s->closeResellerAccount();
             $this->fail('expected the closure to be refused');
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             $this->assertArrayHasKey('reseller', $e->errors());
         }
 
@@ -669,5 +677,48 @@ class FinancialScenarioTest extends TestCase
             $this->assertSame(0, $bridge['unexplained_difference'], "{$year}-{$month}: ".json_encode($bridge));
             $this->assertSame(app(MonthlyAccountingSummaryService::class)->forPeriod($year, $month)['operating_profit_sen'], $bridge['operating_profit']);
         }
+    }
+
+    /**
+     * ADR-139 decisions 21–23 (PR 3b-ii): the October cash equation's gap does
+     * not move when a ladder starts, a step is claimed, the account closes
+     * with rebate credit unspent (forfeited as breakage) or the month is
+     * finalised; the Bridge explains the rebate lines; and October cannot
+     * close until it is finalised.
+     */
+    public function test_the_rebate_moves_no_gap_and_the_bridge_explains_it(): void
+    {
+        $s = $this->scenario;
+        $gap = fn (): int => CashPositionService::gapSen(app(MonthCloseService::class)->preview(2026, 10)['position'], $s->bankAsOf('2026-10-31'));
+        $rebate = fn (): array => array_intersect_key(app(MonthlyAccountingSummaryService::class)->forPeriod(2026, 10), array_flip(['reseller_rebates_sen', 'reseller_rebate_breakage_sen']));
+        $gapBefore = $gap();
+
+        ResellerWalletTierChange::query()->create(['reseller_id' => $s->reseller->id, 'to_tier_id' => $s->reseller->reseller_tier_id, 'effective_on' => '2026-09-01', 'applied_at' => now()]);
+        ResellerRebateLadder::query()->create(['effective_from' => '2026-10-01', 'max_share_bp' => 5000, 'steps' => [
+            ['threshold_sen' => 100, 'rewards' => [(string) $s->reseller->reseller_tier_id => 5]],
+            ['threshold_sen' => 200, 'rewards' => [(string) $s->reseller->reseller_tier_id => 15]],
+        ]]);
+        $this->assertSame(['reseller_rebates_sen' => 15, 'reseller_rebate_breakage_sen' => 0], $rebate());
+        $this->assertSame($gapBefore, $gap(), 'reached: the profit to allocate and the payable move together');
+
+        $user = AffiliateUser::query()->create(['owner_type' => AccountOwnerType::Reseller->value, 'owner_id' => $s->reseller->id, 'name' => 'Scenario', 'email' => 'scenario-reseller@pekangame.test', 'password' => 'x', 'is_active' => true]);
+        $s->at('2026-10-21 10:00');
+        app(RebateClaimService::class)->claim($s->reseller, $user, 2026, 10, 1, acceptTerms: true);
+        $this->assertSame($gapBefore, $gap(), 'claimed: the payable moved into the wallet claim');
+
+        $s->at('2026-10-25 10:00')->closeResellerAccount();
+        $this->assertSame(['reseller_rebates_sen' => 5, 'reseller_rebate_breakage_sen' => 5], $rebate());
+        $this->assertSame($gapBefore, $gap(), 'closed: the forfeited credit is breakage, the rest left the bank');
+
+        $s->at('2026-11-01 00:05');
+        $this->assertStringContainsString('rebate', (string) app(MonthCloseService::class)->preview(2026, 10)['blocked_reason']);
+        app(RebateMonthService::class)->finalizeDue();
+        $this->assertSame(['reseller_rebates_sen' => 5, 'reseller_rebate_breakage_sen' => 5], $rebate());
+        $this->assertSame($gapBefore, $gap(), 'finalised: the rows say what the live figure said');
+        $this->assertNull(app(MonthCloseService::class)->preview(2026, 10)['blocked_reason']);
+
+        $bridge = app(ReportService::class)->profitBridge(...self::month(2026, 10));
+        $this->assertSame([-5, 5], [$bridge['reseller_rebates'], $bridge['reseller_rebate_breakage']]);
+        $this->assertSame(0, $bridge['unexplained_difference'], json_encode($bridge));
     }
 }

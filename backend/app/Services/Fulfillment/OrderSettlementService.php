@@ -16,6 +16,7 @@ use App\Services\Notification\CustomerNotificationService;
 use App\Services\OpenWa\OpenWaClient;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Reseller\Bot\ResellerBotReplyFormatter;
+use App\Services\Reseller\WalletEntryType;
 use App\Services\Reseller\Webhook\ResellerWebhookDispatcher;
 use App\Services\Reseller\Webhook\ResellerWebhookEvent;
 use App\Services\Voucher\VoucherService;
@@ -72,8 +73,17 @@ final class OrderSettlementService
         ];
     }
 
-    public function settle(Order $order, int $adminUserId, ?string $reason = null): SettlementResult
+    /**
+     * `$adminUserId` null = the system (ADR-139 decision 26): the automatic
+     * refund sweep. Only a wallet order may be settled without an admin; a
+     * voucher keeps a named issuer.
+     */
+    public function settle(Order $order, ?int $adminUserId, ?string $reason = null): SettlementResult
     {
+        if ($adminUserId === null && $order->wallet_reseller_id === null) {
+            throw new \InvalidArgumentException("Order #{$order->id} is not a wallet order, so only an admin can compensate it");
+        }
+
         $result = DB::transaction(function () use ($order, $adminUserId, $reason) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
@@ -107,7 +117,7 @@ final class OrderSettlementService
 
             if ($locked->wallet_reseller_id !== null) {
                 $refund = $amounts['cash'] + $amounts['voucher'];
-                $this->ledger->credit(LedgerOwnerType::ResellerWallet, $locked->wallet_reseller_id, $refund, 'wallet_refund', 'order', $locked->id);
+                $this->ledger->credit(LedgerOwnerType::ResellerWallet, $locked->wallet_reseller_id, $refund, WalletEntryType::Refund->value, 'order', $locked->id, createdBy: $adminUserId);
 
                 return new SettlementResult(voucher: null, walletRefundSen: $refund);
             }
@@ -135,6 +145,8 @@ final class OrderSettlementService
             'voucher_id' => $result->voucher?->id,
             'wallet_refund_sen' => $result->walletRefundSen,
             'admin_user_id' => $adminUserId,
+            'actor' => $adminUserId === null ? 'system' : 'admin',
+            'reason' => $reason,
         ]);
 
         $this->notify($order->fresh(), $result);

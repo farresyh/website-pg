@@ -55,6 +55,8 @@ import {
   updateReseller,
   updateResellerStatus,
   assignResellerTier,
+  formatTierDate,
+  nextFirstInKL,
   listResellerTiers,
   createResellerTier,
   updateResellerTier,
@@ -66,6 +68,7 @@ import ResellerFormModal, { type ResellerFormSubmitValues } from "@/components/r
 import ResellerTierFormModal from "@/components/resellers/ResellerTierFormModal";
 import ResellerWalletModal from "@/components/resellers/ResellerWalletModal";
 import ResellerCloseModal from "@/components/resellers/ResellerCloseModal";
+import ResellerRebateEligibilityModal from "@/components/resellers/ResellerRebateEligibilityModal";
 import ResellerApiKeysModal from "@/components/resellers/ResellerApiKeysModal";
 import ReadinessCell from "@/components/partners/ReadinessCell";
 import ResellerWebhookModal from "@/components/resellers/ResellerWebhookModal";
@@ -96,6 +99,7 @@ export default function ResellersPage() {
   const [editingTier, setEditingTier] = useState<ResellerTier | null>(null);
   const [statusTarget, setStatusTarget] = useState<ResellerRow | null>(null);
   const [closeTarget, setCloseTarget] = useState<ResellerRow | null>(null);
+  const [rebateTarget, setRebateTarget] = useState<ResellerRow | null>(null);
   const [deleteTierTarget, setDeleteTierTarget] = useState<ResellerTier | null>(null);
   const [tierTarget, setTierTarget] = useState<ResellerRow | null>(null);
   const [tierSelectValue, setTierSelectValue] = useState<string>("");
@@ -244,6 +248,11 @@ export default function ResellersPage() {
                           ) : (
                             <span className="text-ink-subtle">— no tier —</span>
                           )}
+                          {r.pending_tier_change && (
+                            <p className="text-theme-xs text-ink-subtle">
+                              → {r.pending_tier_change.to_tier_name} from {formatTierDate(r.pending_tier_change.effective_on)}
+                            </p>
+                          )}
                         </DataTableCell>
                         <DataTableCell className={TD}>{formatRm(r.wallet_balance_sen)}</DataTableCell>
                         <DataTableCell className={TD}>
@@ -251,6 +260,7 @@ export default function ResellersPage() {
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4">
                           <Tag severity={r.is_active ? "success" : "secondary"}>{r.is_active ? "active" : "inactive"}</Tag>
+                          {!r.rebate_eligible && <p className="mt-1 text-theme-xs text-ink-subtle">rebate off</p>}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4">
                           <div className="flex flex-wrap gap-1.5">
@@ -297,6 +307,9 @@ export default function ResellersPage() {
                             >
                               {r.is_active ? "Deactivate" : "Activate"}
                             </Button>
+                            <Button size="small" variant="outlined" onClick={() => setRebateTarget(r)}>
+                              Rebate
+                            </Button>
                             <Button size="small" variant="outlined" severity="danger" onClick={() => setCloseTarget(r)}>
                               Close account
                             </Button>
@@ -320,7 +333,8 @@ export default function ResellersPage() {
             <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Wallet tiers</h2>
             <p className="text-theme-xs text-gray-500 dark:text-gray-400">
               Fee-less prepaid-wallet tiers (ADR-073). Markup % is applied over supplier cost price on every wallet
-              order — a direct FK assignment, no billing cycle.
+              order. A tier&apos;s markup is fixed once it exists, and moving a reseller to another tier takes effect
+              on the 1st (ADR-139).
             </p>
           </div>
           <Button size="small" onClick={() => { setEditingTier(null); setTierFormOpen(true); }}>
@@ -517,7 +531,9 @@ export default function ResellersPage() {
                   onChange={setTierSelectValue}
                 />
                 <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
-                  Takes effect immediately on the reseller&apos;s next wallet order — no billing cycle.
+                  {tierTarget?.reseller_tier_id
+                    ? `Takes effect on ${formatTierDate(nextFirstInKL())} (Malaysia time), so a month is priced and rewarded on one tier. Until then the current tier's prices apply. Choosing the current tier cancels a waiting change.`
+                    : "Takes effect immediately on the reseller's next wallet order."}
                 </p>
               </DialogContent>
               <DialogFooter>
@@ -530,7 +546,7 @@ export default function ResellersPage() {
                       await assignResellerTier(tierTarget.id, Number(tierSelectValue));
                       setTierTarget(null);
                       await refresh();
-                    }, "Tier assigned")
+                    }, "Tier saved")
                   }
                 >
                   Apply
@@ -548,6 +564,18 @@ export default function ResellersPage() {
           reseller={closeTarget}
           onClosed={() => {
             setCloseTarget(null);
+            refresh();
+          }}
+        />
+      )}
+
+      {rebateTarget && (
+        <ResellerRebateEligibilityModal
+          isOpen={rebateTarget !== null}
+          onClose={() => setRebateTarget(null)}
+          reseller={rebateTarget}
+          onChanged={() => {
+            setRebateTarget(null);
             refresh();
           }}
         />

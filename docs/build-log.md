@@ -2011,3 +2011,326 @@ The 2026-11-04 row is as item 159 recorded it, without naming the session; it is
 **Built** on `style/orders-components-tokens`, the same pure reskin as item 164 for the three admin Orders components the Middleware Sandbox reuses: `DeliveryLogsTable`, `OrderDetailCards` and `ResendDeliveryModal`. They were already on `ink` / `surface`; the cards, table rules and Resend option boxes still drew `border-gray-*` / `divide-gray-*` with `dark:` pairs, now `border-border` / `divide-border`. The negative profit figure and the Resend error banners move to `danger-ink` / `danger-surface`, and the Resend warning banner to `warning-surface` / `warning-ink` (its dark text had been `orange-400`).
 
 **Verified** with Playwright, light and dark, on a failed order's detail page (cards and Delivery & Activity Logs). The Resend modal could not be opened locally: every failed order in the dev DB is already compensated, so the button is hidden; its change is borders and banners only, with the mapping checked on the other pages. `tsc`, `eslint` and `color-tokens.test.ts` pass.
+
+## 2026-11-08 — Released #755: middleware restyle, panel switch link, dialog widths
+
+**Released on the founder's go-ahead.** `main` `261345ca`, box release `82402542`, CI (all jobs) and `deploy` green, Vercel production rebuilt admin and portal from that commit (storefront and docs skipped by their ignore step, as intended). Ships #738 to #754: item 164 (#740 to #751), the panel switch link (#739), the middleware dialog widths and Payment Methods chips (#752), the `DialogPopup` default width (#753) and the admin Orders detail components (#754). Frontend only: no backend change, no migration, no env change. 0 paid orders in flight before it.
+
+**Checked after release.** `/api/health` ok, `php_code_cache` true; `/api/health/whatsapp` 200; storefront, admin, portal, docs and onboarding all 200; the box's `current` at `261345c`; 0 paid orders in flight.
+
+**Gotcha.** Thirteen page PRs that each appended a build-log entry would conflict with each other at every merge and re-run CI each time. Moving the entries to one docs PR left the page PRs touching disjoint files, so they merged in any order on their first green run.
+
+## 2026-11-08 — ADR-139 proposed: reseller milestone rebate and automatic refund (docs only)
+
+The founder reopened item 161. Asked why they won't switch, agents said our price is about the same as their leader's (both at the floor). They proposed a rebate themselves: reach a monthly milestone, claim it, credited to Purchase Balance, "like a battle pass".
+
+**Decided with the founder:**
+- A monthly ladder (RM500 to RM20k to start), with a fixed RM reward per step that is set per tier.
+- The reward is funded from a share of our own actual profit, rising from 10% to 35%. We keep at least 65%, and a 50% hard ceiling sits in code.
+- The reseller claims every step in the portal only.
+- Claims are open until the end of the next month.
+- Unspent rebate is forfeited at account closure.
+- Tier changes take effect on the 1st.
+- The ladder is changed only with MFA, effective next month.
+- The automatic refund is only for a supplier-confirmed Failed. Tier SSS is the one at the leader's price.
+
+**Code trace:** three read-only forks (pricing; ledger; readers and accounting), with the top findings re-checked in code. It found:
+- Closure would have cashed out rebate credit.
+- A `wallet_topup` row reads as bank cash in the Register.
+- No profit report or month-close line sees a wallet credit.
+- Delivery rewrites `platform_profit` from real cost. Production has a delivered wallet order at −13 sen.
+- Splitting the wallet into two ledger accounts would touch about 26 balance readers. Unspent rebate is therefore derived by replaying the ledger instead.
+
+**Production, read-only:** 3 resellers, 1 buying (Tier SS, RM446.56 sales / RM12.69 profit to date). 4 failed wallet orders and 4 manual refunds (RM430.04). 0 late contradicting supplier results in 138 orders.
+
+**Grill (three rounds, 18 questions) and simulation, same day:**
+- **Simulation:** read-only on production through `OrderPricingResolver::resolveResellerWallet()`.
+  - 9 of 11 delivered wallet orders reproduce their selling price exactly.
+  - Actual profit is 94.56% of formula profit, which is real-cost drift.
+  - Repricing 100 delivered orders shows no rounding loss at any tier.
+  - So the ladder top share went from 35% to 32% under a 35% cap. We keep 70% at RM10k and 68% at RM20k.
+- **Final stress test, eight findings folded in:**
+  - one entitlement function, so an early cut self-heals and is never "claim late, get more";
+  - tier change history, so finalise reads the right tier;
+  - the claim deadline is checked by date;
+  - the refund sweep skips sandbox orders and closed resellers, which `settle()` refuses;
+  - a `WalletEntryType` enum makes the unspent-rebate replay exhaustive;
+  - step notifications come from a scheduled task, not the money path.
+- **Accepted.** The accountant confirms the accounting decisions before PR 3.
+- **Accountant review, same day.** The accountant confirmed the treatment: a revenue reduction recognised at reach; a claim moves the liability to Purchase Balance; revenue is recognised on use. Two changes:
+  - an unclaimed reward that expires reverses the revenue reduction rather than being breakage;
+  - the open month's rebate line is live from `RebateEntitlement` rather than provisional.
+
+  Added:
+  - versioned programme terms, accepted at the first claim;
+  - per-row calculation inputs and a CSV export, for income tax.
+
+  The founder confirmed there is no marketing obligation and that the business charges no SST (a scope check with a tax agent is company-level, not a gate). ADR-139 addendum; PR 3 unblocked.
+- **Programme terms version 1 approved by the founder** and recorded verbatim in the ADR-139 addendum. Clause 2 was aligned with mid-month claims and the monthly cap. Clause 7's notice promise is enforced in code: a ladder version must be saved at least 7 days before its month, and saving it notifies every eligible reseller (portal banner and bot).
+
+## 2026-11-08 — ADR-139 PR 1: automatic refund of a Failed wallet order
+
+Branch `feature/auto-refund-failed-wallet-orders`, into `staging` (not released).
+
+**Shipped:**
+- `app:refund-failed-wallet-orders` runs every minute (`CRITICAL`, `wallet-order-auto-refund`). It settles each uncompensated Failed wallet order through `OrderSettlementService::settle()`, with the system as actor.
+- It reuses `Order::needsAction()`. It skips sandbox orders, closed resellers (which `settle()` refuses) and orders with a late supplier Success.
+- Each order is isolated, and an email goes out on the third failed run.
+- `settle()` accepts a null actor for wallet orders only. The `wallet_refund` row now records `created_by`.
+- `finalizePendingDelivery()` emails every admin on any late contradicting Success.
+
+**Found while building:** a Success arriving after Failed but before the sweep would have been refunded on top of a possible delivery. It is now skipped and alerted (ADR-139 PR 1 addendum).
+
+**Tests:**
+- 7 new, using a sqlite trigger for a real failure inside `settle()`.
+- Full suite: 3,837 passed.
+- The concurrency suite was not run: no locking changed, and `settle()`'s lock is already proven by `RefundToWalletConcurrencyTest`.
+- Production has 0 uncompensated Failed wallet orders (all 4 refunded by hand), so the first run after release refunds nothing old.
+
+## 2026-11-08 — ADR-139 PR 2: wallet tier changes take effect on the 1st; markup fixed per tier
+
+Branch `feature/reseller-tier-from-the-1st`, into `staging` (not released).
+
+**Shipped:**
+- `reseller_wallet_tier_changes`, backfilled with each reseller's current tier. The local dev DB has 1 row for 1 tiered reseller after a plain `migrate`.
+- `ResellerTierChangeService` is the one writer. A reseller's first tier is immediate. A later change waits for the next 1st (KL); a new choice replaces it and the current tier cancels it.
+- An hourly `CRITICAL` `app:apply-reseller-tier-changes`.
+- The admin list shows "→ Tier X from 1 Dec 2026". The Change Tier dialog says when the change takes effect.
+- A tier's markup is fixed after creation: the API answers 422 with guidance, and the admin edit form disables the field. The founder chose this over hard-coding five 1–5% tiers.
+- A tier that a pending change points to can't be deleted.
+
+**Gotcha:** the sqlite `date` cast stores a time, so a string `<=` on `effective_on` missed midnight on the 1st. The comparison uses `whereDate`. Caught by a test pinning 23:59 and 00:00 KL.
+
+**Verified:**
+- `php artisan test`: 3,844 passed. Two old tier tests that edited markup now assert the refusal.
+- Admin: `tsc`, lint, 22 unit tests and a build.
+- Browser, on a local built admin and backend with a throwaway admin, deleted afterwards:
+  - scheduled Scenario Reseller → Tier SS and saw it pending until 1 Dec 2026;
+  - the Edit Tier form shows markup disabled with the note;
+  - cancelled the test change by choosing the current tier, leaving 0 pending rows.
+- Fixed an outdated "direct FK assignment" line under Wallet tiers.
+
+## 2026-11-08 — ADR-139 PR 3a: rebate core (ladder, entitlement, claim)
+
+Branch `feature/rebate-core`, into `staging` (not released). It changes no live behaviour: production has no ladder version, and nothing calls the claim yet.
+
+**Shipped:**
+- Ladder versions with notice and on-paper ceiling validation.
+- `RebateEntitlement`, the one function every amount comes from.
+- `RebateClaimService`: claims in order, pays `min(ladder at k, cap) − paid`, accepts terms once per version, and refuses after the window, for an inactive or ineligible account, or for a login of another account.
+- `WalletEntryType` across all wallet writers.
+- `wallet_rebate` added to the ledger dedupe backstop.
+
+**Build decisions** (ADR-139 PR 3a addendum): the ladder grid is JSON (5 tables, not 6); claims go in order; the master switch is the ladder itself.
+
+**Verified:**
+- `php artisan test`: 3,858 passed (14 new).
+- On MySQL, `RebateClaimConcurrencyTest` gives one credit from two simultaneous claims. `RefundToWalletConcurrencyTest` and `OrderSettlementConcurrencyTest` still pass after the dedupe-key rebuild.
+- Full local concurrency run: 45 of 49 passed. The 4 errors are `BackupRestoreMysqlTest`, which needs `mysqldump`; that tool is not installed on this machine but is in CI's `backend-concurrency` job.
+- Local dev DB migrated with a plain `migrate`.
+
+**Gotcha:** the docker MySQL still held the `llm_report_*` views from an earlier killed run (backend AGENTS gotcha 8). Dropped them before the run.
+
+## 2026-11-08 — ADR-139 PR 3b-i: rebate month end and the closure forfeit
+
+Branch `feature/rebate-month-close`, into `staging` (not released). It is inert until a ladder version exists.
+
+**Shipped:**
+- `RebateMonthService`: finalise writes available rows and the adjustment row, and alerts on a cut, an adjustment or an overpayment. Expire dates each row at its deadline.
+- Two daily `CRITICAL` tasks.
+- Claims of finalised and adjustment rows.
+- `UnspentRebate`, the ledger replay, which fails closed on an unknown type.
+- Closure forfeits unspent rebate, refunds only the rest, and lapses unclaimed rewards.
+- `close-check` returns the refund. The admin close modal shows it, with the forfeited part explained.
+
+**PR 3b is split in two** (ADR-139 addendum). 3b-ii carries the accounting lines together with their admin display.
+
+**Verified:**
+- `php artisan test`: 3,865 passed (7 new).
+- `ResellerClosureConcurrencyTest` and `RebateClaimConcurrencyTest` pass on MySQL.
+- Admin: `tsc`, lint and 22 unit tests pass.
+- Local dev DB migrated.
+- Browser, on a local build with a throwaway admin deleted afterwards: the close modal shows "Balance to refund" from `refund_sen`.
+
+
+## 2026-11-09 — ADR-139 PR 3b-ii: rebate accounting lines and the month-close gate
+
+Branch `feature/rebate-accounting`, into `staging` (not released). It is inert until a ladder version exists, and no ladder can exist before PR 4.
+
+**Shipped:**
+- `RebateLiability`: the revenue reduction, breakage and payable. A month not finalised yet is live, through `RebateMonthService::liveTotalSen()`. That method shares finalise's reseller set and skip rule, so finalising moves no figure.
+- Monthly Summary: "Less: reseller rebates" (subtracted in operating profit) and "Reseller rebate breakage" (added).
+- Cash Position: the rebate payable claim.
+- Reports profit Bridge: both rows.
+- A month cannot close while its ladder month is not finalised.
+- Admin: definitions for both lines, the cash-equation row and the Bridge rows.
+
+**Found in the code trace, fixed here:** making a reseller eligible again after its month was finalised let a claim add a new row to that month, which may already be closed (invariant 2). A finalised month now takes no claim for a step finalise did not write.
+
+**Moved to PR 4** (ADR-139 2026-11-09 addendum): decision 24's rebate line in Reports' profit totals, export and channel split; the Customer Analytics and Report Assistant labels; the notify tasks. The founder's answers on PR 4's three open points are recorded in the same addendum.
+
+**Verified:**
+- `php artisan test`: 3,874 passed (9 new).
+- `RebateClaimConcurrencyTest` passes on MySQL.
+- The new `FinancialScenario` step: the October gap does not move when a ladder starts, a step is claimed, the account closes with rebate unspent, or the month is finalised; the Bridge has nothing unexplained.
+- Admin: `tsc`, lint and the unit tests pass.
+- Browser, on a throwaway sqlite backend and admin deleted afterwards:
+  - the Summary shows "Less: reseller rebates RM 6.00";
+  - September's cash equation shows "Reseller rebates earned, not claimed yet RM 6.00", with the envelopes RM 6.00 lower;
+  - the Reports Profit bridge shows the "−" rebate row;
+  - the close is blocked with the rebate message until finalise runs.
+- No migration in this PR.
+
+**Gotcha.** The first scenario run expected a 25 sen reward and got 21: the scenario reseller's October profit is 43 sen, so the 50% cap applied. That is correct behaviour; the test's rewards were lowered below the cap.
+
+**Same day, a review before PR 4.** The founder asked whether the rebate's money logic and code met our bar before PR 4 started. Three read-only forks ran, one per layer (AGENTS.md money-critical review). None found wrong money; I verified each finding against the code before fixing it. Fixed test-first in the same PR (#762), details in the ADR-139 2026-11-09 addendum, item 6:
+- A ragged ladder could make a column fall to 0 (reachable only once PR 4's editor exists).
+- A late expiry run could date reversals into a closed month. Month close now also waits for expiry.
+- A claim at midnight could put the payable and the balance in two months. Both now take the ledger row's instant.
+- Hygiene: one home for the claim deadline; month close asks the rebate module; constructor injection; no repeated claimed-sum query; a `ponytail:` scale note; the wallet-balance text.
+
+Read-only production check: wallet ledger types are only `wallet_topup`, `wallet_debit` and `wallet_refund`.
+
+`php artisan test`: 3,877 passed (3 new). The MySQL concurrency tests for rebate and closure pass. Admin `tsc` and lint pass.
+
+## 2026-11-09 — ADR-139 PR 4a: rebate admin and portal API, bot messages
+
+Branch `feature/rebate-api`, into `staging` (not released). PR 4 is split in three (4a API, 4b admin screens, 4c portal screens; ADR-139 addendum). Nothing reaches resellers yet: no ladder can be saved without 4b's screen, except by a super admin with MFA calling the API directly.
+
+**Shipped:**
+- Admin endpoints: ladders (list, plus save behind the step-up, which sends the notice), month view, CSV export, and an eligibility switch behind the step-up with a recorded reason.
+- Portal endpoints: the Rebate page data, with the reseller's own tier only and no share, and the claim.
+- Rebate detail on statement lines.
+- `RebateNotifier` and the `rebate-progress-notify` task (`ROUTINE`, every 10 minutes).
+- The `reseller_rebate_eligibility_changes` table.
+
+**Found while building:**
+- `SendCustomerWhatsAppJob` sent every bot-session message through `SupplierGroupNotifier::prepare()`, which skips anything without an order, so rebate messages would never have been sent. It now routes by event.
+- The `dedupe_key` backstop applies only when `reason` is null, so the statement label is read from the milestone row rather than stored as a reason.
+
+**Gotcha:** a Pint run given the whole `app/` folder reformatted about 30 unrelated files. I reverted them before committing; run Pint only on changed files.
+
+**Verified:**
+- `php artisan test`: 3,888 passed (11 new).
+- Local dev DB migrated.
+- A live check with `curl` on a throwaway sqlite backend (deleted afterwards): the page, the terms refusal, a claim (+RM1.00), a repeat refused, the statement detail, and 401 without a portal login.
+
+**For the founder:** the three draft bot messages are in the ADR-139 PR 4a addendum, item 4.
+
+## 2026-11-09 — ADR-139 PR 4b: rebate admin screens and the Reports rebate line
+
+Branch `feature/rebate-admin-screens`, into `staging` (not released). The founder approved the three bot messages as drafted. A ladder can now be saved from the panel, behind the MFA step-up; nothing reaches resellers until the first one is saved.
+
+**Shipped:**
+- Admin → Reseller Rebate:
+  - Ladder tab: the next and in-force versions, the no-column warning, all versions, and the New version dialog (effective date, ceiling flag, step-up).
+  - Month tab: cards, standings, rows and Export CSV.
+- Resellers: a Rebate button for eligibility (reason and step-up required) and a "rebate off" marker.
+- Wallet history: rebate labels.
+- Reports: a rebate line on the summary, the wallet channel, the CSV and the PDF; owner profit is labelled as before rebates.
+- Customer Analytics and the Report Assistant prompt: profit labelled as before rebates.
+
+**Found in the browser check:** a live month's "Waiting to be claimed" read only finalised rows and showed RM0.00 while a step was unclaimed. It now uses entitlement minus claimed, the payable's own figure.
+
+**Gotcha:** the admin's own unit test refuses a `JSON.stringify` body passed to `apiFetch`, which encodes the body itself.
+
+**Verified:**
+- `php artisan test`: 3,890 passed (2 new, plus one new assertion).
+- Admin: `tsc`, lint and 22 unit tests pass.
+- Browser (Playwright, throwaway backend and admin deleted afterwards): ladder page, editor, month view, CSV, eligibility dialog, wallet label and Reports note. Saves answered `mfa_not_enabled` for the MFA-less throwaway admin, as designed; the request payload was correct.
+
+## 2026-11-09 — ADR-139 PR 4c: rebate portal screens
+
+Branch `feature/rebate-portal-screens`, into `staging` (not released). This completes ADR-139's build. Nothing reaches a reseller until the founder saves the first ladder, and that waits for this PR to merge.
+
+**Shipped:**
+- Portal → Rebate (`/rebate`, in the reseller nav under Orders & money):
+  - the notice for a new table;
+  - unspent rebate;
+  - this month and last month, each with purchases counted, progress to the next target, and every step with its reward and state;
+  - Claim buttons in step order, plus "Claim all";
+  - the terms dialog on the first claim;
+  - reward history and the programme terms.
+- Dashboard: a Rebate card showing "RM X more to reach RM Y" and a Claim button with the count, which also carries the new-table notice. It loads on its own, so a rebate error never blanks the dashboard.
+- Statement: `wallet_rebate` is labelled "Rebate" with its step and month, and `wallet_rebate_forfeit` is labelled "Rebate forfeited".
+- Backend: the portal history rows now carry `threshold_sen`, so a history line reads like its statement line.
+
+**Verified:**
+- Rebate tests: 45 passed (one new assertion).
+- Portal: `tsc`, lint, build and 22 unit tests pass (`rebate.test.ts` is new, and `format.test.ts` gains the rebate labels).
+- Browser (Playwright, on a throwaway sqlite backend and the portal dev server, both deleted afterwards). Seeded with one SS reseller, a 4-step ladder from October, a new table from December, October finalised at RM1,600 and November at RM2,000:
+  - the first claim opened the terms and sent `accept_terms: true`;
+  - "Claim all" sent steps 1 and 2 in order;
+  - the second claim did not ask for the terms again;
+  - unspent rebate reached RM7.00;
+  - the statement labels were right;
+  - checked in light and dark, and at 390px with no horizontal overflow.
+
+## 2026-11-09 — ADR-139 money review: no wrong money; three small fixes
+
+The founder asked whether rebate profit, accounting and ledger are right. Three read-only forks ran in parallel (entitlement/claim/ledger, accounting, downstream readers). Each simulated through the real services on a throwaway sqlite DB.
+
+**Found no wrong money.** Proven with numbers:
+- an early capped claim pays itself back, and finalise writes an adjustment;
+- double claims are blocked, and claims must go in order;
+- closure forfeit + closure refund = balance;
+- over three months, Σ reduction = Σ claimed, and the payable rolls forward exactly and equals Cash Position;
+- the cash equation does not move;
+- operating profit = profit − rebate + breakage, and the Bridge's unexplained difference stays 0;
+- a claim at 00:00 KL lands in the right month;
+- no reader counts a rebate as a cash top-up, a CHIP payment or a receipt.
+
+**Accepted risks, unchanged** (ADR-139 by design):
+- an overpayment against the final cap after a negative-profit order is not clawed back; admins get an email;
+- turning eligibility off is final for a month that has ended.
+
+**Fixed, branch `fix/rebate-report-labels`:**
+- The Reports "Before reseller rebates" note now says which months count: each month whose 1st is in the range, less lapses. A range such as 2–30 Nov shows RM0 by design.
+- Partners tab: "Reseller rebates, net of lapsed rewards". The figure can be negative.
+- Transaction Register: rows for a rebate claim (`reseller_rebate`, with its step and month) and a closure forfeit (`reseller_rebate_forfeit`). Before, the year-end record had no trace of either. `RebateRegisterTest` covers it.
+- `RebateLiability::payableSen`: a `ponytail` note. For an open month it uses entitlement as of now, which is exact for every reader today (month-end only).
+
+**Gotcha:** `RebateFixtures::delivered()` writes no `paid_at`, so any test that reaches the register's `orderRecognitionRows` must set one. Real orders always have one.
+
+**Verified:**
+- `php artisan test`: 3,891 passed.
+- Admin: `tsc`, lint and 22 unit tests pass.
+- Pint is clean.
+
+## 2026-11-09 — ADR-139 decision 46: ladder simulation re-run
+
+The re-run happened before the first ladder is saved. Result: decision 3's grid is used as is. Numbers are in the ADR-139 addendum.
+
+**Production, read-only:**
+- Nothing new since 2026-11-08: 11 delivered wallet orders, none in November, and every month below RM500.
+- SS drift is 97.6%, so the 94.56% design figure stays.
+
+**Grid through the real `RebateEntitlement`** (a scratch test on sqlite, deleted afterwards):
+- At 94.56% drift, none of 30 tier/step points is cut, and we keep 66.2–94.5%.
+- At 90% and 85% drift, the 35% cap cuts the top steps and holds us at ≥ 65%.
+
+**Gotcha:** on `main`, `monthBounds()` lives on `MonthlyAccountingSummaryService`, not `RecognisedRevenue`. A production script written against staging failed on it first.
+
+**#765 (portal screens) and #766 (review fixes) were merged to `staging`.**
+
+## 2026-11-10 — Cyber Bumblebee dark: the "Bumblebee Dark v3" palette
+
+Branch `feature/bumblebee-dark-v3-palette`, into `staging`. The founder sent a Figma redesign of Bumblebee dark and asked for its colours only; layout, borders and shadows are unchanged. `tokensDark` in `storefront/src/lib/theme-presets.ts` was changed and synced to the portal copy. Affects PajoStore and FixFast Demo (production branding, read-only); PekanGame stays on Digital Architect light. Decision and deviations: ADR-113 2026-11-10 addendum. DESIGN.md's Tinted-Surface Rule names the exception.
+
+**Constraint found:** `--color-ink` is both the 2px border and the bottom-nav pill whose labels are `surface`. A hairline-dark ink (v3's 8% white) would put the labels at 2.4:1, so ink is `#8C8983`.
+
+**Verified** (throwaway e2e backend with the primary brand on Bumblebee dark; production storefront build on :3011; both deleted afterwards):
+- Before and after screenshots of home, order and track order, at 1440 and 390. Layout is identical and there is no horizontal overflow.
+- Measured with `getComputedStyle`: heading 15.8:1, muted 7.0:1.
+- Computed: bottom-nav active label 5.4:1 (was 4.8). Inactive label 2.9:1 (was 2.7), below 4.5 before and after.
+
+**Then the bottom nav** (founder reviewed the mobile screens and approved it):
+- What was wrong: the grey `ink` pill looked off on charcoal, and the More drawer's backdrop lightened the page.
+- The fix: `BottomNav` now reads `nav` / `on-nav` / `on-nav-muted` / `scrim`. Their defaults are the old ink and `surface`.
+- Bumblebee dark: a charcoal pill, the active label in yellow (11.3:1), the inactive labels at 7.0:1, and a black scrim.
+- Regression check with `getComputedStyle` on each preset: Digital Architect light and Bumblebee light are identical to before (6.32 / 15.64 and 6.52 / 16.18).
+- Red Giants dark is unchanged (2.69 / 4.55). The same four tokens would fix it and the other dark presets.
+
+**Gotchas:**
+- A `git worktree` with a symlinked `node_modules` fails `next build`, because Turbopack refuses a `node_modules` outside its root. Build in the real checkout instead.
+- Switching a throwaway brand's preset needs `.next/cache/fetch-cache` cleared and both servers restarted; this is the "scripted loop did not switch" mystery in the verification recipes. In zsh, pass `${=t}` to split a "preset mode" pair; a plain `$t` writes one bad value, which the storefront's schema check rejects, so it falls back to the default.

@@ -7,6 +7,7 @@ use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\PlatformSettings;
 use App\Models\Reseller;
+use App\Models\ResellerRebateMilestone;
 use App\Models\WalletTopupAttempt;
 use App\Models\WalletTopupReceipt;
 use App\Services\Accounting\AccountingFileStore;
@@ -156,6 +157,12 @@ final class ResellerWalletService
             ? []
             : WalletTopupAttempt::query()->whereIn('id', $attemptIds)->pluck('reference', 'id');
 
+        // ADR-139 decision 43: a rebate line reads "Rebate, RM5,000 step (Nov 2026)". The detail is
+        // read from its milestone row: the credit carries no reason, which keeps it under the
+        // dedupe_key backstop (a reason would exempt it).
+        $milestoneIds = $page->getCollection()->where('reference_type', 'rebate_milestone')->pluck('reference_id')->filter()->all();
+        $milestones = $milestoneIds === [] ? collect() : ResellerRebateMilestone::query()->with('ladder')->whereIn('id', $milestoneIds)->get()->keyBy('id');
+
         return $page->through(fn (LedgerEntry $entry): array => [
             'id' => $entry->id,
             'type' => $entry->type,
@@ -172,6 +179,12 @@ final class ResellerWalletService
             'order_number' => $entry->reference_type === 'order'
                 ? ($orderNumbers[$entry->reference_id] ?? null)
                 : null,
+            'rebate' => ($m = $entry->reference_type === 'rebate_milestone' ? $milestones->get($entry->reference_id) : null) === null ? null : [
+                'period' => $m->period->format('Y-m'),
+                'kind' => $m->kind,
+                'step' => $m->step,
+                'threshold_sen' => $m->kind === ResellerRebateMilestone::KIND_STEP ? (int) ($m->ladder?->steps[$m->step - 1]['threshold_sen'] ?? 0) : null,
+            ],
             'reason' => $entry->reason,
             'created_at' => $entry->created_at?->toIso8601String(),
         ]);
@@ -236,7 +249,7 @@ final class ResellerWalletService
                 LedgerOwnerType::ResellerWallet,
                 $reseller->id,
                 $amountSen,
-                'wallet_topup',
+                WalletEntryType::Topup->value,
                 referenceType: $receiptRow !== null ? 'wallet_topup_receipt' : null,
                 referenceId: $receiptRow?->id,
                 createdBy: $adminUserId,
@@ -346,7 +359,7 @@ final class ResellerWalletService
                 LedgerOwnerType::ResellerWallet,
                 $locked->reseller_id,
                 $locked->amount_sen,
-                'wallet_topup',
+                WalletEntryType::Topup->value,
                 referenceType: 'wallet_topup_attempt',
                 referenceId: $locked->id,
             );

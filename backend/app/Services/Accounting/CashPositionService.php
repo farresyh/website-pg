@@ -13,6 +13,7 @@ use App\Models\Voucher;
 use App\Models\Withdrawal;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Order\PaymentStatus;
+use App\Services\Rebate\RebateLiability;
 use App\Services\Withdrawal\WithdrawalStatus;
 use App\Support\MalaysiaTime;
 use Illuminate\Support\Carbon;
@@ -33,6 +34,7 @@ final class CashPositionService
     public function __construct(
         private readonly FundedCostOfSales $costOfSales,
         private readonly SettlementReconciliationService $settlements,
+        private readonly RebateLiability $rebates,
     ) {}
 
     /**
@@ -63,6 +65,8 @@ final class CashPositionService
                 // ADR-125 decision 20: what a pay-after supplier is owed. A
                 // month closed before this key existed reads it as 0.
                 'supplier_payable_sen' => $suppliers['payable'],
+                // ADR-139 decision 21: rebate earned but neither claimed nor expired. A month closed before this key existed reads it as 0.
+                'reseller_rebates_payable_sen' => $this->rebates->payableSen($toExclusive),
             ],
             'envelope_identity_sen' => $this->envelopeIdentity($lastDay) + $pendingAllocationSen,
             'chip_unsettled_count' => count($unsettled),

@@ -32,6 +32,9 @@ export interface TransactionRegisterRow {
     | "reseller_wallet_manual_credit"
     /** ADR-131 decision 17: the refund sent to a reseller whose account was closed. */
     | "reseller_wallet_closure"
+    /** ADR-139: a rebate claimed into Purchase Balance, and unspent rebate forfeited at closure. Neither is cash. */
+    | "reseller_rebate"
+    | "reseller_rebate_forfeit"
     | "withdrawal_payout";
   reference: string;
   description: string;

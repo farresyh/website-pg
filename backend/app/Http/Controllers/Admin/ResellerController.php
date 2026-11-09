@@ -20,6 +20,7 @@ use App\Services\Ledger\LedgerService;
 use App\Services\Partner\PartnerReadinessService;
 use App\Services\Reseller\ResellerClosureService;
 use App\Services\Reseller\ResellerProvisioningService;
+use App\Services\Reseller\ResellerTierChangeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -44,6 +45,7 @@ class ResellerController extends Controller
         private readonly ResellerProvisioningService $provisioning,
         private readonly ResellerClosureService $closures,
         private readonly PartnerReadinessService $readiness,
+        private readonly ResellerTierChangeService $tierChanges,
     ) {}
 
     /** ADR-131 decision 4: the platform default cap, read once per request, not once per row. */
@@ -52,7 +54,7 @@ class ResellerController extends Controller
     public function index(): JsonResponse
     {
         $resellers = Reseller::query()
-            ->with(['tier' => fn ($q) => $q->withTrashed()])
+            ->with(['tier' => fn ($q) => $q->withTrashed(), 'pendingTierChange.toTier'])
             ->withExists('partnerApplication')
             ->orderBy('business_name')
             ->get();
@@ -104,10 +106,14 @@ class ResellerController extends Controller
         return response()->json($this->rowShape($reseller->fresh(), $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id)));
     }
 
-    /** ADR-073 decision 1: direct FK swap, effective immediately, no billing cycle. */
+    /**
+     * ADR-139 decision 7 (revises ADR-073 decision 1's immediate swap): a
+     * reseller's first tier is immediate; a change waits for the next 1st
+     * (KL). The row returns the pending change.
+     */
     public function assignTier(AssignResellerTierRequest $request, Reseller $reseller): JsonResponse
     {
-        $reseller->update(['reseller_tier_id' => $request->validated('reseller_tier_id')]);
+        $this->tierChanges->change($reseller, (int) $request->validated('reseller_tier_id'), $request->user()->id);
 
         return response()->json($this->rowShape($reseller->fresh(), $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id)));
     }
@@ -137,7 +143,8 @@ class ResellerController extends Controller
         $blockers = $this->closures->blockers($reseller);
 
         return response()->json([
-            'balance_sen' => $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id),
+            // ADR-139 decision 15: balance_sen = refund + unspent rebate (forfeited).
+            ...$this->closures->refundable($reseller),
             'blockers' => $blockers,
             'can_close' => $blockers === [],
         ]);
@@ -223,6 +230,11 @@ class ResellerController extends Controller
             'reseller_tier_id' => $reseller->reseller_tier_id,
             'tier_name' => $reseller->tier?->name,
             'markup_percent' => $reseller->tier?->markup_percent,
+            'pending_tier_change' => ($pending = $reseller->pendingTierChange) === null ? null : [
+                'to_tier_id' => $pending->to_tier_id,
+                'to_tier_name' => $pending->toTier?->name,
+                'effective_on' => $pending->effective_on->toDateString(),
+            ],
             'is_active' => (bool) $reseller->is_active,
             'notes' => $reseller->notes,
             // ADR-133 decision 12: "on file" when approved from an application whose data is still
@@ -238,6 +250,8 @@ class ResellerController extends Controller
             'balance_cap_sen' => $reseller->balance_cap_sen,
             'effective_balance_cap_sen' => $reseller->balance_cap_sen
                 ?? ($this->defaultBalanceCapSen ??= (int) PlatformSettings::current()->balance_cap_default_sen),
+            // ADR-139 decision 36: changed only through PATCH rebate-eligibility.
+            'rebate_eligible' => (bool) $reseller->rebate_eligible,
             'users' => $reseller->relationLoaded('users')
                 ? $reseller->users->map(fn (AffiliateUser $u) => [
                     'id' => $u->id,

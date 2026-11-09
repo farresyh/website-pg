@@ -35,6 +35,10 @@ class TaskSchedule
         'payment-reconciliation',
         'delivery-reconciliation',
         'wallet-topup-reconciliation',
+        'wallet-order-auto-refund',
+        'reseller-tier-change-apply',
+        'rebate-month-finalize',
+        'rebate-reward-expiry',
         'database-backup',
         'database-backup-cleanup',
         'openwa-backup',
@@ -64,6 +68,7 @@ class TaskSchedule
         'stale-cache-pruning',
         'affiliate-domain-status-sync',
         'horizon-snapshot',
+        'rebate-progress-notify',
         'price-sync-staleness-check',
     ];
 
@@ -137,6 +142,39 @@ class TaskSchedule
         $schedule->command('app:reconcile-pending-wallet-topups')
             ->cron('*/15 * * * *')
             ->name('wallet-topup-reconciliation')
+            ->withoutOverlapping($overlap);
+
+        // ADR-139 decisions 26–29: a Failed wallet order goes back to the
+        // reseller's Purchase Balance within a minute, with no admin click.
+        $schedule->command('app:refund-failed-wallet-orders')
+            ->everyMinute()
+            ->name('wallet-order-auto-refund')
+            ->withoutOverlapping($overlap);
+
+        // ADR-139 decision 7: a tier change takes effect at 00:00 KL on the
+        // 1st (16:00 UTC); hourly so a missed run catches up.
+        $schedule->command('app:apply-reseller-tier-changes')
+            ->hourly()
+            ->name('reseller-tier-change-apply')
+            ->withoutOverlapping($overlap);
+
+        // ADR-139 decisions 9-12: just after 00:00 KL (16:00 UTC), expire
+        // rewards whose window closed, then finalise the month that ended.
+        // Daily, so a missed run catches up the next day.
+        $schedule->command('app:expire-rebate-rewards')
+            ->dailyAt('16:05')
+            ->name('rebate-reward-expiry')
+            ->withoutOverlapping($overlap);
+
+        $schedule->command('app:finalize-rebate-months')
+            ->dailyAt('16:10')
+            ->name('rebate-month-finalize')
+            ->withoutOverlapping($overlap);
+
+        // ADR-139 decision 47: step and reminder messages, off the money path.
+        $schedule->command('app:notify-rebate-progress')
+            ->everyTenMinutes()
+            ->name('rebate-progress-notify')
             ->withoutOverlapping($overlap);
 
         // ADR-021 — prunes player_validations PII past its retention window —

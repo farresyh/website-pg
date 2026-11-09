@@ -58,5 +58,8 @@
             @endforeach
         </tbody>
     </table>
+    @if ($resellerRebates)
+    <p>Reseller rebates (a month-level reduction of revenue, not in the rows above): RM {{ number_format(-$resellerRebates / 100, 2) }}</p>
+    @endif
 </body>
 </html>

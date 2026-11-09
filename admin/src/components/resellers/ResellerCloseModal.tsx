@@ -87,13 +87,18 @@ function Content({ reseller, onClosed }: Omit<Props, "isOpen" | "onClose">) {
   }
 
   const blocked = check.blockers.length > 0;
-  const hasBalance = check.balance_sen > 0;
+  const hasBalance = check.refund_sen > 0;
 
   return (
     <form onSubmit={handleClose} className="space-y-4">
       <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-white/[0.02]">
         <p className="text-theme-xs text-gray-500 dark:text-gray-400">Balance to refund</p>
-        <p className="text-2xl font-semibold text-gray-800 dark:text-white/90">{formatRm(check.balance_sen)}</p>
+        <p className="text-2xl font-semibold text-gray-800 dark:text-white/90">{formatRm(check.refund_sen)}</p>
+        {check.unspent_rebate_sen > 0 && (
+          <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
+            Balance {formatRm(check.balance_sen)}, of which {formatRm(check.unspent_rebate_sen)} is unspent rebate credit. That part is forfeited, not refunded (programme terms, clause 5).
+          </p>
+        )}
       </div>
 
       {blocked ? (
@@ -108,7 +113,7 @@ function Content({ reseller, onClosed }: Omit<Props, "isOpen" | "onClose">) {
       ) : (
         <p className="text-sm text-gray-600 dark:text-gray-300">
           {hasBalance
-            ? `Send ${formatRm(check.balance_sen)} by bank transfer to the account the money came from FIRST, then record it here. `
+            ? `Send ${formatRm(check.refund_sen)} by bank transfer to the account the money came from FIRST, then record it here. `
             : "There is no balance to refund. "}
           Closing cancels API keys and portal logins, unlinks WhatsApp groups and turns off the webhook. This cannot be undone.
         </p>
