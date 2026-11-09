@@ -26,6 +26,10 @@ export interface MonthlyAccountingSummary {
   admin_issued_vouchers_sen: number;
   supplier_manual_adjustments_sen: number;
   failed_order_credit_issued_sen: number;
+  /** ADR-139 decision 20: revenue reduction, subtracted from operating profit; an expiry is negative in its expiry month. */
+  reseller_rebates_sen: number;
+  /** ADR-139 decision 22: rebate credit forfeited at closure, added to operating profit. */
+  reseller_rebate_breakage_sen: number;
   /** Always the CURRENT balance, never scoped to the viewed period — see MonthlyAccountingSummaryService::resellerWalletBalance()'s doc comment. */
   reseller_wallet_balance_sen: number;
   /** Information only: already taken out of their envelopes, never subtracted from operating profit. */
@@ -55,6 +59,8 @@ export interface CashPosition {
     orders_undelivered_sen: number;
     /** ADR-125 decision 20: owed to pay-after suppliers. Absent on a month closed before it existed. */
     supplier_payable_sen?: number;
+    /** ADR-139 decision 21: rebate earned, neither claimed nor lapsed. Absent on a month closed before it existed. */
+    reseller_rebates_payable_sen?: number;
   };
   /** What the envelopes should hold, from posting headers; differs from claims.envelopes_sen only if a posting is booked wrongly. */
   envelope_identity_sen: number;

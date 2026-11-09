@@ -13,6 +13,7 @@ use App\Models\Voucher;
 use App\Models\VoucherRedemption;
 use App\Services\Campaign\CampaignFeeSchedule;
 use App\Services\Ledger\LedgerOwnerType;
+use App\Services\Rebate\RebateLiability;
 use App\Services\Report\ReportService;
 use App\Support\MalaysiaTime;
 use Illuminate\Database\Eloquent\Builder;
@@ -85,6 +86,9 @@ final class MonthlyAccountingSummaryService
     /** @return array<string, int> */
     private function profitLinesBefore(Carbon $from, Carbon $toExclusive): array
     {
+        // Resolved here, like kolFeeLines()'s schedule: the constructor's defaults let tests build this service with `new`.
+        $rebates = app(RebateLiability::class);
+
         return [
             'sales_revenue_sen' => $this->salesRevenue($from, $toExclusive),
             'membership_revenue_sen' => $this->membershipRevenue($from, $toExclusive),
@@ -99,6 +103,9 @@ final class MonthlyAccountingSummaryService
             'admin_issued_vouchers_sen' => $this->adminIssuedVouchers($from, $toExclusive),
             'supplier_manual_adjustments_sen' => $this->supplierManualAdjustments($from, $toExclusive),
             'failed_order_credit_issued_sen' => $this->failedOrderCreditIssued($from, $toExclusive),
+            // ADR-139 decisions 20 and 22: a revenue reduction (subtracted below) and its breakage (added).
+            'reseller_rebates_sen' => $rebates->reductionSen($from, $toExclusive),
+            'reseller_rebate_breakage_sen' => $rebates->breakageSen($from, $toExclusive),
         ];
     }
 
@@ -111,7 +118,9 @@ final class MonthlyAccountingSummaryService
      * was received and kept) and envelope expenses (they already reduced
      * their envelope; subtracting here again counts them twice). Capital
      * movements (supplier top-up, pay-after supplier payments, wallet
-     * balance) are not P&L at all.
+     * balance) are not P&L at all. ADR-139: the reseller rebate reduces
+     * revenue (IFRS 15.70, consideration payable to a customer), so it is
+     * subtracted; rebate breakage (credit forfeited at closure) is added.
      *
      * @param  array<string, int>  $lines
      */
@@ -126,7 +135,9 @@ final class MonthlyAccountingSummaryService
             + $lines['affiliate_tier_fees_sen']
             + $lines['voucher_breakage_sen']
             - $lines['admin_issued_vouchers_sen']
-            + $lines['supplier_manual_adjustments_sen'];
+            + $lines['supplier_manual_adjustments_sen']
+            - $lines['reseller_rebates_sen']
+            + $lines['reseller_rebate_breakage_sen'];
     }
 
     /**

@@ -66,10 +66,16 @@ final class RebateLadderService
         }
 
         $markups = ResellerTier::query()->pluck('markup_percent', 'id');
+        // Every step rewards the same tiers: a missing cell would read as 0 and make a column fall.
+        $tiers = fn (array $step) => collect(array_keys($step['rewards'] ?? []))->map(fn ($k) => (string) $k)->sort()->values()->all();
+        $firstTiers = $steps === [] ? [] : $tiers(array_values($steps)[0]);
         $previousThreshold = 0;
         $previous = [];
 
         foreach (array_values($steps) as $i => $step) {
+            if ($tiers($step) !== $firstTiers) {
+                $fail('Step '.($i + 1).' must reward the same tiers as step 1.');
+            }
             $threshold = (int) ($step['threshold_sen'] ?? 0);
             if ($threshold <= $previousThreshold) {
                 $fail('Step '.($i + 1).': thresholds must be above zero and rise step by step.');

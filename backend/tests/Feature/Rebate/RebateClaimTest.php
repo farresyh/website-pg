@@ -261,4 +261,41 @@ class RebateClaimTest extends TestCase
 
         $this->assertSame(1, ResellerRebateLadder::query()->count());
     }
+
+    /** A missing cell would read as 0 and make the ladder fall mid-column (review 2026-11-09). */
+    public function test_every_step_must_reward_the_same_tiers(): void
+    {
+        $ladders = app(RebateLadderService::class);
+        $other = ResellerTier::query()->create(['name' => 'Tier S', 'markup_percent' => 5, 'is_active' => true, 'sort_order' => 2]);
+
+        foreach ([
+            [['threshold_sen' => 50000, 'rewards' => [$this->ss->id => 100]], ['threshold_sen' => 150000, 'rewards' => []]],
+            [['threshold_sen' => 50000, 'rewards' => [$this->ss->id => 100]], ['threshold_sen' => 150000, 'rewards' => [$this->ss->id => 600, $other->id => 600]]],
+        ] as $steps) {
+            try {
+                $ladders->saveVersion($steps, 3500, null);
+                $this->fail('A ragged ladder was saved.');
+            } catch (ValidationException $e) {
+                $this->assertStringContainsString('same tiers', $e->getMessage());
+            }
+        }
+
+        $this->assertSame(1, ResellerRebateLadder::query()->count());
+    }
+
+    /** The payable falls by claimed_at and the balance rises by the ledger row: one instant, or a midnight claim splits the month (review 2026-11-09). */
+    public function test_a_claim_is_dated_by_its_ledger_credit(): void
+    {
+        $this->delivered(60000, 1740);
+        $start = Carbon::parse('2026-12-31 15:59:58', 'UTC'); // 23:59:58 KL on the last day
+        $calls = 0;
+        Carbon::setTestNow(function () use ($start, &$calls) {
+            return $start->copy()->addSeconds(intdiv($calls++, 3));
+        });
+
+        $row = $this->claim(1);
+
+        $entry = LedgerEntry::query()->where('type', 'wallet_rebate')->sole();
+        $this->assertSame($entry->created_at->toDateTimeString(), $row->fresh()->claimed_at->toDateTimeString());
+    }
 }

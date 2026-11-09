@@ -6,6 +6,7 @@ use App\Models\AffiliateUser;
 use App\Models\LedgerAccount;
 use App\Models\Reseller;
 use App\Models\ResellerRebateMilestone;
+use App\Models\ResellerRebateMonth;
 use App\Models\ResellerRebateTermsAcceptance;
 use App\Services\Auth\AccountOwnerType;
 use App\Services\Ledger\LedgerOwnerType;
@@ -54,7 +55,7 @@ final class RebateClaimService
             $period = CarbonImmutable::create($year, $month, 1, 0, 0, 0, MalaysiaTime::TIMEZONE);
             $now = CarbonImmutable::now(MalaysiaTime::TIMEZONE);
             $this->refuseUnless($period->lessThanOrEqualTo($now), 'That month has not started.');
-            $this->refuseUnless($now->lessThan($period->addMonthsNoOverflow(2)), 'The claim window for that month has closed.');
+            $this->refuseUnless($now->lessThan(ResellerRebateMilestone::claimDeadline($period)), 'The claim window for that month has closed.');
 
             $rows = ResellerRebateMilestone::query()
                 ->where('reseller_id', $fresh->id)
@@ -80,6 +81,9 @@ final class RebateClaimService
             if (isset($claimed[$step])) {
                 return $this->pay($claimed[$step], $user);
             }
+
+            // A finalised month is fixed (its month may be closed): only the rows finalise wrote can be claimed.
+            $this->refuseUnless(! ResellerRebateMonth::query()->whereDate('period', $period->toDateString())->exists(), 'That reward was not reached by the end of that month.');
 
             $standing = $this->entitlement->standing($fresh, $year, $month, now());
             $this->refuseUnless($standing->earnsRebate(), 'There is no rebate for this account in that month.');
@@ -123,10 +127,17 @@ final class RebateClaimService
         return $row;
     }
 
+    /**
+     * Decision 21: a claim moves the reward from the payable (which falls by
+     * `claimed_at`) into the balance (which rises by the ledger row). Both
+     * take the ledger row's instant, so a claim at midnight on the 1st never
+     * lands in two months.
+     */
     private function credit(ResellerRebateMilestone $row): void
     {
         if ($row->amount_sen > 0) {
-            $this->ledger->credit(LedgerOwnerType::ResellerWallet, $row->reseller_id, $row->amount_sen, WalletEntryType::Rebate->value, 'rebate_milestone', $row->id);
+            $entry = $this->ledger->credit(LedgerOwnerType::ResellerWallet, $row->reseller_id, $row->amount_sen, WalletEntryType::Rebate->value, 'rebate_milestone', $row->id);
+            $row->update(['claimed_at' => $entry->created_at]);
         }
     }
 

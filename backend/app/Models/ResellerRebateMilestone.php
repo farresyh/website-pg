@@ -2,6 +2,9 @@
 
 namespace App\Models;
 
+use App\Support\MalaysiaTime;
+use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -41,6 +44,22 @@ class ResellerRebateMilestone extends Model
         'claimed_at' => 'datetime',
         'expired_at' => 'datetime',
     ];
+
+    /**
+     * Decision 9: a month's rewards can be claimed until 00:00 KL on the 1st
+     * of the month after next; then an unclaimed one lapses. The one home of
+     * that rule (claim window, expiry, month-close gate).
+     */
+    public static function claimDeadline(CarbonInterface $period): CarbonImmutable
+    {
+        return CarbonImmutable::parse($period->format('Y-m-d'), MalaysiaTime::TIMEZONE)->addMonthsNoOverflow(2);
+    }
+
+    /** The latest period whose claim deadline is at or before an instant. */
+    public static function lastPeriodDueBy(CarbonInterface $instant): CarbonImmutable
+    {
+        return CarbonImmutable::instance($instant)->setTimezone(MalaysiaTime::TIMEZONE)->startOfMonth()->subMonthsNoOverflow(2);
+    }
 
     public function reseller(): BelongsTo
     {

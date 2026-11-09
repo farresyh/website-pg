@@ -5,6 +5,7 @@ namespace App\Services\Accounting;
 use App\Models\AccountingPeriodClose;
 use App\Models\BudgetEnvelope;
 use App\Models\CashAccount;
+use App\Services\Rebate\RebateMonthService;
 use App\Support\MalaysiaTime;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +34,7 @@ final class MonthCloseService
         private readonly MonthlyAccountingSummaryService $summary,
         private readonly CashPositionService $position,
         private readonly BudgetEnvelopeService $envelopes,
+        private readonly RebateMonthService $rebates,
     ) {}
 
     /** @return array<string, mixed> */
@@ -174,7 +176,8 @@ final class MonthCloseService
             return 'Close '.self::label($previous->year, $previous->month).' first.';
         }
 
-        return null;
+        // ADR-139 decision 23: the month's rebate figures must be final before it closes.
+        return $this->rebates->closeBlocker($year, $month);
     }
 
     /**

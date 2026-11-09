@@ -97,6 +97,9 @@ export interface ReportProfitBridge {
   voucher_breakage: number;
   admin_issued_vouchers: number;
   supplier_manual_adjustments: number;
+  /** ADR-139: negative, a revenue reduction. */
+  reseller_rebates: number;
+  reseller_rebate_breakage: number;
   cogs_funding_difference: number;
   /** The accounts' order margin less owner profit; 0 unless the ledger and the orders' own figures disagree. */
   ledger_vs_order_figures: number;
