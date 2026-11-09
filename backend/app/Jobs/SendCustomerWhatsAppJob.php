@@ -7,6 +7,7 @@ use App\Services\Notification\CustomerNotificationService;
 use App\Services\OpenWa\OpenWaClient;
 use App\Services\OpenWa\OpenWaPacingLimitedException;
 use App\Services\OpenWa\OpenWaRecipientNotOnWhatsAppException;
+use App\Services\Rebate\RebateNotifier;
 use App\Services\Supplier\Manual\SupplierGroupNotifier;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -74,9 +75,12 @@ final class SendCustomerWhatsAppJob implements ShouldQueue
         // decision 10: a joki progress message is worded here too, with the
         // latest rank, and skipped if it no longer applies.
         $isBot = $notification->session === CustomerNotification::SESSION_BOT;
-        $text = $isBot
-            ? app(SupplierGroupNotifier::class)->prepare($notification)
-            : app(CustomerNotificationService::class)->prepare($notification);
+        $text = match (true) {
+            ! $isBot => app(CustomerNotificationService::class)->prepare($notification),
+            // ADR-139: a rebate message to a reseller's group is final when queued.
+            RebateNotifier::isRebateEvent($notification->event) => $notification->message,
+            default => app(SupplierGroupNotifier::class)->prepare($notification),
+        };
 
         if ($text === null) {
             $notification->update(['status' => CustomerNotification::STATUS_SKIPPED, 'error' => $isBot

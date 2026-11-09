@@ -165,7 +165,7 @@ final class RebateMonthService
      *
      * @return Collection<int, int>
      */
-    private function resellerIds(int $year, int $month): Collection
+    public function resellerIds(int $year, int $month): Collection
     {
         [$from, $toExclusive] = MonthlyAccountingSummaryService::monthBounds($year, $month);
 

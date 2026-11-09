@@ -469,3 +469,44 @@ The founder approved the programme terms that the accountant addendum's decision
      - No path rewrites `platform_profit` after recognition.
      - `BackupFailureAlerter`'s name: renaming it is churn.
      - No concurrency test for claim against finalise or closure: they share the one wallet mutex.
+
+### 2026-11-09 addendum — PR 4 split; PR 4a build notes (admin and portal API, bot messages)
+
+1. **PR 4 is split in three**, like PR 3:
+   - **4a (this PR):** the backend endpoints and the bot messages;
+   - **4b:** the admin screens, plus decision 24's rebate line in Reports' profit totals, export and channel split;
+   - **4c:** the portal screens.
+   Each can be checked on its own. 4a changes no live behaviour, because no ladder can be saved until 4b gives the admin a screen. The endpoint is ready, but only a super admin with MFA can call it.
+2. **Built.**
+   - **Admin endpoints** (super admin):
+     - `GET /api/rebate/ladders`: versions with in-force, upcoming or past status, tiers, `tiers_without_column` (decision 44), `next_effective_from` and the ceiling.
+     - `POST /api/rebate/ladders` (MFA step-up): saves a version through `RebateLadderService` and sends the notice.
+     - `GET /api/rebate/months/{y}/{m}`: each reseller's standing (sales, profit, reached step, cap, entitlement, claimed, available, expired) and the rows with their stored inputs, built by `RebateMonthReport`.
+     - `GET /api/rebate/months/{y}/{m}/export`: a CSV of every reward earned, claimed or expired in the month, plus closure forfeits, each with its dates and inputs (accountant addendum, item 6).
+     - `PATCH /api/resellers/{id}/rebate-eligibility` (MFA step-up, reason required).
+     - The reseller list now returns `rebate_eligible`.
+   - **Portal endpoints:**
+     - `GET /api/reseller-portal/rebate`: the reseller's tier and terms (accepted or not); unspent rebate; this month and last month while still claimable, each step with its threshold, its reward (the ladder increment) and its state (locked, claimable, claimed or expired) plus progress to the next step; any adjustment; the upcoming version (own column only); and history.
+     - `POST /api/reseller-portal/rebate/claim` (20 per minute): carries only year, month, step and the terms tick.
+     - Built by `RebatePortalView`. No share, cap, profit, markup or other tier's column is in any response (decision 8, tested by a string check of the body).
+   - **Statement detail.** A `wallet_rebate` line now carries `rebate: {period, kind, step, threshold_sen}`, read from its milestone row. It is in both the portal and the admin wallet history. The credit itself still carries no `reason`, because a reason would exempt it from the `dedupe_key` backstop.
+   - **Bot messages** (`RebateNotifier`, sent through `WhatsAppOutbox` on the bot session to every active group of an active, eligible reseller, each once by its dedupe key):
+     - a reached, unclaimed step, for months not finalised yet (task `rebate-progress-notify`, `ROUTINE`, every 10 minutes);
+     - one reminder per month once its unclaimed rewards are inside the last three days;
+     - the ladder notice when a version is saved.
+   - **Eligibility history.** `reseller_rebate_eligibility_changes` records each change: from, to, admin, reason and time. Its one writer is `RebateEligibilityService`.
+3. **Decided at build:**
+   - **The eligibility switch needs the MFA step-up.** Decision 17 listed only the ladder. But turning eligibility back on can raise payouts, so it gets the same guard and a required reason.
+   - **The ladder's audit log is its version list.** A version is never edited and stores who saved it, so no second audit table is needed.
+   - **`SendCustomerWhatsAppJob` sent every bot-session message through `SupplierGroupNotifier::prepare()`.** That returns null when there is no order, so a rebate message would have been skipped silently. The job now routes by event: rebate events go out as queued, and everything else is unchanged.
+   - **The message text lives in `RebateNotifier`.** `ResellerBotReplyFormatter` is already over 500 lines.
+   - **No reminder for a reward of RM0.00.** That is a fully capped row, so there is nothing to tell the reseller.
+4. **Draft messages, for the founder to approve before 4b makes them reachable.** A portal link follows each one.
+   - Step: "「 GANJARAN REBATE 」 Tahniah! Belian anda bulan Disember 2026 sudah mencapai RM500.00. Ganjaran RM1.00 sedia untuk dituntut sebelum 31 Januari 2027 di portal:"
+   - Reminder: "「 PERINGATAN REBATE 」 Ganjaran rebate RM1.00 bagi bulan Disember 2026 belum dituntut. Tuntut sebelum 31 Januari 2027, atau ia akan luput:"
+   - Ladder notice: "「 JADUAL REBATE BARU 」 Jadual Program Rebate PekanGame yang baru berkuat kuasa mulai 1 Januari 2027. Semak ganjaran anda di portal:"
+5. **Proven by:**
+   - `RebateApiTest` (8 tests): the ladder screen and its warning; saving notifies only eligible groups; the boundary refuses a bad shape; the month view; the CSV; eligibility with its reason and record; the portal shows only its own column and no share; a portal claim with terms and the statement detail.
+   - `RebateNotifierTest` (3 tests): each step once, with the link; claimed, ineligible and deactivated accounts hear nothing; one reminder inside three days.
+   - The step-up route pin lists the two new routes.
+   - A live check with `curl` on a throwaway backend: the page, a claim refused without the terms, a claim, a repeat refused, the statement detail, and 401 without a portal login.
