@@ -58,6 +58,8 @@ const typeSeverity: Record<TransactionRegisterRow["type"], "info" | "success" | 
   reseller_wallet_refund: "warn",
   reseller_wallet_manual_credit: "success",
   reseller_wallet_closure: "warn",
+  reseller_rebate: "secondary",
+  reseller_rebate_forfeit: "secondary",
   withdrawal_payout: "warn",
 };
 
@@ -74,6 +76,8 @@ const typeLabel: Record<TransactionRegisterRow["type"], string> = {
   reseller_wallet_refund: "Reseller wallet refund",
   reseller_wallet_manual_credit: "Reseller balance credited by hand",
   reseller_wallet_closure: "Reseller account closed (refund)",
+  reseller_rebate: "Reseller rebate claimed",
+  reseller_rebate_forfeit: "Reseller rebate forfeited",
   withdrawal_payout: "Withdrawal payout",
 };
 
