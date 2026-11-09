@@ -38,6 +38,8 @@ const RESELLER_NAV: PortalNavGroup[] = [
     items: [
       { name: "Orders", href: "/orders", icon: "orders" },
       { name: "Purchase Balance", href: "/balance", icon: "wallet" },
+      // ADR-139 decision 41: the monthly rebate ladder and its claims.
+      { name: "Rebate", href: "/rebate", icon: "gift" },
     ],
   },
   { label: "Integration", items: [{ name: "API keys", href: "/api-keys", icon: "key" }] },

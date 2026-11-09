@@ -35,6 +35,14 @@ test("a ledger row says where the money came from or went", () => {
   assert.deepEqual(ledgerRow({ type: "wallet_topup", amount: 50000, reference_type: "wallet_topup_attempt", reason: null }).badge, { tone: "info", label: "Balance added" });
   assert.equal(ledgerRow({ type: "wallet_debit", amount: -621, reference_type: "order", reason: null }).detail, "Paid from Purchase Balance");
   assert.deepEqual(ledgerRow({ type: "wallet_closure_refund", amount: -150000, reference_type: "reseller", reason: null }).badge, { tone: "neutral", label: "Closed account refund" });
+  assert.deepEqual(ledgerRow({ type: "wallet_rebate", amount: 1900, reference_type: "rebate_milestone", reason: null, rebate: { period: "2026-11", kind: "step", step: 4, threshold_sen: 500000 } }), {
+    badge: { tone: "success", label: "Rebate" },
+    detail: "RM5,000.00 step (November 2026)",
+  });
+  assert.deepEqual(ledgerRow({ type: "wallet_rebate_forfeit", amount: -500, reference_type: "reseller", reason: null }), {
+    badge: { tone: "neutral", label: "Rebate forfeited" },
+    detail: "Unspent rebate removed when the account was closed",
+  });
   assert.equal(signedRm(-621), "− RM 6.21");
   assert.equal(signedRm(50000), "+ RM 500.00");
 });

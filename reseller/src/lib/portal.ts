@@ -95,6 +95,8 @@ export interface LedgerEntry {
   reference_id: number | null;
   /** Only present on the Reseller wallet ledger (reference_type "order") — not the Affiliate earnings ledger. */
   order_number?: string | null;
+  /** ADR-139 decision 43: only on a Reseller wallet_rebate line. */
+  rebate?: { period: string; kind: "step" | "adjustment"; step: number; threshold_sen: number | null } | null;
   reason: string | null;
   created_at: string | null;
 }
