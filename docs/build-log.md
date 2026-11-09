@@ -2216,3 +2216,25 @@ Branch `feature/rebate-api`, into `staging` (not released). PR 4 is split in thr
 - A live check with `curl` on a throwaway sqlite backend (deleted afterwards): the page, the terms refusal, a claim (+RM1.00), a repeat refused, the statement detail, and 401 without a portal login.
 
 **For the founder:** the three draft bot messages are in the ADR-139 PR 4a addendum, item 4.
+
+## 2026-11-09 — ADR-139 PR 4b: rebate admin screens and the Reports rebate line
+
+Branch `feature/rebate-admin-screens`, into `staging` (not released). The founder approved the three bot messages as drafted. A ladder can now be saved from the panel, behind the MFA step-up; nothing reaches resellers until the first one is saved.
+
+**Shipped:**
+- Admin → Reseller Rebate:
+  - Ladder tab: the next and in-force versions, the no-column warning, all versions, and the New version dialog (effective date, ceiling flag, step-up).
+  - Month tab: cards, standings, rows and Export CSV.
+- Resellers: a Rebate button for eligibility (reason and step-up required) and a "rebate off" marker.
+- Wallet history: rebate labels.
+- Reports: a rebate line on the summary, the wallet channel, the CSV and the PDF; owner profit is labelled as before rebates.
+- Customer Analytics and the Report Assistant prompt: profit labelled as before rebates.
+
+**Found in the browser check:** a live month's "Waiting to be claimed" read only finalised rows and showed RM0.00 while a step was unclaimed. It now uses entitlement minus claimed, the payable's own figure.
+
+**Gotcha:** the admin's own unit test refuses a `JSON.stringify` body passed to `apiFetch`, which encodes the body itself.
+
+**Verified:**
+- `php artisan test`: 3,890 passed (2 new, plus one new assertion).
+- Admin: `tsc`, lint and 22 unit tests pass.
+- Browser (Playwright, throwaway backend and admin deleted afterwards): ladder page, editor, month view, CSV, eligibility dialog, wallet label and Reports note. Saves answered `mfa_not_enabled` for the MFA-less throwaway admin, as designed; the request payload was correct.

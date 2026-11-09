@@ -501,7 +501,7 @@ The founder approved the programme terms that the accountant addendum's decision
    - **`SendCustomerWhatsAppJob` sent every bot-session message through `SupplierGroupNotifier::prepare()`.** That returns null when there is no order, so a rebate message would have been skipped silently. The job now routes by event: rebate events go out as queued, and everything else is unchanged.
    - **The message text lives in `RebateNotifier`.** `ResellerBotReplyFormatter` is already over 500 lines.
    - **No reminder for a reward of RM0.00.** That is a fully capped row, so there is nothing to tell the reseller.
-4. **Draft messages, for the founder to approve before 4b makes them reachable.** A portal link follows each one.
+4. **Messages, approved by the founder on 2026-11-09 as drafted.** A portal link follows each one.
    - Step: "「 GANJARAN REBATE 」 Tahniah! Belian anda bulan Disember 2026 sudah mencapai RM500.00. Ganjaran RM1.00 sedia untuk dituntut sebelum 31 Januari 2027 di portal:"
    - Reminder: "「 PERINGATAN REBATE 」 Ganjaran rebate RM1.00 bagi bulan Disember 2026 belum dituntut. Tuntut sebelum 31 Januari 2027, atau ia akan luput:"
    - Ladder notice: "「 JADUAL REBATE BARU 」 Jadual Program Rebate PekanGame yang baru berkuat kuasa mulai 1 Januari 2027. Semak ganjaran anda di portal:"
@@ -510,3 +510,34 @@ The founder approved the programme terms that the accountant addendum's decision
    - `RebateNotifierTest` (3 tests): each step once, with the link; claimed, ineligible and deactivated accounts hear nothing; one reminder inside three days.
    - The step-up route pin lists the two new routes.
    - A live check with `curl` on a throwaway backend: the page, a claim refused without the terms, a claim, a repeat refused, the statement detail, and 401 without a portal login.
+
+### 2026-11-09 addendum — PR 4b build notes (admin screens, Reports rebate line)
+
+1. **Built.**
+   - **Admin → Reseller Rebate** (`/admin/resellers/rebate`, a Partners link in the sidebar). It follows the `/admin/orders` layout and the `components/ui` kit: title, Updated and Refresh, then two tabs.
+     - **Ladder:** the version starting next, the version in force (steps as rows, tiers as columns, each cell the cumulative reward with "+RM x this step" under it), a warning for an active tier with no column (decision 44), and every version with who saved it and when.
+     - **New version** dialog:
+       - starts from the newest version, or from decision 1's thresholds;
+       - shows the date it takes effect before saving;
+       - flags any cell above the 50% paper ceiling;
+       - names any tier left without a column;
+       - asks for the MFA step-up through the api client.
+     - **Month:** four cards (earned, claimed, waiting to be claimed, lapsed), each reseller's standing, every reward row with the inputs it was written with, and Export CSV.
+   - **Resellers:** a **Rebate** button opens a dialog to take an account out of the programme or put it back. It needs a reason and the step-up. An account that is out shows "rebate off".
+   - **Wallet history** labels `wallet_rebate` ("Rebate", with "RM5,000.00 step (November 2026)") and `wallet_rebate_forfeit`.
+   - **Reports (decision 24):**
+     - `ReportService::resellerRebates()` is the Monthly Summary's `reseller_rebates_sen` over the Reports range.
+     - The summary returns it, and so does the reseller-wallet channel. The Overview and Profit "Owner profit" cards say "Before reseller rebates of RM x", and the Partners wallet card shows it.
+     - The CSV ends with a rebate line under Platform Profit (negative), and the PDF prints it under the table.
+     - Under an affiliate filter it is null, because the rebate is per reseller. Per-order profit is unchanged.
+   - **Labels:** Customer Analytics' System Profit tooltip, and the Report Assistant prompt, say profit is before reseller rebates.
+2. **Found in the browser check, fixed:** for a month not finalised yet, "Waiting to be claimed" read only `available` rows, so it showed RM0.00 while a reached step was unclaimed. A live month now shows entitlement minus claimed for an account in the programme, the same figure as `RebateLiability`'s payable. The finalised month still reads its rows.
+3. **Proven by:**
+   - `RebateReportsTest` (2 tests): the summary, the affiliate filter and the wallet channel; the CSV's closing line.
+   - A `RebateApiTest` assertion for the live waiting amount.
+   - A browser check (Playwright) on a throwaway backend and admin, deleted afterwards:
+     - the ladder page and grid;
+     - the editor's date, ceiling flag and save payload (a throwaway admin has no MFA, so the save answered `mfa_not_enabled` as designed);
+     - the month cards (waiting RM5.00 after the fix), the CSV download and the eligibility dialog (also `mfa_not_enabled`);
+     - the wallet history label;
+     - the Reports Profit note "Before reseller rebates of RM 6.00".
