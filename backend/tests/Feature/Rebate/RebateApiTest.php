@@ -174,6 +174,11 @@ class RebateApiTest extends TestCase
             ->assertJsonPath('entries.data.0.type', 'wallet_rebate')
             ->assertJsonPath('entries.data.0.rebate.period', '2026-12')
             ->assertJsonPath('entries.data.0.rebate.threshold_sen', 50000);
+        // PR 4c: the page's history names the step by its target, like the statement line.
+        $this->withToken($token)->getJson('/api/reseller-portal/rebate')
+            ->assertOk()
+            ->assertJsonPath('history.0.state', ResellerRebateMilestone::CLAIMED)
+            ->assertJsonPath('history.0.threshold_sen', 50000);
         $this->assertSame(ResellerRebateMilestone::CLAIMED, ResellerRebateMilestone::query()->sole()->state);
     }
 

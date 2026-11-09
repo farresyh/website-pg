@@ -23,6 +23,9 @@ import OrderTable from "@/components/orders/OrderTable";
 import OnboardingChecklist from "@/components/onboarding/OnboardingChecklist";
 import FirstOrderCard from "@/components/onboarding/FirstOrderCard";
 import { useOnboarding } from "@/hooks/useOnboarding";
+import { RebateProgressCard } from "@/components/rebate/RebateParts";
+import { getRebate } from "@/lib/reseller-portal";
+import type { RebatePage } from "@/lib/rebate";
 import { channelsSetUp, storeStatus } from "@/lib/onboarding";
 
 const RECENT = 5;
@@ -52,6 +55,8 @@ function ResellerDashboard({ hello }: { hello: string }) {
     orders: OrderListItem[];
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // ADR-139 decision 41: loaded on its own, so a rebate error never blanks the dashboard.
+  const [rebate, setRebate] = useState<RebatePage | null>(null);
   const onboarding = useOnboarding("reseller");
 
   useEffect(() => {
@@ -66,6 +71,9 @@ function ResellerDashboard({ hello }: { hello: string }) {
     ])
       .then(([wallet, profile, keys, webhook, orders]) => setData({ wallet, profile, keys, webhook: webhook.webhook, orders: orders.data }))
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load the dashboard."));
+    getRebate(session.token)
+      .then(setRebate)
+      .catch(() => setRebate(null));
   }, []);
 
   const entries = data?.wallet.entries.data ?? [];
@@ -161,6 +169,12 @@ function ResellerDashboard({ hello }: { hello: string }) {
           <Skeleton className="h-[260px]" />
         )}
       </div>
+
+      {rebate && (
+        <div className="mb-4 empty:hidden">
+          <RebateProgressCard data={rebate} />
+        </div>
+      )}
 
       {onboarding?.steps.find((step) => step.key === "first_order")?.state === "todo" && (
         <div className="mb-4">

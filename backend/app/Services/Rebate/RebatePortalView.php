@@ -52,11 +52,13 @@ final class RebatePortalView
             'upcoming_ladder' => $this->upcoming($reseller, $current),
             'history' => ResellerRebateMilestone::query()->where('reseller_id', $reseller->id)
                 ->where('state', '!=', ResellerRebateMilestone::AVAILABLE)
-                ->orderByDesc('period')->orderByDesc('step')->limit(24)->get()
+                ->with('ladder')->orderByDesc('period')->orderByDesc('step')->limit(24)->get()
                 ->map(fn (ResellerRebateMilestone $r) => [
                     'period' => $r->period->format('Y-m'),
                     'kind' => $r->kind,
                     'step' => $r->step,
+                    // The step's target under the version it was reached on, for "RM5,000.00 step" (decision 43).
+                    'threshold_sen' => $r->kind === ResellerRebateMilestone::KIND_STEP ? (int) ($r->ladder?->steps[$r->step - 1]['threshold_sen'] ?? 0) : null,
                     'amount_sen' => $r->amount_sen,
                     'adjusted' => $r->adjusted,
                     'state' => $r->state,

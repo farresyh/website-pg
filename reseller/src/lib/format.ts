@@ -1,3 +1,5 @@
+import { rebateEntryLabel } from "./rebate.ts";
+
 /** All money crosses the API as an integer in sen (RM 1.00 = 100). */
 export function formatRm(sen: number): string {
   const rm = sen / 100;
@@ -32,6 +34,9 @@ const LEDGER_TYPE_LABELS: Record<string, string> = {
   wallet_refund: "Refund",
   // ADR-131 decision 14: written once, when PekanGame closes the account and sends the balance back.
   wallet_closure_refund: "Closed account refund",
+  // ADR-139: a claimed rebate reward, and unspent rebate removed at closure (decision 15).
+  wallet_rebate: "Rebate",
+  wallet_rebate_forfeit: "Rebate forfeited",
 };
 
 export function ledgerTypeLabel(type: string): string {
@@ -127,7 +132,14 @@ export function dateAndTime(iso: string | null): { date: string; time: string } 
  * money came from or went, from the row's own fields (ADR-073 reference
  * types). An admin's reason, when present, wins.
  */
-export function ledgerRow(entry: { type: string; amount: number; reference_type: string | null; reason: string | null }): {
+export function ledgerRow(entry: {
+  type: string;
+  amount: number;
+  reference_type: string | null;
+  reason: string | null;
+  /** ADR-139 decision 43: set on a wallet_rebate line, read from its milestone. */
+  rebate?: { period: string; kind: "step" | "adjustment"; step: number; threshold_sen: number | null } | null;
+}): {
   badge: StatusBadge;
   detail: string;
 } {
@@ -144,6 +156,8 @@ export function ledgerRow(entry: { type: string; amount: number; reference_type:
     withdrawal: { tone: "neutral", detail: "Sent to your bank" },
     reseller_tier_fee: { tone: "neutral", detail: "Monthly wholesale-tier fee" },
     adjustment: { tone: "review", detail: "Adjustment by PekanGame" },
+    wallet_rebate: { tone: "success", detail: entry.rebate ? rebateEntryLabel(entry.rebate) : "Rebate reward claimed" },
+    wallet_rebate_forfeit: { tone: "neutral", detail: "Unspent rebate removed when the account was closed" },
   };
   const known = map[entry.type] ?? { tone: "neutral" as const, detail: "" };
   return { badge: { tone: known.tone, label }, detail: entry.reason?.trim() || known.detail };

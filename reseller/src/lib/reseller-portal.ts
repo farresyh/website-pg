@@ -1,5 +1,6 @@
 import { apiBlob, apiFetch } from "@/lib/api-client";
 import type { LedgerEntry, Paginated } from "@/lib/portal";
+import type { RebateClaimResult, RebatePage } from "@/lib/rebate";
 
 /**
  * ADR-072 decision 5 / PR-G: the Reseller portal's own
@@ -194,4 +195,18 @@ export interface PaymentChannel {
 /** Public, no-auth — same catalog the storefront checkout reads. */
 export function listPaymentChannels() {
   return apiFetch<PaymentChannel[]>("/api/catalog/payment-methods");
+}
+
+/** ADR-139 decision 41: the Rebate page and the dashboard card, own tier only. */
+export function getRebate(token: string) {
+  return apiFetch<RebatePage>("/api/reseller-portal/rebate", { token });
+}
+
+/**
+ * ADR-139 decisions 11, 16: the claim carries only the month and the step
+ * (0 = the month's adjustment) plus the terms tick; the server computes the
+ * amount. A 422 is keyed `terms` (accept first) or `rebate` (refused).
+ */
+export function claimRebate(token: string, claim: { year: number; month: number; step: number; accept_terms?: boolean }) {
+  return apiFetch<RebateClaimResult>("/api/reseller-portal/rebate/claim", { method: "POST", token, body: claim });
 }

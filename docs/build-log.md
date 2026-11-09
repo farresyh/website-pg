@@ -2238,3 +2238,30 @@ Branch `feature/rebate-admin-screens`, into `staging` (not released). The founde
 - `php artisan test`: 3,890 passed (2 new, plus one new assertion).
 - Admin: `tsc`, lint and 22 unit tests pass.
 - Browser (Playwright, throwaway backend and admin deleted afterwards): ladder page, editor, month view, CSV, eligibility dialog, wallet label and Reports note. Saves answered `mfa_not_enabled` for the MFA-less throwaway admin, as designed; the request payload was correct.
+
+## 2026-11-09 — ADR-139 PR 4c: rebate portal screens
+
+Branch `feature/rebate-portal-screens`, into `staging` (not released). This completes ADR-139's build. Nothing reaches a reseller until the founder saves the first ladder, and that waits for this PR to merge.
+
+**Shipped:**
+- Portal → Rebate (`/rebate`, in the reseller nav under Orders & money):
+  - the notice for a new table;
+  - unspent rebate;
+  - this month and last month, each with purchases counted, progress to the next target, and every step with its reward and state;
+  - Claim buttons in step order, plus "Claim all";
+  - the terms dialog on the first claim;
+  - reward history and the programme terms.
+- Dashboard: a Rebate card showing "RM X more to reach RM Y" and a Claim button with the count, which also carries the new-table notice. It loads on its own, so a rebate error never blanks the dashboard.
+- Statement: `wallet_rebate` is labelled "Rebate" with its step and month, and `wallet_rebate_forfeit` is labelled "Rebate forfeited".
+- Backend: the portal history rows now carry `threshold_sen`, so a history line reads like its statement line.
+
+**Verified:**
+- Rebate tests: 45 passed (one new assertion).
+- Portal: `tsc`, lint, build and 22 unit tests pass (`rebate.test.ts` is new, and `format.test.ts` gains the rebate labels).
+- Browser (Playwright, on a throwaway sqlite backend and the portal dev server, both deleted afterwards). Seeded with one SS reseller, a 4-step ladder from October, a new table from December, October finalised at RM1,600 and November at RM2,000:
+  - the first claim opened the terms and sent `accept_terms: true`;
+  - "Claim all" sent steps 1 and 2 in order;
+  - the second claim did not ask for the terms again;
+  - unspent rebate reached RM7.00;
+  - the statement labels were right;
+  - checked in light and dark, and at 390px with no horizontal overflow.
