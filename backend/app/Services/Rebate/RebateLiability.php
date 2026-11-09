@@ -70,6 +70,9 @@ final class RebateLiability
      * started) and neither claimed nor expired by then. An open month's
      * part is its live total less what was claimed before the instant.
      */
+    // ponytail: an open month's live total is entitlement as of now, not as of $asOf. Every reader asks at a
+    // month end (Cash Position) and a month cannot close before it is finalised, so this is exact today; an
+    // intra-month as-of view would need entitlement at $asOf (2026-11-09 review).
     public function payableSen(CarbonInterface $asOf): int
     {
         $total = 0;
