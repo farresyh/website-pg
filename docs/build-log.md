@@ -2296,3 +2296,19 @@ The founder asked whether rebate profit, accounting and ledger are right. Three 
 - `php artisan test`: 3,891 passed.
 - Admin: `tsc`, lint and 22 unit tests pass.
 - Pint is clean.
+
+## 2026-11-09 — ADR-139 decision 46: ladder simulation re-run
+
+The re-run happened before the first ladder is saved. Result: decision 3's grid is used as is. Numbers are in the ADR-139 addendum.
+
+**Production, read-only:**
+- Nothing new since 2026-11-08: 11 delivered wallet orders, none in November, and every month below RM500.
+- SS drift is 97.6%, so the 94.56% design figure stays.
+
+**Grid through the real `RebateEntitlement`** (a scratch test on sqlite, deleted afterwards):
+- At 94.56% drift, none of 30 tier/step points is cut, and we keep 66.2–94.5%.
+- At 90% and 85% drift, the 35% cap cuts the top steps and holds us at ≥ 65%.
+
+**Gotcha:** on `main`, `monthBounds()` lives on `MonthlyAccountingSummaryService`, not `RecognisedRevenue`. A production script written against staging failed on it first.
+
+**#765 (portal screens) and #766 (review fixes) were merged to `staging`.**
