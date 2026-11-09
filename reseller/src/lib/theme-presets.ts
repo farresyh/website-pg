@@ -114,43 +114,55 @@ export const THEME_PRESETS: Record<string, ThemePreset> = {
       "--color-outline": "#7b7050",
       "--color-outline-variant": "#e0c98a",
     },
-    // DESIGN.md "Dark Mode Rules" applied: warm amber-black surface (not
-    // neutral), muted warm-grey ink (not blazing cream), "white
-    // highlights" (already in the preset's own tagline) becomes the
-    // dark-mode secondary instead of trying to invert ink-black into a
-    // fake bright color, and the big-fill Membership card stays a deep
-    // warm brown so it reads as *this* brand gone dark, not a clashing
-    // insert (2026-09-24).
+    // ADR-113 2026-11-10 addendum: the founder's "Bumblebee Dark v3"
+    // palette (Figma page 12583), colours only; layout, the 2px border and
+    // the hard shadows stay. Charcoal layers instead of amber-brown, text
+    // never pure white, yellow kept for action and product. Deviations
+    // from the v3 hexes, each for contrast:
+    // - `ink` (the 2px border, and the bottom-nav pill under `surface`
+    //   labels) is #8C8983, not v3's 8% white line: labels need 4.5:1
+    //   on the pill (5.4:1 here; the border reads 5.1:1 on a card).
+    // - `outline` is used as text, so #8C8983 (5.1:1), not v3's dim
+    //   #77746E (3.8:1).
+    // - `primary-fixed` / `secondary-fixed-dim` are v3's 14% yellow tint
+    //   flattened onto a card (#383017), so they render the same anywhere.
+    // `surface-container-highest` is the footer (v3 "deep", darker than
+    // the page); the slider track that also reads it has its own border.
     tokensDark: {
       "--color-primary": "#FFC700",
-      "--color-on-primary": "#19192f",
-      "--color-primary-container": "#B88900",
-      "--color-on-primary-container": "#fff8e1",
-      "--color-primary-fixed": "#4a3600",
-      "--color-on-primary-fixed": "#FFE49A",
+      "--color-on-primary": "#111113",
+      "--color-primary-container": "#B38B00",
+      "--color-on-primary-container": "#111113",
+      "--color-primary-fixed": "#383017",
+      "--color-on-primary-fixed": "#FFC700",
       "--color-primary-on-surface": "#FFC700",
-      "--color-secondary": "#FFF3D6",
-      "--color-on-secondary": "#19192f",
-      "--color-secondary-container": "#332500",
-      "--color-on-secondary-container": "#FFE49A",
-      "--color-secondary-fixed-dim": "#332500",
+      "--color-secondary": "#F2F0EA",
+      "--color-on-secondary": "#111113",
+      "--color-secondary-container": "#202024",
+      "--color-on-secondary-container": "#F2F0EA",
+      "--color-secondary-fixed-dim": "#383017",
       "--color-on-secondary-fixed-dim": "#FFC700",
-      "--color-tertiary": "#FFA733",
-      "--color-on-tertiary": "#19192f",
-      "--color-tertiary-container": "#B86A00",
+      "--color-tertiary": "#FFC700",
+      "--color-on-tertiary": "#111113",
+      "--color-tertiary-container": "#B38B00",
       "--color-warning": "#FFC700",
-      "--color-ink": "#8f8360",
-      "--color-on-surface": "#f5f0e0",
-      "--color-on-surface-variant": "#c9bfa0",
-      "--color-surface": "#1a1508",
-      "--color-surface-container-lowest": "#100c05",
-      "--color-surface-container-low": "#211a0d",
-      "--color-surface-container": "#2b2313",
-      "--color-surface-container-high": "#362c18",
-      "--color-surface-container-highest": "#40341d",
-      "--color-surface-variant": "#2b2313",
-      "--color-outline": "#8f8360",
-      "--color-outline-variant": "#40341d",
+      "--color-on-warning": "#111113",
+      "--color-warning-text": "#FFC700",
+      "--color-success": "#5BD08A",
+      "--color-on-success": "#111113",
+      "--color-success-text": "#5BD08A",
+      "--color-ink": "#8C8983",
+      "--color-on-surface": "#F2F0EA",
+      "--color-on-surface-variant": "#A6A39B",
+      "--color-surface": "#111113",
+      "--color-surface-container-lowest": "#18181B",
+      "--color-surface-container-low": "#16161A",
+      "--color-surface-container": "#202024",
+      "--color-surface-container-high": "#2A2A2F",
+      "--color-surface-container-highest": "#0B0B0D",
+      "--color-surface-variant": "#202024",
+      "--color-outline": "#8C8983",
+      "--color-outline-variant": "#2A2A2F",
     },
   },
   redgiants: {
