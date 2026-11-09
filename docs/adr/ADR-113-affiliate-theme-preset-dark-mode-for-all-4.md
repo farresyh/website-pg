@@ -51,6 +51,18 @@ Mid-build, the founder made a separate policy call: Digital Architect is PekanGa
    - Warning and success text take the yellow and the green, because the light defaults are unreadable on charcoal.
 3. **The Tinted-Surface Rule** (`storefront/DESIGN.md`) no longer applies to Cyber Bumblebee dark. Its identity is yellow on ink black, so a neutral charcoal is its own hue family. The rule's guard against a generic palette is met by the yellow budget instead. It still applies to the other presets.
 
+4. **The bottom nav and the More drawer's backdrop get their own roles.** The founder reviewed the screens and approved this.
+   - The roles are `--color-nav`, `--color-on-nav`, `--color-on-nav-muted` and `--color-scrim`, declared in `storefront/src/app/globals.css`.
+   - Their defaults reproduce the old look: ink pills, `surface` labels, an ink scrim.
+   - Bumblebee dark sets:
+     - a charcoal pill `#18181B`;
+     - the active label in yellow, 11.3:1 (v3's "yellow = active nav");
+     - the inactive labels `#A6A39B`, 7.0:1 (was 2.9:1);
+     - a black scrim, so the drawer dims the page instead of lightening it.
+   - Measured live with `getComputedStyle`, the other presets are unchanged:
+     - Digital Architect light: pill `#19192f`, 6.32 / 15.64;
+     - Bumblebee light: 6.52 / 16.18, the ADR-090 values.
+
 **Consequences to track.**
-- The inactive bottom-nav labels (`surface` at 60% on the `ink` pill) are 2.9:1. They were 2.7:1 before, so this is not a regression, but they are below 4.5:1. A fix touches `BottomNav` for every preset.
+- Red Giants, Emerald and Cobalt dark still use the default nav: a light `ink` pill with inactive labels at about 2.7:1 (Red Giants measured: 2.69 / 4.55), and a scrim that lightens. Setting the four roles in each dark set fixes it, with no component change.
 - `text-danger` (`#ba1a1a`, global) is 2.9:1 on charcoal, as it was on the old brown. No dark preset overrides it.

@@ -2308,4 +2308,13 @@ Branch `feature/bumblebee-dark-v3-palette`, into `staging`. The founder sent a F
 - Measured with `getComputedStyle`: heading 15.8:1, muted 7.0:1.
 - Computed: bottom-nav active label 5.4:1 (was 4.8). Inactive label 2.9:1 (was 2.7), below 4.5 before and after.
 
-**Gotcha:** a `git worktree` with a symlinked `node_modules` fails `next build`, because Turbopack refuses a `node_modules` outside its root. Build in the real checkout instead.
+**Then the bottom nav** (founder reviewed the mobile screens and approved it):
+- What was wrong: the grey `ink` pill looked off on charcoal, and the More drawer's backdrop lightened the page.
+- The fix: `BottomNav` now reads `nav` / `on-nav` / `on-nav-muted` / `scrim`. Their defaults are the old ink and `surface`.
+- Bumblebee dark: a charcoal pill, the active label in yellow (11.3:1), the inactive labels at 7.0:1, and a black scrim.
+- Regression check with `getComputedStyle` on each preset: Digital Architect light and Bumblebee light are identical to before (6.32 / 15.64 and 6.52 / 16.18).
+- Red Giants dark is unchanged (2.69 / 4.55). The same four tokens would fix it and the other dark presets.
+
+**Gotchas:**
+- A `git worktree` with a symlinked `node_modules` fails `next build`, because Turbopack refuses a `node_modules` outside its root. Build in the real checkout instead.
+- Switching a throwaway brand's preset needs `.next/cache/fetch-cache` cleared and both servers restarted; this is the "scripted loop did not switch" mystery in the verification recipes. In zsh, pass `${=t}` to split a "preset mode" pair; a plain `$t` writes one bad value, which the storefront's schema check rejects, so it falls back to the default.
