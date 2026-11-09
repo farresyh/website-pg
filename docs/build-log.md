@@ -2365,3 +2365,17 @@ The founder asked for it. `staging` → `main`, merge `aac82832`, carrying #756�
 **Separate findings:**
 - The 9 Nov dependency audit lists 7 advisories in 4 Symfony packages (for example `symfony/http-foundation`, `symfony/filesystem`).
 - A memory-exhaustion error hit an admin request on 9 Nov at 03:38.
+
+## 2026-11-10 — Release follow-ups: report date bounds, CI timeout, Symfony advisories
+
+Branch `fix/release-followups`, into `staging`. These are the three findings from the #769 release check.
+
+1. **Production memory exhaustion (9 Nov 03:38 UTC, four times in 45 s, admin user 2).**
+   - nginx's error log names the request: `GET /api/reports/trend?from=0002-10-01`, a year typed half-way into the date filter.
+   - The trend zero-fills one row per day, so it tried to build about 740,000 rows and ran out of the 512 MB limit.
+   - `ReportService::dateRangeFromDates()` is the one parser behind 12 admin date filters (Reports, Orders, Transaction Register, supplier transfers, Joki, Campaigns, request log, customer analytics, settlement reconciliation). It now accepts only a strict `Y-m-d` between 2020 and 2100. Anything else is a 422 keyed by the field.
+   - `ReportDateRangeBoundsTest` is new. Its HTTP case reproduced the crash before the fix: the test process died silently.
+2. **CI:** `backend-concurrency` gets `timeout-minutes: 40`. It normally takes 14–26 min; GitHub's default limit is 6 h.
+3. **`composer audit`** had failed on `main` since 9 Nov: 7 advisories in `symfony/filesystem`, `http-foundation`, `http-kernel` and `routing`. Those four were updated with their dependencies, all patch releases within 8.1 (for example `http-foundation` 8.1.9 → 8.1.11). The audit is now clean.
+
+**Verified:** `php artisan test` 3,893 passed; Pint is clean; `composer audit` reports no advisories.
