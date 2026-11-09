@@ -2182,3 +2182,13 @@ Branch `feature/rebate-accounting`, into `staging` (not released). It is inert u
 - No migration in this PR.
 
 **Gotcha.** The first scenario run expected a 25 sen reward and got 21: the scenario reseller's October profit is 43 sen, so the 50% cap applied. That is correct behaviour; the test's rewards were lowered below the cap.
+
+**Same day, a review before PR 4.** The founder asked whether the rebate's money logic and code met our bar before PR 4 started. Three read-only forks ran, one per layer (AGENTS.md money-critical review). None found wrong money; I verified each finding against the code before fixing it. Fixed test-first in the same PR (#762), details in the ADR-139 2026-11-09 addendum, item 6:
+- A ragged ladder could make a column fall to 0 (reachable only once PR 4's editor exists).
+- A late expiry run could date reversals into a closed month. Month close now also waits for expiry.
+- A claim at midnight could put the payable and the balance in two months. Both now take the ledger row's instant.
+- Hygiene: one home for the claim deadline; month close asks the rebate module; constructor injection; no repeated claimed-sum query; a `ponytail:` scale note; the wallet-balance text.
+
+Read-only production check: wallet ledger types are only `wallet_topup`, `wallet_debit` and `wallet_refund`.
+
+`php artisan test`: 3,877 passed (3 new). The MySQL concurrency tests for rebate and closure pass. Admin `tsc` and lint pass.

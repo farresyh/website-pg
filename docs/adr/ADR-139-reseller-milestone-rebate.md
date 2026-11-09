@@ -452,3 +452,20 @@ The founder approved the programme terms that the accountant addendum's decision
    - The tier is shown on the portal's Rebate page. There is no separate tier page.
    - The reseller is **not** notified when a tier change is scheduled. The 7-day ladder notice stays, because it is part of the programme terms.
    - A reseller sees only their own tier's ladder.
+6. **Review before PR 4 (2026-11-09).** Three read-only reviews ran in parallel, one per layer: entitlement and claim; ledger, month end and closure; downstream readers. None found wrong money in the code as it stood. Three gaps were fixed in this PR, each test-first:
+   - **A ragged ladder.** `validate()` checked only the cells a step had. A tier missing at step 2 read as 0, so its column fell. The live figure then said 0 while finalise paid step 1, and admins got a false "overpaid" alert. Every step must now reward the same tiers as step 1. This was reachable only once PR 4's editor exists.
+   - **A late expiry could move a closed month.** If the expiry task were down, month M could close with rewards past their deadline still `available`. A later run dates their reversal at the deadline, inside M. The month-close check, now `RebateMonthService::closeBlocker()`, also refuses M while any reward that lapsed by M's end is unexpired.
+   - **A midnight claim could split across two months.** `claimed_at` (when the payable falls) and the ledger row (when the balance rises) took separate `now()` calls. `claimed_at` now takes the ledger row's `created_at`.
+   - **Hygiene:**
+     - The claim deadline (period + 2 months, KL) has one home, `ResellerRebateMilestone::claimDeadline()` and `lastPeriodDueBy()`. The claim window, the expiry and the close check all use it.
+     - `MonthCloseService` asks the rebate module rather than knowing its rules.
+     - `CashPositionService` takes `RebateLiability` by constructor.
+     - `liveTotalSen` reuses the standing's claimed sum.
+     - A `ponytail:` note names the scale ceiling: one standing per active reseller per load.
+     - The admin wallet-balance definition now says it includes claimed rebate credit.
+   - **Checked and left as they are:**
+     - Lock order: no path takes two locks in opposite orders.
+     - Every other wallet-ledger reader filters by type or reads a balance. Production holds only `wallet_topup`, `wallet_debit` and `wallet_refund` (read-only check, 2026-11-09).
+     - No path rewrites `platform_profit` after recognition.
+     - `BackupFailureAlerter`'s name: renaming it is churn.
+     - No concurrency test for claim against finalise or closure: they share the one wallet mutex.
