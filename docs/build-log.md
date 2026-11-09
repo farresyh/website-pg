@@ -2296,3 +2296,16 @@ The founder asked whether rebate profit, accounting and ledger are right. Three 
 - `php artisan test`: 3,891 passed.
 - Admin: `tsc`, lint and 22 unit tests pass.
 - Pint is clean.
+
+## 2026-11-10 — Cyber Bumblebee dark: the "Bumblebee Dark v3" palette
+
+Branch `feature/bumblebee-dark-v3-palette`, into `staging`. The founder sent a Figma redesign of Bumblebee dark and asked for its colours only; layout, borders and shadows are unchanged. `tokensDark` in `storefront/src/lib/theme-presets.ts` was changed and synced to the portal copy. Affects PajoStore and FixFast Demo (production branding, read-only); PekanGame stays on Digital Architect light. Decision and deviations: ADR-113 2026-11-10 addendum. DESIGN.md's Tinted-Surface Rule names the exception.
+
+**Constraint found:** `--color-ink` is both the 2px border and the bottom-nav pill whose labels are `surface`. A hairline-dark ink (v3's 8% white) would put the labels at 2.4:1, so ink is `#8C8983`.
+
+**Verified** (throwaway e2e backend with the primary brand on Bumblebee dark; production storefront build on :3011; both deleted afterwards):
+- Before and after screenshots of home, order and track order, at 1440 and 390. Layout is identical and there is no horizontal overflow.
+- Measured with `getComputedStyle`: heading 15.8:1, muted 7.0:1.
+- Computed: bottom-nav active label 5.4:1 (was 4.8). Inactive label 2.9:1 (was 2.7), below 4.5 before and after.
+
+**Gotcha:** a `git worktree` with a symlinked `node_modules` fails `next build`, because Turbopack refuses a `node_modules` outside its root. Build in the real checkout instead.
