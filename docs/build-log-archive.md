@@ -32,8 +32,11 @@
 > - **2026-10-12:** dated narrative moved out of `docs/prd.md` (§6.7, §6.15, §7.3,
 >   §14 releases, §16 closed items 63 → 52), under "PRD narrative moved 2026-10-12",
 >   just above PRD §14's release history.
+> - **2026-11-11:** PRD §16's two re-check preambles, item 161's pre-release
+>   text and the closed items 28 and 57's Details, under "PRD §16 text moved
+>   2026-11-11" (the last section).
 >
-> `docs/build-log.md` holds 2026-10-23 onward. Open this file only if you need
+> `docs/build-log.md` holds 2026-10-28 onward. Open this file only if you need
 > older detail.
 
 ---
@@ -9903,3 +9906,73 @@ WhatsApp group, activates it and adds a login game and its packages.
 #320 and the 2026-09-28 audit waves) are recorded release by release in
 `docs/build-log.md` (2026-10-23 onward) and `docs/build-log-archive.md`
 (before that). This section keeps only the current state.
+
+---
+
+# PRD §16 text moved 2026-11-11 (docs audit after release #777)
+
+Moved verbatim when §16 was tidied: the two re-check preambles (the dated history of every backlog re-check from 2026-10-12 to 2026-11-08), item 161's last Next-up text from before it was rewritten for its release, and the Details entries of items 28 and 57, which were already closed. True as of their own dates.
+
+## §16 preamble (as of 2026-11-10)
+
+**Restructured 2026-10-12; every open item re-checked against git and
+production on 2026-10-15 after release #449; items 98, 99, 106 and 107
+checked again on 2026-10-16, after release #469; 107 closed after release #472;
+106, 11, 96 and the payment state re-checked 2026-10-17 after release #476;
+every open item re-checked 2026-10-26 after release #557; item 133 closed 2026-10-27 after release #571; items 134 and 137 closed and 138–140 added 2026-10-29 after release #589, with the payment state re-checked on prod; 140 closed, 141 (ADR-131) released and 142–144 added 2026-10-29 after release #599; items 138, 147, 148 and 149 closed and 150 added 2026-10-30; items 13 and 146 designed in ADR-133 and 151 and 152 added 2026-10-31; item 154 added and closed, 153 closed and 156 and 157 added 2026-11-01; items 55, 74 and 114 closed and items 108 and 122 corrected after the group D audit, and items 129 and 141 closed, the same day; group E sorted the same day (24 and 94 to B, 57 and 150 to D, 14 and 25 closed, 117 parked); items 156 and 94 built and items 158 and 159 added 2026-11-03; 158 designed (ADR-136) and moved to A the same day; 157 closed the same day; item 160 added 2026-11-03; item 57 moved to B and 161 added 2026-11-04; item 57 closed and every open item re-checked on prod in the full docs audit after release #694, 2026-11-04.**
+
+## "Next up" preamble (as of 2026-11-10)
+
+**Founder's rule (2026-10-08): clear the backlog below before any new
+feature.** Every open item sorted by what it needs to finish. Group D was
+reviewed item by item with the founder on 2026-10-14 (seven items dropped,
+listed under Recently closed). Every open item re-checked against code and
+git in the 2026-10-17 docs audit, and again after items 112 and 113 PR 1a
+and PR 1b on 2026-10-18. Items 124–128 added 2026-10-19 after the docs audit
+and the admin-loading investigation (#515, #516). Re-checked again
+2026-10-26 after releases #554 and #557 (items 131 and 132 closed, 114
+moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 closed, item 111's trigger narrowed). Re-checked 2026-11-04 in the full docs audit after release #694, and 2026-11-05 after releases #705 and #707 (item 162 moved to group C, 163 to A, 164 and 165 added). Items 172 to 174 added 2026-11-07 from the item 162 audit. Item 162 moved to group D 2026-11-07: the founder is not using Gamevion yet. Re-checked 2026-11-08 in the docs audit after release #733 (159 closed; 176 added and closed). Re-verify before building.
+
+## Item 161, Next up group B (as of 2026-11-10)
+
+- **161** Reseller milestone rebate plus automatic refund on a failed wallet order ([ADR-139](./adr/ADR-139-reseller-milestone-rebate.md), **Accepted 2026-11-08** after the code trace, a three-round grill, the ladder simulation and a final stress test; ADR-073 and ADR-131 addenda; money-critical). Agents said our price is about the same as their leader's and asked for a battle-pass rebate themselves. Next: build in four PRs (ADR-139 Consequences): PR 1 automatic refund, PR 2 tier from the 1st (with fixed markup per tier) and PR 3a rebate core and PR 3b-i (finalise, expire, closure forfeit) and PR 3b-ii (accounting lines, month-close gate) are built (§15 Reseller (wallet) row); PR 4 is split in three: 4a (admin and portal API, bot messages), 4b (admin screens and decision 24's Reports line) and 4c (portal screens) are built. The ladder simulation was re-run on 2026-11-09 (decision 46): decision 3's grid stands. Released via #769 on 2026-11-10. The founder saved the first ladder on 2026-11-10 (effective 1 Dec 2026, decision 3's grid, checked read-only). Next: the founder announces it to agents (ADR-139 2026-11-09 addenda, which also record the founder's answers on PR 4's open points and the draft bot messages awaiting approval); PR 3 (rebate backend and accounting) is unblocked: the accountant confirmed the treatment on 2026-11-08, revising expiry to a revenue-reduction reversal and making the open month live (ADR-139 addendum); PR 4 is the admin, portal and bot screens, plus the programme terms the founder approves.
+
+## Details: items 28 and 57 (closed 2026-11-05 and 2026-11-04)
+
+28. **Supplier balance comfortable-buffer forecast — [ADR-115](./adr/ADR-115-supplier-balance-comfortable-buffer-forecast.md),
+    fully designed + grilled, build deliberately parked.** Digiflazz-only,
+    rolling lead-time-window-sum percentile (not a flat daily rate — a
+    real Friday MLBB-event spend pattern would otherwise be
+    underestimated), 2-day lead time, IDR+MYR side by side, info-only
+    (Balance page detail + a Dashboard chip mirroring the existing
+    funding-drift chip), cold-start falls back to the founder's own
+    manual threshold. No automatic trigger to start building — the
+    founder will say when, typically once real (non-testing) order
+    volume exists. **Trigger set 2026-10-14 (founder): two weeks after
+    launch**, i.e. payments back on for real customers; the email ships with
+    the forecast, not before. **2026-10-13 addendum:** the build also adds a
+    low-balance email to every active admin through the ops-alert path
+    (`BackupFailureAlerter`, Plunk), throttled once a day per supplier, when
+    the balance crosses the buffer. **Built 2026-11-05** (ADR-115 2026-11-05
+    addendum: busiest 60-day window instead of p90, weekend cover, the higher
+    of floor and forecast; item closed). Since 2026-10-14 Digiflazz's
+    `low_balance_threshold` is set on prod (IDR 10,000,000, about RM 2,280,
+    founder), so the Dashboard "low balance" chip and the log warning work;
+    with the balance at IDR 2,285,108 that day the chip shows until the
+    balance passes the threshold.
+
+57. **Marketing Campaigns — [ADR-118](./adr/ADR-118-marketing-campaigns.md), fully designed + grilled + stress-tested,
+    build deliberately parked.** New `Campaign`→`PromoCode` family for paying KOLs/influencers
+    without requiring them to run their own Affiliate storefront: multi-use discount codes
+    (5% flat off Standard price, benchmarked against a real competitor and this platform's own
+    margin data), locked per redemption to game ID + customer email/phone, never stacks with
+    Member pricing but does stack with `Voucher`, per-code budget cap with a reserved/restored
+    lifecycle (mirrors `Voucher`'s own), snapshot-at-creation attribution (never a live-rewriting
+    tag), and an optional platform/affiliate funding split for third-party affiliate-brand
+    campaigns. No automatic trigger to start building — founder will say when, once a real KOL
+    partnership is ready to go. **Build from ADR-118 *plus* its 2026-10-02 review addendum
+    (R1–R16)**, which supersedes the original wherever they conflict. That addendum covers
+    discount storage, the resend split, the per-order loss guard, the fail-closed budget, the
+    once-per-customer limit, brand scope, accounting treatment, and the UI under Customers.
+    Before building, confirm R14's contra-revenue treatment with the external accounting
+    reviewer.

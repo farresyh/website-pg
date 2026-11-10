@@ -1,6 +1,6 @@
 # ADR-117: Prod DB least-privilege — `doadmin` superuser replaced by a dedicated scoped app user
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-11):** In force; the restore-test grant names one exact database (2026-10-15 addendum, superseding the 2026-10-14 SQL). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted & built — live in production 2026-09-30, verified end-to-end (health check, Horizon, a real backup run).
 

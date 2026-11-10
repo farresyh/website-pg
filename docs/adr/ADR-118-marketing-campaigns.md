@@ -1,6 +1,6 @@
 # ADR-118: Marketing Campaigns — multi-use KOL discount codes, separate from `Voucher`
 
-> **Standing (2026-11-04):** In force; v1 is the 2026-11-04 addendum (V1–V20), which overrides decisions 1–17 and R1–R16 where they conflict. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-11):** In force; v1 is the 2026-11-04 addendum (V1–V20), which overrides decisions 1–17 and R1–R16 where they conflict. V16 is revised by the second 2026-11-07 addendum (a link's code applies itself), and the first ends a campaign's fee when the campaign ends. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-10-02, grilled across four rounds via `/mattpocock-skills:grilling`, plus a dedicated adversarial stress-test pass that caught and corrected two real design flaws before any code was written (decisions 9 and 11 below). Build not started.
 
@@ -444,7 +444,7 @@ Refinements made while building PR 1, test-first against V1–V20. None changes 
 - The customer list has no profit column: profit stays on the scorecard, from the ledger.
 - Customer Analytics' campaign filter is still out (V20).
 
-### 2026-11-07 addendum: a link's code applies itself, and says so (revises V16)
+### 2026-11-07 addendum — a link's code applies itself, and says so (revises V16)
 
 **Context.** Read-only check on production: 109 clicks, 0 redemptions, and PekanGame took 3 checkouts in that time, so most visitors stop before checkout. All four live codes quoted correctly through `preview-totals`, and the whole flow works in e2e. One real flaw: V16 only prefilled the code. On a phone the field sits below the pay button, which stays on screen showing the full price, and paying without pressing Apply sent no code at all. A customer who came for a discount could pay full price without noticing, and the sale wouldn't count for the KOL.
 

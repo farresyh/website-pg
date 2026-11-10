@@ -1,6 +1,6 @@
 # ADR-137: Gamevion v2 API — rewrite the adapter for `gamevion.cloud`, async delivery with a signed webhook and same-reference replay
 
-> **Standing (2026-11-07):** Accepted (2026-11-05 addendum: decisions 13–24 after the grill, money code-trace and stress test; the PR 2 build addendum corrects decisions 17 and 19; the last addendum revisits decision 16: games picker, per-game failure, one sync job per supplier; the 2026-11-07 addendum decides no grace period and keeps `max_price` out until a real loss). It replaces the API contract of [ADR-040](./ADR-040-gamevion-sandbox-integration.md) (old `api.gamevion.com`, sandbox header, `telp`, `callback_url`) and, for Gamevion only, the `duplicate_reference` → NeedsReview routing of [ADR-026](./ADR-026-delivery-side-reconciliation-ord-10.md); decision 21 tightened by [ADR-138](./ADR-138-package-sale-lifecycle.md) (repoint refuses an inactive product or an open order). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record.
+> **Standing (2026-11-11):** In force (2026-11-05 addendum: decisions 13–24 after the grill, money code-trace and stress test; the PR 2 build addendum corrects decisions 17 and 19; the last addendum revisits decision 16: games picker, per-game failure, one sync job per supplier; the 2026-11-07 addendum decides no grace period and keeps `max_price` out until a real loss; the 2026-11-10 addendum records the price-sync ceiling). It replaces the API contract of [ADR-040](./ADR-040-gamevion-sandbox-integration.md) (old `api.gamevion.com`, sandbox header, `telp`, `callback_url`) and, for Gamevion only, the `duplicate_reference` → NeedsReview routing of [ADR-026](./ADR-026-delivery-side-reconciliation-ord-10.md); decision 21 tightened by [ADR-138](./ADR-138-package-sale-lifecycle.md) (repoint refuses an inactive product or an open order). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record.
 
 **Status:** Proposed, 2026-11-04. Decisions 1–4 were made with the founder (in Malay) on 2026-11-04. Decisions 5–12 are Claude's draft from the vendor's API document and a first code-trace; they go through the technical grill and the money code-trace (AGENTS.md lifecycle step 2) before Accepted. The open questions at the end are settled in that grill.
 
@@ -218,3 +218,12 @@ No new table, worker or supervisor.
 - **Rollout:** a switch per supplier under `/middleware`, default off. DigiFlazz's test cases cover neither `max_price` nor `rc 69`, so first send `max_price: 1` on `xld10` with `testing: true` from the production box, whose IP is listed, with the founder's go-ahead. If it doesn't answer `rc 69`, ask DigiFlazz before switching on.
 
 **Consequence to track.** A Tier Supreme reseller's margin is 1%, so a small rise can already be a loss there.
+
+### 2026-11-10 addendum — the price-sync ceiling is Gamevion's rate limit (decision 16)
+
+**Context.** Whole price-sync runs took 160–208 s against Horizon's 300 s job limit, and a code note proposed a bulk upsert past ~150 s. Measured on prod, read-only (run 3517): the 300 s limit applies to each supplier's own `SyncSupplierCatalogJob`, not the run; Digiflazz took ~18 s and Gamevion ~152 s, nearly all of it the 1.6 s pause between pricelist calls that Gamevion's 40-a-minute limit forces, over 74 chosen games.
+
+**Decision (founder).** No bulk upsert: it would save seconds. The ceiling is about 140 chosen Gamevion games per 300 s job. Past that, add a warning on the Gamevion game picker (decision 16's picker) rather than reshaping the sync.
+
+**Consequence to track.** PRD §16 item 177, triggered when the chosen Gamevion games approach 140. The measured split lives in the `supervisor-price-sync` comment in `backend/config/horizon.php`.
+

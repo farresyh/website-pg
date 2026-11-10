@@ -20,12 +20,13 @@ The third Next.js app, alongside `admin/` and `storefront/`, on `:3002`
   there is no request form), runs a branded `Host`-resolved storefront
   (ADR-060) on a custom domain. *This is
   the entity ADR-058/059 originally called "Reseller".*
-- **Reseller** — a prepaid-wallet, spend-only account (ADR-072/073). Nav:
-  Dashboard / Orders / Purchase Balance / API Keys / Profile (ADR-131 renamed
-  the wallet for resellers). Adds balance via
+- **Reseller** — a prepaid-wallet account that never withdraws (ADR-072/073).
+  Nav: Dashboard / Orders / Purchase Balance / Rebate / API Keys / Profile
+  (ADR-131 renamed the wallet for resellers; Rebate is ADR-139). Adds balance via
   CHIP, spends it placing orders through three channels: this portal, the
   REST API (per-tenant keys — ADR-074, docs at `docs.pekangame.space`, ADR-084), and a WhatsApp
-  bot (OpenWA — ADR-075). Never earns.
+  bot (OpenWA — ADR-075). The only money it receives is a refund or a claimed
+  rebate, both into Purchase Balance (ADR-139).
 
 The account type is **backend-enforced by `EnsureAccountType`** on every
 reseller-guard endpoint, not just a hidden nav tab.
@@ -88,6 +89,6 @@ and 404s them on the portal host. Locally, open
 
 ```bash
 npm run dev     # next dev on :3002 (matches backend RESELLER_PORTAL_URL)
-npm test        # node --test: colour tokens, format helpers
+npm test        # node --test: the unit tests under src/
 npm run build   # + npm run lint
 ```

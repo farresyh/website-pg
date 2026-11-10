@@ -11,10 +11,10 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 /**
  * ADR-084 PR-3 decision 4: turns a wallet order reaching `delivered` /
  * `failed` into a queued `order.delivered` / `order.failed` webhook.
- * `order.refunded` is NOT here — the admin wallet-refund action never
- * changes `delivery_status`, so it dispatches through
- * `ResellerWebhookDispatcher` directly (same as
- * `SendResellerBotOrderNotification`'s sibling refund path).
+ * `order.refunded` is NOT here — a wallet refund never changes
+ * `delivery_status`, so `OrderSettlementService::settle()` (the admin
+ * action and ADR-139's automatic sweep alike) dispatches it through
+ * `ResellerWebhookDispatcher` directly, next to the bot's refund notice.
  *
  * Rides `OrderStatusUpdated` — the same ADR-047 "single seam"
  * (`OrderObserver` → `DB::afterCommit`) that already fires the Bot

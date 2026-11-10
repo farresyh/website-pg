@@ -1,6 +1,6 @@
 # ADR-090: Theme preset background/ink tokens + a per-affiliate Site Mode (light/dark), the first slice of ADR-081's pinned dark-mode requirement
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-11):** In force; the first 2026-10-30 addendum's header tokens are withdrawn by the later one (the bottom nav is what changed). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — grilled + built 2026-09-11.
 
