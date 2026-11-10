@@ -842,8 +842,12 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   (#687) are released; run #3 chose Claude Haiku 5.5. **The founder switched
   the mode to Shadow on 2026-11-04 (03:53 UTC)** and the first drafts were
   written the same day; 9 knowledge entries are approved (checked read-only
-  2026-11-04). Next: 1–2 weeks of Shadow, the founder grading drafts, then
-  **PR 4 (Live)**: the CS Staff group, safety limits and local OCR (decision
+  2026-11-04). **Founder, 2026-11-10: stay in Shadow and keep growing the
+  knowledge book; the Live gate (20 graded drafts and 90% per category,
+  `live_min_drafts` unchanged) is not lowered.** On that day prod had 26
+  drafts across all categories and no CS message since 2026-11-07. Next: the
+  founder grades drafts, then
+  **PR 4 (Live)** once a category meets the gate: the CS Staff group, safety limits and local OCR (decision
   32; §15 row). Decision 31 is met (lawyer's OK, Privacy Policy line live on
   every brand). OpenWA's first 90-day message prune is around 2026-12-24;
   PR 1 already keeps the chats.
