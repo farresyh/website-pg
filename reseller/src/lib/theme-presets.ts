@@ -246,6 +246,8 @@ export const THEME_PRESETS: Record<string, ThemePreset> = {
       "--color-surface-variant": "#2b1414",
       "--color-outline": "#9c7070",
       "--color-outline-variant": "#401c1c",
+      // ADR-113: a dark `ink` is a light stroke, so the popup backdrop needs its own dark scrim.
+      "--color-scrim": "#000000",
     },
   },
   emerald: {
@@ -320,6 +322,8 @@ export const THEME_PRESETS: Record<string, ThemePreset> = {
       "--color-surface-variant": "#1a2b1f",
       "--color-outline": "#6a8577",
       "--color-outline-variant": "#263f2b",
+      // ADR-113: a dark `ink` is a light stroke, so the popup backdrop needs its own dark scrim.
+      "--color-scrim": "#000000",
     },
   },
   cobalt: {
@@ -394,6 +398,8 @@ export const THEME_PRESETS: Record<string, ThemePreset> = {
       "--color-surface-variant": "#1a2740",
       "--color-outline": "#6b7d99",
       "--color-outline-variant": "#26395a",
+      // ADR-113: a dark `ink` is a light stroke, so the popup backdrop needs its own dark scrim.
+      "--color-scrim": "#000000",
     },
   },
 };

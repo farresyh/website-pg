@@ -2392,4 +2392,6 @@ Branch `fix/storefront-dark-readability`, into `staging`. Storefront only. The f
 - Contrast in the notes popup on dark (unchanged colours, now on a dimmed page): description #A6A39B on #111113 7.5:1, note text on the box 10.8:1, the heading 7.8:1.
 - `tsc` and `eslint` pass.
 
+3. **The other dark presets.** Red Giants, Emerald and Cobalt set no `scrim`, so their dark mode still fell back to their light-grey `ink`. Each `tokensDark` now sets `--color-scrim: #000000` (the founder's go-ahead). Only popup backdrops change, in dark mode only: the four modals and the More drawer. No brand on prod uses these presets in dark (read-only: Bumblebee dark 2, Bumblebee light 1, default light 1). The portal's copy was regenerated with `sync-shared-files.mjs`.
+
 **Not changed:** the `neo` shadows are a fixed navy (`rgb(25 25 47)`), which shows as a dark-blue block behind a modal on a dark preset. The founder didn't raise it.
