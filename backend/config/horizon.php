@@ -296,8 +296,12 @@ return [
         // 54.5s and backups were killed at 60s every night 09-26..30
         // (TimeoutExceededException). 300s on `redis-long` (retry_after
         // 330s) instead of the generic 60s. A breach still fails loudly
-        // (both jobs' failed()). ponytail: price sync does one query pair
-        // per product; move to a bulk upsert once it passes ~150s.
+        // (both jobs' failed()). The 300s applies per supplier: since
+        // ADR-137 each runs in its own SyncSupplierCatalogJob. Measured
+        // 2026-11-10: Digiflazz ~18s; Gamevion ~152s for 74 games, almost
+        // all of it the 1.6s pause its 40/min pricelist limit forces, not
+        // database work (a bulk upsert would save seconds). Ceiling: about
+        // 140 chosen Gamevion games; past that, warn on the game picker.
         'supervisor-price-sync' => [
             'connection' => 'redis-long',
             'queue' => ['price-sync'],
