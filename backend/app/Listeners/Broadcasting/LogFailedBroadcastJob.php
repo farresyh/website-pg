@@ -17,18 +17,16 @@ use Illuminate\Support\Facades\Log;
  * Horizon's own failed-jobs UI already has the full payload, this just
  * makes the founder aware one happened instead of a customer/admin
  * screen silently going stale with nothing to grep for.
+ *
+ * 2026-11-10: any queue counts. The old list (orders, price-sync, backups)
+ * had drifted: OrderStatusUpdated broadcasts on `default`, so the
+ * customer's live order page could fail with no log line.
  */
 class LogFailedBroadcastJob
 {
-    private const BROADCAST_QUEUES = ['orders', 'price-sync', 'backups'];
-
     public function handle(JobFailed $event): void
     {
         if ($event->job->resolveName() !== BroadcastEvent::class) {
-            return;
-        }
-
-        if (! in_array($event->job->getQueue(), self::BROADCAST_QUEUES, true)) {
             return;
         }
 
