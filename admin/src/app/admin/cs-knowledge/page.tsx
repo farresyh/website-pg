@@ -238,6 +238,7 @@ export default function CsKnowledgePage() {
                     {({ item }) => {
                       const s = item as unknown as Suggestion;
                       const busy = busyId === s.id;
+                      const match = allEntries.find((e) => e.id === s.ai_entry_id);
                       return (
                         <DataTableRow key={s.id}>
                           <DataTableCell className="min-w-[200px] max-w-xs px-5 py-4 align-top text-theme-sm whitespace-pre-line text-ink">
@@ -247,7 +248,13 @@ export default function CsKnowledgePage() {
                           <DataTableCell className="min-w-[200px] max-w-xs px-5 py-4 align-top text-theme-sm whitespace-pre-line text-ink-muted">
                             {s.answer}
                             {s.ai_answer && <p className="mt-2 text-theme-xs text-cyan-ink">Suggested: {s.ai_answer}</p>}
-                            {s.ai_entry_id && <p className="mt-1 text-theme-xs text-ink-subtle">Looks like entry #{s.ai_entry_id}: consider Merge.</p>}
+                            {s.ai_entry_id && (
+                              <p className="mt-1 text-theme-xs text-ink-subtle">
+                                Looks like entry #{s.ai_entry_id}
+                                {match && ` (${categoryLabel(match.category)}: ${match.questions[0]})`}
+                                : consider Merge.
+                              </p>
+                            )}
                           </DataTableCell>
                           <DataTableCell className="px-5 py-4 align-top text-theme-sm text-ink-muted">{s.affiliate?.business_name ?? "Unknown"}</DataTableCell>
                           <DataTableCell className="px-5 py-4 align-top text-theme-sm text-ink-muted">{new Date(s.asked_at).toLocaleString()}</DataTableCell>
