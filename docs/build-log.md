@@ -2394,6 +2394,23 @@ Branch `fix/cs-merge-suggested-entry`, into `staging`. Admin only.
 
 **Verified:** `tsc` and `eslint` pass. Not checked in a browser.
 
+## 2026-11-10 — Storefront dark theme: modal backdrops dim the page; payment logos on a white plate (ADR-113)
+
+Branch `fix/storefront-dark-readability`, into `staging`. Storefront only. The founder reported both from the Bumblebee Dark v3 storefront.
+
+1. **The modals blended into the page.** All four storefront modals used `bg-ink/50` as the backdrop: GameInfo (the "How to Buy" notes), MembershipTransition, RateOrder and Review. Under the Light-Ink Rule a dark preset's `ink` is the light stroke #8C8983, so the backdrop lightened the page to mid-grey instead of dimming it. ADR-113's 2026-11-10 addendum had already given the More drawer the `scrim` token for this reason; the modals were missed. They now use `bg-scrim/50`. In a light preset `scrim` is `ink`, so nothing changes there.
+2. **Bank and DuitNow logos were hard to see.** These logos are drawn for white, and the tiles take the theme's dark surface. In `PaymentChannelPicker` each FPX bank logo and each channel icon now sits on a white plate inside its tile. The tile keeps the theme's border, hover and selected colours. This is the same plate the homepage payment cards already use.
+
+**Verified (e2e harness, Bumblebee dark and light tokens injected, screenshots):**
+- Dark backdrop computes to `oklab(0 0 0 / 0.5)`; light is unchanged (ink at 50%).
+- Every bank logo is readable on dark. The selected tile still shows its yellow border.
+- Contrast in the notes popup on dark (unchanged colours, now on a dimmed page): description #A6A39B on #111113 7.5:1, note text on the box 10.8:1, the heading 7.8:1.
+- `tsc` and `eslint` pass.
+
+3. **The other dark presets.** Red Giants, Emerald and Cobalt set no `scrim`, so their dark mode still fell back to their light-grey `ink`. Each `tokensDark` now sets `--color-scrim: #000000` (the founder's go-ahead). Only popup backdrops change, in dark mode only: the four modals and the More drawer. No brand on prod uses these presets in dark (read-only: Bumblebee dark 2, Bumblebee light 1, default light 1). The portal's copy was regenerated with `sync-shared-files.mjs`.
+
+**Not changed:** the `neo` shadows are a fixed navy (`rgb(25 25 47)`), which shows as a dark-blue block behind a modal on a dark preset. The founder didn't raise it.
+
 ## 2026-11-10 — Horizon: run broadcasts off the long-job lanes; wait thresholds fixed; every failed broadcast logged (ADR-047, ADR-048)
 
 Branch `fix/horizon-wait-keys`, into `staging`. Backend only.
