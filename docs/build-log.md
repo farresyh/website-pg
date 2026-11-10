@@ -2410,3 +2410,31 @@ Branch `fix/storefront-dark-readability`, into `staging`. Storefront only. The f
 3. **The other dark presets.** Red Giants, Emerald and Cobalt set no `scrim`, so their dark mode still fell back to their light-grey `ink`. Each `tokensDark` now sets `--color-scrim: #000000` (the founder's go-ahead). Only popup backdrops change, in dark mode only: the four modals and the More drawer. No brand on prod uses these presets in dark (read-only: Bumblebee dark 2, Bumblebee light 1, default light 1). The portal's copy was regenerated with `sync-shared-files.mjs`.
 
 **Not changed:** the `neo` shadows are a fixed navy (`rgb(25 25 47)`), which shows as a dark-blue block behind a modal on a dark preset. The founder didn't raise it.
+
+## 2026-11-10 — Horizon: run broadcasts off the long-job lanes; wait thresholds fixed; every failed broadcast logged (ADR-047, ADR-048)
+
+Branch `fix/horizon-wait-keys`, into `staging`. Backend only.
+
+**Alert (founder's email, 2026-11-10):** "redis-long:price-sync long wait, 149s".
+
+**Checked first (prod, read-only):**
+- Every queue was empty, with no failed job in 24 h.
+- The 16 price syncs in the last 8 h all succeeded, each taking 160–208 s.
+
+**Cause:**
+- `PriceSyncRunUpdated` broadcast on the `price-sync` queue. That lane has one worker, and it is busy with the sync job that triggers the broadcast, so the "running" update waited out the whole ~3-minute sync. This was traced in code, not seen on screen: the admin Price Sync card could not show a run live. `BackupRunUpdated` did the same on `backups`.
+- The wait alert fired at 60 s, not 300 s. `horizon.waits` is keyed by `connection:queue`, both supervisors run on `redis-long`, and the keys said `redis:`. K-4 (orders-combo) was the same slip.
+
+**Fixed:**
+1. Both run broadcasts are queued on `default`, beside `OrderStatusUpdated`. A one-worker lane now holds only its own run jobs.
+2. The waits keys are now `redis-long:price-sync` and `redis-long:backups`, at 300 s. Only a run queued behind another run can wait there now.
+3. `LogFailedBroadcastJob` logs a failed `BroadcastEvent` on any queue. Its list (orders, price-sync, backups) had drifted: `OrderStatusUpdated` broadcasts on `default`, so a failed push to a customer's live order page was never logged.
+
+**Guards:**
+- `HorizonQueueCoverageTest` fails when a `waits` key matches no supervisor lane, and when any broadcast event is queued off `default`.
+- `LogFailedBroadcastJobTest` covers a failure on `default`.
+- All three were red before the fix.
+
+**Verified:** `php artisan test` 3,897 passed; Pint is clean on the changed files.
+
+**Finding, not changed:** a price sync takes 160–208 s against the supervisor's 300 s timeout. The `ponytail` note in `config/horizon.php` names a bulk upsert once a sync passes ~150 s. The founder decides whether to do it next.

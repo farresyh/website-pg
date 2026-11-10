@@ -37,13 +37,13 @@ final class PriceSyncRunUpdated implements ShouldBroadcast
     }
 
     /**
-     * SyncSupplierPricesJob's own queue (ADR-020 decision #5) — this
-     * broadcast is a tiny follow-on to the same job's own status writes,
-     * never worth a separate queue.
+     * The `default` lane, not this run's own queue: that lane has one worker,
+     * busy with the SyncSupplierPricesJob that triggers this broadcast, so "running"
+     * used to reach the screen only after the run had finished (2026-11-10).
      */
     public function broadcastQueue(): string
     {
-        return 'price-sync';
+        return 'default';
     }
 
     /**
