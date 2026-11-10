@@ -820,121 +820,58 @@ for the 2026-09-17 audit that found two dark-mode token bugs).
 
 # 16. Open Items & Backlog
 
-**Restructured 2026-10-12; every open item re-checked against git and
-production on 2026-10-15 after release #449; items 98, 99, 106 and 107
-checked again on 2026-10-16, after release #469; 107 closed after release #472;
-106, 11, 96 and the payment state re-checked 2026-10-17 after release #476;
-every open item re-checked 2026-10-26 after release #557; item 133 closed 2026-10-27 after release #571; items 134 and 137 closed and 138–140 added 2026-10-29 after release #589, with the payment state re-checked on prod; 140 closed, 141 (ADR-131) released and 142–144 added 2026-10-29 after release #599; items 138, 147, 148 and 149 closed and 150 added 2026-10-30; items 13 and 146 designed in ADR-133 and 151 and 152 added 2026-10-31; item 154 added and closed, 153 closed and 156 and 157 added 2026-11-01; items 55, 74 and 114 closed and items 108 and 122 corrected after the group D audit, and items 129 and 141 closed, the same day; group E sorted the same day (24 and 94 to B, 57 and 150 to D, 14 and 25 closed, 117 parked); items 156 and 94 built and items 158 and 159 added 2026-11-03; 158 designed (ADR-136) and moved to A the same day; 157 closed the same day; item 160 added 2026-11-03; item 57 moved to B and 161 added 2026-11-04; item 57 closed and every open item re-checked on prod in the full docs audit after release #694, 2026-11-04.** This list holds only **open** items. "Next up"
-is the one place they are sorted, one line each; "Details" holds each item's
-full text once, by number. Everything closed is one line under "Recently
-closed", pointing to where the full story lives (`docs/build-log.md` /
-`docs/adr.md`). Item numbers are kept stable so older build-log and memory
-references still resolve. This list drifts easily: re-verify an "open" line
-against real code or production before building on it.
+**Last full re-check: 2026-11-11, in the docs audit after release #777.** The
+dated history of earlier re-checks is in `build-log-archive.md` ("PRD §16 text
+moved 2026-11-11") and in each `build-log.md` docs-audit entry. This list
+holds only **open** items. "Next up" is the one place they are sorted, one
+short entry each; "Details" holds the full text once, by number. Everything
+closed is one line under "Recently closed", pointing to where the full story
+lives (`docs/build-log.md` / `docs/adr.md`); items closed more than 30 days
+ago move verbatim to `build-log-archive.md` at the next docs audit. Item
+numbers are kept stable so older build-log and memory references still
+resolve. This list drifts easily: re-verify an "open" line against real code
+or production before building on it.
 
 ## Next up
 
 **Founder's rule (2026-10-08): clear the backlog below before any new
-feature.** Every open item sorted by what it needs to finish. Group D was
-reviewed item by item with the founder on 2026-10-14 (seven items dropped,
-listed under Recently closed). Every open item re-checked against code and
-git in the 2026-10-17 docs audit, and again after items 112 and 113 PR 1a
-and PR 1b on 2026-10-18. Items 124–128 added 2026-10-19 after the docs audit
-and the admin-loading investigation (#515, #516). Re-checked again
-2026-10-26 after releases #554 and #557 (items 131 and 132 closed, 114
-moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 closed, item 111's trigger narrowed). Re-checked 2026-11-04 in the full docs audit after release #694, and 2026-11-05 after releases #705 and #707 (item 162 moved to group C, 163 to A, 164 and 165 added). Items 172 to 174 added 2026-11-07 from the item 162 audit. Item 162 moved to group D 2026-11-07: the founder is not using Gamevion yet. Re-checked 2026-11-08 in the docs audit after release #733 (159 closed; 176 added and closed). Re-verify before building.
+feature.** Every open item, sorted by what it needs to finish. Re-verify
+before building.
 
 **A. Buildable now: code, no new design**
-- **158** Customer-support assistant on the CS number ([ADR-136](./adr/ADR-136-customer-support-assistant.md),
-  Accepted 2026-11-03 after the grill and a stress test). PR 1 (#672), PR 2
-  and PR 3a (#677, fixes #680), the run #3 candidates (#684) and PR 3b Shadow
-  (#687) are released; run #3 chose Claude Haiku 5.5. **The founder switched
-  the mode to Shadow on 2026-11-04 (03:53 UTC)** and the first drafts were
-  written the same day; 9 knowledge entries are approved (checked read-only
-  2026-11-04). **Founder, 2026-11-10: stay in Shadow and keep growing the
-  knowledge book; the Live gate (20 graded drafts and 90% per category,
-  `live_min_drafts` unchanged) is not lowered.** On that day prod had 26
-  drafts across all categories and no CS message since 2026-11-07. Next: the
-  founder grades drafts, then
-  **PR 4 (Live)** once a category meets the gate: the CS Staff group, safety limits and local OCR (decision
-  32; §15 row). Decision 31 is met (lawyer's OK, Privacy Policy line live on
-  every brand). OpenWA's first 90-day message prune is around 2026-12-24;
-  PR 1 already keeps the chats.
+(none: every open item waits on the founder, a grill or a trigger)
 
 **B. Needs a short grill / ADR addendum first**
-- **165** KOL fee as a share of profit ([ADR-118](./adr/ADR-118-marketing-campaigns.md) addendum, money-critical; founder, 2026-11-05). A KOL may ask for no monthly fee but a share of the profit their sales bring (70/30 was only a proposal). Today a campaign knows only a fixed monthly fee schedule (`CampaignFeeSchedule`, RM0 allowed), so neither way of paying such a KOL is right: a payment tagged to an RM0 campaign leaves both the envelope expenses (`whereNull('campaign_id')`) and the accrued KOL fee line, so the cost disappears from the month-close net and shows as a growing "prepaid"; tagged "Not a KOL fee", the books are right on a cash basis but the scorecard counts no fee (net and CAC overstated). **Until built, pay such a KOL as "Not a KOL fee".** Proposed: a "profit share %" fee type whose accrued fee per Malaysia month is computed from the campaign's attributed ledger profit (the scorecard's own number), never typed. Open for the founder: orders that used the code only, or every attributed order; a loss month as 0 or carried; a monthly cap; simulate the share on real order data first.
-- **161** Reseller milestone rebate plus automatic refund on a failed wallet order ([ADR-139](./adr/ADR-139-reseller-milestone-rebate.md), **Accepted 2026-11-08** after the code trace, a three-round grill, the ladder simulation and a final stress test; ADR-073 and ADR-131 addenda; money-critical). Agents said our price is about the same as their leader's and asked for a battle-pass rebate themselves. Next: build in four PRs (ADR-139 Consequences): PR 1 automatic refund, PR 2 tier from the 1st (with fixed markup per tier) and PR 3a rebate core and PR 3b-i (finalise, expire, closure forfeit) and PR 3b-ii (accounting lines, month-close gate) are built (§15 Reseller (wallet) row); PR 4 is split in three: 4a (admin and portal API, bot messages), 4b (admin screens and decision 24's Reports line) and 4c (portal screens) are built. The ladder simulation was re-run on 2026-11-09 (decision 46): decision 3's grid stands. Released via #769 on 2026-11-10. The founder saved the first ladder on 2026-11-10 (effective 1 Dec 2026, decision 3's grid, checked read-only). Next: the founder announces it to agents (ADR-139 2026-11-09 addenda, which also record the founder's answers on PR 4's open points and the draft bot messages awaiting approval); PR 3 (rebate backend and accounting) is unblocked: the accountant confirmed the treatment on 2026-11-08, revising expiry to a revenue-reduction reversal and making the open month live (ADR-139 addendum); PR 4 is the admin, portal and bot screens, plus the programme terms the founder approves.
-
-
+- **165** KOL fee as a share of profit (ADR-118 addendum, money-critical). Until built, pay such a KOL as "Not a KOL fee". Details below.
 
 **C. Founder actions (no code)**
-- **11** Sentry (error tracking) is still not set up. UptimeRobot watches
-  `/api/health`, the OpenWA gateway and `/api/health/whatsapp` (third monitor
-  added and alert-tested by the founder 2026-10-14).
+- **158** Grade the CS assistant's drafts; PR 4 (Live) is built once a category meets the Live gate (ADR-136). Details below.
+- **161** Announce the reseller rebate to the agents before 2026-12-01 (ADR-139). Details below.
+- **11** Sentry (error tracking) is still not set up. Details below.
 
 **D. Waiting on a trigger: don't build early**
-- **160** An admin editor for an affiliate storefront's default OG image
-  (ADR-060 2026-11-03 addendum): today only the primary's row is editable, so
-  an affiliate's homepage has no share image. When an affiliate asks for one.
-- **139** FPX bank-down status on the bank grid (ADR-130 decision 9), only
-  if real payments show customers failing at a down bank. Advisory and
-  fail-open from `fpxstatus.chip-in.asia`'s JSON feed; never a hard
-  dependency of checkout.
-- **128** Shared admin loading skeleton (through the admin `DataTable`), only
-  if "Loading…" still bothers the founder now that #516 is measured (item 124
-  closed 2026-10-22).
-- **122** Store each combo leg's cost at delivery (`order_delivery_legs.cost_sen`),
-  so a leg with no drawdown isn't costed at today's catalog in COGS; at the
-  first Monthly Summary fallback on a combo leg (0 in October 2026). A leg
-  already carries `real_cost_price_sen` (ADR-111, filled at reconcile, null on
-  5 of 8 delivered legs on prod 2026-11-01), which the fallback reads first.
-  The same column would let Delivery Logs show "Cost vs checkout" for a leg
-  with no real cost (ADR-106 2026-11-02 addendum, decision 4).
-- **81** Month-end pack and the open accounting policies (vouchers by
-  reason, transfer fees in inventory cost), when an accountant is engaged.
+- **162** Gamevion v2 API, when the founder decides to use Gamevion (ADR-137). The ordered steps and the "don't press Reactivate" warning are in Details.
+- **177** Price-sync ceiling warning, when chosen Gamevion games approach 140 (ADR-137).
+- **160** An admin editor for an affiliate storefront's default OG image (ADR-060 2026-11-03 addendum): today only the primary's row is editable, so an affiliate's homepage has no share image. When an affiliate asks for one.
+- **139** FPX bank-down status on the bank grid (ADR-130 decision 9), only if real payments show customers failing at a down bank. Advisory and fail-open from `fpxstatus.chip-in.asia`'s JSON feed; never a hard dependency of checkout.
+- **128** Shared admin loading skeleton, if "Loading…" still bothers the founder.
+- **122** Store each combo leg's cost at delivery, at the first Monthly Summary fallback on a combo leg.
+- **81** Month-end pack and the open accounting policies, when an accountant is engaged.
 - **4** Bot-host resize, when capacity calls for it.
-- **59** OpenWA engine switch, with item 4 (Baileys stays until then, ADR-075
-  2026-10-10 addendum).
-- **83** Give back an admin voucher's ledger debit on revoke/expiry, with the
-  first admin-issued voucher.
-- **85** Membership renewal reminder on WhatsApp (designed), at 10 active members
-  or when members don't renew despite the email.
-- **108** Add affiliate custom domains to the Turnstile widget automatically
-  (ADR-123), when ~5 affiliate domains are active, or when the manual step
-  is tiresome. Missed once: `ohahastore.com` (2026-10-31), added by hand.
-- **111** Turnstile on the admin and portal logins (ADR-019 2026-10-17
-  addendum), at the first "Account locked" alert that isn't the founder. The
-  portal never opens to public signup (founder, 2026-11-01): the reseller
-  application on `onboarding.pekangame.space` is the only way in, it has its
-  own Turnstile, and a login is made only when the admin approves.
-- **104** Reseller wallet top-up KPIs (how often, how much), with item 28.
-  Item 28 was released 2026-11-05 (#699), so the trigger has fallen; design
-  not started, and prod has 3 resellers. The founder decides when.
-- **105** Batch `Order::cashCompensationSen()`'s wallet-refund lookup, when the
-  Customer Detail page is slow for a big reseller (Pulse > 500 ms).
-- **151** A partner sandbox (a test-type reseller API key: orders flagged `is_test`, no Purchase Balance debit, `FakeSupplierAdapter` outcomes, webhook still sent), its own money-critical ADR (grill + code trace: wallet, ledger, reports, receipts, rate limits, bot) after item 146's PR 1 ships. The checklist's first-order step changes to "test in the sandbox, then order" when it exists ([ADR-133](./adr/ADR-133-partner-onboarding.md) "Not decided here"; the admin-only sandbox is [ADR-018](./adr/ADR-018-sandbox-test-orders.md)).
-- **150** Membership pitch to a non-member after a delivery (founder idea, 2026-10-30; design not started, needs its own ADR and grill). Detecting it is easy: `orders.pricing_basis` is `member` for a member order, so the pitch goes to a non-member order of a game with member pricing on a brand with membership on, and the saving on that order is computable server-side with `MembershipPricingService::calculateMemberPrice` (only the saving is shown, never cost or margin). Options, cheapest and safest first: (1) a banner on the order status page ("a member would have paid RM X for this order", with a link), which needs no consent and carries no ban risk; (2) one extra line inside the delivered receipt, not a second message; (3) a separate second WhatsApp message, only after an explicit marketing opt-in (for example replying `MEMBER`), with its own STOP and rate caps. Why the WhatsApp options wait: [ADR-116](./adr/ADR-116-customer-order-notifications-over-whatsapp.md) opts a number in for order updates only, a promotion needs its own consent (PDPA), and a customer's Report on the unofficial OpenWA number can ban it and with it the human support line. Why the whole item waits: on 2026-10-30 production had 42 real storefront orders from only 4 customer emails, 2 opted-in WhatsApp contacts and no active member. Build when there are real repeat customers (around ten active members, as for item 85; 1 active member on 2026-11-01 and still 1 on 2026-11-04). Recommended first step then: option 1.
-- **152** Refresh the admin sandbox (`/middleware/sandbox`) for wallet and combo orders; do it with item 151, which shares `FakeSupplierAdapter` (its 21 tests pass as of 2026-10-31).
-
+- **59** OpenWA engine switch, with item 4.
+- **83** Give back an admin voucher's ledger debit on revoke/expiry, with the first admin-issued voucher.
+- **85** Membership renewal reminder on WhatsApp (designed), at 10 active members or when members don't renew despite the email.
+- **150** Membership pitch to a non-member after a delivery, at around ten active members.
+- **108** Add affiliate custom domains to the Turnstile widget automatically (ADR-123), at about 5 active affiliate domains or when the manual step is tiresome. Check `pajostore.com` is on the widget.
+- **111** Turnstile on the admin and portal logins (ADR-019 2026-10-17 addendum), at the first "Account locked" alert that isn't the founder.
+- **105** Batch `Order::cashCompensationSen()`'s wallet-refund lookup, when the Customer Detail page is slow for a big reseller (Pulse > 500 ms).
 - **169** Send `max_price` to suppliers ([ADR-137](./adr/ADR-137-gamevion-v2-api.md) 2026-11-07 addendum holds the design). Decided 2026-11-07 not to build yet: a selling price follows cost, and on production it would have saved RM0. Trigger: the first delivered order that loses money because the cost rose after payment with no admin decision behind it (`profit_reconciled_flagged`).
-- **171** Campaign promos beyond new PekanGame customers ([ADR-118](./adr/ADR-118-marketing-campaigns.md) addendum, money-critical). A Campaign today is percent only, new customers only, primary brand only, so a promo on OhahaStore or a sale for existing customers isn't possible. When the founder wants one.
-- **162** Gamevion v2 API ([ADR-137](./adr/ADR-137-gamevion-v2-api.md), money-critical). All code is live: #701–#704 released via #705, and the sync scope fix (#706) via #707. **Trigger: the founder decides to use Gamevion.** Decided 2026-11-07: not yet, so the repoint stops at 6 of 71 packages, and all 71 stay off.
+- **171** Campaign promos beyond new PekanGame customers (needs an [ADR-118](./adr/ADR-118-marketing-campaigns.md) addendum, not yet written; money-critical). A Campaign today is percent only, new customers only, primary brand only, so a promo on OhahaStore or a sale for existing customers isn't possible. When the founder wants one.
 
-  **Proven without money, 2026-11-07:** one order sent through the real adapter at RM0 balance answered 402 `insufficient_balance` ("RM 0.00 < RM 0.71"), mapped to a confirmed failure, so the key, the IP allowlist, the order endpoint and our error mapping all work. The player ID was made up, so the balance check appears to come before the player check. **Not proven:** a delivery, its webhook, drawdown and real cost.
-
-  **When the trigger comes, in order:**
-  1. in Product Manager, link the new groups that have no old items, such as `Mobile Legends (Malaysia)` (item 172 linked the items in old groups, so Valorant, Free Fire and Honor of Kings are ready);
-  2. repoint the other 65 packages with "Link to existing" (Claude's match list, 2026-11-05: all 71 have a match; First Topup 50+50 and 250+250 only to a smaller-bonus item, so check them on Gamevion or delete them);
-  3. a small deposit, recorded in `/admin/accounting`, then one funded storefront test order on one cheap package (HOK 16 Tokens) before any other package is switched on.
-
-  **Don't press Reactivate on the Gamevion supplier before that test order.** It switches on every repointed package at once (6 on 2026-11-07; the other 65 are blocked `supplier_sync`), and at RM0 balance a customer could pay for an order that can only fail.
-
-  **Gamevion's catalog comes and goes.** Its `/api/games` list fell from 1,313 to 320 entries at 03:00 UTC on 2026-11-07 and was back at 1,315 by 05:30, with no error from them; our new-API rows went from 1,541 to 800 and back to 1,164, PUBG included. The founder may want to ask Gamevion why before depositing. A repointed package is safe: its item is kept, it goes off, and returns on the next good sync, or after 6 syncs if Gamevion marks it inactive ([ADR-137](./adr/ADR-137-gamevion-v2-api.md) 2026-11-07 addendum). Check HOK 16 Tokens still exists before the test order.
-
-  The item closes after the funded test order is checked in the database.
-
-**E. New features: after the backlog** (each needs its own ADR + grill)
-(none: 158 designed in ADR-136 on 2026-11-03, now in A)
+**E. New features: after the backlog** (each needs its own ADR + grill; the founder decides when)
+- **104** Reseller wallet top-up KPIs (how often, how much). Its trigger (item 28) has fallen.
+- **151** A partner sandbox (test-type reseller API key), its own money-critical ADR. Its trigger (item 146) has fallen.
+- **152** Refresh the admin sandbox (`/middleware/sandbox`) for wallet and combo orders; do it with item 151, which shares `FakeSupplierAdapter` (its 21 tests pass as of 2026-10-31).
 
 ## Details
 
@@ -958,44 +895,6 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
     `https://bot.pekangame.space/api/health` (founder, green). It catches the
     OpenWA process down, not a WhatsApp session that is disconnected while
     the process runs; item 95 covers that.
-
-28. **Supplier balance comfortable-buffer forecast — [ADR-115](./adr/ADR-115-supplier-balance-comfortable-buffer-forecast.md),
-    fully designed + grilled, build deliberately parked.** Digiflazz-only,
-    rolling lead-time-window-sum percentile (not a flat daily rate — a
-    real Friday MLBB-event spend pattern would otherwise be
-    underestimated), 2-day lead time, IDR+MYR side by side, info-only
-    (Balance page detail + a Dashboard chip mirroring the existing
-    funding-drift chip), cold-start falls back to the founder's own
-    manual threshold. No automatic trigger to start building — the
-    founder will say when, typically once real (non-testing) order
-    volume exists. **Trigger set 2026-10-14 (founder): two weeks after
-    launch**, i.e. payments back on for real customers; the email ships with
-    the forecast, not before. **2026-10-13 addendum:** the build also adds a
-    low-balance email to every active admin through the ops-alert path
-    (`BackupFailureAlerter`, Plunk), throttled once a day per supplier, when
-    the balance crosses the buffer. **Built 2026-11-05** (ADR-115 2026-11-05
-    addendum: busiest 60-day window instead of p90, weekend cover, the higher
-    of floor and forecast; item closed). Since 2026-10-14 Digiflazz's
-    `low_balance_threshold` is set on prod (IDR 10,000,000, about RM 2,280,
-    founder), so the Dashboard "low balance" chip and the log warning work;
-    with the balance at IDR 2,285,108 that day the chip shows until the
-    balance passes the threshold.
-
-57. **Marketing Campaigns — [ADR-118](./adr/ADR-118-marketing-campaigns.md), fully designed + grilled + stress-tested,
-    build deliberately parked.** New `Campaign`→`PromoCode` family for paying KOLs/influencers
-    without requiring them to run their own Affiliate storefront: multi-use discount codes
-    (5% flat off Standard price, benchmarked against a real competitor and this platform's own
-    margin data), locked per redemption to game ID + customer email/phone, never stacks with
-    Member pricing but does stack with `Voucher`, per-code budget cap with a reserved/restored
-    lifecycle (mirrors `Voucher`'s own), snapshot-at-creation attribution (never a live-rewriting
-    tag), and an optional platform/affiliate funding split for third-party affiliate-brand
-    campaigns. No automatic trigger to start building — founder will say when, once a real KOL
-    partnership is ready to go. **Build from ADR-118 *plus* its 2026-10-02 review addendum
-    (R1–R16)**, which supersedes the original wherever they conflict. That addendum covers
-    discount storage, the resend split, the per-order loss guard, the fail-closed budget, the
-    once-per-customer limit, brand scope, accounting treatment, and the UI under Customers.
-    Before building, confirm R14's contra-revenue treatment with the external accounting
-    reviewer.
 
 59. **`ENGINE_TYPE=baileys` runs both OpenWA sessions — decided 2026-10-10: Baileys
     stays until the droplet is upgraded** ([ADR-075](./adr/ADR-075-reseller-bot-channel.md)'s
@@ -1083,7 +982,6 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
     receipts continue; sent through `CustomerNotificationService` with a
     nullable `membership_id`; a "WhatsApp" card on the admin member page.
 
-
 104. **Reseller wallet top-up KPIs (founder, 2026-10-15) — design not started.**
     Nothing shows how often or how much Resellers top up their wallets. Today
     there are only current balances (`/admin/balance`), the total owed
@@ -1098,7 +996,8 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
     `ledger_entries` type `wallet_topup` (CHIP and manual admin credit both
     write it; `reference_type` tells them apart). Prod 2026-10-15: 2 resellers, 3 paid top-ups (RM464.01), 2
     expired, 2 failed, too little data to read a pattern from. Trigger: with
-    item 28 (two weeks after launch).
+    item 28 (two weeks after launch). That trigger fell when item 28 shipped
+    (2026-11-05, #699), so the item waits on the founder and its own grill.
 
 105. **Customer Detail Profit Analysis: one query per order (found 2026-10-15, item 103).**
     `Order::cashCompensationSen()` sums the order's wallet refunds with its
@@ -1120,7 +1019,8 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
     `fixfastapp.com` (the one active affiliate domain); subdomains are
     covered. **Update 2026-11-01:** the widget now also needs `ohahastore.com`
     (miss found 2026-10-31, error 110200; added by the founder, checker works),
-    so 4 hostnames of 10. Until this is built, a new affiliate custom domain must be
+    so 4 hostnames of 10. **Check 2026-11-11:** `pajostore.com` became a payment-approved
+    affiliate domain on 2026-11-09; no record says it was added to the widget. Until this is built, a new affiliate custom domain must be
     added to the widget by hand in the Cloudflare dashboard, or the checker
     on that domain shows a Turnstile error (fails closed; checkout is
     unaffected).
@@ -1158,6 +1058,8 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
     **Checked 2026-11-01 on prod:** October's `cogs_fallback_order_count` is 0; the
     8 delivered legs hold `real_cost_price_sen` on 3 and null on 5, and the
     fallback reads that column before today's catalog cost.
+    The same column would let Delivery Logs show "Cost vs checkout" for a leg
+    with no real cost (ADR-106 2026-11-02 addendum, decision 4).
 
 128. **Shared admin loading skeleton (2026-10-19; item 124 closed 2026-10-22, now the founder's call).**
     The admin has no skeletons: 53 plain "Loading…" texts across 44 files,
@@ -1170,6 +1072,57 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
     cache stays out unless measurement demands it: stale data on money
     screens is a real risk.
 
+150. **Membership pitch to a non-member after a delivery** (founder idea, 2026-10-30; design not started, needs its own ADR and grill). Detecting it is easy: `orders.pricing_basis` is `member` for a member order, so the pitch goes to a non-member order of a game with member pricing on a brand with membership on, and the saving on that order is computable server-side with `MembershipPricingService::calculateMemberPrice` (only the saving is shown, never cost or margin). Options, cheapest and safest first: (1) a banner on the order status page ("a member would have paid RM X for this order", with a link), which needs no consent and carries no ban risk; (2) one extra line inside the delivered receipt, not a second message; (3) a separate second WhatsApp message, only after an explicit marketing opt-in (for example replying `MEMBER`), with its own STOP and rate caps. Why the WhatsApp options wait: [ADR-116](./adr/ADR-116-customer-order-notifications-over-whatsapp.md) opts a number in for order updates only, a promotion needs its own consent (PDPA), and a customer's Report on the unofficial OpenWA number can ban it and with it the human support line. Why the whole item waits: on 2026-10-30 production had 42 real storefront orders from only 4 customer emails, 2 opted-in WhatsApp contacts and no active member. Build when there are real repeat customers (around ten active members, as for item 85; 1 active member on 2026-11-01 and still 1 on 2026-11-04). Recommended first step then: option 1.
+
+151. **A partner sandbox** (a test-type reseller API key: orders flagged `is_test`, no Purchase Balance debit, `FakeSupplierAdapter` outcomes, webhook still sent), its own money-critical ADR (grill + code trace: wallet, ledger, reports, receipts, rate limits, bot) after item 146's PR 1 ships (it did: item 146 closed 2026-11-01, so the item now waits on the founder). The checklist's first-order step changes to "test in the sandbox, then order" when it exists ([ADR-133](./adr/ADR-133-partner-onboarding.md) "Not decided here"; the admin-only sandbox is [ADR-018](./adr/ADR-018-sandbox-test-orders.md)).
+
+158. **Customer-support assistant on the CS number** ([ADR-136](./adr/ADR-136-customer-support-assistant.md),
+     Accepted 2026-11-03 after the grill and a stress test). PR 1 (#672), PR 2
+     and PR 3a (#677, fixes #680), the run #3 candidates (#684) and PR 3b Shadow
+     (#687) are released; run #3 chose Claude Haiku 5.5. The founder switched
+     the mode to Shadow on 2026-11-04 (03:53 UTC). **Founder, 2026-11-10: stay
+     in Shadow and keep growing the knowledge book; the Live gate (20 graded
+     drafts and 90% per category, `live_min_drafts` unchanged) is not lowered**
+     (ADR-136 2026-11-10 addendum). Next: the founder grades drafts, then
+     **PR 4 (Live)** once a category meets the gate: the CS Staff group, safety
+     limits and local OCR (decision 32; §15 row). Decision 31 is met (lawyer's
+     OK, Privacy Policy line live on every brand). OpenWA's first 90-day message
+     prune is around 2026-12-24; PR 1 already keeps the chats.
+
+161. **Reseller milestone rebate plus automatic refund on a failed wallet order**
+     ([ADR-139](./adr/ADR-139-reseller-milestone-rebate.md), money-critical). Built
+     in PRs 1 to 4c and released via #769 on 2026-11-10 (§15 Reseller (wallet)
+     row); the programme terms (v1) and the bot messages are approved (ADR-139
+     2026-11-08 and 2026-11-09 addenda). The founder saved the first ladder on
+     2026-11-10 (effective 2026-12-01, decision 3's grid, checked read-only).
+     Left: the founder announces the programme to the agents before
+     2026-12-01. The item closes when the founder confirms the announcement;
+     the first rebate month is a §14 "Not yet seen" line. Its text before this
+     rewrite is in `build-log-archive.md`, "PRD §16 text moved 2026-11-11".
+
+162. **Gamevion v2 API** ([ADR-137](./adr/ADR-137-gamevion-v2-api.md), money-critical). All code is live: #701–#704 released via #705, and the sync scope fix (#706) via #707. **Trigger: the founder decides to use Gamevion.** Decided 2026-11-07: not yet, so the repoint stops at 6 of 71 packages, and all 71 stay off.
+
+     **Proven without money, 2026-11-07:** one order sent through the real adapter at RM0 balance answered 402 `insufficient_balance` ("RM 0.00 < RM 0.71"), mapped to a confirmed failure, so the key, the IP allowlist, the order endpoint and our error mapping all work. The player ID was made up, so the balance check appears to come before the player check. **Not proven:** a delivery, its webhook, drawdown and real cost.
+
+     **When the trigger comes, in order:**
+     1. in Product Manager, link the new groups that have no old items, such as `Mobile Legends (Malaysia)` (item 172 linked the items in old groups, so Valorant, Free Fire and Honor of Kings are ready);
+     2. repoint the other 65 packages with "Link to existing" (Claude's match list, 2026-11-05: all 71 have a match; First Topup 50+50 and 250+250 only to a smaller-bonus item, so check them on Gamevion or delete them);
+     3. a small deposit, recorded in `/admin/accounting`, then one funded storefront test order on one cheap package (HOK 16 Tokens) before any other package is switched on.
+
+     **Don't press Reactivate on the Gamevion supplier before that test order.** It switches on every repointed package at once (6 on 2026-11-07; the other 65 are blocked `supplier_sync`), and at RM0 balance a customer could pay for an order that can only fail.
+
+     **Gamevion's catalog comes and goes.** Its `/api/games` list fell from 1,313 to 320 entries at 03:00 UTC on 2026-11-07 and was back at 1,315 by 05:30, with no error from them; our new-API rows went from 1,541 to 800 and back to 1,164, PUBG included. The founder may want to ask Gamevion why before depositing. A repointed package is safe: its item is kept, it goes off, and returns on the next good sync, or after 6 syncs if Gamevion marks it inactive ([ADR-137](./adr/ADR-137-gamevion-v2-api.md) 2026-11-07 addendum). Check HOK 16 Tokens still exists before the test order.
+
+     The item closes after the funded test order is checked in the database.
+
+165. **KOL fee as a share of profit** (needs an [ADR-118](./adr/ADR-118-marketing-campaigns.md) addendum, not yet written; money-critical; founder, 2026-11-05). A KOL may ask for no monthly fee but a share of the profit their sales bring (70/30 was only a proposal). Today a campaign knows only a fixed monthly fee schedule (`CampaignFeeSchedule`, RM0 allowed), so neither way of paying such a KOL is right: a payment tagged to an RM0 campaign leaves both the envelope expenses (`whereNull('campaign_id')`) and the accrued KOL fee line, so the cost disappears from the month-close net and shows as a growing "prepaid"; tagged "Not a KOL fee", the books are right on a cash basis but the scorecard counts no fee (net and CAC overstated). **Until built, pay such a KOL as "Not a KOL fee".** Proposed: a "profit share %" fee type whose accrued fee per Malaysia month is computed from the campaign's attributed ledger profit (the scorecard's own number), never typed. Open for the founder: orders that used the code only, or every attributed order; a loss month as 0 or carried; a monthly cap; simulate the share on real order data first.
+
+177. **Price-sync ceiling for Gamevion** (founder, 2026-11-10; [ADR-137](./adr/ADR-137-gamevion-v2-api.md)
+     2026-11-10 addendum). Gamevion allows 40 pricelist calls a minute, so one
+     sync of N chosen games takes about 1.6 s × N, and the 300 s job fits about
+     140 chosen games (74 on 2026-11-10). No bulk upsert: it would save seconds.
+     Trigger: the chosen Gamevion games approach 140; then add a warning on the
+     Gamevion game picker.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-28, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
