@@ -7,6 +7,10 @@ import fpxBanks from "@/lib/fpx-banks.json";
 const FPX_CHANNEL = "fpx";
 
 const TILE = "border-2 transition-all";
+// Bank and wallet logos are drawn for a white background, so they sit on a
+// white plate in every theme; the tile around it keeps the theme's state
+// colours (same as the homepage payment cards).
+const LOGO_PLATE = "flex w-full items-center justify-center rounded-sm bg-white px-1";
 const tileState = (selected: boolean) =>
   selected ? "border-primary bg-primary-fixed neo-sm" : "border-ink bg-surface-container-lowest hover:bg-surface-container-low";
 
@@ -35,20 +39,22 @@ function FpxBankGrid({
             aria-pressed={selected && bankCode === bank.code}
             title={bank.name}
             onClick={() => onSelect(bank.code)}
-            className={`${TILE} flex h-10 items-center justify-center rounded-md px-1.5 ${tileState(selected && bankCode === bank.code)}`}
+            className={`${TILE} flex h-10 items-stretch rounded-md p-1 ${tileState(selected && bankCode === bank.code)}`}
           >
-            <Image
-              src={`/images/banks/${bank.code.toLowerCase()}.webp`}
-              alt=""
-              width={240}
-              height={96}
-              // Already small webp files: a trip through the image optimizer
-              // adds nothing, and lazy loading left blank tiles while the
-              // customer scrolled to them.
-              unoptimized
-              loading="eager"
-              className="h-auto max-h-5 w-auto max-w-full object-contain"
-            />
+            <span className={LOGO_PLATE}>
+              <Image
+                src={`/images/banks/${bank.code.toLowerCase()}.webp`}
+                alt=""
+                width={240}
+                height={96}
+                // Already small webp files: a trip through the image optimizer
+                // adds nothing, and lazy loading left blank tiles while the
+                // customer scrolled to them.
+                unoptimized
+                loading="eager"
+                className="h-auto max-h-5 w-auto max-w-full object-contain"
+              />
+            </span>
           </button>
         ))}
       </div>
@@ -125,15 +131,17 @@ export default function PaymentChannelPicker({
                       : "border-ink bg-surface-container-lowest hover:bg-surface-container-low"
                   }`}
                 >
-                  <PaymentChannelIcon
-                    channelCode={channel.channelCode}
-                    category={channel.category}
-                    className={
-                      soloChannel
-                        ? "h-7 w-auto shrink-0"
-                        : "h-4.5 w-auto shrink-0"
-                    }
-                  />
+                  <span className="flex shrink-0 items-center rounded-sm bg-white p-1">
+                    <PaymentChannelIcon
+                      channelCode={channel.channelCode}
+                      category={channel.category}
+                      className={
+                        soloChannel
+                          ? "h-7 w-auto shrink-0"
+                          : "h-4.5 w-auto shrink-0"
+                      }
+                    />
+                  </span>
                   <span className={soloChannel ? "sr-only" : undefined}>
                     {channel.label}
                   </span>

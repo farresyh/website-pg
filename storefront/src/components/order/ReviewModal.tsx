@@ -356,7 +356,7 @@ export default function ReviewModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/50 backdrop-blur-sm lg:items-center"
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-scrim/50 backdrop-blur-sm lg:items-center"
       onClick={onClose}
     >
       <div
