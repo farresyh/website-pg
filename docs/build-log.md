@@ -2509,4 +2509,4 @@ Branch `docs/audit-2026-11-11`, into `staging`. The founder asked for a full aud
 - The addendum-date parser first matched `**Context:** … addendum … <date>` lines (ADR-112, ADR-120); only a bold label or `###` heading that names an addendum counts.
 - The first rebate ladder was saved at 18:55 UTC on 2026-11-09, which is 2026-11-10 in Malaysia; the docs use the Malaysia date.
 
-**For the founder (not docs):** item 108, `pajostore.com` became a payment-approved domain on 2026-11-09 and no record says it was added to the Game ID Checker's Turnstile widget; Digiflazz's balance (IDR 4.73 million) is under its IDR 10 million alert threshold since 2026-11-10 16:10 UTC.
+**For the founder (not docs), answered the same day:** item 108, `pajostore.com` was not on the Game ID Checker's Turnstile widget; the founder added it. Digiflazz's balance (IDR 4.73 million, under its IDR 10 million alert since 2026-11-10 16:10 UTC) is known to the founder. Item 161 closed: the ladder save had already sent the announcement to all three resellers' groups (checked read-only).

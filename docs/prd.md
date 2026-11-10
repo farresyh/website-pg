@@ -846,7 +846,6 @@ before building.
 
 **C. Founder actions (no code)**
 - **158** Grade the CS assistant's drafts; PR 4 (Live) is built once a category meets the Live gate (ADR-136). Details below.
-- **161** Announce the reseller rebate to the agents before 2026-12-01 (ADR-139). Details below.
 - **11** Sentry (error tracking) is still not set up. Details below.
 
 **D. Waiting on a trigger: don't build early**
@@ -862,7 +861,7 @@ before building.
 - **83** Give back an admin voucher's ledger debit on revoke/expiry, with the first admin-issued voucher.
 - **85** Membership renewal reminder on WhatsApp (designed), at 10 active members or when members don't renew despite the email.
 - **150** Membership pitch to a non-member after a delivery, at around ten active members.
-- **108** Add affiliate custom domains to the Turnstile widget automatically (ADR-123), at about 5 active affiliate domains or when the manual step is tiresome. Check `pajostore.com` is on the widget.
+- **108** Add affiliate custom domains to the Turnstile widget automatically (ADR-123), at about 5 active affiliate domains or when the manual step is tiresome.
 - **111** Turnstile on the admin and portal logins (ADR-019 2026-10-17 addendum), at the first "Account locked" alert that isn't the founder.
 - **105** Batch `Order::cashCompensationSen()`'s wallet-refund lookup, when the Customer Detail page is slow for a big reseller (Pulse > 500 ms).
 - **169** Send `max_price` to suppliers ([ADR-137](./adr/ADR-137-gamevion-v2-api.md) 2026-11-07 addendum holds the design). Decided 2026-11-07 not to build yet: a selling price follows cost, and on production it would have saved RM0. Trigger: the first delivered order that loses money because the cost rose after payment with no admin decision behind it (`profit_reconciled_flagged`).
@@ -1019,8 +1018,8 @@ before building.
     `fixfastapp.com` (the one active affiliate domain); subdomains are
     covered. **Update 2026-11-01:** the widget now also needs `ohahastore.com`
     (miss found 2026-10-31, error 110200; added by the founder, checker works),
-    so 4 hostnames of 10. **Check 2026-11-11:** `pajostore.com` became a payment-approved
-    affiliate domain on 2026-11-09; no record says it was added to the widget. Until this is built, a new affiliate custom domain must be
+    so 4 hostnames of 10. `pajostore.com` (payment-approved 2026-11-09) was added by the
+    founder on 2026-11-11, after the docs audit flagged it: 5 of 10. Until this is built, a new affiliate custom domain must be
     added to the widget by hand in the Cloudflare dashboard, or the checker
     on that domain shows a Turnstile error (fails closed; checkout is
     unaffected).
@@ -1089,17 +1088,6 @@ before building.
      OK, Privacy Policy line live on every brand). OpenWA's first 90-day message
      prune is around 2026-12-24; PR 1 already keeps the chats.
 
-161. **Reseller milestone rebate plus automatic refund on a failed wallet order**
-     ([ADR-139](./adr/ADR-139-reseller-milestone-rebate.md), money-critical). Built
-     in PRs 1 to 4c and released via #769 on 2026-11-10 (§15 Reseller (wallet)
-     row); the programme terms (v1) and the bot messages are approved (ADR-139
-     2026-11-08 and 2026-11-09 addenda). The founder saved the first ladder on
-     2026-11-10 (effective 2026-12-01, decision 3's grid, checked read-only).
-     Left: the founder announces the programme to the agents before
-     2026-12-01. The item closes when the founder confirms the announcement;
-     the first rebate month is a §14 "Not yet seen" line. Its text before this
-     rewrite is in `build-log-archive.md`, "PRD §16 text moved 2026-11-11".
-
 162. **Gamevion v2 API** ([ADR-137](./adr/ADR-137-gamevion-v2-api.md), money-critical). All code is live: #701–#704 released via #705, and the sync scope fix (#706) via #707. **Trigger: the founder decides to use Gamevion.** Decided 2026-11-07: not yet, so the repoint stops at 6 of 71 packages, and all 71 stay off.
 
      **Proven without money, 2026-11-07:** one order sent through the real adapter at RM0 balance answered 402 `insufficient_balance` ("RM 0.00 < RM 0.71"), mapped to a confirmed failure, so the key, the IP allowlist, the order endpoint and our error mapping all work. The player ID was made up, so the balance check appears to come before the player check. **Not proven:** a delivery, its webhook, drawdown and real cost.
@@ -1126,6 +1114,7 @@ before building.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-28, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
+- **161** 2026-11-11: reseller milestone rebate plus automatic refund ([ADR-139](./adr/ADR-139-reseller-milestone-rebate.md)), released via #769. The founder saved the first ladder on 2026-11-10 MYT (effective 2026-12-01), and its save sent the "JADUAL REBATE BARU" notice to every active, eligible reseller's group (`RebateNotifier::ladderSaved()`; checked read-only: FixFast, Naeem Industries and AyrisShop, one group each, all `sent` at 18:55–18:56 UTC). That is the announcement (founder, 2026-11-11). The first rebate month is a §14 "Not yet seen" line. The item's last Next-up text is in `build-log-archive.md`, "PRD §16 text moved 2026-11-11".
 - **164** 2026-11-08: `/middleware` on the ADR-104 tokens, a pure reskin in one PR per page (#740 to #750): Suppliers, Price Sync, Dashboard, Payment Gateways, Validators, Payment Methods, Developer / API Tester, Backups, Request Logs, Sandbox, Product Manager, with their modals. No `gray-*` / `brand-*` / `white/[…]` class is left under `app/middleware`, `components/middleware` or `components/price-sync`; the admin Orders components the Sandbox reuses are not part of it. Benchmarked by screenshot against admin `/orders`, light and dark. Released via #755.
 - **176** 2026-11-08: the OPcache fix on the box ([ADR-066](./adr/ADR-066-production-deploy-via-laravel-forge.md) 2026-11-08 addendum). Release #737 ran the new reload and the cache restarted with it, hit rate 99.18%.
 - **159** 2026-11-07: OpenWA upgraded v0.27.1 to v0.29.1, so one-to-one chats stay in the dashboard list after a restart ([ADR-075](./adr/ADR-075-reseller-bot-channel.md) 2026-11-08 addendum). About 1m40s offline; both sessions back and the status webhook received. A message in and three out were then seen on the new version.
