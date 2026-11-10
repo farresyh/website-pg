@@ -675,7 +675,7 @@ Unscheduled ideas, not on the backlog:
 
 # 14. Build Status
 
-**Where things stand (2026-11-07, checked read-only on prod).** The platform
+**Where things stand (2026-11-07, checked read-only on prod; latest release updated 2026-11-10).** The platform
 is feature-complete and live in production: storefront (plus every Affiliate
 whitelabel brand), admin panel, Affiliate/Reseller portal, and the
 developer-docs site. CHIP FPX and DuitNow QR payments and the CHIP + Digiflazz
@@ -717,8 +717,9 @@ affiliate domains are LWF's own brands. The history of the switches is in the bu
 Maybank2u) and DuitNow QR (`PG-L4RCBELJ9RE3`, RM25.70) each completed with
 real money and were delivered.
 
-**Latest release 2026-11-08 (`staging`→`main`, PR #755, founder's go-ahead).** Merge `261345ca`, CI and `deploy` green, box release `82402542`, admin and portal rebuilt on Vercel. Frontend only: item 164, every `/middleware` page on the ADR-104 tokens (#740 to #751), the Admin ↔ Middleware switch link under the sidebar brand (#739), dialog widths and the `DialogPopup` default width (#752, #753), the admin Orders detail components on the tokens (#754), and #737's release record (#738). No backend change, no migration, no env change. Recorded in `build-log.md`.
-- **Checked after release:** `/api/health` ok with `php_code_cache` true, `/api/health/whatsapp` 200, all four frontends and the onboarding page 200, the box at `261345c`, Vercel production for admin and portal on that commit; 0 paid orders in flight before and after.
+**Latest release 2026-11-10 (`staging`→`main`, PR #769, founder's go-ahead).** Merge `aac82832`, carrying #756–#768: ADR-139 (automatic refund of a Failed wallet order, tier changes from the 1st, the reseller rebate with its accounting, admin, portal and bot screens) and the Bumblebee Dark v3 palette. Five migrations (batch 69). `deploy` first died on a GitHub runner failure and passed on rerun. The founder saved the first rebate ladder the same day (effective 2026-12-01, checked read-only). Recorded in `build-log.md`.
+- **Checked after release:** box at `aac8283`, `/api/health` ok, `/api/reseller-portal/rebate` 401 (live), ledger rows unchanged at 267, the new scheduler tasks registered, Vercel production for admin, portal and storefront on that commit.
+- **On `staging`, not yet released:** #770 (release record) and #771 (the report date bounds that fix the 9 Nov memory exhaustion, CI timeout, Symfony security patches).
 
 **Not yet seen on prod:**
 - the first affiliate auto-payout ticket (ADR-132; no affiliate has bank details);
@@ -842,15 +843,19 @@ moved to group D). Re-checked 2026-11-01 after release #633 (items 13 and 146 cl
   (#687) are released; run #3 chose Claude Haiku 5.5. **The founder switched
   the mode to Shadow on 2026-11-04 (03:53 UTC)** and the first drafts were
   written the same day; 9 knowledge entries are approved (checked read-only
-  2026-11-04). Next: 1–2 weeks of Shadow, the founder grading drafts, then
-  **PR 4 (Live)**: the CS Staff group, safety limits and local OCR (decision
+  2026-11-04). **Founder, 2026-11-10: stay in Shadow and keep growing the
+  knowledge book; the Live gate (20 graded drafts and 90% per category,
+  `live_min_drafts` unchanged) is not lowered.** On that day prod had 26
+  drafts across all categories and no CS message since 2026-11-07. Next: the
+  founder grades drafts, then
+  **PR 4 (Live)** once a category meets the gate: the CS Staff group, safety limits and local OCR (decision
   32; §15 row). Decision 31 is met (lawyer's OK, Privacy Policy line live on
   every brand). OpenWA's first 90-day message prune is around 2026-12-24;
   PR 1 already keeps the chats.
 
 **B. Needs a short grill / ADR addendum first**
 - **165** KOL fee as a share of profit ([ADR-118](./adr/ADR-118-marketing-campaigns.md) addendum, money-critical; founder, 2026-11-05). A KOL may ask for no monthly fee but a share of the profit their sales bring (70/30 was only a proposal). Today a campaign knows only a fixed monthly fee schedule (`CampaignFeeSchedule`, RM0 allowed), so neither way of paying such a KOL is right: a payment tagged to an RM0 campaign leaves both the envelope expenses (`whereNull('campaign_id')`) and the accrued KOL fee line, so the cost disappears from the month-close net and shows as a growing "prepaid"; tagged "Not a KOL fee", the books are right on a cash basis but the scorecard counts no fee (net and CAC overstated). **Until built, pay such a KOL as "Not a KOL fee".** Proposed: a "profit share %" fee type whose accrued fee per Malaysia month is computed from the campaign's attributed ledger profit (the scorecard's own number), never typed. Open for the founder: orders that used the code only, or every attributed order; a loss month as 0 or carried; a monthly cap; simulate the share on real order data first.
-- **161** Reseller milestone rebate plus automatic refund on a failed wallet order ([ADR-139](./adr/ADR-139-reseller-milestone-rebate.md), **Accepted 2026-11-08** after the code trace, a three-round grill, the ladder simulation and a final stress test; ADR-073 and ADR-131 addenda; money-critical). Agents said our price is about the same as their leader's and asked for a battle-pass rebate themselves. Next: build in four PRs (ADR-139 Consequences): PR 1 automatic refund, PR 2 tier from the 1st (with fixed markup per tier) and PR 3a rebate core and PR 3b-i (finalise, expire, closure forfeit) and PR 3b-ii (accounting lines, month-close gate) are built (§15 Reseller (wallet) row); PR 4 is split in three: 4a (admin and portal API, bot messages), 4b (admin screens and decision 24's Reports line) and 4c (portal screens) are built. The ladder simulation was re-run on 2026-11-09 (decision 46): decision 3's grid stands. Released via #769 on 2026-11-10. Next: the founder saves the first ladder in Admin → Reseller Rebate (saved by 24 Nov KL, it takes effect on 1 Dec 2026), then announces it to agents (ADR-139 2026-11-09 addenda, which also record the founder's answers on PR 4's open points and the draft bot messages awaiting approval); PR 3 (rebate backend and accounting) is unblocked: the accountant confirmed the treatment on 2026-11-08, revising expiry to a revenue-reduction reversal and making the open month live (ADR-139 addendum); PR 4 is the admin, portal and bot screens, plus the programme terms the founder approves.
+- **161** Reseller milestone rebate plus automatic refund on a failed wallet order ([ADR-139](./adr/ADR-139-reseller-milestone-rebate.md), **Accepted 2026-11-08** after the code trace, a three-round grill, the ladder simulation and a final stress test; ADR-073 and ADR-131 addenda; money-critical). Agents said our price is about the same as their leader's and asked for a battle-pass rebate themselves. Next: build in four PRs (ADR-139 Consequences): PR 1 automatic refund, PR 2 tier from the 1st (with fixed markup per tier) and PR 3a rebate core and PR 3b-i (finalise, expire, closure forfeit) and PR 3b-ii (accounting lines, month-close gate) are built (§15 Reseller (wallet) row); PR 4 is split in three: 4a (admin and portal API, bot messages), 4b (admin screens and decision 24's Reports line) and 4c (portal screens) are built. The ladder simulation was re-run on 2026-11-09 (decision 46): decision 3's grid stands. Released via #769 on 2026-11-10. The founder saved the first ladder on 2026-11-10 (effective 1 Dec 2026, decision 3's grid, checked read-only). Next: the founder announces it to agents (ADR-139 2026-11-09 addenda, which also record the founder's answers on PR 4's open points and the draft bot messages awaiting approval); PR 3 (rebate backend and accounting) is unblocked: the accountant confirmed the treatment on 2026-11-08, revising expiry to a revenue-reduction reversal and making the open month live (ADR-139 addendum); PR 4 is the admin, portal and bot screens, plus the programme terms the founder approves.
 
 
 
