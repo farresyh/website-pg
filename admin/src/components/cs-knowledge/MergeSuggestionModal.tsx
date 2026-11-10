@@ -30,9 +30,11 @@ interface Props {
 
 /** ADR-136 decision 10: the same question asked again becomes a new way of asking an existing entry. */
 function Fields({ suggestion, entries, onClose, onSubmit }: Props & { suggestion: Suggestion }) {
-  // Start on the entry the nightly AI matched, so "consider Merge" and the modal agree.
-  const initial = entries.find((e) => e.id === suggestion.ai_entry_id) ?? entries[0];
-  const [entryId, setEntryId] = useState(initial ? String(initial.id) : "");
+  // Start on the entry the nightly AI matched, so "consider Merge" and the
+  // modal agree. With no match, start on nothing: a default entry is one
+  // careless click from merging into the wrong one.
+  const suggested = entries.find((e) => e.id === suggestion.ai_entry_id);
+  const [entryId, setEntryId] = useState(suggested ? String(suggested.id) : "");
   const [question, setQuestion] = useState(suggestion.ai_question ?? suggestion.question.split("\n")[0] ?? "");
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -76,10 +78,13 @@ function Fields({ suggestion, entries, onClose, onSubmit }: Props & { suggestion
             id="cs-merge-entry"
             value={entryId}
             onChange={setEntryId}
-            options={entries.map((e) => ({
-              value: String(e.id),
-              label: `#${e.id} ${categoryLabel(e.category)}: ${e.questions[0]}${e.id === suggestion.ai_entry_id ? " (suggested)" : ""}`,
-            }))}
+            options={[
+              ...(suggested ? [] : [{ value: "", label: "Choose an entry…" }]),
+              ...entries.map((e) => ({
+                value: String(e.id),
+                label: `#${e.id} ${categoryLabel(e.category)}: ${e.questions[0]}${e.id === suggestion.ai_entry_id ? " (suggested)" : ""}`,
+              })),
+            ]}
           />
           {target && <p className="mt-2 whitespace-pre-line text-theme-xs text-ink-muted">Current answer: {target.answer}</p>}
         </div>

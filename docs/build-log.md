@@ -2410,3 +2410,12 @@ Branch `fix/storefront-dark-readability`, into `staging`. Storefront only. The f
 3. **The other dark presets.** Red Giants, Emerald and Cobalt set no `scrim`, so their dark mode still fell back to their light-grey `ink`. Each `tokensDark` now sets `--color-scrim: #000000` (the founder's go-ahead). Only popup backdrops change, in dark mode only: the four modals and the More drawer. No brand on prod uses these presets in dark (read-only: Bumblebee dark 2, Bumblebee light 1, default light 1). The portal's copy was regenerated with `sync-shared-files.mjs`.
 
 **Not changed:** the `neo` shadows are a fixed navy (`rgb(25 25 47)`), which shows as a dark-blue block behind a modal on a dark preset. The founder didn't raise it.
+
+## 2026-11-10 — Follow-ups to #772 and #773: no default merge target; dark scrim guard
+
+Branch `fix/cs-merge-and-scrim-guards`, into `staging`. These came from the founder's ask to check today's fixes for patchwork.
+
+- **CS Merge modal (#772):** with no AI match (9 of the 18 pending suggestions on 2026-11-10), the modal still opened on the first entry, one careless click from the wrong merge. It now opens on "Choose an entry…", and Merge stays disabled until one is picked.
+- **Dark scrim (#773):** `storefront/src/lib/dark-scrim.test.ts` fails if a dark preset sets no `--color-scrim`, or if a full-screen overlay (`fixed inset-0`) draws its backdrop with `bg-ink/`. It was red with one preset's scrim removed and one modal reverted. It runs in CI's storefront `npm test`.
+
+**Verified:** admin `tsc` and `eslint` pass; storefront `npm test` 10 passed.
