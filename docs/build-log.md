@@ -2379,3 +2379,17 @@ Branch `fix/release-followups`, into `staging`. These are the three findings fro
 3. **`composer audit`** had failed on `main` since 9 Nov: 7 advisories in `symfony/filesystem`, `http-foundation`, `http-kernel` and `routing`. Those four were updated with their dependencies, all patch releases within 8.1 (for example `http-foundation` 8.1.9 → 8.1.11). The audit is now clean.
 
 **Verified:** `php artisan test` 3,893 passed; Pint is clean; `composer audit` reports no advisories.
+## 2026-11-10 — Storefront dark theme: modal backdrops dim the page; payment logos on a white plate (ADR-113)
+
+Branch `fix/storefront-dark-readability`, into `staging`. Storefront only. The founder reported both from the Bumblebee Dark v3 storefront.
+
+1. **The modals blended into the page.** All four storefront modals used `bg-ink/50` as the backdrop: GameInfo (the "How to Buy" notes), MembershipTransition, RateOrder and Review. Under the Light-Ink Rule a dark preset's `ink` is the light stroke #8C8983, so the backdrop lightened the page to mid-grey instead of dimming it. ADR-113's 2026-11-10 addendum had already given the More drawer the `scrim` token for this reason; the modals were missed. They now use `bg-scrim/50`. In a light preset `scrim` is `ink`, so nothing changes there.
+2. **Bank and DuitNow logos were hard to see.** These logos are drawn for white, and the tiles take the theme's dark surface. In `PaymentChannelPicker` each FPX bank logo and each channel icon now sits on a white plate inside its tile. The tile keeps the theme's border, hover and selected colours. This is the same plate the homepage payment cards already use.
+
+**Verified (e2e harness, Bumblebee dark and light tokens injected, screenshots):**
+- Dark backdrop computes to `oklab(0 0 0 / 0.5)`; light is unchanged (ink at 50%).
+- Every bank logo is readable on dark. The selected tile still shows its yellow border.
+- Contrast in the notes popup on dark (unchanged colours, now on a dimmed page): description #A6A39B on #111113 7.5:1, note text on the box 10.8:1, the heading 7.8:1.
+- `tsc` and `eslint` pass.
+
+**Not changed:** the `neo` shadows are a fixed navy (`rgb(25 25 47)`), which shows as a dark-blue block behind a modal on a dark preset. The founder didn't raise it.

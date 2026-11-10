@@ -45,7 +45,7 @@ export default function RateOrderModal({
   const displayRating = hoverRating || rating;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/50 lg:items-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-scrim/50 lg:items-center" onClick={onClose}>
       <div
         className="flex w-full flex-col overflow-y-auto rounded-t-lg border-2 border-ink bg-surface neo-lg p-6 lg:max-w-[420px] lg:rounded-lg"
         onClick={(e) => e.stopPropagation()}
