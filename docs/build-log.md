@@ -2489,3 +2489,24 @@ No migration, no env change.
 - The four frontends and the onboarding page answer 200; Vercel production for admin, storefront and portal is on `b1c2b459`.
 
 **Not yet seen live:** the Price Sync card showing "running" during a sync (the #774 change); a long-wait alert no longer arriving.
+
+## 2026-11-11 — Full docs audit after release #777; `docs-check` in CI
+
+Branch `docs/audit-2026-11-11`, into `staging`. The founder asked for a full audit and clean-up of every doc before building more. Three read-only reviewers (status docs vs prod, the ADR log, the spec and guidance docs), then every finding re-checked against code or prod before it was written.
+
+**Wrong for partners (fixed first):** the public API guides still said a failed order waits for PekanGame to decide on a retry before an admin refunds it. Since #769 (ADR-139 decisions 26–29) a Failed wallet order is refunded within a minute by `app:refund-failed-wallet-orders`, a refunded order is never resent (`OrderResendService`), and `order.refunded` comes from `OrderSettlementService::settle()`. `wallet.md` "Refunds" is now the one home for the rule; docs revision v1.6.0 (`scramble.php`, spec re-exported, only `info.version` changed). Three backend comments named the admin action as the only `order.refunded` source.
+
+**Stale or contradicting:**
+- PRD §14 counts were restated in §14, §15 and §16, so each release left them stale (92 orders on the page, 166 on prod). §14 now keeps who the customers are plus one dated snapshot line, the only home for counts. Added PajoStore (third-party affiliate, payments approved 2026-11-09; the founder confirmed with CHIP on 2026-11-11 that it may collect), the 4 redeemed KOL codes (the page said none), the saved rebate ladder, the current DB cluster, and the missing not-yet-seen lines (first auto-payout ticket due 1 Dec, first rebate month, #774's card and email).
+- PRD §1–13 still described a "spend-only" reseller and an admin-only wallet refund, a manual affiliate payout and the ADR-033 FX rate; the Glossary listed three wallet ledger types of six. Lists that code owns (wallet ledger types, pricing bases) now point to their enums instead of restating them.
+- §16: item 161 sat in "needs a grill" with build-plan text though released; 104 and 151 waited on triggers that had fired; 158 was "buildable now" while PR 4 waits on the Live gate; closed 28 and 57 were still in Details. Next up is back to one short entry per item, the long bodies are in Details, and the old preambles and replaced text moved verbatim to `build-log-archive.md` ("PRD §16 text moved 2026-11-11"). Recently closed gets a 30-day rule; nothing was older than that yet.
+- ADR log: 137–139 said "Accepted" while 125 others say "In force"; ADR-001, 031 and 051 carried a banner-refresh or supersede date as "Last addendum"; seven Standing cells ran to 450–1,100 characters. One Standing vocabulary, the revise rule aligned with AGENTS.md step 7, rows trimmed to current effect + latest revision (the banners keep the history).
+- Two founder decisions had no ADR home: ADR-136 2026-11-10 (Live gate kept) and ADR-137 2026-11-10 (the price-sync ceiling is Gamevion's 40/min limit, about 140 games; PRD §16 item 177).
+
+**Prevention:** `scripts/check-docs.mjs` (no dependencies, `--self-test`) and the CI job `docs-check`: every ADR indexed, Standing words, Last addendum against the file's last dated addendum (three heading formats in use), relative links, no closed item in §16 Details. Run against pre-audit `staging` it reports 13 of this audit's findings. Not a deploy need or a required check.
+
+**Gotchas:**
+- The addendum-date parser first matched `**Context:** … addendum … <date>` lines (ADR-112, ADR-120); only a bold label or `###` heading that names an addendum counts.
+- The first rebate ladder was saved at 18:55 UTC on 2026-11-09, which is 2026-11-10 in Malaysia; the docs use the Malaysia date.
+
+**For the founder (not docs):** item 108, `pajostore.com` became a payment-approved domain on 2026-11-09 and no record says it was added to the Game ID Checker's Turnstile widget; Digiflazz's balance (IDR 4.73 million) is under its IDR 10 million alert threshold since 2026-11-10 16:10 UTC.
