@@ -2379,3 +2379,17 @@ Branch `fix/release-followups`, into `staging`. These are the three findings fro
 3. **`composer audit`** had failed on `main` since 9 Nov: 7 advisories in `symfony/filesystem`, `http-foundation`, `http-kernel` and `routing`. Those four were updated with their dependencies, all patch releases within 8.1 (for example `http-foundation` 8.1.9 → 8.1.11). The audit is now clean.
 
 **Verified:** `php artisan test` 3,893 passed; Pint is clean; `composer audit` reports no advisories.
+## 2026-11-10 — CS knowledge: the Merge modal opens on the entry the AI suggested (ADR-136)
+
+Branch `fix/cs-merge-suggested-entry`, into `staging`. Admin only.
+
+**Found (founder, while reviewing suggestions).** A suggestion row said "Looks like entry #8: consider Merge". But the Merge modal's dropdown showed no numbers and always opened on the first approved entry (#9, the membership entry), so the founder couldn't tell which entry the AI meant. The modal never read `ai_entry_id`.
+
+**Checked first (prod, read-only):** all 11 earlier merges that had an AI match went into the matched entry. Nothing was merged into the wrong entry.
+
+**Fixed:**
+- `MergeSuggestionModal` now starts on `ai_entry_id` and marks it "(suggested)". Every option shows `#id`.
+- "New way of asking" starts from the AI's cleaned question, falling back to the first line of the raw message as before. The raw message was a chat line like "ok fhm2 tq ah".
+- The row hint names the entry: "Looks like entry #8 (Order status: Boleh tolong check order saya?)".
+
+**Verified:** `tsc` and `eslint` pass. Not checked in a browser.
