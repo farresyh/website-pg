@@ -2460,3 +2460,32 @@ Branch `docs/price-sync-ceiling`, into `staging`. Comment and docs only.
 - Gamevion's time is nearly all the 1.6 s pause between pricelist calls that its 40-a-minute limit forces, over 74 chosen games: ~117 s of waiting, plus the HTTP calls.
 
 **Decision (founder):** no bulk upsert; it would save seconds. The note now records the measured split and the real ceiling: about 140 chosen Gamevion games per 300 s. Past that, the fix is a warning on the Gamevion game picker. Gamevion is unfunded and unused (PRD §16 item 162), so nothing is near the ceiling.
+
+## 2026-11-10 — Release #777: #770–#776 to `main`
+
+The founder asked for it. `staging` → `main`, merge `b1c2b459`, box release `82558237`.
+
+**Carried:**
+- #771: report date bounds (the 9 Nov memory exhaustion), Symfony patches, CI timeout
+- #774: run broadcasts on `default`, Horizon `waits` keys, a failed broadcast logged on any queue
+- #772, #775: the CS Merge modal
+- #773, #775: storefront dark readability and its guard test
+- #770, #776: docs
+
+No migration, no env change.
+
+**Pre-release (prod, read-only):** health 200, no pending migrations, 0 paid orders in flight, no sync running, 0 failed jobs in 24 h.
+
+**Deploy:** every CI job and `deploy` passed on the first run (no runner incident this time).
+
+**Gotcha:** the deploy landed at 07:01 UTC, inside the 07:00 price sync. `/api/health` answered 503 (`horizon: false`) for about two minutes. The old Horizon master, told to terminate, kept only the price-sync worker alive until its job finished at 07:03:23; then the new Horizon started every supervisor and health went back to `ok`. That run (3519) succeeded. Nothing was lost, but a deploy in the first ~3 minutes after :00 or :30 will show this.
+
+**Checked after release (production, read-only):**
+- `current` → `releases/82558237`.
+- `horizon.waits` has `redis-long:price-sync` and `redis-long:backups` at 300.
+- `PriceSyncRunUpdated` broadcasts on `default`.
+- Every supervisor is running; `/api/health` ok; `/api/health/whatsapp` 200.
+- 0 paid orders in flight; 0 failed jobs.
+- The four frontends and the onboarding page answer 200; Vercel production for admin, storefront and portal is on `b1c2b459`.
+
+**Not yet seen live:** the Price Sync card showing "running" during a sync (the #774 change); a long-wait alert no longer arriving.

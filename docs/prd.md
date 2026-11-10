@@ -717,9 +717,9 @@ affiliate domains are LWF's own brands. The history of the switches is in the bu
 Maybank2u) and DuitNow QR (`PG-L4RCBELJ9RE3`, RM25.70) each completed with
 real money and were delivered.
 
-**Latest release 2026-11-10 (`staging`→`main`, PR #769, founder's go-ahead).** Merge `aac82832`, carrying #756–#768: ADR-139 (automatic refund of a Failed wallet order, tier changes from the 1st, the reseller rebate with its accounting, admin, portal and bot screens) and the Bumblebee Dark v3 palette. Five migrations (batch 69). `deploy` first died on a GitHub runner failure and passed on rerun. The founder saved the first rebate ladder the same day (effective 2026-12-01, checked read-only). Recorded in `build-log.md`.
-- **Checked after release:** box at `aac8283`, `/api/health` ok, `/api/reseller-portal/rebate` 401 (live), ledger rows unchanged at 267, the new scheduler tasks registered, Vercel production for admin, portal and storefront on that commit.
-- **On `staging`, not yet released:** #770 (release record) and #771 (the report date bounds that fix the 9 Nov memory exhaustion, CI timeout, Symfony security patches).
+**Latest release 2026-11-10 (`staging`→`main`, PR #777, founder's go-ahead).** Merge `b1c2b459`, box release `82558237`, carrying #770–#776: the report date bounds that fix the 9 Nov memory exhaustion and the Symfony security patches (#771); price-sync and backup status broadcasts on the `default` lane, Horizon `waits` keyed on `redis-long`, and failed broadcasts logged on any queue (#774, ADR-047 addendum); the CS Merge modal fixes (#772, #775); storefront dark readability (popup scrim, payment logos on a white plate, #773, #775); docs (#770, #776). No migration, no env change. Recorded in `build-log.md`.
+- **Checked after release:** box on the new release, `/api/health` ok (after a two-minute Horizon restart that waited for the 07:00 price sync), every supervisor running, the new waits keys and broadcast lane live, 0 paid orders in flight, Vercel production for admin, storefront and portal on that commit.
+- **Earlier the same day:** release #769 (ADR-139 reseller rebate, Bumblebee Dark v3); the first rebate ladder was saved (effective 2026-12-01).
 
 **Not yet seen on prod:**
 - the first affiliate auto-payout ticket (ADR-132; no affiliate has bank details);
