@@ -49,11 +49,18 @@ accepted.
 
 ## Refunds
 
-A failed order is not refunded to a card or bank account. A failed delivery is
-first reviewed for retry. If PekanGame decides not to retry, an admin refunds it
-**to your Purchase Balance**: the whole charged amount for a `failed` order, or only the
-undelivered share for a `partially_delivered` one (part of the order was
-delivered and the rest failed). Neither status by itself is proof of a refund.
+Refunds go **to your Purchase Balance**, never to a card or bank account.
+
+- **`failed`**: the whole charged amount is refunded automatically, usually
+  within a minute of the order failing. A refunded order is never re-attempted,
+  so `failed` is final. The one exception: if the supplier reports a success
+  after reporting the failure, PekanGame checks the order by hand first, and it
+  is then either delivered or refunded.
+- **`partially_delivered`** (part of the order was delivered and the rest
+  failed): PekanGame decides whether to re-attempt the undelivered part. If it
+  doesn't, only the undelivered share is refunded.
+
+Neither status by itself is proof of a refund.
 
 When it happens you receive an `order.refunded` webhook (if you have one
 registered), and the amount reappears in `balance_sen`. Order responses from

@@ -134,15 +134,16 @@ own — see the table below.
 | `processing` | Being fulfilled. |
 | `pending` | Submitted; awaiting the final result. |
 | `delivered` | Done. `delivered_at` is set. |
-| `failed` | Delivery failed. PekanGame may retry; a Purchase Balance refund is a separate later action. |
+| `failed` | Delivery failed. The whole amount is refunded to your Purchase Balance automatically, usually within a minute. |
 | `needs_review` | The outcome is ambiguous and being confirmed manually. Rare. |
-| `partially_delivered` | Part of the order was delivered and the rest failed. The undelivered part is refunded to your Purchase Balance as a separate later action. Rare. |
+| `partially_delivered` | Part of the order was delivered and the rest failed. PekanGame may re-attempt the rest; otherwise the undelivered share is refunded. Rare. |
 
-`delivered` is final. `failed` and `partially_delivered` are usually final
-too, but PekanGame may re-attempt the part that failed, so either can still
-reach `delivered` later (you get an `order.delivered` webhook if so). Poll or
-use the webhook until the order is `delivered`, `failed` or
-`partially_delivered`.
+`delivered` and `failed` are final. `partially_delivered` is usually final too,
+but if PekanGame re-attempts the part that failed, it can still reach
+`delivered` (you get an `order.delivered` webhook if so). Poll or use the
+webhook until the order is `delivered`, `failed` or `partially_delivered`.
+The refund rules, with their one exception, are in
+[Purchase Balance → Refunds](/wallet/#refunds).
 For a failed or partially delivered order, check `wallet_refunded` separately
 to learn whether the Purchase Balance has actually been credited, and
 `wallet_refund.amount_sen` for how much — for a partial delivery it is only
@@ -178,8 +179,7 @@ GET /v1/orders/PG-7QK2M9X4RJ
 }
 ```
 
-A failed order can later be refunded to your Purchase Balance after PekanGame decides
-not to retry it. In that case the order still reports `payment_status: paid`
-and `delivery_status: failed`, but `wallet_refunded` becomes `true` and
+Once a failed order is refunded to your Purchase Balance, it still reports
+`payment_status: paid` and `delivery_status: failed`, but `wallet_refunded` becomes `true` and
 `wallet_refund` supplies the actual credited amount and time. See
 [Purchase Balance](/wallet/).
