@@ -51,7 +51,7 @@ export default function MembershipTransitionModal({
   const copy = COPY[relation];
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-scrim/50 p-4" onClick={onClose}>
       <div
         className="flex max-h-[85vh] w-full max-w-[460px] flex-col overflow-y-auto rounded-lg border-2 border-ink bg-surface neo-lg p-6"
         onClick={(e) => e.stopPropagation()}

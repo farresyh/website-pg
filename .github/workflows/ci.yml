@@ -60,6 +60,10 @@ jobs:
   # bespoke static-analysis test for the same thing.
   backend-concurrency:
     runs-on: ubuntu-latest
+    # Normally 14–26 min. Without a limit a stuck run holds `deploy` for up to
+    # GitHub's 6 h default; release #769's run sat 50 min before its runner was
+    # lost (2026-11-10). Fail at 40 and re-run instead.
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: backend

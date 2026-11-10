@@ -29,6 +29,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * RPT-1..3 (docs/prd.md §6.9). Every figure here is grilled and pinned
@@ -130,15 +131,29 @@ final class ReportService
      */
     public function dateRangeFromDates(?string $fromDate, ?string $toDate): array
     {
-        $from = $fromDate !== null
-            ? CarbonImmutable::createFromFormat('Y-m-d', $fromDate, MalaysiaTime::TIMEZONE)->startOfDay()->setTimezone('UTC')
-            : null;
-
-        $toExclusive = $toDate !== null
-            ? CarbonImmutable::createFromFormat('Y-m-d', $toDate, MalaysiaTime::TIMEZONE)->startOfDay()->addDay()->setTimezone('UTC')
-            : null;
+        $from = $fromDate !== null ? self::klDay($fromDate, 'from')->setTimezone('UTC') : null;
+        $toExclusive = $toDate !== null ? self::klDay($toDate, 'to')->addDay()->setTimezone('UTC') : null;
 
         return [$from, $toExclusive];
+    }
+
+    /**
+     * A KL calendar day from a strict `Y-m-d`, inside 2020–2100. A year typed
+     * half-way (`0002-10-01`) once made the trend zero-fill a row per day
+     * since year 2 and ran production out of memory (2026-11-09); every admin
+     * date filter routes through here, so it is refused once, as a 422.
+     */
+    private static function klDay(string $date, string $field): CarbonImmutable
+    {
+        $day = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1
+            ? CarbonImmutable::createFromFormat('!Y-m-d', $date, MalaysiaTime::TIMEZONE)
+            : null;
+
+        if (! $day instanceof CarbonImmutable || $day->format('Y-m-d') !== $date || $day->year < 2020 || $day->year > 2100) {
+            throw ValidationException::withMessages([$field => ['Pick a date between 2020-01-01 and 2100-12-31.']]);
+        }
+
+        return $day;
     }
 
     /**

@@ -14,8 +14,7 @@ use Tests\TestCase;
 
 /**
  * ADR-047 2026-09-28 addendum — the one runnable check on the filter
- * this listener's whole job is: only log a BroadcastEvent job failing
- * on one of the three queues that actually carry a broadcast, never
+ * this listener's whole job is: log a failed BroadcastEvent job, never
  * every failed job app-wide.
  */
 class LogFailedBroadcastJobTest extends TestCase
@@ -48,10 +47,18 @@ class LogFailedBroadcastJobTest extends TestCase
         $this->fire(SyncSupplierPricesJob::class, 'price-sync');
     }
 
-    public function test_ignores_a_broadcast_event_job_failing_on_an_unrelated_queue(): void
+    /**
+     * 2026-11-10: the listener only watched orders/price-sync/backups, but
+     * OrderStatusUpdated (the customer's live order page) broadcasts on
+     * `default`, so its failures were never logged. Any queue counts now.
+     */
+    public function test_logs_a_broadcast_event_job_failing_on_any_queue(): void
     {
-        Log::shouldReceive('error')->never();
+        Log::shouldReceive('error')->once()->with(
+            'Broadcast job exhausted retries — a live UI update was dropped',
+            Mockery::on(fn (array $context) => $context['queue'] === 'default'),
+        );
 
-        $this->fire(BroadcastEvent::class, 'revalidation');
+        $this->fire(BroadcastEvent::class, 'default');
     }
 }

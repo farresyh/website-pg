@@ -2334,3 +2334,129 @@ Branch `feature/bumblebee-dark-v3-palette`, into `staging`. The founder sent a F
 **Gotchas:**
 - A `git worktree` with a symlinked `node_modules` fails `next build`, because Turbopack refuses a `node_modules` outside its root. Build in the real checkout instead.
 - Switching a throwaway brand's preset needs `.next/cache/fetch-cache` cleared and both servers restarted; this is the "scripted loop did not switch" mystery in the verification recipes. In zsh, pass `${=t}` to split a "preset mode" pair; a plain `$t` writes one bad value, which the storefront's schema check rejects, so it falls back to the default.
+## 2026-11-10 — Release #769: ADR-139 reseller rebate and the Bumblebee Dark v3 palette
+
+The founder asked for it. `staging` → `main`, merge `aac82832`, carrying #756–#768.
+
+**Pre-release checks (production, read-only):**
+- 5 new migrations;
+- `ledger_entries` holds 267 rows, so the `dedupe_key` rebuild is instant;
+- 0 failed wallet orders would be picked by the auto-refund sweep (the 4 Failed are already refunded);
+- no pending migrations; health 200.
+
+**CI incident:**
+- The `main` run's `backend-concurrency` died after 50 minutes with "The hosted runner lost communication with the server". It was a GitHub runner failure: the same code passed on `staging` 20 minutes earlier, in 19 minutes.
+- `deploy` was skipped as a result. The backend stayed on the old release (`/api/reseller-portal/rebate` answered 404) while Vercel had already deployed the frontends from `main`. No money was at risk: no ladder existed and no claim was possible.
+- `gh run rerun --failed`: concurrency passed in 15 minutes and `deploy` succeeded.
+- The workflow has no `timeout-minutes`, so a hung job would hold a deploy for up to 6 hours. A 30-minute limit is proposed.
+
+**Checked after release (production, read-only):**
+- `current` is `aac8283`. The 5 migrations ran in batch 69.
+- `reseller_wallet_tier_changes` backfilled 3 rows (resellers 1, 2, 3 on tiers 4, 1, 5).
+- `dedupe_key` includes `wallet_rebate`, and its unique index is present; 267 ledger rows, unchanged.
+- 0 ladders and 0 milestones; all 3 resellers are eligible.
+- Scheduler: `refund-failed-wallet-orders` (every minute), `apply-reseller-tier-changes` (hourly), `expire-rebate-rewards` 16:05 UTC and `finalize-rebate-months` 16:10 UTC (00:05 and 00:10 KL), `notify-rebate-progress` every 10 minutes.
+- `/api/health`: ok (database, queue, Horizon, scheduler). `/api/reseller-portal/rebate` answers 401 (live).
+- The laravel.log errors are all from before the release: 9 Nov 03:38 memory exhaustion (admin user 2) and a 13:02 Plunk 422.
+- Storefront: pajostore.com serves `--color-surface: #111113` and `--color-nav: #18181B`; ohahastore.com (Bumblebee light) still `#fff8e1`. The Vercel production deployments for admin, portal and storefront are on `aac8283`.
+
+**Next:** the founder saves the first ladder by 24 Nov (KL) for 1 Dec, then announces it to agents.
+
+**Separate findings:**
+- The 9 Nov dependency audit lists 7 advisories in 4 Symfony packages (for example `symfony/http-foundation`, `symfony/filesystem`).
+- A memory-exhaustion error hit an admin request on 9 Nov at 03:38.
+
+## 2026-11-10 — Release follow-ups: report date bounds, CI timeout, Symfony advisories
+
+Branch `fix/release-followups`, into `staging`. These are the three findings from the #769 release check.
+
+1. **Production memory exhaustion (9 Nov 03:38 UTC, four times in 45 s, admin user 2).**
+   - nginx's error log names the request: `GET /api/reports/trend?from=0002-10-01`, a year typed half-way into the date filter.
+   - The trend zero-fills one row per day, so it tried to build about 740,000 rows and ran out of the 512 MB limit.
+   - `ReportService::dateRangeFromDates()` is the one parser behind 12 admin date filters (Reports, Orders, Transaction Register, supplier transfers, Joki, Campaigns, request log, customer analytics, settlement reconciliation). It now accepts only a strict `Y-m-d` between 2020 and 2100. Anything else is a 422 keyed by the field.
+   - `ReportDateRangeBoundsTest` is new. Its HTTP case reproduced the crash before the fix: the test process died silently.
+2. **CI:** `backend-concurrency` gets `timeout-minutes: 40`. It normally takes 14–26 min; GitHub's default limit is 6 h.
+3. **`composer audit`** had failed on `main` since 9 Nov: 7 advisories in `symfony/filesystem`, `http-foundation`, `http-kernel` and `routing`. Those four were updated with their dependencies, all patch releases within 8.1 (for example `http-foundation` 8.1.9 → 8.1.11). The audit is now clean.
+
+**Verified:** `php artisan test` 3,893 passed; Pint is clean; `composer audit` reports no advisories.
+## 2026-11-10 — CS knowledge: the Merge modal opens on the entry the AI suggested (ADR-136)
+
+Branch `fix/cs-merge-suggested-entry`, into `staging`. Admin only.
+
+**Found (founder, while reviewing suggestions).** A suggestion row said "Looks like entry #8: consider Merge". But the Merge modal's dropdown showed no numbers and always opened on the first approved entry (#9, the membership entry), so the founder couldn't tell which entry the AI meant. The modal never read `ai_entry_id`.
+
+**Checked first (prod, read-only):** all 11 earlier merges that had an AI match went into the matched entry. Nothing was merged into the wrong entry.
+
+**Fixed:**
+- `MergeSuggestionModal` now starts on `ai_entry_id` and marks it "(suggested)". Every option shows `#id`.
+- "New way of asking" starts from the AI's cleaned question, falling back to the first line of the raw message as before. The raw message was a chat line like "ok fhm2 tq ah".
+- The row hint names the entry: "Looks like entry #8 (Order status: Boleh tolong check order saya?)".
+
+**Verified:** `tsc` and `eslint` pass. Not checked in a browser.
+
+## 2026-11-10 — Storefront dark theme: modal backdrops dim the page; payment logos on a white plate (ADR-113)
+
+Branch `fix/storefront-dark-readability`, into `staging`. Storefront only. The founder reported both from the Bumblebee Dark v3 storefront.
+
+1. **The modals blended into the page.** All four storefront modals used `bg-ink/50` as the backdrop: GameInfo (the "How to Buy" notes), MembershipTransition, RateOrder and Review. Under the Light-Ink Rule a dark preset's `ink` is the light stroke #8C8983, so the backdrop lightened the page to mid-grey instead of dimming it. ADR-113's 2026-11-10 addendum had already given the More drawer the `scrim` token for this reason; the modals were missed. They now use `bg-scrim/50`. In a light preset `scrim` is `ink`, so nothing changes there.
+2. **Bank and DuitNow logos were hard to see.** These logos are drawn for white, and the tiles take the theme's dark surface. In `PaymentChannelPicker` each FPX bank logo and each channel icon now sits on a white plate inside its tile. The tile keeps the theme's border, hover and selected colours. This is the same plate the homepage payment cards already use.
+
+**Verified (e2e harness, Bumblebee dark and light tokens injected, screenshots):**
+- Dark backdrop computes to `oklab(0 0 0 / 0.5)`; light is unchanged (ink at 50%).
+- Every bank logo is readable on dark. The selected tile still shows its yellow border.
+- Contrast in the notes popup on dark (unchanged colours, now on a dimmed page): description #A6A39B on #111113 7.5:1, note text on the box 10.8:1, the heading 7.8:1.
+- `tsc` and `eslint` pass.
+
+3. **The other dark presets.** Red Giants, Emerald and Cobalt set no `scrim`, so their dark mode still fell back to their light-grey `ink`. Each `tokensDark` now sets `--color-scrim: #000000` (the founder's go-ahead). Only popup backdrops change, in dark mode only: the four modals and the More drawer. No brand on prod uses these presets in dark (read-only: Bumblebee dark 2, Bumblebee light 1, default light 1). The portal's copy was regenerated with `sync-shared-files.mjs`.
+
+**Not changed:** the `neo` shadows are a fixed navy (`rgb(25 25 47)`), which shows as a dark-blue block behind a modal on a dark preset. The founder didn't raise it.
+
+## 2026-11-10 — Horizon: run broadcasts off the long-job lanes; wait thresholds fixed; every failed broadcast logged (ADR-047, ADR-048)
+
+Branch `fix/horizon-wait-keys`, into `staging`. Backend only.
+
+**Alert (founder's email, 2026-11-10):** "redis-long:price-sync long wait, 149s".
+
+**Checked first (prod, read-only):**
+- Every queue was empty, with no failed job in 24 h.
+- The 16 price syncs in the last 8 h all succeeded, each taking 160–208 s.
+
+**Cause:**
+- `PriceSyncRunUpdated` broadcast on the `price-sync` queue. That lane has one worker, and it is busy with the sync job that triggers the broadcast, so the "running" update waited out the whole ~3-minute sync. This was traced in code, not seen on screen: the admin Price Sync card could not show a run live. `BackupRunUpdated` did the same on `backups`.
+- The wait alert fired at 60 s, not 300 s. `horizon.waits` is keyed by `connection:queue`, both supervisors run on `redis-long`, and the keys said `redis:`. K-4 (orders-combo) was the same slip.
+
+**Fixed:**
+1. Both run broadcasts are queued on `default`, beside `OrderStatusUpdated`. A one-worker lane now holds only its own run jobs.
+2. The waits keys are now `redis-long:price-sync` and `redis-long:backups`, at 300 s. Only a run queued behind another run can wait there now.
+3. `LogFailedBroadcastJob` logs a failed `BroadcastEvent` on any queue. Its list (orders, price-sync, backups) had drifted: `OrderStatusUpdated` broadcasts on `default`, so a failed push to a customer's live order page was never logged.
+
+**Guards:**
+- `HorizonQueueCoverageTest` fails when a `waits` key matches no supervisor lane, and when any broadcast event is queued off `default`.
+- `LogFailedBroadcastJobTest` covers a failure on `default`.
+- All three were red before the fix.
+
+**Verified:** `php artisan test` 3,897 passed; Pint is clean on the changed files.
+
+**Finding, not changed:** a price sync takes 160–208 s against the supervisor's 300 s timeout. The `ponytail` note in `config/horizon.php` names a bulk upsert once a sync passes ~150 s. The founder decides whether to do it next.
+
+## 2026-11-10 — Follow-ups to #772 and #773: no default merge target; dark scrim guard
+
+Branch `fix/cs-merge-and-scrim-guards`, into `staging`. These came from the founder's ask to check today's fixes for patchwork.
+
+- **CS Merge modal (#772):** with no AI match (9 of the 18 pending suggestions on 2026-11-10), the modal still opened on the first entry, one careless click from the wrong merge. It now opens on "Choose an entry…", and Merge stays disabled until one is picked.
+- **Dark scrim (#773):** `storefront/src/lib/dark-scrim.test.ts` fails if a dark preset sets no `--color-scrim`, or if a full-screen overlay (`fixed inset-0`) draws its backdrop with `bg-ink/`. It was red with one preset's scrim removed and one modal reverted. It runs in CI's storefront `npm test`.
+
+**Verified:** admin `tsc` and `eslint` pass; storefront `npm test` 10 passed.
+
+## 2026-11-10 — Price sync: the real ceiling is Gamevion's rate limit, not the database
+
+Branch `docs/price-sync-ceiling`, into `staging`. Comment and docs only.
+
+**Question:** the `ponytail` note on `supervisor-price-sync` said to move price sync to a bulk upsert once it passed ~150 s, and whole runs were taking 160–208 s.
+
+**Measured (prod, read-only, run 3517):**
+- The 300 s limit applies to each supplier's own `SyncSupplierCatalogJob` (ADR-137), not to the whole run.
+- Digiflazz took ~18 s and Gamevion ~152 s, from the batch start to each supplier's `last_price_sync_at`.
+- Gamevion's time is nearly all the 1.6 s pause between pricelist calls that its 40-a-minute limit forces, over 74 chosen games: ~117 s of waiting, plus the HTTP calls.
+
+**Decision (founder):** no bulk upsert; it would save seconds. The note now records the measured split and the real ceiling: about 140 chosen Gamevion games per 300 s. Past that, the fix is a warning on the Gamevion game picker. Gamevion is unfunded and unused (PRD §16 item 162), so nothing is near the ceiling.

@@ -2,12 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Events\BackupRunUpdated;
+use App\Events\OrderStatusUpdated;
+use App\Events\PriceSyncRunUpdated;
 use App\Jobs\Reseller\SendResellerBotReplyJob;
 use App\Jobs\SendMembershipReceiptJob;
 use App\Jobs\SendMembershipReminderJob;
 use App\Listeners\Reseller\SendResellerBotOrderNotification;
 use App\Services\OpenWa\OpenWaClient;
 use Illuminate\Support\Arr;
+use PHPUnit\Framework\Attributes\DataProvider;
+use ReflectionClass;
 use Tests\TestCase;
 
 /**
@@ -62,6 +67,49 @@ class HorizonQueueCoverageTest extends TestCase
 
             $this->assertGreaterThan($supervisor['timeout'], $retryAfter, "`{$name}` timeout {$supervisor['timeout']}s must be < its connection's retry_after");
         }
+    }
+
+    /**
+     * 2026-11-10: `redis:price-sync` and `redis:backups` never matched, because
+     * both supervisors run on `redis-long`. Horizon keys `waits` by
+     * connection:queue, so a miss silently falls back to its 60s default:
+     * a broadcast queued behind a ~3-minute price sync alerted at 149s.
+     * K-4 was the same slip on orders-combo.
+     */
+    public function test_every_waits_key_names_a_supervised_connection_and_queue(): void
+    {
+        $lanes = collect(config('horizon.defaults'))
+            ->flatMap(fn (array $s) => collect(Arr::wrap($s['queue']))->map(fn (string $q) => "{$s['connection']}:{$q}"))
+            ->all();
+
+        foreach (array_keys(config('horizon.waits')) as $key) {
+            $this->assertContains($key, $lanes, "horizon.waits `{$key}` matches no supervisor lane, so Horizon uses its 60s default there");
+        }
+    }
+
+    /**
+     * 2026-11-10: a run's status broadcast sat on its own job's one-worker
+     * lane (price-sync, backups), so "running" reached the screen only after
+     * the ~3-minute run had finished. Every broadcast goes on `default`,
+     * which runs no long job.
+     *
+     * @return array<string, array{class-string}>
+     */
+    public static function broadcastEvents(): array
+    {
+        return [
+            'order status' => [OrderStatusUpdated::class],
+            'price sync run' => [PriceSyncRunUpdated::class],
+            'backup run' => [BackupRunUpdated::class],
+        ];
+    }
+
+    #[DataProvider('broadcastEvents')]
+    public function test_every_broadcast_is_queued_on_the_default_lane(string $event): void
+    {
+        $instance = (new ReflectionClass($event))->newInstanceWithoutConstructor();
+
+        $this->assertSame('default', $instance->broadcastQueue());
     }
 
     public function test_the_reseller_order_lane_is_supervised(): void
