@@ -105,8 +105,11 @@ return [
         'redis-long:orders-combo' => 60,
         // ADR-136: a model test queues ~80 calls on one worker; minutes of wait are normal there.
         'redis-long:cs-assistant' => 900,
-        'redis:price-sync' => 300,
-        'redis:backups' => 300,
+        // Both run on `redis-long` (a `redis:` key here never matched and
+        // fell back to 60s, alerting on every broadcast queued behind a
+        // ~3-minute sync). 300 covers the longest sync seen (208s).
+        'redis-long:price-sync' => 300,
+        'redis-long:backups' => 300,
         'redis:supplier-request-logs' => 300,
         // ADR-116: pacing spreads sends out via delayed dispatch, and a
         // delayed job doesn't count as waiting — so a real wait here means

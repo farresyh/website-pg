@@ -2393,3 +2393,23 @@ Branch `fix/cs-merge-suggested-entry`, into `staging`. Admin only.
 - The row hint names the entry: "Looks like entry #8 (Order status: Boleh tolong check order saya?)".
 
 **Verified:** `tsc` and `eslint` pass. Not checked in a browser.
+
+## 2026-11-10 — Horizon: the price-sync and backups wait thresholds never applied (ADR-048)
+
+Branch `fix/horizon-wait-keys`, into `staging`. Backend config only.
+
+**Alert (founder's email, 2026-11-10):** "redis-long:price-sync long wait, 149s".
+
+**Checked first (prod, read-only):**
+- Every queue was empty, with no failed job in 24 h.
+- The 16 price syncs in the last 8 h all succeeded, each taking 160–208 s.
+
+**Cause:** `horizon.waits` is keyed by `connection:queue`. The price-sync and backups supervisors run on `redis-long`, but their thresholds were written as `redis:price-sync` and `redis:backups`, so Horizon used its 60 s default on both lanes. `PriceSyncRunUpdated` broadcasts on the `price-sync` queue, so a broadcast queued behind a ~3-minute sync on the one worker waits past 60 s and alerts. Nothing was stuck. K-4 (orders-combo) was the same slip.
+
+**Fixed:**
+- The keys are now `redis-long:price-sync` and `redis-long:backups`, at 300 s each.
+- `HorizonQueueCoverageTest` now fails when any `waits` key matches no supervisor lane. It was red on the old keys.
+
+**Verified:** `php artisan test` 3,894 passed; Pint is clean.
+
+**Finding, not changed:** a price sync now takes 160–208 s against the supervisor's 300 s timeout. The `ponytail` note in `config/horizon.php` names a bulk upsert once a sync passes ~150 s.

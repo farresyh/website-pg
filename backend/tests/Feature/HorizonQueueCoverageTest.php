@@ -64,6 +64,24 @@ class HorizonQueueCoverageTest extends TestCase
         }
     }
 
+    /**
+     * 2026-11-10: `redis:price-sync` and `redis:backups` never matched, because
+     * both supervisors run on `redis-long`. Horizon keys `waits` by
+     * connection:queue, so a miss silently falls back to its 60s default:
+     * a broadcast queued behind a ~3-minute price sync alerted at 149s.
+     * K-4 was the same slip on orders-combo.
+     */
+    public function test_every_waits_key_names_a_supervised_connection_and_queue(): void
+    {
+        $lanes = collect(config('horizon.defaults'))
+            ->flatMap(fn (array $s) => collect(Arr::wrap($s['queue']))->map(fn (string $q) => "{$s['connection']}:{$q}"))
+            ->all();
+
+        foreach (array_keys(config('horizon.waits')) as $key) {
+            $this->assertContains($key, $lanes, "horizon.waits `{$key}` matches no supervisor lane, so Horizon uses its 60s default there");
+        }
+    }
+
     public function test_the_reseller_order_lane_is_supervised(): void
     {
         $this->assertContains('orders-reseller', $this->supervisedQueues());
