@@ -1118,9 +1118,9 @@ before building.
 165. **KOL fee as a share of profit** (needs an [ADR-118](./adr/ADR-118-marketing-campaigns.md) addendum, not yet written; money-critical; founder, 2026-11-05). A KOL may ask for no monthly fee but a share of the profit their sales bring (70/30 was only a proposal). Today a campaign knows only a fixed monthly fee schedule (`CampaignFeeSchedule`, RM0 allowed), so neither way of paying such a KOL is right: a payment tagged to an RM0 campaign leaves both the envelope expenses (`whereNull('campaign_id')`) and the accrued KOL fee line, so the cost disappears from the month-close net and shows as a growing "prepaid"; tagged "Not a KOL fee", the books are right on a cash basis but the scorecard counts no fee (net and CAC overstated). **Until built, pay such a KOL as "Not a KOL fee".** Proposed: a "profit share %" fee type whose accrued fee per Malaysia month is computed from the campaign's attributed ledger profit (the scorecard's own number), never typed. Open for the founder: orders that used the code only, or every attributed order; a loss month as 0 or carried; a monthly cap; simulate the share on real order data first.
 
 177. **Price-sync ceiling for Gamevion** (founder, 2026-11-10; [ADR-137](./adr/ADR-137-gamevion-v2-api.md)
-     2026-11-10 addendum). Gamevion allows 40 pricelist calls a minute, so one
-     sync of N chosen games takes about 1.6 s × N, and the 300 s job fits about
-     140 chosen games (74 on 2026-11-10). No bulk upsert: it would save seconds.
+     2026-11-10 addendum). Gamevion allows 40 pricelist calls a minute, so each
+     chosen game costs about 2 s (the forced 1.6 s pause plus the call): 74 games
+     took ~152 s on 2026-11-10, and the 300 s job fits about 140. No bulk upsert: it would save seconds.
      Trigger: the chosen Gamevion games approach 140; then add a warning on the
      Gamevion game picker.
 

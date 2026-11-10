@@ -1,6 +1,6 @@
 # ADR-136: Customer-support assistant on the CS WhatsApp number — answers from approved knowledge, learns only through admin approval, hands order problems to a human
 
-> **Standing (2026-11-03):** In force. Extends [ADR-116](./ADR-116-customer-order-notifications-over-whatsapp.md) (the CS session, opt-in, status card, STOP/START) and [ADR-075](./ADR-075-reseller-bot-channel.md) (OpenWA). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-11):** In force; decision 27's Live gate kept as decided (2026-11-10 addendum). Extends [ADR-116](./ADR-116-customer-order-notifications-over-whatsapp.md) (the CS session, opt-in, status card, STOP/START) and [ADR-075](./ADR-075-reseller-bot-channel.md) (OpenWA). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-11-03, by the founder after four grill rounds (Q1–Q18) and a stress test against the real code (Q19–Q21 and the fixes in decision 33). Decisions 1–34 were made with the founder in Malay. The model itself is chosen at build time by decision 28's test. Not money-critical: the assistant reads order status and never writes money, orders or vouchers. PRD §16 item 158.
 
@@ -242,3 +242,14 @@ Google's deprecation page (read 2026-11-03): `gemini-3.1-flash-lite` (version `3
 8. **Model list vs candidates.** `services.cs_assistant.models` prices every model the assistant may call; `candidate: true` marks the model-test candidates, so Sonnet (priced, a judge) never joins a run.
 9. **Retention:** drafts 90 days, in `cs:prune-messages` (decision 30).
 10. **Not in 3b:** decision 10's weekly view (it measures sent answers, PR 4), staff takeover and the CS Staff group (PR 4), guide images and OCR (PR 4).
+
+### 2026-11-10 addendum — the Live gate is kept as decided
+
+**Context.** Five days into Shadow, prod had 26 drafts across all categories and no category near decision 27's gate. The question was whether to lower the gate to go Live sooner.
+
+**Decision (founder).** No. The mode stays Shadow, the knowledge book keeps growing through approval, and decision 27's gate is unchanged: at least 20 graded drafts in a category (`live_min_drafts` = 20) and 90% or more graded same meaning or partly right. PR 4 (Live) is built once a category meets it.
+
+**Rationale.** The gate is the only evidence that the assistant answers like staff before it speaks to a customer; lowering it trades that evidence for a few days.
+
+**Consequence to track.** The founder grades drafts (PRD §16 item 158). This confirms decision 27; nothing else changes.
+
