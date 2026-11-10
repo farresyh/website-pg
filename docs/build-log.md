@@ -2438,3 +2438,12 @@ Branch `fix/horizon-wait-keys`, into `staging`. Backend only.
 **Verified:** `php artisan test` 3,897 passed; Pint is clean on the changed files.
 
 **Finding, not changed:** a price sync takes 160–208 s against the supervisor's 300 s timeout. The `ponytail` note in `config/horizon.php` names a bulk upsert once a sync passes ~150 s. The founder decides whether to do it next.
+
+## 2026-11-10 — Follow-ups to #772 and #773: no default merge target; dark scrim guard
+
+Branch `fix/cs-merge-and-scrim-guards`, into `staging`. These came from the founder's ask to check today's fixes for patchwork.
+
+- **CS Merge modal (#772):** with no AI match (9 of the 18 pending suggestions on 2026-11-10), the modal still opened on the first entry, one careless click from the wrong merge. It now opens on "Choose an entry…", and Merge stays disabled until one is picked.
+- **Dark scrim (#773):** `storefront/src/lib/dark-scrim.test.ts` fails if a dark preset sets no `--color-scrim`, or if a full-screen overlay (`fixed inset-0`) draws its backdrop with `bg-ink/`. It was red with one preset's scrim removed and one modal reverted. It runs in CI's storefront `npm test`.
+
+**Verified:** admin `tsc` and `eslint` pass; storefront `npm test` 10 passed.
