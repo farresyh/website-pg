@@ -119,8 +119,8 @@ Laravel-specific, loaded only when working inside `backend/`.
 
 ## Build & Test
 
-**Tests never use live credentials.** `backend/.env` holds the real Plunk, CHIP, Gamevion, Gemini
-and proxy settings for local work. `phpunit.xml` and `phpunit.concurrency.xml` force them blank
+**Tests never use live credentials.** `backend/.env` holds the real Plunk, CHIP, Gamevion, Gemini,
+Anthropic and proxy settings for local work. `phpunit.xml` and `phpunit.concurrency.xml` force them blank
 (the state CI is in), and `Tests\TestCase` calls `Http::preventStrayRequests()`, so a test that
 forgets to fake an outbound call fails instead of reaching the network. Before that, local runs
 sent real emails through production Plunk (2026-10-30). The e2e boot script blanks them too.
