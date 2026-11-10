@@ -2447,3 +2447,16 @@ Branch `fix/cs-merge-and-scrim-guards`, into `staging`. These came from the foun
 - **Dark scrim (#773):** `storefront/src/lib/dark-scrim.test.ts` fails if a dark preset sets no `--color-scrim`, or if a full-screen overlay (`fixed inset-0`) draws its backdrop with `bg-ink/`. It was red with one preset's scrim removed and one modal reverted. It runs in CI's storefront `npm test`.
 
 **Verified:** admin `tsc` and `eslint` pass; storefront `npm test` 10 passed.
+
+## 2026-11-10 — Price sync: the real ceiling is Gamevion's rate limit, not the database
+
+Branch `docs/price-sync-ceiling`, into `staging`. Comment and docs only.
+
+**Question:** the `ponytail` note on `supervisor-price-sync` said to move price sync to a bulk upsert once it passed ~150 s, and whole runs were taking 160–208 s.
+
+**Measured (prod, read-only, run 3517):**
+- The 300 s limit applies to each supplier's own `SyncSupplierCatalogJob` (ADR-137), not to the whole run.
+- Digiflazz took ~18 s and Gamevion ~152 s, from the batch start to each supplier's `last_price_sync_at`.
+- Gamevion's time is nearly all the 1.6 s pause between pricelist calls that its 40-a-minute limit forces, over 74 chosen games: ~117 s of waiting, plus the HTTP calls.
+
+**Decision (founder):** no bulk upsert; it would save seconds. The note now records the measured split and the real ceiling: about 140 chosen Gamevion games per 300 s. Past that, the fix is a warning on the Gamevion game picker. Gamevion is unfunded and unused (PRD §16 item 162), so nothing is near the ceiling.
