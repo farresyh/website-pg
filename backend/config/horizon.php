@@ -105,9 +105,10 @@ return [
         'redis-long:orders-combo' => 60,
         // ADR-136: a model test queues ~80 calls on one worker; minutes of wait are normal there.
         'redis-long:cs-assistant' => 900,
-        // Both run on `redis-long` (a `redis:` key here never matched and
-        // fell back to 60s, alerting on every broadcast queued behind a
-        // ~3-minute sync). 300 covers the longest sync seen (208s).
+        // Both run on `redis-long`; a `redis:` key here never matched and
+        // fell back to 60s (2026-11-10). Their status broadcasts now go on
+        // `default`, so only a run queued behind another run waits here;
+        // 300 covers the longest sync seen (208s).
         'redis-long:price-sync' => 300,
         'redis-long:backups' => 300,
         'redis:supplier-request-logs' => 300,
@@ -237,6 +238,8 @@ return [
     // BackupRunUpdated share these same two queues, no class-level
     // override of their own) real retries instead of one shot, closing
     // a silent-drop gap the addendum's own audit found.
+    // 2026-11-10: those broadcasts moved to `default` (also tries 3), so
+    // this bump now covers only jobs that don't pin their own `$tries`.
     'defaults' => [
         // ADR-048 addendum (2026-09-29, audit K-1): two lanes — `orders`
         // (storefront + affiliate) and `orders-reseller` (wallet orders:

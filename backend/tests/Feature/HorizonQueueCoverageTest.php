@@ -2,12 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Events\BackupRunUpdated;
+use App\Events\OrderStatusUpdated;
+use App\Events\PriceSyncRunUpdated;
 use App\Jobs\Reseller\SendResellerBotReplyJob;
 use App\Jobs\SendMembershipReceiptJob;
 use App\Jobs\SendMembershipReminderJob;
 use App\Listeners\Reseller\SendResellerBotOrderNotification;
 use App\Services\OpenWa\OpenWaClient;
 use Illuminate\Support\Arr;
+use PHPUnit\Framework\Attributes\DataProvider;
+use ReflectionClass;
 use Tests\TestCase;
 
 /**
@@ -80,6 +85,31 @@ class HorizonQueueCoverageTest extends TestCase
         foreach (array_keys(config('horizon.waits')) as $key) {
             $this->assertContains($key, $lanes, "horizon.waits `{$key}` matches no supervisor lane, so Horizon uses its 60s default there");
         }
+    }
+
+    /**
+     * 2026-11-10: a run's status broadcast sat on its own job's one-worker
+     * lane (price-sync, backups), so "running" reached the screen only after
+     * the ~3-minute run had finished. Every broadcast goes on `default`,
+     * which runs no long job.
+     *
+     * @return array<string, array{class-string}>
+     */
+    public static function broadcastEvents(): array
+    {
+        return [
+            'order status' => [OrderStatusUpdated::class],
+            'price sync run' => [PriceSyncRunUpdated::class],
+            'backup run' => [BackupRunUpdated::class],
+        ];
+    }
+
+    #[DataProvider('broadcastEvents')]
+    public function test_every_broadcast_is_queued_on_the_default_lane(string $event): void
+    {
+        $instance = (new ReflectionClass($event))->newInstanceWithoutConstructor();
+
+        $this->assertSame('default', $instance->broadcastQueue());
     }
 
     public function test_the_reseller_order_lane_is_supervised(): void
