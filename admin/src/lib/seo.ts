@@ -58,10 +58,7 @@ export interface GameSeoDetail {
   slug: string;
   image_url: string | null;
   seo_title: string | null;
-  seo_title_local: string | null;
   seo_description: string | null;
-  seo_description_local: string | null;
-  seo_keywords: string | null;
   seo_og_image: string | null;
   schema_brand: string | null;
   schema_category: string | null;
@@ -72,10 +69,7 @@ export type UpdateGameSeoValues = Partial<
   Pick<
     GameSeoDetail,
     | "seo_title"
-    | "seo_title_local"
     | "seo_description"
-    | "seo_description_local"
-    | "seo_keywords"
     | "seo_og_image"
     | "schema_brand"
     | "schema_category"
