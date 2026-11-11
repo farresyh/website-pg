@@ -19,7 +19,8 @@ use Tests\TestCase;
  * a noindex game out, and the branding payload says which brand is primary
  * (Organization `alternateName` is primary-only);
  * decision 5, release 1 — `seo_title_local`, `seo_description_local` and
- * `seo_keywords` are no longer read or written (the columns drop later).
+ * `seo_keywords` are no longer read or written (the columns are dropped by
+ * 2026_11_16_100000, see Adr140DropDeadSeoColumnsTest).
  */
 class Adr140SeoMetaStrategyTest extends TestCase
 {
