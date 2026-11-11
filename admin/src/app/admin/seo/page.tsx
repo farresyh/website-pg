@@ -50,8 +50,8 @@ export default function SeoOverviewPage() {
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Active Games" value={data.games.total} />
-        <StatCard label="SEO Complete" value={data.games.complete} />
+        <StatCard label="Tracked Games" value={data.games.total} />
+        <StatCard label="Content Published" value={`${data.games.published} / ${data.games.total}`} />
         <StatCard label="Redirects" value={data.redirects.total} />
         <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
           <p className="text-theme-xs text-gray-500 dark:text-gray-400">Sitemap ({data.sitemap_url_count} URLs)</p>
@@ -64,7 +64,7 @@ export default function SeoOverviewPage() {
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
         <h2 className="mb-4 text-sm font-semibold text-gray-800 dark:text-white/90">Recommendations</h2>
         {data.recommendations.length === 0 ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">Nothing outstanding — every active game has SEO title, description, and OG image set.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Nothing outstanding — every tracked game has published page content.</p>
         ) : (
           <ul className="space-y-3">
             {data.recommendations.map((rec, i) => (
@@ -87,7 +87,7 @@ export default function SeoOverviewPage() {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: number }) {
+function StatCard({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
       <p className="text-theme-xs text-gray-500 dark:text-gray-400">{label}</p>
