@@ -1,5 +1,6 @@
 import type { Metadata, ResolvingMetadata } from "next";
 import { canonicalMetadata } from "@/lib/seo";
+import { pageMeta } from "@/lib/page-meta";
 import { notFound } from "next/navigation";
 import SiteFooter from "@/components/layout/SiteFooter";
 import ResellerPriceListBrowser from "@/components/price-list/ResellerPriceListBrowser";
@@ -10,8 +11,7 @@ export async function generateMetadata(_props: unknown, parent: ResolvingMetadat
   const branding = await getBranding();
   return {
     ...(await canonicalMetadata("/price-list", parent)),
-    title: `Reseller Price List - ${branding.storeName}`,
-    description: `Real-time wholesale top-up pricing for ${branding.storeName} reseller tiers. See the rates before you sign up.`,
+    ...pageMeta("price-list", branding.storeName),
   };
 }
 

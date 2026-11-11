@@ -6,6 +6,8 @@
  * brand-correct. Dependency-free on purpose: pure string logic, no fetch.
  */
 
+import { pageMeta } from "./page-meta.ts";
+
 export interface SeoTextSettings {
   default_meta_title: string | null;
   default_meta_description: string | null;
@@ -35,14 +37,17 @@ function firstRendered(candidates: (string | null | undefined)[], tokens: Tokens
   return null;
 }
 
-/** Storefront-wide meta (home, and the base every page inherits). */
+/**
+ * Storefront-wide meta (home, and the base every page inherits). The admin's
+ * default fields win; when one is empty the registry's home entry fills it
+ * (ADR-140 decision 1), so no page ever falls back to a sentence hardcoded here.
+ */
 export function resolveSiteMeta(settings: SeoTextSettings, storeName: string) {
   const tokens = { store_name: storeName };
+  const home = pageMeta("home", storeName);
   return {
-    title: firstRendered([settings.default_meta_title], tokens) ?? `${storeName} - Top Up Games in Malaysia`,
-    description:
-      firstRendered([settings.default_meta_description], tokens) ??
-      `Fast, secure game top-ups at ${storeName}. Delivered in 3 minutes.`,
+    title: firstRendered([settings.default_meta_title], tokens) ?? home.title,
+    description: firstRendered([settings.default_meta_description], tokens) ?? home.description,
   };
 }
 
