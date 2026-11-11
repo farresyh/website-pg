@@ -6,6 +6,7 @@ use App\Models\AdminUser;
 use App\Models\Affiliate;
 use App\Models\AffiliateBranding;
 use App\Models\AffiliateDomain;
+use App\Models\AffiliateGame;
 use App\Models\Game;
 use App\Services\Affiliate\AffiliateDomainStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -114,13 +115,27 @@ class Adr140GameContentTest extends TestCase
         $this->assertSame('published', $this->game('e', $this->contentFor('published'))->contentStatus());
     }
 
-    public function test_tracked_games_are_active_and_not_noindex(): void
+    /**
+     * ADR-140 decision 8: the tracked games are exactly what the primary brand's
+     * catalog lists, minus `noindex`. One rule (`Game::scopeListedOn`) behind both,
+     * so the admin's "Published N of M" and the sitemap cannot drift apart again
+     * (a joki game was once counted by the admin and absent from the sitemap).
+     */
+    public function test_tracked_games_are_the_primary_catalog_minus_noindex(): void
     {
         $this->game('listed');
         $this->game('inactive', ['is_active' => false]);
         $this->game('noindex', ['no_index' => true]);
+        $this->game('joki-mlbb', ['is_joki' => true]);
+        $hidden = $this->game('hidden-on-primary');
+        AffiliateGame::query()->create(['affiliate_id' => $this->primaryAffiliate()->id, 'game_id' => $hidden->id, 'is_visible' => false]);
 
-        $this->assertSame(['listed'], Game::query()->tracked()->pluck('slug')->all());
+        $catalog = collect($this->getJson('/api/catalog/games')->assertOk()->json())
+            ->reject(fn (array $row) => $row['no_index'])
+            ->pluck('slug')->sort()->values()->all();
+
+        $this->assertSame(['listed'], $catalog);
+        $this->assertSame($catalog, Game::query()->tracked()->pluck('slug')->sort()->values()->all());
     }
 
     private function actingAsSuperAdmin(): void

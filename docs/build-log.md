@@ -2609,6 +2609,36 @@ Branch `feature/drop-dead-seo-columns`, into `staging`, stacked on the release r
 
 **For the release:** the deploy runs the migration on production: three columns removed from `games` (40 rows), instant, no lock of note. Check afterwards that `Schema::hasColumn('games', 'seo_keywords')` is false and a game page and the Game SEO screen still load.
 
+## 2026-11-11 — SEO follow-ups: tracked-games count, small hygiene
+
+Branch `fix/seo-tracked-games-hygiene`, into `staging`. Not released. Found in a read-only review of the ADR-140 work.
+
+**What:**
+- **Tracked games** (ADR-140 2026-11-11 addendum). Production showed 38 tracked games in the admin and 37 games in the sitemap; the extra one was `joki-mlbb`. `Game::scopeTracked()` now uses the catalog's visibility rule (`AffiliateGame::hiddenGameIdsFor` for the primary brand), so joki and primary-hidden games are out of "Published N of M" and `sitemap_url_count`. A new invariant test (seen red first) ties the scope to the primary catalog listing.
+- A docblock for `scopeJoki()` had been left above `scopeTracked()`; it is back on its method.
+- `test_saving_game_seo_ignores_the_removed_fields` was deleted: since the columns were dropped it asserted `null` on attributes that no longer exist, so it could not fail. `Adr140DropDeadSeoColumnsTest` covers the drop.
+- The `llms.txt` route comment no longer says it has "no admin-authored field" (the published summary is ADR-140 decision 10's exception).
+
+**Noted for the record:** #785 was merged with the `playwright` check red, on the founder's word. Both runs failed at `npx playwright install chromium --with-deps`, because the GitHub runner could not resolve the Ubuntu apt mirrors (14:14 and 14:36 UTC). No test ran, and every other check was green.
+
+**Verified:** backend ADR-140, SEO and catalog tests 192 passed.
+
+## 2026-11-11 — CI `playwright` no longer depends on apt
+
+Branch `fix/ci-playwright-no-apt`, into `staging`. CI only; nothing deploys.
+
+**Why:** the `playwright` job failed three times on 2026-11-11 (#785 twice, #786 once) at `npx playwright install chromium --with-deps`. The runner could not resolve Ubuntu's apt mirrors (`Temporary failure resolving 'archive.ubuntu.com'`), so no test ran.
+
+**Root cause, checked in the logs:** `--with-deps` runs `apt-get update` and installs system packages. On the runner image (Ubuntu 26.04), every library Chromium needs is already present ("libnss3 is already the newest version"). In six green runs, apt installed the same 9 packages, all fonts: `fonts-freefont-ttf`, `fonts-ipafont-gothic`, `fonts-tlwg-loma-otf`, `fonts-unifont`, `fonts-wqy-zenhei`, `xfonts-cyrillic`, `xfonts-encodings`, `xfonts-scalable` and `xfonts-utils`. No spec needs them: there is no screenshot assertion in `e2e/`. So the job's only apt dependency bought nothing, and it was what failed.
+
+**What:** the flag is gone. The browser binary still comes from Playwright's CDN, now cached by `actions/cache`, keyed on `e2e/package-lock.json` (which pins Playwright and therefore the Chromium build). CI runs only on pull requests and on pushes to `main`, and a PR can read only its own caches and the default branch's. So the cache serves later commits of the same PR at once, and every PR after the next release's `main` run saves it. Proven on #788: 17 passed, no apt step, `Cache saved`.
+
+**Rejected:**
+- apt retries: they make a failing dependency fail less often instead of removing it;
+- the `mcr.microsoft.com/playwright` container: the job also needs PHP 8.4, and inside a container `setup-php` installs PHP through apt, which only moves the problem.
+
+**If a future runner image lacks a library,** Chromium fails at launch and names the library. Pin `runs-on` then, rather than bringing apt back.
+
 ## 2026-11-11 — Reseller API docs v1.6.1: one `Order` schema, headers, guidance, private-terms guard
 
 Branch `fix/reseller-api-spec`, into `staging`. Not released (docs-site deploys from `main`). ADR-084 2026-11-11 addendum.

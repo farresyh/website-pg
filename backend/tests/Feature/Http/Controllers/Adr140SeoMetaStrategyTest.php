@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Http\Controllers;
 
-use App\Models\AdminUser;
 use App\Models\Affiliate;
 use App\Models\AffiliateBranding;
 use App\Models\AffiliateDomain;
@@ -10,7 +9,6 @@ use App\Models\Game;
 use App\Services\Affiliate\AffiliateDomainStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
-use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
@@ -19,8 +17,8 @@ use Tests\TestCase;
  * a noindex game out, and the branding payload says which brand is primary
  * (Organization `alternateName` is primary-only);
  * decision 5, release 1 — `seo_title_local`, `seo_description_local` and
- * `seo_keywords` are no longer read or written (the columns are dropped by
- * 2026_11_16_100000, see Adr140DropDeadSeoColumnsTest).
+ * `seo_keywords` are no longer sent. Their columns are gone since
+ * 2026_11_16_100000 (Adr140DropDeadSeoColumnsTest), so no save can write them.
  */
 class Adr140SeoMetaStrategyTest extends TestCase
 {
@@ -91,24 +89,5 @@ class Adr140SeoMetaStrategyTest extends TestCase
         $this->getJson('/api/catalog/branding', ['X-Storefront-Host' => 'acme.com'])
             ->assertOk()
             ->assertJsonPath('is_primary', false);
-    }
-
-    public function test_saving_game_seo_ignores_the_removed_fields(): void
-    {
-        $game = $this->game('valorant');
-        Sanctum::actingAs(AdminUser::factory()->create(['role' => 'super_admin']));
-
-        $this->putJson("/api/seo/games/{$game->id}", [
-            'seo_title' => 'Top Up Valorant',
-            'seo_title_local' => 'old local title',
-            'seo_description_local' => 'old local description',
-            'seo_keywords' => 'old, keywords',
-        ])->assertOk();
-
-        $game->refresh();
-        $this->assertSame('Top Up Valorant', $game->seo_title);
-        $this->assertNull($game->seo_title_local);
-        $this->assertNull($game->seo_description_local);
-        $this->assertNull($game->seo_keywords);
     }
 }

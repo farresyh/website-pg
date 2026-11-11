@@ -151,15 +151,17 @@ class Game extends Model
         return is_array($fields) ? array_values($fields) : [];
     }
 
-    /** ADR-126 decision 2: a joki game, sold only through `/joki`, never listed in a catalog. */
     /**
      * ADR-140 decision 8: the games the sitemap lists and the SEO admin counts —
-     * active and not `noindex`. One definition; the storefront's `indexableGames()`
-     * applies the same rule to the catalog listing.
+     * what the primary brand's catalog lists (active, not hidden there, which also
+     * leaves out every joki game: `AffiliateGame::hiddenGameIdsFor`), minus `noindex`.
+     * The storefront's `indexableGames()` drops `noindex` from that same listing.
      */
     public function scopeTracked(Builder $query): Builder
     {
-        return $query->where('is_active', true)->where('no_index', false);
+        return $query->where('is_active', true)
+            ->whereNotIn('id', AffiliateGame::hiddenGameIdsFor(Affiliate::primary()->id))
+            ->where('no_index', false);
     }
 
     /** Any of the three content fields has something in it. */
@@ -200,6 +202,7 @@ class Game extends Model
         ];
     }
 
+    /** ADR-126 decision 2: a joki game, sold only through `/joki`, never listed in a catalog. */
     public function scopeJoki(Builder $query): Builder
     {
         return $query->where('is_joki', true);
