@@ -2608,3 +2608,49 @@ Branch `feature/drop-dead-seo-columns`, into `staging`, stacked on the release r
 - The local dev DB migrated with a plain `php artisan migrate`. Admin `tsc` and `eslint` clean; Pint clean.
 
 **For the release:** the deploy runs the migration on production: three columns removed from `games` (40 rows), instant, no lock of note. Check afterwards that `Schema::hasColumn('games', 'seo_keywords')` is false and a game page and the Game SEO screen still load.
+
+## 2026-11-11 — Reseller API docs v1.6.1: one `Order` schema, headers, guidance, private-terms guard
+
+Branch `fix/reseller-api-spec`, into `staging`. Not released (docs-site deploys from `main`). ADR-084 2026-11-11 addendum.
+
+**Why:** the founder had an AI agent (Hermes + DeepSeek) read docs.pekangame.space as a developer building against PekanGame. It rated the prose 8/10 and the spec 5/10, and listed 17 findings. Claude checked each against the code and the live spec. Confirmed:
+- `POST /v1/orders` was typed as a string;
+- the status enums were missing;
+- no response headers were listed;
+- `orderNumber` had no description;
+- request examples were missing;
+- there was no `llms.txt` or `robots.txt`;
+- the docs offered "test credentials", which do not exist.
+
+Not so:
+- retention, which is already "indefinitely" on the Idempotency page;
+- the "missing" sitemap: Starlight serves `sitemap-index.xml`.
+
+Skipped as low value: portal screenshots, which go stale.
+
+**What shipped:**
+- `OrderResource` replaces `ResellerOrderPayload`. One `Order` component is referenced by all four order responses, with enums and `date-time`.
+- Response headers are documented, each one proven by a test.
+- The request body has examples, and `orderNumber` has a description.
+- docs-site:
+  - guidance for `needs_review` (do not re-place the order);
+  - two keys mean two orders;
+  - a client timeout for `POST /v1/orders`;
+  - the bot commands are gone;
+  - the false test-credentials line is gone;
+  - the spec is linked;
+  - `llms.txt`, `robots.txt` and the PekanGame favicon are added;
+  - changelog v1.6.1.
+- `check-docs.mjs` now fails CI on private terms in the public docs.
+
+**Found on the way:** example order numbers were 10 characters; the real ones are 12 (`OrderNumberService`; production's 15 reseller orders all match `PG-` + 12). `order_number` is now documented as opaque.
+
+**Not done:** webhook events in the spec (Scramble cannot emit OpenAPI `webhooks`; see the addendum); the partner sandbox stays PRD §16 item 151.
+
+**Gotcha:** `vendor/bin/pint` with no path reformats about 60 unrelated backend files; run it on the changed files only.
+
+**Verified:**
+- Backend suite 3,921 passed. `OrderWireShapeTest` was green before and after the refactor, so the wire shape and the webhook body did not change.
+- `scramble:export` reproduces the committed spec.
+- docs-site `check` (0 errors) and `build` pass; the built POST page shows the headers, the enum values, the examples and the 12-character number.
+- `check-docs` and its self-test pass.
