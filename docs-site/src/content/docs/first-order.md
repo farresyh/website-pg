@@ -106,7 +106,7 @@ On success you get **HTTP 201** and the order:
 
 ```json
 {
-  "order_number": "PG-7QK2M9X4RJ",
+  "order_number": "PG-7QK2M9X4RJ8T",
   "product_code": "MLMY-86",
   "player_id": "123456789",
   "server_id": "2201",
@@ -135,8 +135,15 @@ own — see the table below.
 | `pending` | Submitted; awaiting the final result. |
 | `delivered` | Done. `delivered_at` is set. |
 | `failed` | Delivery failed. The whole amount is refunded to your Purchase Balance automatically, usually within a minute. |
-| `needs_review` | The outcome is ambiguous and being confirmed manually. Rare. |
+| `needs_review` | The outcome is ambiguous and PekanGame is confirming it by hand. Rare. See below. |
 | `partially_delivered` | Part of the order was delivered and the rest failed. PekanGame may re-attempt the rest; otherwise the undelivered share is refunded. Rare. |
+
+**`needs_review`** means the top-up may or may not have reached the player.
+PekanGame checks it by hand; the order then moves to `delivered`, or to
+`failed` and is refunded, and you get that webhook. No webhook is sent for
+`needs_review` itself. While it lasts, tell your customer the top-up is being
+checked, and **do not place the order again**: the first one may still be
+delivered, and the player would receive it twice.
 
 `delivered` and `failed` are final. `partially_delivered` is usually final too,
 but if PekanGame re-attempts the part that failed, it can still reach
@@ -160,12 +167,12 @@ Delivery is asynchronous. Two ways to learn the outcome:
   See [Delivery notifications](/webhooks/).
 
 ```http
-GET /v1/orders/PG-7QK2M9X4RJ
+GET /v1/orders/PG-7QK2M9X4RJ8T
 ```
 
 ```json
 {
-  "order_number": "PG-7QK2M9X4RJ",
+  "order_number": "PG-7QK2M9X4RJ8T",
   "product_code": "MLMY-86",
   "player_id": "123456789",
   "server_id": "2201",

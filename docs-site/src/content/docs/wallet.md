@@ -24,13 +24,12 @@ truth — it is derived from a ledger, not a mutable counter.
 
 ## Adding balance
 
-Balance is added from the **partner portal** or the WhatsApp bot, not the API:
+Balance is added from the **partner portal**, not the API:
 
-- **Self-serve** — pay by FPX through the portal's Purchase Balance page (or the
-  WhatsApp bot's `.topupbaki` command). The balance updates once payment clears,
-  and a Payment Receipt is available to download. One payment waits at a time;
-  an unpaid one closes after 30 minutes, or cancel it sooner from the portal or
-  with the bot's `.batalbaki`.
+- **Self-serve** — pay by FPX on the portal's Purchase Balance page. The
+  balance updates once payment clears, and a Payment Receipt is available to
+  download. One payment waits at a time; an unpaid one closes after 30
+  minutes, or cancel it sooner from the portal.
 - **Manual** — arrange a bank transfer with PekanGame; support credits the
   Purchase Balance against your receipt.
 

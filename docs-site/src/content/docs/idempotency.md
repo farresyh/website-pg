@@ -54,6 +54,19 @@ true:
 Back off between retries (for example 1s, 2s, 4s) and give up after a few
 attempts, then reconcile with `GET /v1/orders`.
 
+`POST /v1/orders` does not wait for delivery: it returns once the order is
+charged and accepted, and delivery continues in the background. If you get no
+response within 30 seconds, treat it as a timeout and retry as above.
+
+## Two keys are two orders
+
+The server does not merge orders that look alike. Two requests with
+**different** keys and the same `product_code` and `player_id` are two
+orders, charged twice — a player buying the same pack twice is normal. Only
+the `idempotency_key` tells a retry from a new order, so generate the key
+once, when your customer places the order, and store it with that order
+before the first attempt.
+
 ## Retention
 
 Idempotency keys are kept for the life of the order (indefinitely). There is no
