@@ -11,9 +11,10 @@ import { gameLine } from "@/lib/llms-lines";
  * llms.txt (llmstxt.org convention) — a curated markdown digest for
  * LLM/AI-agent consumption, a genuinely different concern from
  * robots.txt (access control) despite both being crawler-facing.
- * Fully auto-generated from existing catalog/branding data, same
- * "no admin-authored field" choice app/sitemap.ts already made —
- * no new table, nothing to drift out of sync with the real catalog.
+ * Auto-generated from existing catalog/branding data, so nothing drifts
+ * out of sync with the real catalog. The one admin-authored text is a
+ * game's published summary (ADR-140 decision 10, an exception to ADR-043
+ * decision 22), which the backend sends for the primary brand only.
  * `/llms.txt` only (the concise root convention) — `/llms-full.txt`
  * deliberately not built, adoption for that variant isn't established
  * enough yet to justify it.
