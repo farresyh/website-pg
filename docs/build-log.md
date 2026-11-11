@@ -2608,3 +2608,19 @@ Branch `feature/drop-dead-seo-columns`, into `staging`, stacked on the release r
 - The local dev DB migrated with a plain `php artisan migrate`. Admin `tsc` and `eslint` clean; Pint clean.
 
 **For the release:** the deploy runs the migration on production: three columns removed from `games` (40 rows), instant, no lock of note. Check afterwards that `Schema::hasColumn('games', 'seo_keywords')` is false and a game page and the Game SEO screen still load.
+
+## 2026-11-11 — CI `playwright` no longer depends on apt
+
+Branch `fix/ci-playwright-no-apt`, into `staging`. CI only; nothing deploys.
+
+**Why:** the `playwright` job failed three times on 2026-11-11 (#785 twice, #786 once) at `npx playwright install chromium --with-deps`. The runner could not resolve Ubuntu's apt mirrors (`Temporary failure resolving 'archive.ubuntu.com'`), so no test ran.
+
+**Root cause, checked in the logs:** `--with-deps` runs `apt-get update` and installs system packages. On the runner image (Ubuntu 26.04), every library Chromium needs is already present ("libnss3 is already the newest version"). In six green runs, apt installed the same 9 packages, all fonts: `fonts-freefont-ttf`, `fonts-ipafont-gothic`, `fonts-tlwg-loma-otf`, `fonts-unifont`, `fonts-wqy-zenhei`, `xfonts-cyrillic`, `xfonts-encodings`, `xfonts-scalable` and `xfonts-utils`. No spec needs them: there is no screenshot assertion in `e2e/`. So the job's only apt dependency bought nothing, and it was what failed.
+
+**What:** the flag is gone. The browser binary still comes from Playwright's CDN, now cached by `actions/cache`, keyed on `e2e/package-lock.json` (which pins Playwright and therefore the Chromium build).
+
+**Rejected:**
+- apt retries: they make a failing dependency fail less often instead of removing it;
+- the `mcr.microsoft.com/playwright` container: the job also needs PHP 8.4, and inside a container `setup-php` installs PHP through apt, which only moves the problem.
+
+**If a future runner image lacks a library,** Chromium fails at launch and names the library. Pin `runs-on` then, rather than bringing apt back.
