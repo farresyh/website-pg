@@ -2608,3 +2608,17 @@ Branch `feature/drop-dead-seo-columns`, into `staging`, stacked on the release r
 - The local dev DB migrated with a plain `php artisan migrate`. Admin `tsc` and `eslint` clean; Pint clean.
 
 **For the release:** the deploy runs the migration on production: three columns removed from `games` (40 rows), instant, no lock of note. Check afterwards that `Schema::hasColumn('games', 'seo_keywords')` is false and a game page and the Game SEO screen still load.
+
+## 2026-11-11 — SEO follow-ups: tracked-games count, small hygiene
+
+Branch `fix/seo-tracked-games-hygiene`, into `staging`. Not released. Found in a read-only review of the ADR-140 work.
+
+**What:**
+- **Tracked games** (ADR-140 2026-11-11 addendum). Production showed 38 tracked games in the admin and 37 games in the sitemap; the extra one was `joki-mlbb`. `Game::scopeTracked()` now uses the catalog's visibility rule (`AffiliateGame::hiddenGameIdsFor` for the primary brand), so joki and primary-hidden games are out of "Published N of M" and `sitemap_url_count`. A new invariant test (seen red first) ties the scope to the primary catalog listing.
+- A docblock for `scopeJoki()` had been left above `scopeTracked()`; it is back on its method.
+- `test_saving_game_seo_ignores_the_removed_fields` was deleted: since the columns were dropped it asserted `null` on attributes that no longer exist, so it could not fail. `Adr140DropDeadSeoColumnsTest` covers the drop.
+- The `llms.txt` route comment no longer says it has "no admin-authored field" (the published summary is ADR-140 decision 10's exception).
+
+**Noted for the record:** #785 was merged with the `playwright` check red, on the founder's word. Both runs failed at `npx playwright install chromium --with-deps`, because the GitHub runner could not resolve the Ubuntu apt mirrors (14:14 and 14:36 UTC). No test ran, and every other check was green.
+
+**Verified:** backend ADR-140, SEO and catalog tests 192 passed.
