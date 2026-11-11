@@ -13,7 +13,16 @@ CHIP's docs (`docs.chip-in.asia`).
 | Path | What |
 | --- | --- |
 | `src/content/docs/*.md` | The 10 hand-written guide pages + `index.mdx` landing |
-| `astro.config.mjs` | Starlight config + sidebar + the `starlight-openapi` plugin |
+| `astro.config.mjs` | Starlight config + the `starlight-openapi` plugin |
+| `src/guide-sidebar.mjs` | The guide pages in reading order: the one list behind the sidebar and `/llms.txt`. Add a new page here |
+| `src/pages/llms.txt.ts` | `/llms.txt`, built from that list and each page's title + description |
+| `public/favicon.png` | PNG copy of PekanGame's favicon (Starlight takes no WebP); refresh if the brand favicon changes |
+
+**Public audience only.** These pages are read by outside developers. Never name
+a supplier, the platform's margin or cost fields, an internal ADR reference, or
+infrastructure. `node scripts/check-docs.mjs` (CI `docs-check`) fails on those
+in the prose, `openapi.json` and `llms.txt`. The spec is built from PHP
+docblocks, so this applies to backend comments too.
 | `public/openapi.json` | **Committed, generated** — the OpenAPI spec. Also served raw at `/openapi.json` |
 | `src/content/i18n/en.json` | Empty stub — silences Starlight's i18n-collection warning; do not delete |
 
