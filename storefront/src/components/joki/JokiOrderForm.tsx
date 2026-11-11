@@ -59,6 +59,8 @@ export default function JokiOrderForm({ catalog, paymentChannels, whatsappHref, 
     playerValidatorEnabled: false,
     addedAt: "",
     noIndex: false,
+    contentSummary: null,
+    contentPublishedAt: null,
   };
 
   // Step 1: the climb.

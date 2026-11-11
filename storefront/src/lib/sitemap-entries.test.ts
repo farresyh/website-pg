@@ -32,6 +32,14 @@ test("a game's lastmod is its real date, and absent when it has none", () => {
   assert.equal(undated?.lastModified, undefined);
 });
 
+test("a published content date is the game's lastmod, ahead of its creation date", () => {
+  const entries = buildSitemapEntries({
+    ...base,
+    games: [{ slug: "valorant", addedAt: "2026-09-29T14:22:10.000Z", contentPublishedAt: "2026-11-20T03:00:00.000Z", noIndex: false }],
+  });
+  assert.equal(entries.find((e) => e.url.endsWith("/order/valorant"))?.lastModified?.toISOString(), "2026-11-20T03:00:00.000Z");
+});
+
 test("a noindex game is left out", () => {
   const urls = buildSitemapEntries({
     ...base,

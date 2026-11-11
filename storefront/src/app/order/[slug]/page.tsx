@@ -8,12 +8,14 @@ import OrderFormSkeleton from "@/components/skeletons/OrderFormSkeleton";
 import ProductHeaderCard from "@/components/order/ProductHeaderCard";
 import GameFactLine from "@/components/order/GameFactLine";
 import GameReviewsSection from "@/components/order/GameReviewsSection";
+import GameAbout from "@/components/order/GameAbout";
 import { getGame, getGamePackages } from "@/lib/catalog";
 import { listPaymentChannels } from "@/lib/payment-methods";
 import { listPlans } from "@/lib/membership";
 import { getGameReviews } from "@/lib/review";
 import { getBranding } from "@/lib/branding";
 import { canonicalMetadata, getSeoSettings, jsonLdHtml } from "@/lib/seo";
+import { faqPageJsonLd } from "@/lib/faq-json-ld";
 import { resolveGameMeta } from "@/lib/seo-meta";
 
 interface OrderPageProps {
@@ -101,13 +103,17 @@ export default async function OrderPage({ params }: OrderPageProps) {
         "@type": "Product",
         name: game.name,
         image: game.seoOgImage || game.imageUrl || undefined,
-        description,
+        // ADR-140 decision 9: the game's own summary when it has one, else the meta description.
+        description: game.content?.summary?.trim() || description,
         ...(game.schemaBrand ? { brand: { "@type": "Brand", name: game.schemaBrand } } : {}),
         ...(game.schemaCategory ? { category: game.schemaCategory } : {}),
         ...(offers ? { offers } : {}),
         ...(aggregateRating ? { aggregateRating } : {}),
       }
     : null;
+
+  // ADR-140 decision 9: the same items GameAbout renders (primary brand, published only).
+  const faqJsonLd = game.content ? faqPageJsonLd(game.content.faq) : null;
 
   const breadcrumbJsonLd = settings.schema_breadcrumb_enabled
     ? {
@@ -126,6 +132,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
       {productJsonLd && (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdHtml(productJsonLd) }} />
       )}
+      {faqJsonLd && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdHtml(faqJsonLd) }} />}
       {breadcrumbJsonLd && (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdHtml(breadcrumbJsonLd) }} />
       )}
@@ -162,6 +169,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
         </div>
 
         <GameReviewsSection gameName={game.name} data={gameReviews} />
+        {game.content && <GameAbout gameName={game.name} content={game.content} />}
       </main>
       <SiteFooter />
     </>

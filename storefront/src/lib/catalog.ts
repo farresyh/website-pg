@@ -1,3 +1,4 @@
+import type { FaqEntry } from "@/lib/faq-json-ld";
 import { z } from "zod";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import { parseResponse } from "@/lib/schema-validation";
@@ -71,6 +72,18 @@ const CatalogGameWireSchema = z.object({
   schema_brand: z.string().nullable().optional(),
   schema_category: z.string().nullable().optional(),
   no_index: z.boolean().optional(),
+  /** ADR-140 decision 7: the next three exist only for a published game on the primary brand. */
+  content_summary: z.string().nullable().optional(),
+  content_published_at: z.string().nullable().optional(),
+  content: z
+    .object({
+      summary: z.string().nullable(),
+      about: z.string().nullable(),
+      faq: z.array(z.object({ question: z.string(), answer: z.string() })),
+      published_at: z.string(),
+    })
+    .nullable()
+    .optional(),
 });
 
 type CatalogGameWire = z.infer<typeof CatalogGameWireSchema>;
@@ -118,9 +131,21 @@ export interface Game {
   addedAt: string;
   /** ADR-140 decision 4: the admin's noindex switch, so the sitemap and llms.txt can leave the game out. */
   noIndex: boolean;
+  /** ADR-140: the published summary, primary brand only; null everywhere else. */
+  contentSummary: string | null;
+  /** ADR-140 decision 4: when the content was last published; the sitemap's lastmod. */
+  contentPublishedAt: string | null;
+}
+
+/** ADR-140 decision 6: what a published game's page shows. Absent unless primary brand and published. */
+export interface GameContent {
+  summary: string | null;
+  about: string | null;
+  faq: FaqEntry[];
 }
 
 export interface GameDetail extends Game {
+  content: GameContent | null;
   seoTitle: string | null;
   seoDescription: string | null;
   seoOgImage: string | null;
@@ -188,12 +213,18 @@ function toGame(wire: CatalogGameWire): Game {
     playerValidatorEnabled: wire.player_validator_enabled,
     addedAt: wire.created_at ?? "",
     noIndex: wire.no_index ?? false,
+    contentSummary: wire.content_summary ?? null,
+    contentPublishedAt: wire.content_published_at ?? null,
   };
 }
 
 function toGameDetail(wire: CatalogGameWire): GameDetail {
   return {
     ...toGame(wire),
+    // The detail payload carries `content`, not the list's `content_summary`.
+    contentSummary: wire.content?.summary ?? null,
+    contentPublishedAt: wire.content?.published_at ?? null,
+    content: wire.content ? { summary: wire.content.summary, about: wire.content.about, faq: wire.content.faq } : null,
     seoTitle: wire.seo_title ?? null,
     seoDescription: wire.seo_description ?? null,
     seoOgImage: wire.seo_og_image ?? null,

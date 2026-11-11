@@ -13,6 +13,7 @@ import { listHeroSlides } from "@/lib/hero-slides";
 import { listPaymentChannels } from "@/lib/payment-methods";
 import { listApprovedReviews } from "@/lib/review";
 import { canonicalMetadata, jsonLdHtml } from "@/lib/seo";
+import { faqPageJsonLd } from "@/lib/faq-json-ld";
 import { listFaqs } from "@/lib/faq";
 
 // ADR-071 PR1: `force-dynamic` removed — catalog/hero reads are cached
@@ -38,18 +39,7 @@ export default async function HomePage() {
 
   // ADR-120 decision 13: the same items FaqSection renders, so the
   // structured data always matches visible text.
-  const faqJsonLd =
-    faqs.length > 0
-      ? {
-          "@context": "https://schema.org",
-          "@type": "FAQPage",
-          mainEntity: faqs.map((faq) => ({
-            "@type": "Question",
-            name: faq.question,
-            acceptedAnswer: { "@type": "Answer", text: faq.answer },
-          })),
-        }
-      : null;
+  const faqJsonLd = faqPageJsonLd(faqs);
 
   return (
     <>

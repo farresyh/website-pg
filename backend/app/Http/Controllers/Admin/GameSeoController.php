@@ -9,6 +9,7 @@ use App\Http\Requests\Seo\UpdateGameSeoRequest;
 use App\Models\Game;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 
 /**
  * ADR-029 decision 11: per-game SEO's own list+edit screen — data stays
@@ -19,13 +20,14 @@ use Illuminate\Http\Request;
 class GameSeoController extends Controller
 {
     /**
-     * `filter` — `complete`|`incomplete`|`missing` (SEO title AND
-     * description both present/absent), omit for all.
+     * `filter` — the content status (ADR-140 decision 8): `empty`|`draft`|`published`,
+     * omit for all. The per-game SEO fields are exceptions and no longer count.
      */
     public function index(Request $request): JsonResponse
     {
         $query = Game::query()->select([
             'id', 'name', 'slug', 'is_active', 'seo_title', 'seo_description', 'seo_og_image', 'no_index',
+            'content_summary', 'content_about', 'content_faq', 'content_published_at',
         ]);
 
         if ($search = $request->query('search')) {
@@ -33,17 +35,15 @@ class GameSeoController extends Controller
         }
 
         $games = $query->orderBy('name')->get()->map(function (Game $game) {
-            $complete = filled($game->seo_title) && filled($game->seo_description);
-            $missing = blank($game->seo_title) && blank($game->seo_description);
-
-            return array_merge($game->toArray(), [
-                'seo_status' => $missing ? 'missing' : ($complete ? 'complete' : 'incomplete'),
+            // The list carries the status and the publish date, never the bodies.
+            return array_merge(Arr::except($game->toArray(), ['content_summary', 'content_about', 'content_faq']), [
+                'content_status' => $game->contentStatus(),
             ]);
         });
 
         $filter = $request->query('filter');
-        if (in_array($filter, ['complete', 'incomplete', 'missing'], true)) {
-            $games = $games->filter(fn ($g) => $g['seo_status'] === $filter)->values();
+        if (in_array($filter, ['empty', 'draft', 'published'], true)) {
+            $games = $games->filter(fn ($g) => $g['content_status'] === $filter)->values();
         }
 
         return response()->json($games);
@@ -51,7 +51,7 @@ class GameSeoController extends Controller
 
     public function show(Game $game): JsonResponse
     {
-        return response()->json($game);
+        return response()->json(array_merge($game->toArray(), ['content_status' => $game->contentStatus()]));
     }
 
     public function update(UpdateGameSeoRequest $request, Game $game): JsonResponse
@@ -60,6 +60,6 @@ class GameSeoController extends Controller
         GameController::forgetIndexCache();
         CatalogController::forgetPackagesCache($game->id);
 
-        return response()->json($game);
+        return response()->json(array_merge($game->toArray(), ['content_status' => $game->contentStatus()]));
     }
 }

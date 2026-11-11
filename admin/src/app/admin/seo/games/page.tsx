@@ -24,19 +24,19 @@ import { useClientSession } from "@/hooks/useClientSession";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useLatestRequest } from "@/hooks/useLatestRequest";
 import { ApiError } from "@/lib/api-client";
-import { listGameSeo, type GameSeoListItem, type GameSeoStatus } from "@/lib/seo";
+import { listGameSeo, type GameSeoListItem, type GameContentStatus } from "@/lib/seo";
 
 const FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "All" },
-  { value: "complete", label: "Complete" },
-  { value: "incomplete", label: "Incomplete" },
-  { value: "missing", label: "Missing" },
+  { value: "empty", label: "Empty" },
+  { value: "draft", label: "Draft" },
+  { value: "published", label: "Published" },
 ];
 
-const STATUS_TAG: Record<GameSeoStatus, { severity: "success" | "warn" | "danger"; label: string }> = {
-  complete: { severity: "success", label: "Complete" },
-  incomplete: { severity: "warn", label: "Incomplete" },
-  missing: { severity: "danger", label: "Missing" },
+const STATUS_TAG: Record<GameContentStatus, { severity: "success" | "warn" | "danger"; label: string }> = {
+  published: { severity: "success", label: "Published" },
+  draft: { severity: "warn", label: "Draft" },
+  empty: { severity: "danger", label: "Empty" },
 };
 
 export default function GameSeoListPage() {
@@ -60,7 +60,7 @@ function GameSeoListPageInner() {
 
   function refresh() {
     const isLatest = beginListLoad();
-    return listGameSeo({ search: debouncedSearch || undefined, filter: (filter || undefined) as GameSeoStatus | undefined })
+    return listGameSeo({ search: debouncedSearch || undefined, filter: (filter || undefined) as GameContentStatus | undefined })
       .then((list) => isLatest() && setGames(list))
       .catch((err: unknown) => {
         if (isLatest()) setError(err instanceof ApiError ? err.message : "Could not load games.");
@@ -112,7 +112,7 @@ function GameSeoListPageInner() {
                 <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
                   <DataTableTHeadRow>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Game</DataTableTHeadCell>
-                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">SEO Title</DataTableTHeadCell>
+                    <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Last published</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Status</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Noindex</DataTableTHeadCell>
                     <DataTableTHeadCell className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">Actions</DataTableTHeadCell>
@@ -125,9 +125,9 @@ function GameSeoListPageInner() {
                     return (
                       <DataTableRow key={game.id}>
                         <DataTableCell className="px-5 py-4 text-theme-sm font-medium text-gray-800 dark:text-white/90">{game.name}</DataTableCell>
-                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{game.seo_title ?? "—"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400">{game.content_published_at ? new Date(game.content_published_at).toLocaleDateString("en-GB") : "—"}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
-                          <Tag severity={STATUS_TAG[game.seo_status].severity}>{STATUS_TAG[game.seo_status].label}</Tag>
+                          <Tag severity={STATUS_TAG[game.content_status].severity}>{STATUS_TAG[game.content_status].label}</Tag>
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           {game.no_index ? <Tag severity="secondary">Noindex</Tag> : <span className="text-ink-subtle">—</span>}
