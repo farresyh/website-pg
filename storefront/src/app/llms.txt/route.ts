@@ -3,6 +3,8 @@ import { getSeoSettings } from "@/lib/seo";
 import { listGames } from "@/lib/catalog";
 import { listPlayerCheckFamilies } from "@/lib/player-check";
 import { resolveSiteMeta } from "@/lib/seo-meta";
+import { indexableGames } from "@/lib/indexable-games";
+import { gameLine } from "@/lib/llms-lines";
 
 /**
  * ADR-029 addendum 4 (2026-08-22, same session, founder request):
@@ -41,12 +43,21 @@ export async function GET() {
   lines.push(`> ${summary}`);
   lines.push("");
 
-  if (games.length > 0) {
+  // ADR-140 decision 4: the same rule as the sitemap, so a noindex game is not listed.
+  const listedGames = indexableGames(games);
+  if (listedGames.length > 0) {
     lines.push("## Games");
-    for (const game of games) {
-      const price = game.priceFromRm !== null ? ` - from RM${game.priceFromRm.toFixed(2)}` : "";
-      const category = game.category ? ` (${game.category})` : "";
-      lines.push(`- [${game.name}](${origin}/order/${game.slug})${category}${price}`);
+    for (const game of listedGames) {
+      lines.push(
+        gameLine({
+          origin,
+          name: game.name,
+          slug: game.slug,
+          category: game.category,
+          priceFromRm: game.priceFromRm,
+          summary: game.contentSummary,
+        }),
+      );
     }
     lines.push("");
   }

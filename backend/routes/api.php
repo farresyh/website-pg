@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\CustomerAnalyticsController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FaqController;
 use App\Http\Controllers\Admin\GalleryImageController;
+use App\Http\Controllers\Admin\GameContentController;
 use App\Http\Controllers\Admin\GameSeoController;
 use App\Http\Controllers\Admin\HeroSlideController as AdminHeroSlideController;
 use App\Http\Controllers\Admin\JokiAdminController;
@@ -1122,6 +1123,7 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::get('/games', [GameSeoController::class, 'index']);
         Route::get('/games/{game}', [GameSeoController::class, 'show']);
         Route::put('/games/{game}', [GameSeoController::class, 'update']);
+        Route::put('/games/{game}/content', [GameContentController::class, 'update']); // ADR-140 decision 6
 
         Route::get('/redirects', [RedirectController::class, 'index']);
         Route::post('/redirects', [RedirectController::class, 'store']);

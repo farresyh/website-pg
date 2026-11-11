@@ -27,33 +27,49 @@ class GameSeoControllerTest extends TestCase
         ], $overrides));
     }
 
-    public function test_index_marks_status_complete_incomplete_and_missing_correctly(): void
+    // ADR-140 decision 8: the list's status is the content status, not "title and
+    // description filled" (which read "missing" for every game after ADR-120).
+    public function test_index_marks_the_content_status_of_each_game(): void
     {
         $this->actingAsSuperAdmin();
-        $this->game('complete-game', ['seo_title' => 'Title', 'seo_description' => 'Desc']);
-        $this->game('incomplete-game', ['seo_title' => 'Title', 'seo_description' => null]);
-        $this->game('missing-game', ['seo_title' => null, 'seo_description' => null]);
+        $this->game('empty-game');
+        $this->game('draft-game', ['content_summary' => 'Ringkasan']);
+        $this->game('published-game', ['content_summary' => 'Ringkasan', 'content_published_at' => '2026-11-12 03:00:00']);
 
         $response = $this->getJson('/api/seo/games');
 
         $response->assertOk();
-        $byStatus = collect($response->json())->pluck('seo_status', 'slug');
-        $this->assertSame('complete', $byStatus['complete-game']);
-        $this->assertSame('incomplete', $byStatus['incomplete-game']);
-        $this->assertSame('missing', $byStatus['missing-game']);
+        $byStatus = collect($response->json())->pluck('content_status', 'slug');
+        $this->assertSame('empty', $byStatus['empty-game']);
+        $this->assertSame('draft', $byStatus['draft-game']);
+        $this->assertSame('published', $byStatus['published-game']);
+        $this->assertArrayNotHasKey('seo_status', $response->json('0'));
+        $this->assertArrayNotHasKey('content_about', $response->json('0'), 'the list never carries the bodies');
     }
 
-    public function test_index_filters_by_status(): void
+    public function test_index_filters_by_content_status(): void
     {
         $this->actingAsSuperAdmin();
-        $this->game('complete-game', ['seo_title' => 'Title', 'seo_description' => 'Desc']);
-        $this->game('missing-game', ['seo_title' => null, 'seo_description' => null]);
+        $this->game('empty-game');
+        $this->game('draft-game', ['content_summary' => 'Ringkasan']);
 
-        $response = $this->getJson('/api/seo/games?filter=missing');
+        $response = $this->getJson('/api/seo/games?filter=empty');
 
         $response->assertOk();
         $this->assertCount(1, $response->json());
-        $this->assertSame('missing-game', $response->json('0.slug'));
+        $this->assertSame('empty-game', $response->json('0.slug'));
+    }
+
+    public function test_show_carries_the_content_and_its_status(): void
+    {
+        $this->actingAsSuperAdmin();
+        $game = $this->game('valorant', ['content_summary' => 'Ringkasan', 'content_faq' => [['question' => 'Q?', 'answer' => 'A.']]]);
+
+        $this->getJson("/api/seo/games/{$game->id}")
+            ->assertOk()
+            ->assertJsonPath('content_status', 'draft')
+            ->assertJsonPath('content_summary', 'Ringkasan')
+            ->assertJsonPath('content_faq.0.question', 'Q?');
     }
 
     public function test_index_search_matches_by_name(): void

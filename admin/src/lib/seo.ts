@@ -3,12 +3,12 @@ import { apiFetch } from "@/lib/api-client";
 /** ADR-029 — SEO Management: Overview, Global Settings/Templates, Game SEO, Redirects, FAQ, Crawler. `Scripts` removed by ADR-101 decision 9. */
 
 export interface SeoOverview {
+  /** ADR-140 decision 8: the content status over the tracked games (active, not noindex). */
   games: {
     total: number;
-    complete: number;
-    missing_title: number;
-    missing_description: number;
-    missing_og_image: number;
+    published: number;
+    draft: number;
+    empty: number;
   };
   redirects: { total: number };
   sitemap_url: string;
@@ -38,7 +38,8 @@ export type UpdateSeoSettingsValues = Partial<
   Omit<SeoSettings, "id" | "affiliate_id">
 >;
 
-export type GameSeoStatus = "complete" | "incomplete" | "missing";
+/** ADR-140 decision 6: derived on the backend from the content fields and `content_published_at`. */
+export type GameContentStatus = "empty" | "draft" | "published";
 
 export interface GameSeoListItem {
   id: number;
@@ -49,7 +50,8 @@ export interface GameSeoListItem {
   seo_description: string | null;
   seo_og_image: string | null;
   no_index: boolean;
-  seo_status: GameSeoStatus;
+  content_status: GameContentStatus;
+  content_published_at: string | null;
 }
 
 export interface GameSeoDetail {
@@ -58,24 +60,36 @@ export interface GameSeoDetail {
   slug: string;
   image_url: string | null;
   seo_title: string | null;
-  seo_title_local: string | null;
   seo_description: string | null;
-  seo_description_local: string | null;
-  seo_keywords: string | null;
   seo_og_image: string | null;
   schema_brand: string | null;
   schema_category: string | null;
   no_index: boolean;
+  content_summary: string | null;
+  content_about: string | null;
+  content_faq: GameFaqItem[] | null;
+  content_published_at: string | null;
+  content_status: GameContentStatus;
+}
+
+export interface GameFaqItem {
+  question: string;
+  answer: string;
+}
+
+/** The body of PUT /api/seo/games/{id}/content (ADR-140 decision 6). */
+export interface UpdateGameContentValues {
+  summary: string | null;
+  about: string | null;
+  faq: GameFaqItem[];
+  published: boolean;
 }
 
 export type UpdateGameSeoValues = Partial<
   Pick<
     GameSeoDetail,
     | "seo_title"
-    | "seo_title_local"
     | "seo_description"
-    | "seo_description_local"
-    | "seo_keywords"
     | "seo_og_image"
     | "schema_brand"
     | "schema_category"
@@ -130,7 +144,7 @@ export function updateSeoSettings(values: UpdateSeoSettingsValues) {
   return apiFetch<SeoSettings>("/api/seo/settings", { method: "PUT", body: values });
 }
 
-export function listGameSeo(params?: { search?: string; filter?: GameSeoStatus }) {
+export function listGameSeo(params?: { search?: string; filter?: GameContentStatus }) {
   const query = new URLSearchParams();
   if (params?.search) query.set("search", params.search);
   if (params?.filter) query.set("filter", params.filter);
@@ -144,6 +158,10 @@ export function getGameSeo(gameId: number) {
 
 export function updateGameSeo(gameId: number, values: UpdateGameSeoValues) {
   return apiFetch<GameSeoDetail>(`/api/seo/games/${gameId}`, { method: "PUT", body: values });
+}
+
+export function updateGameContent(gameId: number, values: UpdateGameContentValues) {
+  return apiFetch<GameSeoDetail>(`/api/seo/games/${gameId}/content`, { method: "PUT", body: values });
 }
 
 export function listRedirects() {

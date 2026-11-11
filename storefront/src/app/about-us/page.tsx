@@ -1,5 +1,6 @@
 import type { Metadata, ResolvingMetadata } from "next";
 import { canonicalMetadata } from "@/lib/seo";
+import { pageMeta } from "@/lib/page-meta";
 import SiteFooter from "@/components/layout/SiteFooter";
 import LegalPageContent from "@/components/legal/LegalPageContent";
 import { getBranding, getLegalContent } from "@/lib/branding";
@@ -8,7 +9,7 @@ export async function generateMetadata(_props: unknown, parent: ResolvingMetadat
   const branding = await getBranding();
   return {
     ...(await canonicalMetadata("/about-us", parent)),
-    title: `About Us - ${branding.storeName}`,
+    ...pageMeta("about-us", branding.storeName),
   };
 }
 

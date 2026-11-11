@@ -6,6 +6,8 @@
  * brand-correct. Dependency-free on purpose: pure string logic, no fetch.
  */
 
+import { pageMeta } from "./page-meta.ts";
+
 export interface SeoTextSettings {
   default_meta_title: string | null;
   default_meta_description: string | null;
@@ -35,20 +37,45 @@ function firstRendered(candidates: (string | null | undefined)[], tokens: Tokens
   return null;
 }
 
-/** Storefront-wide meta (home, and the base every page inherits). */
+/**
+ * Storefront-wide meta (home, and the base every page inherits). The admin's
+ * default fields win; when one is empty the registry's home entry fills it
+ * (ADR-140 decision 1), so no page ever falls back to a sentence hardcoded here.
+ */
 export function resolveSiteMeta(settings: SeoTextSettings, storeName: string) {
   const tokens = { store_name: storeName };
+  const home = pageMeta("home", storeName);
   return {
-    title: firstRendered([settings.default_meta_title], tokens) ?? `${storeName} - Top Up Games in Malaysia`,
-    description:
-      firstRendered([settings.default_meta_description], tokens) ??
-      `Fast, secure game top-ups at ${storeName}. Delivered in 3 minutes.`,
+    title: firstRendered([settings.default_meta_title], tokens) ?? home.title,
+    description: firstRendered([settings.default_meta_description], tokens) ?? home.description,
   };
 }
 
-/** Per-game override → template → storefront default → generic, all token-rendered. */
+/** The most a meta description is cut to; Google shows about this much. */
+const META_DESCRIPTION_MAX = 155;
+
+/**
+ * Collapse whitespace, then cut at a word boundary inside `max` characters and
+ * end with an ellipsis. A prefix of the text, never a rewrite. A single word
+ * longer than `max` is hard-cut. Pure.
+ */
+export function truncateAtWord(text: string, max: number): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (flat.length <= max) return flat;
+
+  const room = flat.slice(0, max - 1);
+  const lastSpace = room.lastIndexOf(" ");
+  const cut = lastSpace > 0 ? room.slice(0, lastSpace) : room;
+  return `${cut.replace(/[\s,;:.\-–—]+$/, "")}…`;
+}
+
+/**
+ * Per-game override → the game's own summary (ADR-140 decision 3: primary brand,
+ * published only, so an affiliate never has one) → template → storefront default
+ * → generic, all token-rendered.
+ */
 export function resolveGameMeta(
-  game: { name: string; seoTitle: string | null; seoDescription: string | null },
+  game: { name: string; seoTitle: string | null; seoDescription: string | null; contentSummary?: string | null },
   settings: SeoTextSettings,
   storeName: string,
 ) {
@@ -59,7 +86,12 @@ export function resolveGameMeta(
       `Top Up ${game.name} - ${storeName}`,
     description:
       firstRendered(
-        [game.seoDescription, settings.meta_description_template, settings.default_meta_description],
+        [
+          game.seoDescription,
+          game.contentSummary?.trim() ? truncateAtWord(game.contentSummary, META_DESCRIPTION_MAX) : null,
+          settings.meta_description_template,
+          settings.default_meta_description,
+        ],
         tokens,
       ) ?? `Top up ${game.name} at ${storeName}. Fast, secure, guest checkout.`,
   };

@@ -17,6 +17,7 @@ import { listPlans } from "@/lib/membership";
 import { listPlayerCheckFamilies } from "@/lib/player-check";
 import { getResellerPriceListEnabled } from "@/lib/reseller-price-list";
 import { getSeoSettings, jsonLdHtml } from "@/lib/seo";
+import { spacedBrandName } from "@/lib/brand-name";
 import { resolveSiteMeta } from "@/lib/seo-meta";
 import { getThemePreset, generateThemeCss } from "@/lib/theme-presets";
 
@@ -97,11 +98,14 @@ export default async function RootLayout({
   const sameAs = Object.entries(branding.socialLinks)
     .filter(([network, link]) => network !== "whatsapp" && !!link && /^https?:\/\//.test(link))
     .map(([, link]) => link as string);
+  // ADR-140 decision 4: people type "pekan game", so the platform's own brand also names its spaced form.
+  const alternateName = branding.isPrimary ? spacedBrandName(branding.storeName) : null;
   const organizationJsonLd = settings.schema_organization_enabled
     ? {
         "@context": "https://schema.org",
         "@type": "Organization",
         name: branding.storeName,
+        ...(alternateName ? { alternateName } : {}),
         url: branding.canonicalOrigin,
         ...(branding.logoUrl ? { logo: branding.logoUrl } : {}),
         ...(branding.supportEmail ? { email: branding.supportEmail } : {}),

@@ -26,8 +26,8 @@ PekanGame support can also set this for you.
 | Event | When |
 | --- | --- |
 | `order.delivered` | The order was fulfilled successfully. |
-| `order.failed` | Delivery failed; PekanGame may retry it, so a Purchase Balance refund is not guaranteed. |
-| `order.partially_delivered` | Part of the order was delivered and the rest failed. The undelivered share is refunded separately (`order.refunded`). |
+| `order.failed` | Delivery failed. An `order.refunded` normally follows within about a minute ([Refunds](/wallet/#refunds)). |
+| `order.partially_delivered` | Part of the order was delivered and the rest failed. If the rest is not re-attempted, the undelivered share is refunded (`order.refunded`). |
 | `order.refunded` | A failed or partially delivered order was refunded to your Purchase Balance — all of it, or only the undelivered share. |
 
 Each **event type** fires **at most once per order** — so one order can send

@@ -2460,3 +2460,97 @@ Branch `docs/price-sync-ceiling`, into `staging`. Comment and docs only.
 - Gamevion's time is nearly all the 1.6 s pause between pricelist calls that its 40-a-minute limit forces, over 74 chosen games: ~117 s of waiting, plus the HTTP calls.
 
 **Decision (founder):** no bulk upsert; it would save seconds. The note now records the measured split and the real ceiling: about 140 chosen Gamevion games per 300 s. Past that, the fix is a warning on the Gamevion game picker. Gamevion is unfunded and unused (PRD §16 item 162), so nothing is near the ceiling.
+
+## 2026-11-10 — Release #777: #770–#776 to `main`
+
+The founder asked for it. `staging` → `main`, merge `b1c2b459`, box release `82558237`.
+
+**Carried:**
+- #771: report date bounds (the 9 Nov memory exhaustion), Symfony patches, CI timeout
+- #774: run broadcasts on `default`, Horizon `waits` keys, a failed broadcast logged on any queue
+- #772, #775: the CS Merge modal
+- #773, #775: storefront dark readability and its guard test
+- #770, #776: docs
+
+No migration, no env change.
+
+**Pre-release (prod, read-only):** health 200, no pending migrations, 0 paid orders in flight, no sync running, 0 failed jobs in 24 h.
+
+**Deploy:** every CI job and `deploy` passed on the first run (no runner incident this time).
+
+**Gotcha:** the deploy landed at 07:01 UTC, inside the 07:00 price sync. `/api/health` answered 503 (`horizon: false`) for about two minutes. The old Horizon master, told to terminate, kept only the price-sync worker alive until its job finished at 07:03:23; then the new Horizon started every supervisor and health went back to `ok`. That run (3519) succeeded. Nothing was lost, but a deploy in the first ~3 minutes after :00 or :30 will show this.
+
+**Checked after release (production, read-only):**
+- `current` → `releases/82558237`.
+- `horizon.waits` has `redis-long:price-sync` and `redis-long:backups` at 300.
+- `PriceSyncRunUpdated` broadcasts on `default`.
+- Every supervisor is running; `/api/health` ok; `/api/health/whatsapp` 200.
+- 0 paid orders in flight; 0 failed jobs.
+- The four frontends and the onboarding page answer 200; Vercel production for admin, storefront and portal is on `b1c2b459`.
+
+**Not yet seen live:** the Price Sync card showing "running" during a sync (the #774 change); a long-wait alert no longer arriving.
+
+## 2026-11-11 — Full docs audit after release #777; `docs-check` in CI
+
+Branch `docs/audit-2026-11-11`, into `staging`. The founder asked for a full audit and clean-up of every doc before building more. Three read-only reviewers (status docs vs prod, the ADR log, the spec and guidance docs), then every finding re-checked against code or prod before it was written.
+
+**Wrong for partners (fixed first):** the public API guides still said a failed order waits for PekanGame to decide on a retry before an admin refunds it. Since #769 (ADR-139 decisions 26–29) a Failed wallet order is refunded within a minute by `app:refund-failed-wallet-orders`, a refunded order is never resent (`OrderResendService`), and `order.refunded` comes from `OrderSettlementService::settle()`. `wallet.md` "Refunds" is now the one home for the rule; docs revision v1.6.0 (`scramble.php`, spec re-exported, only `info.version` changed). Three backend comments named the admin action as the only `order.refunded` source.
+
+**Stale or contradicting:**
+- PRD §14 counts were restated in §14, §15 and §16, so each release left them stale (92 orders on the page, 166 on prod). §14 now keeps who the customers are plus one dated snapshot line, the only home for counts. Added PajoStore (third-party affiliate, payments approved 2026-11-09; the founder confirmed with CHIP on 2026-11-11 that it may collect), the 4 redeemed KOL codes (the page said none), the saved rebate ladder, the current DB cluster, and the missing not-yet-seen lines (first auto-payout ticket due 1 Dec, first rebate month, #774's card and email).
+- PRD §1–13 still described a "spend-only" reseller and an admin-only wallet refund, a manual affiliate payout and the ADR-033 FX rate; the Glossary listed three wallet ledger types of six. Lists that code owns (wallet ledger types, pricing bases) now point to their enums instead of restating them.
+- §16: item 161 sat in "needs a grill" with build-plan text though released; 104 and 151 waited on triggers that had fired; 158 was "buildable now" while PR 4 waits on the Live gate; closed 28 and 57 were still in Details. Next up is back to one short entry per item, the long bodies are in Details, and the old preambles and replaced text moved verbatim to `build-log-archive.md` ("PRD §16 text moved 2026-11-11"). Recently closed gets a 30-day rule; nothing was older than that yet.
+- ADR log: 137–139 said "Accepted" while 125 others say "In force"; ADR-001, 031 and 051 carried a banner-refresh or supersede date as "Last addendum"; seven Standing cells ran to 450–1,100 characters. One Standing vocabulary, the revise rule aligned with AGENTS.md step 7, rows trimmed to current effect + latest revision (the banners keep the history).
+- Two founder decisions had no ADR home: ADR-136 2026-11-10 (Live gate kept) and ADR-137 2026-11-10 (the price-sync ceiling is Gamevion's 40/min limit, about 140 games; PRD §16 item 177).
+
+**Prevention:** `scripts/check-docs.mjs` (no dependencies, `--self-test`) and the CI job `docs-check`: every ADR indexed, Standing words, Last addendum against the file's last dated addendum (three heading formats in use), relative links, no closed item in §16 Details. Run against pre-audit `staging` it reports 13 of this audit's findings. Not a deploy need or a required check.
+
+**Gotchas:**
+- The addendum-date parser first matched `**Context:** … addendum … <date>` lines (ADR-112, ADR-120); only a bold label or `###` heading that names an addendum counts.
+- The first rebate ladder was saved at 18:55 UTC on 2026-11-09, which is 2026-11-10 in Malaysia; the docs use the Malaysia date.
+
+**For the founder (not docs), answered the same day:** item 108, `pajostore.com` was not on the Game ID Checker's Turnstile widget; the founder added it. Digiflazz's balance (IDR 4.73 million, under its IDR 10 million alert since 2026-11-10 16:10 UTC) is known to the founder. Item 161 closed: the ladder save had already sent the announcement to all three resellers' groups (checked read-only).
+
+## 2026-11-11 — SEO meta strategy built (ADR-140 PR 1)
+
+Branch `feature/seo-meta-strategy`, into `staging`. ADR-140 decisions 1–5; the build choices are in the ADR's PR 1 addendum. Not released.
+
+**Built:**
+- **Static page meta.** `storefront/src/lib/page-meta.ts` gives home, `about-us`, `terms`, `privacy`, `refund-policy`, `track-order`, `price-list` and `check-id` each its own title and description (`{store_name}` token; Malay with English gaming terms; no delivery-time or payment-method claim). The seven pages read it. An empty admin `default_meta_*` falls to the registry's home entry instead of the old hardcoded English sentence.
+- **Sitemap and `llms.txt`.** The rows are a pure function (`lib/sitemap-entries.ts`): static pages carry no `lastmod`, a game with no date has none, a `noindex` game is left out. `llms.txt` uses the same filter (`lib/indexable-games.ts`). The catalog index summary now carries `no_index`.
+- **Organization JSON-LD** gets `alternateName` ("Pekan Game") for the primary brand only; the branding payload carries `is_primary`.
+- **Dead fields out of the code:** `seo_title_local`, `seo_description_local`, `seo_keywords` leave `Game::$fillable`, `UpdateGameSeoRequest`, `CatalogController`, the admin screen and its type. The columns stay until a later release drops them.
+
+**Verified:**
+- Backend suite 3,901 passed (4 new in `Adr140SeoMetaStrategyTest`, each seen red for the right reason first). Storefront `npm test` 27 passed (17 new), admin 22; `tsc` and `eslint` clean in both; `next build` passed in both.
+- Throwaway backend (`APP_ENV=e2e`, sqlite in the scratchpad) with the storefront dev server, read with `curl`: six pages, six different descriptions (before: home, about-us, refund-policy and track-order shared one); the sitemap has no `lastmod` on static pages and a real one on a game; a game set `noindex` is in neither the sitemap nor `llms.txt`; the primary's Organization has `alternateName: "Pekan Game"`; an affiliate host shows its own name (`AcmeStore`) and origin and no `alternateName`.
+- Admin in a real browser (Playwright, throwaway admin): the three inputs are gone, the title field fills the row (900 px, same as the description), the save request carries only `seo_title`, `seo_description`, `seo_og_image`, `schema_brand`, `schema_category`, `no_index`, and the saved title is in the database. Throwaway servers, admin and sqlite file removed afterwards.
+
+**Gotchas:**
+- The storefront's `node --test` cannot resolve the `@/` alias, so every unit-tested piece lives in a dependency-free module that imports with a `.ts` extension.
+- Moving `noIndex` from `GameDetail` to `Game` made `tsc` find a hand-built `Game` in `JokiOrderForm.tsx`; fixed there.
+- A branch cut with `git switch -c <name> origin/staging` inherits `origin/staging` as its upstream, so a bare `git push` would aim at the protected branch; unset it right after cutting.
+
+**Not seen live:** anything on prod. The founder still fills the primary's `default_meta_title` and `default_meta_description` in the admin after release (record before and after here), and the three columns drop in a later PR. Next: PR 2, the per-game content (ADR-140 decisions 6–12).
+
+## 2026-11-11 — Per-game content built (ADR-140 PR 2)
+
+Branch `feature/game-content`, into `staging`. ADR-140 decisions 6–12; the build choices are in the ADR's PR 2 addendum. Not released.
+
+**Built:**
+- **Backend.** An additive migration (`content_summary`, `content_about`, `content_faq`, `content_published_at` on `games`). `Game::publishedContentFor($brand)` is the one place content is let out (primary brand and published only); `CatalogController` calls it for the game detail (`content`) and the index summary (`content_summary`, `content_published_at`), and a surface that must not carry content has no key. `Admin\GameContentController` (`PUT /api/seo/games/{game}/content`) is the one writer: the limits from the decision, "nothing to publish" refused with 422, and a `content_published_at` that moves only on first publish or a text change. The admin SEO list and overview report Empty/Draft/Published instead of the title-and-description completeness, which read "missing" for every game after ADR-120 and made the overview ask the founder to fill what had been left blank on purpose.
+- **Storefront.** `GameAbout` under the reviews (`lang="ms"`, server-rendered, visible), `FAQPage` through one builder shared with the home FAQ, the summary as the meta description (cut at a word inside 155 characters) ahead of the template, the Product JSON-LD description, the `llms.txt` line and the sitemap `lastmod`.
+- **Admin.** Admin → SEO → Games → [game] rebuilt on the PrimeReact kit: summary, About, FAQ (up to 8), a Published switch, with the old meta overrides below.
+
+**Verified:**
+- Backend suite 3,918 passed (15 new in `Adr140GameContentTest`, including the invariant matrix: primary and affiliate × empty, draft and published, on the detail and the index summary; the two old SEO admin tests were replaced on purpose). Storefront `npm test` 36 passed (19 new since PR 1), admin 22; `tsc`, `eslint` and `next build` pass in both; the migration ran on the throwaway sqlite and on the local dev DB with a plain `php artisan migrate`.
+- Throwaway backend + storefront dev + admin, driven in a real browser. After publishing in the admin, with the storefront caches warmed first and nothing restarted, the page's meta description, the `llms.txt` line and the sitemap `lastmod` were updated at once through the purge and Next revalidation webhook. The page showed the section, `lang="ms"`, two About paragraphs and the FAQ, and the `FAQPage` questions equalled the rendered ones. An affiliate host (same game) showed no section, no FAQ, no `FAQPage`, no summary, its own description and the creation date as `lastmod`. Unpublishing removed everything at once; publishing with every field empty was refused with "Add some content before publishing." and changed nothing.
+- Screenshots on desktop and a 390 px phone: no horizontal overflow, text contrast 8.43:1 to 15.64:1.
+- Throwaway servers, admin and sqlite file removed afterwards.
+
+**Gotchas:**
+- Next's Data Cache outlives a dev-server restart and `rm -rf .next/cache/fetch-cache` did not clear it (the first page load after a fresh DB still showed content from the earlier run). The webhook (`NEXT_REVALIDATE_URL` and `NEXT_REVALIDATE_SECRET` on the backend, `REVALIDATE_SECRET` on the storefront) is what keeps it fresh; without it a change shows within 300 s.
+- My first browser run of "publish with every field empty" cleared the summary and About but left the FAQ, so it published; the FAQ alone is content. The script, not the code, was wrong.
+- Pint rewrites test imports (`fully_qualified_strict_types`); run it on a new test file.
+
+**Not seen:** the section's place relative to the reviews (the throwaway DB has no reviews; the order is the JSX order: checkout, reviews, About, footer), and anything on prod. Whether prod has the revalidation webhook set is not checked. **For the founder after release:** fill the home meta in Admin → SEO → Global Settings, then the content for each game (the drafts come from Claude for review), request indexing for five pages, and put links to game pages on the brand's social profiles. The three dead `seo_*` columns drop in a later PR once PR 1 is on `main`.

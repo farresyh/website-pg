@@ -32,6 +32,17 @@ The version number on this documentation (shown in the API Reference) is the
 
 ## Changelog
 
+### 2026-11 — v1.6.0
+
+- A `failed` order is now refunded to your Purchase Balance **automatically**,
+  usually within a minute, followed by its `order.refunded` webhook. Before,
+  each refund waited for PekanGame to decide on a retry. A refunded order is
+  never re-attempted, so `failed` is final. See [Refunds](/wallet/#refunds),
+  including the one exception.
+- `partially_delivered` is unchanged: PekanGame decides whether to re-attempt
+  the rest before refunding the undelivered share.
+- The response shapes and webhook events are unchanged.
+
 ### 2026-10 — v1.5.0
 
 - Rate limits are now **per account**, not per API key, in two buckets:

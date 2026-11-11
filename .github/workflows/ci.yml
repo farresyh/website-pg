@@ -223,6 +223,21 @@ jobs:
             exit 1
           fi
 
+  # The mechanical docs rules (docs/adr.md "How to use and maintain this
+  # log", PRD §16 preamble): every ADR indexed, Standing words, Last
+  # addendum dates, relative links, no closed item left in §16 Details.
+  # Not in `deploy`'s needs or the ruleset: a docs slip never blocks a
+  # money fix from shipping.
+  docs-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node scripts/check-docs.mjs --self-test
+      - run: node scripts/check-docs.mjs
+
   # ADR-023 — the 3 golden-path tests only (guest checkout->payment->
   # order status; admin login->Resend Delivery; admin login->Issue
   # Voucher), Chromium only. Both the supplier layer (Gamevion) and the

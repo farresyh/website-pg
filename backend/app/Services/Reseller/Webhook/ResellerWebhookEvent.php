@@ -22,8 +22,8 @@ enum ResellerWebhookEvent: string
      * The event a terminal `delivery_status` maps to, or null for a
      * non-terminal state the webhook does not emit for (`needs_review`,
      * `processing`, `pending`). `order.refunded` is never reached this
-     * way — it is dispatched explicitly from the admin wallet-refund
-     * action, which deliberately never touches `delivery_status`.
+     * way — `OrderSettlementService::settle()` dispatches it explicitly,
+     * since a wallet refund deliberately never touches `delivery_status`.
      */
     public static function forDeliveryStatus(DeliveryStatus $status): ?self
     {

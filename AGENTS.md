@@ -17,7 +17,7 @@ change to those paths with the same care the existing code already does.
 | `backend/` | Laravel 13 API (PHP 8.4) | Sanctum auth (admin: cookie session, ADR-121; portal: bearer token; Reseller API: keys), MySQL, Redis queue (Horizon, ADR-048) + Redis cache (ADR-077). Own `AGENTS.md`: Laravel conventions + local-dev gotchas |
 | `admin/` | Next.js 16 admin panel | Games, Orders, Withdrawals, Vouchers, Price Sync Center, Gallery, Affiliates, Resellers, Campaigns, Accounting |
 | `storefront/` | Next.js 16 customer storefront | Guest checkout only — no customer accounts (ADR-011). Also renders every **Affiliate** whitelabel brand, resolved per `Host` / custom domain (ADR-060) |
-| `reseller/` | Next.js 16 partner portal | One app, two account types (ADR-072): **Affiliate** (whitelabel storefront owner — earnings ledger, withdrawals, wholesale tier, storefront config, custom domain) and **Reseller** (prepaid-balance spend-only account, shown as "Purchase Balance" — add balance, receipts, API keys). Runs on `:3002` (ADR-059). The same app serves the public reseller application on `onboarding.pekangame.space` (`/apply`, `/onboard/[token]`, ADR-133); `proxy.ts` splits by host |
+| `reseller/` | Next.js 16 partner portal | One app, two account types (ADR-072): **Affiliate** (whitelabel storefront owner — earnings ledger, withdrawals, wholesale tier, storefront config, custom domain) and **Reseller** (prepaid-balance account that never withdraws, shown as "Purchase Balance" — add balance, receipts, monthly rebate, API keys). Runs on `:3002` (ADR-059). The same app serves the public reseller application on `onboarding.pekangame.space` (`/apply`, `/onboard/[token]`, ADR-133); `proxy.ts` splits by host |
 | `docs-site/` | Astro 7 + Starlight — public Reseller API docs | The **4th frontend** (ADR-084), `docs.pekangame.space`. Spec is generated (`php artisan scramble:export`), never hand-edited; CI drift-guards it |
 | `docs/` | `prd.md` (§1–13 spec, §14 status headline, §15 feature tracker, §16 backlog), `adr.md` (the ADR **index**: one row per decision, with its Standing) + `adr/ADR-NNN-slug.md` (one file per decision), `build-log.md` (chronological record from 2026-10-28; older entries in `build-log-archive.md`), `foundation-security.md`, `legacy-reference-notes.md`; `archive/` holds superseded research and point-in-time audits (history only) | Read the ADR before assuming *why* something is built a certain way — it's almost always a recorded, deliberate decision. **One fact, one home:** build/live status → `prd.md` §15; why → the ADR file; what happened when → `build-log.md`. Archives are history, never current truth |
 
@@ -112,6 +112,9 @@ banner). This file covers the whole repo.
    lives in one place; elsewhere, point to it rather than restate it.
    When `build-log.md` grows long, move its oldest entries verbatim to
    `build-log-archive.md` and update both headers and every pointer to them.
+   `node scripts/check-docs.mjs` checks the mechanical rules (ADR index rows,
+   Standing words, Last addendum dates, links, PRD §16 Details); CI runs it as
+   `docs-check`.
 8. **Commit** (granular), **push**, **open a PR into `staging`**. CI green is
    the only merge gate. When CI fails, read the actual PR page
    (`gh pr view <n> --json mergeable,statusCheckRollup`) before theorizing —
@@ -173,8 +176,8 @@ banner). This file covers the whole repo.
   on a stale copy, ADR-128). The portal's `components/ui` is generated from
   the admin's kit by the same script (ADR-128 2026-10-26 addendum, PRD §16
   item 133, closed): edit the admin source, never the copy. Tailwind v4 silently
-  drops a colour class whose `--color-*` token doesn't exist; each app's
-  `color-tokens.test.ts` catches it (PRD §16 item 100). The portal's test
+  drops a colour class whose `--color-*` token doesn't exist; the admin's and
+  the portal's `color-tokens.test.ts` catch it (PRD §16 item 100). The portal's test
   also blocks TailAdmin colour classes.
 - **Before calling storefront copy "hardcoded", grep for it** — much of it is
   admin-configured content.

@@ -13,8 +13,8 @@ in, JSON out, one bearer key.
 
 ## Who it is for
 
-A reseller account is **prepaid and spend-only** — you place orders against a
-balance you have added. If you resell PekanGame game top-ups through your own
+A reseller account is **prepaid** — you place orders against a balance you have
+added, and the balance is never withdrawn as cash. If you resell PekanGame game top-ups through your own
 shop, bot, or website and want to automate ordering, this API is for you.
 
 ## Base URL
@@ -50,8 +50,8 @@ monthly volume. PekanGame will email you the next step.
 - **Player-ID validation** — there is no "check this player ID" endpoint.
   Validation happens when the order is placed; an invalid ID comes back as a
   failed order.
-- **Cash refunds** — a failed order that is not retried is refunded to your
-  **Purchase Balance**, never to a card or bank account. Unused balance is refunded
+- **Cash refunds** — a failed order is refunded to your **Purchase Balance**
+  ([Refunds](/wallet/#refunds)), never to a card or bank account. Unused balance is refunded
   only if the account is closed.
 - **Anything that is not yours** — the API only ever returns your own account's
   data and your own prices. It never exposes another reseller's orders, or how

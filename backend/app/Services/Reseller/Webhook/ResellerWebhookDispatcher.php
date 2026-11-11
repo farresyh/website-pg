@@ -15,8 +15,9 @@ use Illuminate\Support\Str;
  * reached a terminal state" into a queued webhook delivery — called from
  * `DispatchResellerOrderWebhook` (the `OrderStatusUpdated` listener, for
  * `order.delivered` / `order.failed`) and from
- * `Admin\OrderController::refundToWallet()` (for `order.refunded`, which
- * has no `delivery_status` change to listen on).
+ * `OrderSettlementService::settle()` (for `order.refunded`, which has no
+ * `delivery_status` change to listen on; reached from the admin refund
+ * action and from ADR-139's automatic Failed-order sweep).
  *
  * Idempotent: the `(order_id, event)` unique index on
  * `reseller_webhook_deliveries` is the structural guarantee — a repeat

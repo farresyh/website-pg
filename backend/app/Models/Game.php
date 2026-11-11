@@ -33,14 +33,16 @@ class Game extends Model
         'credential_max_days',
         'is_joki',
         'seo_title',
-        'seo_title_local',
         'seo_description',
-        'seo_description_local',
-        'seo_keywords',
         'seo_og_image',
         'schema_brand',
         'schema_category',
         'no_index',
+        // ADR-140 decision 6: written only by Admin\GameContentController.
+        'content_summary',
+        'content_about',
+        'content_faq',
+        'content_published_at',
     ];
 
     protected $casts = [
@@ -54,6 +56,8 @@ class Game extends Model
         'player_validator_enabled' => 'boolean',
         'member_pricing_enabled' => 'boolean',
         'no_index' => 'boolean',
+        'content_faq' => 'array',
+        'content_published_at' => 'datetime',
     ];
 
     public static function uniqueSlug(string $name): string
@@ -148,6 +152,54 @@ class Game extends Model
     }
 
     /** ADR-126 decision 2: a joki game, sold only through `/joki`, never listed in a catalog. */
+    /**
+     * ADR-140 decision 8: the games the sitemap lists and the SEO admin counts —
+     * active and not `noindex`. One definition; the storefront's `indexableGames()`
+     * applies the same rule to the catalog listing.
+     */
+    public function scopeTracked(Builder $query): Builder
+    {
+        return $query->where('is_active', true)->where('no_index', false);
+    }
+
+    /** Any of the three content fields has something in it. */
+    public function hasContent(): bool
+    {
+        return filled($this->content_summary) || filled($this->content_about) || ! empty($this->content_faq);
+    }
+
+    /** ADR-140 decision 6: derived, never stored. */
+    public function contentStatus(): string
+    {
+        if ($this->content_published_at !== null) {
+            return 'published';
+        }
+
+        return $this->hasContent() ? 'draft' : 'empty';
+    }
+
+    /**
+     * ADR-140 decision 7: the one seam that decides who sees a game's content.
+     * Only the primary brand, and only once published; an affiliate, a draft and an
+     * empty game get null, so no surface (page, index summary, llms.txt, JSON-LD,
+     * sitemap lastmod) can leak it. Plain arrays only, so it is safe in a cache.
+     *
+     * @return array{summary: ?string, about: ?string, faq: list<array{question: string, answer: string}>, published_at: string}|null
+     */
+    public function publishedContentFor(Affiliate $brand): ?array
+    {
+        if (! $brand->is_primary || $this->content_published_at === null) {
+            return null;
+        }
+
+        return [
+            'summary' => $this->content_summary,
+            'about' => $this->content_about,
+            'faq' => array_values($this->content_faq ?? []),
+            'published_at' => $this->content_published_at->toISOString(),
+        ];
+    }
+
     public function scopeJoki(Builder $query): Builder
     {
         return $query->where('is_joki', true);
