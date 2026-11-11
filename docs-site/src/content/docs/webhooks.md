@@ -39,11 +39,13 @@ current state when you need to reconcile.
 
 ## Payload
 
-`POST` with a JSON body — the order's public shape plus three envelope fields:
+`POST` with a JSON body: the same `Order` object the API returns (see the
+API Reference) plus three envelope fields, `event`, `event_id` and
+`occurred_at`:
 
 ```json
 {
-  "order_number": "PG-7QK2M9X4RJ",
+  "order_number": "PG-7QK2M9X4RJ8T",
   "product_code": "MLMY-86",
   "player_id": "123456789",
   "server_id": "2201",

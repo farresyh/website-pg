@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Mechanical docs rules (docs/adr.md "How to use and maintain this log",
 // PRD §16 preamble). Catches the drift that docs audits kept finding by hand.
+// Also: nothing private reaches the public Reseller API docs (docs-site).
 // Run: node scripts/check-docs.mjs            (repo check, exit 1 on a finding)
 //      node scripts/check-docs.mjs --self-test
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
@@ -38,6 +39,29 @@ export function section16(prd) {
     details: nums(details, /^(\d+)\. \*\*/gm),
     closed: nums(closed, /^- \*\*(\d+)\*\* \d{4}-/gm),
   };
+}
+
+// docs.pekangame.space is read by outside developers. Its prose and the spec
+// (generated from PHP docblocks, so an internal comment can leak into it) must
+// never name a supplier, the platform's margin, an internal reference or the
+// infrastructure. A hit fails CI; reword the source, never this list.
+const PRIVATE_TERMS = /\b(digiflazz|gamevion|markup|cost_price|standard_selling_price|\w*profit|ADR-\d+|ORD-\d+|forge|horizon|kedairuncit|lwf)\b|159\.223\./gi;
+
+export function privateTerms(text) {
+  return [...new Set([...text.matchAll(PRIVATE_TERMS)].map((m) => m[0]))];
+}
+
+function checkPublicDocs(problems) {
+  const dir = 'docs-site/src/content/docs';
+  const files = [
+    ...readdirSync(join(ROOT, dir)).filter((f) => /\.mdx?$/.test(f)).map((f) => join(dir, f)),
+    'docs-site/public/openapi.json',
+    'docs-site/src/pages/llms.txt.ts',
+  ];
+  for (const rel of files) {
+    const hits = privateTerms(readFileSync(join(ROOT, rel), 'utf8'));
+    if (hits.length) problems.push(`${rel}: public docs name private terms: ${hits.join(', ')}`);
+  }
 }
 
 function checkAdrs(problems) {
@@ -88,6 +112,8 @@ function selfTest() {
   assert.equal(lastAddendum('### Addendum (2026-09-24) — x'), '2026-09-24');
   const s = section16('## Next up\n- **4** a\n- **9** b\n## Details\n4. **A**\n## Recently closed\n- **7** 2026-10-01: x\n## Parked by founder decision\n');
   assert.deepEqual(s, { next: [4, 9], details: [4], closed: [7] });
+  assert.deepEqual(privateTerms('Check the new price against your own margin.'), []);
+  assert.deepEqual(privateTerms('ADR-084: Digiflazz cost_price and platform_profit'), ['ADR-084', 'Digiflazz', 'cost_price', 'platform_profit']);
   console.log('check-docs self-test passed');
 }
 
@@ -97,6 +123,7 @@ else {
   checkAdrs(problems);
   checkLinks(problems);
   checkBacklog(problems);
+  checkPublicDocs(problems);
   for (const p of problems) console.error(`::error::${p}`);
   console.log(problems.length ? `${problems.length} docs problem(s)` : 'docs check passed');
   process.exit(problems.length ? 1 : 0);

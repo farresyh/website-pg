@@ -32,6 +32,25 @@ The version number on this documentation (shown in the API Reference) is the
 
 ## Changelog
 
+### 2026-11 — v1.6.1
+
+Documentation only; the API and the webhook did not change.
+
+- The OpenAPI spec now gives the order responses their real type: one shared
+  `Order` schema with the `delivery_status` and `payment_status` values and
+  `date-time` formats. Before, `POST /v1/orders` was typed as a string.
+- The spec now lists the response headers (`X-RateLimit-Limit`,
+  `X-RateLimit-Remaining`, `Retry-After`, `Idempotent-Replayed`) and example
+  request values. The spec is linked from [Introduction](/introduction/).
+- Example order numbers now have the real length (`PG-` and 12 characters).
+  Treat `order_number` as an opaque string.
+- New guidance: what to do while an order is `needs_review`
+  ([Your first order](/first-order/#order-status-values)), why two keys make
+  two orders, and a timeout for `POST /v1/orders`
+  ([Idempotency & retries](/idempotency/)).
+- "Test credentials" were never available; the docs no longer suggest them.
+- Adding balance is described from the partner portal only.
+
 ### 2026-11 — v1.6.0
 
 - A `failed` order is now refunded to your Purchase Balance **automatically**,
