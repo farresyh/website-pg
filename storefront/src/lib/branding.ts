@@ -53,6 +53,8 @@ const BrandingWireSchema = z.object({
   // ADR-131 decision 20: per domain, false only on a branded domain not yet approved for payments.
   // Optional so an older backend parses, and absent means payments are open.
   payments_enabled: z.boolean().optional(),
+  // ADR-140 decision 4: true only for the platform's own brand. Optional so an older backend parses; absent means false.
+  is_primary: z.boolean().optional(),
 });
 
 export interface Branding {
@@ -72,6 +74,8 @@ export interface Branding {
   footerGames: { id: number; name: string; slug: string }[];
   /** ADR-131: false hides nothing but the pay buttons; the server refuses the payment too. */
   paymentsEnabled: boolean;
+  /** ADR-140: the platform's own brand (one row, DB-enforced). Organization `alternateName` is its only. */
+  isPrimary: boolean;
 }
 
 const BRANDING_FALLBACK: Branding = {
@@ -89,6 +93,7 @@ const BRANDING_FALLBACK: Branding = {
   footerText: null,
   footerGames: [],
   paymentsEnabled: true,
+  isPrimary: false,
 };
 
 /**
@@ -119,6 +124,7 @@ export async function getBranding(): Promise<Branding> {
         footerText: wire.footer_text,
         footerGames: wire.footer_games,
         paymentsEnabled: wire.payments_enabled ?? true,
+        isPrimary: wire.is_primary ?? false,
       };
     },
     BRANDING_FALLBACK,

@@ -44,10 +44,7 @@ export default function GameSeoEditPage() {
     try {
       const updated = await updateGameSeo(gameId, {
         seo_title: game.seo_title || null,
-        seo_title_local: game.seo_title_local || null,
         seo_description: game.seo_description || null,
-        seo_description_local: game.seo_description_local || null,
-        seo_keywords: game.seo_keywords || null,
         seo_og_image: game.seo_og_image || null,
         schema_brand: game.schema_brand || null,
         schema_category: game.schema_category || null,
@@ -85,23 +82,13 @@ export default function GameSeoEditPage() {
             Leave blank to use the Meta Templates. Shown on every brand&apos;s storefront — use <code>{"{store_name}"}</code> (and <code>{"{game_name}"}</code>) rather than a store name.
           </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
+            <div className="sm:col-span-2">
               <Label htmlFor="seo_title">SEO title ({(game.seo_title ?? "").length}/70)</Label>
               <input
                 id="seo_title"
                 maxLength={70}
                 value={game.seo_title ?? ""}
                 onChange={(e) => setGame({ ...game, seo_title: e.target.value })}
-                className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:focus:border-brand-800"
-              />
-            </div>
-            <div>
-              <Label htmlFor="seo_title_local">SEO title (local) ({(game.seo_title_local ?? "").length}/70)</Label>
-              <input
-                id="seo_title_local"
-                maxLength={70}
-                value={game.seo_title_local ?? ""}
-                onChange={(e) => setGame({ ...game, seo_title_local: e.target.value })}
                 className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:focus:border-brand-800"
               />
             </div>
@@ -115,21 +102,6 @@ export default function GameSeoEditPage() {
                 onChange={(e) => setGame({ ...game, seo_description: e.target.value })}
                 className="w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
               />
-            </div>
-            <div className="sm:col-span-2">
-              <Label htmlFor="seo_description_local">SEO description (local) ({(game.seo_description_local ?? "").length}/160)</Label>
-              <textarea
-                id="seo_description_local"
-                maxLength={160}
-                rows={3}
-                value={game.seo_description_local ?? ""}
-                onChange={(e) => setGame({ ...game, seo_description_local: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <Label htmlFor="seo_keywords">Keywords</Label>
-              <Input id="seo_keywords" value={game.seo_keywords ?? ""} onChange={(e) => setGame({ ...game, seo_keywords: e.target.value })} />
             </div>
           </div>
         </div>

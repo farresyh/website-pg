@@ -7,13 +7,13 @@ import { faqFor } from "@/components/player-check/guides";
 import { getBranding } from "@/lib/branding";
 import { listPlayerCheckFamilies } from "@/lib/player-check";
 import { canonicalMetadata } from "@/lib/seo";
+import { pageMeta } from "@/lib/page-meta";
 
 export async function generateMetadata(_props: unknown, parent: ResolvingMetadata): Promise<Metadata> {
   const [branding, { indexable }] = await Promise.all([getBranding(), listPlayerCheckFamilies()]);
   return {
     ...(await canonicalMetadata("/check-id", parent)),
-    title: `Game ID Checker: Find Your Nickname & Region - ${branding.storeName}`,
-    description: `Check a game ID for free on ${branding.storeName}. See the account's nickname and the right store to top up before you pay.`,
+    ...pageMeta("check-id", branding.storeName),
     // ADR-123 decision 10: an affiliate brand's checker works but isn't indexed.
     robots: indexable ? undefined : { index: false, follow: true },
   };

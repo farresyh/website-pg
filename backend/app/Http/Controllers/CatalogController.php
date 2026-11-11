@@ -232,6 +232,9 @@ class CatalogController extends Controller
             'extra_field' => $game->validation_rules['extra_field'] ?? null,
             'player_validator_enabled' => $game->player_validator_enabled,
             'price_from_sen' => $cheapest,
+            // ADR-140 decision 4: the sitemap and llms.txt read the listing,
+            // and leave a noindex game out of both.
+            'no_index' => $game->no_index,
             // Cast to a plain string, never left as a Carbon instance:
             // this app's `database` cache store corrupts any raw
             // object nested in a cached value on the next read
@@ -279,10 +282,7 @@ class CatalogController extends Controller
             'delivery_mode' => $game->delivery_mode,
             'delivery_subtext' => $game->effectiveDeliverySubtext(),
             'seo_title' => $game->seo_title,
-            'seo_title_local' => $game->seo_title_local,
             'seo_description' => $game->seo_description,
-            'seo_description_local' => $game->seo_description_local,
-            'seo_keywords' => $game->seo_keywords,
             'seo_og_image' => $game->seo_og_image,
             'schema_brand' => $game->schema_brand,
             'schema_category' => $game->schema_category,

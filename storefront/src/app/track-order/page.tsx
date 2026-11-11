@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { canonicalMetadata } from "@/lib/seo";
+import { pageMeta } from "@/lib/page-meta";
 import type { Metadata, ResolvingMetadata } from "next";
 import SiteFooter from "@/components/layout/SiteFooter";
 import TrackOrderClient from "@/components/order/TrackOrderClient";
@@ -9,7 +10,7 @@ export async function generateMetadata(_props: unknown, parent: ResolvingMetadat
   const branding = await getBranding();
   return {
     ...(await canonicalMetadata("/track-order", parent)),
-    title: `Track Order - ${branding.storeName}`,
+    ...pageMeta("track-order", branding.storeName),
   };
 }
 
