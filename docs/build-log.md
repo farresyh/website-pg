@@ -2510,3 +2510,25 @@ Branch `docs/audit-2026-11-11`, into `staging`. The founder asked for a full aud
 - The first rebate ladder was saved at 18:55 UTC on 2026-11-09, which is 2026-11-10 in Malaysia; the docs use the Malaysia date.
 
 **For the founder (not docs), answered the same day:** item 108, `pajostore.com` was not on the Game ID Checker's Turnstile widget; the founder added it. Digiflazz's balance (IDR 4.73 million, under its IDR 10 million alert since 2026-11-10 16:10 UTC) is known to the founder. Item 161 closed: the ladder save had already sent the announcement to all three resellers' groups (checked read-only).
+
+## 2026-11-11 — SEO meta strategy built (ADR-140 PR 1)
+
+Branch `feature/seo-meta-strategy`, into `staging`. ADR-140 decisions 1–5; the build choices are in the ADR's PR 1 addendum. Not released.
+
+**Built:**
+- **Static page meta.** `storefront/src/lib/page-meta.ts` gives home, `about-us`, `terms`, `privacy`, `refund-policy`, `track-order`, `price-list` and `check-id` each its own title and description (`{store_name}` token; Malay with English gaming terms; no delivery-time or payment-method claim). The seven pages read it. An empty admin `default_meta_*` falls to the registry's home entry instead of the old hardcoded English sentence.
+- **Sitemap and `llms.txt`.** The rows are a pure function (`lib/sitemap-entries.ts`): static pages carry no `lastmod`, a game with no date has none, a `noindex` game is left out. `llms.txt` uses the same filter (`lib/indexable-games.ts`). The catalog index summary now carries `no_index`.
+- **Organization JSON-LD** gets `alternateName` ("Pekan Game") for the primary brand only; the branding payload carries `is_primary`.
+- **Dead fields out of the code:** `seo_title_local`, `seo_description_local`, `seo_keywords` leave `Game::$fillable`, `UpdateGameSeoRequest`, `CatalogController`, the admin screen and its type. The columns stay until a later release drops them.
+
+**Verified:**
+- Backend suite 3,901 passed (4 new in `Adr140SeoMetaStrategyTest`, each seen red for the right reason first). Storefront `npm test` 27 passed (17 new), admin 22; `tsc` and `eslint` clean in both; `next build` passed in both.
+- Throwaway backend (`APP_ENV=e2e`, sqlite in the scratchpad) with the storefront dev server, read with `curl`: six pages, six different descriptions (before: home, about-us, refund-policy and track-order shared one); the sitemap has no `lastmod` on static pages and a real one on a game; a game set `noindex` is in neither the sitemap nor `llms.txt`; the primary's Organization has `alternateName: "Pekan Game"`; an affiliate host shows its own name (`AcmeStore`) and origin and no `alternateName`.
+- Admin in a real browser (Playwright, throwaway admin): the three inputs are gone, the title field fills the row (900 px, same as the description), the save request carries only `seo_title`, `seo_description`, `seo_og_image`, `schema_brand`, `schema_category`, `no_index`, and the saved title is in the database. Throwaway servers, admin and sqlite file removed afterwards.
+
+**Gotchas:**
+- The storefront's `node --test` cannot resolve the `@/` alias, so every unit-tested piece lives in a dependency-free module that imports with a `.ts` extension.
+- Moving `noIndex` from `GameDetail` to `Game` made `tsc` find a hand-built `Game` in `JokiOrderForm.tsx`; fixed there.
+- A branch cut with `git switch -c <name> origin/staging` inherits `origin/staging` as its upstream, so a bare `git push` would aim at the protected branch; unset it right after cutting.
+
+**Not seen live:** anything on prod. The founder still fills the primary's `default_meta_title` and `default_meta_description` in the admin after release (record before and after here), and the three columns drop in a later PR. Next: PR 2, the per-game content (ADR-140 decisions 6–12).

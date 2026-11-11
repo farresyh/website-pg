@@ -51,3 +51,14 @@
 - **Affiliate storefronts do not change** beyond the unique static meta and the honest `lastmod`. If an affiliate's own Search Console ever shows its pages outranking `pekangame.com`, ADR-120 decision 1's "index my storefront" toggle is still the planned response.
 - **Not verifiable from here:** whether Google will crawl the game pages after this. The checkpoints in decision 13 are how we find out; if the pages are still undiscovered at +8 weeks with content published, the cause is outside the site and the next step is outreach, not more markup.
 - **Admin screen and `lang="ms"` are untested until built;** the PR 2 verification needs a live admin screenshot and `getComputedStyle`, not code reading (AGENTS.md step 6).
+
+### 2026-11-11 addendum — PR 1 build notes (decisions 1–5)
+
+PR 1 is built on `feature/seo-meta-strategy`. Where the build had to choose, it chose as follows:
+
+- **Decision 4's "primary brand" needed a source.** `GET /api/catalog/branding` now carries `is_primary` (`(bool) $affiliate->is_primary`, optional on the storefront wire so an older backend parses as false). `alternateName` is `spacedBrandName(storeName)` in `lib/brand-name.ts` ("PekanGame" becomes "Pekan Game"; null when the name has no CamelCase boundary).
+- **Decision 1's "remove the hardcoded English fallbacks" is read as "replace them".** An empty `default_meta_title` or `default_meta_description` now falls to the registry's `home` entry, not to nothing, so the home page never ships without a description while the founder has not filled the two fields. The admin value always wins.
+- **`price-list` and `check-id` keep their English wording**, moved into the registry unchanged: the first is for resellers, the second already earns impressions for English queries. Their titles and descriptions were unique before.
+- **The sitemap rule also governs `llms.txt`.** Decision 4 named only the sitemap; both now read one filter, `indexableGames()`, so a `noindex` game is in neither. The index summary carries `no_index` for every brand (not a secret).
+- **A game's `lastmod` is still `created_at` in PR 1**, and a game with no date has none (it used to get "now"). The publish date arrives with `content_published_at` in PR 2. Likewise the `content_summary` step of decision 3's description chain, which needs the column; PR 1 leaves the chain as ADR-120 set it.
+- **Decision 5, release 1:** the three fields are out of `Game::$fillable`, `UpdateGameSeoRequest`, `CatalogController`, the admin screen and its type. The columns still exist, so `GET /api/seo/games/{id}` (admin) still returns them inside the model until the drop release. The static-page meta logic and the sitemap rows live in dependency-free modules (`page-meta.ts`, `sitemap-entries.ts`, `indexable-games.ts`) because the storefront's `node --test` cannot resolve the `@/` alias.
