@@ -23,10 +23,7 @@ class UpdateGameSeoRequest extends FormRequest
     {
         return [
             'seo_title' => ['nullable', 'string', 'max:70'],
-            'seo_title_local' => ['nullable', 'string', 'max:70'],
             'seo_description' => ['nullable', 'string', 'max:160'],
-            'seo_description_local' => ['nullable', 'string', 'max:160'],
-            'seo_keywords' => ['nullable', 'string', 'max:500'],
             'seo_og_image' => ['nullable', 'string', 'max:2048'],
             'schema_brand' => ['nullable', 'string', 'max:255'],
             'schema_category' => ['nullable', 'string', 'max:255'],

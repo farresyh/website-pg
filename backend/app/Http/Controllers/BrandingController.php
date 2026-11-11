@@ -73,6 +73,9 @@ class BrandingController extends Controller
                     // ADR-120 decision 2. Busted on a domain change by
                     // AffiliateDomainService::propagateChange().
                     'canonical_origin' => $affiliate->canonicalOrigin(),
+                    // ADR-140 decision 4: Organization `alternateName` is the
+                    // primary brand's only. `is_primary` is DB-enforced unique.
+                    'is_primary' => (bool) $affiliate->is_primary,
                     'description' => $branding?->description,
                     // ADR-060 PR-6: derived from `logo_path` via the
                     // gallery disk — a plain string URL or null, safe to
