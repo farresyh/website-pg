@@ -25,71 +25,48 @@ class SeoController extends Controller
     {
         $affiliate = Affiliate::primary();
 
-        $totalGames = Game::query()->where('is_active', true)->count();
-        $missingTitle = Game::query()->where('is_active', true)->whereNull('seo_title')->count();
-        $missingDescription = Game::query()->where('is_active', true)->whereNull('seo_description')->count();
-        $missingOgImage = Game::query()->where('is_active', true)->whereNull('seo_og_image')->count();
+        // ADR-140 decision 8: one status over the tracked games (active, not noindex),
+        // the set the sitemap lists. The per-game SEO overrides are exceptions and
+        // never count as "missing"; this replaces the old title/description/OG-image
+        // recommendations, which told the founder to fill what ADR-120 left blank.
+        $byStatus = Game::query()->tracked()
+            ->get(['id', 'content_summary', 'content_about', 'content_faq', 'content_published_at'])
+            ->countBy(fn (Game $game) => $game->contentStatus());
+        $published = $byStatus->get('published', 0);
+        $draft = $byStatus->get('draft', 0);
+        $empty = $byStatus->get('empty', 0);
+        $total = $published + $draft + $empty;
         $redirectCount = Redirect::query()->where('affiliate_id', $affiliate->id)->count();
 
         $recommendations = [];
-        if ($missingTitle > 0) {
+        if ($empty > 0) {
             $recommendations[] = [
                 'severity' => 'warning',
-                'message' => "{$missingTitle} active game(s) missing an SEO title.",
-                // Not filter=incomplete: that status means "one of
-                // title/description set, one missing" — a fresh/empty
-                // catalog (both fields null on every game) is
-                // filter=missing instead, and a title-only or
-                // description-only gap doesn't map onto either status
-                // cleanly. Link to the unfiltered list — status badges
-                // there make the actual gap visible per row.
-                'link' => '/admin/seo/games',
+                'message' => "{$empty} active game(s) have no page content.",
+                'link' => '/admin/seo/games?filter=empty',
             ];
         }
-        if ($missingDescription > 0) {
-            $recommendations[] = [
-                'severity' => 'warning',
-                'message' => "{$missingDescription} active game(s) missing an SEO description.",
-                // Not filter=incomplete: that status means "one of
-                // title/description set, one missing" — a fresh/empty
-                // catalog (both fields null on every game) is
-                // filter=missing instead, and a title-only or
-                // description-only gap doesn't map onto either status
-                // cleanly. Link to the unfiltered list — status badges
-                // there make the actual gap visible per row.
-                'link' => '/admin/seo/games',
-            ];
-        }
-        if ($missingOgImage > 0) {
+        if ($draft > 0) {
             $recommendations[] = [
                 'severity' => 'info',
-                'message' => "{$missingOgImage} active game(s) missing an OG image.",
-                // Not filter=incomplete: that status means "one of
-                // title/description set, one missing" — a fresh/empty
-                // catalog (both fields null on every game) is
-                // filter=missing instead, and a title-only or
-                // description-only gap doesn't map onto either status
-                // cleanly. Link to the unfiltered list — status badges
-                // there make the actual gap visible per row.
-                'link' => '/admin/seo/games',
+                'message' => "{$draft} game(s) have a draft that is not published.",
+                'link' => '/admin/seo/games?filter=draft',
             ];
         }
 
         return response()->json([
             'games' => [
-                'total' => $totalGames,
-                'complete' => $totalGames - max($missingTitle, $missingDescription, $missingOgImage),
-                'missing_title' => $missingTitle,
-                'missing_description' => $missingDescription,
-                'missing_og_image' => $missingOgImage,
+                'total' => $total,
+                'published' => $published,
+                'draft' => $draft,
+                'empty' => $empty,
             ],
             'redirects' => ['total' => $redirectCount],
             'sitemap_url' => '/sitemap.xml',
-            // addendum 2 decision 16: a status line, not a setting — 6
-            // static storefront routes (home/terms/privacy/about-us/
-            // refund-policy/track-order) + one per active game, mirroring
-            // storefront's own app/sitemap.ts exactly.
-            'sitemap_url_count' => 6 + $totalGames,
+            // addendum 2 decision 16: a status line, not a setting — the 6 static
+            // routes plus one per tracked game. The optional pages (price list,
+            // Game ID Checker, joki) depend on the brand and are not counted here.
+            'sitemap_url_count' => 6 + $total,
             'recommendations' => $recommendations,
         ]);
     }

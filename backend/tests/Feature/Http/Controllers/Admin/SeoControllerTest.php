@@ -33,46 +33,69 @@ class SeoControllerTest extends TestCase
         ], $overrides));
     }
 
-    public function test_overview_counts_missing_seo_fields_across_active_games_only(): void
+    private function tracked(string $slug, string $status): Game
+    {
+        return $this->game($slug, match ($status) {
+            'published' => ['content_summary' => 'Ringkasan', 'content_published_at' => '2026-11-12 03:00:00'],
+            'draft' => ['content_summary' => 'Ringkasan'],
+            default => [],
+        });
+    }
+
+    // ADR-140 decision 8: one status (empty, draft, published) over the "tracked"
+    // games: active and not noindex, the set the sitemap lists.
+    public function test_overview_counts_the_content_status_of_tracked_games_only(): void
     {
         $this->actingAsSuperAdmin();
         $this->primaryAffiliate();
-        $this->game('complete-game', ['seo_title' => 'Title', 'seo_description' => 'Desc']);
-        $this->game('missing-title', ['seo_title' => null, 'seo_description' => 'Desc']);
-        $this->game('missing-everything', ['seo_title' => null, 'seo_description' => null]);
-        $this->game('inactive-game', ['is_active' => false, 'seo_title' => null, 'seo_description' => null]);
+        $this->tracked('published-game', 'published');
+        $this->tracked('draft-game', 'draft');
+        $this->tracked('empty-game', 'empty');
+        $this->game('inactive-game', ['is_active' => false]);
+        $this->game('noindex-game', ['no_index' => true]);
 
         $response = $this->getJson('/api/seo/overview');
 
         $response->assertOk();
         $this->assertSame(3, $response->json('games.total'));
-        $this->assertSame(2, $response->json('games.missing_title'));
-        $this->assertSame(1, $response->json('games.missing_description'));
+        $this->assertSame(1, $response->json('games.published'));
+        $this->assertSame(1, $response->json('games.draft'));
+        $this->assertSame(1, $response->json('games.empty'));
     }
 
-    public function test_overview_recommends_nothing_when_every_active_game_is_complete(): void
+    public function test_overview_asks_for_content_not_for_the_seo_overrides(): void
     {
         $this->actingAsSuperAdmin();
         $this->primaryAffiliate();
-        $this->game('complete-game', ['seo_title' => 'Title', 'seo_description' => 'Desc', 'seo_og_image' => 'https://example.com/img.png']);
+        $this->tracked('published-game', 'published');
+        $this->tracked('empty-game', 'empty');
 
-        $response = $this->getJson('/api/seo/overview');
+        $recommendations = $this->getJson('/api/seo/overview')->assertOk()->json('recommendations');
 
-        $response->assertOk();
-        $this->assertSame([], $response->json('recommendations'));
+        $this->assertCount(1, $recommendations);
+        $this->assertSame('/admin/seo/games?filter=empty', $recommendations[0]['link']);
+        $this->assertStringContainsString('no page content', $recommendations[0]['message']);
+        $this->assertStringNotContainsString('SEO title', $recommendations[0]['message']);
     }
 
-    public function test_overview_sitemap_url_count_is_six_static_pages_plus_active_games(): void
+    public function test_overview_recommends_nothing_when_every_tracked_game_is_published(): void
+    {
+        $this->actingAsSuperAdmin();
+        $this->primaryAffiliate();
+        $this->tracked('published-game', 'published');
+
+        $this->getJson('/api/seo/overview')->assertOk()->assertJsonPath('recommendations', []);
+    }
+
+    public function test_overview_sitemap_url_count_is_six_static_pages_plus_tracked_games(): void
     {
         $this->actingAsSuperAdmin();
         $this->primaryAffiliate();
         $this->game('game-one');
         $this->game('game-two');
+        $this->game('noindex-game', ['no_index' => true]);
 
-        $response = $this->getJson('/api/seo/overview');
-
-        $response->assertOk();
-        $this->assertSame(8, $response->json('sitemap_url_count'));
+        $this->getJson('/api/seo/overview')->assertOk()->assertJsonPath('sitemap_url_count', 8);
     }
 
     public function test_settings_creates_a_default_row_on_first_access(): void
