@@ -2554,3 +2554,42 @@ Branch `feature/game-content`, into `staging`. ADR-140 decisions 6–12; the bui
 - Pint rewrites test imports (`fully_qualified_strict_types`); run it on a new test file.
 
 **Not seen:** the section's place relative to the reviews (the throwaway DB has no reviews; the order is the JSX order: checkout, reviews, About, footer), and anything on prod. Whether prod has the revalidation webhook set is not checked. **For the founder after release:** fill the home meta in Admin → SEO → Global Settings, then the content for each game (the drafts come from Claude for review), request indexing for five pages, and put links to game pages on the brand's social profiles. The three dead `seo_*` columns drop in a later PR once PR 1 is on `main`.
+
+## 2026-11-11 — Release #783: ADR-140 SEO meta strategy and per-game content, and the first content published
+
+The founder asked for it. `staging` → `main`, merge `dac033e1` at 11:39 UTC, carrying #778–#782 (the docs audit, ADR-140, PR 1 and PR 2). One additive migration.
+
+**Pre-release checks (production, read-only):** 5 merges and 1 migration in the delta; production had no other pending migration; `games` held 40 rows (four nullable columns are instant); `/api/health` 200; box release `82558237`; 11:22 UTC, away from the :00/:30 price-sync window.
+
+**CI and deploy:** the release PR was green on `55a324c4`; the `main` run `43013753500` was green in every job including `deploy`; the four Vercel deployments succeeded.
+
+**Checked after release (read-only):**
+- Box release `82696074`; migration `2026_11_15_110000` ran (batch 70); the four `content_*` columns exist; 40 games, 0 published at that moment; `/api/health` ok.
+- Live: the static pages carry the registry titles; home, about-us, refund-policy and track-order have four different descriptions (before: one); the sitemap has 48 URLs, none of the 11 static pages has a `lastmod` and all 37 games have a date; a game page was unchanged (no About yet); FixFast's titles carry its own name.
+
+**Seen on prod:**
+- Organization JSON-LD lacked `alternateName` ("Pekan Game") for about 27 minutes although the API returned `is_primary: true`. Next's Data Cache keeps the old branding payload across a deploy; the founder's first admin save (Global SEO Settings) purged it and it appeared. Not a bug.
+- The storefront was fresh within the same minute of every publish, so the revalidation webhook is set on production (ADR-140's "check on prod at release" is answered).
+
+**Admin actions (the founder; Claude drove the founder's Chrome session where noted):**
+- **Global SEO Settings → Default Meta.** Before: title and description empty (the registry text was served). After: description `Top up diamond Mobile Legends, UC PUBG Mobile, Free Fire dan game popular lain di {store_name}. Pilih game, masukkan ID dan bayar terus tanpa akaun.` and title `{store_name} - Top Up Game Murah di Malaysia | {store_name}`, which prints the brand twice ("PekanGame - Top Up Game Murah di Malaysia | PekanGame") and was still so at the end of the day. Meta Templates are unchanged: the game template still says "harga diskaun ahli" and "saat demi saat", and it also shows for FixFast and PajoStore, which have no Membership.
+- **Content, drafts.** 36 games got drafts: Mobile Legends Malaysia typed into the form, the other 35 through the admin's own `PUT /api/seo/games/{id}/content` from the founder's logged-in session (`published: false`, each game read back afterwards); every stored text equalled the reviewed draft by hash. Zenless Zone Zero was skipped (0 packages); Call of Duty Mobile, Joki MLBB and Roblox stayed empty. The region siblings were 0.80 to 0.96 similar, so only the three family pages were to be published. At the founder's request two FAQ answers (time and failed order) were changed on every game, 68 answers, read-modify-write with the publish state kept; PUBG's own "why longer" FAQ was left because it states manual delivery.
+- **Content, published.** The founder published Mobile Legends Malaysia, Aniimo, Arena Breakout and Blood Strike; on the founder's word Claude published PUBG Mobile Global, Genshin Impact, Honkai: Star Rail, Wuthering Waves, Honor of Kings, Magic Chess: Go Go and Free Fire Malaysia (13:15 UTC); the founder fixed and published Kingshot, Pokémon UNITE, Rainbow Six Mobile, Racing Master, Gangstar Mirage City, Where Winds Meet and Valorant Malaysia. 18 games are live. The other drafts (Mobile Legends 9 regions, Free Fire 5, Valorant 4) stay drafts on purpose.
+- **Verified live for all 18:** the section and `lang="ms"`; `FAQPage` questions equal the rendered and the API questions; the meta description and the `llms.txt` line come from the summary; the sitemap `lastmod` is the publish date. FixFast, OhahaStore and PajoStore carry nothing on any of the 18; the unpublished pages carry nothing.
+- **Request Indexing** in Search Console for five pages (Mobile Legends Malaysia, Free Fire Malaysia, PUBG Mobile, Genshin Impact, Honor of Kings) through the founder's Chrome; Honor of Kings needed one retry after a Google-side error.
+
+**What went wrong:** the founder published Aniimo with the "belum disahkan" placeholder sentence in its FAQ, and it was live from about 13:06 to 13:28 UTC. Claude's pre-publish scan covered only the sixteen games it was about to change and its verification script had no placeholder check, so it was found only by the next full scan; the founder removed the sentence. Rule: scan every published game for placeholder text, not only the ones being changed.
+
+**Gotchas:**
+- `/api/csrf-token` is rate limited (429). A loop that fetched one token per write got a 419 after 29 writes; fetch one token and reuse it.
+- In Search Console the Request indexing button must be clicked by element reference on a freshly loaded inspection; one click by coordinate showed no dialog. Each request waits about a minute for the live test.
+
+**Baseline for the checks (2026-11-11):** 10 pages indexed, 41 "Discovered – currently not indexed", no game page crawled, Crawl Stats HTML 9% and Discovery 2%, 0 external links, 177 clicks (3-month view). Checks on 25 Nov, 9 Dec and 6 Jan 2027.
+
+**Open:**
+- the founder's backlinks from the brand's social profiles to game pages (the likeliest lever; external links are 0);
+- the home title's doubled brand, and the game template's "harga diskaun ahli" on brands without Membership;
+- the Aniimo pack named "Lumin Cystals" (an admin data typo);
+- Zenless Zone Zero's content once it has packages;
+- the FAQ says 1-10 minutes while the page header says "Average Delivery: 1-5 Minutes" (editable per game in the admin);
+- the three dead `seo_*` columns drop in a PR now that PR 1 is on `main`.

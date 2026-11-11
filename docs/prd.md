@@ -724,7 +724,11 @@ through a Purchase Balance top-up. The history of the switches is in the build-l
 Maybank2u) and DuitNow QR (`PG-L4RCBELJ9RE3`, RM25.70) each completed with
 real money and were delivered.
 
-**Latest release 2026-11-10 (`staging`→`main`, PR #777, founder's go-ahead).** Merge `b1c2b459`, box release `82558237`, carrying #770–#776: the report date bounds that fix the 9 Nov memory exhaustion and the Symfony security patches (#771); price-sync and backup status broadcasts on the `default` lane, Horizon `waits` keyed on `redis-long`, and failed broadcasts logged on any queue (#774, ADR-047 addendum); the CS Merge modal fixes (#772, #775); storefront dark readability (popup scrim, payment logos on a white plate, #773, #775); docs (#770, #776). No migration, no env change. Recorded in `build-log.md`.
+**Latest release 2026-11-11 (`staging`→`main`, PR #783, founder's go-ahead).** Merge `dac033e1`, box release `82696074`, carrying #778–#782: the docs audit and `docs-check` (#778, #779), ADR-140 (#780) and its two builds, the SEO meta strategy (#781) and the per-game content with its admin editor (#782). One additive migration (`2026_11_15_110000`, four nullable `games` columns, batch 70), no env change. Recorded in `build-log.md`.
+- **Checked after release:** box on the new release, the migration ran, `/api/health` ok, Vercel production for all four apps, the static page titles and descriptions new, no `lastmod` on static sitemap pages.
+- **Since release (the founder's admin actions):** the home default meta description set; per-game content entered as drafts and 18 games published (all their pages checked live, no content on any other brand); Request Indexing sent for five game pages.
+
+**Previous release 2026-11-10 (`staging`→`main`, PR #777, founder's go-ahead).** Merge `b1c2b459`, box release `82558237`, carrying #770–#776: the report date bounds that fix the 9 Nov memory exhaustion and the Symfony security patches (#771); price-sync and backup status broadcasts on the `default` lane, Horizon `waits` keyed on `redis-long`, and failed broadcasts logged on any queue (#774, ADR-047 addendum); the CS Merge modal fixes (#772, #775); storefront dark readability (popup scrim, payment logos on a white plate, #773, #775); docs (#770, #776). No migration, no env change. Recorded in `build-log.md`.
 - **Checked after release:** box on the new release, `/api/health` ok (after a two-minute Horizon restart that waited for the 07:00 price sync), every supervisor running, the new waits keys and broadcast lane live, 0 paid orders in flight, Vercel production for admin, storefront and portal on that commit.
 - **Earlier the same day:** release #769 (ADR-139 reseller rebate, Bumblebee Dark v3); the first rebate ladder was saved (effective 2026-12-01).
 
@@ -732,6 +736,7 @@ real money and were delivered.
 - the first affiliate auto-payout ticket (ADR-132): due 2026-12-01 if PajoStore's payable (balance less the tier-fee reserve) is at least RM10; it is the first affiliate with bank details;
 - the first rebate month and claim (ADR-139, from 2026-12-01);
 - a step-up save by an MFA admin (ADR-131);
+- Google crawling the new game pages (ADR-140; checks on 25 Nov, 9 Dec and 6 Jan 2027, §16 item 178);
 - a KOL link in a real TikTok or Instagram browser (auto-apply, the saved note, the bank logos), and the membership page on a real phone;
 - Approve all's cache forget on Redis (ADR-138): a held row was approved one at a time on 2026-11-07, not yet through Approve all;
 - the Price Sync card showing "running" during a sync, and the Horizon long-wait email no longer arriving (#774).
@@ -788,7 +793,7 @@ the chronology are in `docs/build-log.md`, the *why* in `docs/adr.md`.
 | Reviews (REV-1..5) | ✅ Live — guest submit gated on Delivered, admin approve/reject/bulk, + public display (homepage marquee + per-game PDP section, brand-scoped). Released 2026-11-04 (#684): a game with only star-only reviews shows its score badge, and the marquee loops with no blank strip at any review count (ADR-082 2026-11-03 addendum) | ADR-053, 082 |
 | Backups (BAK-1..5) | ✅ Live on Cloudflare R2 (`pekangame-backups`, private): full DB dump except `player_validations`, 7d/4w/6m retention, nightly at 02:07. **Encrypted only from 2026-10-22:** `BACKUP_ARCHIVE_PASSWORD` was unset from go-live until the founder set it on 2026-10-22, so every archive before then is a plain zip in the private bucket (deleted 2026-10-25, §16 item 96). Fail-closed encryption and the OpenWA source (ADR-039 2026-10-22 addendum) are live since release #526 (2026-10-22); OpenWA runs nightly at 19:37 with a passing restore test since 2026-10-22; the password-manager copy of the password decrypted the 2026-10-25 database archive (drill, 2026-10-25, §16 item 96). **Restore test verified again 2026-10-15** (run #47, `restore_test_passed = 1`, 72s, after release #449); nightly runs 2026-10-01..15 had failed (§16 item 97, closed). Fixed in code on 2026-10-14. The fix adds one restore path shared by the nightly test and a new `app:restore-backup` command; restores go only into an empty database; DEFINER clauses are dropped on restore; verification is real (no missing table, no pending migration); 300s timeout on `redis-long`; and killed runs close themselves. Released 2026-10-15 (#441, then the fixed-name follow-up #442 via #449) with the ADR-117 exact-name grant. Earlier history: the 2026-09-14 GTID fix, build-log-archive | ADR-039, ADR-095, ADR-117 |
 | Image Gallery (IMG-1..2) | 🟢 Live in prod on Cloudflare R2 — upload/grid/search/copy-URL/delete, WebP-at-upload (2000px cap, reuses `ImageIngestService`) + delete referential-safety warning (live since #571, 2026-10-26, from #560: it also lists Joki rank icons, a brand's default OG image and Game ID Checker images, every `ImageUrlInput` consumer). `GALLERY_DISK=r2_gallery`/`BACKUP_DISK=r2_backups` live since 2026-09-14; every existing gallery/logo/favicon file migrated + verified 200 on `cdn.pekangame.space`. In-form picker (`ImageUrlInput`, live via #406, 2026-10-12) on Edit Game, Hero Slide and the two SEO OG-image fields; the URL stays a plain text field | ADR-095 |
-| SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage. **ADR-120 (live 2026-10-08):** tokens in every SEO field, per-brand canonical origin (canonical/sitemap/robots/llms/JSON-LD), all packages in HTML, Product `offers` + `aggregateRating`, fact line, admin FAQ + `FAQPage` Released 2026-11-04 (#684): the default OG image is per brand, so PekanGame's never shows on an affiliate storefront (ADR-060 2026-11-03 addendum); PekanGame's is set on prod, the affiliates have none (checked 2026-11-04; an affiliate editor is §16 item 160). **ADR-140 PR 1 (meta strategy) built, not released:** a unique title and description per static page from one registry, honest sitemap `lastmod` with `noindex` games left out of the sitemap and `llms.txt`, Organization `alternateName` for the primary brand, three dead `seo_*` fields out of the code. **PR 2 (per-game content) built, not released:** four `content_*` columns, a content status (empty, draft, published) replacing `seo_status`, About + FAQ under the reviews on the primary brand only, the summary in the meta description, `llms.txt`, Product JSON-LD and the sitemap `lastmod`, and the rebuilt Admin → SEO → Games → [game] editor. | ADR-029, ADR-042, ADR-120, ADR-140 |
+| SEO (SEO-1..7) | ✅ Live — per-brand settings, meta templates, redirects (via `proxy.ts`), scripts, crawler rules, JSON-LD, native robots/sitemap/llms.txt. Full backend test coverage. **ADR-120 (live 2026-10-08):** tokens in every SEO field, per-brand canonical origin (canonical/sitemap/robots/llms/JSON-LD), all packages in HTML, Product `offers` + `aggregateRating`, fact line, admin FAQ + `FAQPage` Released 2026-11-04 (#684): the default OG image is per brand, so PekanGame's never shows on an affiliate storefront (ADR-060 2026-11-03 addendum); PekanGame's is set on prod, the affiliates have none (checked 2026-11-04; an affiliate editor is §16 item 160). **ADR-140 released 2026-11-11 (#783):** PR 1, the meta strategy: a unique title and description per static page from one registry, an honest sitemap `lastmod` with `noindex` games left out of the sitemap and `llms.txt`, Organization `alternateName` for the primary brand, three dead `seo_*` fields out of the code (their columns drop in a later PR). PR 2, the per-game content: four `content_*` columns, a content status (empty, draft, published) replacing `seo_status`, About + FAQ under the reviews on the primary brand only, the summary in the meta description, `llms.txt`, Product JSON-LD and the sitemap `lastmod`, and the rebuilt Admin → SEO → Games → [game] editor. Content is published per game in the admin; Google has not yet crawled the game pages (§16 item 178). | ADR-029, ADR-042, ADR-120, ADR-140 |
 | Settings (SET-1..11) | ✅ Live — `/admin/settings` (branding / footer / platform), HTML sanitization, maintenance mode. SET-7/11 via the Payment Methods tool. SET-9 (Telegram) dropped and its fields removed (live via #406, 2026-10-12). Logo + favicon upload for the primary brand added (ADR-089) — previously only the affiliate portal had this. A re-upload shows at once (`?v=` on the URL, #409, live via #416; founder-checked 2026-10-13). **2026-10-22:** a fourth legal page, Refund Policy (`/refund-policy`, edited beside Terms/Privacy/About Us), for CHIP's merchant review, live via #528 **2026-10-29 (ADR-131, via #599):** a Purchase Balance tab: the limits (step-up) and the company details a receipt prints. | ADR-028, 089, 131 |
 | Developer Tools (DEV-1..2) | ✅ Live — `/middleware/developer-tools`, all 5 adapter methods, typed-DTO editor, dry-run default. Same screen as MUI-11 | ADR-054 |
 | Blacklist / Fraud (FRAUD-1..4) | ✅ Live — `BlacklistService` + `CheckoutVelocityGuard` wired into checkout; `/admin/blacklist` screen. `foundation-security.md` §4 fully checked | ADR-007 |
@@ -839,7 +844,7 @@ feature.** Every open item, sorted by what it needs to finish. Re-verify
 before building.
 
 **A. Buildable now: code, no new design**
-- **178** SEO meta strategy and per-game "About this game" content (ADR-140, founder, 2026-11-11). Two PRs: PR 1 meta strategy (built), PR 2 game content (built on `feature/game-content`). Details below.
+- **178** SEO meta strategy and per-game "About this game" content (ADR-140, founder, 2026-11-11). Built and released in #783. Open: the founder's backlinks, the +2/+4/+8-week Search Console checks, and the PR that drops three dead columns. Details below.
 
 **B. Needs a short grill / ADR addendum first**
 - **165** KOL fee as a share of profit (needs an ADR-118 addendum, money-critical). Until built, pay such a KOL as "Not a KOL fee". Details below.
@@ -1114,17 +1119,24 @@ before building.
 
 178. **SEO meta strategy and per-game "About this game" content** (founder,
      2026-11-11; [ADR-140](./adr/ADR-140-seo-meta-strategy-and-game-content.md)).
-     Why: Search Console shows 0 of 37 game pages ever crawled, 0 external links,
-     and the pages differ only by name. PR 1 (merged to `staging` as #781; build-log 2026-11-11): one registry for static page meta, a
-     vocabulary rule, the game meta description chain, an honest sitemap
-     (`lastmod`, `no_index` games left out), `alternateName`, and the three dead
-     `seo_*` fields removed from the code (a small PR drops the three columns once PR 1 is on `main`, expand/contract). PR 2 (built on `feature/game-content`; build-log 2026-11-11): four
-     `content_*` columns on `games`, the status that replaces `seo_status`, the
-     section on `/order/[slug]`, `llms.txt` and `FAQPage`, primary brand and
-     published only, rebuilt Admin → SEO → Games → [game] screen. Then the
-     founder fills `default_meta_*`, enters the reviewed drafts in family
-     batches, requests indexing for five pages, and checks +2/+4/+8 weeks.
-     Closes after the +8-week check is in `docs/build-log.md`.
+     Why: Search Console showed 0 of 37 game pages ever crawled and 0 external
+     links, and the pages differed only by name. PR 1 (meta strategy, #781) and
+     PR 2 (per-game content and the admin editor, #782) were released in #783 on
+     2026-11-11; the content was entered and published per game in the admin the
+     same day (what, when and the before/after: build-log 2026-11-11). Open:
+     (1) **founder:** backlinks from the brand's social profiles to game pages;
+     the home default title prints the brand twice (`… | {store_name}`); the
+     game Meta Template's "harga diskaun ahli" also shows on brands without
+     Membership (FixFast, PajoStore); the Aniimo pack "Lumin Cystals" typo;
+     Zenless Zone Zero's content once it has packages.
+     (2) **Claude:** a small PR drops `seo_title_local`, `seo_description_local`
+     and `seo_keywords` from `games` (PR 1 is on `main`, so the contract release
+     is allowed) and fixes the Game SEO list's stale "keywords" subtitle.
+     (3) **Checks** against the 2026-11-11 baseline (10 indexed, 41 Discovered, no
+     game page crawled, Discovery 2%, 0 external links) on 25 Nov, 9 Dec and
+     6 Jan 2027: a game's "Last crawled" no longer N/A, Discovered falling,
+     Discovery % rising, external links above 0. Closes after the +8-week check
+     is in `docs/build-log.md`.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-28, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
