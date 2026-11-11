@@ -844,7 +844,7 @@ feature.** Every open item, sorted by what it needs to finish. Re-verify
 before building.
 
 **A. Buildable now: code, no new design**
-- **178** SEO meta strategy and per-game "About this game" content (ADR-140, founder, 2026-11-11). Built and released in #783. Open: the founder's backlinks, the +2/+4/+8-week Search Console checks, and the PR that drops three dead columns. Details below.
+- **178** SEO meta strategy and per-game "About this game" content (ADR-140, founder, 2026-11-11). Built and released in #783. Open: the founder's backlinks, the +2/+4/+8-week Search Console checks, and the release that drops three dead columns (built, not released). Details below.
 
 **B. Needs a short grill / ADR addendum first**
 - **165** KOL fee as a share of profit (needs an ADR-118 addendum, money-critical). Until built, pay such a KOL as "Not a KOL fee". Details below.
@@ -1129,9 +1129,11 @@ before building.
      game Meta Template's "harga diskaun ahli" also shows on brands without
      Membership (FixFast, PajoStore); the Aniimo pack "Lumin Cystals" typo;
      Zenless Zone Zero's content once it has packages.
-     (2) **Claude:** a small PR drops `seo_title_local`, `seo_description_local`
-     and `seo_keywords` from `games` (PR 1 is on `main`, so the contract release
-     is allowed) and fixes the Game SEO list's stale "keywords" subtitle.
+     (2) **Dead columns:** built on `feature/drop-dead-seo-columns` (migration
+     `2026_11_16_100000` drops `seo_title_local`, `seo_description_local` and
+     `seo_keywords` from `games`; the Game SEO list's stale "keywords" subtitle is
+     fixed). It reaches production with the next release; this part closes when
+     it is on prod and recorded in the build-log.
      (3) **Checks** against the 2026-11-11 baseline (10 indexed, 41 Discovered, no
      game page crawled, Discovery 2%, 0 external links) on 25 Nov, 9 Dec and
      6 Jan 2027: a game's "Last crawled" no longer N/A, Discovered falling,

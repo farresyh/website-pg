@@ -2593,3 +2593,18 @@ The founder asked for it. `staging` → `main`, merge `dac033e1` at 11:39 UTC, c
 - Zenless Zone Zero's content once it has packages;
 - the FAQ says 1-10 minutes while the page header says "Average Delivery: 1-5 Minutes" (editable per game in the admin);
 - the three dead `seo_*` columns drop in a PR now that PR 1 is on `main`.
+
+## 2026-11-11 — The three dead `seo_*` columns dropped (ADR-140 decision 5, contract release)
+
+Branch `feature/drop-dead-seo-columns`, into `staging`, stacked on the release record (#784). Not released.
+
+**What:** migration `2026_11_16_100000_drop_dead_seo_columns_from_games_table` drops `seo_title_local`, `seo_description_local` and `seo_keywords` from `games`; its `down()` restores the shape, not the data. PR 1 (#781) had already stopped every read and write of them, and it has been on `main` since release #783, so no running code touches them. The Game SEO list's subtitle no longer says "keywords". Nothing visible changes in the admin: the three inputs went with PR 1.
+
+**Production before the drop (read-only, 2026-11-11):** 40 games; `seo_title_local` and `seo_description_local` filled on 38 of them with **one** distinct value each (the seed template with unreplaced `{game_name}` tokens); `seo_keywords` filled on 0; no database view and no index references any of the three. So nothing of value is lost.
+
+**Verified:**
+- Backend suite 3,920 passed. A new schema test (`Adr140DropDeadSeoColumnsTest`, seen red first) and the ADR-140 tests: 21 passed on sqlite; the schema test also passed on the real MySQL container, where the `llm_report_*` views are created before the drop.
+- On that MySQL database `migrate` dropped the three columns, `migrate:rollback --step=1` restored all three, and `migrate` dropped them again.
+- The local dev DB migrated with a plain `php artisan migrate`. Admin `tsc` and `eslint` clean; Pint clean.
+
+**For the release:** the deploy runs the migration on production: three columns removed from `games` (40 rows), instant, no lock of note. Check afterwards that `Schema::hasColumn('games', 'seo_keywords')` is false and a game page and the Game SEO screen still load.
