@@ -87,7 +87,7 @@ function GameSeoListPageInner() {
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Game SEO</h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Per-game meta title/description/keywords/OG image, JSON-LD brand/category, and noindex.
+          Per-game page content (summary, About, FAQ) and its status, plus the meta overrides: title, description, OG image, JSON-LD brand/category and noindex.
         </p>
       </div>
 
