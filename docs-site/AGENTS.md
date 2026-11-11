@@ -17,7 +17,6 @@ CHIP's docs (`docs.chip-in.asia`).
 | `src/guide-sidebar.mjs` | The guide pages in reading order: the one list behind the sidebar and `/llms.txt`. Add a new page here |
 | `src/pages/llms.txt.ts` | `/llms.txt`, built from that list and each page's title + description |
 | `public/favicon.png` | PNG copy of PekanGame's favicon (Starlight takes no WebP); refresh if the brand favicon changes |
-
 | `public/openapi.json` | **Committed, generated** — the OpenAPI spec. Also served raw at `/openapi.json` |
 | `src/content/i18n/en.json` | Empty stub — silences Starlight's i18n-collection warning; do not delete |
 
