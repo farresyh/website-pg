@@ -2532,3 +2532,25 @@ Branch `feature/seo-meta-strategy`, into `staging`. ADR-140 decisions 1–5; the
 - A branch cut with `git switch -c <name> origin/staging` inherits `origin/staging` as its upstream, so a bare `git push` would aim at the protected branch; unset it right after cutting.
 
 **Not seen live:** anything on prod. The founder still fills the primary's `default_meta_title` and `default_meta_description` in the admin after release (record before and after here), and the three columns drop in a later PR. Next: PR 2, the per-game content (ADR-140 decisions 6–12).
+
+## 2026-11-11 — Per-game content built (ADR-140 PR 2)
+
+Branch `feature/game-content`, into `staging`. ADR-140 decisions 6–12; the build choices are in the ADR's PR 2 addendum. Not released.
+
+**Built:**
+- **Backend.** An additive migration (`content_summary`, `content_about`, `content_faq`, `content_published_at` on `games`). `Game::publishedContentFor($brand)` is the one place content is let out (primary brand and published only); `CatalogController` calls it for the game detail (`content`) and the index summary (`content_summary`, `content_published_at`), and a surface that must not carry content has no key. `Admin\GameContentController` (`PUT /api/seo/games/{game}/content`) is the one writer: the limits from the decision, "nothing to publish" refused with 422, and a `content_published_at` that moves only on first publish or a text change. The admin SEO list and overview report Empty/Draft/Published instead of the title-and-description completeness, which read "missing" for every game after ADR-120 and made the overview ask the founder to fill what had been left blank on purpose.
+- **Storefront.** `GameAbout` under the reviews (`lang="ms"`, server-rendered, visible), `FAQPage` through one builder shared with the home FAQ, the summary as the meta description (cut at a word inside 155 characters) ahead of the template, the Product JSON-LD description, the `llms.txt` line and the sitemap `lastmod`.
+- **Admin.** Admin → SEO → Games → [game] rebuilt on the PrimeReact kit: summary, About, FAQ (up to 8), a Published switch, with the old meta overrides below.
+
+**Verified:**
+- Backend suite 3,918 passed (15 new in `Adr140GameContentTest`, including the invariant matrix: primary and affiliate × empty, draft and published, on the detail and the index summary; the two old SEO admin tests were replaced on purpose). Storefront `npm test` 36 passed (19 new since PR 1), admin 22; `tsc`, `eslint` and `next build` pass in both; the migration ran on the throwaway sqlite and on the local dev DB with a plain `php artisan migrate`.
+- Throwaway backend + storefront dev + admin, driven in a real browser. After publishing in the admin, with the storefront caches warmed first and nothing restarted, the page's meta description, the `llms.txt` line and the sitemap `lastmod` were updated at once through the purge and Next revalidation webhook. The page showed the section, `lang="ms"`, two About paragraphs and the FAQ, and the `FAQPage` questions equalled the rendered ones. An affiliate host (same game) showed no section, no FAQ, no `FAQPage`, no summary, its own description and the creation date as `lastmod`. Unpublishing removed everything at once; publishing with every field empty was refused with "Add some content before publishing." and changed nothing.
+- Screenshots on desktop and a 390 px phone: no horizontal overflow, text contrast 8.43:1 to 15.64:1.
+- Throwaway servers, admin and sqlite file removed afterwards.
+
+**Gotchas:**
+- Next's Data Cache outlives a dev-server restart and `rm -rf .next/cache/fetch-cache` did not clear it (the first page load after a fresh DB still showed content from the earlier run). The webhook (`NEXT_REVALIDATE_URL` and `NEXT_REVALIDATE_SECRET` on the backend, `REVALIDATE_SECRET` on the storefront) is what keeps it fresh; without it a change shows within 300 s.
+- My first browser run of "publish with every field empty" cleared the summary and About but left the FAQ, so it published; the FAQ alone is content. The script, not the code, was wrong.
+- Pint rewrites test imports (`fully_qualified_strict_types`); run it on a new test file.
+
+**Not seen:** the section's place relative to the reviews (the throwaway DB has no reviews; the order is the JSX order: checkout, reviews, About, footer), and anything on prod. Whether prod has the revalidation webhook set is not checked. **For the founder after release:** fill the home meta in Admin → SEO → Global Settings, then the content for each game (the drafts come from Claude for review), request indexing for five pages, and put links to game pages on the brand's social profiles. The three dead `seo_*` columns drop in a later PR once PR 1 is on `main`.
