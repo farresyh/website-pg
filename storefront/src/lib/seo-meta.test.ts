@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveGameMeta, resolveSiteMeta, type SeoTextSettings } from "./seo-meta.ts";
+import { resolveGameMeta, resolveSiteMeta, truncateAtWord, type SeoTextSettings } from "./seo-meta.ts";
 import { pageMeta } from "./page-meta.ts";
 
 const EMPTY: SeoTextSettings = {
@@ -39,4 +39,32 @@ test("a game's meta: its own override, then the template, then the default", () 
   assert.equal(resolveGameMeta(game, settings, "PekanGame").title, "Top Up Valorant | PekanGame");
   assert.equal(resolveGameMeta(game, settings, "PekanGame").description, "Default");
   assert.equal(resolveGameMeta({ ...game, seoDescription: "Own" }, settings, "PekanGame").description, "Own");
+});
+
+// ADR-140 decision 3: a game's published summary is its meta description when
+// it has no override of its own, ahead of the shared template.
+test("a game's meta description: override, then its summary, then the template", () => {
+  const settings = { ...EMPTY, meta_description_template: "Template for {game_name}" };
+  const game = { name: "Valorant", seoTitle: null, seoDescription: null, contentSummary: "Top up Valorant Points pantas." };
+  assert.equal(resolveGameMeta(game, settings, "PekanGame").description, "Top up Valorant Points pantas.");
+  assert.equal(resolveGameMeta({ ...game, seoDescription: "Own" }, settings, "PekanGame").description, "Own");
+  assert.equal(resolveGameMeta({ ...game, contentSummary: null }, settings, "PekanGame").description, "Template for Valorant");
+  assert.equal(resolveGameMeta({ ...game, contentSummary: "   " }, settings, "PekanGame").description, "Template for Valorant");
+});
+
+test("a long summary is cut at a word, with an ellipsis, inside 155 characters", () => {
+  const long = "Top up diamond Mobile Legends untuk akaun Malaysia dengan mudah. ".repeat(6);
+  const meta = resolveGameMeta({ name: "ML", seoTitle: null, seoDescription: null, contentSummary: long }, EMPTY, "PekanGame").description;
+  assert.ok(meta.length <= 155, String(meta.length));
+  assert.ok(meta.endsWith("…"));
+  assert.doesNotMatch(meta, /\s…$/);
+  assert.ok(long.startsWith(meta.slice(0, -1)), "a prefix of the summary, never a rewrite");
+});
+
+test("truncateAtWord keeps short text, collapses whitespace and survives one huge word", () => {
+  assert.equal(truncateAtWord("Pendek sahaja.", 155), "Pendek sahaja.");
+  assert.equal(truncateAtWord("Satu\n\ndua   tiga", 155), "Satu dua tiga");
+  const out = truncateAtWord("x".repeat(400), 155);
+  assert.equal(out.length, 155);
+  assert.ok(out.endsWith("…"));
 });

@@ -15,6 +15,8 @@ export interface SitemapGame {
   slug: string;
   /** ISO date, or "" when the catalog has none. */
   addedAt: string;
+  /** ADR-140 decision 4: when the game's content was last published (primary brand only). Wins over `addedAt`. */
+  contentPublishedAt?: string | null;
   noIndex: boolean;
 }
 
@@ -55,7 +57,8 @@ export function buildSitemapEntries({ origin, games, priceList, checkIdSlugs, jo
   if (joki) entries.push({ url: `${origin}/joki` });
 
   for (const game of indexableGames(games)) {
-    entries.push({ url: `${origin}/order/${game.slug}`, ...(game.addedAt ? { lastModified: new Date(game.addedAt) } : {}) });
+    const date = game.contentPublishedAt || game.addedAt;
+    entries.push({ url: `${origin}/order/${game.slug}`, ...(date ? { lastModified: new Date(date) } : {}) });
   }
 
   return entries;

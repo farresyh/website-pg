@@ -4,6 +4,7 @@ import { listGames } from "@/lib/catalog";
 import { listPlayerCheckFamilies } from "@/lib/player-check";
 import { resolveSiteMeta } from "@/lib/seo-meta";
 import { indexableGames } from "@/lib/indexable-games";
+import { gameLine } from "@/lib/llms-lines";
 
 /**
  * ADR-029 addendum 4 (2026-08-22, same session, founder request):
@@ -47,9 +48,16 @@ export async function GET() {
   if (listedGames.length > 0) {
     lines.push("## Games");
     for (const game of listedGames) {
-      const price = game.priceFromRm !== null ? ` - from RM${game.priceFromRm.toFixed(2)}` : "";
-      const category = game.category ? ` (${game.category})` : "";
-      lines.push(`- [${game.name}](${origin}/order/${game.slug})${category}${price}`);
+      lines.push(
+        gameLine({
+          origin,
+          name: game.name,
+          slug: game.slug,
+          category: game.category,
+          priceFromRm: game.priceFromRm,
+          summary: game.contentSummary,
+        }),
+      );
     }
     lines.push("");
   }
