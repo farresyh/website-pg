@@ -1,6 +1,6 @@
 # ADR-029: SEO Management — reseller-scoped SEO settings, redirects, and per-game wiring (built 2026-08-22)
 
-> **Standing (2026-10-09):** In force; decision 8 revised by ADR-120. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-11):** In force; decision 8 revised by ADR-120, decision 1 by ADR-140. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-08-21 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, companion to and sequenced immediately after `ADR-028`, before any code touched)
 
@@ -50,3 +50,7 @@
 **See ADR-043** for the `llms.txt` decision (originally this entry's Addendum 4, 2026-08-22) — moved out to its own entry since it's an independent decision batch, not a refinement of decisions 1-10 above.
 
 **Addendum, 2026-10-08 — decision 8 revised by ADR-120 decision 4.** Tokens now render in *every* SEO text field (per-game, default, template, `llms.txt`), not only templates — per-game SEO is global across brands (decision 1), so `{store_name}` must work there. Found live: all 38 games' per-game title held the template text, shipping raw `{game_name}` to Google.
+
+### 2026-11-11 addendum — decision 1: per-game content is primary-only
+
+Decision 1 keeps per-game SEO global across brands. That still holds for the exception fields (`seo_title`, `seo_description`, OG image). The per-game **content** added by [ADR-140](./ADR-140-seo-meta-strategy-and-game-content.md) (`content_summary`, `content_about`, `content_faq`) is not global: only the primary brand receives it, and only once published, enforced in `CatalogController` (ADR-140 decisions 6–7). An affiliate storefront is unchanged.

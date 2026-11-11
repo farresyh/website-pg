@@ -1,6 +1,6 @@
 # ADR-120: SEO/GEO overhaul — brand-correct meta, per-brand canonical origin, machine-readable catalog
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-11):** In force; decisions 5 and 6 revised by ADR-140. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted, built, **live** — released 2026-10-08 via #369 (#365 PR-1, #366 PR-2, #367 PR-3, #368 hygiene). Grilled with the founder in two rounds (`/mattpocock-skills:grilling`, Q1–Q17), after a live audit of `pekangame.com` + `fixfastapp.com`, the code, and read-only prod data. Revises ADR-029 decision 8, builds ADR-060 §E (canonical, decided but never built), resolves ADR-042's addendum-3 "Consequence to track", extends ADR-042 decision 12. Build: four PRs into `staging`, one release to `main`.
 
@@ -39,3 +39,11 @@
 - Open, not in scope (founder deferred): GA4 property, default OG image, Bing Webmaster Tools. GSC Change of Address skipped — no `.space` property and a 5-week-old, unindexed site; the 308s carry it.
 - Re-check Search Console coverage after release for canonical/duplicate reports across `pekangame.com` and affiliate domains — decision 1's toggle is the planned response if they cannibalise.
 - **Build notes (2026-10-08).** The pricing trace ran before PR-2: catalog display (`CatalogController::sellingPriceSen`) and the guest charge (`OrderPricingResolver::resolveStorefront`) call `calculateForAffiliate()` with the same brand args; member price is a separate field; the SSR fetch is anonymous. It also found FPX's RM 1 transaction fee added at review — founder decided `offers` = the card price, the fee stays out. The FAQPage carries no toggle (none was decided). Crawler defaults: every curated bot allowed, matching prod (the training-bot policy agreed in the GEO session). Admin FAQ screen not browser-verified (local admin dev didn't hydrate) — founder click-through owed.
+
+### 2026-11-11 addendum — decisions 5 and 6 revised by ADR-140
+
+A full Search Console and code audit ([ADR-140](./ADR-140-seo-meta-strategy-and-game-content.md) Context) found no duplicate or canonical report left for `pekangame.com`, and 0 game pages crawled.
+
+- **Decision 5 (per-game SEO is for exceptions)** stands, with two changes. The game meta description chain gains the game's `content_summary` between the per-game override and the template (primary brand, published only; ADR-140 decision 3). And an empty override no longer counts as "missing": the admin's `seo_status` and the "SEO Complete" card, which read "missing" for every game after this decision, are replaced by the content status (ADR-140 decision 8).
+- **Decision 6 (meta title language is BM)** is replaced by a vocabulary rule: brand and game meta use the words Malaysians type, with English gaming terms ("top up", "diamond", "UC", "instant") plus "murah" and "Malaysia" (ADR-140 decision 2). The page UI and `lang="en"` still stay as they are.
+- The "re-check Search Console coverage" consequence is carried by ADR-140 decision 13.

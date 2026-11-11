@@ -839,7 +839,7 @@ feature.** Every open item, sorted by what it needs to finish. Re-verify
 before building.
 
 **A. Buildable now: code, no new design**
-(none: every open item waits on the founder, a grill or a trigger)
+- **178** SEO meta strategy and per-game "About this game" content (ADR-140, founder, 2026-11-11). Two PRs: PR 1 meta strategy, PR 2 game content. Details below.
 
 **B. Needs a short grill / ADR addendum first**
 - **165** KOL fee as a share of profit (needs an ADR-118 addendum, money-critical). Until built, pay such a KOL as "Not a KOL fee". Details below.
@@ -1111,6 +1111,20 @@ before building.
      took ~152 s on 2026-11-10, and the 300 s job fits about 140. No bulk upsert: it would save seconds.
      Trigger: the chosen Gamevion games approach 140; then add a warning on the
      Gamevion game picker.
+
+178. **SEO meta strategy and per-game "About this game" content** (founder,
+     2026-11-11; [ADR-140](./adr/ADR-140-seo-meta-strategy-and-game-content.md)).
+     Why: Search Console shows 0 of 37 game pages ever crawled, 0 external links,
+     and the pages differ only by name. PR 1: one registry for static page meta, a
+     vocabulary rule, the game meta description chain, an honest sitemap
+     (`lastmod`, `no_index` games left out), `alternateName`, and the three dead
+     `seo_*` fields removed (their column drop one release later). PR 2: four
+     `content_*` columns on `games`, the status that replaces `seo_status`, the
+     section on `/order/[slug]`, `llms.txt` and `FAQPage`, primary brand and
+     published only, rebuilt Admin → SEO → Games → [game] screen. Then the
+     founder fills `default_meta_*`, enters the reviewed drafts in family
+     batches, requests indexing for five pages, and checks +2/+4/+8 weeks.
+     Closes after the +8-week check is in `docs/build-log.md`.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-28, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
