@@ -4,6 +4,7 @@ import { listGames } from "@/lib/catalog";
 import { getResellerPriceListEnabled } from "@/lib/reseller-price-list";
 import { getBranding } from "@/lib/branding";
 import { listPlayerCheckFamilies } from "@/lib/player-check";
+import { buildSitemapEntries } from "@/lib/sitemap-entries";
 
 /**
  * Forces this to fetch at request time rather than build time — a
@@ -28,41 +29,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     listPlayerCheckFamilies(),
     getJokiCatalog(),
   ]);
-  const origin = branding.canonicalOrigin;
 
-  const staticRoutes: MetadataRoute.Sitemap = [
-    { url: origin, lastModified: new Date() },
-    { url: `${origin}/terms`, lastModified: new Date() },
-    { url: `${origin}/privacy`, lastModified: new Date() },
-    { url: `${origin}/about-us`, lastModified: new Date() },
-    { url: `${origin}/refund-policy`, lastModified: new Date() },
-    { url: `${origin}/track-order`, lastModified: new Date() },
-  ];
-
-  const gameRoutes: MetadataRoute.Sitemap = games.map((game) => ({
-    url: `${origin}/order/${game.slug}`,
-    lastModified: game.addedAt ? new Date(game.addedAt) : new Date(),
-  }));
-
-  // ADR-091: only listed when the page actually renders on this brand —
-  // same "empty tiers = no page" signal as /price-list and SiteFooter.
-  if (priceListEnabled) {
-    staticRoutes.push({ url: `${origin}/price-list`, lastModified: new Date() });
-  }
-
-  // ADR-123 decision 10: the Game ID Checker is listed on the primary
-  // brand only; an affiliate's pages work but carry noindex.
-  if (playerCheck.indexable && playerCheck.families.length > 0) {
-    staticRoutes.push({ url: `${origin}/check-id`, lastModified: new Date() });
-    for (const family of playerCheck.families) {
-      staticRoutes.push({ url: `${origin}/check-id/${family.slug}`, lastModified: new Date() });
-    }
-  }
-
-  // ADR-126 decision 2: only where /joki renders on this brand.
-  if (jokiCatalog !== null) {
-    staticRoutes.push({ url: `${origin}/joki`, lastModified: new Date() });
-  }
-
-  return [...staticRoutes, ...gameRoutes];
+  // The rows and their rules (honest lastmod, noindex games out) live in
+  // lib/sitemap-entries.ts, where they are tested (ADR-140 decision 4).
+  return buildSitemapEntries({
+    origin: branding.canonicalOrigin,
+    games,
+    priceList: priceListEnabled,
+    // ADR-123 decision 10: the Game ID Checker is listed on the primary brand only.
+    checkIdSlugs: playerCheck.indexable ? playerCheck.families.map((family) => family.slug) : [],
+    // ADR-126 decision 2: only where /joki renders on this brand.
+    joki: jokiCatalog !== null,
+  });
 }

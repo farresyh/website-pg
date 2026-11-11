@@ -116,6 +116,8 @@ export interface Game {
   playerValidatorEnabled: boolean;
   /** Mirrors games.created_at — powers NewArrivalsSection's client-side sort. */
   addedAt: string;
+  /** ADR-140 decision 4: the admin's noindex switch, so the sitemap and llms.txt can leave the game out. */
+  noIndex: boolean;
 }
 
 export interface GameDetail extends Game {
@@ -124,7 +126,6 @@ export interface GameDetail extends Game {
   seoOgImage: string | null;
   schemaBrand: string | null;
   schemaCategory: string | null;
-  noIndex: boolean;
   /**
    * ADR-097 decision 9 — admin-curated Zone ID picklist for this game.
    * null/empty preserves the free-text <input> exactly (decision 7) —
@@ -186,6 +187,7 @@ function toGame(wire: CatalogGameWire): Game {
     extraField: wire.extra_field,
     playerValidatorEnabled: wire.player_validator_enabled,
     addedAt: wire.created_at ?? "",
+    noIndex: wire.no_index ?? false,
   };
 }
 
@@ -197,7 +199,6 @@ function toGameDetail(wire: CatalogGameWire): GameDetail {
     seoOgImage: wire.seo_og_image ?? null,
     schemaBrand: wire.schema_brand ?? null,
     schemaCategory: wire.schema_category ?? null,
-    noIndex: wire.no_index ?? false,
     zoneOptions: wire.zone_options && wire.zone_options.length > 0 ? wire.zone_options : null,
     playerIdFormat: wire.player_id_format ?? "numeric",
     description: wire.description ?? null,
