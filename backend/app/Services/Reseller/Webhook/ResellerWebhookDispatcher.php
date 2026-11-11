@@ -2,10 +2,10 @@
 
 namespace App\Services\Reseller\Webhook;
 
+use App\Http\Resources\ResellerApi\OrderResource;
 use App\Jobs\Reseller\DeliverResellerWebhook;
 use App\Models\Order;
 use App\Models\ResellerWebhookDelivery;
-use App\Support\ResellerOrderPayload;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -52,7 +52,7 @@ final class ResellerWebhookDispatcher
         }
 
         $payload = [
-            ...ResellerOrderPayload::for($order),
+            ...(new OrderResource($order))->resolve(),
             'event' => $event->value,
             'event_id' => (string) Str::uuid(),
             'occurred_at' => now()->toIso8601String(),
