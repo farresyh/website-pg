@@ -2,7 +2,7 @@
     "openapi": "3.1.0",
     "info": {
         "title": "PekanGame Reseller API",
-        "version": "1.6.0",
+        "version": "1.6.1",
         "description": "Order placement, order status, price list, and Purchase Balance for a PekanGame reseller account. Every request needs a Bearer API key issued by PekanGame \u2014 Authorization: Bearer <key>."
     },
     "servers": [
@@ -45,6 +45,20 @@
                                     "required": [
                                         "balance_sen"
                                     ]
+                                }
+                            }
+                        },
+                        "headers": {
+                            "X-RateLimit-Limit": {
+                                "description": "This request's bucket limit per minute: 60 for `POST /v1/orders`, 120 for every `GET`.",
+                                "schema": {
+                                    "type": "integer"
+                                }
+                            },
+                            "X-RateLimit-Remaining": {
+                                "description": "Requests left in the current one-minute window.",
+                                "schema": {
+                                    "type": "integer"
                                 }
                             }
                         }
@@ -129,6 +143,14 @@
                                         "error",
                                         "message"
                                     ]
+                                }
+                            }
+                        },
+                        "headers": {
+                            "Retry-After": {
+                                "description": "Seconds to wait before retrying.",
+                                "schema": {
+                                    "type": "integer"
                                 }
                             }
                         }
@@ -262,6 +284,20 @@
                                     ]
                                 }
                             }
+                        },
+                        "headers": {
+                            "X-RateLimit-Limit": {
+                                "description": "This request's bucket limit per minute: 60 for `POST /v1/orders`, 120 for every `GET`.",
+                                "schema": {
+                                    "type": "integer"
+                                }
+                            },
+                            "X-RateLimit-Remaining": {
+                                "description": "Requests left in the current one-minute window.",
+                                "schema": {
+                                    "type": "integer"
+                                }
+                            }
                         }
                     },
                     "401": {
@@ -374,6 +410,14 @@
                                     ]
                                 }
                             }
+                        },
+                        "headers": {
+                            "Retry-After": {
+                                "description": "Seconds to wait before retrying.",
+                                "schema": {
+                                    "type": "integer"
+                                }
+                            }
                         }
                     }
                 }
@@ -448,7 +492,7 @@
                                         {
                                             "items": [
                                                 {
-                                                    "order_number": "PG-7QK2M9X4RJ",
+                                                    "order_number": "PG-7QK2M9X4RJ8T",
                                                     "product_code": "MLMY-86",
                                                     "player_id": "123456789",
                                                     "server_id": "2201",
@@ -468,82 +512,7 @@
                                         "items": {
                                             "type": "array",
                                             "items": {
-                                                "type": "object",
-                                                "properties": {
-                                                    "order_number": {
-                                                        "type": "string"
-                                                    },
-                                                    "product_code": {
-                                                        "type": [
-                                                            "string",
-                                                            "null"
-                                                        ]
-                                                    },
-                                                    "player_id": {
-                                                        "type": "string"
-                                                    },
-                                                    "server_id": {
-                                                        "type": [
-                                                            "string",
-                                                            "null"
-                                                        ]
-                                                    },
-                                                    "price_sen": {
-                                                        "type": "integer"
-                                                    },
-                                                    "payment_status": {
-                                                        "type": "string"
-                                                    },
-                                                    "delivery_status": {
-                                                        "type": "string"
-                                                    },
-                                                    "wallet_refunded": {
-                                                        "type": "boolean"
-                                                    },
-                                                    "wallet_refund": {
-                                                        "type": [
-                                                            "object",
-                                                            "null"
-                                                        ],
-                                                        "properties": {
-                                                            "amount_sen": {
-                                                                "type": "integer"
-                                                            },
-                                                            "refunded_at": {
-                                                                "type": "string"
-                                                            }
-                                                        },
-                                                        "required": [
-                                                            "amount_sen",
-                                                            "refunded_at"
-                                                        ]
-                                                    },
-                                                    "created_at": {
-                                                        "type": [
-                                                            "string",
-                                                            "null"
-                                                        ]
-                                                    },
-                                                    "delivered_at": {
-                                                        "type": [
-                                                            "string",
-                                                            "null"
-                                                        ]
-                                                    }
-                                                },
-                                                "required": [
-                                                    "order_number",
-                                                    "product_code",
-                                                    "player_id",
-                                                    "server_id",
-                                                    "price_sen",
-                                                    "payment_status",
-                                                    "delivery_status",
-                                                    "wallet_refunded",
-                                                    "wallet_refund",
-                                                    "created_at",
-                                                    "delivered_at"
-                                                ]
+                                                "$ref": "#/components/schemas/Order"
                                             }
                                         },
                                         "next_cursor": {
@@ -557,6 +526,20 @@
                                         "items",
                                         "next_cursor"
                                     ]
+                                }
+                            }
+                        },
+                        "headers": {
+                            "X-RateLimit-Limit": {
+                                "description": "This request's bucket limit per minute: 60 for `POST /v1/orders`, 120 for every `GET`.",
+                                "schema": {
+                                    "type": "integer"
+                                }
+                            },
+                            "X-RateLimit-Remaining": {
+                                "description": "Requests left in the current one-minute window.",
+                                "schema": {
+                                    "type": "integer"
                                 }
                             }
                         }
@@ -676,6 +659,14 @@
                                     ]
                                 }
                             }
+                        },
+                        "headers": {
+                            "Retry-After": {
+                                "description": "Seconds to wait before retrying.",
+                                "schema": {
+                                    "type": "integer"
+                                }
+                            }
                         }
                     }
                 }
@@ -703,10 +694,9 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "string",
                                     "examples": [
                                         {
-                                            "order_number": "PG-7QK2M9X4RJ",
+                                            "order_number": "PG-7QK2M9X4RJ8T",
                                             "product_code": "MLMY-86",
                                             "player_id": "123456789",
                                             "server_id": "2201",
@@ -718,7 +708,28 @@
                                             "created_at": "2026-09-10T09:14:52+00:00",
                                             "delivered_at": "2026-09-10T09:15:07+00:00"
                                         }
-                                    ]
+                                    ],
+                                    "$ref": "#/components/schemas/Order"
+                                }
+                            }
+                        },
+                        "headers": {
+                            "X-RateLimit-Limit": {
+                                "description": "This request's bucket limit per minute: 60 for `POST /v1/orders`, 120 for every `GET`.",
+                                "schema": {
+                                    "type": "integer"
+                                }
+                            },
+                            "X-RateLimit-Remaining": {
+                                "description": "Requests left in the current one-minute window.",
+                                "schema": {
+                                    "type": "integer"
+                                }
+                            },
+                            "Idempotent-Replayed": {
+                                "description": "`true` when this is a replay of an order already placed with the same `idempotency_key`.",
+                                "schema": {
+                                    "type": "string"
                                 }
                             }
                         }
@@ -756,10 +767,9 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "string",
                                     "examples": [
                                         {
-                                            "order_number": "PG-7QK2M9X4RJ",
+                                            "order_number": "PG-7QK2M9X4RJ8T",
                                             "product_code": "MLMY-86",
                                             "player_id": "123456789",
                                             "server_id": "2201",
@@ -771,7 +781,22 @@
                                             "created_at": "2026-09-10T09:14:52+00:00",
                                             "delivered_at": "2026-09-10T09:15:07+00:00"
                                         }
-                                    ]
+                                    ],
+                                    "$ref": "#/components/schemas/Order"
+                                }
+                            }
+                        },
+                        "headers": {
+                            "X-RateLimit-Limit": {
+                                "description": "This request's bucket limit per minute: 60 for `POST /v1/orders`, 120 for every `GET`.",
+                                "schema": {
+                                    "type": "integer"
+                                }
+                            },
+                            "X-RateLimit-Remaining": {
+                                "description": "Requests left in the current one-minute window.",
+                                "schema": {
+                                    "type": "integer"
                                 }
                             }
                         }
@@ -886,6 +911,14 @@
                                     ]
                                 }
                             }
+                        },
+                        "headers": {
+                            "Retry-After": {
+                                "description": "Seconds to wait before retrying.",
+                                "schema": {
+                                    "type": "integer"
+                                }
+                            }
                         }
                     }
                 }
@@ -904,9 +937,11 @@
                         "name": "orderNumber",
                         "in": "path",
                         "required": true,
+                        "description": "The `order_number` of one of your orders, exactly as returned.",
                         "schema": {
                             "type": "string"
-                        }
+                        },
+                        "example": "PG-7QK2M9X4RJ8T"
                     }
                 ],
                 "responses": {
@@ -915,10 +950,9 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object",
                                     "examples": [
                                         {
-                                            "order_number": "PG-7QK2M9X4RJ",
+                                            "order_number": "PG-7QK2M9X4RJ8T",
                                             "product_code": "MLMY-86",
                                             "player_id": "123456789",
                                             "server_id": "2201",
@@ -931,81 +965,21 @@
                                             "delivered_at": "2026-09-10T09:15:07+00:00"
                                         }
                                     ],
-                                    "properties": {
-                                        "order_number": {
-                                            "type": "string"
-                                        },
-                                        "product_code": {
-                                            "type": [
-                                                "string",
-                                                "null"
-                                            ]
-                                        },
-                                        "player_id": {
-                                            "type": "string"
-                                        },
-                                        "server_id": {
-                                            "type": [
-                                                "string",
-                                                "null"
-                                            ]
-                                        },
-                                        "price_sen": {
-                                            "type": "integer"
-                                        },
-                                        "payment_status": {
-                                            "type": "string"
-                                        },
-                                        "delivery_status": {
-                                            "type": "string"
-                                        },
-                                        "wallet_refunded": {
-                                            "type": "boolean"
-                                        },
-                                        "wallet_refund": {
-                                            "type": [
-                                                "object",
-                                                "null"
-                                            ],
-                                            "properties": {
-                                                "amount_sen": {
-                                                    "type": "integer"
-                                                },
-                                                "refunded_at": {
-                                                    "type": "string"
-                                                }
-                                            },
-                                            "required": [
-                                                "amount_sen",
-                                                "refunded_at"
-                                            ]
-                                        },
-                                        "created_at": {
-                                            "type": [
-                                                "string",
-                                                "null"
-                                            ]
-                                        },
-                                        "delivered_at": {
-                                            "type": [
-                                                "string",
-                                                "null"
-                                            ]
-                                        }
-                                    },
-                                    "required": [
-                                        "order_number",
-                                        "product_code",
-                                        "player_id",
-                                        "server_id",
-                                        "price_sen",
-                                        "payment_status",
-                                        "delivery_status",
-                                        "wallet_refunded",
-                                        "wallet_refund",
-                                        "created_at",
-                                        "delivered_at"
-                                    ]
+                                    "$ref": "#/components/schemas/Order"
+                                }
+                            }
+                        },
+                        "headers": {
+                            "X-RateLimit-Limit": {
+                                "description": "This request's bucket limit per minute: 60 for `POST /v1/orders`, 120 for every `GET`.",
+                                "schema": {
+                                    "type": "integer"
+                                }
+                            },
+                            "X-RateLimit-Remaining": {
+                                "description": "Requests left in the current one-minute window.",
+                                "schema": {
+                                    "type": "integer"
                                 }
                             }
                         }
@@ -1120,6 +1094,14 @@
                                     ]
                                 }
                             }
+                        },
+                        "headers": {
+                            "Retry-After": {
+                                "description": "Seconds to wait before retrying.",
+                                "schema": {
+                                    "type": "integer"
+                                }
+                            }
                         }
                     }
                 }
@@ -1147,15 +1129,135 @@
                 ],
                 "title": "DeliveryStatus"
             },
+            "Order": {
+                "type": "object",
+                "properties": {
+                    "order_number": {
+                        "type": "string",
+                        "description": "PekanGame's order number. Treat it as an opaque string: today it is `PG-` and\n12 capital letters or digits, but the length is not part of the contract.",
+                        "examples": [
+                            "PG-7QK2M9X4RJ"
+                        ]
+                    },
+                    "product_code": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "The product code the order was placed with. `null` only when the\ngame no longer has a code in the catalogue.",
+                        "examples": [
+                            "MLMY-86"
+                        ]
+                    },
+                    "player_id": {
+                        "type": "string",
+                        "examples": [
+                            "123456789"
+                        ]
+                    },
+                    "server_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "examples": [
+                            "2201"
+                        ]
+                    },
+                    "price_sen": {
+                        "type": "integer",
+                        "description": "What was charged to your Purchase Balance, in sen (RM 1.00 = 100).",
+                        "examples": [
+                            6300
+                        ]
+                    },
+                    "payment_status": {
+                        "description": "Always `paid` for a Purchase Balance order.",
+                        "$ref": "#/components/schemas/PaymentStatus"
+                    },
+                    "delivery_status": {
+                        "$ref": "#/components/schemas/DeliveryStatus"
+                    },
+                    "wallet_refunded": {
+                        "type": "boolean",
+                        "description": "`true` once the order has been refunded to your Purchase Balance (fully, or the undelivered share)."
+                    },
+                    "wallet_refund": {
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "description": "The refund to your Purchase Balance, or `null` when there is none.",
+                        "properties": {
+                            "amount_sen": {
+                                "type": "integer"
+                            },
+                            "refunded_at": {
+                                "type": "string"
+                            }
+                        },
+                        "required": [
+                            "amount_sen",
+                            "refunded_at"
+                        ]
+                    },
+                    "created_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "delivered_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time",
+                        "description": "Set when the order is delivered."
+                    }
+                },
+                "required": [
+                    "order_number",
+                    "product_code",
+                    "player_id",
+                    "server_id",
+                    "price_sen",
+                    "payment_status",
+                    "delivery_status",
+                    "wallet_refunded",
+                    "wallet_refund",
+                    "created_at",
+                    "delivered_at"
+                ],
+                "title": "Order"
+            },
+            "PaymentStatus": {
+                "type": "string",
+                "enum": [
+                    "pending",
+                    "paid",
+                    "failed"
+                ],
+                "title": "PaymentStatus"
+            },
             "PlaceOrderRequest": {
                 "type": "object",
                 "properties": {
                     "product_code": {
                         "type": "string",
+                        "description": "A `packages[].code` from `GET /v1/catalog`.",
+                        "examples": [
+                            "MLMY-86"
+                        ],
                         "maxLength": 32
                     },
                     "player_id": {
                         "type": "string",
+                        "description": "The player's game ID, as the game's `checkout_input.player_id_format` requires.",
+                        "examples": [
+                            "123456789"
+                        ],
                         "maxLength": 64
                     },
                     "server_id": {
@@ -1163,10 +1265,18 @@
                             "string",
                             "null"
                         ],
+                        "description": "Only when the game's `checkout_input.field` is not `null`.",
+                        "examples": [
+                            "2201"
+                        ],
                         "maxLength": 64
                     },
                     "idempotency_key": {
                         "type": "string",
+                        "description": "One fresh UUID per logical order; reuse it only to retry that order.",
+                        "examples": [
+                            "8f2b8c4e-1d3a-4a9c-9b1e-2f6a7c0d5e11"
+                        ],
                         "minLength": 8,
                         "maxLength": 100
                     },
@@ -1176,6 +1286,9 @@
                             "null"
                         ],
                         "description": "The most you agree to pay, in sen. If your current price is higher: `PRICE_CHANGED`, nothing charged.",
+                        "examples": [
+                            6300
+                        ],
                         "minimum": 1
                     }
                 },

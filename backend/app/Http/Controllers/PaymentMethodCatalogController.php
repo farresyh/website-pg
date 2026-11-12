@@ -43,9 +43,7 @@ class PaymentMethodCatalogController extends Controller
             // read (see CatalogController's/HeroSlideController's own
             // doc comments for the full story).
             fn () => PaymentMethod::query()
-                ->where('is_active', true)
-                ->orderBy('category')
-                ->orderBy('label')
+                ->offered()
                 ->get()
                 ->map(fn (PaymentMethod $method) => [
                     'channel_code' => $method->channel_code,

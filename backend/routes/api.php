@@ -388,6 +388,8 @@ Route::prefix('catalog')->middleware('storefront.brand')->group(function () {
 Route::prefix('affiliate')->group(function () {
     Route::post('/login', [AffiliateAuthController::class, 'login'])->middleware('throttle:5,1,affiliate-login');
     Route::post('/set-password', [AffiliateAuthController::class, 'setPassword'])->middleware('throttle:6,1,affiliate-set-password');
+    // ADR-058 2026-11-12 addendum: per IP here; the broker adds 60 seconds per user.
+    Route::post('/forgot-password', [AffiliateAuthController::class, 'forgotPassword'])->middleware('throttle:5,1,affiliate-forgot-password');
 
     // `auth:affiliate` rejects any token whose tokenable is not a
     // affiliate_users model; `affiliate.context` then activates ADR-057's
@@ -561,9 +563,16 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
             Route::post('/merge', [VoucherController::class, 'merge']);
             Route::get('/{voucher}', [VoucherController::class, 'show']);
             Route::post('/', [VoucherController::class, 'store']);
-            Route::patch('/{voucher}/revoke', [VoucherController::class, 'revoke']);
         });
         Route::post('/orders/{order}/voucher', [VoucherController::class, 'storeFromOrder']);
+    });
+
+    // ADR-004 2026-11-12 addendum, decisions 6 and 8: money leaving the bank,
+    // or gift credit turned into income — Super Admin, behind the step-up.
+    Route::middleware('admin.role:super_admin')->prefix('vouchers')->group(function () {
+        Route::patch('/{voucher}/revoke', [VoucherController::class, 'revoke'])->middleware('mfa.stepup');
+        Route::post('/{voucher}/cash-refund', [VoucherController::class, 'refundInCash'])->middleware('mfa.stepup');
+        Route::get('/{voucher}/cash-refund/proof', [VoucherController::class, 'downloadCashRefundProof']);
     });
 
     // ADR-007 / FRAUD-1..3 - internal blacklist, independent of any

@@ -5,8 +5,8 @@ namespace App\Http\Controllers\ResellerApi;
 use App\Exceptions\ResellerApi\ResellerApiException;
 use App\Http\Requests\ResellerApi\IndexOrdersRequest;
 use App\Http\Requests\ResellerApi\PlaceOrderRequest;
+use App\Http\Resources\ResellerApi\OrderResource;
 use App\Models\Game;
-use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\Ledger\InsufficientBalanceException;
@@ -18,8 +18,8 @@ use App\Services\Reseller\ResellerCatalogService;
 use App\Services\Reseller\ResellerInactiveException;
 use App\Services\Reseller\ResellerOrderPlacementRequest;
 use App\Services\Reseller\ResellerOrderPlacementService;
-use App\Support\ResellerOrderPayload;
 use Dedoc\Scramble\Attributes\Endpoint;
+use Dedoc\Scramble\Attributes\PathParameter;
 use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,9 +39,12 @@ class OrderController extends Controller
     /** ADR-084 PR-2: `GET /v1/orders` page size when the caller sends no `limit`. */
     private const DEFAULT_LIMIT = 25;
 
-    /** The `publicOrder()` shape, for the `#[Response]` examples. */
+    /** The `#[Response]` type of one order: the `Order` schema, written from `OrderResource`. */
+    private const ORDER_TYPE = OrderResource::class;
+
+    /** An `OrderResource`, for the `#[Response]` examples. */
     private const ORDER_EXAMPLE = [
-        'order_number' => 'PG-7QK2M9X4RJ',
+        'order_number' => 'PG-7QK2M9X4RJ8T',
         'product_code' => 'MLMY-86',
         'player_id' => '123456789',
         'server_id' => '2201',
@@ -64,7 +67,7 @@ class OrderController extends Controller
         title: 'List orders',
         description: "The caller's own orders, newest first, cursor-paginated. Pass `next_cursor` from the previous response back as `?cursor=` for the next page (`null` = no more). `?limit=` is capped at 100 (default 25); optional `?status=` filters on delivery status (not refund to your Purchase Balance) and `?created_after=` (ISO 8601) on creation time. `wallet_refunded` and `wallet_refund` report a later credit to your Purchase Balance independently of delivery status. A cursor, not a page number, so a new order landing mid-pagination never shifts the window.",
     )]
-    #[Response(status: 200, description: 'A page of orders.', examples: [[
+    #[Response(status: 200, description: 'A page of orders.', type: 'array{items: list<'.self::ORDER_TYPE.'>, next_cursor: string|null}', examples: [[
         'items' => [self::ORDER_EXAMPLE],
         'next_cursor' => 'eyJpZCI6MTQ4LCJfcG9pbnRzVG9OZXh0SXRlbXMiOnRydWV9',
     ]])]
@@ -96,7 +99,7 @@ class OrderController extends Controller
         $refunds = Order::walletRefundEntriesFor($page->getCollection());
 
         return response()->json([
-            'items' => $page->getCollection()->map(fn (Order $order) => self::publicOrder($order, $refunds))->all(),
+            'items' => $page->getCollection()->map(fn (Order $order) => new OrderResource($order, $refunds))->all(),
             'next_cursor' => $page->nextCursor()?->encode(),
         ]);
     }
@@ -105,8 +108,8 @@ class OrderController extends Controller
         title: 'Place an order',
         description: 'Charges your Purchase Balance and submits the order for fulfilment. Send a fresh `idempotency_key` (UUID) per logical order: a replay with the **same** key and payload returns the original order with HTTP 200 and an `Idempotent-Replayed: true` header; the **same** key with a different payload is a 409 conflict. `player_id` and `server_id` must meet the game\'s `checkout_input` contract from the catalogue, or the order is refused with `VALIDATION_FAILED` and nothing is charged. Optional `max_price_sen` caps the charge: if your current price is above it, the order is refused with `PRICE_CHANGED` (`details.current_price_sen`) and nothing is charged; a lower current price is charged as is. Omit it to accept the current price. It is not part of the idempotency payload.',
     )]
-    #[Response(status: 201, description: 'The order was placed.', examples: [self::ORDER_EXAMPLE])]
-    #[Response(status: 200, description: 'Idempotent replay — the original order (also carries `Idempotent-Replayed: true`).', examples: [self::ORDER_EXAMPLE])]
+    #[Response(status: 201, description: 'The order was placed.', type: self::ORDER_TYPE, examples: [self::ORDER_EXAMPLE])]
+    #[Response(status: 200, description: 'Idempotent replay — the original order (also carries `Idempotent-Replayed: true`).', type: self::ORDER_TYPE, examples: [self::ORDER_EXAMPLE])]
     #[Response(status: 401, description: '`MISSING_API_KEY` or `INVALID_API_KEY`.', type: self::ERROR_SHAPE, examples: [self::ERROR_401])]
     #[Response(status: 403, description: '`RESELLER_INACTIVE` or `IP_NOT_ALLOWED`.', type: self::ERROR_SHAPE, examples: [self::ERROR_403])]
     #[Response(status: 409, description: '`IDEMPOTENCY_KEY_CONFLICT` — the key was reused with a different payload.', type: self::ERROR_SHAPE, examples: [self::ERROR_409])]
@@ -163,24 +166,21 @@ class OrderController extends Controller
 
         // ADR-084 PR-1 decision 5: 201 for a fresh placement, 200 +
         // `Idempotent-Replayed: true` for an exact replay.
-        $response = response()->json(self::publicOrder($result->order), $result->wasReplay ? 200 : 201);
+        $response = (new OrderResource($result->order))->response()->setStatusCode($result->wasReplay ? 200 : 201);
 
-        if ($result->wasReplay) {
-            $response->header('Idempotent-Replayed', 'true');
-        }
-
-        return $response;
+        return $result->wasReplay ? $response->header('Idempotent-Replayed', 'true') : $response;
     }
 
     #[Endpoint(
         title: 'Get an order',
         description: "The current status of one of the caller's own orders, including any later refund to your Purchase Balance. Poll this as the fallback to the delivery webhook; a failed delivery does not itself guarantee a refund.",
     )]
-    #[Response(status: 200, description: 'The order.', examples: [self::ORDER_EXAMPLE])]
+    #[Response(status: 200, description: 'The order.', type: self::ORDER_TYPE, examples: [self::ORDER_EXAMPLE])]
     #[Response(status: 401, description: '`MISSING_API_KEY` or `INVALID_API_KEY`.', type: self::ERROR_SHAPE, examples: [self::ERROR_401])]
     #[Response(status: 403, description: '`RESELLER_INACTIVE` or `IP_NOT_ALLOWED`.', type: self::ERROR_SHAPE, examples: [self::ERROR_403])]
     #[Response(status: 404, description: '`ORDER_NOT_FOUND` — no order with that number belongs to the caller.', type: self::ERROR_SHAPE, examples: [self::ERROR_404])]
     #[Response(status: 429, description: '`RATE_LIMITED` — retry after the `Retry-After` header.', type: self::ERROR_SHAPE, examples: [self::ERROR_429])]
+    #[PathParameter('orderNumber', description: 'The `order_number` of one of your orders, exactly as returned.', example: 'PG-7QK2M9X4RJ8T')]
     public function show(Request $request, string $orderNumber): JsonResponse
     {
         $reseller = $this->reseller($request);
@@ -194,7 +194,7 @@ class OrderController extends Controller
             throw ResellerApiException::orderNotFound();
         }
 
-        return response()->json(self::publicOrder($order));
+        return (new OrderResource($order))->response();
     }
 
     /**
@@ -214,19 +214,5 @@ class OrderController extends Controller
             'player_id' => $data['player_id'],
             'server_id' => $data['server_id'] ?? null,
         ], JSON_THROW_ON_ERROR));
-    }
-
-    /**
-     * Narrow, reseller-safe shape — never `cost_price`/`platform_profit`
-     * or any other reseller-private field (ADR-084 decision 2). Extracted
-     * to `App\Support\ResellerOrderPayload` in PR-3 so the delivery
-     * webhook body and this endpoint can never drift.
-     *
-     * @param  array<int, LedgerEntry|null>|null  $walletRefundsByOrderId
-     * @return array<string, mixed>
-     */
-    private static function publicOrder(Order $order, ?array $walletRefundsByOrderId = null): array
-    {
-        return ResellerOrderPayload::for($order, $walletRefundsByOrderId);
     }
 }

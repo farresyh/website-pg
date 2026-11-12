@@ -1,6 +1,6 @@
 # ADR-076: Reseller Bot v2 — two-stage order-completion messaging, `.trackorder`/`.checkid`/`.info`, reply styling
 
-> **Standing (2026-10-29):** In force; decision 3 (no maximum) superseded by [ADR-131](./ADR-131-chip-activation-conditions.md) (2026-10-29 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-12):** In force; decision 3 (no maximum) superseded by [ADR-131](./ADR-131-chip-activation-conditions.md) (2026-10-29 addendum); the 2026-11-12 addendum sets the `.topupbaki` payment method from the admin. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-09-05, grilled `/mattpocock-skills:grilling` across two rounds (all frontier resolved, founder confirmed shared understanding before write-up). Depends on ADR-075 (PR-F, shipped) — this is a follow-up to that channel, not a new one.
 
@@ -189,3 +189,13 @@ Two statements above are dated. The MLBB chain is now RedxGame → UniPlay and M
 
 Decision 3's "no platform-imposed maximum" is superseded by [ADR-131](./ADR-131-chip-activation-conditions.md) (CHIP's activation condition): RM10,000 per top-up and a RM100,000 default balance cap, overridable per reseller, checked in `ResellerWalletTopupService::initiate()`, so the portal and the bot's `.topupbaki` are both held to them. The bot answers an over-limit request with its own Malay replies (`topup_over_maximum`, `topup_over_balance_cap` in the command log), never the "minimum" reply. Its reply text now says "Baki Pembelian" / "tambah baki" instead of "wallet" / "top-up"; the commands `.baki` and `.topupbaki` are unchanged.
 
+
+### 2026-11-12 addendum — the bot's top-up payment method is chosen in the admin
+
+**Context.** `.topupbaki` took "the first active payment method" by category and label. That happened to be DuitNow QR (`duitnow_qr` sorts before `fpx`), which costs the reseller 1% instead of FPX's flat RM1. On 2026-11-12 an AyrisShop top-up of RM1,000 sat at `pending_execute` (QR scanned at the bank, not paid). `.batalbaki` correctly said the bank was still processing it, but did not say when the top-up would end.
+
+**Decision (founder, grilled and stress-tested 2026-11-12, PRD §16 item 181).**
+1. **`platform_settings.bot_topup_payment_method_id`** (FK to `payment_methods`, `nullOnDelete`) is set in Settings → Purchase Balance, from the list of payment methods. It is stored by id, never by `channel_code`, which has been renamed before (`duitnow_qr` → `dnqr`, 2026-10-28). The migration sets it to the FPX row.
+2. **One list of offered methods**, `PaymentMethod::offered()` (active, by category and label), is read by the portal catalog and the bot, so the group and the portal always offer from the same set.
+3. The bot uses the chosen method when it is offered. Otherwise it uses the first offered method, the same set the portal shows. This is never silent: the reply always names the method next to the charge. The admin screen warns when the chosen method is switched off. With nothing offered, the reply is the existing "unavailable" message.
+4. The `.batalbaki` in-progress reply says that an unpaid top-up ends by itself after its expiry time. The local end follows at the next reconcile (every 15 minutes), and a late payment is still credited (ADR-135).

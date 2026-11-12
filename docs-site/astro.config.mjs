@@ -2,6 +2,7 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import starlightOpenAPI, { openAPISidebarGroups } from 'starlight-openapi';
+import { guideSidebar } from './src/guide-sidebar.mjs';
 
 // ADR-084 PR-4 — the Reseller API developer docs, deployed to
 // docs.pekangame.space (Vercel, 4th frontend). Static output; no adapter
@@ -14,6 +15,10 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'PekanGame Reseller API',
+			// PekanGame's own favicon (Admin → Branding on pekangame.com, served at
+			// pekangame.com/icon as WebP). Starlight takes only .png/.svg/.ico, so this
+			// is a PNG copy: refresh it if the brand favicon changes.
+			favicon: '/favicon.png',
 			description:
 				'Place orders, check status, read the price list and Purchase Balance for a PekanGame prepaid reseller account.',
 			social: [
@@ -29,31 +34,7 @@ export default defineConfig({
 				]),
 			],
 			sidebar: [
-				{
-					label: 'Start here',
-					items: [
-						{ label: 'Introduction', slug: 'introduction' },
-						{ label: 'Authentication', slug: 'authentication' },
-						{ label: 'Your first order', slug: 'first-order' },
-					],
-				},
-				{
-					label: 'Guides',
-					items: [
-						{ label: 'Product codes', slug: 'product-codes' },
-						{ label: 'Idempotency & retries', slug: 'idempotency' },
-						{ label: 'Delivery notifications', slug: 'webhooks' },
-						{ label: 'Purchase Balance', slug: 'wallet' },
-					],
-				},
-				{
-					label: 'Reference',
-					items: [
-						{ label: 'Errors', slug: 'errors' },
-						{ label: 'Rate limits', slug: 'rate-limits' },
-						{ label: 'Versioning & changelog', slug: 'versioning' },
-					],
-				},
+				...guideSidebar,
 				...openAPISidebarGroups,
 			],
 		}),

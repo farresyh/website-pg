@@ -12,6 +12,7 @@ use App\Models\ResellerRebateMilestone;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\Voucher;
+use App\Models\VoucherCashRefund;
 use App\Models\WalletTopupAttempt;
 use App\Models\Withdrawal;
 use App\Services\Ledger\LedgerOwnerType;
@@ -65,6 +66,7 @@ final class TransactionRegisterService
             ...$this->supplierAdjustmentRows($from, $toExclusive),
             ...$this->supplierRefundRows($from, $toExclusive),
             ...$this->voucherRows($from, $toExclusive),
+            ...$this->voucherCashRefundRows($from, $toExclusive),
             ...$this->membershipRows($from, $toExclusive),
             ...$this->walletTopupRows($from, $toExclusive),
             ...$this->walletManualCreditRows($from, $toExclusive),
@@ -400,6 +402,38 @@ final class TransactionRegisterService
                 'cost_sen' => null,
                 'net_sen' => null,
                 'amount_foreign' => $entry->amount,
+                'status' => 'active',
+                'funding_source' => null,
+            ])
+            ->all();
+    }
+
+    /**
+     * ADR-004 2026-11-12 addendum, decision 7: a customer-cash voucher paid
+     * out by bank transfer — cash out, like a reseller closure refund. The
+     * voucher's own `voucher_issued` row stays; this one settles it.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function voucherCashRefundRows(?CarbonInterface $from, ?CarbonInterface $toExclusive): array
+    {
+        return VoucherCashRefund::query()
+            ->with('voucher:id,code')
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->when($toExclusive, fn ($q) => $q->where('created_at', '<', $toExclusive))
+            ->get()
+            ->map(fn (VoucherCashRefund $refund) => [
+                'date' => $refund->created_at->toIso8601String(),
+                'type' => 'voucher_cash_refund',
+                'reference' => $refund->voucher->code,
+                'description' => "Voucher refunded by bank transfer on {$refund->transferred_on->toDateString()}, bank ref {$refund->bank_reference} — {$refund->reason}",
+                'supplier' => null,
+                'currency' => 'MYR',
+                'gross_sen' => null,
+                'fee_sen' => null,
+                'cost_sen' => null,
+                'net_sen' => -$refund->amount_sen,
+                'amount_foreign' => null,
                 'status' => 'active',
                 'funding_source' => null,
             ])

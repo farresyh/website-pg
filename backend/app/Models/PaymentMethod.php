@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -37,4 +38,15 @@ class PaymentMethod extends Model
         'requires_issuer' => 'boolean',
         'last_tested_at' => 'datetime',
     ];
+
+    /**
+     * ADR-076 2026-11-12 addendum, decision 2: the methods a payer is
+     * offered, in the order they are shown. The portal catalog and the
+     * bot's `.topupbaki` both read this, so the group and the portal never
+     * offer from different sets.
+     */
+    public function scopeOffered(Builder $query): Builder
+    {
+        return $query->where('is_active', true)->orderBy('category')->orderBy('label');
+    }
 }

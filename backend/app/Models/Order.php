@@ -657,6 +657,26 @@ class Order extends Model
      * written for queries; OrderCompensationScopeTest holds it equal to
      * the method.
      */
+    /** Where OrderFulfillmentService keeps a supplier result that arrived after the order was final. */
+    public const LATE_SUPPLIER_RESULT = 'supplier_response->late_supplier_result';
+
+    /**
+     * ADR-127 decision 11: a supplier result that arrived after the order was
+     * final is kept in `supplier_response.late_supplier_result` and never
+     * changes `delivery_status`. A late Success may mean the item reached the
+     * player, so no automatic refund (ADR-139 decision 29) and no cash refund
+     * (ADR-004 2026-11-12 addendum, decision 4) goes ahead while one is recorded.
+     */
+    public function scopeWithoutLateSupplierResult(Builder $query): Builder
+    {
+        return $query->whereNull(self::LATE_SUPPLIER_RESULT);
+    }
+
+    public function scopeWithLateSupplierResult(Builder $query): Builder
+    {
+        return $query->whereNotNull(self::LATE_SUPPLIER_RESULT);
+    }
+
     public function scopeCompensated(Builder $query): Builder
     {
         return $query->where(fn (Builder $q) => $q
@@ -907,7 +927,6 @@ class Order extends Model
     {
         return $this->hasOne(PromoCodeRedemption::class);
     }
-
 
     /** ADR-118 V6: the KOL code this order counts for, redeemed here or earlier. */
     public function attributedPromoCode(): BelongsTo

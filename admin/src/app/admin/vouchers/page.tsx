@@ -38,12 +38,14 @@ import {
   listVouchers,
   getVoucher,
   createVoucher,
-  revokeVoucher,
   mergeVouchers,
+  downloadCashRefundProof,
 } from "@/lib/vouchers";
 import { listAffiliates } from "@/lib/affiliates";
 import CreateVoucherModal, { type VoucherBrandOption } from "@/components/vouchers/CreateVoucherModal";
 import MergeVouchersModal from "@/components/vouchers/MergeVouchersModal";
+import VoucherRevokeModal from "@/components/vouchers/VoucherRevokeModal";
+import VoucherCashRefundModal from "@/components/vouchers/VoucherCashRefundModal";
 
 const STAT_CARDS: { key: keyof VoucherIndexResponse["stats"]; label: string }[] = [
   { key: "active", label: "Active" },
@@ -68,6 +70,8 @@ const statusSeverity: Record<Voucher["status"], "success" | "secondary" | "warn"
   // ADR-036 — a merge's voided source, distinct from "exhausted"
   // (spent through redemption) or "revoked" (an admin pulled it).
   merged: "contrast",
+  // ADR-004 2026-11-12 addendum — the balance was paid out by bank transfer.
+  refunded: "secondary",
 };
 
 const redemptionStatusSeverity: Record<VoucherRedemption["status"], "warn" | "success" | "secondary"> = {
@@ -94,7 +98,10 @@ export default function VouchersPage() {
   const [brands, setBrands] = useState<VoucherBrandOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [revokingId, setRevokingId] = useState<number | null>(null);
+  // ADR-004 2026-11-12 addendum: revoke (gift credit only) and the cash refund are Super Admin actions.
+  const isSuperAdmin = session?.role === "super_admin";
+  const [revoking, setRevoking] = useState<Voucher | null>(null);
+  const [isRefundOpen, setIsRefundOpen] = useState(false);
 
   // ADR-036 — only active, unexpired vouchers are ever selectable
   // (enforced by the checkbox itself, below, via `display_status`); the
@@ -165,19 +172,21 @@ export default function VouchersPage() {
     await refresh();
   }
 
-  async function handleRevoke(voucher: Voucher) {
-    if (!session) return;
-    setRevokingId(voucher.id);
-
-    try {
-      await revokeVoucher(voucher.id);
-      notify.success("Voucher revoked", voucher.code);
-    } catch (err) {
-      notify.stickyError("Failed to revoke voucher", err instanceof ApiError ? err.message : "Could not revoke voucher.");
-    } finally {
-      setRevokingId(null);
-    }
+  async function handleRevoked() {
+    const revokedId = revoking?.id;
+    setRevoking(null);
+    if (selected && selected.voucher.id === revokedId) await openDetail(revokedId);
     await refresh();
+  }
+
+  async function handleRefunded() {
+    setIsRefundOpen(false);
+    if (selected) await openDetail(selected.voucher.id);
+  }
+
+  /** Revoke is offered only for gift credit; a failed order's refund is the customer's own money. */
+  function canRevoke(v: Voucher): boolean {
+    return isSuperAdmin && v.status === "active" && v.source === "gift";
   }
 
   async function openDetail(voucherId: number) {
@@ -195,8 +204,11 @@ export default function VouchersPage() {
     if (session) await refresh();
   }
 
+  const revokeModal = <VoucherRevokeModal voucher={revoking} onClose={() => setRevoking(null)} onRevoked={handleRevoked} />;
+
   if (selected) {
     const { voucher, stats } = selected;
+    const canRefund = isSuperAdmin && voucher.source === "customer_cash" && voucher.display_status === "active" && voucher.remaining > 0;
 
     return (
       <div>
@@ -213,19 +225,18 @@ export default function VouchersPage() {
             <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">{voucher.code}</h1>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Voucher Details</p>
           </div>
-          {voucher.status === "active" && (
-            <Button
-              size="small"
-              severity="danger"
-              disabled={revokingId === voucher.id}
-              onClick={async () => {
-                await handleRevoke(voucher);
-                await openDetail(voucher.id);
-              }}
-            >
-              Revoke
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {canRefund && (
+              <Button size="small" severity="danger" onClick={() => setIsRefundOpen(true)}>
+                Refund in cash
+              </Button>
+            )}
+            {canRevoke(voucher) && (
+              <Button size="small" severity="danger" onClick={() => setRevoking(voucher)}>
+                Revoke
+              </Button>
+            )}
+          </div>
         </div>
 
         {detailError && (
@@ -277,6 +288,57 @@ export default function VouchersPage() {
             </p>
           </div>
         </div>
+
+        {voucher.cash_refund && (
+          <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+            <h2 className="mb-4 text-base font-semibold text-gray-800 dark:text-white/90">Refunded by bank transfer</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <p className="text-theme-xs text-gray-500 dark:text-gray-400">Amount</p>
+                <p className="text-theme-sm font-medium text-gray-800 dark:text-white/90">{formatRm(voucher.cash_refund.amount_sen)}</p>
+              </div>
+              <div>
+                <p className="text-theme-xs text-gray-500 dark:text-gray-400">Sent on</p>
+                <p className="text-theme-sm text-gray-800 dark:text-white/90">{voucher.cash_refund.transferred_on}</p>
+              </div>
+              <div>
+                <p className="text-theme-xs text-gray-500 dark:text-gray-400">Bank reference</p>
+                <p className="text-theme-sm text-gray-800 dark:text-white/90">{voucher.cash_refund.bank_reference}</p>
+              </div>
+              <div>
+                <p className="text-theme-xs text-gray-500 dark:text-gray-400">To</p>
+                <p className="text-theme-sm text-gray-800 dark:text-white/90">
+                  {voucher.cash_refund.bank_account_holder} · {voucher.cash_refund.bank_name} {voucher.cash_refund.bank_account_no}
+                </p>
+              </div>
+              <div>
+                <p className="text-theme-xs text-gray-500 dark:text-gray-400">Recorded by</p>
+                <p className="text-theme-sm text-gray-800 dark:text-white/90">
+                  {voucher.cash_refund.creator?.name ?? "—"} · {formatDate(voucher.cash_refund.created_at)}
+                </p>
+              </div>
+              <div>
+                <p className="text-theme-xs text-gray-500 dark:text-gray-400">Proof</p>
+                <button
+                  type="button"
+                  className="text-theme-sm text-brand-500 hover:text-brand-600 dark:text-brand-400"
+                  onClick={() => downloadCashRefundProof(voucher).catch((err: unknown) => notify.stickyError("Could not download the proof", err instanceof ApiError ? err.message : undefined))}
+                >
+                  Download
+                </button>
+              </div>
+            </div>
+            <p className="mt-4 rounded-lg bg-gray-50 px-3 py-2 text-theme-sm text-gray-800 dark:bg-white/[0.03] dark:text-white/90">{voucher.cash_refund.reason}</p>
+          </div>
+        )}
+
+        {voucher.revoked_at && (
+          <p className="mb-6 rounded-2xl border border-gray-200 bg-white p-4 text-theme-sm text-gray-700 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-300">
+            Revoked {formatDate(voucher.revoked_at)}
+            {voucher.revoked_by ? ` by ${voucher.revoked_by.name}` : ""}
+            {voucher.revoked_reason ? `: ${voucher.revoked_reason}` : " (no reason recorded)"}
+          </p>
+        )}
 
         {(voucher.merges_as_target.length > 0 || voucher.merge_as_source) && (
           <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
@@ -379,6 +441,15 @@ export default function VouchersPage() {
             )}
           </div>
         </div>
+
+        {revokeModal}
+        <VoucherCashRefundModal
+          isOpen={isRefundOpen}
+          onClose={() => setIsRefundOpen(false)}
+          voucher={voucher}
+          sourceOrders={selected.refund_source_orders}
+          onRefunded={handleRefunded}
+        />
       </div>
     );
   }
@@ -486,8 +557,8 @@ export default function VouchersPage() {
                             >
                               View
                             </button>
-                            {v.status === "active" && (
-                              <Button size="small" severity="danger" disabled={revokingId === v.id} onClick={() => handleRevoke(v)}>
+                            {canRevoke(v) && (
+                              <Button size="small" severity="danger" onClick={() => setRevoking(v)}>
                                 Revoke
                               </Button>
                             )}
@@ -510,6 +581,7 @@ export default function VouchersPage() {
         </div>
       </div>
 
+      {revokeModal}
       <CreateVoucherModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleCreate} brands={brands} />
       <MergeVouchersModal
         isOpen={isMergeModalOpen}

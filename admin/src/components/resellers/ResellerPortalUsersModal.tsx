@@ -103,7 +103,8 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
             </div>
             <div className="flex items-center gap-2">
               {u.invite_pending ? <Tag severity="warn">invite pending</Tag> : <Tag severity="success">active</Tag>}
-              {u.invite_pending && (
+              {/* ADR-058 2026-11-12 addendum: the invite until a password is set, a reset link after. */}
+              {u.is_active && (
                 <Button
                   type="button"
                   size="small"
@@ -111,11 +112,11 @@ function Content({ reseller }: Omit<Props, "isOpen" | "onClose">) {
                   disabled={busy !== null}
                   onClick={() =>
                     run(`resend-${u.id}`, async () => {
-                      await resendResellerUserInvite(reseller.id, u.id);
-                    }, `Invite re-sent to ${u.email}`)
+                      notify.success((await resendResellerUserInvite(reseller.id, u.id)).message);
+                    })
                   }
                 >
-                  {busy === `resend-${u.id}` ? "…" : "Resend invite"}
+                  {busy === `resend-${u.id}` ? "…" : u.invite_pending ? "Resend invite" : "Send password reset"}
                 </Button>
               )}
             </div>

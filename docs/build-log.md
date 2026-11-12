@@ -2554,3 +2554,199 @@ Branch `feature/game-content`, into `staging`. ADR-140 decisions 6–12; the bui
 - Pint rewrites test imports (`fully_qualified_strict_types`); run it on a new test file.
 
 **Not seen:** the section's place relative to the reviews (the throwaway DB has no reviews; the order is the JSX order: checkout, reviews, About, footer), and anything on prod. Whether prod has the revalidation webhook set is not checked. **For the founder after release:** fill the home meta in Admin → SEO → Global Settings, then the content for each game (the drafts come from Claude for review), request indexing for five pages, and put links to game pages on the brand's social profiles. The three dead `seo_*` columns drop in a later PR once PR 1 is on `main`.
+
+## 2026-11-11 — Release #783: ADR-140 SEO meta strategy and per-game content, and the first content published
+
+The founder asked for it. `staging` → `main`, merge `dac033e1` at 11:39 UTC, carrying #778–#782 (the docs audit, ADR-140, PR 1 and PR 2). One additive migration.
+
+**Pre-release checks (production, read-only):** 5 merges and 1 migration in the delta; production had no other pending migration; `games` held 40 rows (four nullable columns are instant); `/api/health` 200; box release `82558237`; 11:22 UTC, away from the :00/:30 price-sync window.
+
+**CI and deploy:** the release PR was green on `55a324c4`; the `main` run `43013753500` was green in every job including `deploy`; the four Vercel deployments succeeded.
+
+**Checked after release (read-only):**
+- Box release `82696074`; migration `2026_11_15_110000` ran (batch 70); the four `content_*` columns exist; 40 games, 0 published at that moment; `/api/health` ok.
+- Live: the static pages carry the registry titles; home, about-us, refund-policy and track-order have four different descriptions (before: one); the sitemap has 48 URLs, none of the 11 static pages has a `lastmod` and all 37 games have a date; a game page was unchanged (no About yet); FixFast's titles carry its own name.
+
+**Seen on prod:**
+- Organization JSON-LD lacked `alternateName` ("Pekan Game") for about 27 minutes although the API returned `is_primary: true`. Next's Data Cache keeps the old branding payload across a deploy; the founder's first admin save (Global SEO Settings) purged it and it appeared. Not a bug.
+- The storefront was fresh within the same minute of every publish, so the revalidation webhook is set on production (ADR-140's "check on prod at release" is answered).
+
+**Admin actions (the founder; Claude drove the founder's Chrome session where noted):**
+- **Global SEO Settings → Default Meta.** Before: title and description empty (the registry text was served). After: description `Top up diamond Mobile Legends, UC PUBG Mobile, Free Fire dan game popular lain di {store_name}. Pilih game, masukkan ID dan bayar terus tanpa akaun.` and title `{store_name} - Top Up Game Murah di Malaysia | {store_name}`, which prints the brand twice ("PekanGame - Top Up Game Murah di Malaysia | PekanGame") and was still so at the end of the day. Meta Templates are unchanged: the game template still says "harga diskaun ahli" and "saat demi saat", and it also shows for FixFast and PajoStore, which have no Membership.
+- **Content, drafts.** 36 games got drafts: Mobile Legends Malaysia typed into the form, the other 35 through the admin's own `PUT /api/seo/games/{id}/content` from the founder's logged-in session (`published: false`, each game read back afterwards); every stored text equalled the reviewed draft by hash. Zenless Zone Zero was skipped (0 packages); Call of Duty Mobile, Joki MLBB and Roblox stayed empty. The region siblings were 0.80 to 0.96 similar, so only the three family pages were to be published. At the founder's request two FAQ answers (time and failed order) were changed on every game, 68 answers, read-modify-write with the publish state kept; PUBG's own "why longer" FAQ was left because it states manual delivery.
+- **Content, published.** The founder published Mobile Legends Malaysia, Aniimo, Arena Breakout and Blood Strike; on the founder's word Claude published PUBG Mobile Global, Genshin Impact, Honkai: Star Rail, Wuthering Waves, Honor of Kings, Magic Chess: Go Go and Free Fire Malaysia (13:15 UTC); the founder fixed and published Kingshot, Pokémon UNITE, Rainbow Six Mobile, Racing Master, Gangstar Mirage City, Where Winds Meet and Valorant Malaysia. 18 games are live. The other drafts (Mobile Legends 9 regions, Free Fire 5, Valorant 4) stay drafts on purpose.
+- **Verified live for all 18:** the section and `lang="ms"`; `FAQPage` questions equal the rendered and the API questions; the meta description and the `llms.txt` line come from the summary; the sitemap `lastmod` is the publish date. FixFast, OhahaStore and PajoStore carry nothing on any of the 18; the unpublished pages carry nothing.
+- **Request Indexing** in Search Console for five pages (Mobile Legends Malaysia, Free Fire Malaysia, PUBG Mobile, Genshin Impact, Honor of Kings) through the founder's Chrome; Honor of Kings needed one retry after a Google-side error.
+
+**What went wrong:** the founder published Aniimo with the "belum disahkan" placeholder sentence in its FAQ, and it was live from about 13:06 to 13:28 UTC. Claude's pre-publish scan covered only the sixteen games it was about to change and its verification script had no placeholder check, so it was found only by the next full scan; the founder removed the sentence. Rule: scan every published game for placeholder text, not only the ones being changed.
+
+**Gotchas:**
+- `/api/csrf-token` is rate limited (429). A loop that fetched one token per write got a 419 after 29 writes; fetch one token and reuse it.
+- In Search Console the Request indexing button must be clicked by element reference on a freshly loaded inspection; one click by coordinate showed no dialog. Each request waits about a minute for the live test.
+
+**Baseline for the checks (2026-11-11):** 10 pages indexed, 41 "Discovered – currently not indexed", no game page crawled, Crawl Stats HTML 9% and Discovery 2%, 0 external links, 177 clicks (3-month view). Checks on 25 Nov, 9 Dec and 6 Jan 2027.
+
+**Open:**
+- the founder's backlinks from the brand's social profiles to game pages (the likeliest lever; external links are 0);
+- the home title's doubled brand, and the game template's "harga diskaun ahli" on brands without Membership;
+- the Aniimo pack named "Lumin Cystals" (an admin data typo);
+- Zenless Zone Zero's content once it has packages;
+- the FAQ says 1-10 minutes while the page header says "Average Delivery: 1-5 Minutes" (editable per game in the admin);
+- the three dead `seo_*` columns drop in a PR now that PR 1 is on `main`.
+
+## 2026-11-11 — The three dead `seo_*` columns dropped (ADR-140 decision 5, contract release)
+
+Branch `feature/drop-dead-seo-columns`, into `staging`, stacked on the release record (#784). Not released.
+
+**What:** migration `2026_11_16_100000_drop_dead_seo_columns_from_games_table` drops `seo_title_local`, `seo_description_local` and `seo_keywords` from `games`; its `down()` restores the shape, not the data. PR 1 (#781) had already stopped every read and write of them, and it has been on `main` since release #783, so no running code touches them. The Game SEO list's subtitle no longer says "keywords". Nothing visible changes in the admin: the three inputs went with PR 1.
+
+**Production before the drop (read-only, 2026-11-11):** 40 games; `seo_title_local` and `seo_description_local` filled on 38 of them with **one** distinct value each (the seed template with unreplaced `{game_name}` tokens); `seo_keywords` filled on 0; no database view and no index references any of the three. So nothing of value is lost.
+
+**Verified:**
+- Backend suite 3,920 passed. A new schema test (`Adr140DropDeadSeoColumnsTest`, seen red first) and the ADR-140 tests: 21 passed on sqlite; the schema test also passed on the real MySQL container, where the `llm_report_*` views are created before the drop.
+- On that MySQL database `migrate` dropped the three columns, `migrate:rollback --step=1` restored all three, and `migrate` dropped them again.
+- The local dev DB migrated with a plain `php artisan migrate`. Admin `tsc` and `eslint` clean; Pint clean.
+
+**For the release:** the deploy runs the migration on production: three columns removed from `games` (40 rows), instant, no lock of note. Check afterwards that `Schema::hasColumn('games', 'seo_keywords')` is false and a game page and the Game SEO screen still load.
+
+## 2026-11-11 — SEO follow-ups: tracked-games count, small hygiene
+
+Branch `fix/seo-tracked-games-hygiene`, into `staging`. Not released. Found in a read-only review of the ADR-140 work.
+
+**What:**
+- **Tracked games** (ADR-140 2026-11-11 addendum). Production showed 38 tracked games in the admin and 37 games in the sitemap; the extra one was `joki-mlbb`. `Game::scopeTracked()` now uses the catalog's visibility rule (`AffiliateGame::hiddenGameIdsFor` for the primary brand), so joki and primary-hidden games are out of "Published N of M" and `sitemap_url_count`. A new invariant test (seen red first) ties the scope to the primary catalog listing.
+- A docblock for `scopeJoki()` had been left above `scopeTracked()`; it is back on its method.
+- `test_saving_game_seo_ignores_the_removed_fields` was deleted: since the columns were dropped it asserted `null` on attributes that no longer exist, so it could not fail. `Adr140DropDeadSeoColumnsTest` covers the drop.
+- The `llms.txt` route comment no longer says it has "no admin-authored field" (the published summary is ADR-140 decision 10's exception).
+
+**Noted for the record:** #785 was merged with the `playwright` check red, on the founder's word. Both runs failed at `npx playwright install chromium --with-deps`, because the GitHub runner could not resolve the Ubuntu apt mirrors (14:14 and 14:36 UTC). No test ran, and every other check was green.
+
+**Verified:** backend ADR-140, SEO and catalog tests 192 passed.
+
+## 2026-11-11 — CI `playwright` no longer depends on apt
+
+Branch `fix/ci-playwright-no-apt`, into `staging`. CI only; nothing deploys.
+
+**Why:** the `playwright` job failed three times on 2026-11-11 (#785 twice, #786 once) at `npx playwright install chromium --with-deps`. The runner could not resolve Ubuntu's apt mirrors (`Temporary failure resolving 'archive.ubuntu.com'`), so no test ran.
+
+**Root cause, checked in the logs:** `--with-deps` runs `apt-get update` and installs system packages. On the runner image (Ubuntu 26.04), every library Chromium needs is already present ("libnss3 is already the newest version"). In six green runs, apt installed the same 9 packages, all fonts: `fonts-freefont-ttf`, `fonts-ipafont-gothic`, `fonts-tlwg-loma-otf`, `fonts-unifont`, `fonts-wqy-zenhei`, `xfonts-cyrillic`, `xfonts-encodings`, `xfonts-scalable` and `xfonts-utils`. No spec needs them: there is no screenshot assertion in `e2e/`. So the job's only apt dependency bought nothing, and it was what failed.
+
+**What:** the flag is gone. The browser binary still comes from Playwright's CDN, now cached by `actions/cache`, keyed on `e2e/package-lock.json` (which pins Playwright and therefore the Chromium build). CI runs only on pull requests and on pushes to `main`, and a PR can read only its own caches and the default branch's. So the cache serves later commits of the same PR at once, and every PR after the next release's `main` run saves it. Proven on #788: 17 passed, no apt step, `Cache saved`.
+
+**Rejected:**
+- apt retries: they make a failing dependency fail less often instead of removing it;
+- the `mcr.microsoft.com/playwright` container: the job also needs PHP 8.4, and inside a container `setup-php` installs PHP through apt, which only moves the problem.
+
+**If a future runner image lacks a library,** Chromium fails at launch and names the library. Pin `runs-on` then, rather than bringing apt back.
+
+## 2026-11-11 — Reseller API docs v1.6.1: one `Order` schema, headers, guidance, private-terms guard
+
+Branch `fix/reseller-api-spec`, into `staging`. Not released (docs-site deploys from `main`). ADR-084 2026-11-11 addendum.
+
+**Why:** the founder had an AI agent (Hermes + DeepSeek) read docs.pekangame.space as a developer building against PekanGame. It rated the prose 8/10 and the spec 5/10, and listed 17 findings. Claude checked each against the code and the live spec. Confirmed:
+- `POST /v1/orders` was typed as a string;
+- the status enums were missing;
+- no response headers were listed;
+- `orderNumber` had no description;
+- request examples were missing;
+- there was no `llms.txt` or `robots.txt`;
+- the docs offered "test credentials", which do not exist.
+
+Not so:
+- retention, which is already "indefinitely" on the Idempotency page;
+- the "missing" sitemap: Starlight serves `sitemap-index.xml`.
+
+Skipped as low value: portal screenshots, which go stale.
+
+**What shipped:**
+- `OrderResource` replaces `ResellerOrderPayload`. One `Order` component is referenced by all four order responses, with enums and `date-time`.
+- Response headers are documented, each one proven by a test.
+- The request body has examples, and `orderNumber` has a description.
+- docs-site:
+  - guidance for `needs_review` (do not re-place the order);
+  - two keys mean two orders;
+  - a client timeout for `POST /v1/orders`;
+  - the bot commands are gone;
+  - the false test-credentials line is gone;
+  - the spec is linked;
+  - `llms.txt`, `robots.txt` and the PekanGame favicon are added;
+  - changelog v1.6.1.
+- `check-docs.mjs` now fails CI on private terms in the public docs.
+
+**Found on the way:** example order numbers were 10 characters; the real ones are 12 (`OrderNumberService`; production's 15 reseller orders all match `PG-` + 12). `order_number` is now documented as opaque.
+
+**Not done:** webhook events in the spec (Scramble cannot emit OpenAPI `webhooks`; see the addendum); the partner sandbox stays PRD §16 item 151.
+
+**Gotcha:** `vendor/bin/pint` with no path reformats about 60 unrelated backend files; run it on the changed files only.
+
+**Verified:**
+- Backend suite 3,921 passed. `OrderWireShapeTest` was green before and after the refactor, so the wire shape and the webhook body did not change.
+- `scramble:export` reproduces the committed spec.
+- docs-site `check` (0 errors) and `build` pass; the built POST page shows the headers, the enum values, the examples and the 12-character number.
+- `check-docs` and its self-test pass.
+
+## 2026-11-12 — Cash refund of a failed-order voucher designed (ADR-004 addendum); VC-FO21NVDK revoked by mistake
+
+**Designed** on `feature/voucher-cash-refund`: the ADR-004 2026-11-12 addendum (PRD §16 item 179), in three grill rounds and a stress test against the code. The stress test found that a late supplier Success never changes `delivery_status`, so "the source order is still Failed" would never have caught one. The check reads the recorded late result instead, through one scope shared with the automatic wallet refund.
+
+**Found (read-only, production).** VC-FO21NVDK (id 12) was revoked at 2026-11-12 01:28 UTC, by mistake. It is the merge of two failed-order vouchers, VC-IGUQCF24 (PG-MLH49GJRX6D2) and VC-NPXPMSDU (PG-8CSW9QS6BPNB), RM230.21 each. RM453.88 had been spent on PG-ECHHWBZQFKGA (delivered), and the revoke booked the remaining RM6.54 as November breakage. The admin Revoke button (list and detail) had no confirmation, and any admin could press it without the step-up. Left as history, with no data patch (founder). If the customer asks, an admin issues a RM6.54 voucher with the reason "replaces VC-FO21NVDK, revoked by mistake".
+
+**Production scale on 2026-11-12:** 231 paid retail orders, 16 failed or partly delivered, 14 order vouchers (RM573.13), 1 merge, no gift voucher, no compensated order with a late supplier result, 3 active admins (all super_admin), `ACCOUNTING_DISK=r2_accounting`.
+
+## 2026-11-12 — Cash refund of a failed-order voucher built (ADR-004 addendum, PRD §16 item 179)
+
+**Built** on `feature/voucher-cash-refund`. The backend:
+- Migration `2026_11_17_100000`: `vouchers.source`, backfilled in id order so a merge target follows its sources, plus `revoked_reason`, `revoked_by` and the `voucher_cash_refunds` table.
+- `VoucherService::refundInCash()`, the one writer, with the refusals from the ADR.
+- `Voucher::balanceAsOf()` reads the refund.
+- `Order::withLateSupplierResult()` / `withoutLateSupplierResult()`, one JSON path, also used by `app:refund-failed-wallet-orders`.
+- `AccountingPeriod::assertTransferDate()`, shared with the reseller closure.
+- A Transaction Register row (`voucher_cash_refund`) and a Monthly Summary information line (`failed_order_credit_refunded_sen`).
+- Revoke limited to gift credit, with a reason, and moved to Super Admin behind the step-up. The refund route is too, and the proof downloads from `GET /vouchers/{id}/cash-refund/proof`.
+
+In the admin: a "Refund in cash" modal on the voucher detail (the source orders, blocked while a late result is recorded), a Revoke confirmation with a reason, a "Refunded by bank transfer" card, the `refunded` status, and both accounting labels.
+
+**Verified.**
+- `php artisan test`: 3943 passed. On the way, two existing tests changed on purpose. The pinned step-up route list gained the two new routes. `test_only_admin_issued_vouchers_debit_the_platform_ledger` merged a gift voucher with a failed-order voucher, which is now refused, so it merges two failed-order vouchers instead (the ledger invariant is unchanged).
+- Concurrency suite on MySQL: two refunds pay out once, and a refund racing a redeem never pays out a reserved balance. Voucher merge and closure stay green.
+- `FinancialScenarioTest`: a cash refund leaves the October Cash Position gap and operating profit unchanged, and September does not move.
+- Mutation-checked: dropping the refund from `balanceAsOf()` or the late-result check fails its test.
+- Admin `tsc`, `lint` and `build` pass.
+- Browser, on a throwaway sqlite backend with an MFA admin (Playwright, prod build on `localhost:3000`): the late-result voucher's modal blocks the submit. A failed-order voucher refunded through the real step-up prompt (403 `mfa_step_up_required`, then code, then 201) ends `refunded` with RM0.00 left, and the proof is filed under `accounting/voucher-cash-refunds/2026/11/`. Revoke is offered only on the gift voucher, and the confirm button stays disabled until a reason is typed. The local dev DB migrated cleanly (no merge rows lost).
+
+**Gotchas.**
+1. `revoked_by` as a foreign key made SQLite rebuild `vouchers`, and the rebuild's drop cascaded into `voucher_merges`. The backfill test caught it. It is a plain column now, like `created_by` and `approved_by`.
+2. A late supplier Success never changes `delivery_status`, so the check reads the recorded result (found in the stress test, recorded in the design entry above).
+3. In the Playwright check, a TOTP code already used to log in is refused for the step-up within the same 30-second window.
+
+## 2026-11-12 — Portal password reset and the bot's top-up method (ADR-058 and ADR-076 addenda, PRD §16 item 181)
+
+**Why.**
+- A portal user who forgot a password had no way back. The admin's Resend invite refused a user with a password.
+- `.topupbaki` sent DuitNow QR only because `duitnow_qr` sorts before `fpx`. DuitNow costs the reseller 1%, FPX a flat RM1.
+- The trigger: AyrisShop's RM1,000 DuitNow top-up `WT-ILISAXAY52` sat at CHIP `pending_execute` on 2026-11-12. Its `.batalbaki` kept answering that the bank was processing it, which was correct, but the reply never said when the top-up would end. Checked read-only: CHIP `pending_execute`, `paid_on` null, expiry 19:04 MYT. It is the first `pending_execute` seen on production.
+
+**Built** on `feature/portal-password-reset-bot-topup-method`:
+- `POST /api/affiliate/forgot-password`: one generic answer, mail sent with `defer()` after the response, 5 requests a minute per IP.
+- `AffiliateInviteService::sendPasswordReset()` through the broker's `sendResetLink()`, so the 60-second per-user throttle holds. `sendInviteOrReset()` backs the admin button on both user lists.
+- `setPassword()` deletes the user's Sanctum tokens.
+- The portal has a `/forgot-password` page and a link on sign-in.
+- `PaymentMethod::offered()` is shared by the portal catalog and the bot.
+- `platform_settings.bot_topup_payment_method_id` (FK, `nullOnDelete`; the migration sets FPX) is chosen in Settings → Purchase Balance, with a warning when it is switched off.
+- The `.topupbaki` reply names the method. The `.batalbaki` in-flight reply gives the end time.
+
+**Verified.**
+- `php artisan test`: 3953 passed. The pinned public-route list gained `forgot-password`.
+- New tests: `PortalPasswordResetTest` (Reseller and Affiliate, generic answer, throttle, rate limit, old sessions end, single use, admin refusals) and the bot's chosen-method, fallback and same-list tests.
+- Mutation-checked: dropping the token revocation fails its test.
+- Admin and portal: `tsc`, `lint`, `test` and `build` pass.
+- Browser, on a throwaway backend with Plunk pointed at a local catcher so no real mail was sent (Playwright, prod builds):
+  - An unknown and a known email got the identical message, and only the known one got a mail.
+  - The emailed link set a new password, and sign-in with it reached the dashboard.
+  - The admin modal shows "Send password reset" for a user with a password and "Resend invite" for a pending one. The reset sent a mail.
+  - The Purchase Balance dropdown saved FPX through the real step-up prompt.
+
+**Gotchas.**
+1. `dispatch(closure)->afterResponse()` serialized the closure and failed on a service holding a WeakMap; `defer()` runs it in-process.
+2. An invite token counts toward the broker's one-a-minute throttle, so a reset within a minute of an invite is refused with its own message.
+3. On a fresh database the setting stays null (payment methods are seeded after migrations), which means "the first offered". On production the FPX row exists, so the migration sets it.

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Services\Reseller\Bot;
 
 use App\Models\PaymentMethod;
+use App\Models\PlatformSettings;
 use App\Models\Reseller;
 use App\Models\ResellerBotCommandLog;
 use App\Models\WalletTopupAttempt;
@@ -197,6 +198,62 @@ class ResellerBotTopupTest extends TestCase
         app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1');
 
         $this->assertSame('fpx', WalletTopupAttempt::query()->firstOrFail()->channel_code);
+    }
+
+    private function activeDuitNow(): PaymentMethod
+    {
+        return PaymentMethod::query()->create([
+            'channel_code' => 'dnqr', 'label' => 'DuitNow QR', 'category' => 'duitnow_qr',
+            'gateway' => 'chip', 'is_active' => true, 'percentage_rate' => 1.0, 'flat_fee_sen' => 0,
+        ]);
+    }
+
+    /** ADR-076 2026-11-12 addendum, decision 1: the chosen method wins even when it is not first in the list. */
+    public function test_topupbaki_uses_the_method_chosen_in_settings_and_names_it(): void
+    {
+        $this->captureReplies();
+        $this->activeDuitNow();
+        $fpx = $this->activeFpx();
+        PlatformSettings::current()->update(['bot_topup_payment_method_id' => $fpx->id]);
+        $this->bindGateway();
+        $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 500', 'msg-1');
+
+        $attempt = WalletTopupAttempt::query()->firstOrFail();
+        $this->assertSame('fpx', $attempt->channel_code);
+        $this->assertSame(50100, $attempt->total_charged_sen, 'FPX: RM1 flat, not 1%');
+        $this->assertStringContainsString("Kaedah    : Online Banking (FPX)\nCaj       : RM501.00", $this->replies()[0]);
+    }
+
+    /** Decision 3: a switched-off choice falls back to what the portal offers, and the reply says which. */
+    public function test_topupbaki_falls_back_to_the_first_offered_method_when_the_choice_is_off(): void
+    {
+        $this->captureReplies();
+        $this->activeDuitNow();
+        $fpx = $this->activeFpx();
+        $fpx->update(['is_active' => false]);
+        PlatformSettings::current()->update(['bot_topup_payment_method_id' => $fpx->id]);
+        $this->bindGateway();
+        $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 500', 'msg-1');
+
+        $this->assertSame('dnqr', WalletTopupAttempt::query()->firstOrFail()->channel_code);
+        $this->assertStringContainsString('Kaedah    : DuitNow QR', $this->replies()[0]);
+    }
+
+    /** Decision 2: the bot and the portal catalog read one list. */
+    public function test_the_bot_falls_back_to_the_portals_first_method(): void
+    {
+        $this->activeDuitNow();
+        $this->activeFpx();
+        $this->bindGateway();
+        $this->makeLinkedReseller();
+
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1');
+
+        $this->assertSame($this->getJson('/api/catalog/payment-methods')->json('0.channel_code'), WalletTopupAttempt::query()->firstOrFail()->channel_code);
     }
 
     public function test_topupbaki_is_unavailable_when_no_payment_method_is_active(): void

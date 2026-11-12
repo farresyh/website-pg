@@ -15,9 +15,13 @@ Laravel-specific, loaded only when working inside `backend/`.
   Anything that moves money (withdrawal approval, an admin-issued voucher,
   order profit) goes through it. A compensation voucher (issued for an
   order) writes no ledger row (ADR-024 2026-10-12 addendum).
-- **No cash refunds, ever** (ADR-004) — a failed/refundable order becomes a
-  store-credit `Voucher`, not a reversed payment. A 2026-10-22 plan to refund
-  to the original payment method was withdrawn 2026-11-01 (ADR-004 addendum).
+- **No refund to the payment method** (ADR-004) — a failed/refundable order
+  becomes a store-credit `Voucher`, not a reversed payment. A 2026-10-22 plan to
+  refund to the original payment method was withdrawn 2026-11-01. Since the
+  2026-11-12 addendum a Super Admin may pay a `customer_cash` voucher's balance
+  out by bank transfer (`VoucherService::refundInCash()`, the one writer): it
+  closes the voucher; it is never a new kind of compensation. `vouchers.source`
+  is written only by `issue()` and `merge()`; revoke is for `gift` vouchers only.
 - **Supplier and payment integrations are behind adapters** —
   `SupplierAdapter` (`GamevionAdapter` and `DigiflazzAdapter` are the two
   real, production-wired implementations — ADR-030/067/137; only Digiflazz

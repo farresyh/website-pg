@@ -268,7 +268,21 @@ jobs:
         working-directory: storefront
       - run: npm ci
         working-directory: e2e
-      - run: npx playwright install chromium --with-deps
+      # No `--with-deps`: that flag runs `apt-get update` against Ubuntu's
+      # mirrors to install system packages, and the runner image already has
+      # every library Chromium needs. What it actually added was 9 font
+      # packages (CJK, Thai, Cyrillic, unifont) that no spec uses (there are
+      # no screenshot assertions), and an apt mirror DNS failure on the
+      # runner failed this job three times on 2026-11-11 before any test ran.
+      # If a future runner image lacks a library, Chromium fails at launch
+      # and names it; then pin `runs-on` rather than bring apt back.
+      # The browser itself comes from Playwright's CDN, cached per lockfile
+      # (the lockfile pins the Playwright version, which pins the build).
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
+      - run: npx playwright install chromium
         working-directory: e2e
       - run: npx playwright test
         working-directory: e2e

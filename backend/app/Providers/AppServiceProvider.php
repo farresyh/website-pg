@@ -52,10 +52,9 @@ use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierConfigSchema;
 use App\Services\Supplier\SupplierNotConfiguredException;
 use App\Support\CurrentAffiliate;
+use App\Support\ResellerApiOpenApi;
 use App\Support\StorefrontBrand;
 use Dedoc\Scramble\Scramble;
-use Dedoc\Scramble\Support\Generator\OpenApi;
-use Dedoc\Scramble\Support\Generator\SecurityScheme;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Events\ScheduledTaskFailed;
 use Illuminate\Console\Events\ScheduledTaskFinished;
@@ -532,31 +531,9 @@ class AppServiceProvider extends ServiceProvider
         // guest evaluation. Same shape as the `viewPulse` gate above.
         Gate::define('viewApiDocs', fn ($user = null) => true);
 
-        // ADR-074 decision 1: every documented operation requires the
-        // Reseller API's bearer credential (EnsureResellerApiKey) —
-        // Scramble has no auto-detection for a non-Sanctum guard, so the
-        // security scheme is declared explicitly rather than left blank
-        // (a blank scheme would make the docs' own "Try it" panel never
-        // prompt for a key).
-        Scramble::extendOpenApi(function (OpenApi $openApi) {
-            $openApi->secure(SecurityScheme::http('bearer')->as('Reseller API key'));
-
-            // ADR-084 PR-4 wording pass: Scramble lifts the *class* docblock
-            // of every referenced enum / FormRequest into the public schema
-            // description. Shared money-critical classes (DeliveryStatus,
-            // PaymentStatus, PlaceOrderRequest) carry internal cross-references
-            // there — ADR/ORD/PR tags, "Supplier API", sibling class names —
-            // that must never reach docs.pekangame.space. Blank any component
-            // schema description that looks internal; the guide pages carry the
-            // real explanations.
-            foreach ($openApi->components->schemas as $schema) {
-                $description = $schema->type->description ?? '';
-
-                if ($description !== '' && preg_match('/\b(ADR-\d|ORD-\d|PR-[A-Z]?\d|Xendit|Supplier API|payment gateway|Create\w+Request)\b/', $description)) {
-                    $schema->type->setDescription('');
-                }
-            }
-        });
+        // The public Reseller API spec's post-inference adjustments: security
+        // scheme, internal-wording scrub, response headers.
+        Scramble::extendOpenApi(new ResellerApiOpenApi);
 
         // ADR-116 2026-11-03 addendum: OpenWA @lid lookups are WhatsApp contact
         // queries; a steady 20 a minute keeps a burst from looking like a scrape.

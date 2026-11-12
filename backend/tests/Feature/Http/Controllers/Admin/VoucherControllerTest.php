@@ -545,9 +545,10 @@ class VoucherControllerTest extends TestCase
 
     public function test_admin_can_revoke_an_active_voucher(): void
     {
-        $admin = AdminUser::factory()->create(['role' => 'admin']);
+        $admin = AdminUser::factory()->superAdmin()->create();
         $voucher = Voucher::query()->create([
             'affiliate_id' => $this->primaryAffiliate()->id,
+            'source' => Voucher::SOURCE_GIFT,
             'code' => 'VC-TEST0001',
             'customer_email' => 'customer@example.com',
             'amount' => 1_000,
@@ -556,8 +557,8 @@ class VoucherControllerTest extends TestCase
             'reason' => 'Test',
         ]);
 
-        Sanctum::actingAs($admin);
-        $response = $this->patchJson("/api/vouchers/{$voucher->id}/revoke");
+        $this->actingAsSteppedUp($admin);
+        $response = $this->patchJson("/api/vouchers/{$voucher->id}/revoke", ['reason' => 'Issued by mistake']);
 
         $response->assertOk();
         $response->assertJsonPath('status', 'revoked');
@@ -565,9 +566,10 @@ class VoucherControllerTest extends TestCase
 
     public function test_cannot_revoke_an_already_revoked_voucher(): void
     {
-        $admin = AdminUser::factory()->create(['role' => 'admin']);
+        $admin = AdminUser::factory()->superAdmin()->create();
         $voucher = Voucher::query()->create([
             'affiliate_id' => $this->primaryAffiliate()->id,
+            'source' => Voucher::SOURCE_GIFT,
             'code' => 'VC-TEST0002',
             'customer_email' => 'customer@example.com',
             'amount' => 1_000,
@@ -576,8 +578,8 @@ class VoucherControllerTest extends TestCase
             'reason' => 'Test',
         ]);
 
-        Sanctum::actingAs($admin);
-        $response = $this->patchJson("/api/vouchers/{$voucher->id}/revoke");
+        $this->actingAsSteppedUp($admin);
+        $response = $this->patchJson("/api/vouchers/{$voucher->id}/revoke", ['reason' => 'Issued by mistake']);
 
         $response->assertUnprocessable();
     }

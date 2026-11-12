@@ -24,8 +24,14 @@ https://api.pekangame.space/api/reseller
 ```
 
 Every endpoint path in this documentation (`/v1/balance`, `/v1/orders`, …) is
-relative to that base. There is no separate sandbox host — contact PekanGame if
-you need test credentials.
+relative to that base. There is no sandbox and no test key yet: every order
+is real and is charged to your Purchase Balance. Start with one low-value
+order.
+
+The machine-readable OpenAPI 3.1 spec is at
+[`/openapi.json`](/openapi.json), for generating a client or importing into
+Postman. It is generated from the API's code, so it matches what the server
+sends.
 
 ## Access is by application
 
