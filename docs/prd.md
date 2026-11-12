@@ -442,7 +442,7 @@ A KOL (influencer) is paid a monthly fee to bring new customers to PekanGame wit
 3. System marks `delivery_status = failed`. `payment_status` remains `paid` (needs resolution) — the customer's money was genuinely received; only delivery didn't complete.
 4. Admin sees it in the Orders Need Action KPI and pill.
 5. Admin reviews order details: supplier response, player ID validity, balance status.
-6. Admin resolves it by **(a) retry or resend delivery** (same or different supplier), or **(b) compensation**: a store-credit voucher, restoring the checkout voucher, or a refund to a reseller's own wallet. No cash-refund action exists in the system, and none will be built (ADR-004 addendum, 2026-11-01); the published Refund Policy was changed to voucher-only on 2026-11-01 (§16 item 129, closed).
+6. Admin resolves it by **(a) retry or resend delivery** (same or different supplier), or **(b) compensation**: a store-credit voucher, restoring the checkout voucher, or a refund to a reseller's own wallet. No refund to the original payment method exists, and none will be built (ADR-004 addendum, 2026-11-01). A rare exception, designed 2026-11-12 (ADR-004 addendum, §16 item 179): a super_admin pays a failed-order voucher's balance out by bank transfer, which closes the voucher; the published Refund Policy was changed to voucher-only on 2026-11-01 (§16 item 129, closed).
 7. Customer notified of the outcome.
 
 ## 7.3 Supplier Price Sync
@@ -844,6 +844,7 @@ feature.** Every open item, sorted by what it needs to finish. Re-verify
 before building.
 
 **A. Buildable now: code, no new design**
+- **179** Cash refund of a failed-order voucher by bank transfer, and revoke limited to gift credit ([ADR-004](./adr/ADR-004-no-cash-refunds-ever.md) 2026-11-12 addendum, money-critical, grilled and stress-tested). Being built on `feature/voucher-cash-refund`. Details below.
 - **178** SEO meta strategy and per-game "About this game" content (ADR-140, founder, 2026-11-11). Built and released in #783. Open: the founder's backlinks, the +2/+4/+8-week Search Console checks, and the release that drops three dead columns (built, not released). Details below.
 
 **B. Needs a short grill / ADR addendum first**
@@ -878,6 +879,17 @@ before building.
 - **152** Refresh the admin sandbox (`/middleware/sandbox`) for wallet and combo orders; do it with item 151, which shares `FakeSupplierAdapter` (its 21 tests pass as of 2026-10-31).
 
 ## Details
+
+179. **Cash refund of a failed-order voucher (ADR-004 2026-11-12 addendum).**
+    One PR: `vouchers.source` (backfill), `merge()` refusing a mix,
+    `VoucherService::refundInCash()` with `voucher_cash_refunds`, the shared
+    late-supplier-result scope, the transfer-date check moved to
+    `AccountingPeriod`, `balanceAsOf()`, a Transaction Register row, a Monthly
+    Summary information line, revoke limited to gift credit (confirmation,
+    reason, step-up), and the admin screens. Tests: a refund never moves
+    operating profit; the Cash Position gap holds; every refusal; refund
+    against redeem on real MySQL. When built, PRD ORD-7 and §7.2, and
+    `backend/AGENTS.md`'s "No cash refunds, ever" line, change with it.
 
 4. **Bot-host capacity (+$20/mo resize)** — resize only when capacity actually
    calls for it. It is also the moment to revisit the OpenWA engine (item 59:

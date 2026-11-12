@@ -2684,3 +2684,11 @@ Skipped as low value: portal screenshots, which go stale.
 - `scramble:export` reproduces the committed spec.
 - docs-site `check` (0 errors) and `build` pass; the built POST page shows the headers, the enum values, the examples and the 12-character number.
 - `check-docs` and its self-test pass.
+
+## 2026-11-12 — Cash refund of a failed-order voucher designed (ADR-004 addendum); VC-FO21NVDK revoked by mistake
+
+**Designed** on `feature/voucher-cash-refund`: the ADR-004 2026-11-12 addendum (PRD §16 item 179), in three grill rounds and a stress test against the code. The stress test found that a late supplier Success never changes `delivery_status`, so "the source order is still Failed" would never have caught one. The check reads the recorded late result instead, through one scope shared with the automatic wallet refund.
+
+**Found (read-only, production).** VC-FO21NVDK (id 12) was revoked at 2026-11-12 01:28 UTC, by mistake. It is the merge of two failed-order vouchers, VC-IGUQCF24 (PG-MLH49GJRX6D2) and VC-NPXPMSDU (PG-8CSW9QS6BPNB), RM230.21 each. RM453.88 had been spent on PG-ECHHWBZQFKGA (delivered), and the revoke booked the remaining RM6.54 as November breakage. The admin Revoke button (list and detail) had no confirmation, and any admin could press it without the step-up. Left as history, with no data patch (founder). If the customer asks, an admin issues a RM6.54 voucher with the reason "replaces VC-FO21NVDK, revoked by mistake".
+
+**Production scale on 2026-11-12:** 231 paid retail orders, 16 failed or partly delivered, 14 order vouchers (RM573.13), 1 merge, no gift voucher, no compensated order with a late supplier result, 3 active admins (all super_admin), `ACCOUNTING_DISK=r2_accounting`.
