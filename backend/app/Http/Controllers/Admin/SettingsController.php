@@ -18,6 +18,7 @@ use App\Models\AffiliateBranding;
 use App\Models\AffiliateFooterSettings;
 use App\Models\OrderCredential;
 use App\Models\Package;
+use App\Models\PaymentMethod;
 use App\Models\PlatformSettings;
 use App\Models\PriceChangeLog;
 use App\Services\Media\ImageIngestService;
@@ -54,6 +55,8 @@ class SettingsController extends Controller
             'branding' => $this->brandingFor($affiliate),
             'footer' => $this->footerFor($affiliate),
             'platform' => PlatformSettings::current(),
+            // ADR-076 2026-11-12 addendum: the choices for `.topupbaki`'s method, switched-off ones included (flagged).
+            'payment_methods' => PaymentMethod::query()->orderBy('category')->orderBy('label')->get(['id', 'label', 'channel_code', 'is_active']),
         ]);
     }
 

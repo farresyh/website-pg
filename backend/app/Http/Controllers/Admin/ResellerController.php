@@ -23,7 +23,6 @@ use App\Services\Reseller\ResellerProvisioningService;
 use App\Services\Reseller\ResellerTierChangeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Validation\ValidationException;
 
 /**
  * ADR-072/073 PR-B: super_admin-only Reseller (prepaid-wallet) account
@@ -183,7 +182,7 @@ class ResellerController extends Controller
         ));
     }
 
-    /** Re-send the set-password invite for a portal user who hasn't accepted yet. */
+    /** ADR-058 2026-11-12 addendum: the invite for a user with no password yet, a reset link otherwise. */
     public function resendInvite(Reseller $reseller, AffiliateUser $affiliateUser): JsonResponse
     {
         abort_unless(
@@ -191,15 +190,7 @@ class ResellerController extends Controller
             404,
         );
 
-        if ($affiliateUser->password !== null) {
-            throw ValidationException::withMessages([
-                'user' => ['This user has already set their password.'],
-            ]);
-        }
-
-        $this->invites->sendInvite($affiliateUser);
-
-        return response()->json(['message' => 'Invite re-sent.']);
+        return response()->json(['message' => $this->invites->sendInviteOrReset($affiliateUser)]);
     }
 
     /** ADR-131 decision 4: set (or clear, with null) one reseller's balance-cap override. Behind step-up. */

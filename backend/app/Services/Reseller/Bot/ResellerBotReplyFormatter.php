@@ -265,11 +265,13 @@ final class ResellerBotReplyFormatter
      * `checkout_url` is non-null by the time this is called (the handler
      * routes a null-link attempt to `topupCheckoutFailed()` instead).
      */
-    public static function topupInitiated(WalletTopupAttempt $attempt): string
+    /** ADR-076 2026-11-12 addendum, decision 3: the method is always named beside the charge. */
+    public static function topupInitiated(WalletTopupAttempt $attempt, string $methodLabel): string
     {
         return self::wrap(
             "「 TAMBAH BAKI PEMBELIAN 」\n\n"
             .'Jumlah    : RM'.self::formatSen($attempt->amount_sen)."\n"
+            .'Kaedah    : '.$methodLabel."\n"
             .'Caj       : RM'.self::formatSen($attempt->total_charged_sen)." (termasuk fi bank)\n"
             .'Ref       : '.$attempt->reference."\n\n"
             .$attempt->checkout_url."\n\n"
@@ -315,7 +317,8 @@ final class ResellerBotReplyFormatter
 
     public static function topupCancelInFlight(WalletTopupAttempt $attempt): string
     {
-        return self::topupLabel($attempt).' sedang diproses oleh bank. Tunggu sehingga selesai, kemudian semak dengan .baki.';
+        // ADR-076 2026-11-12 addendum, decision 4: when it ends if never paid. A late payment is still credited.
+        return self::topupLabel($attempt).' sedang diproses oleh bank, jadi belum boleh dibatalkan. Jika tidak dibayar, ia tamat sendiri selepas '.ResellerWalletTopupService::expiryLabel($attempt).'. Jika anda sudah bayar, baki akan masuk sendiri. Semak dengan .baki.';
     }
 
     /** The top-up ended (reconcile or the webhook got there first) between the read and the cancel. */

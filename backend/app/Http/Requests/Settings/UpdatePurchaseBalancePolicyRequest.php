@@ -24,6 +24,8 @@ class UpdatePurchaseBalancePolicyRequest extends FormRequest
         return [
             'topup_max_sen' => ['required', 'integer', 'min:'.ResellerWalletTopupService::MIN_AMOUNT_SEN, 'max:100000000'],
             'balance_cap_default_sen' => ['required', 'integer', 'gte:topup_max_sen', 'max:10000000000'],
+            // ADR-076 2026-11-12 addendum: `.topupbaki`'s method; null = the first offered.
+            'bot_topup_payment_method_id' => ['nullable', 'integer', 'exists:payment_methods,id'],
         ];
     }
 }

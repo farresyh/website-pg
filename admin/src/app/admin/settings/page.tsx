@@ -107,7 +107,7 @@ export default function SettingsPage() {
         <CustomerLoginPolicySection platform={data.platform} onSaved={() => refresh()} />
       )}
       {tab === "purchase-balance" && (
-        <PurchaseBalanceSection platform={data.platform} onSaved={() => refresh()} />
+        <PurchaseBalanceSection platform={data.platform} paymentMethods={data.payment_methods} onSaved={() => refresh()} />
       )}
     </div>
   );

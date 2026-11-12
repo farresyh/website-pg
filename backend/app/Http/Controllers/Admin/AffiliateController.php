@@ -336,7 +336,7 @@ class AffiliateController extends Controller
         return response()->json($this->detailShape($affiliate->fresh()));
     }
 
-    /** Re-send the set-password invite for a user who hasn't accepted yet. */
+    /** ADR-058 2026-11-12 addendum: the invite for a user with no password yet, a reset link otherwise. */
     public function resendInvite(Affiliate $affiliate, AffiliateUser $affiliateUser): JsonResponse
     {
         abort_unless(
@@ -344,15 +344,7 @@ class AffiliateController extends Controller
             404,
         );
 
-        if ($affiliateUser->password !== null) {
-            throw ValidationException::withMessages([
-                'user' => ['This user has already set their password.'],
-            ]);
-        }
-
-        $this->invites->sendInvite($affiliateUser);
-
-        return response()->json(['message' => 'Invite re-sent.']);
+        return response()->json(['message' => $this->invites->sendInviteOrReset($affiliateUser)]);
     }
 
     /**

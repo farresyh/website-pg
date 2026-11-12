@@ -13,6 +13,7 @@ use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use App\Services\Reseller\Bot\ResellerBotReplyFormatter;
 use App\Services\Reseller\Bot\ResellerBotService;
+use App\Services\Reseller\ResellerWalletTopupService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -154,8 +155,10 @@ class ResellerBotBatalBakiTest extends TestCase
         $this->assertSame(WalletTopupAttemptStatus::Pending, $attempt->fresh()->status);
         $this->assertDatabaseHas('reseller_bot_command_logs', ['reseller_id' => $reseller->id, 'failure_reason' => 'topup_cancel_in_flight']);
         $this->assertSame([
-            'Tambah baki RM100.00 (Ref WT-BATAL00001) sedang diproses oleh bank. '
-            .'Tunggu sehingga selesai, kemudian semak dengan .baki.',
+            // ADR-076 2026-11-12 addendum, decision 4: when an unpaid one ends.
+            'Tambah baki RM100.00 (Ref WT-BATAL00001) sedang diproses oleh bank, jadi belum boleh dibatalkan. '
+            .'Jika tidak dibayar, ia tamat sendiri selepas '.ResellerWalletTopupService::expiryLabel($attempt).'. '
+            .'Jika anda sudah bayar, baki akan masuk sendiri. Semak dengan .baki.',
         ], $this->replies());
     }
 

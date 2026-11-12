@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Affiliate;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Affiliate\AffiliateForgotPasswordRequest;
 use App\Http\Requests\Affiliate\AffiliateLoginRequest;
 use App\Http\Requests\Affiliate\AffiliateSetPasswordRequest;
 use App\Models\AffiliateImpersonationSession;
 use App\Models\AffiliateUser;
+use App\Services\Affiliate\AffiliateInviteService;
 use App\Services\Backup\BackupFailureAlerter;
 use App\Support\AccountLoginThrottle;
 use Illuminate\Http\JsonResponse;
@@ -16,6 +18,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+
+use function Illuminate\Support\defer;
 
 /**
  * ADR-058 (58a): affiliate-portal authentication, on the `affiliate`
@@ -89,6 +93,25 @@ class AffiliateAuthController extends Controller
     }
 
     /**
+     * ADR-058 2026-11-12 addendum, decision 1: one generic answer whatever
+     * the email, and the mail goes out after the response, so neither the
+     * wording nor the timing tells whether an account exists.
+     */
+    public function forgotPassword(AffiliateForgotPasswordRequest $request, AffiliateInviteService $invites): JsonResponse
+    {
+        $email = $request->validated('email');
+
+        defer(function () use ($email, $invites) {
+            $user = AffiliateUser::query()->where('email', $email)->first();
+            $status = $user === null ? Password::INVALID_USER : $invites->sendPasswordReset($user);
+
+            Log::info('Portal password reset requested', ['affiliate_user_id' => $user?->id, 'status' => $status]);
+        });
+
+        return response()->json(['message' => 'If an active account uses this email, a reset link is on its way. It expires in 24 hours.']);
+    }
+
+    /**
      * Accept the emailed invite (AffiliateInviteService) or a later reset:
      * the affiliate sets their own password. Uses the `affiliate_users`
      * broker so an admin never handles a plaintext password (ADR-058
@@ -103,6 +126,8 @@ class AffiliateAuthController extends Controller
                     'password' => Hash::make($password),
                     'remember_token' => Str::random(60),
                 ])->save();
+                // ADR-058 2026-11-12 addendum, decision 5: a session opened with the old password ends.
+                $user->tokens()->delete();
             }
         );
 

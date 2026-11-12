@@ -27,7 +27,7 @@ import { clearClientSession, getClientSession } from "@/lib/session";
 // one identical 422 on the `email` field — there is nothing to distinguish
 // server-side, so one generic message covers all three (addendum decision 1).
 const INVALID_LINK_MESSAGE =
-  "This link is invalid or has expired. Please ask us to send you a new invite.";
+  "This link is invalid, has expired or was already used. Request a new one from \"Forgot your password?\" on the sign-in page.";
 
 export default function SetPasswordPage() {
   const router = useRouter();

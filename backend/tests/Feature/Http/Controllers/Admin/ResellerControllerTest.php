@@ -249,7 +249,8 @@ class ResellerControllerTest extends TestCase
         $this->postJson("/api/resellers/{$mine->id}/users/{$otherUser->id}/resend-invite")->assertNotFound();
     }
 
-    public function test_resend_invite_rejects_a_user_who_already_set_their_password(): void
+    /** ADR-058 2026-11-12 addendum, decision 2: a user with a password now gets a reset link, not a refusal. */
+    public function test_resend_invite_sends_a_reset_link_to_a_user_who_already_set_their_password(): void
     {
         Http::fake();
         $this->actAsSuperAdmin();
@@ -258,7 +259,11 @@ class ResellerControllerTest extends TestCase
         $this->postJson("/api/resellers/{$reseller->id}/users", ['name' => 'S', 'email' => 's@acme.test']);
         $user = AffiliateUser::query()->where('email', 's@acme.test')->firstOrFail();
         $user->update(['password' => 'already-set']);
+        $this->travel(61)->seconds(); // the invite above is a token too; the broker allows one a minute
 
-        $this->postJson("/api/resellers/{$reseller->id}/users/{$user->id}/resend-invite")->assertUnprocessable();
+        $this->postJson("/api/resellers/{$reseller->id}/users/{$user->id}/resend-invite")
+            ->assertOk()
+            ->assertJsonPath('message', 'Password reset link sent to s@acme.test.');
+        $this->assertDatabaseHas('affiliate_password_reset_tokens', ['email' => 's@acme.test']);
     }
 }
