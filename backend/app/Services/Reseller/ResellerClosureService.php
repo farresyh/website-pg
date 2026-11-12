@@ -14,7 +14,6 @@ use App\Services\Accounting\AccountingPeriod;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Rebate\UnspentRebate;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -89,7 +88,7 @@ final class ResellerClosureService
     /** The refunded amount (0 for an empty balance). */
     public function close(Reseller $reseller, int $adminUserId, string $transferredOn, string $bankReference): int
     {
-        $this->assertTransferDate($transferredOn);
+        AccountingPeriod::assertTransferDate($transferredOn, 'transferred_on', 'The transfer date must be a day this month, not in the future. Close the account on the day you send the refund.');
 
         $refunded = DB::transaction(function () use ($reseller, $adminUserId, $transferredOn, $bankReference) {
             // The mutex first: an order or a payment either commits before this and is then seen
@@ -162,19 +161,5 @@ final class ResellerClosureService
         ]);
 
         return $refunded;
-    }
-
-    /** A day of this Kuala Lumpur month, not in the future, in a month that is still open. */
-    private function assertTransferDate(string $transferredOn): void
-    {
-        $today = now('Asia/Kuala_Lumpur');
-        $day = Carbon::parse($transferredOn, 'Asia/Kuala_Lumpur');
-
-        if ($day->toDateString() > $today->toDateString() || $day->format('Y-m') !== $today->format('Y-m')) {
-            throw ValidationException::withMessages(['transferred_on' => ['The transfer date must be a day this month, not in the future. Close the account on the day you send the refund.']]);
-        }
-
-        AccountingPeriod::assertOpen($transferredOn, 'transferred_on');
-        AccountingPeriod::assertOpen($today, 'transferred_on');
     }
 }

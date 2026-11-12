@@ -34,6 +34,25 @@ final class AccountingPeriod
         }
     }
 
+    /**
+     * A bank transfer recorded after it was sent (ADR-131 closure, ADR-004
+     * 2026-11-12 cash refund): a Kuala Lumpur day of this month, not in the
+     * future, in a month that is still open. The record is dated now, so the
+     * transfer must sit in the same month as the record.
+     */
+    public static function assertTransferDate(string $transferredOn, string $field, string $message): void
+    {
+        $today = now(MalaysiaTime::TIMEZONE);
+        $day = Carbon::parse($transferredOn, MalaysiaTime::TIMEZONE);
+
+        if ($day->toDateString() > $today->toDateString() || $day->format('Y-m') !== $today->format('Y-m')) {
+            throw ValidationException::withMessages([$field => [$message]]);
+        }
+
+        self::assertOpen($transferredOn, $field);
+        self::assertOpen($today, $field);
+    }
+
     /** A plain date (`Y-m-d`) is already a Kuala Lumpur day; an instant is converted. */
     private static function monthStart(CarbonInterface|string $date): string
     {

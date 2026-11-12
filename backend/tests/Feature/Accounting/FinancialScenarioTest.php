@@ -41,6 +41,7 @@ use Carbon\CarbonImmutable;
 use Database\Seeders\FinancialScenario\FinancialScenario;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -448,6 +449,34 @@ class FinancialScenarioTest extends TestCase
         $this->assertCount(1, $closureRows);
         $this->assertSame(-$refunded, $closureRows[0]['net_sen']);
         $this->assertSame(-$refunded, $s->bankAsOf('2026-10-08') - $s->bankAsOf('2026-10-07'));
+    }
+
+    /**
+     * ADR-004 2026-11-12 addendum, decision 7: paying a failed order's voucher
+     * out by bank transfer settles a liability. The voucher claim and the bank
+     * fall together, operating profit and the closed September never move.
+     */
+    public function test_a_voucher_refunded_in_cash_leaves_the_gap_and_profit_unchanged(): void
+    {
+        Storage::fake(config('filesystems.accounting_disk'));
+        $s = $this->scenario;
+        $position = fn (): array => app(CashPositionService::class)->asOf(2026, 10);
+        $gap = fn (): int => CashPositionService::gapSen($position(), $s->bankAsOf('2026-10-31'));
+        $october = fn (): array => app(MonthlyAccountingSummaryService::class)->forPeriod(2026, 10);
+        $september = app(MonthlyAccountingSummaryService::class)->forPeriod(2026, 9);
+
+        $voucher = Voucher::query()->compensation()->where('status', 'active')->where('created_at', '>=', '2026-10-01')->sole();
+        $this->assertTrue($voucher->isCustomerCash());
+        [$gapBefore, $claimBefore, $profitBefore] = [$gap(), $position()['claims']['vouchers_outstanding_sen'], $october()['operating_profit_sen']];
+
+        $refunded = $s->at('2026-10-25 10:00')->refundVoucherInCash($voucher);
+
+        $this->assertSame($voucher->amount, $refunded);
+        $this->assertSame($claimBefore - $refunded, $position()['claims']['vouchers_outstanding_sen']);
+        $this->assertSame($gapBefore, $gap(), 'the claim and the cash both fell by the refund');
+        $this->assertSame($profitBefore, $october()['operating_profit_sen']);
+        $this->assertSame($refunded, $october()['failed_order_credit_refunded_sen']);
+        $this->assertSame($september, app(MonthlyAccountingSummaryService::class)->forPeriod(2026, 9));
     }
 
     public function test_a_failed_wallet_order_nobody_has_refunded_blocks_the_closure(): void

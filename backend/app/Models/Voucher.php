@@ -12,8 +12,15 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Voucher extends Model
 {
+    /** ADR-004 2026-11-12 addendum, decision 2: the customer's own money (a failed order's compensation). */
+    public const SOURCE_CUSTOMER_CASH = 'customer_cash';
+
+    /** Credit the platform gave (an admin-issued voucher). Only this can be revoked. */
+    public const SOURCE_GIFT = 'gift';
+
     protected $fillable = [
         'order_id',
+        'source',
         'affiliate_id',
         'code',
         'idempotency_key',
@@ -23,6 +30,8 @@ class Voucher extends Model
         'remaining',
         'status',
         'revoked_at',
+        'revoked_reason',
+        'revoked_by',
         'expires_at',
         'reason',
         'created_by',
@@ -112,6 +121,22 @@ class Voucher extends Model
         return $this->belongsTo(Affiliate::class);
     }
 
+    public function isCustomerCash(): bool
+    {
+        return $this->source === self::SOURCE_CUSTOMER_CASH;
+    }
+
+    public function revokedBy(): BelongsTo
+    {
+        return $this->belongsTo(AdminUser::class, 'revoked_by');
+    }
+
+    /** ADR-004 2026-11-12 addendum: the bank-transfer payout that closed this voucher, if any. */
+    public function cashRefund(): HasOne
+    {
+        return $this->hasOne(VoucherCashRefund::class);
+    }
+
     /**
      * ADR-036 — merge audit rows where this voucher is the result
      * (the "where did this merged code come from" answer, decision 6).
@@ -137,11 +162,17 @@ class Voucher extends Model
      * ADR-127 P1: what the customer could spend at `$at`, rebuilt from the
      * redemption history (`remaining` is only today's figure). A source
      * merged away by then holds nothing; its balance lives on in the target.
-     * Needs `redemptions` and `mergeAsSource` loaded.
+     * One paid out in cash by then holds nothing either (ADR-004 2026-11-12
+     * addendum): the claim and the bank fall together.
+     * Needs `redemptions`, `mergeAsSource` and `cashRefund` loaded.
      */
     public function balanceAsOf(CarbonInterface $at): int
     {
         if ($this->revoked_at !== null && $this->revoked_at < $at) {
+            return 0;
+        }
+
+        if ($this->cashRefund !== null && $this->cashRefund->created_at < $at) {
             return 0;
         }
 
@@ -167,6 +198,6 @@ class Voucher extends Model
             ->where('created_at', '<', $at)
             ->where(fn (Builder $q) => $q->whereNull('expires_at')->orWhere('expires_at', '>=', $at))
             ->where(fn (Builder $q) => $q->whereNull('order_id')->orWhereHas('sourceOrder', fn (Builder $o) => $o->where('is_test', false)))
-            ->with(['redemptions', 'mergeAsSource']);
+            ->with(['redemptions', 'mergeAsSource', 'cashRefund']);
     }
 }

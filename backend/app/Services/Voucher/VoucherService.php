@@ -2,17 +2,23 @@
 
 namespace App\Services\Voucher;
 
+use App\Models\Order;
 use App\Models\Voucher;
+use App\Models\VoucherCashRefund;
 use App\Models\VoucherMerge;
 use App\Models\VoucherRedemption;
+use App\Services\Accounting\AccountingFileStore;
+use App\Services\Accounting\AccountingPeriod;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Support\MalaysiaTime;
 use App\Support\PhoneNumber;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -62,6 +68,10 @@ final class VoucherService
         return DB::transaction(function () use ($customerEmail, $customerPhone, $amount, $reason, $expiresAt, $createdBy, $approvedBy, $affiliateId, $orderId, $idempotencyKey) {
             $voucher = Voucher::query()->create([
                 'order_id' => $orderId,
+                // ADR-004 2026-11-12 addendum, decision 2: a sandbox order moved no real money.
+                'source' => $orderId !== null && Order::query()->whereKey($orderId)->where('is_test', false)->exists()
+                    ? Voucher::SOURCE_CUSTOMER_CASH
+                    : Voucher::SOURCE_GIFT,
                 'affiliate_id' => $affiliateId,
                 'code' => $this->generateCode(),
                 'idempotency_key' => $idempotencyKey,
@@ -141,6 +151,13 @@ final class VoucherService
             $this->assertSameCustomer($vouchers);
             $this->assertSameBrand($vouchers);
 
+            // ADR-004 2026-11-12 addendum, decision 2: a voucher is all the
+            // customer's own money or all gift credit, never a mix.
+            $sources = $vouchers->pluck('source')->unique();
+            if ($sources->count() > 1) {
+                throw new InvalidVoucherException('A refund voucher for a failed order can\'t be merged with gift credit.');
+            }
+
             // ADR-036 2026-11-07 addendum: credit with no expiry is the
             // customer's own money, and a merge must not put a date on it.
             if ($expiresAt !== null && $vouchers->contains(fn (Voucher $voucher) => $voucher->expires_at === null)) {
@@ -151,6 +168,7 @@ final class VoucherService
             $totalRemaining = (int) $vouchers->sum('remaining');
 
             $target = Voucher::query()->create([
+                'source' => $sources->sole(),
                 'affiliate_id' => $reference->affiliate_id,
                 'code' => $this->generateCode(),
                 'customer_email' => $reference->customer_email,
@@ -282,26 +300,108 @@ final class VoucherService
     }
 
     /**
-     * An admin cancels an active voucher. ADR-127 P1: `revoked_at` is the
+     * An admin cancels an active gift voucher. ADR-127 P1: `revoked_at` is the
      * dated fact — Cash Position stops owing the balance from then, and the
      * Monthly Summary books the unspent balance as income of that month.
      * Locked like redeem(), so a revoke and a redemption cannot interleave.
+     *
+     * ADR-004 2026-11-12 addendum, decision 8: never the customer's own
+     * money, which would turn cash we owe into income. That is paid out
+     * with refundInCash() or left for the customer to spend.
      */
-    public function revoke(Voucher $voucher): Voucher
+    public function revoke(Voucher $voucher, int $adminUserId, string $reason): Voucher
     {
-        return DB::transaction(function () use ($voucher) {
+        return DB::transaction(function () use ($voucher, $adminUserId, $reason) {
             $locked = Voucher::query()->lockForUpdate()->findOrFail($voucher->id);
 
             if ($locked->status !== 'active') {
                 throw ValidationException::withMessages(['status' => ['Only an active voucher can be revoked.']]);
             }
 
+            if ($locked->isCustomerCash()) {
+                throw ValidationException::withMessages(['status' => ["Voucher {$locked->code} is a failed order's refund, the customer's own money, so it can't be revoked. Leave it for the customer to spend, or refund it in cash."]]);
+            }
+
             $this->assertNoOpenRedemption($locked);
 
-            $locked->update(['status' => 'revoked', 'revoked_at' => now()]);
+            $locked->update(['status' => 'revoked', 'revoked_at' => now(), 'revoked_reason' => $reason, 'revoked_by' => $adminUserId]);
 
             return $locked;
         });
+    }
+
+    /**
+     * ADR-004 2026-11-12 addendum, decisions 3-7: pay a customer-cash
+     * voucher's remaining balance out by bank transfer. The transfer is
+     * sent first; this records it. The amount is the balance, never typed.
+     * The voucher ends `refunded`, and `balanceAsOf()` reads the refund, so
+     * Cash Position's claim falls with the bank balance and no profit moves.
+     *
+     * @param  array{bank_name: string, bank_account_no: string, bank_account_holder: string, bank_reference: string}  $bank
+     */
+    public function refundInCash(Voucher $voucher, int $adminUserId, string $transferredOn, array $bank, UploadedFile $proof, string $reason): VoucherCashRefund
+    {
+        AccountingPeriod::assertTransferDate($transferredOn, 'transferred_on', 'The transfer date must be a day this month, not in the future. Record the refund on the day you send it.');
+
+        $refund = AccountingFileStore::storeThen($proof, config('filesystems.accounting_disk'), 'accounting/voucher-cash-refunds', $transferredOn, fn (?string $path) => DB::transaction(function () use ($voucher, $adminUserId, $transferredOn, $bank, $reason, $path) {
+            $locked = Voucher::query()->lockForUpdate()->findOrFail($voucher->id);
+
+            if (! $locked->isCustomerCash()) {
+                throw new InvalidVoucherException("Voucher {$locked->code} is gift credit, not a customer's own money, so it can't be refunded in cash.");
+            }
+
+            if ($locked->status !== 'active' || $locked->isExpired()) {
+                throw new InvalidVoucherException("Voucher {$locked->code} is not active, so it can't be refunded.");
+            }
+
+            $this->assertNoOpenRedemption($locked);
+
+            if ($locked->remaining <= 0) {
+                throw new InvalidVoucherException("Voucher {$locked->code} has no balance left to refund.");
+            }
+
+            $late = Order::query()->whereIn('id', $this->sourceOrderIds($locked))->withLateSupplierResult()->value('order_number');
+            if ($late !== null) {
+                throw new InvalidVoucherException("The supplier reported a late result for order {$late}. Check with the supplier whether it was delivered before refunding.");
+            }
+
+            $refund = VoucherCashRefund::query()->create([
+                'voucher_id' => $locked->id,
+                'amount_sen' => $locked->remaining,
+                'transferred_on' => $transferredOn,
+                ...$bank,
+                'proof_path' => $path,
+                'reason' => $reason,
+                'created_by' => $adminUserId,
+            ]);
+
+            $locked->update(['remaining' => 0, 'status' => 'refunded']);
+
+            return $refund;
+        }));
+
+        Log::info('Voucher refunded in cash', ['voucher_id' => $voucher->id, 'amount_sen' => $refund->amount_sen, 'transferred_on' => $transferredOn, 'admin_user_id' => $adminUserId]);
+
+        return $refund;
+    }
+
+    /**
+     * The failed orders a customer-cash voucher stands for: its own order,
+     * or, for a merge target, its sources' orders (merges can chain).
+     *
+     * @return list<int>
+     */
+    public function sourceOrderIds(Voucher $voucher): array
+    {
+        if ($voucher->order_id !== null) {
+            return [$voucher->order_id];
+        }
+
+        return Voucher::query()
+            ->whereIn('id', VoucherMerge::query()->where('target_voucher_id', $voucher->id)->select('source_voucher_id'))
+            ->get()
+            ->flatMap(fn (Voucher $source) => $this->sourceOrderIds($source))
+            ->all();
     }
 
     /**

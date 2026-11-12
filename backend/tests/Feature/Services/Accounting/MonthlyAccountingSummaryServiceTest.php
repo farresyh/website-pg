@@ -404,10 +404,11 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
     /** ADR-127 P1: a revoke is a dated fact — the unspent balance is income of the revoke month, and stops being owed from then on. */
     public function test_a_revoked_vouchers_balance_leaves_the_claims_and_is_income_of_the_revoke_month(): void
     {
-        $voucher = $this->voucher(['amount' => 1000, 'remaining' => 1000, 'order_id' => Order::factory()->create()->id]);
+        // Gift credit: ADR-004 2026-11-12 addendum, a customer's own money can't be revoked.
+        $voucher = $this->voucher(['amount' => 1000, 'remaining' => 1000, 'source' => Voucher::SOURCE_GIFT]);
         $this->travelTo('2026-10-05 04:00:00');
 
-        app(VoucherService::class)->revoke($voucher);
+        app(VoucherService::class)->revoke($voucher, AdminUser::factory()->create()->id, 'Issued by mistake');
 
         $this->assertNotNull($voucher->fresh()->revoked_at);
         $this->assertSame(0, $this->service()->forPeriod(2026, 9)['voucher_breakage_sen']);

@@ -166,11 +166,13 @@ class OrderSettlementServiceTest extends TestCase
         );
 
         $fullFailure = $this->service()->settle($failed, $this->adminId)->voucher;
-        $this->service()->settle($this->partialComboOrder(), $this->adminId);
-        app(VoucherService::class)->merge([$admin->id, $fullFailure->id], 'Consolidate', $this->adminId, null);
+        $partial = $this->service()->settle($this->partialComboOrder(['customer_email' => $failed->customer_email, 'customer_phone' => $failed->customer_phone, 'affiliate_id' => $failed->affiliate_id]), $this->adminId)->voucher;
+        // A merge is never a new voucher. Customer cash merges only with customer cash (ADR-004 2026-11-12 addendum).
+        app(VoucherService::class)->merge([$fullFailure->id, $partial->id], 'Consolidate', $this->adminId, null);
 
         $this->assertSame(1, LedgerEntry::query()->where('type', 'voucher_issued')->count());
         $this->assertSame(-700, $this->ledgerSum('voucher_issued', 'platform'));
+        $this->assertSame('active', $admin->fresh()->status);
         // The partial delivery's own profit (5000 − 2000 − 2400 − 300) is the platform's whole earning.
         $this->assertSame(300 - 700, app(LedgerService::class)->balance(LedgerOwnerType::Platform, null));
     }
