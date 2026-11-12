@@ -2,27 +2,34 @@
 
 /**
  * ADR-131 decisions 4 and 11: the Purchase Balance limits (saving needs MFA
- * step-up) and the seller details printed on top-up receipts.
+ * step-up) and the seller details printed on top-up receipts. ADR-076
+ * 2026-11-12 addendum: the payment method `.topupbaki` uses, saved with the limits.
  */
 
 import { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { SimpleSelect } from "@/components/ui/select";
 import { ApiError } from "@/lib/api-client";
 import { notify } from "@/components/ui/toast";
-import { updatePlatformSettings, updatePurchaseBalancePolicy, type PlatformSettings } from "@/lib/settings";
+import { updatePlatformSettings, updatePurchaseBalancePolicy, type PaymentMethodChoice, type PlatformSettings } from "@/lib/settings";
 
 const CARD = "rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]";
 const HELP = "mt-1 text-theme-xs text-gray-500 dark:text-gray-400";
 
 export default function PurchaseBalanceSection({
   platform,
+  paymentMethods,
   onSaved,
 }: {
   platform: PlatformSettings;
+  paymentMethods: PaymentMethodChoice[];
   onSaved: () => void;
 }) {
+  const [botMethodId, setBotMethodId] = useState(platform.bot_topup_payment_method_id === null ? "" : String(platform.bot_topup_payment_method_id));
+  const botMethod = paymentMethods.find((m) => String(m.id) === botMethodId) ?? null;
+  const firstOffered = paymentMethods.find((m) => m.is_active) ?? null;
   const [maxRm, setMaxRm] = useState(String(platform.topup_max_sen / 100));
   const [capRm, setCapRm] = useState(String(platform.balance_cap_default_sen / 100));
   const [legalName, setLegalName] = useState(platform.company_legal_name ?? "");
@@ -47,8 +54,12 @@ export default function PurchaseBalanceSection({
 
     setSavingLimits(true);
     try {
-      await updatePurchaseBalancePolicy({ topup_max_sen: topupMaxSen, balance_cap_default_sen: capSen });
-      notify.success("Purchase Balance limits saved");
+      await updatePurchaseBalancePolicy({
+        topup_max_sen: topupMaxSen,
+        balance_cap_default_sen: capSen,
+        bot_topup_payment_method_id: botMethodId === "" ? null : Number(botMethodId),
+      });
+      notify.success("Purchase Balance settings saved");
       onSaved();
     } catch (err) {
       notify.error("Could not save the limits", err instanceof ApiError ? err.message : "Action failed.");
@@ -101,10 +112,32 @@ export default function PurchaseBalanceSection({
             <Input id="balance_cap_rm" inputMode="decimal" value={capRm} onChange={(e) => setCapRm(e.target.value)} />
             <p className={HELP}>Used for every reseller without its own cap.</p>
           </div>
+          <div className="sm:col-span-2">
+            <Label htmlFor="bot_topup_method">WhatsApp bot top-up method (.topupbaki)</Label>
+            <SimpleSelect
+              id="bot_topup_method"
+              value={botMethodId}
+              onChange={setBotMethodId}
+              options={[
+                { value: "", label: "First method the portal offers" },
+                ...paymentMethods.map((m) => ({ value: String(m.id), label: m.is_active ? m.label : `${m.label} (switched off)` })),
+              ]}
+              className="w-full"
+            />
+            {botMethod && !botMethod.is_active ? (
+              <p className="mt-1 rounded-lg bg-warning-50 px-3 py-2 text-theme-xs text-warning-600 dark:bg-warning-500/15 dark:text-warning-400">
+                {botMethod.label} is switched off, so the bot uses {firstOffered ? firstOffered.label : "nothing (no method is on)"} until it is back on. The reply always names the method.
+              </p>
+            ) : (
+              <p className={HELP}>
+                The group has no picker, so the bot uses this one. If it is switched off, the bot uses the first method the portal offers and says which in its reply. The reseller pays the method&apos;s fee.
+              </p>
+            )}
+          </div>
         </div>
         <div className="mt-4 flex justify-end">
           <Button type="button" onClick={handleSaveLimits} disabled={savingLimits}>
-            {savingLimits ? "Saving…" : "Save Limits"}
+            {savingLimits ? "Saving…" : "Save"}
           </Button>
         </div>
       </div>

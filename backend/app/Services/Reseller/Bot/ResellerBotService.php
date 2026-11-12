@@ -5,6 +5,7 @@ namespace App\Services\Reseller\Bot;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\PaymentMethod;
+use App\Models\PlatformSettings;
 use App\Models\PlayerRegionMapping;
 use App\Models\PlayerValidation;
 use App\Models\Reseller;
@@ -587,15 +588,12 @@ final class ResellerBotService
             return ResellerBotReplyFormatter::topupBelowMinimum();
         }
 
-        // Same default the portal Wallet screen uses — the first active
-        // payment method in `PaymentMethodCatalogController`'s ordering.
-        // The Bot channel has no in-chat channel picker; a reseller who
-        // needs a specific method uses the portal.
-        $method = PaymentMethod::query()
-            ->where('is_active', true)
-            ->orderBy('category')
-            ->orderBy('label')
-            ->first();
+        // ADR-076 2026-11-12 addendum: the method chosen in Settings →
+        // Purchase Balance while it is offered; otherwise the first method
+        // the portal offers too. The reply names whichever was used.
+        $chosen = PlatformSettings::current()->bot_topup_payment_method_id;
+        $method = ($chosen !== null ? PaymentMethod::query()->offered()->find($chosen) : null)
+            ?? PaymentMethod::query()->offered()->first();
 
         if ($method === null) {
             $this->logFailure($reseller, $groupId, $command->raw, 'topup_no_active_payment_method');
@@ -645,7 +643,7 @@ final class ResellerBotService
             ['reseller_id' => $reseller->id, 'whatsapp_group_id' => $groupId],
         );
 
-        return ResellerBotReplyFormatter::topupInitiated($attempt);
+        return ResellerBotReplyFormatter::topupInitiated($attempt, $method->label);
     }
 
     /**

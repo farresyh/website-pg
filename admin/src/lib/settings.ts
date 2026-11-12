@@ -45,16 +45,26 @@ export interface PlatformSettings {
   // ADR-131 decision 4 — Purchase Balance limits (sen).
   topup_max_sen: number;
   balance_cap_default_sen: number;
+  // ADR-076 2026-11-12 addendum — `.topupbaki`'s method; null = the first offered.
+  bot_topup_payment_method_id: number | null;
   // ADR-131 decision 11 — seller details printed on top-up receipts.
   company_legal_name: string | null;
   company_reg_no: string | null;
   company_address: string | null;
 }
 
+export interface PaymentMethodChoice {
+  id: number;
+  label: string;
+  channel_code: string;
+  is_active: boolean;
+}
+
 export interface SettingsIndexResponse {
   branding: Branding;
   footer: FooterSettings;
   platform: PlatformSettings;
+  payment_methods: PaymentMethodChoice[];
 }
 
 export type UpdateBrandingValues = Pick<
@@ -76,7 +86,7 @@ export type UpdatePlatformValues = Pick<
 > &
   Partial<Pick<PlatformSettings, "company_legal_name" | "company_reg_no" | "company_address">>;
 
-export type UpdatePurchaseBalancePolicyValues = Pick<PlatformSettings, "topup_max_sen" | "balance_cap_default_sen">;
+export type UpdatePurchaseBalancePolicyValues = Pick<PlatformSettings, "topup_max_sen" | "balance_cap_default_sen" | "bot_topup_payment_method_id">;
 
 export type UpdateCustomerLoginPolicyValues = Pick<
   PlatformSettings,
