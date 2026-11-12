@@ -85,6 +85,7 @@ class RouteAccessTest extends TestCase
             'GET api/onboarding/status',
             'GET api/partner-documents/{document}/file',
             'GET api/track-order/{orderNumber}',
+            'POST api/affiliate/forgot-password',
             'POST api/affiliate/login',
             'POST api/affiliate/set-password',
             'POST api/catalog/seo/redirects/record-hit',

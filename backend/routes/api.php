@@ -388,6 +388,8 @@ Route::prefix('catalog')->middleware('storefront.brand')->group(function () {
 Route::prefix('affiliate')->group(function () {
     Route::post('/login', [AffiliateAuthController::class, 'login'])->middleware('throttle:5,1,affiliate-login');
     Route::post('/set-password', [AffiliateAuthController::class, 'setPassword'])->middleware('throttle:6,1,affiliate-set-password');
+    // ADR-058 2026-11-12 addendum: per IP here; the broker adds 60 seconds per user.
+    Route::post('/forgot-password', [AffiliateAuthController::class, 'forgotPassword'])->middleware('throttle:5,1,affiliate-forgot-password');
 
     // `auth:affiliate` rejects any token whose tokenable is not a
     // affiliate_users model; `affiliate.context` then activates ADR-057's

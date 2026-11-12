@@ -10,6 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { setClientSession } from "@/lib/session";
 import { useSupportContacts, whatsAppLink } from "@/hooks/useSupportContacts";
 import { formatMalaysianPhone } from "@/lib/format";
@@ -117,9 +118,13 @@ export default function LoginPage() {
         <Button type="submit" disabled={submitting} className="h-11 w-full text-sm">
           {submitting ? "Signing in…" : "Sign in"}
         </Button>
+        {/* ADR-058 2026-11-12 addendum: self-serve reset. */}
+        <Link href="/forgot-password" className="text-center text-[13px] font-semibold text-cyan-ink hover:underline">
+          Forgot your password?
+        </Link>
         {support?.phone && (
           <p className="text-center text-xs leading-[18px] text-ink-subtle">
-            Forgot your password, or no invite yet?{" "}
+            No invite yet, or no reset email?{" "}
             <a href={whatsAppLink(support.phone)} target="_blank" rel="noreferrer" className="whitespace-nowrap font-semibold text-cyan-ink hover:underline">
               WhatsApp {formatMalaysianPhone(support.phone)}
             </a>

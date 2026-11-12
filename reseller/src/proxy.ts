@@ -45,7 +45,9 @@ export function proxy(request: NextRequest) {
   const isEntryPoint =
     pathname === "/login" ||
     pathname === "/impersonate" ||
-    pathname === "/set-password";
+    pathname === "/set-password" ||
+    // ADR-058 2026-11-12 addendum: asked for before signing in.
+    pathname === "/forgot-password";
 
   if (!hasSession && !isEntryPoint) {
     return NextResponse.redirect(new URL("/login", request.url));
