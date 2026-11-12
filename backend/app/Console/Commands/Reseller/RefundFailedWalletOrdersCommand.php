@@ -43,7 +43,7 @@ class RefundFailedWalletOrdersCommand extends Command
             ->where('is_test', false)
             ->whereHas('walletReseller')
             // Decision 29: a late Success may mean the credit arrived; OrderFulfillmentService alerts, a person decides.
-            ->whereNull('supplier_response->late_supplier_result')
+            ->withoutLateSupplierResult()
             ->orderBy('id')
             ->get();
 

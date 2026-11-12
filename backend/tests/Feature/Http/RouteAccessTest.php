@@ -217,7 +217,6 @@ class RouteAccessTest extends TestCase
             'PATCH api/packages/{package}/status',
             'PATCH api/reviews/{review}/approve',
             'PATCH api/reviews/{review}/reject',
-            'PATCH api/vouchers/{voucher}/revoke',
             'PATCH api/withdrawals/{withdrawal}/approve',
             'PATCH api/withdrawals/{withdrawal}/complete',
             'PATCH api/withdrawals/{withdrawal}/reject',

@@ -1,7 +1,10 @@
-import { apiFetch } from "@/lib/api-client";
+import { apiDownload, apiFetch, apiUpload } from "@/lib/api-client";
 import type { CustomerNotification } from "@/lib/orders";
 
-export type VoucherStatus = "active" | "exhausted" | "expired" | "revoked" | "merged";
+export type VoucherStatus = "active" | "exhausted" | "expired" | "revoked" | "merged" | "refunded";
+
+/** ADR-004 2026-11-12 addendum: a failed order's refund (the customer's own money) or gift credit. */
+export type VoucherSource = "customer_cash" | "gift";
 
 export interface Voucher {
   id: number;
@@ -11,6 +14,8 @@ export interface Voucher {
   affiliate_id: number;
   affiliate?: { id: number; business_name: string } | null;
   code: string;
+  /** Only `gift` can be revoked; only `customer_cash` can be refunded in cash. */
+  source: VoucherSource;
   customer_email: string;
   amount: number;
   remaining: number;
@@ -18,6 +23,8 @@ export interface Voucher {
   /** §16 item 84: `expired` for an active voucher past `expires_at`; use this for display and merge eligibility. */
   display_status: VoucherStatus;
   expires_at: string | null;
+  revoked_at: string | null;
+  revoked_reason: string | null;
   reason: string;
   created_by: number;
   approved_by: number | null;
@@ -73,10 +80,35 @@ export interface VoucherDetail extends Voucher {
   merge_as_source: VoucherMergeRef | null;
   // ADR-116 decision 9 — WhatsApp messages sent (or skipped) about this voucher.
   customer_notifications: CustomerNotification[];
+  cash_refund: VoucherCashRefund | null;
+  revoked_by: { id: number; name: string } | null;
+}
+
+/** ADR-004 2026-11-12 addendum: the bank-transfer payout that closed a voucher. */
+export interface VoucherCashRefund {
+  id: number;
+  amount_sen: number;
+  transferred_on: string;
+  bank_name: string;
+  bank_account_no: string;
+  bank_account_holder: string;
+  bank_reference: string;
+  reason: string;
+  created_at: string;
+  creator: { id: number; name: string } | null;
+}
+
+/** What the admin checks before a cash refund: the failed orders behind the voucher (decision 4). */
+export interface RefundSourceOrder {
+  id: number;
+  order_number: string;
+  delivery_status: string;
+  late_supplier_result: Record<string, unknown> | null;
 }
 
 export interface VoucherShowResponse {
   voucher: VoucherDetail;
+  refund_source_orders: RefundSourceOrder[];
   stats: {
     original: number;
     remaining: number;
@@ -121,6 +153,28 @@ export function mergeVouchers(values: MergeVouchersValues) {
   return apiFetch<Voucher>("/api/vouchers/merge", { method: "POST", body: values });
 }
 
-export function revokeVoucher(id: number) {
-  return apiFetch<Voucher>(`/api/vouchers/${id}/revoke`, { method: "PATCH" });
+/** Gift credit only, with a reason. Super Admin, behind step-up (api-client prompts and retries). */
+export function revokeVoucher(id: number, reason: string) {
+  return apiFetch<Voucher>(`/api/vouchers/${id}/revoke`, { method: "PATCH", body: { reason } });
+}
+
+export interface CashRefundValues {
+  transferred_on: string;
+  bank_name: string;
+  bank_account_no: string;
+  bank_account_holder: string;
+  bank_reference: string;
+  reason: string;
+  proof: File;
+}
+
+/** Record a bank transfer already sent. The amount is never sent: the server pays out the balance. */
+export function refundVoucherInCash(id: number, values: CashRefundValues) {
+  const formData = new FormData();
+  Object.entries(values).forEach(([key, value]) => formData.append(key, value));
+  return apiUpload<{ cash_refund: VoucherCashRefund; voucher: Voucher }>(`/api/vouchers/${id}/cash-refund`, formData);
+}
+
+export function downloadCashRefundProof(voucher: Pick<Voucher, "id" | "code">) {
+  return apiDownload(`/api/vouchers/${voucher.id}/cash-refund/proof`, `voucher-${voucher.code}-refund-proof`);
 }

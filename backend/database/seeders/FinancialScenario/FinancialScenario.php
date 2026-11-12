@@ -18,6 +18,7 @@ use App\Models\PaymentMethod;
 use App\Models\Reseller;
 use App\Models\ResellerTier;
 use App\Models\Supplier;
+use App\Models\Voucher;
 use App\Models\WhatsAppGroup;
 use App\Services\Accounting\MonthCloseService;
 use App\Services\Accounting\PaidFrom;
@@ -25,9 +26,9 @@ use App\Services\Accounting\SupplierFundingService;
 use App\Services\Affiliate\AffiliateDomainStatus;
 use App\Services\Fulfillment\ManualDeliveryService;
 use App\Services\Fulfillment\OrderFulfillmentService;
+use App\Services\Fulfillment\OrderSettlementService;
 use App\Services\Joki\JokiAssignmentService;
 use App\Services\Joki\JokiCatalog;
-use App\Services\Fulfillment\OrderSettlementService;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Order\PaymentStatus;
@@ -37,9 +38,11 @@ use App\Services\Reseller\ResellerApiKeyService;
 use App\Services\Reseller\ResellerClosureService;
 use App\Services\Reseller\ResellerWalletService;
 use App\Services\Supplier\SupplierOutcome;
+use App\Services\Voucher\VoucherService;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
@@ -166,6 +169,17 @@ final class FinancialScenario
         $this->bank(-$refunded);
 
         return $refunded;
+    }
+
+    /** ADR-004 2026-11-12 addendum: the admin transfers a customer-cash voucher's balance today, then records it. */
+    public function refundVoucherInCash(Voucher $voucher): int
+    {
+        $refund = app(VoucherService::class)->refundInCash($voucher, $this->admin->id, now('Asia/Kuala_Lumpur')->toDateString(), [
+            'bank_name' => 'Maybank', 'bank_account_no' => '112233445566', 'bank_account_holder' => 'Scenario Buyer', 'bank_reference' => 'SCENARIO-CASH-REFUND',
+        ], UploadedFile::fake()->create('transfer.pdf', 10, 'application/pdf'), 'Scenario cash refund');
+        $this->bank(-$refund->amount_sen);
+
+        return $refund->amount_sen;
     }
 
     public function at(string $malaysiaTime): self

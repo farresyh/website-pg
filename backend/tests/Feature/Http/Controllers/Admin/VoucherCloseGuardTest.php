@@ -80,10 +80,11 @@ class VoucherCloseGuardTest extends TestCase
 
     public function test_a_voucher_an_order_is_using_cannot_be_revoked(): void
     {
-        $a = $this->voucher(1000);
+        $a = $this->voucher(1000, ['source' => Voucher::SOURCE_GIFT]);
         $order = $this->orderUsing($a, 400);
 
-        $response = $this->patchJson("/api/vouchers/{$a->id}/revoke");
+        $this->actingAsSteppedUp(AdminUser::factory()->superAdmin()->create());
+        $response = $this->patchJson("/api/vouchers/{$a->id}/revoke", ['reason' => 'Issued by mistake']);
 
         $response->assertUnprocessable();
         $this->assertStringContainsString($order->order_number, $response->json('errors.status.0'));

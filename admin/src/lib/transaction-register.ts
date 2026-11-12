@@ -24,6 +24,8 @@ export interface TransactionRegisterRow {
     | "supplier_transfer"
     | "supplier_refund"
     | "voucher_issued"
+    /** ADR-004 2026-11-12 addendum: a failed order's voucher paid out by bank transfer (cash out). */
+    | "voucher_cash_refund"
     | "supplier_adjustment"
     | "membership_payment"
     | "reseller_wallet_topup"

@@ -561,9 +561,16 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
             Route::post('/merge', [VoucherController::class, 'merge']);
             Route::get('/{voucher}', [VoucherController::class, 'show']);
             Route::post('/', [VoucherController::class, 'store']);
-            Route::patch('/{voucher}/revoke', [VoucherController::class, 'revoke']);
         });
         Route::post('/orders/{order}/voucher', [VoucherController::class, 'storeFromOrder']);
+    });
+
+    // ADR-004 2026-11-12 addendum, decisions 6 and 8: money leaving the bank,
+    // or gift credit turned into income — Super Admin, behind the step-up.
+    Route::middleware('admin.role:super_admin')->prefix('vouchers')->group(function () {
+        Route::patch('/{voucher}/revoke', [VoucherController::class, 'revoke'])->middleware('mfa.stepup');
+        Route::post('/{voucher}/cash-refund', [VoucherController::class, 'refundInCash'])->middleware('mfa.stepup');
+        Route::get('/{voucher}/cash-refund/proof', [VoucherController::class, 'downloadCashRefundProof']);
     });
 
     // ADR-007 / FRAUD-1..3 - internal blacklist, independent of any

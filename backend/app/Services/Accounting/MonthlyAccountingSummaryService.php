@@ -10,6 +10,7 @@ use App\Models\PaymentSettlement;
 use App\Models\SupplierLedgerEntry;
 use App\Models\SupplierTransfer;
 use App\Models\Voucher;
+use App\Models\VoucherCashRefund;
 use App\Models\VoucherRedemption;
 use App\Services\Campaign\CampaignFeeSchedule;
 use App\Services\Ledger\LedgerOwnerType;
@@ -103,6 +104,8 @@ final class MonthlyAccountingSummaryService
             'admin_issued_vouchers_sen' => $this->adminIssuedVouchers($from, $toExclusive),
             'supplier_manual_adjustments_sen' => $this->supplierManualAdjustments($from, $toExclusive),
             'failed_order_credit_issued_sen' => $this->failedOrderCreditIssued($from, $toExclusive),
+            // ADR-004 2026-11-12 addendum, decision 7: information only, like the line above.
+            'failed_order_credit_refunded_sen' => $this->failedOrderCreditRefunded($from, $toExclusive),
             // ADR-139 decisions 20 and 22: a revenue reduction (subtracted below) and its breakage (added).
             'reseller_rebates_sen' => $rebates->reductionSen($from, $toExclusive),
             'reseller_rebate_breakage_sen' => $rebates->breakageSen($from, $toExclusive),
@@ -229,7 +232,7 @@ final class MonthlyAccountingSummaryService
             ->where('expires_at', '>=', $from)
             ->where('expires_at', '<', $toExclusive)
             ->where($notSandbox)
-            ->with(['redemptions', 'mergeAsSource'])
+            ->with(['redemptions', 'mergeAsSource', 'cashRefund'])
             ->get()
             ->sum(fn (Voucher $v) => $v->balanceAsOf($v->expires_at));
 
@@ -245,7 +248,7 @@ final class MonthlyAccountingSummaryService
             ->where('revoked_at', '>=', $from)
             ->where('revoked_at', '<', $toExclusive)
             ->where($notSandbox)
-            ->with(['redemptions', 'mergeAsSource'])
+            ->with(['redemptions', 'mergeAsSource', 'cashRefund'])
             ->get()
             ->sum(fn (Voucher $v) => $v->balanceAsOf($v->revoked_at));
 
@@ -461,5 +464,18 @@ final class MonthlyAccountingSummaryService
             ->where('created_at', '>=', $from)
             ->where('created_at', '<', $toExclusive)
             ->sum('amount');
+    }
+
+    /**
+     * ADR-004 2026-11-12 addendum: customer-cash vouchers paid out by bank
+     * transfer this month. It settles the liability above with cash, so it
+     * is never income, never breakage and never in operating profit.
+     */
+    private function failedOrderCreditRefunded(Carbon $from, Carbon $toExclusive): int
+    {
+        return (int) VoucherCashRefund::query()
+            ->where('created_at', '>=', $from)
+            ->where('created_at', '<', $toExclusive)
+            ->sum('amount_sen');
     }
 }

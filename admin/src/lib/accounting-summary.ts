@@ -26,6 +26,8 @@ export interface MonthlyAccountingSummary {
   admin_issued_vouchers_sen: number;
   supplier_manual_adjustments_sen: number;
   failed_order_credit_issued_sen: number;
+  /** ADR-004 2026-11-12 addendum: information only, a liability settled with cash. */
+  failed_order_credit_refunded_sen: number;
   /** ADR-139 decision 20: revenue reduction, subtracted from operating profit; an expiry is negative in its expiry month. */
   reseller_rebates_sen: number;
   /** ADR-139 decision 22: rebate credit forfeited at closure, added to operating profit. */

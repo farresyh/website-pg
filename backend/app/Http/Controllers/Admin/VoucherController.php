@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Voucher\CreateVoucherRequest;
 use App\Http\Requests\Voucher\MergeVouchersRequest;
+use App\Http\Requests\Voucher\RefundVoucherInCashRequest;
+use App\Http\Requests\Voucher\RevokeVoucherRequest;
 use App\Http\Requests\Voucher\StoreVoucherFromOrderRequest;
 use App\Models\Order;
 use App\Models\Voucher;
@@ -16,9 +18,10 @@ use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * VCH-1..6. Two creation paths (see docs/prd.md §14 for the founder
@@ -100,6 +103,9 @@ class VoucherController extends Controller
             'affiliate:id,business_name',
             'redemptions.order:id,order_number',
             'sourceOrder:id,order_number',
+            // ADR-004 2026-11-12 addendum: the cash payout, and who revoked.
+            'cashRefund.creator:id,name',
+            'revokedBy:id,name',
             // ADR-036 decision 6 — a merged voucher's real provenance:
             // which source codes it traces back to (mergesAsTarget), or
             // which merged code consumed this one (mergeAsSource).
@@ -118,6 +124,17 @@ class VoucherController extends Controller
 
         return response()->json([
             'voucher' => $voucher->append('display_status'),
+            // ADR-004 2026-11-12 addendum, decision 4: what the admin checks before a cash refund.
+            'refund_source_orders' => $voucher->isCustomerCash()
+                ? Order::query()->whereIn('id', $this->vouchers->sourceOrderIds($voucher))
+                    ->get(['id', 'order_number', 'delivery_status', 'supplier_response'])
+                    ->map(fn (Order $o) => [
+                        'id' => $o->id,
+                        'order_number' => $o->order_number,
+                        'delivery_status' => $o->delivery_status->value,
+                        'late_supplier_result' => $o->supplier_response['late_supplier_result'] ?? null,
+                    ])
+                : [],
             'stats' => [
                 'original' => $voucher->amount,
                 'remaining' => $voucher->remaining,
@@ -266,12 +283,48 @@ class VoucherController extends Controller
         ], 201);
     }
 
-    public function revoke(Request $request, Voucher $voucher): JsonResponse
+    /** ADR-004 2026-11-12 addendum, decision 8: gift credit only, with a reason (super_admin, step-up). */
+    public function revoke(RevokeVoucherRequest $request, Voucher $voucher): JsonResponse
     {
         try {
-            return response()->json($this->vouchers->revoke($voucher));
+            return response()->json($this->vouchers->revoke($voucher, $request->user()->id, $request->validated('reason')));
         } catch (InvalidVoucherException $e) {
             throw ValidationException::withMessages(['status' => [$e->getMessage()]]);
         }
+    }
+
+    /** ADR-004 2026-11-12 addendum: record a bank-transfer payout of a customer-cash voucher (super_admin, step-up). */
+    public function refundInCash(RefundVoucherInCashRequest $request, Voucher $voucher): JsonResponse
+    {
+        $data = $request->validated();
+
+        try {
+            $refund = $this->vouchers->refundInCash(
+                $voucher,
+                $request->user()->id,
+                $data['transferred_on'],
+                [
+                    'bank_name' => $data['bank_name'],
+                    'bank_account_no' => $data['bank_account_no'],
+                    'bank_account_holder' => $data['bank_account_holder'],
+                    'bank_reference' => $data['bank_reference'],
+                ],
+                $request->file('proof'),
+                $data['reason'],
+            );
+        } catch (InvalidVoucherException $e) {
+            throw ValidationException::withMessages(['voucher' => [$e->getMessage()]]);
+        } catch (UniqueConstraintViolationException) {
+            throw ValidationException::withMessages(['voucher' => ['This voucher has already been refunded.']]);
+        }
+
+        return response()->json(['cash_refund' => $refund, 'voucher' => $voucher->fresh()->append('display_status')], 201);
+    }
+
+    public function downloadCashRefundProof(Voucher $voucher): StreamedResponse
+    {
+        $refund = $voucher->cashRefund ?? abort(404);
+
+        return Storage::disk(config('filesystems.accounting_disk'))->download($refund->proof_path, "voucher-{$voucher->code}-refund-proof.".pathinfo($refund->proof_path, PATHINFO_EXTENSION));
     }
 }

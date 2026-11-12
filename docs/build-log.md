@@ -2684,3 +2684,37 @@ Skipped as low value: portal screenshots, which go stale.
 - `scramble:export` reproduces the committed spec.
 - docs-site `check` (0 errors) and `build` pass; the built POST page shows the headers, the enum values, the examples and the 12-character number.
 - `check-docs` and its self-test pass.
+
+## 2026-11-12 — Cash refund of a failed-order voucher designed (ADR-004 addendum); VC-FO21NVDK revoked by mistake
+
+**Designed** on `feature/voucher-cash-refund`: the ADR-004 2026-11-12 addendum (PRD §16 item 179), in three grill rounds and a stress test against the code. The stress test found that a late supplier Success never changes `delivery_status`, so "the source order is still Failed" would never have caught one. The check reads the recorded late result instead, through one scope shared with the automatic wallet refund.
+
+**Found (read-only, production).** VC-FO21NVDK (id 12) was revoked at 2026-11-12 01:28 UTC, by mistake. It is the merge of two failed-order vouchers, VC-IGUQCF24 (PG-MLH49GJRX6D2) and VC-NPXPMSDU (PG-8CSW9QS6BPNB), RM230.21 each. RM453.88 had been spent on PG-ECHHWBZQFKGA (delivered), and the revoke booked the remaining RM6.54 as November breakage. The admin Revoke button (list and detail) had no confirmation, and any admin could press it without the step-up. Left as history, with no data patch (founder). If the customer asks, an admin issues a RM6.54 voucher with the reason "replaces VC-FO21NVDK, revoked by mistake".
+
+**Production scale on 2026-11-12:** 231 paid retail orders, 16 failed or partly delivered, 14 order vouchers (RM573.13), 1 merge, no gift voucher, no compensated order with a late supplier result, 3 active admins (all super_admin), `ACCOUNTING_DISK=r2_accounting`.
+
+## 2026-11-12 — Cash refund of a failed-order voucher built (ADR-004 addendum, PRD §16 item 179)
+
+**Built** on `feature/voucher-cash-refund`. The backend:
+- Migration `2026_11_17_100000`: `vouchers.source`, backfilled in id order so a merge target follows its sources, plus `revoked_reason`, `revoked_by` and the `voucher_cash_refunds` table.
+- `VoucherService::refundInCash()`, the one writer, with the refusals from the ADR.
+- `Voucher::balanceAsOf()` reads the refund.
+- `Order::withLateSupplierResult()` / `withoutLateSupplierResult()`, one JSON path, also used by `app:refund-failed-wallet-orders`.
+- `AccountingPeriod::assertTransferDate()`, shared with the reseller closure.
+- A Transaction Register row (`voucher_cash_refund`) and a Monthly Summary information line (`failed_order_credit_refunded_sen`).
+- Revoke limited to gift credit, with a reason, and moved to Super Admin behind the step-up. The refund route is too, and the proof downloads from `GET /vouchers/{id}/cash-refund/proof`.
+
+In the admin: a "Refund in cash" modal on the voucher detail (the source orders, blocked while a late result is recorded), a Revoke confirmation with a reason, a "Refunded by bank transfer" card, the `refunded` status, and both accounting labels.
+
+**Verified.**
+- `php artisan test`: 3943 passed. On the way, two existing tests changed on purpose. The pinned step-up route list gained the two new routes. `test_only_admin_issued_vouchers_debit_the_platform_ledger` merged a gift voucher with a failed-order voucher, which is now refused, so it merges two failed-order vouchers instead (the ledger invariant is unchanged).
+- Concurrency suite on MySQL: two refunds pay out once, and a refund racing a redeem never pays out a reserved balance. Voucher merge and closure stay green.
+- `FinancialScenarioTest`: a cash refund leaves the October Cash Position gap and operating profit unchanged, and September does not move.
+- Mutation-checked: dropping the refund from `balanceAsOf()` or the late-result check fails its test.
+- Admin `tsc`, `lint` and `build` pass.
+- Browser, on a throwaway sqlite backend with an MFA admin (Playwright, prod build on `localhost:3000`): the late-result voucher's modal blocks the submit. A failed-order voucher refunded through the real step-up prompt (403 `mfa_step_up_required`, then code, then 201) ends `refunded` with RM0.00 left, and the proof is filed under `accounting/voucher-cash-refunds/2026/11/`. Revoke is offered only on the gift voucher, and the confirm button stays disabled until a reason is typed. The local dev DB migrated cleanly (no merge rows lost).
+
+**Gotchas.**
+1. `revoked_by` as a foreign key made SQLite rebuild `vouchers`, and the rebuild's drop cascaded into `voucher_merges`. The backfill test caught it. It is a plain column now, like `created_by` and `approved_by`.
+2. A late supplier Success never changes `delivery_status`, so the check reads the recorded result (found in the stress test, recorded in the design entry above).
+3. In the Playwright check, a TOTP code already used to log in is refused for the step-up within the same 30-second window.
