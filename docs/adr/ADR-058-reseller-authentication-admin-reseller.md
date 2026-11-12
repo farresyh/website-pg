@@ -1,6 +1,6 @@
 # ADR-058: Reseller authentication + admin Reseller Management (RES-1..6) — BUILT + LIVE (guard later renamed `reseller`→`affiliate` by ADR-072)
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-12):** In force; the 2026-11-12 addendum adds portal password reset. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** BUILT + LIVE (58a/58b, merged + deployed; the `reseller` guard was renamed `affiliate` in ADR-072). Original: Accepted (design) — 2026-08-30 (grilled with the founder via `/mattpocock-skills:grilling`, same session as ADR-056)
 
@@ -79,3 +79,14 @@
 The deferred MFA for `reseller_users` (today `affiliate_users`) is dropped,
 not deferred (ADR-019 and ADR-059 2026-10-14 addenda). Admin MFA, which this
 ADR matched, will be built (PRD §16 item 10).
+
+### 2026-11-12 addendum — portal password reset (Reseller and Affiliate)
+
+**Context.** A portal user who had already set a password had no way back in after forgetting it. The login page pointed them to WhatsApp support, but the admin's only button, Resend invite, refuses a user with a password. Both account types share `affiliate_users`, one login and one `/set-password` page, so one fix covers both.
+
+**Decision (founder, grilled and stress-tested 2026-11-12, PRD §16 item 181).**
+1. **Self-serve** on the portal login: `POST /api/affiliate/forgot-password` with an email. The answer is always the same generic message, whether the email exists or not. It is rate-limited per IP. The mail goes out after the response, so response time does not reveal whether the address exists. An inactive user gets nothing.
+2. **Admin button** on both the Reseller and the Affiliate user lists (admin and super_admin, like Resend invite). A user with no password gets the invite. A user with a password gets a reset link. An inactive user is refused.
+3. **One way to send a reset:** `AffiliateInviteService::sendPasswordReset()`, through `Password::broker('affiliate_users')->sendResetLink()`, so the broker's 60-second per-user throttle applies to both paths. The invite path keeps `createToken()`.
+4. **The link uses the same broker as the invite.** It is valid 24 hours (`config/auth.php`), single use, and replaced by any newer token. The founder chose this over a second 60-minute broker so there stays one link type and one page.
+5. **`setPassword()` deletes every Sanctum token of that user** once the password is changed, so a session opened with the old password ends.

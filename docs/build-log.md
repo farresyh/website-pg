@@ -2718,3 +2718,35 @@ In the admin: a "Refund in cash" modal on the voucher detail (the source orders,
 1. `revoked_by` as a foreign key made SQLite rebuild `vouchers`, and the rebuild's drop cascaded into `voucher_merges`. The backfill test caught it. It is a plain column now, like `created_by` and `approved_by`.
 2. A late supplier Success never changes `delivery_status`, so the check reads the recorded result (found in the stress test, recorded in the design entry above).
 3. In the Playwright check, a TOTP code already used to log in is refused for the step-up within the same 30-second window.
+
+## 2026-11-12 — Portal password reset and the bot's top-up method (ADR-058 and ADR-076 addenda, PRD §16 item 181)
+
+**Why.**
+- A portal user who forgot a password had no way back. The admin's Resend invite refused a user with a password.
+- `.topupbaki` sent DuitNow QR only because `duitnow_qr` sorts before `fpx`. DuitNow costs the reseller 1%, FPX a flat RM1.
+- The trigger: AyrisShop's RM1,000 DuitNow top-up `WT-ILISAXAY52` sat at CHIP `pending_execute` on 2026-11-12. Its `.batalbaki` kept answering that the bank was processing it, which was correct, but the reply never said when the top-up would end. Checked read-only: CHIP `pending_execute`, `paid_on` null, expiry 19:04 MYT. It is the first `pending_execute` seen on production.
+
+**Built** on `feature/portal-password-reset-bot-topup-method`:
+- `POST /api/affiliate/forgot-password`: one generic answer, mail sent with `defer()` after the response, 5 requests a minute per IP.
+- `AffiliateInviteService::sendPasswordReset()` through the broker's `sendResetLink()`, so the 60-second per-user throttle holds. `sendInviteOrReset()` backs the admin button on both user lists.
+- `setPassword()` deletes the user's Sanctum tokens.
+- The portal has a `/forgot-password` page and a link on sign-in.
+- `PaymentMethod::offered()` is shared by the portal catalog and the bot.
+- `platform_settings.bot_topup_payment_method_id` (FK, `nullOnDelete`; the migration sets FPX) is chosen in Settings → Purchase Balance, with a warning when it is switched off.
+- The `.topupbaki` reply names the method. The `.batalbaki` in-flight reply gives the end time.
+
+**Verified.**
+- `php artisan test`: 3953 passed. The pinned public-route list gained `forgot-password`.
+- New tests: `PortalPasswordResetTest` (Reseller and Affiliate, generic answer, throttle, rate limit, old sessions end, single use, admin refusals) and the bot's chosen-method, fallback and same-list tests.
+- Mutation-checked: dropping the token revocation fails its test.
+- Admin and portal: `tsc`, `lint`, `test` and `build` pass.
+- Browser, on a throwaway backend with Plunk pointed at a local catcher so no real mail was sent (Playwright, prod builds):
+  - An unknown and a known email got the identical message, and only the known one got a mail.
+  - The emailed link set a new password, and sign-in with it reached the dashboard.
+  - The admin modal shows "Send password reset" for a user with a password and "Resend invite" for a pending one. The reset sent a mail.
+  - The Purchase Balance dropdown saved FPX through the real step-up prompt.
+
+**Gotchas.**
+1. `dispatch(closure)->afterResponse()` serialized the closure and failed on a service holding a WeakMap; `defer()` runs it in-process.
+2. An invite token counts toward the broker's one-a-minute throttle, so a reset within a minute of an invite is refused with its own message.
+3. On a fresh database the setting stays null (payment methods are seeded after migrations), which means "the first offered". On production the FPX row exists, so the migration sets it.
