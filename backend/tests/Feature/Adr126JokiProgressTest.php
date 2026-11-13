@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\Reseller\SendResellerBotReplyJob;
 use App\Jobs\SendCustomerWhatsAppJob;
 use App\Models\AdminUser;
 use App\Models\CustomerNotification;
@@ -94,17 +93,10 @@ class Adr126JokiProgressTest extends TestCase
         ], $body)->assertOk();
     }
 
-    /** @return list<string> */
+    /** @return list<string> the supplier bot's replies (outbox rows, ADR-116 2026-11-14 addendum) */
     private function botReplies(): array
     {
-        $texts = [];
-        Queue::assertPushed(SendResellerBotReplyJob::class, function (SendResellerBotReplyJob $job) use (&$texts) {
-            $texts[] = $job->text;
-
-            return true;
-        });
-
-        return $texts;
+        return CustomerNotification::query()->where('event', 'supplier_bot_reply')->orderBy('id')->pluck('message')->all();
     }
 
     private function progressMessages()

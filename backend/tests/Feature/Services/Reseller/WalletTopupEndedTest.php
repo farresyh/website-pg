@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Services\Reseller;
 
-use App\Jobs\Reseller\SendResellerBotReplyJob;
+use App\Models\CustomerNotification;
 use App\Models\Reseller;
 use App\Models\ResellerBotWalletTopup;
 use App\Models\WalletTopupAttempt;
@@ -62,17 +62,11 @@ class WalletTopupEndedTest extends TestCase
         return app(ResellerWalletService::class)->markEnded($attempt, $cause);
     }
 
-    /** @return list<string> */
+    /** @return list<string> "group|text" of every bot top-up message (outbox rows, ADR-116 2026-11-14 addendum) */
     private function groupMessages(): array
     {
-        $texts = [];
-        Queue::assertPushed(SendResellerBotReplyJob::class, function (SendResellerBotReplyJob $job) use (&$texts) {
-            $texts[] = $job->chatId.'|'.$job->text;
-
-            return true;
-        });
-
-        return $texts;
+        return CustomerNotification::query()->where('event', 'bot_topup')->orderBy('id')->get()
+            ->map(fn (CustomerNotification $n) => $n->chat_id.'|'.$n->message)->all();
     }
 
     public function test_a_bank_failure_fails_the_attempt_and_tells_the_group_once(): void
@@ -121,7 +115,7 @@ class WalletTopupEndedTest extends TestCase
         $this->end($attempt, WalletTopupEndCause::BotCancel);
 
         $this->assertSame(WalletTopupAttemptStatus::Failed, $attempt->fresh()->status);
-        Queue::assertNotPushed(SendResellerBotReplyJob::class);
+        $this->assertSame([], $this->groupMessages());
     }
 
     public function test_a_portal_top_up_ends_with_no_group_message(): void
@@ -131,7 +125,7 @@ class WalletTopupEndedTest extends TestCase
         $this->end($attempt, WalletTopupEndCause::BankFailed);
 
         $this->assertSame(WalletTopupAttemptStatus::Failed, $attempt->fresh()->status);
-        Queue::assertNotPushed(SendResellerBotReplyJob::class);
+        $this->assertSame([], $this->groupMessages());
     }
 
     /** A Paid that committed first wins: nothing changes and nobody is told it failed. */
@@ -142,6 +136,6 @@ class WalletTopupEndedTest extends TestCase
         $this->assertFalse($this->end($attempt, WalletTopupEndCause::BankFailed));
 
         $this->assertSame(WalletTopupAttemptStatus::Paid, $attempt->fresh()->status);
-        Queue::assertNotPushed(SendResellerBotReplyJob::class);
+        $this->assertSame([], $this->groupMessages());
     }
 }

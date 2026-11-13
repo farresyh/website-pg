@@ -49,6 +49,7 @@ class TaskSchedule
         'affiliate-payout-open',
         'supplier-balance-refresh',
         'order-credential-wipe',
+        'whatsapp-outbox-alert',
     ];
 
     /** Stale → admin Dashboard only. */
@@ -149,6 +150,13 @@ class TaskSchedule
         $schedule->command('app:refund-failed-wallet-orders')
             ->everyMinute()
             ->name('wallet-order-auto-refund')
+            ->withoutOverlapping($overlap);
+
+        // ADR-116 2026-11-14 addendum, decision 10: a WhatsApp message stuck,
+        // failed or of unknown outcome reaches an admin's inbox.
+        $schedule->command('app:alert-whatsapp-outbox')
+            ->everyMinute()
+            ->name('whatsapp-outbox-alert')
             ->withoutOverlapping($overlap);
 
         // ADR-139 decision 7: a tier change takes effect at 00:00 KL on the

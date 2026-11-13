@@ -108,7 +108,7 @@ class ResellerBotBatalBakiTest extends TestCase
 
     private function send(string $text): void
     {
-        app(ResellerBotService::class)->handle(self::GROUP_ID, $text, 'msg-'.uniqid());
+        app(ResellerBotService::class)->handle(self::GROUP_ID, $text, 'msg-'.uniqid(), now()->getTimestamp());
     }
 
     // --- .batalbaki, one reply per outcome ---

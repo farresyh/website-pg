@@ -15,9 +15,8 @@ use Tests\TestCase;
 
 /**
  * ADR-076 PR-H decision 2 — message 2 of the `.topupbaki` flow.
- * `OpenWaClient::sendText()` no-ops in tests (unconfigured), so every
- * assertion here is on the `reseller_bot_wallet_topups.notified_at`
- * guard state, not the reply text.
+ * Every assertion here is on the `reseller_bot_wallet_topups.notified_at`
+ * guard state, not the reply text (the reply is an outbox row).
  */
 class ResellerBotWalletTopupNotifierTest extends TestCase
 {

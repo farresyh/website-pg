@@ -14,6 +14,11 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
+ * RETIRED by the ADR-116 2026-11-14 addendum: every bot reply is now an
+ * outbox row sent by `SendCustomerWhatsAppJob`. Kept one release only, so
+ * jobs queued before the deploy still go out; removed with the OpenWA
+ * v0.30.0 upgrade. History below.
+ *
  * E8 hardening (2026-09-10 reseller-family audit, `docs/build-log.md`):
  * `OpenWaClient::sendText()` used to POST inline, synchronously, with no
  * retry — if OpenWA was down at the moment a reply went out, the reply
@@ -49,9 +54,15 @@ final class SendResellerBotReplyJob implements ShouldQueue
         return [new FailOnException([OpenWaRecipientNotOnWhatsAppException::class])];
     }
 
+    /**
+     * ADR-116 2026-11-14 addendum: retired. New replies go through the
+     * outbox; this only drains jobs queued before the deploy, and is removed
+     * with the OpenWA v0.30.0 upgrade. The key is the queued job's own id,
+     * stable across its retries.
+     */
     public function handle(OpenWaClient $openWa): void
     {
-        $openWa->sendNow($this->chatId, $this->text);
+        $openWa->sendNow($this->chatId, $this->text, 'legacy-'.($this->job?->uuid() ?? hash('sha256', $this->chatId."\n".$this->text)));
     }
 
     public function failed(Throwable $e): void

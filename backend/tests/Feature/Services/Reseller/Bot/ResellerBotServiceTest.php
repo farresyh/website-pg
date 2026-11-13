@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Services\Reseller\Bot;
 
-use App\Jobs\Reseller\SendResellerBotReplyJob;
 use App\Models\Game;
 use App\Models\Order;
 use App\Models\Package;
@@ -23,10 +22,9 @@ use Tests\TestCase;
 /**
  * ADR-075 / PR-F build addendum — same money/catalog seams the Reseller
  * API (PR-E) already tests, over the WhatsApp command surface instead of
- * HTTP. `OpenWaClient::sendText()` is unconfigured in tests (no
- * session_id/api_key), so it no-ops rather than making a real HTTP
- * call — every assertion here goes through the DB/ledger, never a
- * mocked reply.
+ * HTTP. Every reply is an outbox row (ADR-116 2026-11-14 addendum), read
+ * back with `replies()`; with the queue faked no HTTP call is made, and
+ * every money assertion goes through the DB/ledger.
  *
  * This file: group linking, balance, lists, track order and deactivated resellers.
  */
@@ -37,7 +35,7 @@ class ResellerBotServiceTest extends TestCase
 
     public function test_a_message_from_an_unlinked_group_creates_a_pending_link(): void
     {
-        app(ResellerBotService::class)->handle('unlinked@g.us', 'hi there', 'msg-1');
+        app(ResellerBotService::class)->handle('unlinked@g.us', 'hi there', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('whatsapp_pending_links', ['whatsapp_group_id' => 'unlinked@g.us']);
     }
@@ -51,7 +49,7 @@ class ResellerBotServiceTest extends TestCase
         // (best-effort, no-ops when unconfigured, see class docblock).
         // The real assertion is that handle() completes cleanly and
         // never mutates the ledger for a read-only command.
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.baki', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.baki', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(5000, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
     }
@@ -60,7 +58,7 @@ class ResellerBotServiceTest extends TestCase
     {
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.blahblah', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.blahblah', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('reseller_bot_command_logs', [
             'reseller_id' => $reseller->id,
@@ -78,9 +76,9 @@ class ResellerBotServiceTest extends TestCase
         Queue::fake();
         $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, 'ok tq', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, 'ok tq', 'msg-1', now()->getTimestamp());
 
-        Queue::assertNotPushed(SendResellerBotReplyJob::class);
+        $this->assertSame([], $this->replies());
         $this->assertSame(0, ResellerBotCommandLog::query()->count());
     }
 
@@ -89,9 +87,9 @@ class ResellerBotServiceTest extends TestCase
         config(['services.openwa.session_id' => 'session-1', 'services.openwa.api_key' => 'key-1']);
         Queue::fake();
 
-        app(ResellerBotService::class)->handle('unlinked@g.us', '.baki', 'msg-1');
+        app(ResellerBotService::class)->handle('unlinked@g.us', '.baki', 'msg-1', now()->getTimestamp());
 
-        Queue::assertNotPushed(SendResellerBotReplyJob::class);
+        $this->assertSame([], $this->replies());
         $this->assertDatabaseHas('whatsapp_pending_links', ['whatsapp_group_id' => 'unlinked@g.us']);
     }
 
@@ -105,7 +103,7 @@ class ResellerBotServiceTest extends TestCase
         $reseller = Reseller::query()->create(['business_name' => 'No Tier Co', 'reseller_tier_id' => null, 'is_active' => true]);
         WhatsAppGroup::query()->create(['owner_type' => 'reseller', 'owner_id' => $reseller->id, 'whatsapp_group_id' => self::GROUP_ID, 'is_active' => true]);
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.list MLMY', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.list MLMY', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('reseller_bot_command_logs', [
             'reseller_id' => $reseller->id,
@@ -123,8 +121,8 @@ class ResellerBotServiceTest extends TestCase
         // (a Game/Package/Reseller-tier join) without throwing, not the
         // exact reply text (which isn't observable without mocking
         // OpenWaClient).
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.listharga', 'msg-1');
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.list MLMY', 'msg-2');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.listharga', 'msg-1', now()->getTimestamp());
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.list MLMY', 'msg-2', now()->getTimestamp());
 
         $this->assertSame(0, ResellerBotCommandLog::query()->count());
     }
@@ -134,10 +132,9 @@ class ResellerBotServiceTest extends TestCase
      * MLID's real count) built a >4096-char message that OpenWA's
      * `send-text` endpoint hard-rejects with a `400` — every retry
      * exhausted silently, the reseller got nothing back at all. This
-     * pins the fix end-to-end: `ResellerBotService` now dispatches one
-     * `SendResellerBotReplyJob` per chunk instead of one for the whole
-     * listing, so no single message OpenWA is asked to send ever
-     * crosses the cap.
+     * pins the fix end-to-end: `ResellerBotService` now queues one
+     * outbox row per chunk instead of one for the whole listing, so no
+     * single message OpenWA is asked to send ever crosses the cap.
      */
     public function test_a_long_catalogue_list_dispatches_one_reply_job_per_chunk(): void
     {
@@ -155,13 +152,13 @@ class ResellerBotServiceTest extends TestCase
         }
         $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.list MLID', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.list MLID', 'msg-1', now()->getTimestamp());
 
-        $pushed = Queue::pushed(SendResellerBotReplyJob::class);
+        $replies = $this->replies();
 
-        $this->assertGreaterThan(1, $pushed->count());
-        foreach ($pushed as $job) {
-            $this->assertLessThanOrEqual(4096, strlen($job->text));
+        $this->assertGreaterThan(1, count($replies));
+        foreach ($replies as $text) {
+            $this->assertLessThanOrEqual(4096, strlen($text));
         }
     }
 
@@ -169,7 +166,7 @@ class ResellerBotServiceTest extends TestCase
     {
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.list NOPE', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.list NOPE', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('reseller_bot_command_logs', [
             'reseller_id' => $reseller->id,
@@ -181,7 +178,7 @@ class ResellerBotServiceTest extends TestCase
     {
         $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.baki', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.baki', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(0, WhatsAppPendingLink::query()->count());
     }
@@ -190,7 +187,7 @@ class ResellerBotServiceTest extends TestCase
     {
         $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.info', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.info', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(0, ResellerBotCommandLog::query()->count());
     }
@@ -200,10 +197,10 @@ class ResellerBotServiceTest extends TestCase
         Queue::fake();
         $this->makePackage(costPrice: 1000, resellerCode: 'MLMY');
         $this->makeLinkedReseller(walletBalance: 10000);
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1', now()->getTimestamp());
         $order = Order::query()->firstOrFail();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, ".trackorder {$order->order_number}", 'msg-2');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, ".trackorder {$order->order_number}", 'msg-2', now()->getTimestamp());
 
         $this->assertSame(0, ResellerBotCommandLog::query()->where('failure_reason', 'order_not_found_or_not_owned')->count());
     }
@@ -212,7 +209,7 @@ class ResellerBotServiceTest extends TestCase
     {
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.trackorder PG-DOESNOTEXIST', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.trackorder PG-DOESNOTEXIST', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('reseller_bot_command_logs', [
             'reseller_id' => $reseller->id,
@@ -225,7 +222,7 @@ class ResellerBotServiceTest extends TestCase
         Queue::fake();
         $this->makePackage(costPrice: 1000, resellerCode: 'MLMY');
         $this->makeLinkedReseller(walletBalance: 10000);
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1', now()->getTimestamp());
         $order = Order::query()->firstOrFail();
 
         // A second reseller, linked to a different group, tries to
@@ -235,7 +232,7 @@ class ResellerBotServiceTest extends TestCase
         app(LedgerService::class)->openAccount(LedgerOwnerType::ResellerWallet, $otherReseller->id);
         WhatsAppGroup::query()->create(['owner_type' => 'reseller', 'owner_id' => $otherReseller->id, 'whatsapp_group_id' => 'g2@g.us', 'is_active' => true]);
 
-        app(ResellerBotService::class)->handle('g2@g.us', ".trackorder {$order->order_number}", 'msg-2');
+        app(ResellerBotService::class)->handle('g2@g.us', ".trackorder {$order->order_number}", 'msg-2', now()->getTimestamp());
 
         $this->assertDatabaseHas('reseller_bot_command_logs', [
             'reseller_id' => $otherReseller->id,
@@ -250,7 +247,7 @@ class ResellerBotServiceTest extends TestCase
         $reseller = $this->makeLinkedReseller();
         $reseller->update(['is_active' => false]);
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.baki', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.baki', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('reseller_bot_command_logs', [
             'reseller_id' => $reseller->id,
@@ -263,7 +260,7 @@ class ResellerBotServiceTest extends TestCase
         $reseller = $this->makeLinkedReseller();
         $reseller->update(['is_active' => false]);
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.trackorder PG-TEST', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.trackorder PG-TEST', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('reseller_bot_command_logs', [
             'reseller_id' => $reseller->id,
@@ -276,7 +273,7 @@ class ResellerBotServiceTest extends TestCase
         $reseller = $this->makeLinkedReseller();
         $reseller->update(['is_active' => false]);
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.listharga', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.listharga', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('reseller_bot_command_logs', [
             'reseller_id' => $reseller->id,
