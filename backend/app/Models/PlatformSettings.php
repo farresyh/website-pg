@@ -88,6 +88,9 @@ class PlatformSettings extends Model
             'partner_applications_open' => false,
             'campaign_min_margin_percent' => 2.00,
             'campaign_qualified_min_sen' => 1000,
+            // ADR-075 2026-11-14 addendum: read back as null it would be a
+            // 0-minute limit, and every bot money command would be stale.
+            'bot_command_max_age_minutes' => 3,
         ]);
     }
 }

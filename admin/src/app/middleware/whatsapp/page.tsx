@@ -162,14 +162,18 @@ export default function WhatsAppOutboxPage() {
                         <DataTableCell className={CELL}>{formatDateTime(row.created_at)}</DataTableCell>
                         <DataTableCell className={CELL}>{row.session === "bot" ? "Bot" : "Customer support"}</DataTableCell>
                         <DataTableCell className="px-5 py-4 font-mono text-theme-xs text-ink">{row.event}</DataTableCell>
-                        <DataTableCell className={CELL}>{row.recipient}</DataTableCell>
+                        <DataTableCell className={`${CELL} whitespace-nowrap`}>{row.recipient}</DataTableCell>
                         <DataTableCell className={CELL}>{row.order_number ?? "—"}</DataTableCell>
                         <DataTableCell className="px-5 py-4 text-theme-sm">
                           <Tag severity={statusSeverity[row.status]}>{row.status}</Tag>
                         </DataTableCell>
                         <DataTableCell className={CELL}>{row.attempts}</DataTableCell>
                         <DataTableCell className={CELL}>{formatDateTime(row.sent_at)}</DataTableCell>
-                        <DataTableCell className="max-w-xs px-5 py-4 text-theme-xs text-ink-muted">{row.error ?? "—"}</DataTableCell>
+                        <DataTableCell className="px-5 py-4 text-theme-xs text-ink-muted">
+                          <span className="block max-w-[9rem] truncate" title={row.error ?? undefined}>
+                            {row.error ?? "—"}
+                          </span>
+                        </DataTableCell>
                       </DataTableRow>
                     );
                   }}

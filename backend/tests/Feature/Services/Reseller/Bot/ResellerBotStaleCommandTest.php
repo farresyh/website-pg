@@ -131,4 +131,23 @@ class ResellerBotStaleCommandTest extends TestCase
 
         $this->assertSame(1, Order::query()->count());
     }
+
+    /** Found in CI: a freshly created settings row read the limit back as null (0 minutes). */
+    public function test_a_fresh_settings_row_has_the_three_minute_limit(): void
+    {
+        PlatformSettings::query()->delete();
+
+        $this->assertSame(3, PlatformSettings::current()->bot_command_max_age_minutes);
+    }
+
+    public function test_a_command_a_few_seconds_old_runs_on_a_fresh_settings_row(): void
+    {
+        PlatformSettings::query()->delete();
+        $this->makePackage();
+        $this->makeLinkedReseller();
+
+        $this->send('.order MLMY-14 51049607 2005', 'msg-1', now()->subSeconds(5)->getTimestamp());
+
+        $this->assertSame(1, Order::query()->count());
+    }
 }
