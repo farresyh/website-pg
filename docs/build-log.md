@@ -2786,7 +2786,7 @@ The founder asked for it. `staging` → `main`, merge `ea0f8036` at 12:18 UTC, c
 - Webhook: one inbound message handled once (`Cache::add`, released on exception), the message time passed to the bot, media with no text ignored quietly, `message.failed` marks the customer row.
 - `/api/health/whatsapp` 503 on a restriction; `app:alert-whatsapp-outbox` every minute (CRITICAL); Horizon `supervisor-whatsapp-reply`; Middleware → WhatsApp (read-only list); portal `/bot-status` and the degraded banner (polled every 60 s, reseller with a bot group only).
 
-**Verified.** Backend 3,987 tests pass (25 new: outbox job, stale commands, webhook once, `message.failed`, restricted health, alert throttle, bot-status, architecture). Admin and portal: `tsc`, lint, build and unit tests pass. Local dev DB migrated. Not checked in a browser: the Middleware → WhatsApp screen, the Settings field and the portal banner.
+**Verified.** Backend 3,987 tests pass (25 new: outbox job, stale commands, webhook once, `message.failed`, restricted health, alert throttle, bot-status, architecture). Admin and portal: `tsc`, lint, build and unit tests pass. Local dev DB migrated. Browser (Playwright, throwaway sqlite backend, after merge): Middleware → WhatsApp lists all seven statuses and the status filter narrows to one; the Settings field shows 3; the portal shows the bot banner for a reseller with a bot group while the session is not ready. The masked phone wrapped onto three lines and the Error text ran off the edge at 1440 px; fixed in a follow-up PR (error truncated with the full text on hover; the table now fits).
 
 **Gotchas.**
 1. Removing the fallback fields `data.text` / `data.messageId` is safe: OpenWA's `message.received` carries only `body` and `id` (docs §6).
