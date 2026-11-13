@@ -2750,3 +2750,18 @@ In the admin: a "Refund in cash" modal on the voucher detail (the source orders,
 1. `dispatch(closure)->afterResponse()` serialized the closure and failed on a service holding a WeakMap; `defer()` runs it in-process.
 2. An invite token counts toward the broker's one-a-minute throttle, so a reset within a minute of an invite is refused with its own message.
 3. On a fresh database the setting stays null (payment methods are seeded after migrations), which means "the first offered". On production the FPX row exists, so the migration sets it.
+
+## 2026-11-12 — Release #791: cash refund of a failed-order voucher, portal password reset, the bot's top-up method
+
+The founder asked for it. `staging` → `main`, merge `ea0f8036` at 12:18 UTC, carrying #784–#790 (the #783 release record, the dead `seo_*` column drop, tracked games, Reseller API docs v1.6.1, CI playwright without apt, PRD §16 item 179, item 181). Three migrations, including the column drop.
+
+**CI and deploy:** the `main` run `43216768340` was green in every job including `deploy`.
+
+**Checked after release (production, read-only):**
+- `/api/health` 200; the three migrations ran.
+- `vouchers.source`: all 18 rows are `customer_cash` (15 at design time, plus three issued that day: VC-WNWGYJPZ RM206.66 for PG-YKY3NIKNYEKW, VC-OPHBR9LC RM41.28 for PG-1RRM6Z4CACM1, VC-IHYB0CRU RM12.48). VC-FO21NVDK is `customer_cash` and stays revoked, as decided. The 5 active vouchers are all failed-order credit, so none can be revoked. 0 rows in `voucher_cash_refunds`.
+- `platform_settings.bot_topup_payment_method_id` is 1 (FPX).
+- The portal's `/forgot-password` is live on `reseller.pekangame.space`.
+- PG-YKY3NIKNYEKW's failed leg: Digiflazz confirmed it Gagal (rc 02) at 11:11 MYT, so its voucher is right.
+
+**Open:** found while answering a NeedsReview question the same day, a late supplier Success on a combo leg that is already Failed is dropped silently. `finalizePendingDeliveryLeg()` throws `InvalidOrderTransitionException`, and `DigiflazzWebhookController` logs it at INFO as "already finalized". No `late_supplier_result` is stored, no admin alert goes out, and no supplier drawdown is recorded, so the cash-refund guard and `app:refund-failed-wallet-orders` can't see it. Single orders store the result and alert, but also record no drawdown on a contradicted Success. No compensated order had a late result on 2026-11-12. The fix needs an ADR-127/ADR-102 addendum and a code trace; the founder will take it up in a new session.
