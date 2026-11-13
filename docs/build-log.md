@@ -2777,7 +2777,7 @@ The founder asked for it. `staging` → `main`, merge `ea0f8036` at 12:18 UTC, c
 
 **Process.** Founder grill (three rounds), then a stress test with one fork per layer (outbound, inbound and order path, monitoring) against the code. It changed the plan: `afterCommit()` on the dispatch (jobs ran before their row existed), a real retry-until-back for an unreachable gateway, frozen text (re-rendered joki text broke the key), the DB order key deciding a stale `.order` (a redelivered webhook keeps its old time), `.batalbaki`/`.topupbaki` treated as money, no guard on the supplier bot, restriction read live in the health check instead of from webhooks, and alerts reusing the existing throttle pattern with no recovery email. Found during the build: freezing a supplier post would store its login link (ADR-125 decision 52), so that template is re-rendered and its retry ends `unknown`, never sent twice.
 
-**Built (branch `fix/whatsapp-outbox-hardening`).**
+**Built (#793).**
 - `WhatsAppOutbox` owns lane, lifetime and supersede by event; `reply()` for bot groups; `afterCommit()`; `due_at` column.
 - `SendCustomerWhatsAppJob`: expiry, supersede, frozen text, `Idempotency-Key: cn-{id}-{hash}`, outcome mapping (`OpenWaUnavailableException` → retry with backoff up to 5 min; `OpenWaOutcomeUnknownException` → `unknown`), unconfigured session → `skipped`.
 - `OpenWaClient`: `sendText()` removed; `sendNow()` takes the key; `sessionStatus()` returns `restricted`; `isConfigured()`.
