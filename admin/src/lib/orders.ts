@@ -116,13 +116,15 @@ export interface OrderDeliveryLeg {
 export interface CustomerNotification {
   id: number;
   event: "voucher_issued" | "voucher_restored" | "delivered_receipt" | "status_card" | "optin_reply" | "supplier_order_post" | "supplier_sla_reminder" | string;
-  // ADR-125 decision 53: "bot" is a post to the supplier's WhatsApp group (`chat_id`), never a phone.
+  // ADR-125 decision 53: "bot" goes to a WhatsApp group (`chat_id`), never a phone: a supplier's group,
+  // or since the ADR-116 2026-11-14 addendum a reseller's (events starting `bot_`).
   session: "customer_support" | "bot";
   phone: string | null;
   chat_id: string | null;
   // ADR-116 2026-11-03 addendum: the checkout phone this `@lid` chat was verified as, if tied.
   verified_phone?: string | null;
-  status: "queued" | "sent" | "failed" | "skipped";
+  // ADR-116 2026-11-14 addendum: unknown (may have been sent), expired, superseded.
+  status: "queued" | "sent" | "failed" | "skipped" | "unknown" | "expired" | "superseded";
   attempts: number;
   error: string | null;
   sent_at: string | null;

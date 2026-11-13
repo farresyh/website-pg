@@ -47,6 +47,8 @@ export interface PlatformSettings {
   balance_cap_default_sen: number;
   // ADR-076 2026-11-12 addendum — `.topupbaki`'s method; null = the first offered.
   bot_topup_payment_method_id: number | null;
+  // ADR-075 2026-11-14 addendum — a bot money command older than this (minutes) is not run.
+  bot_command_max_age_minutes: number;
   // ADR-131 decision 11 — seller details printed on top-up receipts.
   company_legal_name: string | null;
   company_reg_no: string | null;
@@ -86,7 +88,10 @@ export type UpdatePlatformValues = Pick<
 > &
   Partial<Pick<PlatformSettings, "company_legal_name" | "company_reg_no" | "company_address">>;
 
-export type UpdatePurchaseBalancePolicyValues = Pick<PlatformSettings, "topup_max_sen" | "balance_cap_default_sen" | "bot_topup_payment_method_id">;
+export type UpdatePurchaseBalancePolicyValues = Pick<
+  PlatformSettings,
+  "topup_max_sen" | "balance_cap_default_sen" | "bot_topup_payment_method_id" | "bot_command_max_age_minutes"
+>;
 
 export type UpdateCustomerLoginPolicyValues = Pick<
   PlatformSettings,
