@@ -2765,3 +2765,32 @@ The founder asked for it. `staging` → `main`, merge `ea0f8036` at 12:18 UTC, c
 - PG-YKY3NIKNYEKW's failed leg: Digiflazz confirmed it Gagal (rc 02) at 11:11 MYT, so its voucher is right.
 
 **Open:** found while answering a NeedsReview question the same day, a late supplier Success on a combo leg that is already Failed is dropped silently. `finalizePendingDeliveryLeg()` throws `InvalidOrderTransitionException`, and `DigiflazzWebhookController` logs it at INFO as "already finalized". No `late_supplier_result` is stored, no admin alert goes out, and no supplier drawdown is recorded, so the cash-refund guard and `app:refund-failed-wallet-orders` can't see it. Single orders store the result and alert, but also record no drawdown on a contradicted Success. No compensated order had a late result on 2026-11-12. The fix needs an ADR-127/ADR-102 addendum and a code trace; the founder will take it up in a new session.
+
+## 2026-11-14 — WhatsApp outbox hardening: one idempotent send path, stale bot commands, alerts (ADR-116 and ADR-075 2026-11-14 addenda)
+
+**Why (read-only prod, 2026-11-13).**
+- Duplicate messages: OpenWA's `messages` held 18 bot and 3 customer-support outgoing duplicates (same chat and text within 2 minutes), 5 of them that day. `send-text` timed out at our 10 s (`cURL error 28`, 22:48 and 22:59 MYT) while OpenWA still sent it, and the job retried. Order PG-FXORY5HG2BW3 got its receipt three times.
+- Every reseller and supplier bot reply went through `sendText()` → `SendResellerBotReplyJob` (3 tries in about 25 s, then lost); the customer job failed a row after about 6 minutes, not the 2 days `retryUntil` suggested.
+- No bot order went without a reply between 2026-09-25 and 2026-11-13 (31 bot orders checked against OpenWA's `messages`), and no "reply lost" since the logs start on 2026-10-31.
+- WhatsApp holds messages while the gateway is down and delivers them on reconnect with their original time, so an `.order` sent in an outage could run much later. OpenWA's own automation skips messages older than 5 minutes for this reason.
+- OpenWA v0.29.1 (prod) already supports `Idempotency-Key` on send routes; v0.30.0 adds nothing we need for this.
+
+**Process.** Founder grill (three rounds), then a stress test with one fork per layer (outbound, inbound and order path, monitoring) against the code. It changed the plan: `afterCommit()` on the dispatch (jobs ran before their row existed), a real retry-until-back for an unreachable gateway, frozen text (re-rendered joki text broke the key), the DB order key deciding a stale `.order` (a redelivered webhook keeps its old time), `.batalbaki`/`.topupbaki` treated as money, no guard on the supplier bot, restriction read live in the health check instead of from webhooks, and alerts reusing the existing throttle pattern with no recovery email. Found during the build: freezing a supplier post would store its login link (ADR-125 decision 52), so that template is re-rendered and its retry ends `unknown`, never sent twice.
+
+**Built (branch `fix/whatsapp-outbox-hardening`).**
+- `WhatsAppOutbox` owns lane, lifetime and supersede by event; `reply()` for bot groups; `afterCommit()`; `due_at` column.
+- `SendCustomerWhatsAppJob`: expiry, supersede, frozen text, `Idempotency-Key: cn-{id}-{hash}`, outcome mapping (`OpenWaUnavailableException` → retry with backoff up to 5 min; `OpenWaOutcomeUnknownException` → `unknown`), unconfigured session → `skipped`.
+- `OpenWaClient`: `sendText()` removed; `sendNow()` takes the key; `sessionStatus()` returns `restricted`; `isConfigured()`.
+- All 12 bot send sites moved to the outbox (reseller bot, order listener, refund notice, wallet top-up notices, supplier bot). An architecture test allows `sendNow()` only in the outbox job and the retired `SendResellerBotReplyJob` (kept one release to drain).
+- `ResellerBotService`: stale guard after parsing and before the limiters; `.order` checks its idempotency key first. `PlatformSettings.bot_command_max_age_minutes` (default 3) in Settings → Purchase Balance.
+- Webhook: one inbound message handled once (`Cache::add`, released on exception), the message time passed to the bot, media with no text ignored quietly, `message.failed` marks the customer row.
+- `/api/health/whatsapp` 503 on a restriction; `app:alert-whatsapp-outbox` every minute (CRITICAL); Horizon `supervisor-whatsapp-reply`; Middleware → WhatsApp (read-only list); portal `/bot-status` and the degraded banner (polled every 60 s, reseller with a bot group only).
+
+**Verified.** Backend 3,987 tests pass (25 new: outbox job, stale commands, webhook once, `message.failed`, restricted health, alert throttle, bot-status, architecture). Admin and portal: `tsc`, lint, build and unit tests pass. Local dev DB migrated. Not checked in a browser: the Middleware → WhatsApp screen, the Settings field and the portal banner.
+
+**Gotchas.**
+1. Removing the fallback fields `data.text` / `data.messageId` is safe: OpenWA's `message.received` carries only `body` and `id` (docs §6).
+2. Every existing bot test called `handle()` without a time, which the fail-safe now rejects for money commands; all 66 calls pass `now()`.
+3. With the sync queue (tests), an outbox job runs inside the caller's request; an unconfigured session had to skip, not throw, or an admin refund returned 500.
+
+**Open after release:** PRD §16 items 182 (founder's OpenWA settings), 183 (v0.30.0 upgrade and deleting the retired job), 185 (upstream "skip typing" request), and 184 (receipts without opt-in, design). Item 186 (RedxGame 403 for Free Fire and the other RedxGame-only games) was found in the same session.
