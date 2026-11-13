@@ -2792,5 +2792,6 @@ The founder asked for it. `staging` → `main`, merge `ea0f8036` at 12:18 UTC, c
 1. Removing the fallback fields `data.text` / `data.messageId` is safe: OpenWA's `message.received` carries only `body` and `id` (docs §6).
 2. Every existing bot test called `handle()` without a time, which the fail-safe now rejects for money commands; all 66 calls pass `now()`.
 3. With the sync queue (tests), an outbox job runs inside the caller's request; an unconfigured session had to skip, not throw, or an admin refund returned 500.
+4. Found by CI on the follow-up PR: `PlatformSettings::current()` lists every default because Eloquent never reads back a DB default after INSERT, and the new `bot_command_max_age_minutes` was missing from that list. A freshly created row read the limit as null, a 0-minute limit, so any money command a second old was rejected (a test crossed a second boundary). Production's row already exists and has 3 from the column default; the default is now in `current()` with a regression test.
 
 **Open after release:** PRD §16 items 182 (founder's OpenWA settings), 183 (v0.30.0 upgrade and deleting the retired job), 185 (upstream "skip typing" request), and 184 (receipts without opt-in, design). Item 186 (RedxGame 403 for Free Fire and the other RedxGame-only games) was found in the same session.
