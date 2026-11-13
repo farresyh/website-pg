@@ -1,6 +1,6 @@
 # ADR-075: Reseller Bot channel — OpenWA WhatsApp gateway, group-identity mapping, deploy topology
 
-> **Standing (2026-11-08):** In force; group registry generalised to resellers and suppliers by [ADR-125](./ADR-125-login-top-up-manual-supplier.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-14):** In force; bot replies go through the WhatsApp outbox, a money command arriving after the panel's age limit moves no money, and one webhook is handled once (2026-11-14 addendum); group registry generalised to resellers and suppliers by [ADR-125](./ADR-125-login-top-up-manual-supplier.md). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-09-04, same grill session as ADR-072/073/074. Depends on ADR-073 (consumes the same order-placement contract as ADR-074, over a different transport).
 
@@ -138,3 +138,28 @@ Still true on OpenWA v0.27.1 (`SessionService.listChats()` reads only the engine
 The gap in the 2026-11-02 addendum is closed upstream by rmyndharis/OpenWA#1992, which ships from v0.28.0. Production moved from v0.27.1 to v0.29.1 on 2026-11-07 through `scripts/openwa-upgrade.sh`. After the restart the sessions list 19 chats (`reseller-bot`, 10 of them one-to-one) and 38 (`customer-support`, 31), where the list had fallen to 8 with one one-to-one chat on 2026-11-04. The advice not to pin, mute or archive customer chats no longer has a reason to come up.
 
 A Baileys group message now also produces `message.ack`. Neither of our webhooks subscribes to it. Keep it that way, or expect a call to Laravel per group member receipt.
+
+### 2026-11-14 addendum — bot replies through the outbox; a command delayed past 3 minutes moves no money; one webhook processed once
+
+**Status:** Accepted — grilled with the founder 2026-11-14 and stress-tested against the code (same session as [ADR-116](./ADR-116-customer-order-notifications-over-whatsapp.md)'s 2026-11-14 addendum, which holds the outbox decisions).
+
+**Context.**
+- Every reseller and supplier bot reply went through `OpenWaClient::sendText()` → `SendResellerBotReplyJob`: three tries in about 25 s, then lost. The order listener marked the order notified when the job was queued, so a lost reply was never retried. None was lost between 2026-09-25 and 2026-11-13 (OpenWA `messages` against all 31 bot orders); 2 orders got duplicate replies.
+- When the gateway is disconnected, WhatsApp holds messages and delivers them on reconnect with their original `timestamp` (OpenWA's own automation skips messages older than 5 minutes for this reason, docs §6 "automation"). OpenWA also replays a stranded webhook delivery with its original payload. The bot checked only "this message id already placed an order?", never the message's age, so an `.order` sent during an outage could run 40 minutes later, after the reseller had re-ordered from the portal.
+- `.batalbaki` acts on whatever top-up is pending when it runs, not the one the reseller meant.
+- OpenWA delivers webhooks at least once; a redelivered read command was answered twice.
+
+**Decision.**
+1. **Replies go through the outbox** (ADR-116 2026-11-14 addendum), on the `whatsapp-reply` lane. Dedupe key per reply: `reply:{session}:{inbound message id}`; per order lifecycle message: `bot_order:{order id}:{status}:{n}`, where n counts the order's earlier lifecycle rows, so failed → delivered → failed is told three times. The listener's `last_notified_delivery_status` check stays the decision point (it turns the noisy status stream into one message per newly reached status); the outbox key stops a repeat of the same decision. `refund_notified_at` stays as history beside the `bot_refund:{order id}` key.
+2. **Stale-command guard, reseller bot only.** In `ResellerBotService::handle()`, after parsing and before the inactive check, the rate limiters and any player check:
+   - a money command (`.order`, `.topupbaki`, `.batalbaki`) whose `timestamp` is older than the limit is not run. For `.order`, the order's idempotency key is looked up first: if the order exists, the bot answers with its current status (it was a redelivery). Otherwise the bot answers: the command arrived late (with its time), was not processed, and the reseller should check the portal before sending it again;
+   - a read command older than the limit is dropped silently (a reconnect backlog is not answered, and no checker call is made);
+   - a timestamp in the future is accepted (a phone clock running fast). A money command with no timestamp is rejected. Every rejection is logged with the reseller id.
+   - The limit is a `PlatformSettings` value, default 3 minutes, edited in Admin → Settings next to the bot top-up payment method.
+   - The supplier bot gets no guard: a late `.done` / `.gagal` reports real work, and `ManualDeliveryService` already acts only on Pending orders.
+3. **One webhook, processed once.** After the signature check and session routing, `OpenWaWebhookController` claims `{session}:{chat}:{message id}` with `Cache::add` (24 h) and skips a claimed one; the claim is released if handling throws, so OpenWA's retry runs. The order idempotency key stays the durable guard for money; the cache claim only saves repeated work.
+4. **Degraded banner.** The partner portal shows a non-dismissible banner to Reseller accounts (`PartnerBanners`, ADR-133) when the `reseller-bot` session is not `ready` or the oldest due `whatsapp-reply` row has waited over 2 minutes. The portal asks again every 60 s. Only a boolean leaves the backend.
+
+**Rationale.** The money effect of a delayed command is decided by the durable order key, never by the cache or the clock alone; the clock only stops new money from moving on a stale instruction. A read command answered 40 minutes late is noise, so it is dropped.
+
+**Consequence to track.** A reseller whose phone clock runs more than the limit slow has every money command rejected; the notice shows the message time, and the log names the reseller.
