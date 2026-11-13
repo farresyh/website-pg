@@ -57,6 +57,10 @@ const NOTIFICATION_EVENT_LABEL: Record<string, string> = {
   optin_reply: "Opt-in reply",
   supplier_order_post: "Order post",
   supplier_sla_reminder: "SLA reminder",
+  // ADR-116 2026-11-14 addendum: the reseller bot's messages to the reseller's group.
+  bot_money_reply: "Order received",
+  bot_order_update: "Order update",
+  bot_refund: "Refund notice",
 };
 
 const NOTIFICATION_STATUS_SEVERITY = {
@@ -64,7 +68,17 @@ const NOTIFICATION_STATUS_SEVERITY = {
   sent: "success",
   failed: "danger",
   skipped: "warn",
+  unknown: "warn",
+  expired: "secondary",
+  superseded: "secondary",
 } as const;
+
+/** ADR-116 2026-11-14 addendum: a `bot` row is a reseller's group when its event is a reseller bot one. */
+function notificationTitle(n: { session: string; event: string }): string {
+  if (n.session !== "bot") return "Customer WhatsApp";
+
+  return n.event.startsWith("bot_") ? "Reseller group" : "Supplier group";
+}
 
 interface Field {
   label: string;
@@ -216,7 +230,7 @@ export default function RefundInformationCards({ order }: { order: OrderDetail }
         <CompensationCard
           key={n.id}
           icon={Whatsapp}
-          title={n.session === "bot" ? "Supplier group" : "Customer WhatsApp"}
+          title={notificationTitle(n)}
           badge={NOTIFICATION_EVENT_LABEL[n.event] ?? n.event}
           tone="refund"
           fields={[

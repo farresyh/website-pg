@@ -2,7 +2,7 @@
 
 namespace Tests\Support;
 
-use App\Jobs\Reseller\SendResellerBotReplyJob;
+use App\Models\CustomerNotification;
 use App\Models\Game;
 use App\Models\Package;
 use App\Models\PaymentMethod;
@@ -134,17 +134,14 @@ trait ResellerBotFixtures
 
     // --- ADR-097 2026-10-05 addendum (decisions 27-32): per-game input contract ---
 
-    /** @return list<string> every reply text the bot queued */
+    /** @return list<string> every reply text the bot queued (outbox rows, ADR-116 2026-11-14 addendum) */
     private function replies(): array
     {
-        $texts = [];
-        Queue::assertPushed(SendResellerBotReplyJob::class, function (SendResellerBotReplyJob $job) use (&$texts) {
-            $texts[] = $job->text;
-
-            return true;
-        });
-
-        return $texts;
+        return CustomerNotification::query()
+            ->where('session', CustomerNotification::SESSION_BOT)
+            ->orderBy('id')
+            ->pluck('message')
+            ->all();
     }
 
     private function captureReplies(): void

@@ -4,6 +4,7 @@
  * ADR-131 decisions 4 and 11: the Purchase Balance limits (saving needs MFA
  * step-up) and the seller details printed on top-up receipts. ADR-076
  * 2026-11-12 addendum: the payment method `.topupbaki` uses, saved with the limits.
+ * ADR-075 2026-11-14 addendum: how old a bot money command may be and still run.
  */
 
 import { useState } from "react";
@@ -32,6 +33,7 @@ export default function PurchaseBalanceSection({
   const firstOffered = paymentMethods.find((m) => m.is_active) ?? null;
   const [maxRm, setMaxRm] = useState(String(platform.topup_max_sen / 100));
   const [capRm, setCapRm] = useState(String(platform.balance_cap_default_sen / 100));
+  const [maxAgeMinutes, setMaxAgeMinutes] = useState(String(platform.bot_command_max_age_minutes));
   const [legalName, setLegalName] = useState(platform.company_legal_name ?? "");
   const [regNo, setRegNo] = useState(platform.company_reg_no ?? "");
   const [address, setAddress] = useState(platform.company_address ?? "");
@@ -51,6 +53,11 @@ export default function PurchaseBalanceSection({
       setError("The default balance cap cannot be lower than the maximum per top-up.");
       return;
     }
+    const maxAge = Number(maxAgeMinutes);
+    if (!Number.isInteger(maxAge) || maxAge < 1 || maxAge > 60) {
+      setError("The bot command age limit must be a whole number of minutes from 1 to 60.");
+      return;
+    }
 
     setSavingLimits(true);
     try {
@@ -58,6 +65,7 @@ export default function PurchaseBalanceSection({
         topup_max_sen: topupMaxSen,
         balance_cap_default_sen: capSen,
         bot_topup_payment_method_id: botMethodId === "" ? null : Number(botMethodId),
+        bot_command_max_age_minutes: maxAge,
       });
       notify.success("Purchase Balance settings saved");
       onSaved();
@@ -133,6 +141,14 @@ export default function PurchaseBalanceSection({
                 The group has no picker, so the bot uses this one. If it is switched off, the bot uses the first method the portal offers and says which in its reply. The reseller pays the method&apos;s fee.
               </p>
             )}
+          </div>
+          <div>
+            <Label htmlFor="bot_command_max_age">WhatsApp bot command age limit (minutes)</Label>
+            <Input id="bot_command_max_age" inputMode="numeric" value={maxAgeMinutes} onChange={(e) => setMaxAgeMinutes(e.target.value)} />
+            <p className={HELP}>
+              An .order, .topupbaki or .batalbaki that reaches us later than this (a WhatsApp outage held it) is not run,
+              and the bot tells the reseller to check the portal first.
+            </p>
           </div>
         </div>
         <div className="mt-4 flex justify-end">

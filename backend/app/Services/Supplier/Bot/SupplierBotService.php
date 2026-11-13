@@ -8,7 +8,7 @@ use App\Services\Fulfillment\ManualDeliveryService;
 use App\Services\Joki\JokiLadder;
 use App\Services\Joki\JokiProgressService;
 use App\Services\Joki\JokiRankParser;
-use App\Services\OpenWa\OpenWaClient;
+use App\Services\Notification\WhatsAppOutbox;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Order\InvalidOrderTransitionException;
 use Illuminate\Support\Facades\Log;
@@ -33,11 +33,11 @@ final class SupplierBotService
 
     public function __construct(
         private readonly ManualDeliveryService $manual,
-        private readonly OpenWaClient $openWa,
+        private readonly WhatsAppOutbox $outbox,
         private readonly JokiProgressService $jokiProgress,
     ) {}
 
-    public function handle(Supplier $supplier, string $whatsappGroupId, string $rawText, ?string $sender): void
+    public function handle(Supplier $supplier, string $whatsappGroupId, string $rawText, ?string $sender, string $whatsappMessageId): void
     {
         $text = trim($rawText);
 
@@ -47,7 +47,7 @@ final class SupplierBotService
         }
 
         if (! RateLimiter::attempt("supplier-bot:{$supplier->id}", 60, fn () => true, 60)) {
-            $this->openWa->sendText($whatsappGroupId, 'Terlalu banyak permintaan. Sila cuba sebentar lagi.');
+            $this->reply($whatsappGroupId, $whatsappMessageId, 'Terlalu banyak permintaan. Sila cuba sebentar lagi.');
 
             return;
         }
@@ -64,7 +64,15 @@ final class SupplierBotService
             default => self::help(),
         };
 
-        $this->openWa->sendText($whatsappGroupId, $reply);
+        $this->reply($whatsappGroupId, $whatsappMessageId, $reply);
+    }
+
+    /** ADR-116 2026-11-14 addendum: an outbox row keyed by the command it answers. */
+    private function reply(string $groupId, string $whatsappMessageId, string $text): void
+    {
+        $ref = substr(hash('sha256', $groupId."\n".$whatsappMessageId), 0, 32);
+
+        $this->outbox->reply(WhatsAppOutbox::EVENT_SUPPLIER_BOT_REPLY, "supplier_reply:{$ref}", $groupId, $text);
     }
 
     private function done(Supplier $supplier, string $orderNumber, string $confirmedBy): string

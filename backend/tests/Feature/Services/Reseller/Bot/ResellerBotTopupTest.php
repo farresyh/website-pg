@@ -21,10 +21,9 @@ use Tests\TestCase;
 /**
  * ADR-075 / PR-F build addendum — same money/catalog seams the Reseller
  * API (PR-E) already tests, over the WhatsApp command surface instead of
- * HTTP. `OpenWaClient::sendText()` is unconfigured in tests (no
- * session_id/api_key), so it no-ops rather than making a real HTTP
- * call — every assertion here goes through the DB/ledger, never a
- * mocked reply.
+ * HTTP. Every reply is an outbox row (ADR-116 2026-11-14 addendum), read
+ * back with `replies()`; with the queue faked no HTTP call is made, and
+ * every money assertion goes through the DB/ledger.
  *
  * This file: the .topupbaki wallet top-up command.
  */
@@ -41,7 +40,7 @@ class ResellerBotTopupTest extends TestCase
         $this->bindGateway();
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1', now()->getTimestamp());
 
         $attempt = WalletTopupAttempt::query()->firstOrFail();
         $this->assertSame(5000, $attempt->amount_sen);
@@ -63,7 +62,7 @@ class ResellerBotTopupTest extends TestCase
         $reseller = $this->makeLinkedReseller();
         $reseller->update(['reseller_tier_id' => null]);
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(0, WalletTopupAttempt::query()->count());
         $this->assertDatabaseHas('reseller_bot_command_logs', [
@@ -82,7 +81,7 @@ class ResellerBotTopupTest extends TestCase
         $this->bindGateway();
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 5', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 5', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(0, WalletTopupAttempt::query()->count());
         $this->assertDatabaseHas('reseller_bot_command_logs', [
@@ -97,7 +96,7 @@ class ResellerBotTopupTest extends TestCase
         $this->bindGateway();
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 15000', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 15000', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(0, WalletTopupAttempt::query()->count());
         $this->assertDatabaseHas('reseller_bot_command_logs', [
@@ -118,7 +117,7 @@ class ResellerBotTopupTest extends TestCase
         $reseller->update(['balance_cap_sen' => 300_000]);
         app(LedgerService::class)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, 250_000, 'wallet_topup');
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 600', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 600', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(0, WalletTopupAttempt::query()->count());
         $this->assertDatabaseHas('reseller_bot_command_logs', [
@@ -153,7 +152,7 @@ class ResellerBotTopupTest extends TestCase
         $this->bindGateway();
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki lima', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki lima', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(0, WalletTopupAttempt::query()->count());
         $this->assertDatabaseHas('reseller_bot_command_logs', [
@@ -168,10 +167,10 @@ class ResellerBotTopupTest extends TestCase
         $this->bindGateway();
         $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1', now()->getTimestamp());
         // A second request while the first is still pending — decision 3:
         // reply with the existing attempt's link, no new attempt created.
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 80', 'msg-2');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 80', 'msg-2', now()->getTimestamp());
 
         $this->assertSame(1, WalletTopupAttempt::query()->count());
     }
@@ -195,7 +194,7 @@ class ResellerBotTopupTest extends TestCase
         $this->bindGateway();
         $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1', now()->getTimestamp());
 
         $this->assertSame('fpx', WalletTopupAttempt::query()->firstOrFail()->channel_code);
     }
@@ -218,7 +217,7 @@ class ResellerBotTopupTest extends TestCase
         $this->bindGateway();
         $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 500', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 500', 'msg-1', now()->getTimestamp());
 
         $attempt = WalletTopupAttempt::query()->firstOrFail();
         $this->assertSame('fpx', $attempt->channel_code);
@@ -237,7 +236,7 @@ class ResellerBotTopupTest extends TestCase
         $this->bindGateway();
         $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 500', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 500', 'msg-1', now()->getTimestamp());
 
         $this->assertSame('dnqr', WalletTopupAttempt::query()->firstOrFail()->channel_code);
         $this->assertStringContainsString('Kaedah    : DuitNow QR', $this->replies()[0]);
@@ -251,7 +250,7 @@ class ResellerBotTopupTest extends TestCase
         $this->bindGateway();
         $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1', now()->getTimestamp());
 
         $this->assertSame($this->getJson('/api/catalog/payment-methods')->json('0.channel_code'), WalletTopupAttempt::query()->firstOrFail()->channel_code);
     }
@@ -261,7 +260,7 @@ class ResellerBotTopupTest extends TestCase
         $this->bindGateway();
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 50', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(0, WalletTopupAttempt::query()->count());
         $this->assertDatabaseHas('reseller_bot_command_logs', [
@@ -282,7 +281,7 @@ class ResellerBotTopupTest extends TestCase
         // rate-limit assertion keys off the command log instead: the 6th
         // must be blocked before it reaches the handler.
         for ($i = 0; $i < 6; $i++) {
-            app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 5', "msg-{$i}");
+            app(ResellerBotService::class)->handle(self::GROUP_ID, '.topupbaki 5', "msg-{$i}", now()->getTimestamp());
         }
 
         // 5 got through to the handler (each logged 'topup_below_minimum'),

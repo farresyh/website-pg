@@ -26,6 +26,8 @@ class UpdatePurchaseBalancePolicyRequest extends FormRequest
             'balance_cap_default_sen' => ['required', 'integer', 'gte:topup_max_sen', 'max:10000000000'],
             // ADR-076 2026-11-12 addendum: `.topupbaki`'s method; null = the first offered.
             'bot_topup_payment_method_id' => ['nullable', 'integer', 'exists:payment_methods,id'],
+            // ADR-075 2026-11-14 addendum, decision 2: a money command older than this is not run.
+            'bot_command_max_age_minutes' => ['required', 'integer', 'min:1', 'max:60'],
         ];
     }
 }

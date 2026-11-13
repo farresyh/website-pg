@@ -11,6 +11,8 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\PlayerValidation\PlayerValidationResult;
 use App\Services\Reseller\ResellerWalletTopupService;
 use App\Services\Reseller\WalletTopupEndCause;
+use App\Support\MalaysiaTime;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
 /**
@@ -489,6 +491,21 @@ final class ResellerBotReplyFormatter
     public static function resellerInactive(): string
     {
         return 'Akaun reseller ini telah dinyahaktifkan. Sila hubungi admin.';
+    }
+
+    /**
+     * ADR-075 2026-11-14 addendum, decision 2: a money command that reached
+     * us too late (an outage held it) is not run. `$sentAt` is the message's
+     * own time, shown so a reseller whose phone clock is wrong can see why.
+     */
+    public static function commandArrivedLate(string $command, ?int $sentAt): string
+    {
+        $when = $sentAt === null
+            ? ''
+            : ' (dihantar '.CarbonImmutable::createFromTimestamp($sentAt)->setTimezone(MalaysiaTime::TIMEZONE)->format('H:i').')';
+
+        return "⚠️ Arahan {$command} anda{$when} sampai lewat kerana gangguan sistem, jadi ia *tidak diproses*.\n"
+            .'Sila semak status di portal reseller sebelum hantar semula.';
     }
 
     public static function formatSen(int $sen): string

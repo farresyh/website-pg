@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\Reseller\SendResellerBotReplyJob;
+use App\Models\CustomerNotification;
 use App\Models\Order;
 use App\Models\OrderResendAttempt;
 use App\Models\Supplier;
@@ -72,17 +72,10 @@ class Adr125SupplierBotTest extends TestCase
         ], $body)->assertOk();
     }
 
-    /** @return list<string> */
+    /** @return list<string> the supplier bot's replies (outbox rows, ADR-116 2026-11-14 addendum) */
     private function replies(): array
     {
-        $texts = [];
-        Queue::assertPushed(SendResellerBotReplyJob::class, function (SendResellerBotReplyJob $job) use (&$texts) {
-            $texts[] = $job->text;
-
-            return true;
-        });
-
-        return $texts;
+        return CustomerNotification::query()->where('event', 'supplier_bot_reply')->orderBy('id')->pluck('message')->all();
     }
 
     public function test_done_delivers_at_the_agreed_cost_and_records_the_sender(): void
@@ -165,7 +158,7 @@ class Adr125SupplierBotTest extends TestCase
     public function test_plain_chat_is_silent_and_an_unknown_command_gets_help(): void
     {
         $this->say('ok bos, kejap');
-        Queue::assertNotPushed(SendResellerBotReplyJob::class);
+        $this->assertSame([], $this->replies());
 
         $this->say('.baki');
         $this->assertStringContainsString('.done PG-XXXX', $this->replies()[0]);
@@ -179,7 +172,7 @@ class Adr125SupplierBotTest extends TestCase
         $this->say('.done PG-AAAAAAAAAAAA', ['fromMe' => true]);
 
         $this->assertSame(DeliveryStatus::Pending, $order->fresh()->delivery_status);
-        Queue::assertNotPushed(SendResellerBotReplyJob::class);
+        $this->assertSame([], $this->replies());
     }
 
     public function test_an_unlinked_group_is_still_captured_for_linking(): void

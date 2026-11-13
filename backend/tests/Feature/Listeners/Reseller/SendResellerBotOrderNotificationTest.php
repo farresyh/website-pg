@@ -14,11 +14,9 @@ use Tests\TestCase;
 
 /**
  * ADR-076 decisions 4/5 — message 2 of the Bot channel's two-stage
- * order messaging. Configures `services.openwa.*` per-test so
- * `OpenWaClient::sendText()` (unconfigured/no-op everywhere else in
- * the test suite) actually attempts the real HTTP call, catchable via
- * `Http::fake()` — the only way to observe whether this listener sent
- * anything, since it has no other side effect.
+ * order messaging. Configures `services.openwa.*` per-test so the outbox
+ * job (run on the sync queue) makes the real HTTP call, catchable via
+ * `Http::fake()`; unconfigured, the job skips the row instead.
  */
 class SendResellerBotOrderNotificationTest extends TestCase
 {
@@ -155,5 +153,23 @@ class SendResellerBotOrderNotificationTest extends TestCase
         $order->update(['delivery_status' => DeliveryStatus::Delivered->value]);
 
         Http::assertSentCount(1);
+    }
+
+    /** ADR-075 2026-11-14 addendum, decision 1: a status reached again after a different one is told again. */
+    public function test_a_status_reached_again_after_another_is_told_again(): void
+    {
+        $this->configureOpenWa();
+        Http::fake(['*' => Http::response(['messageId' => 'wa'], 201)]);
+        $order = $this->order(['delivery_status' => DeliveryStatus::Failed->value]);
+        ResellerBotOrderNotification::query()->create(['order_id' => $order->id, 'whatsapp_group_id' => 'g1@g.us']);
+        $listener = app(SendResellerBotOrderNotification::class);
+
+        $listener->handle(new OrderStatusUpdated($order));
+        $order->forceFill(['delivery_status' => DeliveryStatus::Delivered->value])->saveQuietly();
+        $listener->handle(new OrderStatusUpdated($order));
+        $order->forceFill(['delivery_status' => DeliveryStatus::Failed->value])->saveQuietly();
+        $listener->handle(new OrderStatusUpdated($order));
+
+        Http::assertSentCount(3);
     }
 }

@@ -1,6 +1,6 @@
 # ADR-116: Customer order notifications over WhatsApp (OpenWA), not email — closes audit M-11
 
-> **Standing (2026-11-03):** In force; a privacy-id chat that matches the checkout number through OpenWA's lookup is tied to it (2026-11-03 addendum); decision 8's phone normalisation extended for a Malaysian mobile typed without its leading 0 (2026-10-30 addendum); the WhatsApp chat (an `@lid` too) is the identity and a chat that sends an order number follows that order (2026-11-01 addendum); send queue generalised to (session, chat) by [ADR-125](./ADR-125-login-top-up-manual-supplier.md); a joki progress message is queued with an earliest send time and worded at send time ([ADR-126](./ADR-126-joki-mlbb.md), 2026-10-23). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-14):** In force; every WhatsApp send goes through one outbox, idempotently, with replies on their own lane and stuck or uncertain messages alerted (2026-11-14 addendum); a privacy-id chat that matches the checkout number through OpenWA's lookup is tied to it (2026-11-03 addendum); decision 8's phone normalisation extended for a Malaysian mobile typed without its leading 0 (2026-10-30 addendum); the WhatsApp chat (an `@lid` too) is the identity and a chat that sends an order number follows that order (2026-11-01 addendum); send queue generalised to (session, chat) by [ADR-125](./ADR-125-login-top-up-manual-supplier.md); a joki progress message is queued with an earliest send time and worded at send time ([ADR-126](./ADR-126-joki-mlbb.md), 2026-10-23). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — grilled (`/mattpocock-skills:grilling`) with the founder 2026-09-30, five rounds. **PR-B1 (#323) and PR-B2 (#324) both built 2026-09-30** and released `staging`→`main` the same day (#325). The switch is ON and was live-tested by the founder. Read the two addenda at the end of this entry before building on it:
 - The **build addendum's items 1–2 are superseded** by the **post-live-test addendum**: the order number is the opt-in, and there is one timeline status card.
@@ -256,3 +256,40 @@ a risk at this volume. Removing it also closes the retry hole.
 8. **Admin:** a notification row sent to an `@lid` chat that is now tied shows "WhatsApp chat · verified as <phone>" instead of "number hidden".
 
 **Known ceiling.** A joki order tied mid-play switches its recipient key from the chat to the phone, so the progress interval can restart once (at most one extra message).
+
+### 2026-11-14 addendum — one outbox for every WhatsApp send; idempotent sends; replies on their own lane (revises decisions 7 and 9; ADR-125 decisions 53-54)
+
+**Status:** Accepted — grilled with the founder 2026-11-14 (three rounds) and stress-tested against the code by one fork per layer (outbound, inbound, monitoring). Bot-side decisions are in [ADR-075](./ADR-075-reseller-bot-channel.md)'s addendum of the same date.
+
+**Context (verified on prod 2026-11-13).**
+- Duplicate messages: 18 bot and 3 customer-support outgoing duplicates in OpenWA's `messages` (same chat and text within 2 minutes), 5 of them on 2026-11-13. Cause: `send-text` sometimes takes over 10 s (typing simulation up to 5 s plus the Baileys group send); our client times out and the job retries, while OpenWA still sends the first request.
+- Two send paths: `WhatsAppOutbox` (persisted, deduplicated, paced) and `OpenWaClient::sendText()` → `SendResellerBotReplyJob` (12 call sites, queue-only, 3 tries over about 25 s, then the reply is lost).
+- `SendCustomerWhatsAppJob` fails a row after `maxExceptions` (3) with 60/300 s backoff: about 6 minutes, not the 2 days `retryUntil` suggests. Only a 429 pacing refusal waits longer.
+- `config/queue.php` has `after_commit => false`; `enqueue()` dispatches inside its caller's transaction.
+- OpenWA v0.29.1 already supports `Idempotency-Key` on its send routes (24 h window; replay, `IDEMPOTENCY_KEY_IN_PROGRESS`, `IDEMPOTENCY_OUTCOME_UNKNOWN`, `IDEMPOTENCY_KEY_REUSED`).
+
+**Decision.**
+1. **One send path.** Every outbound WhatsApp message is a `customer_notifications` row sent by `SendCustomerWhatsAppJob`. `OpenWaClient::sendText()` and `SendResellerBotReplyJob` are retired (the job class stays one release so queued jobs drain). An architecture test allows `sendNow()` only from the outbox job. The table name stays; it is the WhatsApp outbox.
+2. **Dispatch after commit.** `WhatsAppOutbox::enqueue()` dispatches with `afterCommit()`, so a job never runs before its row exists.
+3. **Frozen text.** The first attempt renders the text (`prepare()` for customer, supplier and joki rows) and stores it on the row before sending; a retry never re-renders. Only a revived skipped row renders again (its `attempts` reset to 0). The one exception is a supplier post holding the login-link placeholder: ADR-125 decision 52 keeps the link out of storage, so it is minted on each attempt and the row keeps its template. Its key comes from the template, so a retry after a timeout that did send meets `IDEMPOTENCY_KEY_REUSED` and ends `unknown`, never sent twice.
+4. **Idempotent sends.** Every send carries `Idempotency-Key: cn-{row id}-{first 16 hex of sha256(chat id + text)}`. Outcomes, branched on the response `code`, not the HTTP status:
+   - `201` (fresh or `Idempotent-Replayed`) → `sent`;
+   - `409 IDEMPOTENCY_KEY_IN_PROGRESS` → released, tried again with the same key;
+   - `409 IDEMPOTENCY_OUTCOME_UNKNOWN` → status `unknown`, never re-sent automatically;
+   - `422 IDEMPOTENCY_KEY_REUSED` → `unknown` too: an earlier attempt with this key reached OpenWA with other text, so the message may be in the chat.
+5. **Retry until the gateway is back.** An unreachable gateway, a timeout, a 5xx or a not-ready session is released with a growing delay (like a 429), bounded by the row's lifetime (decision 7). Only definite refusals count toward `maxExceptions`. This is safe only because of decision 4.
+6. **Two lanes.** Replies to someone's command (a reseller's or a supplier's) go out on a new one-worker `whatsapp-reply` lane with no 10-30 s gap. Messages we start (customer receipts, supplier-group posts, rebate notices) keep the `whatsapp` lane and the gap. The class is set from the row's `event`, not by the caller.
+7. **Lifetime by event class.** A read reply (balance, price list, errors, rate-limit notices) expires 3 minutes after the row was created (status `expired`). A money message (order received, delivered, failed, refund, wallet top-up) and every customer/supplier message is tried for 2 days, then `failed`.
+8. **Latest order status only.** Before sending an order's "received" message, the job checks for a newer lifecycle row for the same order in any status; if one exists the row is `superseded`. "Failed" and "refund" both send. A lifecycle message sent more than 3 minutes after its event says so, with the event's time.
+   A session with no id or key (tests, local dev) skips the row (`skipped`, "not configured"), as the old bot reply path did.
+9. **`message.failed`** is subscribed on the `customer-support` webhook. It marks the row whose `wa_message_id` matches as `failed`. Group acks are not used (a Baileys group message reaches `delivered` only when every member has it).
+10. **Alerts.** A scheduled CRITICAL task emails every admin through `BackupFailureAlerter` (area "WhatsApp") when a row has waited over 5 minutes past its due time, or when a row turned `unknown` or `failed`. Each kind is throttled to one email per 30 minutes (`Cache::add`), with no recovery email, as the existing queue-wait and supplier-balance alerts do. A dead scheduler fails `/api/health` through the stale-task rule. Session down and session restriction are caught by the existing UptimeRobot check on `/api/health/whatsapp` (decision 11).
+11. **Restriction in the health check.** `OpenWaClient::sessionStatus()` also returns the session's `restriction` from `GET /api/sessions/{id}`; `/api/health/whatsapp` answers 503 when either session is restricted. Its body says `restricted`, never the kind or code. Polled live, so no cached state can get stuck; no `session.restriction` webhook is subscribed.
+12. **Middleware → WhatsApp** lists outbox rows (time, session, masked recipient, event, status, error) read-only, filterable by status. No resend button in this phase.
+
+**Rationale.** One path means one retry policy, one dedupe and one place to look. The idempotency key moves "did it already go out?" to the one party that knows. Retrying until the gateway is back turns an outage into a delay instead of a lost message, and the lifetime cap keeps a stale balance reply from arriving an hour late.
+
+**Consequence to track.**
+- OpenWA ops, done by the founder: add `message.failed` to the `customer-support` webhook's events; `SIMULATE_TYPING_MAX_MS=1500` in OpenWA's `.env` (typing simulation is global, so this shortens it for both sessions; customer messages keep the 10-30 s gap).
+- Remove `SendResellerBotReplyJob` with the OpenWA v0.30.0 upgrade PR.
+- Sending every Delivered receipt without opt-in revisits decision 5 and the cold-reachout rationale; it needs its own addendum with opt-in and volume data, not this change.

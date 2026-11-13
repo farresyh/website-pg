@@ -116,6 +116,9 @@ return [
         // delayed job doesn't count as waiting — so a real wait here means
         // the lane itself is stuck.
         'redis:whatsapp' => 600,
+        // ADR-116 2026-11-14 addendum, decision 6: replies go at once, so a
+        // minute of waiting means the reply lane is stuck.
+        'redis:whatsapp-reply' => 60,
     ],
 
     /*
@@ -392,6 +395,22 @@ return [
             'timeout' => 30,
             'nice' => 0,
         ],
+        // ADR-116 2026-11-14 addendum, decision 6: bot replies to a reseller's
+        // or supplier's command, with no pacing gap, on their own lane so a
+        // slow customer send never holds one up. One worker keeps one group's
+        // replies in order.
+        'supervisor-whatsapp-reply' => [
+            'connection' => 'redis',
+            'queue' => ['whatsapp-reply'],
+            'balance' => 'off',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 3,
+            'timeout' => 30,
+            'nice' => 0,
+        ],
         // ADR-136 decision 33: customer-support model calls (the model test
         // now, Shadow drafts later) on their own lane, so a slow AI call never
         // holds up receipts on `whatsapp`. A draft is up to four model calls
@@ -419,7 +438,7 @@ return [
         // mirror supervisor-orders — the safe general default.
         // `whatsapp-lookup` (ADR-116 2026-11-03 addendum) is served only when
         // `default` is empty, so a burst of @lid checks never delays a
-        // reseller bot reply.
+        // WhatsApp reply.
         'supervisor-default' => [
             'connection' => 'redis',
             'queue' => ['default', 'whatsapp-lookup'],
@@ -444,6 +463,7 @@ return [
             'supervisor-supplier-request-logs' => ['maxProcesses' => 1],
             'supervisor-reseller-webhooks' => ['maxProcesses' => 1],
             'supervisor-whatsapp' => ['maxProcesses' => 1],
+            'supervisor-whatsapp-reply' => ['maxProcesses' => 1],
             'supervisor-cs-assistant' => ['maxProcesses' => 1],
             'supervisor-default' => ['maxProcesses' => 1],
         ],
@@ -457,6 +477,7 @@ return [
             'supervisor-supplier-request-logs' => ['maxProcesses' => 1],
             'supervisor-reseller-webhooks' => ['maxProcesses' => 1],
             'supervisor-whatsapp' => ['maxProcesses' => 1],
+            'supervisor-whatsapp-reply' => ['maxProcesses' => 1],
             'supervisor-cs-assistant' => ['maxProcesses' => 1],
             'supervisor-default' => ['maxProcesses' => 1],
         ],

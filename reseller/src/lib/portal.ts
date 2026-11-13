@@ -599,6 +599,11 @@ export function previewStorefrontMarkup(token: string, markupPct: number) {
 }
 
 /** ADR-133: the account's own first-run checklist (an affiliate's or a reseller's). */
+/** ADR-075 2026-11-14 addendum, decision 4: whether the WhatsApp bot is degraded (reseller accounts only). */
+export function getBotStatus(token: string) {
+  return apiFetch<{ degraded: boolean }>("/api/reseller-portal/bot-status", { token });
+}
+
 export function getOnboarding(token: string, ownerType: OwnerType) {
   return apiFetch<Onboarding>(ownerType === "reseller" ? "/api/reseller-portal/onboarding" : "/api/affiliate/onboarding", { token });
 }

@@ -3,8 +3,9 @@
 namespace App\Listeners\Reseller;
 
 use App\Events\OrderStatusUpdated;
+use App\Models\CustomerNotification;
 use App\Models\ResellerBotOrderNotification;
-use App\Services\OpenWa\OpenWaClient;
+use App\Services\Notification\WhatsAppOutbox;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Reseller\Bot\ResellerBotReplyFormatter;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -35,7 +36,7 @@ final class SendResellerBotOrderNotification implements ShouldQueue
     /** @var string Match OrderStatusUpdated::broadcastQueue(). */
     public $queue = 'default';
 
-    public function __construct(private readonly OpenWaClient $openWa) {}
+    public function __construct(private readonly WhatsAppOutbox $outbox) {}
 
     public function handle(OrderStatusUpdated $event): void
     {
@@ -65,7 +66,21 @@ final class SendResellerBotOrderNotification implements ShouldQueue
                 return;
             }
 
-            $this->openWa->sendText($notification->whatsapp_group_id, ResellerBotReplyFormatter::orderUpdate($order));
+            // ADR-075 2026-11-14 addendum, decision 1: an outbox row, sent
+            // after this commits. The sequence keeps failed → resend → failed
+            // told twice while a repeated event for one status stays one row.
+            $sequence = CustomerNotification::query()
+                ->where('order_id', $order->id)
+                ->where('event', WhatsAppOutbox::EVENT_BOT_ORDER_UPDATE)
+                ->count();
+
+            $this->outbox->reply(
+                WhatsAppOutbox::EVENT_BOT_ORDER_UPDATE,
+                "bot_order:{$order->id}:{$order->delivery_status->value}:{$sequence}",
+                $notification->whatsapp_group_id,
+                ResellerBotReplyFormatter::orderUpdate($order),
+                $order->id,
+            );
 
             $notification->update(['last_notified_delivery_status' => $order->delivery_status->value]);
         });

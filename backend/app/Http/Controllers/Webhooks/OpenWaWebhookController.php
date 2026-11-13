@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Webhooks;
 
 use App\Http\Controllers\Controller;
+use App\Models\CustomerNotification;
 use App\Models\WhatsAppGroup;
 use App\Services\CsAssistant\CsMessageRecorder;
 use App\Services\CsAssistant\Shadow\CsShadowDrafter;
@@ -13,7 +14,9 @@ use App\Services\Supplier\Bot\SupplierBotService;
 use App\Services\WhatsApp\WhatsAppGroupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * ADR-075 decision 4/5 — the Reseller Bot channel's inbound half. Not
@@ -95,8 +98,9 @@ class OpenWaWebhookController extends Controller
             $data = (array) $request->input('data', []);
             match ($event) {
                 'session.status' => $this->recordStatus($request, OpenWaSessionStatus::CUSTOMER_SUPPORT),
-                'message.received' => $this->csInbound($data),
+                'message.received' => $this->once(OpenWaSessionStatus::CUSTOMER_SUPPORT, $data, fn () => $this->csInbound($data)),
                 'message.sent' => $this->csMessages->queueOutbound($data),
+                'message.failed' => $this->markFailed($data),
                 default => null,
             };
 
@@ -113,7 +117,7 @@ class OpenWaWebhookController extends Controller
         }
 
         match ($event) {
-            'message.received' => $this->handleMessageReceived($request),
+            'message.received' => $this->once(OpenWaSessionStatus::RESELLER_BOT, (array) $request->input('data', []), fn () => $this->handleMessageReceived($request)),
             'session.status' => $this->recordStatus($request, OpenWaSessionStatus::RESELLER_BOT),
             default => Log::info('OpenWA webhook: ignored event', ['event' => $event ?: '(none)']),
         };
@@ -153,11 +157,16 @@ class OpenWaWebhookController extends Controller
             return;
         }
 
-        $groupId = $data['chatId'] ?? $data['from'] ?? null;
-        $text = $data['body'] ?? $data['text'] ?? null;
-        $messageId = $data['id'] ?? $data['messageId'] ?? null;
+        $groupId = $data['chatId'] ?? null;
+        $text = $data['body'] ?? null;
+        $messageId = $data['id'] ?? null;
 
-        if (! is_string($groupId) || ! is_string($text) || ! is_string($messageId)) {
+        // An image, sticker or voice note in a group has no text: nothing to answer.
+        if (! is_string($text) || $text === '') {
+            return;
+        }
+
+        if (! is_string($groupId) || ! is_string($messageId)) {
             Log::warning('OpenWA webhook: message.received missing expected fields');
 
             return;
@@ -168,12 +177,69 @@ class OpenWaWebhookController extends Controller
         // reseller bot's, unchanged.
         $group = $this->groups->activeGroup($groupId);
         if ($group?->owner_type === WhatsAppGroup::OWNER_SUPPLIER && $group->supplier !== null) {
-            $this->supplierBot->handle($group->supplier, $groupId, $text, $this->sender($data));
+            $this->supplierBot->handle($group->supplier, $groupId, $text, $this->sender($data), $messageId);
 
             return;
         }
 
-        $this->bot->handle($groupId, $text, $messageId);
+        $timestamp = $data['timestamp'] ?? null;
+        $this->bot->handle($groupId, $text, $messageId, is_numeric($timestamp) ? (int) $timestamp : null);
+    }
+
+    /**
+     * ADR-075 2026-11-14 addendum, decision 3: OpenWA delivers webhooks at
+     * least once, so one inbound message is handled once. Claimed after the
+     * signature check (a forged request can't poison a key) and released if
+     * handling throws, so OpenWA's retry still runs. The order idempotency
+     * key stays the durable guard for money; this only saves repeated work.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function once(string $session, array $data, callable $handle): void
+    {
+        $chatId = $data['chatId'] ?? $data['from'] ?? null;
+        $messageId = $data['id'] ?? null;
+
+        if (! is_string($chatId) || ! is_string($messageId)) {
+            $handle();
+
+            return;
+        }
+
+        $key = 'openwa:inbound:'.hash('sha256', "{$session}\n{$chatId}\n{$messageId}");
+
+        if (! Cache::add($key, true, now()->addDay())) {
+            return;
+        }
+
+        try {
+            $handle();
+        } catch (Throwable $e) {
+            Cache::forget($key);
+
+            throw $e;
+        }
+    }
+
+    /**
+     * ADR-116 2026-11-14 addendum, decision 9: WhatsApp refused a message we
+     * sent from the customer-support session.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function markFailed(array $data): void
+    {
+        $messageId = $data['messageId'] ?? $data['id'] ?? null;
+
+        if (! is_string($messageId) || $messageId === '') {
+            return;
+        }
+
+        CustomerNotification::query()
+            ->where('session', CustomerNotification::SESSION_CUSTOMER_SUPPORT)
+            ->where('wa_message_id', $messageId)
+            ->where('status', CustomerNotification::STATUS_SENT)
+            ->update(['status' => CustomerNotification::STATUS_FAILED, 'error' => 'WhatsApp reported the message failed']);
     }
 
     /**

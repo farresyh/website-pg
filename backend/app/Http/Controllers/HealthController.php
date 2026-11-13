@@ -59,13 +59,19 @@ class HealthController extends Controller
      * quiet tells nobody; this asks OpenWA directly and fails unless both
      * sessions are `ready`. The monitor alerts after 2 failed checks, since
      * OpenWA's own stream drops reconnect within seconds.
+     *
+     * ADR-116 2026-11-14 addendum, decision 11: a restricted session
+     * (WhatsApp blocking new chats while the session stays `ready`) is down
+     * too. The body says only `restricted`, never the kind or code.
      */
     public function whatsapp(OpenWaClient $resellerBot): JsonResponse
     {
-        $sessions = [
+        $live = [
             OpenWaSessionStatus::RESELLER_BOT => $resellerBot->sessionStatus(),
             OpenWaSessionStatus::CUSTOMER_SUPPORT => OpenWaClient::customerSupport()->sessionStatus(),
         ];
+
+        $sessions = array_map(fn (array $s) => $s['restricted'] ? 'restricted' : $s['status'], $live);
 
         $healthy = array_diff($sessions, ['ready']) === [];
 
