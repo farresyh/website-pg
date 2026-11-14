@@ -19,9 +19,7 @@ final class PaymentMethodFeeResolver
 {
     public function resolve(string $channelCode): PaymentMethodFeeConfig
     {
-        $paymentMethod = PaymentMethod::query()
-            ->where('channel_code', $channelCode)
-            ->where('is_active', true)
+        $paymentMethod = PaymentMethod::chargeableForChannel($channelCode)
             ->first();
 
         if ($paymentMethod === null) {

@@ -93,9 +93,7 @@ final class MembershipSubscriptionService
         }
 
         $plan = MembershipPlan::query()->findOrFail($planId);
-        $paymentMethod = PaymentMethod::query()
-            ->where('channel_code', $channelCode)
-            ->where('is_active', true)
+        $paymentMethod = PaymentMethod::chargeableForChannel($channelCode)
             ->firstOrFail();
 
         $totalChargedSen = $this->chargeSen($plan, $channelCode);
@@ -275,8 +273,7 @@ final class MembershipSubscriptionService
             return $attempt;
         }
 
-        $paymentMethod = PaymentMethod::query()
-            ->where('channel_code', $attempt->channel_code)
+        $paymentMethod = PaymentMethod::forChannel($attempt->channel_code)
             ->first();
 
         if ($paymentMethod === null) {
@@ -298,7 +295,7 @@ final class MembershipSubscriptionService
             return;
         }
 
-        $gatewayName = PaymentMethod::query()->where('channel_code', $attempt->channel_code)->value('gateway');
+        $gatewayName = PaymentMethod::forChannel($attempt->channel_code)->value('gateway');
 
         if ($gatewayName === null) {
             return;

@@ -97,7 +97,7 @@ class ReconcilePendingWalletTopupsCommand extends Command
             ->get();
 
         foreach ($ended as $attempt) {
-            $gatewayName = PaymentMethod::query()->where('channel_code', $attempt->channel_code)->value('gateway');
+            $gatewayName = PaymentMethod::forChannel($attempt->channel_code)->value('gateway');
             $payment = $gatewayName === null ? null : $gatewayFactory->make($gatewayName)->getPayment($attempt->chip_payment_ref);
 
             if ($payment?->success && $payment->status === PaymentStatus::Paid) {
@@ -146,7 +146,7 @@ class ReconcilePendingWalletTopupsCommand extends Command
             return;
         }
 
-        $gatewayName = PaymentMethod::query()->where('channel_code', $attempt->channel_code)->value('gateway');
+        $gatewayName = PaymentMethod::forChannel($attempt->channel_code)->value('gateway');
 
         if ($gatewayName === null) {
             Log::error('Wallet top-up reconciliation: no gateway for channel', ['channel_code' => $attempt->channel_code]);

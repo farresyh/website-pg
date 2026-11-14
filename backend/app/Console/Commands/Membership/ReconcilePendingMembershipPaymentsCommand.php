@@ -70,7 +70,7 @@ class ReconcilePendingMembershipPaymentsCommand extends Command
             return;
         }
 
-        $gatewayName = PaymentMethod::query()->where('channel_code', $attempt->channel_code)->value('gateway');
+        $gatewayName = PaymentMethod::forChannel($attempt->channel_code)->value('gateway');
 
         if ($gatewayName === null) {
             Log::error('Membership reconciliation: no gateway for channel', ['channel_code' => $attempt->channel_code]);

@@ -70,4 +70,15 @@ class PaymentMethodFeeResolverTest extends TestCase
 
         $resolver->resolve('GRABPAY');
     }
+
+    /** PRD §16 item 180: a pending payment still resolves its switched-off method; a new charge does not. */
+    public function test_channel_lookup_finds_an_inactive_method_but_chargeable_lookup_does_not(): void
+    {
+        $this->paymentMethod();
+        $this->paymentMethod(['channel_code' => 'GRABPAY', 'category' => 'ewallet', 'is_active' => false]);
+
+        $this->assertSame('chip', PaymentMethod::forChannel('GRABPAY')->value('gateway'));
+        $this->assertNull(PaymentMethod::chargeableForChannel('GRABPAY')->first());
+        $this->assertSame('CARDS', PaymentMethod::chargeableForChannel('CARDS')->value('channel_code'));
+    }
 }

@@ -123,8 +123,7 @@ class CheckoutController extends Controller
         // gateway, since that would misroute a real payment. Resolved
         // early (before the idempotency lookup below) since both the
         // replay branch and the normal-checkout branch need it.
-        $paymentMethod = PaymentMethod::query()
-            ->where('channel_code', $data['channel_code'])
+        $paymentMethod = PaymentMethod::forChannel($data['channel_code'])
             ->firstOrFail();
         $gateway = $this->gatewayFactory->make($paymentMethod->gateway);
 

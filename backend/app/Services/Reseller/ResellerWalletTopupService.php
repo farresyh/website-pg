@@ -74,9 +74,7 @@ final class ResellerWalletTopupService
             );
         }
 
-        $paymentMethod = PaymentMethod::query()
-            ->where('channel_code', $channelCode)
-            ->where('is_active', true)
+        $paymentMethod = PaymentMethod::chargeableForChannel($channelCode)
             ->firstOrFail();
 
         // S6-style channel fee — the same round-half-away-from-zero
@@ -250,7 +248,7 @@ final class ResellerWalletTopupService
 
     private function gatewayFor(WalletTopupAttempt $attempt): ?PaymentGateway
     {
-        $gatewayName = PaymentMethod::query()->where('channel_code', $attempt->channel_code)->value('gateway');
+        $gatewayName = PaymentMethod::forChannel($attempt->channel_code)->value('gateway');
 
         return $gatewayName === null ? null : $this->gateways->make($gatewayName);
     }
