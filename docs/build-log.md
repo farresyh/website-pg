@@ -2811,3 +2811,26 @@ Design only, nothing built. The founder wants a large customer base over the nex
 95 test fixtures created attempts without the new column; each now passes `'gateway' => 'chip'`. Full suite 3992 passed; the concurrency suite ran on MySQL, which also ran the migration's column change. The second-gateway prerequisites the stress test found (`method_key` values carry the gateway, `channel_code` unique across gateways, `chip_payment_ref`, CHIP-only settlement) are recorded in the addendum and PRD §16 item 189, not built.
 
 **178, part 2.** The dead `seo_*` columns were released in #791 (2026-11-12). Read-only on production on 2026-11-14: migration `2026_11_16_100000_drop_dead_seo_columns_from_games_table` has run and `games` has none of the three columns. Item 178 stays open for the founder's backlinks and the Search Console checks on 25 Nov, 9 Dec and 6 Jan.
+
+## 2026-11-14 — Release #797: WhatsApp outbox hardening, a started payment keeps its gateway; OpenWA settings (PRD §16 item 182)
+
+The founder asked for it. `staging` → `main`, merge `3b815832` at 15:07 UTC (23:07 MYT, Saturday), carrying #792–#796: the #791 release record, WhatsApp outbox hardening (#793, #794), the Night Market proposal (#795, docs only) and item 180 (#796). Two migrations.
+
+**CI and deploy:** the `main` run `43608473123` was green in every job, `deploy` included.
+
+**Checked after release (production, read-only):**
+- The box runs `3b81583`; both migrations ran (`2026_11_19_100000_whatsapp_outbox_hardening`, `2026_11_20_100000_add_gateway_to_payment_attempts`).
+- `wallet_topup_attempts` (16) and `membership_checkout_attempts` (11) are all `gateway = chip`, none null. `platform_settings.bot_command_max_age_minutes` = 3; `customer_notifications.due_at` exists.
+- Horizon running with `supervisor-whatsapp-reply`; `/api/health` 200; `/api/health/whatsapp` 200 with both sessions `ready`.
+
+**Item 182, OpenWA settings (founder, with Claude checking each step read-only):**
+1. `~/openwa-deploy/shared/.env`: `SIMULATE_TYPING_MAX_MS=1500` and `WEBHOOK_FAILURE_PAYLOAD_RETENTION_HOURS=72` appended; backup `.env.bak-20261114`.
+2. Forge daemon `daemon-1105837` (OpenWA): `stopwaitsecs` 15 → 75, which restarted OpenWA at 15:38:42 UTC. Both values loaded; `customer-support` was `ready` about 12 s later. The other three daemons keep 15.
+3. Customer-support webhook events are now `message.received`, `session.status`, `message.sent`, `message.failed`; the reseller-bot webhook is unchanged.
+4. Both operator keys (Reseller Bot, Customer Support) have `allowedIps` 127.0.0.1; the admin key is unrestricted. Both operator keys were used successfully at 15:45:22 UTC, after the change; no IP rejection in either log.
+5. Cloudflare Access application `bot` on `bot.pekangame.space`, policy "founder only" (the account owner's email, one-time PIN), session 24 h. From outside, `/` and `/api/health` now answer 302 to the Access login. Claude drove the founder's browser for this step and the next.
+6. UptimeRobot: the `bot.pekangame.space/api/health` monitor still showed Up while it only reached the Access redirect, a false green, so it is paused. `api.pekangame.space/api/health/whatsapp` (item 95) covers OpenWA down, a session not ready, and a restriction.
+
+**Found:** OpenWA logs "X-Forwarded-For is present but TRUSTED_PROXIES is empty", so every dashboard request shares one rate-limit bucket. Small, since only the founder uses the dashboard; noted on item 183 for the next OpenWA maintenance window.
+
+**Open:** item 183 (OpenWA v0.30.0, delete `SendResellerBotReplyJob`) is now unblocked.
