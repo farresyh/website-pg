@@ -24,6 +24,7 @@ class MembershipCheckoutAttempt extends Model
         'fee_sen',
         'total_charged_sen',
         'channel_code',
+        'gateway',
         'subscription_number',
         'idempotency_key',
         'payment_ref',

@@ -71,6 +71,7 @@ class SettlementReconciliationServiceTest extends TestCase
             'fee_sen' => $plan->fee_sen,
             'total_charged_sen' => $plan->fee_sen + 100,
             'channel_code' => 'fpx',
+            'gateway' => 'chip',
             'subscription_number' => 'MS-'.uniqid(),
             'idempotency_key' => 'idem-'.uniqid(),
             'status' => MembershipCheckoutAttemptStatus::Paid->value,
@@ -87,6 +88,7 @@ class SettlementReconciliationServiceTest extends TestCase
             'amount_sen' => 9000,
             'total_charged_sen' => 10000,
             'channel_code' => 'fpx',
+            'gateway' => 'chip',
             'status' => WalletTopupAttemptStatus::Paid->value,
             'expires_at' => now()->addMinutes(30),
         ], $overrides));

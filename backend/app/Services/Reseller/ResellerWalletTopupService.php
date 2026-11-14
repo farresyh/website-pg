@@ -90,7 +90,7 @@ final class ResellerWalletTopupService
         // call is made while the wallet account is locked.
         $this->failPendingIfFinal($reseller);
 
-        $attempt = DB::transaction(function () use ($reseller, $amountSen, $totalChargedSen, $channelCode) {
+        $attempt = DB::transaction(function () use ($reseller, $amountSen, $totalChargedSen, $channelCode, $paymentMethod) {
             // Lock this reseller's own wallet ledger_accounts row as a
             // pure mutex (it holds no balance itself) — serializes the
             // "is there already a pending attempt" check + insert for
@@ -118,12 +118,13 @@ final class ResellerWalletTopupService
                 'amount_sen' => $amountSen,
                 'total_charged_sen' => $totalChargedSen,
                 'channel_code' => $channelCode,
+                'gateway' => $paymentMethod->gateway,
                 'status' => WalletTopupAttemptStatus::Pending->value,
                 'expires_at' => now()->addMinutes(self::EXPIRY_MINUTES),
             ]);
         });
 
-        return $this->requestPayment($attempt, $paymentMethod->gateway, $channelProperties);
+        return $this->requestPayment($attempt, $channelProperties);
     }
 
     /**
@@ -154,7 +155,7 @@ final class ResellerWalletTopupService
             throw new WalletTopupNotPayableException('This top-up is still being set up and expires by itself at '.self::expiryLabel($attempt).'.');
         }
 
-        $answer = $this->gatewayFor($attempt)?->getPayment($attempt->chip_payment_ref);
+        $answer = $this->gatewayFor($attempt)->getPayment($attempt->chip_payment_ref);
 
         if ($answer?->isFinalFailure()) {
             $this->wallets->markEnded($attempt, WalletTopupEndCause::fromGateway($answer));
@@ -187,10 +188,6 @@ final class ResellerWalletTopupService
         }
 
         $gateway = $this->gatewayFor($attempt);
-
-        if ($gateway === null) {
-            return WalletTopupCancelOutcome::InFlight;
-        }
 
         // The answer is not read: CHIP's 400 for "already cancelled" or
         // "already paid" lands in the same decision as a 200.
@@ -246,11 +243,10 @@ final class ResellerWalletTopupService
             ->where('expires_at', '>', now());
     }
 
-    private function gatewayFor(WalletTopupAttempt $attempt): ?PaymentGateway
+    /** ADR-022 2026-11-14 addendum: the gateway this top-up started on. */
+    private function gatewayFor(WalletTopupAttempt $attempt): PaymentGateway
     {
-        $gatewayName = PaymentMethod::forChannel($attempt->channel_code)->value('gateway');
-
-        return $gatewayName === null ? null : $this->gateways->make($gatewayName);
+        return $this->gateways->make($attempt->gateway);
     }
 
     /** The attempt's end time as the reseller reads it: MYT, H:i. */
@@ -262,7 +258,7 @@ final class ResellerWalletTopupService
     private function failPendingIfFinal(Reseller $reseller): void
     {
         $pending = self::livePending($reseller)->whereNotNull('chip_payment_ref')->first();
-        $answer = $pending === null ? null : $this->gatewayFor($pending)?->getPayment($pending->chip_payment_ref);
+        $answer = $pending === null ? null : $this->gatewayFor($pending)->getPayment($pending->chip_payment_ref);
 
         if ($answer?->isFinalFailure()) {
             $this->wallets->markEnded($pending, WalletTopupEndCause::fromGateway($answer));
@@ -274,14 +270,13 @@ final class ResellerWalletTopupService
      */
     private function requestPayment(
         WalletTopupAttempt $attempt,
-        string $gatewayName,
         array $channelProperties,
     ): WalletTopupAttempt {
         $portal = rtrim((string) config('services.reseller_portal.url'), '/');
         $channelProperties['success_return_url'] = "{$portal}/wallet?topup=success";
         $channelProperties['failure_return_url'] = "{$portal}/wallet?topup=failed";
 
-        $payment = $this->gateways->make($gatewayName)->createPayment(new PaymentRequest(
+        $payment = $this->gatewayFor($attempt)->createPayment(new PaymentRequest(
             referenceId: $attempt->reference,
             amountSen: $attempt->total_charged_sen,
             currency: 'MYR',

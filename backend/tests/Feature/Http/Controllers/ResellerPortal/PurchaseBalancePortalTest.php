@@ -54,6 +54,7 @@ class PurchaseBalancePortalTest extends TestCase
             'is_active' => true, 'percentage_rate' => 0.0, 'flat_fee_sen' => 100,
         ]);
         $attempt = WalletTopupAttempt::query()->create([
+            'gateway' => 'chip',
             'reseller_id' => $reseller->id, 'reference' => 'WT-ABC123DEF4', 'amount_sen' => $amount,
             'total_charged_sen' => $charged, 'channel_code' => 'fpx',
             'status' => WalletTopupAttemptStatus::Paid->value, 'gateway_fee_sen' => $chipFee,

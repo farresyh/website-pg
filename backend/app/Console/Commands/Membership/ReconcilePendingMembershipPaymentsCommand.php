@@ -3,7 +3,6 @@
 namespace App\Console\Commands\Membership;
 
 use App\Models\MembershipCheckoutAttempt;
-use App\Models\PaymentMethod;
 use App\Services\Membership\MembershipCheckoutAttemptStatus;
 use App\Services\Membership\MembershipSubscriptionService;
 use App\Services\Order\PaymentStatus;
@@ -70,15 +69,7 @@ class ReconcilePendingMembershipPaymentsCommand extends Command
             return;
         }
 
-        $gatewayName = PaymentMethod::forChannel($attempt->channel_code)->value('gateway');
-
-        if ($gatewayName === null) {
-            Log::error('Membership reconciliation: no gateway for channel', ['channel_code' => $attempt->channel_code]);
-
-            return;
-        }
-
-        $payment = $gatewayFactory->make($gatewayName)->getPayment($attempt->payment_ref);
+        $payment = $gatewayFactory->make($attempt->gateway)->getPayment($attempt->payment_ref);
 
         if (! $payment->success) {
             Log::warning('Membership reconciliation: gateway lookup failed', [

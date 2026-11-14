@@ -2,10 +2,10 @@
 
 namespace App\Http\Requests\ResellerPortal;
 
+use App\Rules\ChargeablePaymentChannel;
 use App\Services\Payment\Chip\FpxBankRedirect;
 use App\Services\Reseller\ResellerWalletTopupService;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 /**
  * PR-G planning addendum decision 3: free-form amount, minimum RM10
@@ -32,7 +32,7 @@ class TopupRequest extends FormRequest
             'channel_code' => [
                 'required',
                 'string',
-                Rule::exists('payment_methods', 'channel_code')->where('is_active', true),
+                new ChargeablePaymentChannel,
             ],
             // ADR-130: the bank picked on the portal.
             'fpx_bank_code' => FpxBankRedirect::rules(),

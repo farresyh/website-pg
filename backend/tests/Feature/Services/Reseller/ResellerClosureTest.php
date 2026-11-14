@@ -6,6 +6,7 @@ use App\Models\AccountingPeriodClose;
 use App\Models\AdminUser;
 use App\Models\AffiliateUser;
 use App\Models\LedgerEntry;
+use App\Models\Order;
 use App\Models\Reseller;
 use App\Models\ResellerApiKey;
 use App\Models\ResellerWebhook;
@@ -71,7 +72,7 @@ class ResellerClosureTest extends TestCase
         return app(ResellerWalletService::class)->balance($reseller);
     }
 
-    private function walletOrder(Reseller $reseller, DeliveryStatus $status): \App\Models\Order
+    private function walletOrder(Reseller $reseller, DeliveryStatus $status): Order
     {
         return $this->order([
             'wallet_reseller_id' => $reseller->id,
@@ -181,6 +182,7 @@ class ResellerClosureTest extends TestCase
         WalletTopupAttempt::query()->create([
             'reseller_id' => $reseller->id, 'reference' => 'WT-PENDING001', 'amount_sen' => 5_000, 'total_charged_sen' => 5_100,
             'channel_code' => 'fpx', 'status' => WalletTopupAttemptStatus::Pending->value, 'expires_at' => now()->add($expiry),
+            'gateway' => 'chip',
         ]);
 
         $this->close($reseller)->assertUnprocessable()->assertJsonValidationErrors('reseller');
@@ -200,6 +202,7 @@ class ResellerClosureTest extends TestCase
             WalletTopupAttempt::query()->create([
                 'reseller_id' => $reseller->id, 'reference' => 'WT-DONE00'.$i, 'amount_sen' => 5_000, 'total_charged_sen' => 5_100,
                 'channel_code' => 'fpx', 'status' => $status->value, 'expires_at' => now()->subHour(),
+                'gateway' => 'chip',
             ]);
         }
 
@@ -304,6 +307,7 @@ class ResellerClosureTest extends TestCase
         $attempt = WalletTopupAttempt::query()->create([
             'reseller_id' => $reseller->id, 'reference' => 'WT-LATE00001', 'amount_sen' => 5_000, 'total_charged_sen' => 5_100,
             'channel_code' => 'fpx', 'status' => WalletTopupAttemptStatus::Pending->value, 'expires_at' => now()->addMinutes(30),
+            'gateway' => 'chip',
         ]);
         $reseller->delete();
         Log::spy();

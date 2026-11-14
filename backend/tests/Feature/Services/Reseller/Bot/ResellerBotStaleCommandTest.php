@@ -90,6 +90,7 @@ class ResellerBotStaleCommandTest extends TestCase
             'amount_sen' => 10000,
             'total_charged_sen' => 10100,
             'channel_code' => 'fpx',
+            'gateway' => 'chip',
             'status' => WalletTopupAttemptStatus::Pending->value,
             'expires_at' => now()->addMinutes(30),
         ]);

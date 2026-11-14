@@ -105,12 +105,13 @@ final class MembershipSubscriptionService
             'fee_sen' => $plan->fee_sen,
             'total_charged_sen' => $totalChargedSen,
             'channel_code' => $channelCode,
+            'gateway' => $paymentMethod->gateway,
             'subscription_number' => $this->generateSubscriptionNumber(),
             'idempotency_key' => $clientIdempotencyKey,
             'status' => MembershipCheckoutAttemptStatus::Pending->value,
         ]);
 
-        return $this->requestPayment($attempt, $paymentMethod->gateway, $channelProperties);
+        return $this->requestPayment($attempt, $channelProperties);
     }
 
     /**
@@ -204,7 +205,6 @@ final class MembershipSubscriptionService
      */
     private function requestPayment(
         MembershipCheckoutAttempt $attempt,
-        string $gatewayName,
         array $channelProperties,
     ): MembershipCheckoutAttempt {
         // Bug fix, 2026-09-24: same fix as CheckoutService::requestPayment()
@@ -215,7 +215,7 @@ final class MembershipSubscriptionService
         $channelProperties['success_return_url'] = "{$storefront}/membership?checkout=success";
         $channelProperties['failure_return_url'] = "{$storefront}/membership?checkout=failed";
 
-        $payment = $this->gateways->make($gatewayName)->createPayment(new PaymentRequest(
+        $payment = $this->gateways->make($attempt->gateway)->createPayment(new PaymentRequest(
             referenceId: $attempt->subscription_number,
             amountSen: $attempt->total_charged_sen,
             currency: 'MYR',
@@ -273,14 +273,7 @@ final class MembershipSubscriptionService
             return $attempt;
         }
 
-        $paymentMethod = PaymentMethod::forChannel($attempt->channel_code)
-            ->first();
-
-        if ($paymentMethod === null) {
-            return $attempt;
-        }
-
-        return $this->requestPayment($attempt, $paymentMethod->gateway, $channelProperties);
+        return $this->requestPayment($attempt, $channelProperties);
     }
 
     /**
@@ -295,13 +288,7 @@ final class MembershipSubscriptionService
             return;
         }
 
-        $gatewayName = PaymentMethod::forChannel($attempt->channel_code)->value('gateway');
-
-        if ($gatewayName === null) {
-            return;
-        }
-
-        if ($this->gateways->make($gatewayName)->getPayment($attempt->payment_ref)->isFinalFailure()) {
+        if ($this->gateways->make($attempt->gateway)->getPayment($attempt->payment_ref)->isFinalFailure()) {
             $attempt->leavePending(MembershipCheckoutAttemptStatus::Failed);
             $attempt->refresh();
         }

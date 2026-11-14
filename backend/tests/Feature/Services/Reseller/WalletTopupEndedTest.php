@@ -41,6 +41,7 @@ class WalletTopupEndedTest extends TestCase
             'amount_sen' => 10000,
             'total_charged_sen' => 10100,
             'channel_code' => 'fpx',
+            'gateway' => 'chip',
             'status' => $status,
             'chip_payment_ref' => 'chip-ended',
             'expires_at' => now()->addMinutes(30),

@@ -81,4 +81,31 @@ class PaymentMethodFeeResolverTest extends TestCase
         $this->assertNull(PaymentMethod::chargeableForChannel('GRABPAY')->first());
         $this->assertSame('CARDS', PaymentMethod::chargeableForChannel('CARDS')->value('channel_code'));
     }
+
+    /**
+     * ADR-022 2026-11-14 addendum: a payment method is found by channel only
+     * through PaymentMethod's scopes, and a started payment's gateway is read
+     * from its own record, never looked up again.
+     */
+    public function test_no_code_looks_up_a_payment_method_or_its_gateway_outside_the_seam(): void
+    {
+        $model = realpath(app_path('Models/PaymentMethod.php'));
+        $offenders = [];
+
+        $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(app_path()));
+        foreach ($files as $file) {
+            if ($file->getExtension() !== 'php' || $file->getRealPath() === $model) {
+                continue;
+            }
+
+            $source = file_get_contents($file->getRealPath());
+            if (preg_match("/PaymentMethod::(query\(\))?[^;]*(where|firstWhere|whereIn)\(\s*'channel_code'/s", $source)
+                || preg_match("/exists\(\s*'payment_methods'/", $source)
+                || preg_match("/forChannel\([^;]*->value\(\s*'gateway'/s", $source)) {
+                $offenders[] = str_replace(base_path().'/', '', $file->getRealPath());
+            }
+        }
+
+        $this->assertSame([], $offenders, 'Use PaymentMethod::forChannel()/chargeableForChannel(), ChargeablePaymentChannel, or the record\'s own gateway.');
+    }
 }

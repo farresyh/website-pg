@@ -2,6 +2,7 @@
 
 namespace Tests\Concurrency;
 
+use App\Models\LedgerEntry;
 use App\Models\Reseller;
 use App\Models\WalletTopupAttempt;
 use App\Services\Ledger\LedgerOwnerType;
@@ -40,6 +41,7 @@ class ResellerWalletTopupCompleteConcurrencyTest extends TestCase
             'amount_sen' => 5_000_00,
             'total_charged_sen' => 5_000_00,
             'channel_code' => 'fpx',
+            'gateway' => 'chip',
             'status' => WalletTopupAttemptStatus::Pending->value,
             'expires_at' => now()->addMinutes(30),
         ]);
@@ -81,7 +83,7 @@ class ResellerWalletTopupCompleteConcurrencyTest extends TestCase
         $balance = app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id);
         $this->assertSame(5_000_00, $balance, "Wallet was credited more than once — balance is {$balance} sen.");
 
-        $creditCount = \App\Models\LedgerEntry::query()
+        $creditCount = LedgerEntry::query()
             ->where('owner_type', LedgerOwnerType::ResellerWallet->value)
             ->where('owner_id', $reseller->id)
             ->where('type', 'wallet_topup')
