@@ -857,6 +857,7 @@ before building.
 - **11** Sentry (error tracking) is still not set up. Details below.
 
 **D. Waiting on a trigger: don't build early**
+- **189** Second payment gateway prerequisites ([ADR-022](./adr/ADR-022-multi-gateway-payment-strategy.md) 2026-11-14 addendum), when the founder picks a second gateway (e.g. HitPay or Fiuu for e-wallets and cards): `method_key` as the real method, `channel_code` unique per gateway, a gateway-neutral `payment_ref` on wallet top-ups, and the settlement import and re-check for that gateway.
 - **183** OpenWA v0.30.0 upgrade, after the 2026-11-14 hardening is on `main`; delete the retired `SendResellerBotReplyJob` in the same PR. Details below.
 - **185** Ask OpenWA upstream for a per-message "skip typing" option, so bot replies skip the pause and customer messages keep it. A public issue: only with the founder's go-ahead.
 - **162** Gamevion v2 API, when the founder decides to use Gamevion (ADR-137). The ordered steps and the "don't press Reactivate" warning are in Details.
@@ -1221,7 +1222,7 @@ before building.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-28, `docs/build-log-archive.md`; why in `docs/adr.md`)
 
-- **180** 2026-11-14: one payment-method lookup by channel code. `PaymentMethod::forChannel()` (active or not: a pending attempt's gateway, a receipt's label) and `chargeableForChannel()` (active only: a new charge) replace the 11 inline lookups; no behaviour change. On `staging`; reaches production with the next release.
+- **180** 2026-11-14: one payment-method lookup by channel code, and a started payment keeps its gateway ([ADR-022](./adr/ADR-022-multi-gateway-payment-strategy.md) 2026-11-14 addendum). Wallet top-up and membership attempts stamp `gateway` like orders do, so the five gateway lookups are gone; `PaymentMethod::chargeableForChannel()` / `forChannel()` and the `ChargeablePaymentChannel` rule are the only lookups left, and a guard test keeps it so. No behaviour change today. On `staging`; reaches production with the next release.
 
 - **179** 2026-11-12: cash refund of a failed-order voucher by bank transfer, and revoke limited to gift credit ([ADR-004](./adr/ADR-004-no-cash-refunds-ever.md) 2026-11-12 addendum), released via #791. On production all 18 vouchers are `customer_cash`, the 5 active ones can't be revoked, and no cash refund has been recorded yet.
 - **181** 2026-11-12: portal password reset for Reseller and Affiliate users ([ADR-058](./adr/ADR-058-reseller-authentication-admin-reseller.md) 2026-11-12 addendum) and the bot's top-up method chosen in the admin ([ADR-076](./adr/ADR-076-reseller-bot-v2.md) 2026-11-12 addendum), released via #791. On production the bot method is FPX, and `/forgot-password` is live.
