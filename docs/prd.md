@@ -844,9 +844,7 @@ feature.** Every open item, sorted by what it needs to finish. Re-verify
 before building.
 
 **A. Buildable now: code, no new design**
-- **178** SEO meta strategy and per-game "About this game" content (ADR-140, founder, 2026-11-11). Built and released in #783. Open: the founder's backlinks, the +2/+4/+8-week Search Console checks, and the release that drops three dead columns (built, not released). Details below.
-
-- **180** One lookup for a payment method by channel code: about ten callers repeat `PaymentMethod::query()->where('channel_code', …)` (gateway or label: wallet top-up reconcile, membership, receipts, fee resolver). Found in the 2026-11-12 stress test; correct today, only repeated. Details below.
+- **178** SEO meta strategy and per-game "About this game" content (ADR-140, founder, 2026-11-11). Built and released in #783. Open: the founder's backlinks and the +2/+4/+8-week Search Console checks. Details below.
 
 **B. Needs a short grill / ADR addendum first**
 - **188** A late supplier Success on a combo leg already Failed is dropped: no evidence, no admin alert, no supplier drawdown (money-critical, needs an ADR-127/ADR-102 addendum and a code trace). Details below.
@@ -960,19 +958,6 @@ before building.
     IP whitelist from RedxGame (the founder is asking), another official
     checker, or switching the check off for these games meanwhile
     (ADR-005 addendum).
-
-180. **One payment-method lookup by channel code (2026-11-12, found in the
-    stress test for the bot top-up method).** The callers:
-    `ResellerWalletTopupService` (initiate, `gatewayFor`),
-    `ReconcilePendingWalletTopupsCommand` (two),
-    `ReconcilePendingMembershipPaymentsCommand`, `MembershipSubscriptionService`
-    (four), `ResellerWalletReceiptService`, `PaymentMethodFeeResolver`,
-    `CheckoutController`. Each reads `gateway`, `label` or the active row by
-    `channel_code`. A shared lookup (a model method or scope) would keep a
-    future rule, such as an inactive method still resolving its gateway for
-    a pending attempt, in one place. No behaviour change. The list of offered
-    methods itself is already one scope since item 181's PR
-    (`PaymentMethod::offered()`).
 
 4. **Bot-host capacity (+$20/mo resize)** — resize only when capacity actually
    calls for it. It is also the moment to revisit the OpenWA engine (item 59:
@@ -1224,11 +1209,10 @@ before building.
      game Meta Template's "harga diskaun ahli" also shows on brands without
      Membership (FixFast, PajoStore); the Aniimo pack "Lumin Cystals" typo;
      Zenless Zone Zero's content once it has packages.
-     (2) **Dead columns:** built on `feature/drop-dead-seo-columns` (migration
-     `2026_11_16_100000` drops `seo_title_local`, `seo_description_local` and
-     `seo_keywords` from `games`; the Game SEO list's stale "keywords" subtitle is
-     fixed). It reaches production with the next release; this part closes when
-     it is on prod and recorded in the build-log.
+     (2) **Dead columns: done.** Migration `2026_11_16_100000` dropped
+     `seo_title_local`, `seo_description_local` and `seo_keywords` from `games`;
+     released in #791 (build-log 2026-11-12), and on 2026-11-14 production had
+     the migration and none of the three columns (read-only check).
      (3) **Checks** against the 2026-11-11 baseline (10 indexed, 41 Discovered, no
      game page crawled, Discovery 2%, 0 external links) on 25 Nov, 9 Dec and
      6 Jan 2027: a game's "Last crawled" no longer N/A, Discovered falling,
@@ -1236,6 +1220,8 @@ before building.
      is in `docs/build-log.md`.
 
 ## Recently closed (full detail in `docs/build-log.md` or, before 2026-10-28, `docs/build-log-archive.md`; why in `docs/adr.md`)
+
+- **180** 2026-11-14: one payment-method lookup by channel code. `PaymentMethod::forChannel()` (active or not: a pending attempt's gateway, a receipt's label) and `chargeableForChannel()` (active only: a new charge) replace the 11 inline lookups; no behaviour change. On `staging`; reaches production with the next release.
 
 - **179** 2026-11-12: cash refund of a failed-order voucher by bank transfer, and revoke limited to gift credit ([ADR-004](./adr/ADR-004-no-cash-refunds-ever.md) 2026-11-12 addendum), released via #791. On production all 18 vouchers are `customer_cash`, the 5 active ones can't be revoked, and no cash refund has been recorded yet.
 - **181** 2026-11-12: portal password reset for Reseller and Affiliate users ([ADR-058](./adr/ADR-058-reseller-authentication-admin-reseller.md) 2026-11-12 addendum) and the bot's top-up method chosen in the admin ([ADR-076](./adr/ADR-076-reseller-bot-v2.md) 2026-11-12 addendum), released via #791. On production the bot method is FPX, and `/forgot-password` is live.
