@@ -879,12 +879,24 @@ before building.
 - **171** Campaign promos beyond new PekanGame customers (needs an [ADR-118](./adr/ADR-118-marketing-campaigns.md) addendum, not yet written; money-critical). A Campaign today is percent only, new customers only, primary brand only, so a promo on OhahaStore or a sale for existing customers isn't possible. When the founder wants one.
 
 **E. New features: after the backlog** (each needs its own ADR + grill; the founder decides when)
+- **187** Night Market (ADR-141, Proposed, founder, 2026-11-14): a weekly, per-customer set of discounted package cards to bring customers back. Recorded now; build after groups A and B. Details below.
 - **184** Send every Delivered receipt without opt-in (founder, 2026-11-14). Reopens ADR-116 decision 5 and its cold-reachout rationale; needs an addendum with opt-in and volume data first. Details below.
 - **104** Reseller wallet top-up KPIs (how often, how much). Its trigger (item 28) has fallen.
 - **151** A partner sandbox (test-type reseller API key), its own money-critical ADR. Its trigger (item 146) has fallen.
 - **152** Refresh the admin sandbox (`/middleware/sandbox`) for wallet and combo orders; do it with item 151, which shares `FakeSupplierAdapter` (its 21 tests pass as of 2026-10-31).
 
 ## Details
+
+187. **Night Market (ADR-141, Proposed, 2026-11-14).** The founder's idea,
+    from Panera's coffee subscription (a cheap product that brings customers
+    back) and VALORANT's Night Market (rare, predictable, unique cards per
+    player). Draft: Friday 20:00 to Sunday 23:59 MYT, weekly; cards picked
+    from each customer's own purchase history with at least one big pack;
+    the discount is a cut of the markup; no stacking with member price or a
+    promo code; third-party affiliates opt in and the cut is shared in
+    proportion. Decisions 5–20 are open. Before build: grill, money code
+    trace and simulation (ADR-141 Consequences). The founder will start it
+    only after groups A and B are cleared.
 
 182. **OpenWA settings after the WhatsApp hardening (2026-11-14, ADR-116
     and ADR-075 2026-11-14 addenda).** Each is a production change, so the
