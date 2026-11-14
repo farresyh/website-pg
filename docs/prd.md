@@ -849,6 +849,7 @@ before building.
 - **180** One lookup for a payment method by channel code: about ten callers repeat `PaymentMethod::query()->where('channel_code', …)` (gateway or label: wallet top-up reconcile, membership, receipts, fee resolver). Found in the 2026-11-12 stress test; correct today, only repeated. Details below.
 
 **B. Needs a short grill / ADR addendum first**
+- **188** A late supplier Success on a combo leg already Failed is dropped: no evidence, no admin alert, no supplier drawdown (money-critical, needs an ADR-127/ADR-102 addendum and a code trace). Details below.
 - **165** KOL fee as a share of profit (needs an ADR-118 addendum, money-critical). Until built, pay such a KOL as "Not a KOL fee". Details below.
 
 **C. Founder actions (no code)**
@@ -879,12 +880,42 @@ before building.
 - **171** Campaign promos beyond new PekanGame customers (needs an [ADR-118](./adr/ADR-118-marketing-campaigns.md) addendum, not yet written; money-critical). A Campaign today is percent only, new customers only, primary brand only, so a promo on OhahaStore or a sale for existing customers isn't possible. When the founder wants one.
 
 **E. New features: after the backlog** (each needs its own ADR + grill; the founder decides when)
+- **187** Night Market (ADR-141, Proposed, founder, 2026-11-14): a weekly, per-customer set of discounted package cards to bring customers back. Recorded now; build after groups A and B. Details below.
 - **184** Send every Delivered receipt without opt-in (founder, 2026-11-14). Reopens ADR-116 decision 5 and its cold-reachout rationale; needs an addendum with opt-in and volume data first. Details below.
 - **104** Reseller wallet top-up KPIs (how often, how much). Its trigger (item 28) has fallen.
 - **151** A partner sandbox (test-type reseller API key), its own money-critical ADR. Its trigger (item 146) has fallen.
 - **152** Refresh the admin sandbox (`/middleware/sandbox`) for wallet and combo orders; do it with item 151, which shares `FakeSupplierAdapter` (its 21 tests pass as of 2026-10-31).
 
 ## Details
+
+188. **Late Success on a Failed combo leg (found 2026-11-12, build-log
+    "WhatsApp outbox hardening" entry's Open line).** When Digiflazz sends
+    Sukses for a combo leg that is already Failed,
+    `OrderFulfillmentService::finalizePendingDeliveryLeg()` logs an error,
+    then `finalizePendingSuccess()` throws `InvalidOrderTransitionException`
+    and the transaction rolls back; `DigiflazzWebhookController` logs it at
+    INFO as "already finalized". So no evidence is stored on the leg (ADR-102
+    decision 3 kept the leg form log-only), no admin is alerted, and no
+    supplier drawdown is recorded, which leaves the supplier ledger short and
+    hides the case from the cash-refund guard and
+    `app:refund-failed-wallet-orders`: the customer could get the delivery and
+    a refund. A single order stores the result and alerts, but also records
+    no drawdown on a contradicted Success. No compensated order had a late
+    result on 2026-11-12. Proposed: store leg contradictions as evidence,
+    alert, and record the drawdown. Before the fix: ADR-127/ADR-102 addendum,
+    grill, and a trace of every writer and reader of leg status, drawdowns and
+    refunds.
+
+187. **Night Market (ADR-141, Proposed, 2026-11-14).** The founder's idea,
+    from Panera's coffee subscription (a cheap product that brings customers
+    back) and VALORANT's Night Market (rare, predictable, unique cards per
+    player). Draft: Friday 20:00 to Sunday 23:59 MYT, weekly; cards picked
+    from each customer's own purchase history with at least one big pack;
+    the discount is a cut of the markup; no stacking with member price or a
+    promo code; third-party affiliates opt in and the cut is shared in
+    proportion. Decisions 5–20 are open. Before build: grill, money code
+    trace and simulation (ADR-141 Consequences). The founder will start it
+    only after groups A and B are cleared.
 
 182. **OpenWA settings after the WhatsApp hardening (2026-11-14, ADR-116
     and ADR-075 2026-11-14 addenda).** Each is a production change, so the
