@@ -23,6 +23,7 @@ class WalletTopupAttempt extends Model
         'amount_sen',
         'total_charged_sen',
         'channel_code',
+        'gateway',
         'status',
         'gateway_fee_sen',
         'chip_payment_ref',

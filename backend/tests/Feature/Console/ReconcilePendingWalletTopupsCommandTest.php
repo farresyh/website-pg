@@ -58,6 +58,7 @@ class ReconcilePendingWalletTopupsCommandTest extends TestCase
             'amount_sen' => 5000,
             'total_charged_sen' => 5100,
             'channel_code' => 'fpx',
+            'gateway' => 'chip',
             'status' => WalletTopupAttemptStatus::Pending->value,
             'chip_payment_ref' => 'chip-purchase-'.uniqid(),
             'expires_at' => now()->addMinutes(30),
@@ -115,6 +116,23 @@ class ReconcilePendingWalletTopupsCommandTest extends TestCase
     public function test_a_paid_gateway_status_credits_the_wallet(): void
     {
         $attempt = $this->stalePending();
+        $this->bindGateway('paid', $attempt->total_charged_sen);
+
+        $this->artisan('app:reconcile-pending-wallet-topups')->assertSuccessful();
+
+        $this->assertSame(WalletTopupAttemptStatus::Paid, $attempt->fresh()->status);
+        $this->assertSame(5000, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $attempt->reseller_id));
+    }
+
+    /**
+     * ADR-022 2026-11-14 addendum: a top-up stays on the gateway it started on.
+     * The method row now pointing elsewhere (an unbound gateway would throw)
+     * and even being switched off doesn't change where it is reconciled.
+     */
+    public function test_a_started_top_up_is_reconciled_on_its_own_gateway_whatever_the_method_maps_to_now(): void
+    {
+        $attempt = $this->stalePending();
+        PaymentMethod::query()->where('channel_code', 'fpx')->update(['gateway' => 'hitpay', 'is_active' => false]);
         $this->bindGateway('paid', $attempt->total_charged_sen);
 
         $this->artisan('app:reconcile-pending-wallet-topups')->assertSuccessful();
@@ -190,6 +208,7 @@ class ReconcilePendingWalletTopupsCommandTest extends TestCase
             'amount_sen' => 5000,
             'total_charged_sen' => 5100,
             'channel_code' => 'fpx',
+            'gateway' => 'chip',
             'status' => WalletTopupAttemptStatus::Paid->value,
             'expires_at' => now()->addMinutes(30),
         ]);
@@ -213,6 +232,7 @@ class ReconcilePendingWalletTopupsCommandTest extends TestCase
             'amount_sen' => 5000,
             'total_charged_sen' => 5100,
             'channel_code' => 'fpx',
+            'gateway' => 'chip',
             'status' => WalletTopupAttemptStatus::Paid->value,
             'expires_at' => now()->addMinutes(30),
         ]);
@@ -238,6 +258,7 @@ class ReconcilePendingWalletTopupsCommandTest extends TestCase
             'amount_sen' => 5000,
             'total_charged_sen' => 5100,
             'channel_code' => 'fpx',
+            'gateway' => 'chip',
             'status' => WalletTopupAttemptStatus::Pending->value,
             'expires_at' => now()->addMinutes(30),
         ]);

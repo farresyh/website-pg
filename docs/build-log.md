@@ -2750,3 +2750,64 @@ In the admin: a "Refund in cash" modal on the voucher detail (the source orders,
 1. `dispatch(closure)->afterResponse()` serialized the closure and failed on a service holding a WeakMap; `defer()` runs it in-process.
 2. An invite token counts toward the broker's one-a-minute throttle, so a reset within a minute of an invite is refused with its own message.
 3. On a fresh database the setting stays null (payment methods are seeded after migrations), which means "the first offered". On production the FPX row exists, so the migration sets it.
+
+## 2026-11-12 — Release #791: cash refund of a failed-order voucher, portal password reset, the bot's top-up method
+
+The founder asked for it. `staging` → `main`, merge `ea0f8036` at 12:18 UTC, carrying #784–#790 (the #783 release record, the dead `seo_*` column drop, tracked games, Reseller API docs v1.6.1, CI playwright without apt, PRD §16 item 179, item 181). Three migrations, including the column drop.
+
+**CI and deploy:** the `main` run `43216768340` was green in every job including `deploy`.
+
+**Checked after release (production, read-only):**
+- `/api/health` 200; the three migrations ran.
+- `vouchers.source`: all 18 rows are `customer_cash` (15 at design time, plus three issued that day: VC-WNWGYJPZ RM206.66 for PG-YKY3NIKNYEKW, VC-OPHBR9LC RM41.28 for PG-1RRM6Z4CACM1, VC-IHYB0CRU RM12.48). VC-FO21NVDK is `customer_cash` and stays revoked, as decided. The 5 active vouchers are all failed-order credit, so none can be revoked. 0 rows in `voucher_cash_refunds`.
+- `platform_settings.bot_topup_payment_method_id` is 1 (FPX).
+- The portal's `/forgot-password` is live on `reseller.pekangame.space`.
+- PG-YKY3NIKNYEKW's failed leg: Digiflazz confirmed it Gagal (rc 02) at 11:11 MYT, so its voucher is right.
+
+**Open:** found while answering a NeedsReview question the same day, a late supplier Success on a combo leg that is already Failed is dropped silently. `finalizePendingDeliveryLeg()` throws `InvalidOrderTransitionException`, and `DigiflazzWebhookController` logs it at INFO as "already finalized". No `late_supplier_result` is stored, no admin alert goes out, and no supplier drawdown is recorded, so the cash-refund guard and `app:refund-failed-wallet-orders` can't see it. Single orders store the result and alert, but also record no drawdown on a contradicted Success. No compensated order had a late result on 2026-11-12. The fix needs an ADR-127/ADR-102 addendum and a code trace; the founder will take it up in a new session.
+
+## 2026-11-14 — WhatsApp outbox hardening: one idempotent send path, stale bot commands, alerts (ADR-116 and ADR-075 2026-11-14 addenda)
+
+**Why (read-only prod, 2026-11-13).**
+- Duplicate messages: OpenWA's `messages` held 18 bot and 3 customer-support outgoing duplicates (same chat and text within 2 minutes), 5 of them that day. `send-text` timed out at our 10 s (`cURL error 28`, 22:48 and 22:59 MYT) while OpenWA still sent it, and the job retried. Order PG-FXORY5HG2BW3 got its receipt three times.
+- Every reseller and supplier bot reply went through `sendText()` → `SendResellerBotReplyJob` (3 tries in about 25 s, then lost); the customer job failed a row after about 6 minutes, not the 2 days `retryUntil` suggested.
+- No bot order went without a reply between 2026-09-25 and 2026-11-13 (31 bot orders checked against OpenWA's `messages`), and no "reply lost" since the logs start on 2026-10-31.
+- WhatsApp holds messages while the gateway is down and delivers them on reconnect with their original time, so an `.order` sent in an outage could run much later. OpenWA's own automation skips messages older than 5 minutes for this reason.
+- OpenWA v0.29.1 (prod) already supports `Idempotency-Key` on send routes; v0.30.0 adds nothing we need for this.
+
+**Process.** Founder grill (three rounds), then a stress test with one fork per layer (outbound, inbound and order path, monitoring) against the code. It changed the plan: `afterCommit()` on the dispatch (jobs ran before their row existed), a real retry-until-back for an unreachable gateway, frozen text (re-rendered joki text broke the key), the DB order key deciding a stale `.order` (a redelivered webhook keeps its old time), `.batalbaki`/`.topupbaki` treated as money, no guard on the supplier bot, restriction read live in the health check instead of from webhooks, and alerts reusing the existing throttle pattern with no recovery email. Found during the build: freezing a supplier post would store its login link (ADR-125 decision 52), so that template is re-rendered and its retry ends `unknown`, never sent twice.
+
+**Built (#793).**
+- `WhatsAppOutbox` owns lane, lifetime and supersede by event; `reply()` for bot groups; `afterCommit()`; `due_at` column.
+- `SendCustomerWhatsAppJob`: expiry, supersede, frozen text, `Idempotency-Key: cn-{id}-{hash}`, outcome mapping (`OpenWaUnavailableException` → retry with backoff up to 5 min; `OpenWaOutcomeUnknownException` → `unknown`), unconfigured session → `skipped`.
+- `OpenWaClient`: `sendText()` removed; `sendNow()` takes the key; `sessionStatus()` returns `restricted`; `isConfigured()`.
+- All 12 bot send sites moved to the outbox (reseller bot, order listener, refund notice, wallet top-up notices, supplier bot). An architecture test allows `sendNow()` only in the outbox job and the retired `SendResellerBotReplyJob` (kept one release to drain).
+- `ResellerBotService`: stale guard after parsing and before the limiters; `.order` checks its idempotency key first. `PlatformSettings.bot_command_max_age_minutes` (default 3) in Settings → Purchase Balance.
+- Webhook: one inbound message handled once (`Cache::add`, released on exception), the message time passed to the bot, media with no text ignored quietly, `message.failed` marks the customer row.
+- `/api/health/whatsapp` 503 on a restriction; `app:alert-whatsapp-outbox` every minute (CRITICAL); Horizon `supervisor-whatsapp-reply`; Middleware → WhatsApp (read-only list); portal `/bot-status` and the degraded banner (polled every 60 s, reseller with a bot group only).
+
+**Verified.** Backend 3,987 tests pass (25 new: outbox job, stale commands, webhook once, `message.failed`, restricted health, alert throttle, bot-status, architecture). Admin and portal: `tsc`, lint, build and unit tests pass. Local dev DB migrated. Browser (Playwright, throwaway sqlite backend, after merge): Middleware → WhatsApp lists all seven statuses and the status filter narrows to one; the Settings field shows 3; the portal shows the bot banner for a reseller with a bot group while the session is not ready. The masked phone wrapped onto three lines and the Error text ran off the edge at 1440 px; fixed in a follow-up PR (error truncated with the full text on hover; the table now fits).
+
+**Gotchas.**
+1. Removing the fallback fields `data.text` / `data.messageId` is safe: OpenWA's `message.received` carries only `body` and `id` (docs §6).
+2. Every existing bot test called `handle()` without a time, which the fail-safe now rejects for money commands; all 66 calls pass `now()`.
+3. With the sync queue (tests), an outbox job runs inside the caller's request; an unconfigured session had to skip, not throw, or an admin refund returned 500.
+4. Found by CI on the follow-up PR: `PlatformSettings::current()` lists every default because Eloquent never reads back a DB default after INSERT, and the new `bot_command_max_age_minutes` was missing from that list. A freshly created row read the limit as null, a 0-minute limit, so any money command a second old was rejected (a test crossed a second boundary). Production's row already exists and has 3 from the column default; the default is now in `current()` with a regression test.
+
+**Open after release:** PRD §16 items 182 (founder's OpenWA settings), 183 (v0.30.0 upgrade and deleting the retired job), 185 (upstream "skip typing" request), and 184 (receipts without opt-in, design). Item 186 (RedxGame 403 for Free Fire and the other RedxGame-only games) was found in the same session.
+
+## 2026-11-14 — Night Market recorded as a proposal (ADR-141, PRD §16 item 187)
+
+Design only, nothing built. The founder wants a large customer base over the next two to three months (break-even is acceptable) and brought two references: Panera's coffee subscription and VALORANT's Night Market. A read-only production check backed the discussion: 69% of 201 storefront customers bought once, orders under RM10 are 43% of orders but 6% of profit, RM60+ orders are 14% of orders but 64% of profit, Friday is the busiest day and 16:00 MYT the busiest hour. ADR-141 records the founder's four decisions (unique cards per customer, visible to everyone, third-party affiliates too, weekly on Friday) and Claude's draft for the rest, as Proposed. The founder chose to finish PRD §16 groups A and B before grilling it.
+
+## 2026-11-14 — One payment-method lookup by channel code, and a started payment keeps its gateway (PRD §16 item 180, ADR-022 addendum); item 178's column drop confirmed on production
+
+**180.** Found in the 2026-11-12 stress test: 11 places looked up a `PaymentMethod` by `channel_code` inline. A first pass put them behind two scopes. The founder asked whether that was still patching, and a stress test with a second gateway in mind (CHIP for FPX and DuitNow QR, HitPay or Fiuu for e-wallets and cards) found the real cause: an order stamps `payment_gateway` when its payment starts, but a wallet top-up attempt and a membership attempt didn't, so five places looked the gateway up again from the current method row. That was safe only because the admin can't change a row's `gateway`. What shipped (ADR-022 2026-11-14 addendum):
+- `wallet_topup_attempts.gateway` and `membership_checkout_attempts.gateway`, not null and no default, stamped at creation and backfilled `chip` (production read-only: 26 attempts, all CHIP). Re-check, cancel, resume and both reconcile commands read the attempt's own gateway. A storefront checkout replay uses its order's `payment_gateway`.
+- `PaymentMethod::chargeableForChannel()` for a new charge (checkout, wallet top-up, membership subscribe, the fee resolver) and `forChannel()` for a payment already made (the wallet receipt's label). The four FormRequests share one rule, `ChargeablePaymentChannel`.
+- A guard test fails when `app/` looks a method up by `channel_code`, validates `exists('payment_methods'…)` or reads a gateway through a channel lookup outside `PaymentMethod`. Run against `staging`'s files it flags all 15 old sites.
+- New tests: a started top-up is reconciled on its own gateway after its method row was pointed at another gateway and switched off; the wallet and membership attempts stamp `gateway`.
+
+95 test fixtures created attempts without the new column; each now passes `'gateway' => 'chip'`. Full suite 3992 passed; the concurrency suite ran on MySQL, which also ran the migration's column change. The second-gateway prerequisites the stress test found (`method_key` values carry the gateway, `channel_code` unique across gateways, `chip_payment_ref`, CHIP-only settlement) are recorded in the addendum and PRD §16 item 189, not built.
+
+**178, part 2.** The dead `seo_*` columns were released in #791 (2026-11-12). Read-only on production on 2026-11-14: migration `2026_11_16_100000_drop_dead_seo_columns_from_games_table` has run and `games` has none of the three columns. Item 178 stays open for the founder's backlinks and the Search Console checks on 25 Nov, 9 Dec and 6 Jan.

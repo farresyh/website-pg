@@ -20,10 +20,9 @@ use Tests\TestCase;
 /**
  * ADR-075 / PR-F build addendum — same money/catalog seams the Reseller
  * API (PR-E) already tests, over the WhatsApp command surface instead of
- * HTTP. `OpenWaClient::sendText()` is unconfigured in tests (no
- * session_id/api_key), so it no-ops rather than making a real HTTP
- * call — every assertion here goes through the DB/ledger, never a
- * mocked reply.
+ * HTTP. Every reply is an outbox row (ADR-116 2026-11-14 addendum), read
+ * back with `replies()`; with the queue faked no HTTP call is made, and
+ * every money assertion goes through the DB/ledger.
  *
  * This file: the .checkid command.
  */
@@ -44,7 +43,7 @@ class ResellerBotCheckIdTest extends TestCase
             RateLimiter::hit("reseller-bot-checkid:{$reseller->id}", 60);
         }
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(0, Order::query()->count());
     }
@@ -56,7 +55,7 @@ class ResellerBotCheckIdTest extends TestCase
 
         // No crash/log-as-failure expected — checkIdUnsupported() is a
         // plain informational reply, not a logged failure.
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLMY 51049607 2005', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLMY 51049607 2005', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(0, ResellerBotCommandLog::query()->count());
     }
@@ -65,7 +64,7 @@ class ResellerBotCheckIdTest extends TestCase
     {
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid NOPE 51049607', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid NOPE 51049607', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('reseller_bot_command_logs', [
             'reseller_id' => $reseller->id,
@@ -89,7 +88,7 @@ class ResellerBotCheckIdTest extends TestCase
         $game->update(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
         $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLMY 51049607 2005', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLMY 51049607 2005', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('player_validations', [
             'game_id' => $game->id, 'player_id' => '51049607', 'status' => 'valid', 'nickname' => 'TestNick',
@@ -122,7 +121,7 @@ class ResellerBotCheckIdTest extends TestCase
 
         // `.checkid MLID` on a Malaysian player — must land as wrong_region,
         // not a plain "valid".
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLID 51049607', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLID 51049607', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('player_validations', [
             'game_id' => $mlid->id, 'player_id' => '51049607', 'status' => 'wrong_region',
@@ -135,7 +134,7 @@ class ResellerBotCheckIdTest extends TestCase
         $game = $this->makeZoneGame('GSMY');
         $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid GSMY 834140081 America', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid GSMY 834140081 America', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('player_validations', [
             'game_id' => $game->id, 'player_id' => '834140081', 'server_id' => 'America', 'status' => 'wrong_zone',
@@ -147,7 +146,7 @@ class ResellerBotCheckIdTest extends TestCase
         $game = $this->makeZoneGame('GSMY');
         $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid GSMY 834140081 Asia', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid GSMY 834140081 Asia', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('player_validations', ['game_id' => $game->id, 'status' => 'valid']);
     }
@@ -172,7 +171,7 @@ class ResellerBotCheckIdTest extends TestCase
         ]);
         $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLMY 51049607 2005', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLMY 51049607 2005', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('player_validations', [
             'game_id' => $mlmy->id, 'player_id' => '51049607', 'status' => 'valid',
@@ -200,7 +199,7 @@ class ResellerBotCheckIdTest extends TestCase
         // blocked before ever reaching the validator, so only 10
         // `player_validations` rows should ever get written.
         for ($i = 0; $i < 11; $i++) {
-            app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLMY 51049607 2005', "msg-{$i}");
+            app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLMY 51049607 2005', "msg-{$i}", now()->getTimestamp());
         }
 
         $this->assertSame(10, PlayerValidation::query()->count());
@@ -214,7 +213,7 @@ class ResellerBotCheckIdTest extends TestCase
         $this->app->bind('player-validator.mlbb', fn () => throw new \LogicException('the paid validator must not be called'));
         $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLMY 1234(5678)', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.checkid MLMY 1234(5678)', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(0, PlayerValidation::query()->count());
         $this->assertDatabaseHas('reseller_bot_command_logs', ['failure_reason' => 'player_id_digits_only']);

@@ -139,8 +139,7 @@ class OpenWaWebhookControllerTest extends TestCase
 
         $response->assertOk();
         // No group mapping exists and no reply mechanism is asserted here
-        // (OpenWaClient::sendText is best-effort/logged, not mockable
-        // without a container swap) — this test's real assertion is that
+        // (replies are outbox rows) — this test's real assertion is that
         // a DM never reaches ResellerBotService::handle() at all, proven
         // indirectly by no pending-link row being created for it.
         $this->assertDatabaseMissing('whatsapp_pending_links', ['whatsapp_group_id' => '60123@c.us']);

@@ -91,6 +91,7 @@ use App\Http\Controllers\Middleware\RequestLogController;
 use App\Http\Controllers\Middleware\SandboxOrderController;
 use App\Http\Controllers\Middleware\SupplierController;
 use App\Http\Controllers\Middleware\SupplierProductController;
+use App\Http\Controllers\Middleware\WhatsAppOutboxController;
 use App\Http\Controllers\Onboarding\PartnerApplicationController as OnboardingApplicationController;
 use App\Http\Controllers\PackageController;
 use App\Http\Controllers\PaymentMethodCatalogController;
@@ -102,6 +103,7 @@ use App\Http\Controllers\ResellerApi\BalanceController as ResellerApiBalanceCont
 use App\Http\Controllers\ResellerApi\CatalogController as ResellerApiCatalogController;
 use App\Http\Controllers\ResellerApi\OrderController as ResellerApiOrderController;
 use App\Http\Controllers\ResellerPortal\ApiKeyController as ResellerPortalApiKeyController;
+use App\Http\Controllers\ResellerPortal\BotStatusController as ResellerPortalBotStatusController;
 use App\Http\Controllers\ResellerPortal\OnboardingController as ResellerPortalOnboardingController;
 use App\Http\Controllers\ResellerPortal\OrderController as ResellerPortalOrderController;
 use App\Http\Controllers\ResellerPortal\ProfileController as ResellerPortalProfileController;
@@ -490,6 +492,8 @@ Route::prefix('reseller-portal')->middleware(['auth:affiliate', 'account.type:re
 
     Route::get('/profile', [ResellerPortalProfileController::class, 'show']);
     Route::get('/onboarding', [ResellerPortalOnboardingController::class, 'show']);
+    // ADR-075 2026-11-14 addendum, decision 4: the portal's "bot degraded" banner.
+    Route::get('/bot-status', [ResellerPortalBotStatusController::class, 'show']);
 
     // Full self-service (planning addendum decision 7) — capped at 5
     // active keys. Admin retains the same capability in parallel
@@ -781,6 +785,9 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::get('/', [RequestLogController::class, 'index']);
         Route::get('/{request_log}', [RequestLogController::class, 'show']);
     });
+
+    // ADR-116 2026-11-14 addendum, decision 12 — read-only WhatsApp outbox.
+    Route::middleware('admin.role:super_admin')->get('middleware/whatsapp-outbox', [WhatsAppOutboxController::class, 'index']);
 
     // ADR-054 (DEV-1/2, MUI-11) — Developer raw API tester. Super
     // Admin only, same boundary as every other supplier-facing screen

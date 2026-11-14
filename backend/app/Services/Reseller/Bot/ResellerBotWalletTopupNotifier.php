@@ -6,7 +6,7 @@ use App\Models\ResellerBotWalletTopup;
 use App\Models\WalletTopupAttempt;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
-use App\Services\OpenWa\OpenWaClient;
+use App\Services\Notification\WhatsAppOutbox;
 use App\Services\Reseller\WalletTopupEndCause;
 use Illuminate\Support\Facades\DB;
 
@@ -29,7 +29,7 @@ use Illuminate\Support\Facades\DB;
 final class ResellerBotWalletTopupNotifier
 {
     public function __construct(
-        private readonly OpenWaClient $openWa,
+        private readonly WhatsAppOutbox $outbox,
         private readonly LedgerService $ledger,
     ) {}
 
@@ -48,7 +48,9 @@ final class ResellerBotWalletTopupNotifier
 
             $balanceSen = $this->ledger->balance(LedgerOwnerType::ResellerWallet, $attempt->reseller_id);
 
-            $this->openWa->sendText(
+            $this->outbox->reply(
+                WhatsAppOutbox::EVENT_BOT_TOPUP,
+                "bot_topup:{$attempt->id}:paid",
                 $row->whatsapp_group_id,
                 ResellerBotReplyFormatter::topupPaid($balanceSen),
             );
@@ -87,7 +89,7 @@ final class ResellerBotWalletTopupNotifier
                 return;
             }
 
-            $this->openWa->sendText($row->whatsapp_group_id, $text);
+            $this->outbox->reply(WhatsAppOutbox::EVENT_BOT_TOPUP, "bot_topup:{$attempt->id}:ended", $row->whatsapp_group_id, $text);
 
             $row->update(['ended_notified_at' => now()]);
         });

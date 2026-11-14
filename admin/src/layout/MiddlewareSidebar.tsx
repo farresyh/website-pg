@@ -14,6 +14,7 @@ import { Pencil as PencilIcon } from "@primeicons/react/pencil";
 import { Cog as SettingsIcon } from "@primeicons/react/cog";
 import { User as UserCircleIcon } from "@primeicons/react/user";
 import { ChartLine as ChartLineIcon } from "@primeicons/react/chart-line";
+import { Whatsapp as WhatsappIcon } from "@primeicons/react/whatsapp";
 
 /**
  * Middleware Panel nav — same shell as the Admin Panel (PanelSidebar),
@@ -65,6 +66,7 @@ export default function MiddlewareSidebar() {
         { kind: "link", name: "Sandbox", href: "/middleware/sandbox", icon: <PencilIcon /> },
         { kind: "link", name: "Backups", href: "/middleware/backups", icon: <BoxLineIcon /> },
         { kind: "link", name: "Request Logs", href: "/middleware/request-logs", icon: <ListIcon /> },
+        { kind: "link", name: "WhatsApp", href: "/middleware/whatsapp", icon: <WhatsappIcon /> },
         { kind: "link", name: "Developer / API Tester", href: "/middleware/developer-tools", icon: <SettingsIcon /> },
       ],
     },

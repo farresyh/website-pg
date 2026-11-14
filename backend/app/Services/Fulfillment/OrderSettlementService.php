@@ -13,7 +13,7 @@ use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Membership\MembershipQuotaService;
 use App\Services\Notification\CustomerNotificationService;
-use App\Services\OpenWa\OpenWaClient;
+use App\Services\Notification\WhatsAppOutbox;
 use App\Services\Order\DeliveryStatus;
 use App\Services\Reseller\Bot\ResellerBotReplyFormatter;
 use App\Services\Reseller\WalletEntryType;
@@ -51,7 +51,7 @@ final class OrderSettlementService
         private readonly VoucherService $vouchers,
         private readonly MembershipQuotaService $quota,
         private readonly CustomerNotificationService $notifications,
-        private readonly OpenWaClient $openWa,
+        private readonly WhatsAppOutbox $outbox,
         private readonly ResellerWebhookDispatcher $webhooks,
         private readonly CampaignService $campaigns,
     ) {}
@@ -255,7 +255,13 @@ final class OrderSettlementService
             ->first();
 
         if ($notification !== null) {
-            $this->openWa->sendText($notification->whatsapp_group_id, ResellerBotReplyFormatter::refundNotice($order));
+            $this->outbox->reply(
+                WhatsAppOutbox::EVENT_BOT_REFUND,
+                "bot_refund:{$order->id}",
+                $notification->whatsapp_group_id,
+                ResellerBotReplyFormatter::refundNotice($order),
+                $order->id,
+            );
             $notification->update(['refund_notified_at' => now()]);
         }
 

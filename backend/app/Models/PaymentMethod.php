@@ -49,4 +49,20 @@ class PaymentMethod extends Model
     {
         return $query->where('is_active', true)->orderBy('category')->orderBy('label');
     }
+
+    /**
+     * PRD §16 item 180: the one lookup by channel code, active or not.
+     * For a payment already started (a pending attempt's gateway, a
+     * receipt's label): switching a method off must not strand it.
+     */
+    public function scopeForChannel(Builder $query, string $channelCode): Builder
+    {
+        return $query->where('channel_code', $channelCode);
+    }
+
+    /** The same lookup for a new charge: only an active method may take one. */
+    public function scopeChargeableForChannel(Builder $query, string $channelCode): Builder
+    {
+        return $query->forChannel($channelCode)->where('is_active', true);
+    }
 }

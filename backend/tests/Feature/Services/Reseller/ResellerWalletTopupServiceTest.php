@@ -122,6 +122,7 @@ class ResellerWalletTopupServiceTest extends TestCase
         $this->assertSame(WalletTopupAttemptStatus::Pending, $attempt->status);
         $this->assertNotNull($attempt->checkout_url);
         $this->assertStringStartsWith('WT-', $attempt->reference);
+        $this->assertSame('chip', $attempt->gateway); // ADR-022 2026-11-14 addendum: stamped from the method row
     }
 
     public function test_initiate_rejects_a_second_attempt_while_one_is_already_pending(): void

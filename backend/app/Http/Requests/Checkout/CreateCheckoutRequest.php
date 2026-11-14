@@ -3,10 +3,10 @@
 namespace App\Http\Requests\Checkout;
 
 use App\Http\Requests\Joki\JokiSelectionRules;
+use App\Rules\ChargeablePaymentChannel;
 use App\Services\Payment\Chip\FpxBankRedirect;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 /**
  * Structural validation only — cross-field/DB-dependent business rules
@@ -91,7 +91,7 @@ class CreateCheckoutRequest extends FormRequest
                 'required',
                 'string',
                 'max:64',
-                Rule::exists('payment_methods', 'channel_code')->where('is_active', true),
+                new ChargeablePaymentChannel,
             ],
             // ADR-130: the bank picked on our page; only FPX has banks, and a
             // code off the list is refused (CHIP would accept it silently).

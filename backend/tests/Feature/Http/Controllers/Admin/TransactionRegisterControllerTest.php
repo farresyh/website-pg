@@ -698,6 +698,7 @@ class TransactionRegisterControllerTest extends TestCase
             'cycle_started_at' => now(), 'quota_remaining_sen' => $plan->quota_sen, 'expires_at' => now()->addMonth(),
         ]);
         MembershipCheckoutAttempt::query()->create([
+            'gateway' => 'chip',
             'affiliate_id' => $this->primaryAffiliate()->id,
             'email' => 'member2@example.com', 'membership_plan_id' => $plan->id,
             'fee_sen' => 1990, 'total_charged_sen' => 2090, 'channel_code' => 'fpx',
@@ -722,6 +723,7 @@ class TransactionRegisterControllerTest extends TestCase
         $this->actAsSuperAdmin();
         $reseller = Reseller::query()->create(['business_name' => 'Naeem Industries']);
         $paid = WalletTopupAttempt::query()->create([
+            'gateway' => 'chip',
             'reseller_id' => $reseller->id, 'reference' => 'TOPUP-PAID-1', 'amount_sen' => 30000,
             'total_charged_sen' => 30500, 'channel_code' => 'fpx', 'status' => WalletTopupAttemptStatus::Paid->value,
             'expires_at' => now()->addMinutes(30),
@@ -729,6 +731,7 @@ class TransactionRegisterControllerTest extends TestCase
         // A paid top-up always has its wallet credit (completeTopup writes both); the row is dated by it (ADR-127 F5).
         (new LedgerService)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, 30000, 'wallet_topup', 'wallet_topup_attempt', $paid->id);
         WalletTopupAttempt::query()->create([
+            'gateway' => 'chip',
             'reseller_id' => $reseller->id, 'reference' => 'TOPUP-PENDING-1', 'amount_sen' => 10000,
             'total_charged_sen' => 10200, 'channel_code' => 'fpx', 'status' => WalletTopupAttemptStatus::Pending->value,
             'expires_at' => now()->addMinutes(30),

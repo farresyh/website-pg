@@ -1,6 +1,6 @@
 # ADR-022: Multi-gateway payment strategy — CHIP for Malaysia-local, Xendit retained for international + split-payment (built 2026-08-04)
 
-> **Standing (2026-10-28):** In force as CHIP-only; Xendit decisions reversed by its own 2026-09-01 addendum; payout framing superseded by [ADR-059](./ADR-059-reseller-portal.md) decision 6. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-14):** In force as CHIP-only; Xendit decisions reversed by its own 2026-09-01 addendum; payout framing superseded by [ADR-059](./ADR-059-reseller-portal.md) decision 6. The 2026-11-14 addendum binds a started payment to its gateway and records what a second gateway needs. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — 2026-07-30 (grilled with the founder one decision at a time via `/mattpocock-skills:grilling`, following primary-source research on CHIP and HitPay). **Superseded in part by this ADR's own 2026-09-01 addendum: decision 4 (retain Xendit) is reversed and decision 3 (CHIP scope) narrowed — the system is now CHIP-only, Xendit deleted. The seam and the rest of the 2026-08-03 addendum stand.** **Decision 2's "split-payment / payout API" framing is superseded by [ADR-059](./ADR-059-reseller-portal.md) decision 6:** reseller payout is a plain manual bank transfer (WTH-1..5), no CHIP Send / Disbursement integration.
 
@@ -124,3 +124,21 @@ This prompted researching two candidate gateways — **CHIP** (`chip-in.asia`) a
 
 **Consequence to track:** every future channel code (e-wallet, card) must pass Test before it is activated. A channel CHIP lists but whose account terminal is not approved (cards) still fails only at payment; its first real payment is the proof.
 
+
+### 2026-11-14 addendum — a started payment keeps its gateway; one lookup by channel; what a second gateway needs
+
+**Context.** PRD §16 item 180 named 11 inline `PaymentMethod` lookups by `channel_code`. A stress test with the founder (a second gateway taking only some methods: CHIP for FPX and DuitNow QR, HitPay or Fiuu for e-wallets and cards) found that the repeated lookups were a symptom. An `Order` stamps `payment_gateway` when its payment starts (2026-08-03 addendum) and reconciles through it, but a wallet top-up attempt and a membership checkout attempt did not. Each re-check, cancel, resume and reconcile looked the gateway up again from the current `payment_methods` row. That is correct today only because a row's `gateway` never changes: the admin can edit `is_active` and the fees, not `gateway`. Nothing enforced it.
+
+**Decisions.**
+1. **A payment that has started is bound to the gateway it started on.** `wallet_topup_attempts.gateway` and `membership_checkout_attempts.gateway` (not null, no default) are stamped from the method row when the attempt is created. Every later call reads the attempt's own `gateway`, exactly as an order reads `payment_gateway`. A storefront checkout replay continues on its order's `payment_gateway`. Existing attempts were backfilled with `chip` (production on 2026-11-14: 26 attempts, all on CHIP channels).
+2. **One lookup by channel, in two forms, on `PaymentMethod`:** `chargeableForChannel()` (active only) for a new charge, used by checkout, wallet top-up and membership subscribe, the fee resolver, and through the `ChargeablePaymentChannel` validation rule by the four FormRequests that accept a channel; `forChannel()` (active or not) for a payment already made (a wallet receipt's label).
+3. **A guard test** (`PaymentMethodFeeResolverTest`) fails CI when code under `app/` looks a payment method up by `channel_code`, validates `exists('payment_methods'…)`, or reads a gateway through a channel lookup, anywhere outside `PaymentMethod`.
+
+**What a second gateway needs (recorded, not built: the real gateway's codes and settlement format are unknown until it is chosen):**
+- **`method_key` values carry the gateway** on production (`fpx_chip`, `fpx_chip_b2b1`, `duitnow_qr_chip`), so decision 4's guard would not stop a Fiuu FPX row being active beside CHIP's. They become the real method (`fpx`, `duitnow_qr`), with the admin re-checking the checkout buttons.
+- **`channel_code` is unique across gateways** and is the gateway's own code; two gateways can use the same code. Uniqueness moves to `(gateway, channel_code)`, which decision 1 makes safe because every started payment carries both.
+- `wallet_topup_attempts.chip_payment_ref` is renamed to the gateway-neutral `payment_ref` that membership attempts already use.
+- Each gateway gets its own webhook controller into the same paid seams. Settlement import, re-check and the cash position are CHIP-only today (`SettlementReconciliationService`, `SettlementRecheckService`, `CashPositionService`'s unsettled line), and each needs the second gateway's version. That is the largest part of the work.
+- Moving a method from one gateway to another means activating the new row and switching the old one off. Payments already started on the old gateway finish there (decision 1).
+
+**Rationale.** Stamping removes the five gateway lookups instead of hiding them behind a new factory method; reading the gateway again from a mutable row is the bug class decision 1 closes. One definition of "chargeable" serves validation and the charge. The guard keeps a new inline lookup from coming back.

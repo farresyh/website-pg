@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands\Reseller;
 
-use App\Models\PaymentMethod;
 use App\Models\ResellerBotWalletTopup;
 use App\Models\WalletTopupAttempt;
 use App\Services\Order\PaymentStatus;
@@ -97,10 +96,9 @@ class ReconcilePendingWalletTopupsCommand extends Command
             ->get();
 
         foreach ($ended as $attempt) {
-            $gatewayName = PaymentMethod::query()->where('channel_code', $attempt->channel_code)->value('gateway');
-            $payment = $gatewayName === null ? null : $gatewayFactory->make($gatewayName)->getPayment($attempt->chip_payment_ref);
+            $payment = $gatewayFactory->make($attempt->gateway)->getPayment($attempt->chip_payment_ref);
 
-            if ($payment?->success && $payment->status === PaymentStatus::Paid) {
+            if ($payment->success && $payment->status === PaymentStatus::Paid) {
                 Log::warning('Wallet top-up reconciliation: a top-up that had ended was paid', ['wallet_topup_reference' => $attempt->reference]);
                 $this->recover($attempt, $wallets, $payment->data['amount_sen'] ?? null, $payment->data['fee_sen'] ?? null);
             }
@@ -146,15 +144,7 @@ class ReconcilePendingWalletTopupsCommand extends Command
             return;
         }
 
-        $gatewayName = PaymentMethod::query()->where('channel_code', $attempt->channel_code)->value('gateway');
-
-        if ($gatewayName === null) {
-            Log::error('Wallet top-up reconciliation: no gateway for channel', ['channel_code' => $attempt->channel_code]);
-
-            return;
-        }
-
-        $payment = $gatewayFactory->make($gatewayName)->getPayment($attempt->chip_payment_ref);
+        $payment = $gatewayFactory->make($attempt->gateway)->getPayment($attempt->chip_payment_ref);
 
         if (! $payment->success) {
             Log::warning('Wallet top-up reconciliation: gateway lookup failed', [

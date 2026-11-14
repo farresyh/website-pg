@@ -92,6 +92,7 @@ class ResellerBotBatalBakiTest extends TestCase
             'amount_sen' => 10000,
             'total_charged_sen' => 10100,
             'channel_code' => 'fpx',
+            'gateway' => 'chip',
             'status' => WalletTopupAttemptStatus::Pending->value,
             'chip_payment_ref' => $withLink ? 'chip-1' : null,
             'checkout_url' => $withLink ? 'https://gate.chip-in.asia/p/chip-1/' : null,
@@ -108,7 +109,7 @@ class ResellerBotBatalBakiTest extends TestCase
 
     private function send(string $text): void
     {
-        app(ResellerBotService::class)->handle(self::GROUP_ID, $text, 'msg-'.uniqid());
+        app(ResellerBotService::class)->handle(self::GROUP_ID, $text, 'msg-'.uniqid(), now()->getTimestamp());
     }
 
     // --- .batalbaki, one reply per outcome ---

@@ -36,17 +36,18 @@ class PurchaseBalanceAdminTest extends TestCase
 
     public function test_the_policy_is_saved_and_settings_return_it(): void
     {
-        $this->putJson('/api/settings/purchase-balance-policy', ['topup_max_sen' => 500_000, 'balance_cap_default_sen' => 2_000_000])
+        $this->putJson('/api/settings/purchase-balance-policy', ['topup_max_sen' => 500_000, 'balance_cap_default_sen' => 2_000_000, 'bot_command_max_age_minutes' => 5])
             ->assertOk()
             ->assertJsonPath('topup_max_sen', 500_000)
-            ->assertJsonPath('balance_cap_default_sen', 2_000_000);
+            ->assertJsonPath('balance_cap_default_sen', 2_000_000)
+            ->assertJsonPath('bot_command_max_age_minutes', 5);
 
         $this->assertSame(500_000, PlatformSettings::current()->topup_max_sen);
     }
 
     public function test_a_cap_below_the_per_top_up_maximum_is_refused(): void
     {
-        $this->putJson('/api/settings/purchase-balance-policy', ['topup_max_sen' => 500_000, 'balance_cap_default_sen' => 400_000])
+        $this->putJson('/api/settings/purchase-balance-policy', ['topup_max_sen' => 500_000, 'balance_cap_default_sen' => 400_000, 'bot_command_max_age_minutes' => 3])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('balance_cap_default_sen');
 
@@ -55,7 +56,7 @@ class PurchaseBalanceAdminTest extends TestCase
 
     public function test_a_maximum_below_the_minimum_top_up_is_refused(): void
     {
-        $this->putJson('/api/settings/purchase-balance-policy', ['topup_max_sen' => 500, 'balance_cap_default_sen' => 2_000_000])
+        $this->putJson('/api/settings/purchase-balance-policy', ['topup_max_sen' => 500, 'balance_cap_default_sen' => 2_000_000, 'bot_command_max_age_minutes' => 3])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('topup_max_sen');
     }

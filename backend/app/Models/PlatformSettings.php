@@ -34,6 +34,7 @@ class PlatformSettings extends Model
         'topup_max_sen',
         'balance_cap_default_sen',
         'bot_topup_payment_method_id',
+        'bot_command_max_age_minutes',
         'company_legal_name',
         'company_reg_no',
         'company_address',
@@ -56,6 +57,7 @@ class PlatformSettings extends Model
         'topup_max_sen' => 'integer',
         'balance_cap_default_sen' => 'integer',
         'bot_topup_payment_method_id' => 'integer',
+        'bot_command_max_age_minutes' => 'integer',
         'partner_applications_open' => 'boolean',
         'campaign_min_margin_percent' => 'decimal:2',
         'campaign_qualified_min_sen' => 'integer',
@@ -86,6 +88,9 @@ class PlatformSettings extends Model
             'partner_applications_open' => false,
             'campaign_min_margin_percent' => 2.00,
             'campaign_qualified_min_sen' => 1000,
+            // ADR-075 2026-11-14 addendum: read back as null it would be a
+            // 0-minute limit, and every bot money command would be stale.
+            'bot_command_max_age_minutes' => 3,
         ]);
     }
 }

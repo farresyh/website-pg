@@ -197,6 +197,7 @@ class MembershipSubscriptionControllerTest extends TestCase
         $this->assertSame(MembershipCheckoutAttemptStatus::Pending, $attempt->status);
         $this->assertNotNull($attempt->payment_ref);
         $this->assertSame($response->json('subscription_number'), $attempt->subscription_number);
+        $this->assertSame('chip', $attempt->gateway); // ADR-022 2026-11-14 addendum: stamped from the method row
     }
 
     /**

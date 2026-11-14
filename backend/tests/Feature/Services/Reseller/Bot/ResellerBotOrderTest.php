@@ -24,10 +24,9 @@ use Tests\TestCase;
 /**
  * ADR-075 / PR-F build addendum — same money/catalog seams the Reseller
  * API (PR-E) already tests, over the WhatsApp command surface instead of
- * HTTP. `OpenWaClient::sendText()` is unconfigured in tests (no
- * session_id/api_key), so it no-ops rather than making a real HTTP
- * call — every assertion here goes through the DB/ledger, never a
- * mocked reply.
+ * HTTP. Every reply is an outbox row (ADR-116 2026-11-14 addendum), read
+ * back with `replies()`; with the queue faked no HTTP call is made, and
+ * every money assertion goes through the DB/ledger.
  *
  * This file: placing an order through the bot.
  */
@@ -42,7 +41,7 @@ class ResellerBotOrderTest extends TestCase
         $this->makePackage(costPrice: 1000, resellerCode: 'MLMY');
         $reseller = $this->makeLinkedReseller(walletBalance: 10000, markupPercent: 10);
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(10000 - 1100, app(LedgerService::class)->balance(LedgerOwnerType::ResellerWallet, $reseller->id));
         $this->assertDatabaseHas('orders', ['player_id' => '51049607', 'server_id' => '2005', 'wallet_reseller_id' => $reseller->id]);
@@ -54,8 +53,8 @@ class ResellerBotOrderTest extends TestCase
         $this->makePackage();
         $reseller = $this->makeLinkedReseller(walletBalance: 10000);
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1', now()->getTimestamp());
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(1, Order::query()->where('wallet_reseller_id', $reseller->id)->count());
     }
@@ -65,7 +64,7 @@ class ResellerBotOrderTest extends TestCase
         $this->makePackage(requiresServerId: true);
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('reseller_bot_command_logs', [
             'reseller_id' => $reseller->id,
@@ -89,7 +88,7 @@ class ResellerBotOrderTest extends TestCase
         ]);
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLZONE-14 51049607 SEA', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLZONE-14 51049607 SEA', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('reseller_bot_command_logs', [
             'reseller_id' => $reseller->id,
@@ -113,7 +112,7 @@ class ResellerBotOrderTest extends TestCase
         ]);
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLZONE2-14 51049607 SouthEastAsia', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLZONE2-14 51049607 SouthEastAsia', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(1, Order::query()->where('wallet_reseller_id', $reseller->id)->count());
     }
@@ -122,7 +121,7 @@ class ResellerBotOrderTest extends TestCase
     {
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order NOPE-1 51049607', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order NOPE-1 51049607', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('reseller_bot_command_logs', [
             'reseller_id' => $reseller->id,
@@ -135,7 +134,7 @@ class ResellerBotOrderTest extends TestCase
         $this->makePackage(costPrice: 1000);
         $reseller = $this->makeLinkedReseller(walletBalance: 100, markupPercent: 10);
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('reseller_bot_command_logs', [
             'reseller_id' => $reseller->id,
@@ -162,7 +161,7 @@ class ResellerBotOrderTest extends TestCase
         $game->update(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(0, Order::query()->count());
         $this->assertDatabaseHas('reseller_bot_command_logs', [
@@ -194,7 +193,7 @@ class ResellerBotOrderTest extends TestCase
         ]);
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLID-14 51049607 2005', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLID-14 51049607 2005', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(0, Order::query()->count());
         $this->assertDatabaseHas('reseller_bot_command_logs', [
@@ -225,7 +224,7 @@ class ResellerBotOrderTest extends TestCase
         ]);
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('orders', ['player_id' => '51049607', 'wallet_reseller_id' => $reseller->id]);
         $this->assertDatabaseHas('player_validations', ['game_id' => $game->id, 'status' => 'valid']);
@@ -249,7 +248,7 @@ class ResellerBotOrderTest extends TestCase
         $game->update(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('orders', ['player_id' => '51049607', 'wallet_reseller_id' => $reseller->id]);
         $this->assertSame(0, PlayerValidation::query()->count());
@@ -264,7 +263,7 @@ class ResellerBotOrderTest extends TestCase
         $game->update(['player_validator_enabled' => true, 'player_validator_profile_id' => $profile->id]);
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('orders', ['player_id' => '51049607', 'wallet_reseller_id' => $reseller->id]);
     }
@@ -275,7 +274,7 @@ class ResellerBotOrderTest extends TestCase
         $this->makePackage(resellerCode: 'MLMY');
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1', now()->getTimestamp());
 
         $this->assertDatabaseHas('orders', ['player_id' => '51049607', 'wallet_reseller_id' => $reseller->id]);
         $this->assertSame(0, PlayerValidation::query()->count());
@@ -287,7 +286,7 @@ class ResellerBotOrderTest extends TestCase
         $this->makePackage(costPrice: 1000, resellerCode: 'MLMY');
         $this->makeLinkedReseller(walletBalance: 10000);
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 51049607 2005', 'msg-1', now()->getTimestamp());
 
         $order = Order::query()->firstOrFail();
         $this->assertSame('reseller_bot', $order->placed_via->value);
@@ -303,7 +302,7 @@ class ResellerBotOrderTest extends TestCase
         $this->makeZoneGame('GSMY');
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order GSMY-14 834140081 America', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order GSMY-14 834140081 America', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(0, Order::query()->count());
         $this->assertDatabaseHas('reseller_bot_command_logs', [
@@ -318,7 +317,7 @@ class ResellerBotOrderTest extends TestCase
         $this->makePackage(requiresServerId: true);
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, ".order MLMY-14 51049607 2005\n.order MLMY-14 11111111 2001", 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, ".order MLMY-14 51049607 2005\n.order MLMY-14 11111111 2001", 'msg-1', now()->getTimestamp());
 
         $this->assertSame(0, Order::query()->count());
         $this->assertDatabaseHas('reseller_bot_command_logs', ['reseller_id' => $reseller->id, 'failure_reason' => 'extra_arguments']);
@@ -332,7 +331,7 @@ class ResellerBotOrderTest extends TestCase
         $this->makePackage(requiresServerId: false);
         $reseller = $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 123456 tq', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 123456 tq', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(0, Order::query()->count());
         $this->assertDatabaseHas('reseller_bot_command_logs', ['reseller_id' => $reseller->id, 'failure_reason' => 'server_id_not_taken']);
@@ -345,7 +344,7 @@ class ResellerBotOrderTest extends TestCase
         $this->makePackage(requiresServerId: false);
         $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 12345abc', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 12345abc', 'msg-1', now()->getTimestamp());
 
         $this->assertSame(0, Order::query()->count());
         $this->assertSame("User ID mesti nombor sahaja.\nFormat: .order MLMY-14 {userId}", $this->replies()[0]);
@@ -358,7 +357,7 @@ class ResellerBotOrderTest extends TestCase
         $package->game->update(['validation_rules' => ['player_id_format' => 'text']]);
         $this->makeLinkedReseller();
 
-        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 JettMain#1234', 'msg-1');
+        app(ResellerBotService::class)->handle(self::GROUP_ID, '.order MLMY-14 JettMain#1234', 'msg-1', now()->getTimestamp());
 
         $this->assertSame('JettMain#1234', Order::query()->firstOrFail()->player_id);
     }

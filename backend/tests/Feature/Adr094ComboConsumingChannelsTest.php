@@ -298,7 +298,7 @@ class Adr094ComboConsumingChannelsTest extends TestCase
         $reseller = $this->fundedReseller(markupPercent: 10);
         WhatsAppGroup::query()->create(['owner_type' => 'reseller', 'owner_id' => $reseller->id, 'whatsapp_group_id' => 'g1@g.us', 'is_active' => true]);
 
-        app(ResellerBotService::class)->handle('g1@g.us', '.order MLMY-10478 123456789', 'msg-1');
+        app(ResellerBotService::class)->handle('g1@g.us', '.order MLMY-10478 123456789', 'msg-1', now()->getTimestamp());
 
         $order = Order::query()->where('wallet_reseller_id', $reseller->id)->first();
         $this->assertNotNull($order, '.order MLMY-10478 should have resolved to the combo and placed it — same resolveByCode() the API test above uses.');

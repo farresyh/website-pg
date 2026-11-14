@@ -2,10 +2,10 @@
 
 namespace App\Http\Requests\Membership;
 
+use App\Rules\ChargeablePaymentChannel;
 use App\Services\Payment\Chip\FpxBankRedirect;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 
 /**
  * ADR-068 decision 5 — the self-serve subscribe payload. The plan is
@@ -40,7 +40,7 @@ class SubscribeRequest extends FormRequest
             'payment_method' => [
                 'required',
                 'string',
-                Rule::exists('payment_methods', 'channel_code')->where('is_active', true),
+                new ChargeablePaymentChannel,
             ],
             'idempotency_key' => ['required', 'string', 'max:64'],
             // ADR-130: the bank picked on our page (this request names the channel `payment_method`).

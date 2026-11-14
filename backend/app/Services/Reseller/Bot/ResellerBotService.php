@@ -14,7 +14,7 @@ use App\Models\ResellerBotOrderNotification;
 use App\Models\ResellerBotWalletTopup;
 use App\Services\Checkout\CheckoutInputValidator;
 use App\Services\Ledger\InsufficientBalanceException;
-use App\Services\OpenWa\OpenWaClient;
+use App\Services\Notification\WhatsAppOutbox;
 use App\Services\Order\PlacedVia;
 use App\Services\PlayerValidation\PlayerValidatorRegistry;
 use App\Services\PlayerValidation\ProviderUnavailableException;
@@ -68,11 +68,22 @@ final class ResellerBotService
         private readonly ResellerWalletService $wallet,
         private readonly ResellerWalletTopupService $topups,
         private readonly PlayerValidatorRegistry $validators,
-        private readonly OpenWaClient $openWa,
+        private readonly WhatsAppOutbox $outbox,
         private readonly CheckoutInputValidator $checkoutInputValidator,
     ) {}
 
-    public function handle(string $whatsappGroupId, string $rawText, string $whatsappMessageId): void
+    /** ADR-075 2026-11-14 addendum, decision 2: commands that move money or a payment. */
+    private const MONEY_COMMANDS = [
+        ResellerBotCommandType::Order,
+        ResellerBotCommandType::TopupBaki,
+        ResellerBotCommandType::BatalBaki,
+    ];
+
+    /**
+     * `$sentAt` is the inbound message's own time (OpenWA `timestamp`, epoch
+     * seconds), null when the payload carried none.
+     */
+    public function handle(string $whatsappGroupId, string $rawText, string $whatsappMessageId, ?int $sentAt = null): void
     {
         $reseller = $this->groups->resolveReseller($whatsappGroupId);
 
@@ -84,12 +95,6 @@ final class ResellerBotService
             // even linked it. Still captures/bumps the pending-link row
             // (the "send a test message" onboarding flow).
             $this->groups->capturePending($whatsappGroupId, $rawText);
-
-            return;
-        }
-
-        if (! RateLimiter::attempt("reseller-bot:{$reseller->id}", 60, fn () => true, 60)) {
-            $this->openWa->sendText($whatsappGroupId, 'Terlalu banyak permintaan. Sila cuba sebentar lagi.');
 
             return;
         }
@@ -106,6 +111,23 @@ final class ResellerBotService
             return;
         }
 
+        $isMoney = in_array($command->type, self::MONEY_COMMANDS, true);
+        $reply = fn (string|array $text, ?int $orderId = null) => $this->reply($whatsappGroupId, $whatsappMessageId, $text, $isMoney, $orderId);
+
+        // ADR-075 2026-11-14 addendum, decision 2: before the limiters and any
+        // checker call, so a reconnect backlog costs nothing.
+        if ($this->isStale($sentAt, $isMoney)) {
+            $this->handleStale($reseller, $command, $whatsappGroupId, $whatsappMessageId, $sentAt, $isMoney, $reply);
+
+            return;
+        }
+
+        if (! RateLimiter::attempt("reseller-bot:{$reseller->id}", 60, fn () => true, 60)) {
+            $reply('Terlalu banyak permintaan. Sila cuba sebentar lagi.');
+
+            return;
+        }
+
         // E10 hardening (2026-09-10 reseller-family audit, `docs/build-log.md`):
         // `.order`/`.topupbaki` already reject a deactivated Reseller via
         // their own services (`ResellerInactiveException`) — these three
@@ -117,7 +139,7 @@ final class ResellerBotService
             ResellerBotCommandType::ListGames,
         ], true)) {
             $this->logFailure($reseller, $whatsappGroupId, $command->raw, 'reseller_inactive');
-            $this->openWa->sendText($whatsappGroupId, ResellerBotReplyFormatter::resellerInactive());
+            $reply(ResellerBotReplyFormatter::resellerInactive());
 
             return;
         }
@@ -128,7 +150,7 @@ final class ResellerBotService
         // per invocation.
         if ($command->type === ResellerBotCommandType::CheckId
             && ! RateLimiter::attempt("reseller-bot-checkid:{$reseller->id}", 10, fn () => true, 60)) {
-            $this->openWa->sendText($whatsappGroupId, 'Terlalu banyak permintaan semakan ID. Sila cuba sebentar lagi.');
+            $reply('Terlalu banyak permintaan semakan ID. Sila cuba sebentar lagi.');
 
             return;
         }
@@ -140,7 +162,7 @@ final class ResellerBotService
         // checkid 10/min keys (distinct namespace).
         if ($command->type === ResellerBotCommandType::TopupBaki
             && ! RateLimiter::attempt("reseller-bot-topupbaki:{$reseller->id}", 5, fn () => true, 60)) {
-            $this->openWa->sendText($whatsappGroupId, 'Terlalu banyak permintaan tambah baki. Sila cuba sebentar lagi.');
+            $reply('Terlalu banyak permintaan tambah baki. Sila cuba sebentar lagi.');
 
             return;
         }
@@ -148,15 +170,21 @@ final class ResellerBotService
         // ADR-135 decision 8: each `.batalbaki` makes two CHIP calls (cancel, re-read).
         if ($command->type === ResellerBotCommandType::BatalBaki
             && ! RateLimiter::attempt("reseller-bot-batalbaki:{$reseller->id}", 5, fn () => true, 60)) {
-            $this->openWa->sendText($whatsappGroupId, 'Terlalu banyak permintaan batal baki. Sila cuba sebentar lagi.');
+            $reply('Terlalu banyak permintaan batal baki. Sila cuba sebentar lagi.');
 
             return;
         }
 
-        $reply = match ($command->type) {
+        if ($command->type === ResellerBotCommandType::Order) {
+            [$text, $orderId] = $this->handleOrder($reseller, $command, $whatsappGroupId, $whatsappMessageId);
+            $reply($text, $orderId);
+
+            return;
+        }
+
+        $reply(match ($command->type) {
             ResellerBotCommandType::ListGames => $this->handleListGames(),
             ResellerBotCommandType::ListGamePackages => $this->handleListGamePackages($reseller, $command, $whatsappGroupId),
-            ResellerBotCommandType::Order => $this->handleOrder($reseller, $command, $whatsappGroupId, $whatsappMessageId),
             ResellerBotCommandType::Balance => $this->handleBalance($reseller),
             ResellerBotCommandType::TrackOrder => $this->handleTrackOrder($reseller, $command, $whatsappGroupId),
             ResellerBotCommandType::CheckId => $this->handleCheckId($reseller, $command, $whatsappGroupId),
@@ -164,16 +192,83 @@ final class ResellerBotService
             ResellerBotCommandType::TopupBaki => $this->handleTopupBaki($reseller, $command, $whatsappGroupId),
             ResellerBotCommandType::BatalBaki => $this->handleBatalBaki($reseller, $command, $whatsappGroupId),
             ResellerBotCommandType::Unrecognized => $this->handleUnrecognized($reseller, $command, $whatsappGroupId),
-        };
+        });
+    }
 
-        // `handleListGamePackages()` is the one handler that can return
-        // more than one message (`ResellerBotReplyFormatter::listPackages()`
-        // splits once a game's catalogue crosses OpenWA's per-message
-        // length cap, `MAX_MESSAGE_LENGTH`) — every other handler still
-        // returns a single string, sent as before.
-        foreach (is_array($reply) ? $reply : [$reply] as $text) {
-            $this->openWa->sendText($whatsappGroupId, $text);
+    /**
+     * ADR-075 2026-11-14 addendum, decision 2. A money command with no time
+     * is stale (fail safe); a read command with none is answered. A time in
+     * the future (a phone clock running fast) is never stale.
+     */
+    private function isStale(?int $sentAt, bool $isMoney): bool
+    {
+        if ($sentAt === null) {
+            return $isMoney;
         }
+
+        $maxAgeSeconds = 60 * (int) PlatformSettings::current()->bot_command_max_age_minutes;
+
+        return now()->getTimestamp() - $sentAt > $maxAgeSeconds;
+    }
+
+    /**
+     * A read command is dropped silently. A money command is not run; an
+     * `.order` that already placed its order (a redelivered webhook) gets
+     * that order's real status instead, because the durable idempotency
+     * key, not the clock, decides whether money moved.
+     *
+     * @param  callable(string|list<string>, ?int=): void  $reply
+     */
+    private function handleStale(Reseller $reseller, ResellerBotCommand $command, string $groupId, string $whatsappMessageId, ?int $sentAt, bool $isMoney, callable $reply): void
+    {
+        Log::warning('Reseller bot: stale command not run', [
+            'reseller_id' => $reseller->id,
+            'command' => $command->type->name,
+            'sent_at' => $sentAt,
+        ]);
+
+        if (! $isMoney) {
+            return;
+        }
+
+        if ($command->type === ResellerBotCommandType::Order) {
+            $order = $this->placement->findByIdempotencyKey($reseller, self::orderIdempotencyKey($groupId, $whatsappMessageId));
+
+            if ($order !== null) {
+                $reply(ResellerBotReplyFormatter::trackOrder($order), $order->id);
+
+                return;
+            }
+        }
+
+        $this->logFailure($reseller, $groupId, $command->raw, 'stale_command');
+        $reply(ResellerBotReplyFormatter::commandArrivedLate(strtok(trim($command->raw), ' ') ?: $command->raw, $sentAt));
+    }
+
+    /**
+     * ADR-116 2026-11-14 addendum: every bot reply is an outbox row. Its key
+     * names the inbound message it answers, so a redelivered webhook never
+     * answers twice.
+     *
+     * @param  string|list<string>  $text
+     */
+    private function reply(string $groupId, string $whatsappMessageId, string|array $text, bool $isMoney, ?int $orderId = null): void
+    {
+        $event = $isMoney ? WhatsAppOutbox::EVENT_BOT_MONEY_REPLY : WhatsAppOutbox::EVENT_BOT_REPLY;
+        $ref = substr(hash('sha256', $groupId."\n".$whatsappMessageId), 0, 32);
+
+        foreach (array_values(is_array($text) ? $text : [$text]) as $part => $message) {
+            $this->outbox->reply($event, "reply:{$ref}:{$part}", $groupId, $message, $orderId);
+        }
+    }
+
+    /**
+     * ADR-075 decision 5: a chat command carries no client key of its own,
+     * and OpenWA can redeliver the same inbound message.
+     */
+    private static function orderIdempotencyKey(string $groupId, string $whatsappMessageId): string
+    {
+        return "wa:{$groupId}:{$whatsappMessageId}";
     }
 
     private function handleUnrecognized(Reseller $reseller, ResellerBotCommand $command, string $groupId): string
@@ -245,26 +340,27 @@ final class ResellerBotService
         return ResellerBotReplyFormatter::listPackages($game, $items, $sellingPriceSen);
     }
 
-    private function handleOrder(Reseller $reseller, ResellerBotCommand $command, string $groupId, string $whatsappMessageId): string
+    /** @return array{0: string, 1: ?int} the reply and, once placed, the order it reports */
+    private function handleOrder(Reseller $reseller, ResellerBotCommand $command, string $groupId, string $whatsappMessageId): array
     {
         $package = $this->catalog->resolveByCode((string) $command->productCode);
 
         if ($package === null) {
             $this->logFailure($reseller, $groupId, $command->raw, 'unknown_product_code');
 
-            return "Kod produk '{$command->productCode}' tidak dijumpai atau tidak tersedia.";
+            return ["Kod produk '{$command->productCode}' tidak dijumpai atau tidak tersedia.", null];
         }
 
         $game = Game::query()->find($package->game_id);
 
         if ($game !== null && $rejection = $this->rejectInput($reseller, $groupId, $command, $game, (string) $command->productCode, '.order')) {
-            return $rejection;
+            return [$rejection, null];
         }
 
         if ($game !== null && $game->player_validator_enabled && $game->player_validator_profile_id !== null) {
             $rejection = $this->validatePlayerForOrder($reseller, $command, $groupId, $game);
             if ($rejection !== null) {
-                return $rejection;
+                return [$rejection, null];
             }
         }
 
@@ -285,7 +381,7 @@ final class ResellerBotService
         // regenerated one, so `data.id` is stable across it. No code
         // change follows from this — it confirms the existing formula
         // was already correct.
-        $idempotencyKey = "wa:{$groupId}:{$whatsappMessageId}";
+        $idempotencyKey = self::orderIdempotencyKey($groupId, $whatsappMessageId);
 
         try {
             $order = $this->placement->placeOrder($reseller, new ResellerOrderPlacementRequest(
@@ -303,11 +399,11 @@ final class ResellerBotService
         } catch (ResellerInactiveException|NoResellerTierAssignedException $e) {
             $this->logFailure($reseller, $groupId, $command->raw, 'order_rejected: '.$e->getMessage());
 
-            return 'Order tidak dapat diproses: '.$e->getMessage();
+            return ['Order tidak dapat diproses: '.$e->getMessage(), null];
         } catch (InsufficientBalanceException) {
             $this->logFailure($reseller, $groupId, $command->raw, 'insufficient_balance');
 
-            return 'Baki Pembelian tidak mencukupi.';
+            return ['Baki Pembelian tidak mencukupi.', null];
         }
 
         // ADR-076 decision 4 — capture the exact originating group now,
@@ -322,7 +418,7 @@ final class ResellerBotService
             ['whatsapp_group_id' => $groupId],
         );
 
-        return ResellerBotReplyFormatter::orderPlaced($order);
+        return [ResellerBotReplyFormatter::orderPlaced($order), $order->id];
     }
 
     /**

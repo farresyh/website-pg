@@ -2,19 +2,21 @@
 
 namespace Tests\Unit\Services\OpenWa;
 
-use App\Jobs\Reseller\SendResellerBotReplyJob;
 use App\Services\OpenWa\OpenWaClient;
+use App\Services\OpenWa\OpenWaOutcomeUnknownException;
+use App\Services\OpenWa\OpenWaPacingLimitedException;
 use App\Services\OpenWa\OpenWaRecipientNotOnWhatsAppException;
+use App\Services\OpenWa\OpenWaUnavailableException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Queue;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\TestCase;
 
 /**
- * E8 hardening (2026-09-10 reseller-family audit, `docs/build-log.md`):
- * `sendText()` now dispatches `SendResellerBotReplyJob` instead of making
- * the HTTP call inline — this pins that dispatch contract directly,
- * rather than only through other tests' incidental sync-queue coverage.
+ * ADR-116 2026-11-14 addendum, decision 4: `sendNow()` carries an
+ * Idempotency-Key and turns each OpenWA answer into one outcome the outbox
+ * job acts on.
  */
 class OpenWaClientTest extends TestCase
 {
@@ -29,68 +31,78 @@ class OpenWaClientTest extends TestCase
         );
     }
 
-    public function test_send_text_dispatches_the_reply_job_when_configured(): void
+    public function test_send_now_posts_with_the_idempotency_key(): void
     {
-        Queue::fake();
+        Http::fake(['*' => Http::response(['messageId' => 'wa-1'], 201)]);
 
-        $this->client()->sendText('chat-1', 'hello');
-
-        Queue::assertPushed(SendResellerBotReplyJob::class, fn (SendResellerBotReplyJob $job) => $job->chatId === 'chat-1' && $job->text === 'hello');
-    }
-
-    public function test_send_text_dispatches_nothing_when_unconfigured(): void
-    {
-        Queue::fake();
-
-        $this->client(sessionId: null, apiKey: null)->sendText('chat-1', 'hello');
-
-        Queue::assertNotPushed(SendResellerBotReplyJob::class);
-    }
-
-    public function test_send_now_posts_to_the_expected_endpoint(): void
-    {
-        Http::fake(['*' => Http::response(['success' => true], 200)]);
-
-        $this->client()->sendNow('chat-1', 'hello');
+        $this->assertSame('wa-1', $this->client()->sendNow('chat-1', 'hello', 'cn-1-abc'));
 
         Http::assertSent(fn ($request) => $request->url() === 'https://openwa.test/api/sessions/session-1/messages/send-text'
             && $request['chatId'] === 'chat-1'
-            && $request['text'] === 'hello');
+            && $request['text'] === 'hello'
+            && $request->header('Idempotency-Key') === ['cn-1-abc']);
     }
 
-    public function test_send_now_throws_on_a_failed_response_so_the_job_retries(): void
+    public function test_a_replayed_send_is_a_success(): void
     {
-        Http::fake(['*' => Http::response(['error' => 'down'], 503)]);
+        Http::fake(['*' => Http::response(['messageId' => 'wa-1'], 201, ['Idempotent-Replayed' => 'true'])]);
 
-        $this->expectException(RuntimeException::class);
-
-        $this->client()->sendNow('chat-1', 'hello');
+        $this->assertSame('wa-1', $this->client()->sendNow('chat-1', 'hello', 'cn-1-abc'));
     }
 
-    /** PRD §16 item 96: OpenWA v0.25.0's Baileys answer for a number that is not on WhatsApp. */
-    public function test_a_number_not_on_whatsapp_throws_the_non_retryable_exception(): void
+    /** @return array<string, array{0: int, 1: array<string, mixed>, 2: class-string}> */
+    public static function outcomes(): array
     {
-        Http::fake(['*' => Http::response([
-            'message' => 'WhatsApp reports recipient 60123456789@s.whatsapp.net is not registered',
-            'error' => 'Bad Request',
-            'statusCode' => 400,
-        ], 400)]);
-
-        $this->expectException(OpenWaRecipientNotOnWhatsAppException::class);
-
-        $this->client()->sendNow('60123456789@c.us', 'hello');
+        return [
+            'pacing' => [429, ['code' => 'SEND_PACING_LIMITED', 'retryAfterSeconds' => 60], OpenWaPacingLimitedException::class],
+            'key in progress' => [409, ['code' => 'IDEMPOTENCY_KEY_IN_PROGRESS'], OpenWaUnavailableException::class],
+            'outcome unknown' => [409, ['code' => 'IDEMPOTENCY_OUTCOME_UNKNOWN'], OpenWaOutcomeUnknownException::class],
+            'key reused' => [422, ['code' => 'IDEMPOTENCY_KEY_REUSED'], OpenWaOutcomeUnknownException::class],
+            'engine not ready' => [409, ['message' => 'Session engine is not ready'], OpenWaUnavailableException::class],
+            'session not started' => [400, ['message' => 'Session is not started'], OpenWaUnavailableException::class],
+            'gateway error' => [503, ['error' => 'down'], OpenWaUnavailableException::class],
+            'not on whatsapp' => [400, ['message' => 'WhatsApp reports recipient 6012@s.whatsapp.net is not registered'], OpenWaRecipientNotOnWhatsAppException::class],
+            'our config is wrong' => [401, ['message' => 'Invalid API key'], RuntimeException::class],
+        ];
     }
 
-    /** OpenWA also answers 400 while a session is still starting (just after a restart); that must retry. */
-    public function test_a_400_for_an_unstarted_session_stays_retryable(): void
+    /**
+     * @param  array<string, mixed>  $body
+     * @param  class-string  $expected
+     */
+    #[DataProvider('outcomes')]
+    public function test_each_answer_maps_to_one_outcome(int $status, array $body, string $expected): void
     {
-        Http::fake(['*' => Http::response(['message' => 'Session is not started', 'error' => 'Bad Request', 'statusCode' => 400], 400)]);
+        Http::fake(['*' => Http::response($body, $status)]);
 
         try {
-            $this->client()->sendNow('chat-1', 'hello');
+            $this->client()->sendNow('chat-1', 'hello', 'cn-1-abc');
             $this->fail('Expected the send to throw.');
         } catch (RuntimeException $e) {
-            $this->assertNotInstanceOf(OpenWaRecipientNotOnWhatsAppException::class, $e);
+            $this->assertSame($expected, $e::class);
         }
+    }
+
+    public function test_an_unreachable_gateway_is_unavailable_not_failed(): void
+    {
+        Http::fake(fn () => throw new ConnectionException('cURL error 28: Operation timed out'));
+
+        $this->expectException(OpenWaUnavailableException::class);
+
+        $this->client()->sendNow('chat-1', 'hello', 'cn-1-abc');
+    }
+
+    public function test_session_status_reports_a_restriction(): void
+    {
+        Http::fake(['*' => Http::response(['status' => 'ready', 'restriction' => ['kind' => 'reachout_timelock', 'code' => 463]], 200)]);
+
+        $this->assertSame(['status' => 'ready', 'restricted' => true], $this->client()->sessionStatus());
+    }
+
+    public function test_session_status_without_a_restriction(): void
+    {
+        Http::fake(['*' => Http::response(['status' => 'ready', 'restriction' => null], 200)]);
+
+        $this->assertSame(['status' => 'ready', 'restricted' => false], $this->client()->sessionStatus());
     }
 }

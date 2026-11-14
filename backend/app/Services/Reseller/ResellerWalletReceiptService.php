@@ -85,7 +85,7 @@ final class ResellerWalletReceiptService
             'amount_sen' => $attempt->amount_sen,
             'fee_sen' => $attempt->total_charged_sen - $attempt->amount_sen,
             'total_sen' => $attempt->total_charged_sen,
-            'paid_via' => PaymentMethod::query()->where('channel_code', $attempt->channel_code)->value('label') ?? 'Online payment',
+            'paid_via' => PaymentMethod::forChannel($attempt->channel_code)->value('label') ?? 'Online payment',
         ];
     }
 

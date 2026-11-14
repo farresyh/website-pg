@@ -162,7 +162,7 @@ final class ResellerOrderPlacementService
      * a single named lookup so the two call sites can't drift out of sync
      * with the DB's own composite `idempotency_scope` constraint.
      */
-    private function findByIdempotencyKey(Reseller $reseller, string $idempotencyKey): ?Order
+    public function findByIdempotencyKey(Reseller $reseller, string $idempotencyKey): ?Order
     {
         return Order::query()
             ->where('wallet_reseller_id', $reseller->id)
