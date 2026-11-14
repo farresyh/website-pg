@@ -105,6 +105,7 @@ class WalletTopupCancelResumeTest extends TestCase
             'amount_sen' => 10000,
             'total_charged_sen' => 10100,
             'channel_code' => 'fpx',
+            'gateway' => 'chip',
             'status' => WalletTopupAttemptStatus::Pending->value,
             'chip_payment_ref' => 'chip-1',
             'checkout_url' => 'https://gate.chip-in.asia/p/chip-1/',

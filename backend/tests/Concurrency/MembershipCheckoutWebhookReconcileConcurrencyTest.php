@@ -38,6 +38,7 @@ class MembershipCheckoutWebhookReconcileConcurrencyTest extends TestCase
             'fee_sen' => $plan->fee_sen,
             'total_charged_sen' => $plan->fee_sen + 100,
             'channel_code' => 'fpx',
+            'gateway' => 'chip',
             'subscription_number' => 'MS-RACETEST',
             'idempotency_key' => 'idem-race-sub',
             'payment_ref' => 'chip-purchase-race',

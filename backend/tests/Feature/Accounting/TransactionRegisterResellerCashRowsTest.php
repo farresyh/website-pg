@@ -61,6 +61,7 @@ class TransactionRegisterResellerCashRowsTest extends TestCase
         $attempt = WalletTopupAttempt::query()->create([
             'reseller_id' => $reseller->id, 'reference' => 'WT-REGISTER01', 'amount_sen' => 50_000, 'total_charged_sen' => 50_100,
             'channel_code' => 'fpx', 'status' => WalletTopupAttemptStatus::Paid->value, 'expires_at' => now()->addMinutes(30),
+            'gateway' => 'chip',
         ]);
         app(LedgerService::class)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, 50_000, 'wallet_topup', 'wallet_topup_attempt', $attempt->id);
 
@@ -93,6 +94,7 @@ class TransactionRegisterResellerCashRowsTest extends TestCase
         $attempt = WalletTopupAttempt::query()->create([
             'reseller_id' => $reseller->id, 'reference' => 'WT-GONE00001', 'amount_sen' => 50_000, 'total_charged_sen' => 50_100,
             'channel_code' => 'fpx', 'status' => WalletTopupAttemptStatus::Paid->value, 'expires_at' => now()->addMinutes(30),
+            'gateway' => 'chip',
         ]);
         app(LedgerService::class)->credit(LedgerOwnerType::ResellerWallet, $reseller->id, 50_000, 'wallet_topup', 'wallet_topup_attempt', $attempt->id);
         app(ResellerClosureService::class)->close($reseller, $admin->id, now('Asia/Kuala_Lumpur')->toDateString(), 'MBB-888');

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Checkout;
 
 use App\Http\Requests\Joki\JokiSelectionRules;
+use App\Rules\ChargeablePaymentChannel;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -37,7 +38,7 @@ class PreviewCheckoutTotalRequest extends FormRequest
                 'required',
                 'string',
                 'max:64',
-                Rule::exists('payment_methods', 'channel_code')->where('is_active', true),
+                new ChargeablePaymentChannel,
             ],
             'voucher_code' => ['nullable', 'string', 'max:32'],
             'customer_email' => ['nullable', 'required_with:voucher_code,promo_code', 'email', 'max:255'],

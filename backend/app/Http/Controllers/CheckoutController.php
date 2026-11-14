@@ -116,15 +116,12 @@ class CheckoutController extends Controller
             throw ValidationException::withMessages([$error['field'] => [$error['message']]]);
         }
 
-        // Guaranteed to exist + be active by CreateCheckoutRequest's
-        // Rule::exists check — a race between validation and here
-        // (channel deactivated mid-request) surfaces as a 500 via
-        // firstOrFail(), not a silent fallback to some default
-        // gateway, since that would misroute a real payment. Resolved
-        // early (before the idempotency lookup below) since both the
-        // replay branch and the normal-checkout branch need it.
-        $paymentMethod = PaymentMethod::query()
-            ->where('channel_code', $data['channel_code'])
+        // Guaranteed chargeable by CreateCheckoutRequest's
+        // ChargeablePaymentChannel rule — a race between validation and here
+        // (channel deactivated mid-request) fails via firstOrFail(), never a
+        // silent fallback to some default gateway, since that would
+        // misroute a real payment.
+        $paymentMethod = PaymentMethod::chargeableForChannel($data['channel_code'])
             ->firstOrFail();
         $gateway = $this->gatewayFactory->make($paymentMethod->gateway);
 
@@ -140,7 +137,10 @@ class CheckoutController extends Controller
 
         $existing = Order::query()->where('checkout_idempotency_key', $data['idempotency_key'])->first();
         if ($existing !== null) {
-            return $this->respondForExistingOrder($existing, $payloadHash, $gateway, $data['channel_code'], $data['channel_properties'] ?? [], $data['fpx_bank_code'] ?? null);
+            // ADR-022 2026-11-14 addendum: a replay continues on the gateway
+            // its order started on (stamped on every storefront order since
+            // 2026-08-03), never on whatever the method maps to now.
+            return $this->respondForExistingOrder($existing, $payloadHash, $this->gatewayFactory->make($existing->payment_gateway), $data['channel_code'], $data['channel_properties'] ?? [], $data['fpx_bank_code'] ?? null);
         }
 
         if (! $game->isLoginGame() && $game->player_validator_enabled && $game->player_validator_profile_id !== null) {

@@ -31,6 +31,7 @@ class LeavesPendingOnceTest extends TestCase
             'amount_sen' => 5000,
             'total_charged_sen' => 5100,
             'channel_code' => 'fpx',
+            'gateway' => 'chip',
             'status' => WalletTopupAttemptStatus::Pending->value,
             'expires_at' => now()->addMinutes(30),
         ]);
@@ -63,6 +64,7 @@ class LeavesPendingOnceTest extends TestCase
             'fee_sen' => 1990,
             'total_charged_sen' => 2200,
             'channel_code' => 'fpx',
+            'gateway' => 'chip',
             'subscription_number' => 'MS-'.uniqid(),
             'idempotency_key' => uniqid(),
             'status' => MembershipCheckoutAttemptStatus::Pending->value,

@@ -38,6 +38,7 @@ class ResellerBotWalletTopupNotifierTest extends TestCase
             'amount_sen' => 5000,
             'total_charged_sen' => 5100,
             'channel_code' => 'fpx',
+            'gateway' => 'chip',
             'status' => WalletTopupAttemptStatus::Pending->value,
             'expires_at' => now()->addMinutes(30),
         ]);
