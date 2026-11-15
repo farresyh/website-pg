@@ -2846,3 +2846,22 @@ The founder asked for it. `staging` → `main`, merge `3b815832` at 15:07 UTC (2
 **Built.** `app:alert-order-losses` (`order-loss-digest`, daily 00:00 UTC = 08:00 MYT, ROUTINE): orders delivered on the previous Malaysia day with `platform_profit < 0`, not test, not `partially_delivered`; each line has basis, a resend label, expected vs real cost and the loss; the month's total, and item 169's trigger named when crossed. `AlertOrderLossesCommandTest` (6 tests: window edges, exclusions, both triggers, resend label, the 1st of a month). Full suite 3,998 green. The email rendered with one line per order. The same query on production gives order 437 for 13 Nov, order 46 for 17 Oct and nothing for 14 Nov.
 
 **Founder habit, not code:** after switching a Digiflazz seller on the dashboard, run Price Sync before resending, so the resend preview shows the new cost.
+
+## 2026-11-15 — Late supplier results kept for combo legs, in their own table; the drift check emails (ADR-102, ADR-127 and ADR-083 2026-11-15 addenda, PRD §16 item 188)
+
+**The gap.** A Sukses on a Failed combo leg (or a Gagal on a Delivered one) was logged and dropped: `finalizePendingSuccess()` threw, the transaction rolled back, and the webhook answered "already finalized" at INFO. No evidence, no alert, and the refund guards could not see it.
+
+**What the code trace added.** (1) The single-order evidence in `supplier_response.late_supplier_result` was erased by any later `supplier_response` write (fulfill, resend, finalize: six sites), held one result, and mixed a late Gagal with a late Sukses, so a Gagal blocked refunds too. (2) A retry of a Failed order or leg mints a new reference and the webhook matches only the current one, so a late result on a superseded reference is a 404 at INFO, for single orders as well. (3) Settle and Order Detail never looked at the evidence.
+
+**Production (read-only).** No late result ever recorded (0 order rows; 0 contradiction log lines since 2026-11-01; none of 549 references in the supplier request log since 2026-10-16 went Gagal then Sukses). The Digiflazz funding ledger equals the polled balance to the rupiah (76,081,225 IDR; only 2 manual adjustments, both on 2026-09-15), so no Digiflazz charge has gone unrecorded. 51 combo orders; 11 Failed legs in 5 orders (PUBG, 11–13 Nov), all compensated by voucher. One of them (PG-YKY3NIKNYEKW, leg 1, `rc 02`) carries a serial number on its Gagal, unlike the others: worth a look in the Digiflazz history.
+
+**Decided (grilled, then stress-tested).** The stress test replaced the first plan (put leg evidence in the same JSON key) with an append-only table, after the trace showed the key is erased by later writes. Ledger adjustments stay manual (one drawdown per order or leg, ADR-127; precedent ADR-137 decision 14). Superseded references: no registry yet; the drift email catches their money effect (PRD §16 item 190 has the trigger).
+
+**Built.**
+- `late_supplier_results` (migration `2026_11_21_100000`), unique on reference and outcome; `OrderFulfillmentService::recordLateResult()` is its one writer, for single orders and legs; `alertLateResult()` emails both directions with the price and the adjustment to record.
+- `Order` scopes read only late Successes, so the wallet auto-refund and the voucher cash refund block on a late Success and not on a late Gagal; `VoucherController` reads the table.
+- Order Detail returns `late_supplier_results`; a banner lists them; the Issue Voucher and Resend modals warn on a late Success.
+- `app:refresh-supplier-balances` emails a drift over the threshold and skips the check while an order or leg of that supplier is pending or processing; the email counts Needs Review orders.
+- Tests: leg Sukses-on-Failed recorded once and alerted once across a redelivered webhook; leg Gagal-on-Delivered recorded, alerted, not blocking; evidence survives a later `supplier_response` write; the Order Detail payload; drift email, in-flight skip, Needs Review count; existing tests moved off the JSON key (one cleared evidence by nulling `supplier_response`, the hole this closes). Backend suite 4,004 green; admin `tsc`, lint, 22 tests green; dev DB migrated.
+
+**Founder action:** set Digiflazz's Drift Threshold to 1,000 IDR in Middleware → Suppliers (PRD §16 item 191).

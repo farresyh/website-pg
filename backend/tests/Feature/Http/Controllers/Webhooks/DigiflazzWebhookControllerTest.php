@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Http\Controllers\Webhooks;
 
+use App\Models\AdminUser;
 use App\Models\Game;
+use App\Models\LateSupplierResult;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
@@ -14,6 +16,7 @@ use App\Services\Order\DeliveryStatus;
 use App\Services\Order\PaymentStatus;
 use App\Services\Supplier\SupplierOutcome;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -608,7 +611,8 @@ class DigiflazzWebhookControllerTest extends TestCase
         $order->refresh();
         $this->assertSame(DeliveryStatus::Failed, $order->delivery_status);
         $this->assertSame('02', $order->supplier_response['error_code']);
-        $this->assertSame('Sukses', $order->supplier_response['late_supplier_result']['status']);
+        $this->assertSame('Sukses', $order->lateSupplierResults()->sole()->payload['status']);
+        $this->assertTrue(Order::query()->withLateSupplierResult()->whereKey($order->id)->exists());
         $this->assertSame(0, LedgerEntry::query()->where('reference_id', $order->id)->where('type', 'order_profit')->count());
     }
 
@@ -621,7 +625,11 @@ class DigiflazzWebhookControllerTest extends TestCase
 
         $order->refresh();
         $this->assertSame(DeliveryStatus::Delivered, $order->delivery_status);
-        $this->assertSame('Gagal', $order->supplier_response['late_supplier_result']['status']);
+        $result = $order->lateSupplierResults()->sole();
+        $this->assertSame(SupplierOutcome::Failure, $result->outcome);
+        $this->assertSame('Gagal', $result->payload['status']);
+        // A late Gagal means the player may lack the item: it never blocks compensation.
+        $this->assertFalse(Order::query()->withLateSupplierResult()->whereKey($order->id)->exists());
     }
 
     /** A plain duplicate (Sukses on Delivered) is not a contradiction — no evidence written. */
@@ -631,7 +639,7 @@ class DigiflazzWebhookControllerTest extends TestCase
 
         $this->sendWebhook($this->suksesData($order))->assertOk()->assertJson(['message' => 'already finalized']);
 
-        $this->assertArrayNotHasKey('late_supplier_result', $order->fresh()->supplier_response);
+        $this->assertSame(0, LateSupplierResult::query()->count());
     }
 
     /**
@@ -704,5 +712,57 @@ class DigiflazzWebhookControllerTest extends TestCase
         ])->assertOk();
 
         $this->assertSame(DeliveryStatus::PartiallyDelivered, $order->fresh()->delivery_status);
+    }
+
+    /** ADR-102 2026-11-15 addendum: a late Sukses on a Failed combo leg is kept, alerted once, and blocks compensation. */
+    public function test_a_late_sukses_on_a_failed_combo_leg_is_recorded_and_alerted_once(): void
+    {
+        $this->plunk();
+        [$order, $leg, $component] = $this->comboOrderWithPendingLeg(['delivery_status' => DeliveryStatus::Failed->value]);
+        $leg->update(['status' => DeliveryStatus::Failed->value]);
+        $data = ['ref_id' => $leg->reference_number, 'buyer_sku_code' => $component->supplier_package_ref, 'status' => 'Sukses', 'rc' => '00', 'sn' => 'SN-LATE', 'price' => 16102];
+
+        $this->sendWebhook($data)->assertOk()->assertJson(['message' => 'already finalized']);
+        $this->sendWebhook($data)->assertOk()->assertJson(['message' => 'already finalized']);
+
+        $this->assertSame(DeliveryStatus::Failed, $leg->fresh()->status);
+        $result = LateSupplierResult::query()->sole();
+        $this->assertSame([$order->id, $leg->id, SupplierOutcome::Success, $leg->reference_number], [$result->order_id, $result->order_delivery_leg_id, $result->outcome, $result->supplier_reference]);
+        $this->assertTrue(Order::query()->withLateSupplierResult()->whereKey($order->id)->exists());
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($r) => str_contains($r['subject'], 'Late supplier result') && str_contains($r['body'], 'leg 1') && str_contains($r['body'], '16,102'));
+    }
+
+    public function test_a_late_gagal_on_a_delivered_combo_leg_is_recorded_and_alerted_without_blocking(): void
+    {
+        $this->plunk();
+        [$order, $leg, $component] = $this->comboOrderWithPendingLeg(['delivery_status' => DeliveryStatus::Delivered->value]);
+        $leg->update(['status' => DeliveryStatus::Delivered->value]);
+
+        $this->sendWebhook(['ref_id' => $leg->reference_number, 'buyer_sku_code' => $component->supplier_package_ref, 'status' => 'Gagal', 'rc' => '02', 'price' => 16102])
+            ->assertOk()->assertJson(['message' => 'already finalized']);
+
+        $this->assertSame(DeliveryStatus::Delivered, $leg->fresh()->status);
+        $this->assertSame(SupplierOutcome::Failure, LateSupplierResult::query()->sole()->outcome);
+        $this->assertFalse(Order::query()->withLateSupplierResult()->whereKey($order->id)->exists());
+        Http::assertSentCount(1);
+    }
+
+    /** The evidence used to live in supplier_response, which a resend rewrites whole. */
+    public function test_the_evidence_survives_a_later_supplier_response_write(): void
+    {
+        $order = $this->pendingOrder(['delivery_status' => DeliveryStatus::Failed->value]);
+        $this->sendWebhook($this->suksesData($order))->assertOk();
+
+        $order->update(['supplier_response' => ['rc' => '03', 'status' => 'Pending']]);
+
+        $this->assertTrue(Order::query()->withLateSupplierResult()->whereKey($order->id)->exists());
+    }
+
+    private function plunk(): void
+    {
+        config(['services.plunk.api_key' => 'plunk-key', 'services.plunk.base_url' => 'http://plunk.test']);
+        Http::fake(['plunk.test/*' => Http::response(['success' => true])]);
+        AdminUser::factory()->create(['email' => 'boss@example.test', 'is_active' => true]);
     }
 }

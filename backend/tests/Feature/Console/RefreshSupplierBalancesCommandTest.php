@@ -2,11 +2,13 @@
 
 namespace Tests\Feature\Console;
 
+use App\Models\Order;
 use App\Models\Supplier;
 use App\Models\SupplierLedgerEntry;
 use App\Services\Accounting\SupplierLedgerEntryType;
 use App\Services\Backup\BackupFailureAlerter;
 use App\Services\CircuitBreaker\CircuitBreaker;
+use App\Services\Order\DeliveryStatus;
 use App\Services\Supplier\CircuitBreakingSupplierAdapter;
 use App\Services\Supplier\SupplierAdapter;
 use App\Services\Supplier\SupplierOrderRequest;
@@ -129,9 +131,11 @@ class RefreshSupplierBalancesCommandTest extends TestCase
         $this->assertStringContainsString('failed', $supplier->fresh()->last_test_result);
     }
 
-    /** ADR-083 decision 6: the freshly-polled balance vs the funding ledger's own sum. */
-    public function test_it_warns_when_the_funding_ledger_has_drifted(): void
+    /** ADR-083 decision 6 (2026-11-15 addendum: and emails): the freshly-polled balance vs the funding ledger's own sum. */
+    public function test_it_warns_and_emails_when_the_funding_ledger_has_drifted(): void
     {
+        $alerter = Mockery::spy(BackupFailureAlerter::class);
+        $this->app->instance(BackupFailureAlerter::class, $alerter);
         $supplier = $this->configuredGamevion(['drift_threshold' => '10']);
         SupplierLedgerEntry::query()->create([
             'supplier_id' => $supplier->id,
@@ -151,6 +155,41 @@ class RefreshSupplierBalancesCommandTest extends TestCase
                 && $ctx['threshold'] === 10.0);
 
         $this->artisan('app:refresh-supplier-balances')->assertSuccessful();
+
+        $alerter->shouldHaveReceived('alert')->once()->withArgs(fn (string $context, string $message, string $area) => $area === 'Supplier ledger'
+            && str_contains($message, '112.50') && str_contains($message, 'manual adjustment'));
+    }
+
+    /** ADR-083 2026-11-15 addendum: an order the supplier holds but hasn't settled moves its balance before our ledger. */
+    public function test_the_drift_check_waits_while_an_order_is_in_flight(): void
+    {
+        $alerter = Mockery::spy(BackupFailureAlerter::class);
+        $this->app->instance(BackupFailureAlerter::class, $alerter);
+        $supplier = $this->configuredGamevion(['drift_threshold' => '10']);
+        SupplierLedgerEntry::query()->create(['supplier_id' => $supplier->id, 'type' => SupplierLedgerEntryType::Topup->value, 'amount' => 700.0, 'currency' => 'MYR']);
+        Order::factory()->create(['supplier_id' => $supplier->id, 'delivery_status' => DeliveryStatus::Pending]);
+        $this->app->bind('supplier-adapter.gamevion', fn () => $this->fakeAdapter(true, 812.50));
+
+        Log::shouldReceive('warning')->never();
+        Log::shouldReceive('info')->once()->withArgs(fn (string $message, array $ctx) => $message === 'Supplier drift check skipped: orders in flight' && $ctx['in_flight'] === 1);
+
+        $this->artisan('app:refresh-supplier-balances')->assertSuccessful();
+
+        $alerter->shouldNotHaveReceived('alert');
+    }
+
+    public function test_the_drift_email_names_orders_awaiting_review(): void
+    {
+        $alerter = Mockery::spy(BackupFailureAlerter::class);
+        $this->app->instance(BackupFailureAlerter::class, $alerter);
+        $supplier = $this->configuredGamevion(['drift_threshold' => '10']);
+        SupplierLedgerEntry::query()->create(['supplier_id' => $supplier->id, 'type' => SupplierLedgerEntryType::Topup->value, 'amount' => 700.0, 'currency' => 'MYR']);
+        Order::factory()->create(['supplier_id' => $supplier->id, 'delivery_status' => DeliveryStatus::NeedsReview]);
+        $this->app->bind('supplier-adapter.gamevion', fn () => $this->fakeAdapter(true, 812.50));
+
+        $this->artisan('app:refresh-supplier-balances')->assertSuccessful();
+
+        $alerter->shouldHaveReceived('alert')->once()->withArgs(fn (string $context, string $message) => str_contains($message, '1 order(s) or combo leg(s) in Needs Review'));
     }
 
     public function test_it_does_not_warn_on_drift_when_no_drift_threshold_is_set(): void

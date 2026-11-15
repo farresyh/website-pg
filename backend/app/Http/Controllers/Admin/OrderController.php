@@ -12,6 +12,7 @@ use App\Models\CredentialReveal;
 use App\Models\JokiAssignment;
 use App\Models\JokiProgressUpdate;
 use App\Models\JokiTier;
+use App\Models\LateSupplierResult;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\OrderCredential;
@@ -963,6 +964,16 @@ class OrderController extends Controller
             // the after-the-fact visibility signal instead). Drives the
             // Order Detail "Profit Adjusted" info card.
             'profit_reconciled_flagged' => $order->hasReconciledProfitFlag(),
+            // ADR-102 2026-11-15 addendum: supplier results that arrived after
+            // the order or a combo leg was final. Drives the Order Detail
+            // banner and the warning in the settle and resend modals.
+            'late_supplier_results' => $order->lateSupplierResults()->with('leg:id,leg_number')->orderBy('id')->get()
+                ->map(fn (LateSupplierResult $r) => [
+                    'outcome' => $r->outcome->value,
+                    'leg_number' => $r->leg?->leg_number,
+                    'supplier_reference' => $r->supplier_reference,
+                    'created_at' => $r->created_at?->toISOString(),
+                ])->all(),
             // ADR-108 2026-10-04 addendum — what the ledger holds for this
             // order (null: earned nothing). platform_profit/affiliate_profit
             // above stay the expected figures.

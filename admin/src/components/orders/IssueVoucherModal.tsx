@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
-import { issueVoucherFromOrder, type IssueVoucherResult, type OrderDetail } from "@/lib/orders";
+import { hasLateSupplierSuccess, issueVoucherFromOrder, type IssueVoucherResult, type OrderDetail } from "@/lib/orders";
 
 interface IssueVoucherModalProps {
   isOpen: boolean;
@@ -80,6 +80,12 @@ function IssueVoucherFields({ onClose, onIssued, order }: Omit<IssueVoucherModal
 
   return (
     <>
+      {hasLateSupplierSuccess(order) && (
+        <p className="mb-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
+          The supplier reported success for this order after it failed. Check with the supplier and the customer first:
+          the credit may already be delivered.
+        </p>
+      )}
       {preview === null ? (
         <p className="mb-5 text-sm text-ink-muted">
           No amount can be worked out for this order (a delivery leg has no recorded price). Contact the developer
