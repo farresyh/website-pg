@@ -2834,3 +2834,15 @@ The founder asked for it. `staging` → `main`, merge `3b815832` at 15:07 UTC (2
 **Found:** OpenWA logs "X-Forwarded-For is present but TRUSTED_PROXIES is empty", so every dashboard request shares one rate-limit bucket. Small, since only the founder uses the dashboard; noted on item 183 for the next OpenWA maintenance window.
 
 **Open:** item 183 (OpenWA v0.30.0, delete `SendResellerBotReplyJob`) is now unblocked.
+
+## 2026-11-15 — The first real loss (order 437): `max_price` still not built, a daily loss email instead (ADR-137 and ADR-111 2026-11-15 addenda, PRD §16 item 169)
+
+**What happened.** Checking PRD §16 group D triggers against production (read-only) found item 169's trigger had fired: order 437 (`reseller-wallet`, 571 Diamonds, 2026-11-13 10:47 UTC) was paid at a catalog cost of RM36.52 and a price of RM36.89, and Digiflazz charged RM38.06 (167,325 IDR). The price sync at 11:05 saw the new cost. Loss RM1.17, `profit_reconciled_flagged` set, seen by no one: the flag shows only on Order Detail.
+
+**Evidence (read-only, prod, 2026-11-15).** 367 delivered orders with a real cost: 7 above the stored cost, 2 losses, both reseller-wallet (46: −13 sen, a pre-ADR-134 resend; 437: −117 sen). Margins: Standard min 4.3%, Affiliate 4.2%, Member 4.5%, Reseller wallet −0.7% to a 1.0% median. Of 13 resends at a higher cost only order 46 lost money. Busiest wallet hour: 7 orders. Digiflazz reported a price on all 338 single-package deliveries since 2026-11-01; the 43 combos take their cost from legs.
+
+**Decided (grilled, then stress-tested, with the founder).** Not `max_price` now (a refused wallet order is auto-refunded by ADR-139, but the reseller still sees a failure, for RM1.30 saved so far), not a wallet price cushion (charges every reseller during a growth period). Watch it: a daily email, with a self-checking trigger (over RM20 a month or RM5 on one order → build `max_price` for wallet orders only). The stress test moved the alert from a hook at the two reconciliation sites in `OrderFulfillmentService` to a sweep over stored results, the ADR-139 auto-refund pattern: every writer of `platform_profit` covered, and no change to the money-critical file. It also corrected an earlier claim in the session that a failed order has no automatic compensation (wallet orders do, ADR-139).
+
+**Built.** `app:alert-order-losses` (`order-loss-digest`, daily 00:00 UTC = 08:00 MYT, ROUTINE): orders delivered on the previous Malaysia day with `platform_profit < 0`, not test, not `partially_delivered`; each line has basis, a resend label, expected vs real cost and the loss; the month's total, and item 169's trigger named when crossed. `AlertOrderLossesCommandTest` (6 tests: window edges, exclusions, both triggers, resend label, the 1st of a month). Full suite 3,998 green. The email rendered with one line per order. The same query on production gives order 437 for 13 Nov, order 46 for 17 Oct and nothing for 14 Nov.
+
+**Founder habit, not code:** after switching a Digiflazz seller on the dashboard, run Price Sync before resending, so the resend preview shows the new cost.

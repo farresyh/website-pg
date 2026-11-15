@@ -1,6 +1,6 @@
 # ADR-137: Gamevion v2 API — rewrite the adapter for `gamevion.cloud`, async delivery with a signed webhook and same-reference replay
 
-> **Standing (2026-11-11):** In force (2026-11-05 addendum: decisions 13–24 after the grill, money code-trace and stress test; the PR 2 build addendum corrects decisions 17 and 19; the last addendum revisits decision 16: games picker, per-game failure, one sync job per supplier; the 2026-11-07 addendum decides no grace period and keeps `max_price` out until a real loss; the 2026-11-10 addendum records the price-sync ceiling). It replaces the API contract of [ADR-040](./ADR-040-gamevion-sandbox-integration.md) (old `api.gamevion.com`, sandbox header, `telp`, `callback_url`) and, for Gamevion only, the `duplicate_reference` → NeedsReview routing of [ADR-026](./ADR-026-delivery-side-reconciliation-ord-10.md); decision 21 tightened by [ADR-138](./ADR-138-package-sale-lifecycle.md) (repoint refuses an inactive product or an open order). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record.
+> **Standing (2026-11-15):** In force (2026-11-05 addendum: decisions 13–24 after the grill, money code-trace and stress test; the PR 2 build addendum corrects decisions 17 and 19; the last addendum revisits decision 16: games picker, per-game failure, one sync job per supplier; the 2026-11-07 addendum decides no grace period and keeps `max_price` out until a real loss; the 2026-11-10 addendum records the price-sync ceiling; the 2026-11-15 addendum keeps `max_price` out after the first real loss and sets a new trigger). It replaces the API contract of [ADR-040](./ADR-040-gamevion-sandbox-integration.md) (old `api.gamevion.com`, sandbox header, `telp`, `callback_url`) and, for Gamevion only, the `duplicate_reference` → NeedsReview routing of [ADR-026](./ADR-026-delivery-side-reconciliation-ord-10.md); decision 21 tightened by [ADR-138](./ADR-138-package-sale-lifecycle.md) (repoint refuses an inactive product or an open order). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record.
 
 **Status:** Proposed, 2026-11-04. Decisions 1–4 were made with the founder (in Malay) on 2026-11-04. Decisions 5–12 are Claude's draft from the vendor's API document and a first code-trace; they go through the technical grill and the money code-trace (AGENTS.md lifecycle step 2) before Accepted. The open questions at the end are settled in that grill.
 
@@ -227,3 +227,26 @@ No new table, worker or supervisor.
 
 **Consequence to track.** PRD §16 item 177, triggered when the chosen Gamevion games approach 140. The measured split lives in the `supervisor-price-sync` comment in `backend/config/horizon.php`.
 
+
+### 2026-11-15 addendum — the first real loss: `max_price` still not built, a new trigger (revisits the 2026-11-07 addendum's decision 2)
+
+**Context.** The 2026-11-07 trigger fired. Order 437 (`reseller-wallet`, 571 Diamonds, 2026-11-13) was paid at a catalog cost of RM36.52 and a price of RM36.89; Digiflazz charged RM38.06 (a seller price rise between two price syncs), so the order lost RM1.17 with no admin decision behind it. Read-only on prod, 2026-11-15, over the 367 delivered orders with a real cost:
+
+| Basis | Orders | Real > stored cost | Losses | Margin min / median |
+|---|---|---|---|---|
+| Standard | 193 | 2 (3 sen) | 0 | 4.3% / 9.2% |
+| Affiliate | 136 | 2 (1 sen) | 0 | 4.2% / 7.0% |
+| Member | 5 | 2 (18, 267 sen) | 0 | 4.5% / 7.0% |
+| Reseller wallet | 33 | 1 (154 sen) | 2 (orders 46, 437) | −0.7% / 1.0% |
+
+Order 46 (−13 sen) was an admin resend at the market-rate cost before ADR-134. Of 13 resends at a higher cost, only order 46 lost money; the rest kept a smaller profit. All-time loss: RM1.30. The founder switches the Digiflazz seller on the dashboard when the cheapest one is out of stock, then resends, and accepts a resend's higher cost to avoid customer complaints. No SKU has a dashboard "Harga Maksimal".
+
+**Decision** (grilled and stress-tested with the founder, 2026-11-15).
+1. **`max_price` is not built.** The risk sits only on the reseller-wallet basis, whose ~1% margin is smaller than a price move between two syncs; every other basis has kept at least 4.2% and never lost money. A refused wallet order would be auto-refunded within a minute (ADR-139 decisions 26–29), but the reseller would still see a failed order, and the money at stake does not justify that now.
+2. **The wallet price is not raised** to build a cushion: it would charge every reseller for a rare event during a customer-growth period.
+3. **The risk is watched instead:** ADR-111's 2026-11-15 addendum emails each day's loss-making deliveries with the month's total.
+4. **New trigger:** total loss over **RM20 in a Malaysia month**, or **over RM5 on one order**. The daily email says when it is crossed. Then build `max_price` for **reseller-wallet orders only**.
+5. **When it is built, the 2026-11-07 design stands, with three findings from today's code trace:** the limit must also ride `SupplierStatusCheckRequest` (the poll's re-submit can create an order the first call never made), not only `SupplierOrderRequest`; a combo leg has neither a stored cost nor an affiliate share (PRD §16 item 122), so the combo limit needs that first; and the founder's dashboard "Harga Maksimal" stays empty, with Digiflazz asked whether it and the API field combine.
+6. **Seller switch then resend:** no code change. After switching seller on the Digiflazz dashboard, run Price Sync before resending, so the resend preview shows the new cost.
+
+**Rationale.** The real fix (refuse, or charge a cushion) costs reseller trust on every order, to save RM1.30 so far. A self-checking trigger brings the fix back exactly when the numbers say so.
