@@ -503,4 +503,19 @@ class OrderControllerShowTest extends TestCase
             ->assertJsonPath('has_compensation_voucher', false)
             ->assertJsonPath('has_wallet_refund', false);
     }
+
+    /** ADR-102 2026-11-15 addendum: the late supplier results behind the Order Detail banner. */
+    public function test_it_lists_late_supplier_results_with_their_leg(): void
+    {
+        $order = $this->order(['payment_status' => PaymentStatus::Paid->value, 'delivery_status' => DeliveryStatus::Failed->value]);
+        $order->lateSupplierResults()->create(['outcome' => 'success', 'supplier_reference' => 'REF-LATE-1', 'payload' => ['status' => 'Sukses']]);
+        $this->actingAsAdmin();
+
+        $this->getJson("/api/orders/{$order->id}")
+            ->assertOk()
+            ->assertJsonCount(1, 'late_supplier_results')
+            ->assertJsonPath('late_supplier_results.0.outcome', 'success')
+            ->assertJsonPath('late_supplier_results.0.leg_number', null)
+            ->assertJsonPath('late_supplier_results.0.supplier_reference', 'REF-LATE-1');
+    }
 }

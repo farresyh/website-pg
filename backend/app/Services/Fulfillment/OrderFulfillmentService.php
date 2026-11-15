@@ -3,6 +3,7 @@
 namespace App\Services\Fulfillment;
 
 use App\Jobs\CheckSupplierDeliveryJob;
+use App\Models\LateSupplierResult;
 use App\Models\Order;
 use App\Models\OrderDeliveryLeg;
 use App\Models\OrderResendAttempt;
@@ -971,19 +972,21 @@ final class OrderFulfillmentService
         // roll-up commit together, so a leg is never saved Delivered with
         // its order left behind. The order is locked first — the same
         // order-then-legs sequence confirmComboLegsFailed() uses.
-        $resolved = DB::transaction(function () use ($order, $leg, $outcome, $supplierRef, $supplierResponse, $resendUnsafeWithSameReference, $outcomeConfirmedFailed, &$drawdownPrice) {
-            Order::query()->lockForUpdate()->findOrFail($order->id);
+        $lateResult = null;
+        $contradicted = false;
+
+        $resolved = DB::transaction(function () use ($order, $leg, $outcome, $supplierRef, $supplierResponse, $resendUnsafeWithSameReference, $outcomeConfirmedFailed, &$drawdownPrice, &$lateResult, &$contradicted) {
+            $lockedOrder = Order::query()->lockForUpdate()->findOrFail($order->id);
             $lockedLeg = OrderDeliveryLeg::query()->lockForUpdate()->findOrFail($leg->id);
 
             Log::withContext(['order_delivery_leg_id' => $lockedLeg->id, 'leg_number' => $lockedLeg->leg_number]);
 
             // Decision 3, leg form: no evidence column on a leg, so log only.
             if (self::contradictsFinalStatus($lockedLeg->status, $outcome)) {
-                Log::error('Supplier result contradicts the combo leg\'s final status — status unchanged', [
-                    'leg_status' => $lockedLeg->status->value,
-                    'outcome' => $outcome->value,
-                    'supplier_response' => $supplierResponse,
-                ]);
+                $lateResult = $this->recordLateResult($lockedOrder, $lockedLeg, $outcome, $supplierResponse);
+                $contradicted = true;
+
+                return $lockedOrder;
             }
 
             if ($outcome === SupplierOutcome::Success) {
@@ -1041,6 +1044,12 @@ final class OrderFulfillmentService
             return $this->resolveComboOutcome($order->fresh());
         });
 
+        if ($contradicted) {
+            $this->alertLateResult($lateResult);
+
+            throw new InvalidOrderTransitionException("Combo leg #{$leg->id} is already final ({$leg->fresh()->status->value}); a contradicting supplier result was recorded");
+        }
+
         if ($drawdownPrice !== null) {
             $this->supplierFunding->recordOrderDrawdown($order, $drawdownPrice, $leg->fresh());
         }
@@ -1078,8 +1087,9 @@ final class OrderFulfillmentService
 
         $drawdownPrice = null;
         $contradicted = false;
+        $lateResult = null;
 
-        $finalized = DB::transaction(function () use ($order, $outcome, $supplierRef, $supplierResponse, $resendUnsafeWithSameReference, $outcomeConfirmedFailed, $expectedSupplierId, &$drawdownPrice, &$contradicted) {
+        $finalized = DB::transaction(function () use ($order, $outcome, $supplierRef, $supplierResponse, $resendUnsafeWithSameReference, $outcomeConfirmedFailed, $expectedSupplierId, &$drawdownPrice, &$contradicted, &$lateResult) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
             if ($expectedSupplierId !== null && $locked->supplier_id !== $expectedSupplierId) {
@@ -1098,14 +1108,7 @@ final class OrderFulfillmentService
             // the customer keeps the compensation, never both.
             if (self::contradictsFinalStatus($locked->delivery_status, $outcome)
                 || ($outcome === SupplierOutcome::Success && $locked->isAlreadyCompensated())) {
-                $locked->update(['supplier_response' => array_merge(
-                    is_array($locked->supplier_response) ? $locked->supplier_response : [],
-                    ['late_supplier_result' => is_array($supplierResponse) ? $supplierResponse : ['outcome' => $outcome->value]],
-                )]);
-                Log::error('Supplier result contradicts the order\'s final delivery status — kept as evidence, status unchanged', [
-                    'delivery_status' => $locked->delivery_status->value,
-                    'outcome' => $outcome->value,
-                ]);
+                $lateResult = $this->recordLateResult($locked, null, $outcome, $supplierResponse);
                 $contradicted = true;
 
                 return $locked;
@@ -1204,9 +1207,7 @@ final class OrderFulfillmentService
         });
 
         if ($contradicted) {
-            if ($outcome === SupplierOutcome::Success) {
-                $this->alertLateSuccess($finalized);
-            }
+            $this->alertLateResult($lateResult);
 
             throw new InvalidOrderTransitionException("Order #{$order->id} is already final ({$finalized->delivery_status->value}); a contradicting supplier result was recorded");
         }
@@ -1219,21 +1220,71 @@ final class OrderFulfillmentService
     }
 
     /**
-     * ADR-139 decision 29: a Success after Failed or after compensation may
-     * mean the customer has the credit and the refund too. The automatic
-     * wallet refund skips such an order; a person decides. Best effort: an
-     * alert failure never changes the outcome above.
+     * ADR-102 2026-11-15 addendum: the one writer of a contradicting supplier
+     * result, for an order or a combo leg, under the caller's lock. Returns
+     * the new row, or null when the same result (same reference and outcome)
+     * was already recorded: a redelivered webhook or a repeated poll alerts once.
      */
-    private function alertLateSuccess(Order $order): void
+    private function recordLateResult(Order $order, ?OrderDeliveryLeg $leg, SupplierOutcome $outcome, mixed $supplierResponse): ?LateSupplierResult
     {
+        $reference = (string) ($leg?->reference_number ?? $order->reference_number);
+
+        Log::error('Supplier result contradicts the final status — kept as evidence, status unchanged', [
+            'order_id' => $order->id,
+            'order_delivery_leg_id' => $leg?->id,
+            'status' => ($leg?->status ?? $order->delivery_status)->value,
+            'outcome' => $outcome->value,
+        ]);
+
+        $inserted = LateSupplierResult::query()->insertOrIgnore([
+            'order_id' => $order->id,
+            'order_delivery_leg_id' => $leg?->id,
+            'outcome' => $outcome->value,
+            'supplier_reference' => $reference,
+            'payload' => json_encode(is_array($supplierResponse) ? $supplierResponse : ['outcome' => $outcome->value]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $inserted === 0 ? null : LateSupplierResult::query()
+            ->where('supplier_reference', $reference)->where('outcome', $outcome->value)->first();
+    }
+
+    /**
+     * ADR-139 decision 29 and the ADR-102 2026-11-15 addendum: a Success after
+     * Failed (or after compensation) may mean the player has the item and a
+     * refund too; a Failure after Delivered may mean the player has nothing.
+     * Either way the supplier balance moved without a ledger row, so the
+     * admin records the adjustment. Best effort: an alert failure never
+     * changes the outcome.
+     */
+    private function alertLateResult(?LateSupplierResult $result): void
+    {
+        if ($result === null) {
+            return;
+        }
+
         try {
-            ($this->alerter ?? app(BackupFailureAlerter::class))->alert(
-                'Supplier reported success after the order failed',
-                "Order {$order->order_number} is {$order->delivery_status->value}".($order->isAlreadyCompensated() ? ' and already compensated' : '').', but its supplier later reported success. The credit may have been delivered. Check with the supplier and the customer before any refund or resend; the supplier result is kept on the order.',
-                'Late supplier result',
-            );
+            $order = $result->order;
+            $leg = $result->leg;
+            $price = $result->payload['price'] ?? null;
+            $priceText = is_numeric($price) ? number_format((float) $price).' '.($leg?->supplier ?? $order->supplier)?->currency : 'an unreported amount';
+            $where = "Order {$order->order_number}".($leg !== null ? " (combo leg {$leg->leg_number})" : '');
+
+            [$context, $message] = $result->outcome === SupplierOutcome::Success
+                ? ['Supplier reported success after the order failed',
+                    "{$where} is {$order->delivery_status->value}".($order->isAlreadyCompensated() ? ' and already compensated' : '')
+                    .", but the supplier later reported success for reference {$result->supplier_reference}, charging {$priceText}. "
+                    .'The credit may have been delivered: check with the supplier and the customer before any refund, resend or settlement. '
+                    ."The supplier ledger has no row for this charge: once confirmed, record a manual adjustment of -{$priceText}."]
+                : ['Supplier reported failure after the order was delivered',
+                    "{$where} is delivered, but the supplier later reported failure for reference {$result->supplier_reference}. "
+                    .'The customer may not have the credit: check with the supplier and the customer. '
+                    ."If the supplier returned {$priceText}, record a manual adjustment of +{$priceText} in the supplier ledger."];
+
+            ($this->alerter ?? app(BackupFailureAlerter::class))->alert($context, $message, 'Late supplier result');
         } catch (Throwable $e) {
-            Log::error('Late-success alert failed', ['order_id' => $order->id, 'exception' => $e->getMessage()]);
+            Log::error('Late supplier result alert failed', ['late_supplier_result_id' => $result->id, 'exception' => $e->getMessage()]);
         }
     }
 

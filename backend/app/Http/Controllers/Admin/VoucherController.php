@@ -14,6 +14,7 @@ use App\Models\VoucherRedemption;
 use App\Services\Fulfillment\OrderFulfillmentException;
 use App\Services\Fulfillment\OrderSettlementService;
 use App\Services\Notification\CustomerNotificationService;
+use App\Services\Supplier\SupplierOutcome;
 use App\Services\Voucher\InvalidVoucherException;
 use App\Services\Voucher\VoucherService;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -127,12 +128,13 @@ class VoucherController extends Controller
             // ADR-004 2026-11-12 addendum, decision 4: what the admin checks before a cash refund.
             'refund_source_orders' => $voucher->isCustomerCash()
                 ? Order::query()->whereIn('id', $this->vouchers->sourceOrderIds($voucher))
-                    ->get(['id', 'order_number', 'delivery_status', 'supplier_response'])
+                    ->with(['lateSupplierResults' => fn ($q) => $q->where('outcome', SupplierOutcome::Success->value)])
+                    ->get(['id', 'order_number', 'delivery_status'])
                     ->map(fn (Order $o) => [
                         'id' => $o->id,
                         'order_number' => $o->order_number,
                         'delivery_status' => $o->delivery_status->value,
-                        'late_supplier_result' => $o->supplier_response['late_supplier_result'] ?? null,
+                        'late_supplier_result' => $o->lateSupplierResults->first()?->payload,
                     ])
                 : [],
             'stats' => [
