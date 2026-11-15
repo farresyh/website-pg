@@ -1,6 +1,6 @@
 # ADR-111: Real-cost profit reconciliation at delivery time — widens ADR-033's FX conversion boundary to a second call site
 
-> **Standing (2026-11-01):** In force; decisions 2 and 6 revised by [ADR-134](./ADR-134-landed-cost-rate.md) (real cost at the landed rate, 2026-11-01 addendum); decision 8's feature flag is removed by [ADR-127](./ADR-127-financial-truth-dated-facts.md) (2026-10-24 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-15):** In force; decisions 2 and 6 revised by [ADR-134](./ADR-134-landed-cost-rate.md) (real cost at the landed rate, 2026-11-01 addendum); a daily email of loss-making deliveries (2026-11-15 addendum); decision 8's feature flag is removed by [ADR-127](./ADR-127-financial-truth-dated-facts.md) (2026-10-24 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — grilled (`/mattpocock-skills:grilling`, 2 rounds, 8 questions) 2026-09-21/22, sparked by a real production incident investigated live via SSH. **Built 2026-09-22, decisions 1-9 exactly as decided below, no design changes made mid-build. 🟢 LIVE PROD, flag enabled, verified against a real delivered order same day.** Feature-flagged (`config('services.real_cost_reconciliation.enabled')`) — capture (decision 2) runs unconditionally on every delivery; only whether it's USED to recompute `platform_profit` (decision 3) is gated. Founder set `REAL_COST_RECONCILIATION_ENABLED=true` in Forge before the `staging`→`main` release (PR #266); confirmed live via SSH against real order `PG-4VPQQFOLJQQ1` (Digiflazz, delivered 2026-09-22 06:45:53 UTC) — `real_cost_price_sen=360`, `cost_basis=real`, `platform_profit=36` exactly matches `selling_price(396) − real_cost(360) − affiliate_profit(0)`.
 
@@ -75,3 +75,17 @@ No stored price moves: within a 24h cache TTL, the rates were already equal in p
 ### 2026-11-01 addendum — real cost at the landed rate (ADR-134)
 
 Decisions 2 and 6 are revised by [ADR-134](./ADR-134-landed-cost-rate.md) decisions 5–6. The supplier's real per-transaction price is converted at the supplier's landed cost rate (its deposit pool), not the market rate, and rounded half-up like the pool, so per-order profit matches funded COGS. `captureRealCostSen()` takes the supplier instead of a currency. Each order records `cost_rate` (`market` before the change, `landed` after). Decision 3's identity and decision 7's drift flag are unchanged.
+
+### 2026-11-15 addendum — a daily email of loss-making deliveries
+
+**Context.** `profit_reconciled_flagged` is shown only on Order Detail, so a loss is seen only by someone who opens the order. Order 437 (`reseller-wallet`, 13 Nov) was delivered at −RM1.17 (catalog cost RM36.52 at payment, Digiflazz charged RM38.06) and nobody noticed for two days. Read-only on prod, 2026-11-15: 367 delivered orders carry a real cost; 7 came in above the stored cost; 2 lost money, both reseller-wallet (orders 46 and 437, RM1.30 in all). The decision not to build `max_price` yet is ADR-137's 2026-11-15 addendum.
+
+**Decision** (grilled with the founder, 2026-11-15).
+1. **A daily sweep, not a hook.** `app:alert-order-losses` runs at 08:00 Malaysia (`order-loss-digest`, ROUTINE tier) and emails every active admin (`BackupFailureAlerter`, area "Order loss") the orders delivered on the previous Malaysia day with `platform_profit < 0`, and nothing when there are none. It reads the stored result, like ADR-139's wallet auto-refund sweep, so every writer of `platform_profit` (single and combo delivery, manual mark-delivered, resend) is covered without touching `OrderFulfillmentService`.
+2. **What a line says:** order number, pricing basis, "resend" when the order has a resend attempt, the expected cost (`cost_price`), the real cost (`real_cost_price_sen`, "not reported" when null) and the loss.
+3. **The trigger checks itself.** The email carries this Malaysia month's total loss and names PRD §16 item 169's trigger (over RM20 in a month, or over RM5 on one order) when it is crossed.
+4. **Out of scope:** a settled order (`partially_delivered`: the admin saw the amounts when settling), test orders, and a positive drift that `profit_reconciled_flagged` also marks (not a loss).
+
+**Rationale.** A hook at the two reconciliation sites would add code to a 1,786-line money-critical service and miss any future writer. At up to 24 hours late, a digest changes nothing for losses of a ringgit or two, and it cannot flood an inbox during a price spike.
+
+**Consequence to track.** A combo leg with no supplier price is costed at catalog cost (PRD §16 item 122), so a loss on that leg is not visible to this sweep. Digiflazz reported a price on every single-package delivery checked (338 of 338 since 2026-11-01).
