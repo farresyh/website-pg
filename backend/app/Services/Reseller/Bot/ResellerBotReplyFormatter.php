@@ -481,19 +481,6 @@ final class ResellerBotReplyFormatter
     }
 
     /**
-     * E10 hardening (2026-09-10 reseller-family audit, `docs/build-log.md`):
-     * shared copy for the read-only commands (`.baki`/`.trackorder`/
-     * `.listharga`) that now guard on `Reseller.is_active`, matching
-     * `.order`'s own `ResellerInactiveException` rejection in spirit —
-     * a clean reseller-facing message rather than leaking an internal
-     * exception string.
-     */
-    public static function resellerInactive(): string
-    {
-        return 'Akaun reseller ini telah dinyahaktifkan. Sila hubungi admin.';
-    }
-
-    /**
      * ADR-075 2026-11-14 addendum, decision 2: a money command that reached
      * us too late (an outage held it) is not run. `$sentAt` is the message's
      * own time, shown so a reseller whose phone clock is wrong can see why.

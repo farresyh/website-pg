@@ -13,6 +13,8 @@ use App\Services\Payment\PaymentResponse;
 use App\Services\Payment\PaymentWebhookEvent;
 use App\Services\Reseller\Bot\ResellerBotReplyFormatter;
 use App\Services\Reseller\Bot\ResellerBotService;
+use App\Services\Reseller\ResellerAccountStatus;
+use App\Services\Reseller\ResellerDeactivationReason;
 use App\Services\Reseller\ResellerWalletTopupService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -193,7 +195,7 @@ class ResellerBotBatalBakiTest extends TestCase
         $this->bindChip();
         $reseller = $this->makeLinkedReseller();
         $attempt = $this->pendingTopup($reseller);
-        $reseller->update(['is_active' => false]);
+        app(ResellerAccountStatus::class)->deactivate($reseller, ResellerDeactivationReason::Manual, null);
 
         $this->send('.batalbaki');
 

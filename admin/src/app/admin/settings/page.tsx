@@ -20,8 +20,9 @@ import FooterSettingsSection from "@/components/settings/FooterSettingsSection";
 import PlatformSettingsSection from "@/components/settings/PlatformSettingsSection";
 import CustomerLoginPolicySection from "@/components/settings/CustomerLoginPolicySection";
 import PurchaseBalanceSection from "@/components/settings/PurchaseBalanceSection";
+import ResellerInactivitySection from "@/components/settings/ResellerInactivitySection";
 
-type Tab = "branding" | "footer" | "platform" | "customer-login" | "purchase-balance";
+type Tab = "branding" | "footer" | "platform" | "customer-login" | "purchase-balance" | "reseller-inactivity";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "branding", label: "Store Branding" },
@@ -29,6 +30,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "platform", label: "Platform Settings" },
   { key: "customer-login", label: "Customer Login Policy" },
   { key: "purchase-balance", label: "Purchase Balance" },
+  { key: "reseller-inactivity", label: "Reseller Inactivity" },
 ];
 
 export default function SettingsPage() {
@@ -108,6 +110,9 @@ export default function SettingsPage() {
       )}
       {tab === "purchase-balance" && (
         <PurchaseBalanceSection platform={data.platform} paymentMethods={data.payment_methods} onSaved={() => refresh()} />
+      )}
+      {tab === "reseller-inactivity" && (
+        <ResellerInactivitySection platform={data.platform} onSaved={() => refresh()} />
       )}
     </div>
   );

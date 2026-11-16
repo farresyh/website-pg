@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\Affiliate\AffiliateDomainStatus;
+use App\Services\Affiliate\AffiliateStatus;
 use App\Services\Auth\AccountOwnerType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -37,12 +38,18 @@ class Affiliate extends Model
         'membership_enabled',
         'joki_enabled',
         'notes',
-        'bank_name',
-        'bank_account_no',
-        'bank_account_holder',
+        // The bank fields are deliberately not fillable: their one writer is
+        // AffiliateBankDetailsService, which records every change and tells
+        // the affiliate and the admins (ADR-058 2026-11-16 addendum).
+    ];
+
+    /** Mirrors the column default, so a model fresh from create() reads the same as the row. */
+    protected $attributes = [
+        'status' => 'active',
     ];
 
     protected $casts = [
+        'status' => AffiliateStatus::class,
         'markup_pct' => 'decimal:2',
         'max_markup_pct' => 'decimal:2',
         'is_owned' => 'boolean',
@@ -141,6 +148,12 @@ class Affiliate extends Model
      * pricing paths; `primary()` stays only for the non-`Host` contexts
      * above.
      */
+    /** RES-5: the one reading of the activate/deactivate switch. */
+    public function isActive(): bool
+    {
+        return $this->status === AffiliateStatus::Active;
+    }
+
     public static function primary(): self
     {
         return static::query()->where('is_primary', true)->sole();

@@ -72,6 +72,7 @@ class TaskSchedule
         'rebate-progress-notify',
         'price-sync-staleness-check',
         'order-loss-digest',
+        'reseller-dormancy',
     ];
 
     public static function isCritical(string $name): bool
@@ -165,6 +166,12 @@ class TaskSchedule
         $schedule->command('app:alert-order-losses')
             ->daily()
             ->name('order-loss-digest')
+            ->withoutOverlapping($overlap);
+
+        // ADR-142 decision 23: 10:00 MYT, so the warning and notice arrive in the day.
+        $schedule->command('app:deactivate-dormant-resellers')
+            ->dailyAt('02:00')
+            ->name('reseller-dormancy')
             ->withoutOverlapping($overlap);
 
         // ADR-139 decision 7: a tier change takes effect at 00:00 KL on the

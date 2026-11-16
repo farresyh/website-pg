@@ -2875,3 +2875,67 @@ The founder asked for it. `staging` → `main`, merge `3b815832` at 15:07 UTC (2
 **Built** on `fix/mlbb-isan-validator`: `IsanMlbbValidator` (only 404 + `success:false` is invalid; WAF, 429, 5xx, timeout or an odd body is unavailable), MLBB chain isan → UniPlay for checkout, the reseller bot and the public checker; Redx bound only for Free Fire, Genshin, HSR and ZZZ (standalone), its MLBB `timeout` config removed. The founder first said drop UniPlay, then corrected it mid-build: keep UniPlay, drop Redx from MLBB.
 
 **After release, check:** the first real MLBB checks have `player_validations.provider = isan` and a Malaysian ID returns `country_code = MY` (only the README's Indonesian sample was tried live).
+
+## 2026-11-16 — Release #802: MLBB player check restored (isan → UniPlay), loss email, late supplier results
+
+The founder asked for it, to restore MLBB checks. `staging` → `main`, merge `5f1bc5cf`, carrying #798–#801. One migration. CI run `43805670052` green in every job, `deploy` included.
+
+**Checked after release (production, read-only):**
+- The box runs `5f1bc5c` (release `83074420`); `2026_11_21_100000_create_late_supplier_results_table` ran (batch 73); Horizon running; `/api/health` ok; Vercel production green for all four apps.
+- The bound MLBB chain via tinker on the box: README sample ID → valid, `provider = isan`, "Outrageous Dominance", `ID`; a made-up ID → invalid, `isan`.
+- One paid order was in flight at merge (`PG-MDOEVYENJSYA`, `pending` at the supplier); it was `delivered` at 04:46 UTC, after the restart.
+
+**isan beyond MLBB (from the box, 2026-11-16):** Free Fire returns a nickname for a real ID and `success: true` with no name for a made-up one, never a region. Genshin and HSR answered 404 "Not found" for the founder's own real UIDs, as did every README sample for Genshin, HSR and ZZZ; isan's last commits say its author stopped maintaining the Codashop-based lookups ("use gopay games, I'm tired with coda", 2026-02-10). So isan is not a source for those three. PRD §16 item 186 holds the founder's open decision.
+
+**Open:** a real Malaysian MLBB check (`player_validations.provider = isan`, `country_code = MY`); item 191 (Drift Threshold 1,000 IDR) can now be set.
+
+## 2026-11-16 — Gamevion's price sync timed out on every run; the founder switched Gamevion off (PRD §16 items 177, 162)
+
+**Found (read-only prod, in a backlog check).** 183 `SyncSupplierCatalogJob` failures in 7 days, from 2026-11-12, all Gamevion, all `TimeoutExceededException` (300 s). Gamevion synced in 20 of 48 runs on 12 Nov, 4 on 13 Nov, 1 on 14 Nov and 0 of 49 on 15 Nov; runs averaged ~165 s on 7–11 Nov and ~320 s after. The stale/recovered CRITICAL emails alternated, and Digiflazz, on the same single `price-sync` worker, synced ~5 minutes late each run behind it.
+
+**Cause: Gamevion, not our code** (no sync or Gamevion commit between 10 and 13 Nov). Timed from the box, every one of the 74 chosen pricelists answered 200, but about 19 now take 4–10 s instead of ~0.3 s (`freefire_latam`, `valorant_sg/ph/th`, `mlbb_id`, `wwm`, `arena_breakout`, `bloodstrike_*` and others). Pricelists ~184 s + the forced 1.6 s pauses ~117 s + field calls ~7 s ≈ 310 s, and a call over our 10 s timeout is retried up to three times. `supplier_request_logs` agrees: 10 s `exception` rows only from 12 Nov (26–62 a day). Item 177's "about 140 games per 300 s" (2026-11-10) assumed Gamevion answers fast.
+
+**Impact:** none on money (Gamevion unfunded, 0 active packages); false CRITICAL alerts and a late Digiflazz sync.
+
+**Done (founder, 10:04 UTC):** Gamevion (API) switched off in Middleware → Suppliers; 0 packages and 0 combos taken off sale. **Checked after:** `is_active = 0`; the 10:30 run took 31 s, Digiflazz only, synced at 10:30:36; no failed job since 10:06.
+
+**Open:** item 177 now holds the fix to make before Gamevion is switched back on (item 162 step 0).
+
+Also seen in the same check, not yet acted on: three storefront `TrackedOrder` schema-drift warnings (2026-11-14 to 16, delivered orders, a 2xx body that was not JSON, cause unknown); real Malaysian MLBB checks after release #802 (5 `isan/valid/MY`, 1 `uniplay/valid/MY`), which closes release #802's open check.
+
+## 2026-11-16 — Affiliate deactivation hardened: read-only by route, bank-detail changes recorded (ADR-058 2026-11-16 addendum)
+
+**Why.** The founder asked for an audit of affiliate and reseller deactivation before redesigning reseller deactivation (ADR-142, next). The affiliate findings are fixed here first, because they do not touch reseller code and one is money: `Affiliate\ProfileController::update()` had no `assertWritable()`, so a deactivated affiliate could change its payout bank details, and the monthly payout copies them when a ticket opens.
+
+**Built** (`fix/affiliate-deactivation-hardening`):
+- `EnsureAffiliateWritable` (`affiliate.writable`) on the whole affiliate portal group; opt-outs `pricing/preview` and `impersonation/end` pinned in `RouteAccessTest`. The `AssertsAffiliateWritable` trait and its 16 per-method calls are gone.
+- `AffiliateStatus` enum cast on `affiliates.status`, `Affiliate::isActive()` at the nine former string comparisons; the model's `$attributes` default mirrors the column.
+- `AffiliateBankDetailsService::change()`: the bank fields are no longer fillable; a locked write plus an `affiliate_bank_changes` row (migration `2026_11_22_100000`; FK column `impersonation_session_id`, since the long name was 65 characters, over MySQL's 64); after the commit, emails to the affiliate's logins and contact email (`emails.affiliate-bank-changed`) and to every admin through `BackupFailureAlerter` (area "Affiliate bank"). The three fields are required together.
+- `AffiliateController::updateStatus()`: 422 for the primary affiliate; status, impersonation end and domain suspension in one transaction; `propagateChange()` flushes caches after the commit.
+- The portal profile returns `writable` and locks its form with the existing `InactiveNotice`; the admin dialog no longer says "503".
+
+**Found on the way.** The admin Withdrawals page already flags a ticket whose bank details differ from the last approved payout, so that was not rebuilt. Three tests set `status` to `'deactivated'` or `'suspended'`, values the code silently treated as inactive; production holds only `active`.
+
+**Verified.** Backend suite 4,017 green; `AffiliateWithdrawalConcurrencyTest` green on MySQL (the new migration runs there); portal `tsc`, lint and 22 tests; admin `tsc` and lint. Dev DB migrated. Live on the local Herd backend with a throwaway inactive affiliate: profile `writable: false`, `PUT /profile` and `PUT /storefront/branding` 403, `POST /storefront/pricing/preview` 200; the portal profile page (Playwright) shows the notice with all five inputs and Save disabled. The throwaway rows were deleted afterwards.
+
+**For ADR-142 (reseller), recorded here so it is not lost:** the bot's `.topupbaki` (and `.info`, `.checkid`, `.list`, `.batalbaki`) still runs for a deactivated reseller: `ResellerBotService` blocks only `.baki`, `.trackorder` and `.listharga`, and `ResellerWalletTopupService::initiate()` has no `is_active` check, despite a comment saying it does. `ResellerOrderPlacementService` checks `is_active` before taking the wallet lock.
+
+## 2026-11-16 — Reseller dormancy and one reseller status seam (ADR-142, PRD §16 item 193)
+
+**Why.** The founder wants approved resellers who never use the platform switched off: no transaction for 7 days → warned, then deactivated (not closed, so no refund) until an admin reactivates. Grilled in three rounds and stress-tested against the code (ADR-142). Production: three resellers, all active; with 7 days, all three would have been deactivated at some point.
+
+**Built** (`feature/reseller-dormancy`):
+- `ResellerAccountStatus`: the one writer of `resellers.is_active` (no longer fillable; the model default mirrors the column). `deactivate()` / `reactivate()` hold the wallet `ledger_accounts` row, write `deactivation_reason` (`manual`, `dormant`, `closed`), `deactivated_at` and a `reseller_status_changes` row, and end portal tokens. The admin toggle and Close account go through it.
+- One denial (`ResellerDenial`, English and Malay): the portal login now refuses a deactivated reseller with the reason; `EnsureAccountType`; `EnsureResellerApiKey` (`RESELLER_INACTIVE`, message names the reason); the bot refuses every command except `.batalbaki` (ADR-135 decision 8, found in the trace); `ResellerWalletTopupService::initiate()` checks too. This closes the live bug: `.topupbaki` ran for a deactivated reseller.
+- `ResellerOrderPlacementService` re-reads the flag under the wallet lock.
+- `ResellerDormancyService` + `app:deactivate-dormant-resellers` (02:00 UTC = 10:00 MYT, `ROUTINE`): activity is the latest `wallet_debit` or `wallet_topup` ledger entry; anchor = latest of activity, approval, last reactivation, switch-on time; warning at day (period − lead); deactivation only when a warning for the same anchor went out the full lead earlier, never with a pending top-up, re-checked under the lock; `reseller_dormancy_notices` unique per spell; WhatsApp via the outbox, email via Plunk, an admin digest only on a day something happened.
+- Settings on `platform_settings` (switch off by default, 7 days, 3-day lead, WhatsApp number), `PUT /settings/reseller-dormancy-policy` behind step-up; Admin → Settings → Reseller Inactivity; the Resellers page shows the reason and date, a status filter, the auto-deactivate state and a status-history dialog.
+- Reseller API docs v1.6.2 (the `RESELLER_INACTIVE` message names the reason; code unchanged).
+
+**Two gotchas hit.**
+1. **The concurrency suite caught a double spend I introduced.** The first version of the seam's lock called `openAccount()` (a plain `firstOrCreate` SELECT) before `lockForUpdate()`. MySQL REPEATABLE READ fixes a transaction's snapshot at its first plain read, so the debit's later balance read missed a rival order's committed debit: two simultaneous orders of RM9.45 both passed on a RM10 balance (`ResellerOrderPlacementConcurrencyTest`). Fixed: only locking reads before the lock; the account is opened only when missing. Rule worth keeping: inside a money transaction, take the lock before any plain SELECT.
+2. **The first migration broke the local dev DB.** A foreign key on `resellers` made sqlite rebuild the table, and the `llm_report_*` views blocked the rename, leaving only `__temp__resellers` (4 rows, intact). Recovered from a file copy taken first: in one transaction the views were dropped, `resellers` recreated from a fresh schema's DDL, rows copied, the temp table dropped and the views recreated; `integrity_check` and `foreign_key_check` clean, schema identical to a fresh migrate. The migration now adds plain nullable columns only (who made a change lives in the history). Recorded as `backend/AGENTS.md` gotcha 10.
+
+**Verified.** Backend suite green after merging `staging` (count below in the PR); reseller concurrency tests green on MySQL (placement, closure, top-up, refund). The two key tests fail without their fix (order from a stale active copy; `.topupbaki` while deactivated). Admin `tsc` and lint. Live on local: a dormant reseller's portal login answers 422 with the reason and the WhatsApp number; Playwright screenshots of Settings → Reseller Inactivity, the Resellers page (warn tag "inactive", "for inactivity, 16 Nov 2026") and the history dialog ("Deactivated for inactivity · automatic"). Throwaway rows deleted afterwards.
+
+**After release (founder):** turn the switch on and set the WhatsApp number. Resellers #1 and #2 would then be warned 4 days later and deactivated 3 days after that unless they transact.

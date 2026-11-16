@@ -95,7 +95,7 @@ final class MembershipReminderService
     private function takesRenewals(?Affiliate $affiliate): bool
     {
         return $affiliate !== null
-            && $affiliate->status === 'active'
+            && $affiliate->isActive()
             && $affiliate->membershipEnabledEffective();
     }
 }

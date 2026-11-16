@@ -152,8 +152,8 @@ class OrderController extends Controller
                 payloadHash: self::payloadHash($data),
                 maxPriceSen: isset($data['max_price_sen']) ? (int) $data['max_price_sen'] : null,
             ));
-        } catch (ResellerInactiveException) {
-            throw ResellerApiException::resellerInactive();
+        } catch (ResellerInactiveException $e) {
+            throw ResellerApiException::resellerInactive($e->getMessage());
         } catch (NoResellerTierAssignedException) {
             throw ResellerApiException::noTierAssigned();
         } catch (InsufficientBalanceException) {

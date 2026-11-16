@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Affiliate\Storefront;
 
-use App\Http\Controllers\Affiliate\Concerns\AssertsAffiliateWritable;
 use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Affiliate\Storefront\UpdateGameVisibilityRequest;
@@ -24,8 +23,6 @@ use Illuminate\Http\Request;
  */
 class StorefrontGameController extends Controller
 {
-    use AssertsAffiliateWritable;
-
     public function index(Request $request): JsonResponse
     {
         $affiliate = $request->user()->affiliateOwner();
@@ -47,14 +44,13 @@ class StorefrontGameController extends Controller
                 'category' => $g->category,
                 'is_visible' => ! $hidden->has($g->id),
             ]),
-            'writable' => $affiliate->status === 'active',
+            'writable' => $affiliate->isActive(),
         ]);
     }
 
     public function update(UpdateGameVisibilityRequest $request, Game $game): JsonResponse
     {
         $affiliate = $request->user()->affiliateOwner();
-        $this->assertWritable($affiliate);
         abort_unless($game->is_active && ! $game->is_joki, 404);
 
         $isVisible = $request->boolean('is_visible');

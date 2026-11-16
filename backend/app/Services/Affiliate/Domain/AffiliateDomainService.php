@@ -284,7 +284,8 @@ class AffiliateDomainService
 
     /**
      * RES-5 deactivate (addendum section G): every provider-managed row
-     * → `suspended`; the storefront then returns 503 for that host. The
+     * → `suspended`; the storefront then shows its "store unavailable"
+     * page for that host (the API answers 404 `unknown_storefront_host`). The
      * provider domain is left attached (DNS stays valid for a fast
      * reactivate).
      */
@@ -410,10 +411,16 @@ class AffiliateDomainService
      * `canonical_origin`, which follows the primary domain.
      * `BrandingController::forgetCache()` also runs the Next purge.
      */
+    /**
+     * After the commit, so a request that reads in between never caches the
+     * old domain state back in; runs at once when there is no transaction.
+     */
     private function propagateChange(int $affiliateId): void
     {
-        $this->corsOrigins->flush();
-        BrandingController::forgetCache($affiliateId);
+        DB::afterCommit(function () use ($affiliateId) {
+            $this->corsOrigins->flush();
+            BrandingController::forgetCache($affiliateId);
+        });
     }
 
     /**
@@ -492,7 +499,7 @@ class AffiliateDomainService
         // subscription — addendum section D); only a not-yet-activated or
         // deactivated affiliate is blocked, and the controller/route
         // guards those. This guard is the backstop.
-        if ($affiliate->status !== 'active') {
+        if (! $affiliate->isActive()) {
             throw ValidationException::withMessages([
                 'hostname' => ['Your account is not active. Contact support.'],
             ]);

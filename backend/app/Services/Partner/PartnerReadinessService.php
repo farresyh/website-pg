@@ -85,7 +85,7 @@ final class PartnerReadinessService
             }
             $steps[] = new ReadinessStep('first_order', $this->done($withOrder->has($a->id)));
 
-            return $this->build($steps, $a->status === 'active');
+            return $this->build($steps, $a->isActive());
         })->all();
     }
 

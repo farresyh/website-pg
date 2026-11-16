@@ -6,10 +6,11 @@ use App\Http\Middleware\AllowActiveCustomDomainCors;
 use App\Http\Middleware\AllowAdminCorsCredentials;
 use App\Http\Middleware\EnsureAccountType;
 use App\Http\Middleware\EnsureAdminRole;
-use App\Http\Middleware\EnsureBrandJokiEnabled;
-use App\Http\Middleware\EnsureNotJokiCatalog;
 use App\Http\Middleware\EnsureAdminSessionFresh;
+use App\Http\Middleware\EnsureAffiliateWritable;
+use App\Http\Middleware\EnsureBrandJokiEnabled;
 use App\Http\Middleware\EnsureBrandMembershipEnabled;
+use App\Http\Middleware\EnsureNotJokiCatalog;
 use App\Http\Middleware\EnsureResellerApiKey;
 use App\Http\Middleware\RequireMfaStepUp;
 use App\Http\Middleware\ResolveStorefrontBrand;
@@ -144,6 +145,9 @@ return Application::configure(basePath: dirname(__DIR__))
             // authenticated affiliate_user. Always paired with
             // `auth:affiliate` on affiliate-portal routes.
             'affiliate.context' => SetAffiliateContext::class,
+            // RES-5 (ADR-058 2026-11-16 addendum): a deactivated affiliate's
+            // portal is read-only; on the whole affiliate portal group.
+            'affiliate.writable' => EnsureAffiliateWritable::class,
             // ADR-072 decision 4 / PR-G: the owner_type gate —
             // `account.type:affiliate` / `account.type:reseller` — on
             // every `affiliate`-guard route (both the existing Affiliate

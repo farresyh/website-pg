@@ -46,7 +46,7 @@ class AffiliateMonthlyPayoutTest extends TestCase
 
     private function affiliate(bool $bank = true): Affiliate
     {
-        return Affiliate::query()->create([
+        return Affiliate::query()->forceCreate([
             'business_name' => 'Acme',
             'markup_pct' => 10,
             'max_markup_pct' => 30,

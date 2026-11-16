@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Affiliate;
 
-use App\Http\Controllers\Affiliate\Concerns\AssertsAffiliateWritable;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Affiliate\StoreAffiliateDomainRequest;
 use App\Models\AffiliateDomain;
@@ -24,15 +23,12 @@ use Symfony\Component\HttpFoundation\Response;
  * named, and `AffiliateDomainService` has already sanitised any provider
  * error into `last_error` / the thrown `DomainProviderException` message.
  *
- * A deactivated affiliate's screen is read-only — enforced by
- * `assertWritable()` (the auth guard already blocks a non-active
- * affiliate's portal users from most of the portal, this is the backstop
- * for the write actions).
+ * A deactivated affiliate's screen is read-only: the route group's
+ * `affiliate.writable` middleware refuses every write, and
+ * `AffiliateDomainService::assertManageable()` is the backstop.
  */
 class DomainController extends Controller
 {
-    use AssertsAffiliateWritable;
-
     public function __construct(private readonly AffiliateDomainService $domains) {}
 
     public function index(Request $request): JsonResponse
@@ -50,7 +46,7 @@ class DomainController extends Controller
             'max_domains' => AffiliateDomainService::MAX_DOMAINS,
             // The cap counts domains the affiliate chose, not the www redirects we add for them.
             'domains_used' => $domains->whereNull('redirects_to_domain_id')->count(),
-            'writable' => $affiliate->status === 'active',
+            'writable' => $affiliate->isActive(),
             'dns' => [
                 // The recommended path — a CNAME on `www.` / `shop.`
                 // keeps the provider fully hidden.
@@ -65,7 +61,6 @@ class DomainController extends Controller
     public function store(StoreAffiliateDomainRequest $request): JsonResponse
     {
         $affiliate = $request->user()->affiliateOwner();
-        $this->assertWritable($affiliate);
 
         try {
             $domain = $this->domains->add($affiliate, $request->validated('hostname'));
@@ -97,7 +92,6 @@ class DomainController extends Controller
     {
         $affiliate = $request->user()->affiliateOwner();
         abort_unless($domain->affiliate_id === $affiliate->id, 404);
-        $this->assertWritable($affiliate);
 
         try {
             $twin = $this->domains->pairWww($domain);
@@ -128,7 +122,6 @@ class DomainController extends Controller
     {
         $affiliate = $request->user()->affiliateOwner();
         abort_unless($domain->affiliate_id === $affiliate->id, 404);
-        $this->assertWritable($affiliate);
 
         $this->domains->setPrimary($domain);
 
@@ -139,7 +132,6 @@ class DomainController extends Controller
     {
         $affiliate = $request->user()->affiliateOwner();
         abort_unless($domain->affiliate_id === $affiliate->id, 404);
-        $this->assertWritable($affiliate);
 
         try {
             $this->domains->remove($domain);

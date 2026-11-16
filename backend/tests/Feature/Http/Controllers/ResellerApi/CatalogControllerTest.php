@@ -8,7 +8,9 @@ use App\Models\Package;
 use App\Models\Reseller;
 use App\Models\ResellerTier;
 use App\Models\Supplier;
+use App\Services\Reseller\ResellerAccountStatus;
 use App\Services\Reseller\ResellerApiKeyService;
+use App\Services\Reseller\ResellerDeactivationReason;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -136,7 +138,7 @@ class CatalogControllerTest extends TestCase
     public function test_rejects_a_deactivated_reseller(): void
     {
         [$reseller, $key] = $this->makeReseller();
-        $reseller->update(['is_active' => false]);
+        app(ResellerAccountStatus::class)->deactivate($reseller, ResellerDeactivationReason::Manual, null);
 
         $this->getJson('/api/reseller/v1/catalog', $this->authHeaders($key))
             ->assertForbidden()

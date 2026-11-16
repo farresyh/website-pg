@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\Auth\AccountOwnerType;
+use App\Services\Reseller\ResellerDeactivationReason;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -17,8 +18,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * `balance` column — always derived from `LedgerEntry` (ADR-002), owner
  * type `LedgerOwnerType::ResellerWallet`.
  *
- * `is_active` (ADR-072 decision 9) is the account-level order-placement
- * kill switch; it does not freeze the wallet balance itself. Soft-delete
+ * `is_active` (ADR-072 decision 9) is the account-level kill switch; it
+ * does not freeze the wallet balance itself. Since ADR-142 it is not
+ * fillable: its one writer is ResellerAccountStatus, which records the
+ * reason and the history. Soft-delete
  * mirrors `Affiliate`'s own precedent (order history, once PR-D lands,
  * must outlive a "deleted" reseller).
  */
@@ -32,18 +35,30 @@ class Reseller extends Model
         'email',
         'phone',
         'reseller_tier_id',
-        'is_active',
         'rebate_eligible',
         'notes',
         'balance_cap_sen',
         'internal_reason',
     ];
 
+    /** Mirrors the column default (a new account is active), so a model fresh from create() reads the same as the row. */
+    protected $attributes = [
+        'is_active' => true,
+    ];
+
     protected $casts = [
         'is_active' => 'boolean',
+        'deactivation_reason' => ResellerDeactivationReason::class,
+        'deactivated_at' => 'datetime',
         'rebate_eligible' => 'boolean',
         'balance_cap_sen' => 'integer',
     ];
+
+    /** ADR-142 decision 15: every change of `is_active`, newest first. */
+    public function statusChanges(): HasMany
+    {
+        return $this->hasMany(ResellerStatusChange::class)->latest('id');
+    }
 
     public function tier(): BelongsTo
     {

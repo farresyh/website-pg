@@ -10,6 +10,7 @@ use App\Models\AffiliateImpersonationSession;
 use App\Models\AffiliateUser;
 use App\Services\Affiliate\AffiliateInviteService;
 use App\Services\Backup\BackupFailureAlerter;
+use App\Services\Reseller\ResellerAccountStatus;
 use App\Support\AccountLoginThrottle;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -32,7 +33,7 @@ class AffiliateAuthController extends Controller
 {
     public function __construct(private readonly BackupFailureAlerter $alerter) {}
 
-    public function login(AffiliateLoginRequest $request): JsonResponse
+    public function login(AffiliateLoginRequest $request, ResellerAccountStatus $accountStatus): JsonResponse
     {
         $email = $request->validated('email');
         $throttle = new AccountLoginThrottle('affiliate', $email);
@@ -67,6 +68,20 @@ class AffiliateAuthController extends Controller
             throw ValidationException::withMessages([
                 'email' => ['This account has been deactivated.'],
             ]);
+        }
+
+        // ADR-142 decision 6: a deactivated reseller is refused at login, with the reason
+        // and the way back, instead of a session that meets a 403 on every page. A
+        // deactivated affiliate still logs in to a read-only portal (RES-5).
+        $reseller = $user->resellerOwner();
+        if ($reseller !== null && ($denial = $accountStatus->denial($reseller)) !== null) {
+            Log::warning('Affiliate login failed: reseller deactivated', [
+                'affiliate_user_id' => $user->id,
+                'reason' => $denial->reason->value,
+                'ip' => $request->ip(),
+            ]);
+
+            throw ValidationException::withMessages(['email' => [$denial->message]]);
         }
 
         $throttle->clear();
