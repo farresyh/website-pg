@@ -5,8 +5,8 @@ namespace App\Services\PlayerValidation;
 use Illuminate\Support\Facades\Log;
 
 /**
- * MLBB's fallback chain — RedxGame -> UniPlay, in that priority order
- * (ADR-005 2026-10-16 addendum). Each provider's
+ * MLBB's fallback chain — isan -> UniPlay, in that priority order
+ * (ADR-005 2026-11-16 addendum). Each provider's
  * ProviderUnavailableException is caught and logged, then
  * the next is tried; only when every provider is unavailable does
  * this itself throw. Callers treat that identically to

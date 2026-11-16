@@ -37,6 +37,7 @@ use App\Services\Payment\PaymentGateway;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Services\PlayerValidation\MlbbPlayerValidator;
 use App\Services\PlayerValidation\PlayerValidatorRegistry;
+use App\Services\PlayerValidation\Providers\IsanMlbbValidator;
 use App\Services\PlayerValidation\Providers\RedxGameValidator;
 use App\Services\PlayerValidation\Providers\UniplayValidator;
 use App\Services\ReportAssistant\Gemini\FakeGeminiClient;
@@ -340,17 +341,17 @@ class AppServiceProvider extends ServiceProvider
             );
         });
 
-        // MLBB's validator chain — RedxGame -> UniPlay (ADR-005 2026-10-28
-        // addendum, replacing MooGold). Bound under 'player-validator.mlbb'
+        // MLBB's validator chain — isan -> UniPlay (ADR-005 2026-11-16
+        // addendum; RedxGame left the chain, it 403s our server). Bound under 'player-validator.mlbb'
         // so PlayerValidatorRegistry resolves it like any validator key; the
-        // public Game ID Checker reuses it (ADR-123 addendum, same date).
+        // public Game ID Checker reuses it (ADR-123 2026-10-28 addendum).
         $mlbbChain = function () {
             $config = config('services.player_validators');
 
             return new MlbbPlayerValidator([
-                new RedxGameValidator(
-                    baseUrl: $config['redxgame']['base_url'],
-                    timeoutSeconds: $config['redxgame']['timeout'],
+                new IsanMlbbValidator(
+                    baseUrl: $config['isan']['base_url'],
+                    timeoutSeconds: $config['isan']['timeout'],
                 ),
                 new UniplayValidator(
                     baseUrl: $config['uniplay']['base_url'],
@@ -359,6 +360,8 @@ class AppServiceProvider extends ServiceProvider
             ]);
         };
         $this->app->bind('player-validator.mlbb', $mlbbChain);
+        // ADR-123 2026-10-28 addendum: the public Game ID Checker shares it.
+        $this->app->bind('player-validator.public.mlbb', $mlbbChain);
 
         // A standalone RedxGame check: its "couldn't verify" is an invalid
         // ID the customer can correct, since no second provider decides.
@@ -374,13 +377,12 @@ class AppServiceProvider extends ServiceProvider
             );
         };
 
-        // Free Fire: RedxGame alone (UniPlay's checker is MLBB-only)
+        // Free Fire: RedxGame alone (isan and UniPlay are MLBB-only)
         // (ADR-005 2026-10-16 second addendum). Redx reports the Garena
         // server: Malaysian accounts come back "Singapore".
         // Genshin, HSR, ZZZ: Redx reports the UID's server, checked against
         // the chosen zone by ZoneCheck (ADR-005 2026-10-16 third addendum).
         $redxGames = [
-            'mlbb' => ['mobile-legends', false],
             'freefire' => ['free-fire', false],
             'genshin' => ['genshin-impact', true],
             'hsr' => ['honkai-star-rail', true],
@@ -388,18 +390,12 @@ class AppServiceProvider extends ServiceProvider
         ];
 
         foreach ($redxGames as $key => [$redxGame, $regionIsServer]) {
-            if ($key !== 'mlbb') {
-                $this->app->bind("player-validator.{$key}", fn () => $standaloneRedx($redxGame, $regionIsServer));
-            }
+            $this->app->bind("player-validator.{$key}", fn () => $standaloneRedx($redxGame, $regionIsServer));
 
             // ADR-123 decision 6: the public Game ID Checker calls RedxGame
-            // alone, except MLBB, which shares the Redx -> UniPlay chain
-            // (addendum 2026-10-28). Bound explicitly per key; a key with
-            // no public binding has no public family.
-            $this->app->bind(
-                "player-validator.public.{$key}",
-                $key === 'mlbb' ? $mlbbChain : fn () => $standaloneRedx($redxGame, $regionIsServer),
-            );
+            // alone for these. Bound explicitly per key; a key with no
+            // public binding has no public family.
+            $this->app->bind("player-validator.public.{$key}", fn () => $standaloneRedx($redxGame, $regionIsServer));
         }
 
         $this->app->singleton(PlayerValidatorRegistry::class);

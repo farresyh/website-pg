@@ -307,7 +307,7 @@ Tickets are opened by the platform each month, not requested by Affiliates (ADR-
 | **MID-5** | Admin can add matched product to games catalog | **MVP** |
 | **MID-6** | Middleware provides price sync from suppliers: scheduled and manual | **MVP** |
 | **MID-7** | Middleware provides currency exchange rate management | **MVP** |
-| **MID-8** | Player validation runs through a supplier-independent validator profile (`PlayerValidatorProfile`: RedxGame, UniPlay) when the game has one enabled (`games.player_validator_enabled`, ADR-005 + its 2026-10-16 addenda) — otherwise validation occurs implicitly at order time and the fallback flow (7.1) applies | **MVP** |
+| **MID-8** | Player validation runs through a supplier-independent validator profile (`PlayerValidatorProfile`: isan and UniPlay for MLBB, RedxGame for the rest) when the game has one enabled (`games.player_validator_enabled`, ADR-005 + its 2026-10-16 addenda) — otherwise validation occurs implicitly at order time and the fallback flow (7.1) applies | **MVP** |
 | **MID-9** | Middleware provides order creation endpoint (test orders), always passing through the idempotent reference-number pattern (ORD-8) | **MVP** |
 | **MID-10** | Middleware logs all API requests to suppliers in request logs, with credentials/PII redacted | **MVP** |
 | **MID-11** | Admin can filter and search request logs (date, supplier, endpoint, status) | **MVP** |
@@ -579,7 +579,7 @@ Not modelled here; each ADR holds its own schema: the reseller rebate tables ([A
 | **Vercel** | Custom-domain provisioning for Affiliate whitelabel storefronts | `AffiliateDomainProvider` seam (Vercel / no-op). `affiliate_domains` table, self-serve onboarding, provider opacity in the portal; a domain may bring a `www` redirect twin (`redirects_to_domain_id`, ADR-060 second 2026-10-30 addendum). ADR-060 (reverses decision 3's Cloudflare-for-SaaS), ADR-078. |
 | **Anthropic (Claude)** | CS assistant drafts on the CS WhatsApp number (Claude Haiku 5.5, chosen in run #3) | [ADR-136](./adr/ADR-136-customer-support-assistant.md); the answer and judge models are set in the panel; the API does not train on inputs. |
 | **Google Gemini** | Admin Reports assistant over curated read-only SQL views; also selectable as a CS assistant model | [ADR-087](./adr/ADR-087-admin-reports-llm-assistant.md), ADR-136; paid tier, no training on inputs. |
-| **Player validators (RedxGame, UniPlay)** | Pre-payment player-ID check where a game has a validator profile (MID-8) | Supplier-independent ([ADR-005](./adr/ADR-005-player-id-pre-payment-validation-is-not.md) addenda); the public Game ID Checker uses the same chain ([ADR-123](./adr/ADR-123-public-game-id-checker.md)). |
+| **Player validators (isan, UniPlay, RedxGame)** | Pre-payment player-ID check where a game has a validator profile (MID-8) | Supplier-independent ([ADR-005](./adr/ADR-005-player-id-pre-payment-validation-is-not.md) addenda); the public Game ID Checker uses the same chain ([ADR-123](./adr/ADR-123-public-game-id-checker.md)). |
 | **Cloudflare** | Proxy in front of `api.`; Turnstile (Game ID Checker, the public reseller application); R2 storage (gallery, backups, accounting receipts, KYC documents) | [ADR-095](./adr/ADR-095-cloudflare-r2-storage-cutover.md) (R2), [ADR-123](./adr/ADR-123-public-game-id-checker.md) and [ADR-133](./adr/ADR-133-partner-onboarding.md) (Turnstile). |
 | **Google Analytics (GA4) / Facebook Pixel / TikTok Pixel** | Website analytics + ad conversion tracking | IDs from Settings (per-brand for Affiliates). |
 
@@ -921,8 +921,9 @@ before building.
 186. **RedxGame-only player checks are down (found 2026-11-13).** From the
     production box, RedxGame's checker page loads (200) but its
     `POST /tools/check` answers a Cloudflare 403; the same request from a
-    home connection answers 200. MLBB is unaffected (UniPlay answers every
-    check; 348 RedxGame 403s in the log). Free Fire has never had a valid
+    home connection answers 200. MLBB was carried by UniPlay until it went
+    down too (503, 2026-11-15/16); since ADR-005's 2026-11-16 addendum MLBB
+    is isan → UniPlay, without Redx (348 RedxGame 403s in the log by 2026-11-13). Free Fire has never had a valid
     check: 11 attempts in 7 days, all `region_unknown`, so every Free Fire
     customer is asked to contact support. Getting past the block (browser
     headers, proxies) is not an option. Ways forward: official access or an

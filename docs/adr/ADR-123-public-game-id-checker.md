@@ -1,6 +1,6 @@
 # ADR-123: Public Game ID Checker — a storefront page that checks a player ID per game family, on its own endpoint, budget and table so it can never cost checkout its provider
 
-> **Standing (2026-10-28):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-16):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted, 2026-10-16. Grilled with the founder in seven rounds (`/mattpocock-skills:grilling`), then stress-tested against the code and production (read-only) before the build (PRD §16 item 107).
 
@@ -49,3 +49,6 @@ Facts from the stress test:
 
 Decision 6 ("RedxGame only") changes for MLBB: `player-validator.public.mlbb` is the same Redx → UniPlay chain as checkout ([ADR-005](./ADR-005-player-id-pre-payment-validation-is-not.md) 2026-10-28 addendum). Why: Redx's MLBB checker was down (503), so the public page showed "busy" for MLBB. The reason for "never a supplier" was MooGold, which is our supplier; UniPlay is not, so an abuse flag there can't hurt fulfilment. The other four families stay Redx-only. The cooldown and budget are unchanged and now count the chain as one call.
 
+### 2026-11-16 addendum — MLBB's public check follows the new chain
+
+`player-validator.public.mlbb` is still the same chain as checkout, now isan → UniPlay ([ADR-005](./ADR-005-player-id-pre-payment-validation-is-not.md) 2026-11-16 addendum); Redx is out of it. isan is not our supplier, so the 2026-10-28 reasoning holds. The other four families stay Redx-only. The cooldown and budget are unchanged.
