@@ -53,6 +53,12 @@ export interface PlatformSettings {
   company_legal_name: string | null;
   company_reg_no: string | null;
   company_address: string | null;
+  // ADR-142 decision 25 — reseller dormancy (off by default).
+  reseller_dormancy_enabled: boolean;
+  reseller_dormancy_enabled_at: string | null;
+  reseller_dormancy_days: number;
+  reseller_dormancy_warning_days: number;
+  reseller_support_whatsapp: string | null;
 }
 
 export interface PaymentMethodChoice {
@@ -91,6 +97,11 @@ export type UpdatePlatformValues = Pick<
 export type UpdatePurchaseBalancePolicyValues = Pick<
   PlatformSettings,
   "topup_max_sen" | "balance_cap_default_sen" | "bot_topup_payment_method_id" | "bot_command_max_age_minutes"
+>;
+
+export type UpdateResellerDormancyPolicyValues = Pick<
+  PlatformSettings,
+  "reseller_dormancy_enabled" | "reseller_dormancy_days" | "reseller_dormancy_warning_days" | "reseller_support_whatsapp"
 >;
 
 export type UpdateCustomerLoginPolicyValues = Pick<
@@ -140,6 +151,11 @@ export function updatePlatformSettings(values: UpdatePlatformValues) {
 /** ADR-124 decision 10 — behind MFA step-up; api-client shows the prompt. */
 export function updateCustomerLoginPolicy(values: UpdateCustomerLoginPolicyValues) {
   return apiFetch<PlatformSettings>("/api/settings/customer-login-policy", { method: "PUT", body: values });
+}
+
+/** ADR-142 decision 25 — behind MFA step-up; api-client shows the prompt. */
+export function updateResellerDormancyPolicy(values: UpdateResellerDormancyPolicyValues) {
+  return apiFetch<PlatformSettings>("/api/settings/reseller-dormancy-policy", { method: "PUT", body: values });
 }
 
 /** ADR-131 decision 4 — behind MFA step-up; api-client shows the prompt. */

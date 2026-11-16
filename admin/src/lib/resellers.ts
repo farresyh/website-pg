@@ -24,6 +24,9 @@ export interface ResellerRow {
   tier_name: string | null;
   markup_percent: string | null;
   is_active: boolean;
+  /** ADR-142 decision 26: why and since when it is off; null while active. */
+  deactivation_reason: "manual" | "dormant" | "closed" | null;
+  deactivated_at: string | null;
   notes: string | null;
   deleted_at: string | null;
   wallet_balance_sen: number;
@@ -70,8 +73,21 @@ export interface UpdateResellerValues {
   notes: string | null;
 }
 
+export interface ResellerStatusChange {
+  is_active: boolean;
+  reason: "manual" | "dormant" | "closed" | null;
+  /** null = the daily dormancy job. */
+  admin_name: string | null;
+  at: string;
+}
+
 export function listResellers() {
-  return apiFetch<{ resellers: ResellerRow[] }>("/api/resellers");
+  return apiFetch<{ resellers: ResellerRow[]; dormancy: { enabled: boolean; days: number } }>("/api/resellers");
+}
+
+/** ADR-142 decision 26: the detail carries every status change, newest first. */
+export function getReseller(id: number) {
+  return apiFetch<ResellerRow & { status_history: ResellerStatusChange[] }>(`/api/resellers/${id}`);
 }
 
 /** ADR-133 decision 12(c): a test or internal account, no KYC on file. Behind MFA step-up; api-client shows the prompt. */
