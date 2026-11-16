@@ -2875,3 +2875,16 @@ The founder asked for it. `staging` → `main`, merge `3b815832` at 15:07 UTC (2
 **Built** on `fix/mlbb-isan-validator`: `IsanMlbbValidator` (only 404 + `success:false` is invalid; WAF, 429, 5xx, timeout or an odd body is unavailable), MLBB chain isan → UniPlay for checkout, the reseller bot and the public checker; Redx bound only for Free Fire, Genshin, HSR and ZZZ (standalone), its MLBB `timeout` config removed. The founder first said drop UniPlay, then corrected it mid-build: keep UniPlay, drop Redx from MLBB.
 
 **After release, check:** the first real MLBB checks have `player_validations.provider = isan` and a Malaysian ID returns `country_code = MY` (only the README's Indonesian sample was tried live).
+
+## 2026-11-16 — Release #802: MLBB player check restored (isan → UniPlay), loss email, late supplier results
+
+The founder asked for it, to restore MLBB checks. `staging` → `main`, merge `5f1bc5cf`, carrying #798–#801. One migration. CI run `43805670052` green in every job, `deploy` included.
+
+**Checked after release (production, read-only):**
+- The box runs `5f1bc5c` (release `83074420`); `2026_11_21_100000_create_late_supplier_results_table` ran (batch 73); Horizon running; `/api/health` ok; Vercel production green for all four apps.
+- The bound MLBB chain via tinker on the box: README sample ID → valid, `provider = isan`, "Outrageous Dominance", `ID`; a made-up ID → invalid, `isan`.
+- One paid order was in flight at merge (`PG-MDOEVYENJSYA`, `pending` at the supplier); it was `delivered` at 04:46 UTC, after the restart.
+
+**isan beyond MLBB (from the box, 2026-11-16):** Free Fire returns a nickname for a real ID and `success: true` with no name for a made-up one, never a region. Genshin and HSR answered 404 "Not found" for the founder's own real UIDs, as did every README sample for Genshin, HSR and ZZZ; isan's last commits say its author stopped maintaining the Codashop-based lookups ("use gopay games, I'm tired with coda", 2026-02-10). So isan is not a source for those three. PRD §16 item 186 holds the founder's open decision.
+
+**Open:** a real Malaysian MLBB check (`player_validations.provider = isan`, `country_code = MY`); item 191 (Drift Threshold 1,000 IDR) can now be set.

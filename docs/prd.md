@@ -683,7 +683,7 @@ Unscheduled ideas, not on the backlog:
 
 # 14. Build Status
 
-**Where things stand (checked read-only on prod 2026-11-11, after release #777).** The platform
+**Where things stand (checked read-only on prod 2026-11-11, after release #777; release lines below updated 2026-11-16).** The platform
 is feature-complete and live in production: storefront (plus every Affiliate
 whitelabel brand), admin panel, Affiliate/Reseller portal, and the
 developer-docs site. CHIP FPX and DuitNow QR payments and the CHIP + Digiflazz
@@ -724,13 +724,10 @@ through a Purchase Balance top-up. The history of the switches is in the build-l
 Maybank2u) and DuitNow QR (`PG-L4RCBELJ9RE3`, RM25.70) each completed with
 real money and were delivered.
 
-**Latest release 2026-11-11 (`staging`→`main`, PR #783, founder's go-ahead).** Merge `dac033e1`, box release `82696074`, carrying #778–#782: the docs audit and `docs-check` (#778, #779), ADR-140 (#780) and its two builds, the SEO meta strategy (#781) and the per-game content with its admin editor (#782). One additive migration (`2026_11_15_110000`, four nullable `games` columns, batch 70), no env change. Recorded in `build-log.md`.
-- **Checked after release:** box on the new release, the migration ran, `/api/health` ok, Vercel production for all four apps, the static page titles and descriptions new, no `lastmod` on static sitemap pages.
-- **Since release (the founder's admin actions):** the home default meta description set; per-game content entered as drafts and 18 games published (all their pages checked live, no content on any other brand); Request Indexing sent for five game pages.
+**Latest release 2026-11-16 (`staging`→`main`, PR #802, founder's go-ahead, to restore MLBB player checks).** Merge `5f1bc5cf`, box release `83074420`, carrying #798–#801: the #797 release record (#798); the daily loss-making delivery email (#799, ADR-111/137 2026-11-15 addenda); late supplier results for combo legs in `late_supplier_results` and the drift email (#800, ADR-102/127/083 2026-11-15 addenda); the MLBB player check isan → UniPlay without RedxGame (#801, ADR-005/123 2026-11-16 addenda). One additive migration (`2026_11_21_100000_create_late_supplier_results_table`, batch 73), no env change. Recorded in `build-log.md`.
+- **Checked after release:** box on the new release, the migration ran, Horizon running, `/api/health` ok, Vercel production for all four apps; the bound MLBB chain on the box answered `isan` with a nickname and country for a known ID and invalid for a made-up one; the one paid order in flight (`PG-MDOEVYENJSYA`, pending at the supplier) was delivered after the Horizon restart.
 
-**Previous release 2026-11-10 (`staging`→`main`, PR #777, founder's go-ahead).** Merge `b1c2b459`, box release `82558237`, carrying #770–#776: the report date bounds that fix the 9 Nov memory exhaustion and the Symfony security patches (#771); price-sync and backup status broadcasts on the `default` lane, Horizon `waits` keyed on `redis-long`, and failed broadcasts logged on any queue (#774, ADR-047 addendum); the CS Merge modal fixes (#772, #775); storefront dark readability (popup scrim, payment logos on a white plate, #773, #775); docs (#770, #776). No migration, no env change. Recorded in `build-log.md`.
-- **Checked after release:** box on the new release, `/api/health` ok (after a two-minute Horizon restart that waited for the 07:00 price sync), every supervisor running, the new waits keys and broadcast lane live, 0 paid orders in flight, Vercel production for admin, storefront and portal on that commit.
-- **Earlier the same day:** release #769 (ADR-139 reseller rebate, Bumblebee Dark v3); the first rebate ladder was saved (effective 2026-12-01).
+**Previous release 2026-11-14 (`staging`→`main`, PR #797, founder's go-ahead).** Merge `3b815832`, carrying #792–#796: WhatsApp outbox hardening (#793, #794), the Night Market proposal (#795, docs only) and item 180, a started payment keeps its gateway (#796). Two migrations. Recorded in `build-log.md`, with the item 182 OpenWA settings done the same night.
 
 **Not yet seen on prod:**
 - the first affiliate auto-payout ticket (ADR-132): due 2026-12-01 if PajoStore's payable (balance less the tier-fee reserve) is at least RM10; it is the first affiliate with bank details;
@@ -853,7 +850,7 @@ before building.
 
 **C. Founder actions (no code)**
 - **191** Set Digiflazz's Drift Threshold to 1,000 IDR in Middleware → Suppliers (it is 50,000; 235 of 494 charges are smaller). The daily drift email ([ADR-083](./adr/ADR-083-internal-accounting-financial-reconciliation.md) 2026-11-15 addendum) then sees an unrecorded charge on any order.
-- **186** Player-ID check for Free Fire, Genshin, HSR and ZZZ is down: RedxGame's Cloudflare answers 403 to our server since about 2026-11-06. Waiting on RedxGame's answer about official access. Details below.
+- **186** Player-ID check for Free Fire, Genshin, HSR and ZZZ is down: RedxGame's Cloudflare answers 403 to our server since about 2026-11-06, and RedxGame gives official access only to its resellers (buying at its prices). MLBB is restored via isan (release #802). isan's Free Fire lookup gives a nickname but no region; its Genshin/HSR/ZZZ lookups answer "Not found" even for the founder's real UIDs (2026-11-16). Founder to decide: switch those checks off, or accept Free Fire without a region. Details below.
 - **158** Grade the CS assistant's drafts; PR 4 (Live) is built once a category meets the Live gate (ADR-136). Details below.
 - **11** Sentry (error tracking) is still not set up. Details below.
 
