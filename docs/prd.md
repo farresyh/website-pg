@@ -848,6 +848,8 @@ before building.
 
 - **183** OpenWA v0.30.0 upgrade; its trigger (the 2026-11-14 hardening on `main`) happened with release #797. Delete the retired `SendResellerBotReplyJob` in the same PR. Details below.
 
+- **193** Reseller dormancy ([ADR-142](./adr/ADR-142-reseller-dormancy-auto-deactivation.md), founder, 2026-11-16, design accepted): a reseller with no transaction for 7 days (panel setting) is warned, then deactivated until an admin reactivates it; one status seam with a reason and history; closes the bot `.topupbaki`-while-deactivated bug. Build next, after #804.
+
 **B. Needs a short grill / ADR addendum first**
 - **165** KOL fee as a share of profit (needs an ADR-118 addendum, money-critical). Until built, pay such a KOL as "Not a KOL fee". Details below.
 
