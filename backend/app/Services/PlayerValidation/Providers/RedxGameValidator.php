@@ -28,10 +28,11 @@ use Throwable;
  * the one cached session, which belongs to the site, not a game.
  *
  * `status: false` is the same "Couldn't verify that ID" for a wrong ID and
- * for a failure on Redx's own side. Where a second provider exists (MLBB:
- * UniPlay) it is thrown as unavailable so that provider decides; where
- * none does (Free Fire) it is an invalid ID the customer can correct
- * (founder's calls, 2026-10-16).
+ * for a failure on Redx's own side. Where a second provider exists it is
+ * thrown as unavailable so that provider decides; where none does (Free
+ * Fire) it is an invalid ID the customer can correct (founder's calls,
+ * 2026-10-16). Since ADR-005 2026-11-16 Redx is in no chain, so every
+ * binding uses the standalone mode.
  */
 final class RedxGameValidator implements PlayerValidator
 {

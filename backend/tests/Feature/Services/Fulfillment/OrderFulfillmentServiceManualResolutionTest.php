@@ -372,7 +372,7 @@ class OrderFulfillmentServiceManualResolutionTest extends TestCase
 
         $fresh = $order->fresh();
         $this->assertSame(DeliveryStatus::NeedsReview, $fresh->delivery_status);
-        $this->assertEquals(['status' => 'Sukses', 'price' => 9.5], $fresh->supplier_response['late_supplier_result']);
+        $this->assertEquals(['status' => 'Sukses', 'price' => 9.5], $fresh->lateSupplierResults()->sole()->payload);
         $this->assertNull($fresh->delivered_at);
         $this->assertSame(0, LedgerEntry::query()->count());
         $this->assertSame(0, SupplierLedgerEntry::query()->count());

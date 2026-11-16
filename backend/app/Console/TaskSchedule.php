@@ -71,6 +71,7 @@ class TaskSchedule
         'horizon-snapshot',
         'rebate-progress-notify',
         'price-sync-staleness-check',
+        'order-loss-digest',
     ];
 
     public static function isCritical(string $name): bool
@@ -157,6 +158,13 @@ class TaskSchedule
         $schedule->command('app:alert-whatsapp-outbox')
             ->everyMinute()
             ->name('whatsapp-outbox-alert')
+            ->withoutOverlapping($overlap);
+
+        // ADR-111 2026-11-15 addendum: yesterday's (Malaysia) loss-making
+        // deliveries, emailed at 08:00 KL (00:00 UTC).
+        $schedule->command('app:alert-order-losses')
+            ->daily()
+            ->name('order-loss-digest')
             ->withoutOverlapping($overlap);
 
         // ADR-139 decision 7: a tier change takes effect at 00:00 KL on the

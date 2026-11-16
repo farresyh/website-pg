@@ -2,7 +2,11 @@
 
 namespace App\Console\Commands\Supplier;
 
+use App\Models\Order;
+use App\Models\OrderDeliveryLeg;
 use App\Models\Supplier;
+use App\Services\Backup\BackupFailureAlerter;
+use App\Services\Order\DeliveryStatus;
 use App\Services\Supplier\SupplierAdapterFactory;
 use App\Services\Supplier\SupplierBufferAlert;
 use App\Services\Supplier\SupplierConfigSchema;
@@ -42,7 +46,7 @@ use Throwable;
 #[Description('Refresh Supplier.balance for every active, configured supplier and check each against its buffer.')]
 class RefreshSupplierBalancesCommand extends Command
 {
-    public function handle(SupplierAdapterFactory $adapters, SupplierBufferAlert $buffers): int
+    public function handle(SupplierAdapterFactory $adapters, SupplierBufferAlert $buffers, BackupFailureAlerter $alerter): int
     {
         // ADR-125 decision 2: a manual supplier has no balance to poll; its
         // balance is its funding ledger (Supplier::displayBalance()).
@@ -77,7 +81,7 @@ class RefreshSupplierBalancesCommand extends Command
 
         foreach ($suppliers as $supplier) {
             try {
-                $this->refresh($supplier, $adapters);
+                $this->refresh($supplier, $adapters, $alerter);
             } catch (Throwable $e) {
                 $crashed = true;
                 report($e);
@@ -104,7 +108,7 @@ class RefreshSupplierBalancesCommand extends Command
         return $crashed ? self::FAILURE : self::SUCCESS;
     }
 
-    private function refresh(Supplier $supplier, SupplierAdapterFactory $adapters): void
+    private function refresh(Supplier $supplier, SupplierAdapterFactory $adapters, BackupFailureAlerter $alerter): void
     {
         try {
             $adapter = $adapters->for($supplier);
@@ -136,21 +140,56 @@ class RefreshSupplierBalancesCommand extends Command
 
         // ADR-083 decision 6 — compares the just-refreshed
         // `balance` against the funding ledger's own sum; never
-        // auto-corrects either side, only warns. `fundingDrift()`
-        // returns null when `drift_threshold` isn't configured
-        // (fail-safe to silent, same posture as low-balance above).
+        // auto-corrects either side. `fundingDrift()` returns null when
+        // `drift_threshold` isn't configured (fail-safe to silent, same
+        // posture as low-balance above).
         $drift = $supplier->fundingDrift();
 
-        if ($drift !== null && $drift['is_drifted']) {
-            Log::warning('Supplier funding ledger has drifted from the polled balance', [
-                'supplier' => $supplier->slug,
-                'polled_balance' => $drift['polled_balance'],
-                'ledger_balance' => $drift['ledger_balance'],
-                'variance' => $drift['variance'],
-                'threshold' => $drift['threshold'],
-                'currency' => $supplier->currency,
-            ]);
-            $this->warn("'{$supplier->slug}' funding ledger drifted: polled {$drift['polled_balance']} vs ledger {$drift['ledger_balance']} {$supplier->currency} (variance {$drift['variance']}, threshold {$drift['threshold']})");
+        if ($drift === null || ! $drift['is_drifted']) {
+            return;
         }
+
+        // 2026-11-15 addendum: the supplier takes the money when it accepts an
+        // order and our ledger records it on Success, so an in-flight order is
+        // a gap that closes by itself. Check again tomorrow.
+        $inFlight = $this->countFor($supplier, [DeliveryStatus::Pending, DeliveryStatus::Processing]);
+        if ($inFlight > 0) {
+            Log::info('Supplier drift check skipped: orders in flight', ['supplier' => $supplier->slug, 'in_flight' => $inFlight]);
+
+            return;
+        }
+
+        Log::warning('Supplier funding ledger has drifted from the polled balance', [
+            'supplier' => $supplier->slug,
+            'polled_balance' => $drift['polled_balance'],
+            'ledger_balance' => $drift['ledger_balance'],
+            'variance' => $drift['variance'],
+            'threshold' => $drift['threshold'],
+            'currency' => $supplier->currency,
+        ]);
+        $this->warn("'{$supplier->slug}' funding ledger drifted: polled {$drift['polled_balance']} vs ledger {$drift['ledger_balance']} {$supplier->currency} (variance {$drift['variance']}, threshold {$drift['threshold']})");
+
+        // 2026-11-15 addendum: an unrecorded charge or return (a late supplier
+        // result, an unrecorded top-up) reaches an inbox, every day until fixed.
+        $needsReview = $this->countFor($supplier, [DeliveryStatus::NeedsReview]);
+        $fmt = fn (float $v) => number_format($v, 2).' '.$supplier->currency;
+        $alerter->alert(
+            "{$supplier->name} balance differs from our ledger",
+            "{$supplier->name} reports {$fmt($drift['polled_balance'])}; our supplier ledger says {$fmt($drift['ledger_balance'])} "
+            ."(difference {$fmt($drift['polled_balance'] - $drift['ledger_balance'])}, threshold {$fmt($drift['threshold'])}). "
+            .'Lower at the supplier means a charge we did not record (for example a late supplier success); higher means money returned or a top-up not yet recorded. '
+            .($needsReview > 0 ? "{$needsReview} order(s) or combo leg(s) in Needs Review may explain part of it. " : '')
+            .'Find the transaction in the supplier\'s history, then record a transfer or a manual adjustment in the supplier ledger.',
+            'Supplier ledger',
+        );
+    }
+
+    /** Orders and combo legs of this supplier in one of these delivery states. */
+    private function countFor(Supplier $supplier, array $statuses): int
+    {
+        $values = array_map(fn (DeliveryStatus $s) => $s->value, $statuses);
+
+        return Order::query()->where('supplier_id', $supplier->id)->whereIn('delivery_status', $values)->count()
+            + OrderDeliveryLeg::query()->where('supplier_id', $supplier->id)->whereIn('status', $values)->count();
     }
 }

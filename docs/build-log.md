@@ -2811,3 +2811,67 @@ Design only, nothing built. The founder wants a large customer base over the nex
 95 test fixtures created attempts without the new column; each now passes `'gateway' => 'chip'`. Full suite 3992 passed; the concurrency suite ran on MySQL, which also ran the migration's column change. The second-gateway prerequisites the stress test found (`method_key` values carry the gateway, `channel_code` unique across gateways, `chip_payment_ref`, CHIP-only settlement) are recorded in the addendum and PRD §16 item 189, not built.
 
 **178, part 2.** The dead `seo_*` columns were released in #791 (2026-11-12). Read-only on production on 2026-11-14: migration `2026_11_16_100000_drop_dead_seo_columns_from_games_table` has run and `games` has none of the three columns. Item 178 stays open for the founder's backlinks and the Search Console checks on 25 Nov, 9 Dec and 6 Jan.
+
+## 2026-11-14 — Release #797: WhatsApp outbox hardening, a started payment keeps its gateway; OpenWA settings (PRD §16 item 182)
+
+The founder asked for it. `staging` → `main`, merge `3b815832` at 15:07 UTC (23:07 MYT, Saturday), carrying #792–#796: the #791 release record, WhatsApp outbox hardening (#793, #794), the Night Market proposal (#795, docs only) and item 180 (#796). Two migrations.
+
+**CI and deploy:** the `main` run `43608473123` was green in every job, `deploy` included.
+
+**Checked after release (production, read-only):**
+- The box runs `3b81583`; both migrations ran (`2026_11_19_100000_whatsapp_outbox_hardening`, `2026_11_20_100000_add_gateway_to_payment_attempts`).
+- `wallet_topup_attempts` (16) and `membership_checkout_attempts` (11) are all `gateway = chip`, none null. `platform_settings.bot_command_max_age_minutes` = 3; `customer_notifications.due_at` exists.
+- Horizon running with `supervisor-whatsapp-reply`; `/api/health` 200; `/api/health/whatsapp` 200 with both sessions `ready`.
+
+**Item 182, OpenWA settings (founder, with Claude checking each step read-only):**
+1. `~/openwa-deploy/shared/.env`: `SIMULATE_TYPING_MAX_MS=1500` and `WEBHOOK_FAILURE_PAYLOAD_RETENTION_HOURS=72` appended; backup `.env.bak-20261114`.
+2. Forge daemon `daemon-1105837` (OpenWA): `stopwaitsecs` 15 → 75, which restarted OpenWA at 15:38:42 UTC. Both values loaded; `customer-support` was `ready` about 12 s later. The other three daemons keep 15.
+3. Customer-support webhook events are now `message.received`, `session.status`, `message.sent`, `message.failed`; the reseller-bot webhook is unchanged.
+4. Both operator keys (Reseller Bot, Customer Support) have `allowedIps` 127.0.0.1; the admin key is unrestricted. Both operator keys were used successfully at 15:45:22 UTC, after the change; no IP rejection in either log.
+5. Cloudflare Access application `bot` on `bot.pekangame.space`, policy "founder only" (the account owner's email, one-time PIN), session 24 h. From outside, `/` and `/api/health` now answer 302 to the Access login. Claude drove the founder's browser for this step and the next.
+6. UptimeRobot: the `bot.pekangame.space/api/health` monitor still showed Up while it only reached the Access redirect, a false green, so it is paused. `api.pekangame.space/api/health/whatsapp` (item 95) covers OpenWA down, a session not ready, and a restriction.
+
+**Found:** OpenWA logs "X-Forwarded-For is present but TRUSTED_PROXIES is empty", so every dashboard request shares one rate-limit bucket. Small, since only the founder uses the dashboard; noted on item 183 for the next OpenWA maintenance window.
+
+**Open:** item 183 (OpenWA v0.30.0, delete `SendResellerBotReplyJob`) is now unblocked.
+
+## 2026-11-15 — The first real loss (order 437): `max_price` still not built, a daily loss email instead (ADR-137 and ADR-111 2026-11-15 addenda, PRD §16 item 169)
+
+**What happened.** Checking PRD §16 group D triggers against production (read-only) found item 169's trigger had fired: order 437 (`reseller-wallet`, 571 Diamonds, 2026-11-13 10:47 UTC) was paid at a catalog cost of RM36.52 and a price of RM36.89, and Digiflazz charged RM38.06 (167,325 IDR). The price sync at 11:05 saw the new cost. Loss RM1.17, `profit_reconciled_flagged` set, seen by no one: the flag shows only on Order Detail.
+
+**Evidence (read-only, prod, 2026-11-15).** 367 delivered orders with a real cost: 7 above the stored cost, 2 losses, both reseller-wallet (46: −13 sen, a pre-ADR-134 resend; 437: −117 sen). Margins: Standard min 4.3%, Affiliate 4.2%, Member 4.5%, Reseller wallet −0.7% to a 1.0% median. Of 13 resends at a higher cost only order 46 lost money. Busiest wallet hour: 7 orders. Digiflazz reported a price on all 338 single-package deliveries since 2026-11-01; the 43 combos take their cost from legs.
+
+**Decided (grilled, then stress-tested, with the founder).** Not `max_price` now (a refused wallet order is auto-refunded by ADR-139, but the reseller still sees a failure, for RM1.30 saved so far), not a wallet price cushion (charges every reseller during a growth period). Watch it: a daily email, with a self-checking trigger (over RM20 a month or RM5 on one order → build `max_price` for wallet orders only). The stress test moved the alert from a hook at the two reconciliation sites in `OrderFulfillmentService` to a sweep over stored results, the ADR-139 auto-refund pattern: every writer of `platform_profit` covered, and no change to the money-critical file. It also corrected an earlier claim in the session that a failed order has no automatic compensation (wallet orders do, ADR-139).
+
+**Built.** `app:alert-order-losses` (`order-loss-digest`, daily 00:00 UTC = 08:00 MYT, ROUTINE): orders delivered on the previous Malaysia day with `platform_profit < 0`, not test, not `partially_delivered`; each line has basis, a resend label, expected vs real cost and the loss; the month's total, and item 169's trigger named when crossed. `AlertOrderLossesCommandTest` (6 tests: window edges, exclusions, both triggers, resend label, the 1st of a month). Full suite 3,998 green. The email rendered with one line per order. The same query on production gives order 437 for 13 Nov, order 46 for 17 Oct and nothing for 14 Nov.
+
+**Founder habit, not code:** after switching a Digiflazz seller on the dashboard, run Price Sync before resending, so the resend preview shows the new cost.
+
+## 2026-11-15 — Late supplier results kept for combo legs, in their own table; the drift check emails (ADR-102, ADR-127 and ADR-083 2026-11-15 addenda, PRD §16 item 188)
+
+**The gap.** A Sukses on a Failed combo leg (or a Gagal on a Delivered one) was logged and dropped: `finalizePendingSuccess()` threw, the transaction rolled back, and the webhook answered "already finalized" at INFO. No evidence, no alert, and the refund guards could not see it.
+
+**What the code trace added.** (1) The single-order evidence in `supplier_response.late_supplier_result` was erased by any later `supplier_response` write (fulfill, resend, finalize: six sites), held one result, and mixed a late Gagal with a late Sukses, so a Gagal blocked refunds too. (2) A retry of a Failed order or leg mints a new reference and the webhook matches only the current one, so a late result on a superseded reference is a 404 at INFO, for single orders as well. (3) Settle and Order Detail never looked at the evidence.
+
+**Production (read-only).** No late result ever recorded (0 order rows; 0 contradiction log lines since 2026-11-01; none of 549 references in the supplier request log since 2026-10-16 went Gagal then Sukses). The Digiflazz funding ledger equals the polled balance to the rupiah (76,081,225 IDR; only 2 manual adjustments, both on 2026-09-15), so no Digiflazz charge has gone unrecorded. 51 combo orders; 11 Failed legs in 5 orders (PUBG, 11–13 Nov), all compensated by voucher. One of them (PG-YKY3NIKNYEKW, leg 1, `rc 02`) carries a serial number on its Gagal, unlike the others: worth a look in the Digiflazz history.
+
+**Decided (grilled, then stress-tested).** The stress test replaced the first plan (put leg evidence in the same JSON key) with an append-only table, after the trace showed the key is erased by later writes. Ledger adjustments stay manual (one drawdown per order or leg, ADR-127; precedent ADR-137 decision 14). Superseded references: no registry yet; the drift email catches their money effect (PRD §16 item 190 has the trigger).
+
+**Built.**
+- `late_supplier_results` (migration `2026_11_21_100000`), unique on reference and outcome; `OrderFulfillmentService::recordLateResult()` is its one writer, for single orders and legs; `alertLateResult()` emails both directions with the price and the adjustment to record.
+- `Order` scopes read only late Successes, so the wallet auto-refund and the voucher cash refund block on a late Success and not on a late Gagal; `VoucherController` reads the table.
+- Order Detail returns `late_supplier_results`; a banner lists them; the Issue Voucher and Resend modals warn on a late Success.
+- `app:refresh-supplier-balances` emails a drift over the threshold and skips the check while an order or leg of that supplier is pending or processing; the email counts Needs Review orders.
+- Tests: leg Sukses-on-Failed recorded once and alerted once across a redelivered webhook; leg Gagal-on-Delivered recorded, alerted, not blocking; evidence survives a later `supplier_response` write; the Order Detail payload; drift email, in-flight skip, Needs Review count; existing tests moved off the JSON key (one cleared evidence by nulling `supplier_response`, the hole this closes). Backend suite 4,004 green; admin `tsc`, lint, 22 tests green; dev DB migrated.
+
+**Founder action:** set Digiflazz's Drift Threshold to 1,000 IDR in Middleware → Suppliers (PRD §16 item 191).
+
+## 2026-11-16 — MLBB player check: isan first, then UniPlay; RedxGame out of the MLBB chain (ADR-005 and ADR-123 2026-11-16 addenda)
+
+**Found (read-only prod).** UniPlay's checker page answers 503 to our server (2 fallbacks in the log on 2026-11-15, 12 on 2026-11-16; `curl` from the box: 503), and RedxGame has 403'd us since about 2026-11-06 (PRD §16 item 186). RedxGame offers official access only to its resellers. So every MLBB check ended `region_unknown`. Bypassing Redx's block was ruled out again. Two GitHub projects the founder found were read: `web-mlbb-checker` calls another store's endpoint through a public CORS proxy (not used); `mlbbchatidbot` uses isan's API (`ihsangan/valid`), which led here.
+
+**Checked from the prod box.** `mlbb-api.isan.eu.org/find`: a known ID → 200 with `countryCode`, 0.13 s; a made-up ID → 404 `success:false`. The `api.isan.eu.org/nickname/ml` wrapper crashes on an unknown ID (500, Cloudflare 1101), so it is not used. No first-top-up bonus field.
+
+**Built** on `fix/mlbb-isan-validator`: `IsanMlbbValidator` (only 404 + `success:false` is invalid; WAF, 429, 5xx, timeout or an odd body is unavailable), MLBB chain isan → UniPlay for checkout, the reseller bot and the public checker; Redx bound only for Free Fire, Genshin, HSR and ZZZ (standalone), its MLBB `timeout` config removed. The founder first said drop UniPlay, then corrected it mid-build: keep UniPlay, drop Redx from MLBB.
+
+**After release, check:** the first real MLBB checks have `player_validations.provider = isan` and a Malaysian ID returns `country_code = MY` (only the README's Indonesian sample was tried live).

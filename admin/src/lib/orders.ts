@@ -236,6 +236,10 @@ export interface OrderDetail extends OrderListItem {
   // visibility signal instead, so an admin notices without watching
   // every resend).
   profit_reconciled_flagged: boolean;
+  // ADR-102 2026-11-15 addendum — supplier results that arrived after the
+  // order (or a combo leg) was final. "success" may mean the player has the
+  // item; "failure" may mean they don't.
+  late_supplier_results?: LateSupplierResult[];
   // ADR-111 addendum (2026-09-22) — one Cost Price figure, not two
   // competing ones (`cost_price` catalog snapshot vs the internal
   // `real_cost_price_sen`): whichever cost actually produced the
@@ -605,3 +609,16 @@ export function confirmManualFailed(id: number, supplierId: number, reason: stri
 export function correctManualToDelivered(id: number, values: { supplier_id: number; real_cost_sen?: number | null; reason: string }) {
   return apiFetch<{ order_number: string; delivery_status: string }>(`/api/orders/${id}/manual/correct-to-delivered`, { method: "POST", body: values });
 }
+
+export interface LateSupplierResult {
+  outcome: "success" | "failure";
+  leg_number: number | null;
+  supplier_reference: string;
+  created_at: string | null;
+}
+
+/** ADR-102 2026-11-15 addendum: a late Success means the credit may already be with the player. */
+export function hasLateSupplierSuccess(order: Pick<OrderDetail, "late_supplier_results">): boolean {
+  return (order.late_supplier_results ?? []).some((r) => r.outcome === "success");
+}
+

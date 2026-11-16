@@ -10,6 +10,7 @@ use App\Services\Order\PlacedVia;
 use App\Services\Pricing\PricingBasis;
 use App\Services\Supplier\Digiflazz\DigiflazzAdapter;
 use App\Services\Supplier\SupplierAdapterFactory;
+use App\Services\Supplier\SupplierOutcome;
 use App\Support\ContactMask;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -657,24 +658,28 @@ class Order extends Model
      * written for queries; OrderCompensationScopeTest holds it equal to
      * the method.
      */
-    /** Where OrderFulfillmentService keeps a supplier result that arrived after the order was final. */
-    public const LATE_SUPPLIER_RESULT = 'supplier_response->late_supplier_result';
-
     /**
-     * ADR-127 decision 11: a supplier result that arrived after the order was
-     * final is kept in `supplier_response.late_supplier_result` and never
-     * changes `delivery_status`. A late Success may mean the item reached the
-     * player, so no automatic refund (ADR-139 decision 29) and no cash refund
-     * (ADR-004 2026-11-12 addendum, decision 4) goes ahead while one is recorded.
+     * ADR-127 decision 11, as revised by the ADR-102 2026-11-15 addendum: a
+     * supplier result that arrived after the order (or one of its combo legs)
+     * was final is kept in `late_supplier_results` and never changes
+     * `delivery_status`. A late Success may mean the item reached the player,
+     * so no automatic refund (ADR-139 decision 29) and no cash refund
+     * (ADR-004 2026-11-12 addendum, decision 4) goes ahead while one is
+     * recorded. A late Failure blocks nothing.
      */
+    public function lateSupplierResults(): HasMany
+    {
+        return $this->hasMany(LateSupplierResult::class);
+    }
+
     public function scopeWithoutLateSupplierResult(Builder $query): Builder
     {
-        return $query->whereNull(self::LATE_SUPPLIER_RESULT);
+        return $query->whereDoesntHave('lateSupplierResults', fn (Builder $q) => $q->where('outcome', SupplierOutcome::Success->value));
     }
 
     public function scopeWithLateSupplierResult(Builder $query): Builder
     {
-        return $query->whereNotNull(self::LATE_SUPPLIER_RESULT);
+        return $query->whereHas('lateSupplierResults', fn (Builder $q) => $q->where('outcome', SupplierOutcome::Success->value));
     }
 
     public function scopeCompensated(Builder $query): Builder

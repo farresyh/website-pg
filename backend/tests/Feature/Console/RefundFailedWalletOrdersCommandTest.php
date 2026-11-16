@@ -73,7 +73,7 @@ class RefundFailedWalletOrdersCommandTest extends TestCase
     public function test_it_skips_an_order_with_a_late_success_from_the_supplier(): void
     {
         $reseller = $this->walletReseller();
-        $this->failedWalletOrder($reseller, ['supplier_response' => ['late_supplier_result' => ['status' => 'Sukses']]]);
+        $this->failedWalletOrder($reseller)->lateSupplierResults()->create(['outcome' => 'success', 'supplier_reference' => 'REF-LATE', 'payload' => ['status' => 'Sukses']]);
 
         $this->artisan('app:refund-failed-wallet-orders')->assertSuccessful();
 

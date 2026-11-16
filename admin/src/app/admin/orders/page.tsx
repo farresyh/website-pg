@@ -81,6 +81,7 @@ import IssueVoucherModal, { isRestoreOnly } from "@/components/orders/IssueVouch
 import MarkDeliveredModal from "@/components/orders/MarkDeliveredModal";
 import ConfirmFailedModal from "@/components/orders/ConfirmFailedModal";
 import NeedsReviewBanner from "@/components/orders/NeedsReviewBanner";
+import LateSupplierResultBanner from "@/components/orders/LateSupplierResultBanner";
 import RefundInformationCards from "@/components/orders/RefundInformationCards";
 import OrderDetailCards from "@/components/orders/OrderDetailCards";
 import CustomerLoginCard from "@/components/orders/CustomerLoginCard";
@@ -762,6 +763,7 @@ function OrdersPageInner() {
 
           {/* ADR-026: the ambiguous-outcome case — cross-reference banner, plus "Mark as Delivered" instead of "Issue Voucher" (decision 4c: voucher issuance is deliberately never available from this state). */}
           {selected.delivery_status === "needs_review" && <NeedsReviewBanner order={selected} />}
+          <LateSupplierResultBanner order={selected} />
 
           {/* ADR-026 addendum (2026-09-16), renamed by ADR-102 decision 3/5 — server-computed from the persisted error_code (ADR-098's own rc table), never a second hand-copied list here. Text only now — its Retry/Resend button moved into the header action-bar above (PR-2b). */}
           {selected.delivery_retry_unsafe_with_same_reference && (

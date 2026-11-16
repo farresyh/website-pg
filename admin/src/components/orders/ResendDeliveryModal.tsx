@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { SimpleSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api-client";
-import { getResendOptions, resendOrderDelivery, validatePlayerForResend, type OrderDetail, type ResendOption } from "@/lib/orders";
+import { getResendOptions, hasLateSupplierSuccess, resendOrderDelivery, validatePlayerForResend, type OrderDetail, type ResendOption } from "@/lib/orders";
 import { getSandboxResendOptions, resendSandboxOrderDelivery } from "@/lib/sandboxOrders";
 
 interface ResendDeliveryModalProps {
@@ -201,6 +201,12 @@ function ResendDeliveryFields({ onClose, onResent, order, sandbox }: Omit<Resend
       {packagesError && (
         <p className="mb-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
           {packagesError}
+        </p>
+      )}
+      {hasLateSupplierSuccess(order) && (
+        <p className="mb-4 rounded-lg bg-danger-surface px-3 py-2 text-sm text-danger-ink">
+          The supplier reported success for this order after it failed. Check with the supplier and the customer first:
+          the credit may already be delivered.
         </p>
       )}
       {originalPackageNoLongerActive && (

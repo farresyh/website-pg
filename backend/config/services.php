@@ -225,18 +225,24 @@ return [
     // one storefront request; a slow/hung provider must fail fast so
     // the next one in the chain still gets a chance.
     'player_validators' => [
-        // 5s (not 8) so UniPlay still starts inside MlbbPlayerValidator's
-        // 8s deadline when Redx times out. Typical: ~1.5s cold, ~0.15s
-        // repeat (Redx caches), measured 2026-10-16.
+        // First in MLBB's chain (ADR-005 2026-11-16 addendum). 5s so UniPlay
+        // still starts inside MlbbPlayerValidator's 8s deadline when isan
+        // times out. ~0.13s measured from the prod box, 2026-11-16.
+        'isan' => [
+            'base_url' => env('ISAN_MLBB_BASE_URL', 'https://mlbb-api.isan.eu.org'),
+            'timeout' => (int) env('ISAN_MLBB_TIMEOUT_SECONDS', 5),
+        ],
+        // Free Fire, Genshin, HSR, ZZZ only since ADR-005 2026-11-16 (it
+        // left MLBB's chain). Typical: ~1.5s cold, ~0.15s repeat.
         'redxgame' => [
             'base_url' => env('REDXGAME_BASE_URL', 'https://redxgame.com'),
-            'timeout' => (int) env('REDXGAME_TIMEOUT_SECONDS', 5),
             // Games where Redx is the only provider (Free Fire, Genshin,
             // HSR, ZZZ): nothing to fall back to, and an unknown UID took
             // 6.6s on Redx's first lookup (2026-10-16), so a 5s cut-off
             // would turn a typo into "contact support".
             'standalone_timeout' => (int) env('REDXGAME_STANDALONE_TIMEOUT_SECONDS', 10),
         ],
+        // MLBB fallback after isan, last in the chain.
         'uniplay' => [
             'base_url' => env('UNIPLAY_BASE_URL', 'https://uniplay.id'),
             'timeout' => (int) env('UNIPLAY_TIMEOUT_SECONDS', 5),

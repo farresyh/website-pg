@@ -1,6 +1,6 @@
 # ADR-005 (D5): Player-ID pre-payment validation is not universal
 
-> **Standing (2026-10-28):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-16):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — 2026-07-23
 
@@ -99,3 +99,18 @@ The same check surfaced a related, previously-undocumented gap: `POST /api/order
 
 **Consequence to track:** Unofficial like Redx; UniPlay can change the page or token scheme (then the chain is Redx alone and MLBB checkout fails when Redx does). The code was verified against fakes only; the live call was checked by the founder in a browser, not from our server (the first post-deploy MLBB validation is the real test; check `player_validations.provider`).
 
+### 2026-11-16 addendum — MLBB chain is now isan → UniPlay; RedxGame leaves it
+
+**Context:** RedxGame's Cloudflare has answered 403 to our server since about 2026-11-06 (PRD §16 item 186), and RedxGame gives official access only to its own resellers, buying at its prices. On 2026-11-15/16 UniPlay's checker page also answered HTTP 503 (prod log: 2 fallbacks on 2026-11-15, 12 on 2026-11-16, "checker page returned HTTP 503 without a token"; `curl` from the prod box 2026-11-16: 503). So MLBB, the main game, had no working provider: checks ended `region_unknown` and the customer was sent to support. The founder chose isan's MLBB lookup (`mlbb-api.isan.eu.org/find`, the endpoint behind the open-source `ihsangan/valid` API) first, UniPlay kept behind it for when it recovers, and Redx out of the MLBB chain. Getting past Redx's block (browser headers, proxies) stays ruled out.
+
+Checked from the prod box, 2026-11-16: a known ID (the API's own README sample) answered 200 `{success: true, name, countryCode: "ID", countryName}` in 0.13 s; a made-up ID answered 404 `{success: false, message: "Not found"}`. The wrapper `api.isan.eu.org/nickname/ml` crashes on an unknown ID (HTTP 500, Cloudflare 1101), so the direct endpoint is used. It does not report first-top-up bonus status.
+
+**Decision:**
+1. `MlbbPlayerValidator` chain = `IsanMlbbValidator` → `UniplayValidator`, for checkout, the reseller bot and the public Game ID Checker (`player-validator.public.mlbb` shares the chain, ADR-123). Redx stays the only provider for Free Fire, Genshin, HSR and ZZZ, always in its standalone mode; its MLBB-chain `timeout` config is removed.
+2. `IsanMlbbValidator` sends `GET /find?id=&zone=`. Only a 404 whose body says `success: false` is an invalid ID (`PlayerValidationResult::invalid('isan')`); a found player needs `success: true` and a non-empty `name`. Anything else (WAF page, 429, 5xx, timeout, an unexpected body) is `ProviderUnavailableException`, so UniPlay decides. A missing zone is an invalid ID without a call. `countryCode` (ISO alpha-2) feeds `player_region_mappings` as before. Timeout 5 s, so UniPlay still starts inside the chain's 8 s deadline. Nothing goes in `.env`.
+3. UniPlay is unchanged and still last (`status: false` = invalid).
+
+**Consequence to track:**
+- isan is unofficial and run by one developer, on Vercel behind a WAF its own code warns about ("many requests in a short time can trigger the WAF"); no key, no SLA. While UniPlay is down it is MLBB's only working provider; the kill switch is the per-game "Requires Player Validation" toggle on `/admin/games`.
+- A Malaysian ID was not tested live (only the README's Indonesian sample); the first post-deploy MLBB checks are the real test: `player_validations.provider = isan` with `country_code = MY`.
+- If isan's upstream ever answers its "Not found" for every ID, valid customers would be told their ID is wrong rather than sent to support. A sudden run of `invalid` rows with `provider = isan` is the sign.

@@ -171,7 +171,7 @@ class VoucherCashRefundTest extends TestCase
     {
         $order = $this->failedOrder();
         $voucher = $this->compensationVoucher($order);
-        $order->update(['supplier_response' => ['late_supplier_result' => ['status' => 'Sukses']]]);
+        $order->lateSupplierResults()->create(['outcome' => 'success', 'supplier_reference' => 'REF-LATE-'.$order->id, 'payload' => ['status' => 'Sukses']]);
         $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
 
         $this->refund($voucher)->assertUnprocessable()->assertJsonValidationErrors('voucher');
@@ -186,10 +186,10 @@ class VoucherCashRefundTest extends TestCase
         $this->assertSame(Voucher::SOURCE_CUSTOMER_CASH, $merged->source);
         $this->assertSame([$first->id, $second->id], app(VoucherService::class)->sourceOrderIds($merged));
 
-        $second->update(['supplier_response' => ['late_supplier_result' => ['status' => 'Sukses']]]);
+        $second->lateSupplierResults()->create(['outcome' => 'success', 'supplier_reference' => 'REF-LATE-'.$second->id, 'payload' => ['status' => 'Sukses']]);
         $this->refund($merged)->assertUnprocessable()->assertJsonValidationErrors('voucher');
 
-        $second->update(['supplier_response' => null]);
+        $second->lateSupplierResults()->delete();
         $this->refund($merged)->assertCreated()->assertJsonPath('cash_refund.amount_sen', 2000);
     }
 
