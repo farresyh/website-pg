@@ -6,6 +6,7 @@ import { useClientSession } from "@/hooks/useClientSession";
 import { ApiError } from "@/lib/api-client";
 import { notify } from "@/components/ui/toast";
 import { getProfile, updateProfile, type AffiliateProfile } from "@/lib/portal";
+import { InactiveNotice } from "@/components/storefront/shared";
 import { getResellerProfile, type ResellerProfile } from "@/lib/reseller-portal";
 import { PageHeader, Panel, ErrorNote, StatusTag } from "@/components/composites";
 import { Button } from "@/components/ui/button";
@@ -168,7 +169,9 @@ function AffiliateProfileView() {
           </Panel>
 
           <Panel title="Contact & payout">
-            <form onSubmit={handleSubmit} className="space-y-4 p-5">
+            <form onSubmit={handleSubmit} className="p-5">
+              {!profile.writable && <InactiveNotice />}
+              <fieldset disabled={!profile.writable} className="space-y-4">
               <Field label="Contact name">
                 <Input
                   value={form.contact_name}
@@ -208,6 +211,7 @@ function AffiliateProfileView() {
                   {saving ? "Saving…" : "Save changes"}
                 </Button>
               </div>
+              </fieldset>
             </form>
           </Panel>
         </div>

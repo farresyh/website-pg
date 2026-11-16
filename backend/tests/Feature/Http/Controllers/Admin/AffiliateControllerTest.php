@@ -10,6 +10,7 @@ use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Withdrawal;
 use App\Services\Affiliate\AffiliateDomainStatus;
+use App\Services\Affiliate\AffiliateStatus;
 use App\Services\Affiliate\AffiliateSubscriptionService;
 use App\Services\Affiliate\AffiliateSubscriptionStatus;
 use App\Services\Affiliate\Domain\AffiliateDomainProvider;
@@ -275,10 +276,10 @@ class AffiliateControllerTest extends TestCase
         $r = $this->affiliate();
 
         $this->patchJson("/api/affiliates/{$r->id}/status", ['status' => 'inactive'])->assertOk();
-        $this->assertSame('inactive', $r->fresh()->status);
+        $this->assertSame(AffiliateStatus::Inactive, $r->fresh()->status);
 
         $this->patchJson("/api/affiliates/{$r->id}/status", ['status' => 'active'])->assertOk();
-        $this->assertSame('active', $r->fresh()->status);
+        $this->assertSame(AffiliateStatus::Active, $r->fresh()->status);
     }
 
     public function test_destroy_soft_deletes_when_nothing_owed(): void
@@ -327,6 +328,17 @@ class AffiliateControllerTest extends TestCase
 
         $this->deleteJson("/api/affiliates/{$owner->id}")->assertUnprocessable();
         $this->assertDatabaseHas('affiliates', ['id' => $owner->id, 'deleted_at' => null]);
+    }
+
+    /** ADR-058 2026-11-16 addendum: the UI hid the button; the backend now refuses too. */
+    public function test_primary_affiliate_cannot_be_deactivated(): void
+    {
+        $this->actAsSuperAdmin();
+        $owner = $this->primaryAffiliate();
+
+        $this->patchJson("/api/affiliates/{$owner->id}/status", ['status' => 'inactive'])
+            ->assertUnprocessable()->assertJsonValidationErrors('status');
+        $this->assertSame(AffiliateStatus::Active, $owner->fresh()->status);
     }
 
     public function test_a_non_primary_owned_brand_follows_the_normal_delete_rules(): void

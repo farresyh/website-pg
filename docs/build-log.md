@@ -2902,3 +2902,20 @@ The founder asked for it, to restore MLBB checks. `staging` → `main`, merge `5
 **Open:** item 177 now holds the fix to make before Gamevion is switched back on (item 162 step 0).
 
 Also seen in the same check, not yet acted on: three storefront `TrackedOrder` schema-drift warnings (2026-11-14 to 16, delivered orders, a 2xx body that was not JSON, cause unknown); real Malaysian MLBB checks after release #802 (5 `isan/valid/MY`, 1 `uniplay/valid/MY`), which closes release #802's open check.
+
+## 2026-11-16 — Affiliate deactivation hardened: read-only by route, bank-detail changes recorded (ADR-058 2026-11-16 addendum)
+
+**Why.** The founder asked for an audit of affiliate and reseller deactivation before redesigning reseller deactivation (ADR-142, next). The affiliate findings are fixed here first, because they do not touch reseller code and one is money: `Affiliate\ProfileController::update()` had no `assertWritable()`, so a deactivated affiliate could change its payout bank details, and the monthly payout copies them when a ticket opens.
+
+**Built** (`fix/affiliate-deactivation-hardening`):
+- `EnsureAffiliateWritable` (`affiliate.writable`) on the whole affiliate portal group; opt-outs `pricing/preview` and `impersonation/end` pinned in `RouteAccessTest`. The `AssertsAffiliateWritable` trait and its 16 per-method calls are gone.
+- `AffiliateStatus` enum cast on `affiliates.status`, `Affiliate::isActive()` at the nine former string comparisons; the model's `$attributes` default mirrors the column.
+- `AffiliateBankDetailsService::change()`: the bank fields are no longer fillable; a locked write plus an `affiliate_bank_changes` row (migration `2026_11_22_100000`; FK column `impersonation_session_id`, since the long name was 65 characters, over MySQL's 64); after the commit, emails to the affiliate's logins and contact email (`emails.affiliate-bank-changed`) and to every admin through `BackupFailureAlerter` (area "Affiliate bank"). The three fields are required together.
+- `AffiliateController::updateStatus()`: 422 for the primary affiliate; status, impersonation end and domain suspension in one transaction; `propagateChange()` flushes caches after the commit.
+- The portal profile returns `writable` and locks its form with the existing `InactiveNotice`; the admin dialog no longer says "503".
+
+**Found on the way.** The admin Withdrawals page already flags a ticket whose bank details differ from the last approved payout, so that was not rebuilt. Three tests set `status` to `'deactivated'` or `'suspended'`, values the code silently treated as inactive; production holds only `active`.
+
+**Verified.** Backend suite 4,017 green; `AffiliateWithdrawalConcurrencyTest` green on MySQL (the new migration runs there); portal `tsc`, lint and 22 tests; admin `tsc` and lint. Dev DB migrated. Live on the local Herd backend with a throwaway inactive affiliate: profile `writable: false`, `PUT /profile` and `PUT /storefront/branding` 403, `POST /storefront/pricing/preview` 200; the portal profile page (Playwright) shows the notice with all five inputs and Save disabled. The throwaway rows were deleted afterwards.
+
+**For ADR-142 (reseller), recorded here so it is not lost:** the bot's `.topupbaki` (and `.info`, `.checkid`, `.list`, `.batalbaki`) still runs for a deactivated reseller: `ResellerBotService` blocks only `.baki`, `.trackorder` and `.listharga`, and `ResellerWalletTopupService::initiate()` has no `is_active` check, despite a comment saying it does. `ResellerOrderPlacementService` checks `is_active` before taking the wallet lock.

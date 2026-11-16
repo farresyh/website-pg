@@ -33,9 +33,11 @@ class UpdateAffiliateProfileRequest extends FormRequest
             // "must have bank details" check. `filled` allows the field
             // to be omitted entirely (a partial update touching other
             // fields), but rejects it outright if present and empty.
-            'bank_name' => ['filled', 'string', 'max:255'],
-            'bank_account_no' => ['filled', 'string', 'max:100'],
-            'bank_account_holder' => ['filled', 'string', 'max:255'],
+            // ADR-058 2026-11-16 addendum: the three bank fields are one
+            // account, saved and recorded together, so one present means all.
+            'bank_name' => ['filled', 'required_with:bank_account_no,bank_account_holder', 'string', 'max:255'],
+            'bank_account_no' => ['filled', 'required_with:bank_name,bank_account_holder', 'string', 'max:100'],
+            'bank_account_holder' => ['filled', 'required_with:bank_name,bank_account_no', 'string', 'max:255'],
         ];
     }
 }

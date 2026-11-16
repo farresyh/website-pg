@@ -192,6 +192,8 @@ export interface AffiliateProfile {
   bank_name: string | null;
   bank_account_no: string | null;
   bank_account_holder: string | null;
+  /** False while the affiliate is deactivated (RES-5): the portal is read-only. */
+  writable: boolean;
 }
 
 export type WithdrawalStatus = "pending" | "approved" | "rejected" | "completed";

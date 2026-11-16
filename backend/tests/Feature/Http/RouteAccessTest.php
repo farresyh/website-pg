@@ -5,6 +5,7 @@ namespace Tests\Feature\Http;
 use App\Http\Middleware\EnsureAccountType;
 use App\Http\Middleware\EnsureAdminRole;
 use App\Http\Middleware\EnsureAdminSessionFresh;
+use App\Http\Middleware\EnsureAffiliateWritable;
 use App\Http\Middleware\EnsureResellerApiKey;
 use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Routing\Route;
@@ -143,6 +144,25 @@ class RouteAccessTest extends TestCase
             'GET api/affiliate/me',
             'POST api/affiliate/logout',
         ], $selfOnly);
+    }
+
+    /**
+     * RES-5 (ADR-058 2026-11-16 addendum): a deactivated affiliate's portal is
+     * read-only, so every affiliate write route carries `affiliate.writable`.
+     * These two write nothing of the affiliate's own and opt out on purpose.
+     */
+    public function test_affiliate_write_routes_without_the_read_only_gate_are_exactly_these(): void
+    {
+        $open = $this->apiRoutes()
+            ->filter(fn (array $m, string $route) => in_array(EnsureAccountType::class.':affiliate', $m, true)
+                && ! str_starts_with($route, 'GET')
+                && ! in_array(EnsureAffiliateWritable::class, $m, true))
+            ->keys()->sort()->values()->all();
+
+        $this->assertSame([
+            'POST api/affiliate/impersonation/end',
+            'POST api/affiliate/storefront/pricing/preview',
+        ], $open);
     }
 
     /** Every other admin route is super_admin only; these are the ones a regular admin may use. */

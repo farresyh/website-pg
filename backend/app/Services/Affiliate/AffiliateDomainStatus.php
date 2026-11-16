@@ -15,7 +15,8 @@ namespace App\Services\Affiliate;
  *  - Failed     verification never completed (14-day stuck-pending
  *               sweep) or the DNS record was removed after going active.
  *  - Suspended  the affiliate was deactivated (RES-5) — the row is kept
- *               but the storefront returns 503 for this Host.
+ *               but the storefront shows "store unavailable"
+ *               for this Host (API: 404 `unknown_storefront_host`).
  *
  * Only `Active` is servable. The seeded rows for the primary affiliate's
  * own domain(s) are `Active` with a null `provider_ref` — every

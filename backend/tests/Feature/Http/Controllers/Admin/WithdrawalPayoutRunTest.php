@@ -35,7 +35,7 @@ class WithdrawalPayoutRunTest extends TestCase
 
     private function affiliate(string $name, bool $bank = true, int $earned = 25000): Affiliate
     {
-        $a = Affiliate::query()->create([
+        $a = Affiliate::query()->forceCreate([
             'business_name' => $name, 'markup_pct' => 10, 'max_markup_pct' => 30, 'status' => 'active',
             'bank_name' => $bank ? 'Maybank' : null,
             'bank_account_no' => $bank ? '1' : null,

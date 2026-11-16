@@ -457,8 +457,8 @@ export default function AffiliatesPage() {
               </DialogHeader>
               <DialogContent>
                 <p className="text-sm text-gray-600 dark:text-gray-300">
-                  Their branded storefront stops taking new orders (ADR-060 returns 503) and any live impersonation
-                  session ends. Existing earnings stay withdrawable.
+                  Their branded storefront shows &quot;store unavailable&quot; and takes no new orders, their partner portal
+                  turns read-only, and any live impersonation session ends. Existing earnings stay withdrawable.
                 </p>
               </DialogContent>
               <DialogFooter>
