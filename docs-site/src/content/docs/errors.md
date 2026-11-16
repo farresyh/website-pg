@@ -41,7 +41,7 @@ code, so read it only for the codes below:
 | --- | --- | --- | --- |
 | 401 | `MISSING_API_KEY` | No `Authorization: Bearer` header. | Send the key. |
 | 401 | `INVALID_API_KEY` | The key is unknown or revoked. | Check the key; rotate if needed. |
-| 403 | `RESELLER_INACTIVE` | The account is deactivated. | Contact PekanGame. |
+| 403 | `RESELLER_INACTIVE` | The account is deactivated: by PekanGame, or automatically after a set number of days with no order and no added balance. The `message` says which, and how to ask for reactivation. | Contact PekanGame. Your Purchase Balance is kept. |
 | 403 | `IP_NOT_ALLOWED` | This key has an IP allowlist and your address is not on it. | Add the IP in the portal, or clear the allowlist. |
 | 404 | `ORDER_NOT_FOUND` | No order with that number belongs to you. | Check the `order_number`. |
 | 404 | `NOT_FOUND` | The endpoint path does not exist. | Check the URL against the reference. |

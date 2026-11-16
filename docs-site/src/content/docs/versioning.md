@@ -32,6 +32,16 @@ The version number on this documentation (shown in the API Reference) is the
 
 ## Changelog
 
+### 2026-11 — v1.6.2
+
+The `error` code is unchanged; only its `message` is new.
+
+- An account with no order and no added balance for a set number of days
+  (7 by default) is warned by email and in its WhatsApp group, then
+  deactivated until PekanGame reactivates it. Every call then answers
+  `403 RESELLER_INACTIVE`, and the `message` says why and how to ask for
+  reactivation ([Errors](/errors/)). The Purchase Balance is kept.
+
 ### 2026-11 — v1.6.1
 
 Documentation only; the API and the webhook did not change.
