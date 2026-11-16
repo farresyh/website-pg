@@ -5,6 +5,8 @@ namespace Tests\Feature\Rebate;
 use App\Models\AdminUser;
 use App\Models\CustomerNotification;
 use App\Services\Rebate\RebateClaimService;
+use App\Services\Reseller\ResellerAccountStatus;
+use App\Services\Reseller\ResellerDeactivationReason;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -57,7 +59,7 @@ class RebateNotifierTest extends TestCase
         $quiet->update(['rebate_eligible' => false]);
         $this->delivered(60000, 1740, reseller: $quiet);
         $off = $this->rebateReseller('Off', $this->ss, 'off@g.us');
-        $off->update(['is_active' => false]);
+        app(ResellerAccountStatus::class)->deactivate($off, ResellerDeactivationReason::Manual, null);
         $this->delivered(60000, 1740, reseller: $off);
 
         $this->artisan('app:notify-rebate-progress')->assertSuccessful();

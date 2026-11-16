@@ -42,9 +42,10 @@ final class ResellerApiException extends RuntimeException
         return new self('INVALID_API_KEY', 401, 'The API key is invalid or has been revoked.');
     }
 
-    public static function resellerInactive(): self
+    /** ADR-142 decision 16: the code stays; the message is the account's own denial (manual, dormant or closed). */
+    public static function resellerInactive(?string $message = null): self
     {
-        return new self('RESELLER_INACTIVE', 403, 'This reseller account is deactivated.');
+        return new self('RESELLER_INACTIVE', 403, $message ?? 'This reseller account is deactivated.');
     }
 
     public static function ipNotAllowed(): self

@@ -14,6 +14,8 @@ use App\Services\Pricing\PricingBasis;
 use App\Services\Reseller\IdempotencyKeyPayloadMismatchException;
 use App\Services\Reseller\NoResellerTierAssignedException;
 use App\Services\Reseller\PriceAboveMaxException;
+use App\Services\Reseller\ResellerAccountStatus;
+use App\Services\Reseller\ResellerDeactivationReason;
 use App\Services\Reseller\ResellerInactiveException;
 use App\Services\Reseller\ResellerOrderPlacementRequest;
 use App\Services\Reseller\ResellerOrderPlacementService;
@@ -90,7 +92,7 @@ class ResellerOrderPlacementServiceTest extends TestCase
     public function test_deactivated_reseller_cannot_place_an_order(): void
     {
         $reseller = $this->makeReseller();
-        $reseller->update(['is_active' => false]);
+        app(ResellerAccountStatus::class)->deactivate($reseller, ResellerDeactivationReason::Manual, null);
 
         $this->expectException(ResellerInactiveException::class);
         app(ResellerOrderPlacementService::class)->placeOrder($reseller, $this->request());

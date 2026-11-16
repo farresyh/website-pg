@@ -43,6 +43,11 @@ class PlatformSettings extends Model
         'campaign_qualified_min_sen',
         'campaign_target_cac_sen',
         'campaign_trial_months',
+        'reseller_dormancy_enabled',
+        'reseller_dormancy_enabled_at',
+        'reseller_dormancy_days',
+        'reseller_dormancy_warning_days',
+        'reseller_support_whatsapp',
     ];
 
     protected $casts = [
@@ -63,6 +68,10 @@ class PlatformSettings extends Model
         'campaign_qualified_min_sen' => 'integer',
         'campaign_target_cac_sen' => 'integer',
         'campaign_trial_months' => 'integer',
+        'reseller_dormancy_enabled' => 'boolean',
+        'reseller_dormancy_enabled_at' => 'datetime',
+        'reseller_dormancy_days' => 'integer',
+        'reseller_dormancy_warning_days' => 'integer',
     ];
 
     public static function current(): self
@@ -91,6 +100,10 @@ class PlatformSettings extends Model
             // ADR-075 2026-11-14 addendum: read back as null it would be a
             // 0-minute limit, and every bot money command would be stale.
             'bot_command_max_age_minutes' => 3,
+            // ADR-142 decision 25: off until the founder turns it on.
+            'reseller_dormancy_enabled' => false,
+            'reseller_dormancy_days' => 7,
+            'reseller_dormancy_warning_days' => 3,
         ]);
     }
 }

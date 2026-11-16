@@ -96,7 +96,6 @@ final class ResellerProvisioningService
             'email' => $details['email'],
             'phone' => $details['phone'] ?? null,
             'reseller_tier_id' => $details['reseller_tier_id'],
-            'is_active' => true,
             'notes' => $details['notes'] ?? null,
             'internal_reason' => $details['internal_reason'] ?? null,
         ]);

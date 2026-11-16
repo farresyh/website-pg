@@ -18,6 +18,8 @@ use App\Services\Order\PaymentStatus;
 use App\Services\Rebate\RebateClaimService;
 use App\Services\Rebate\RebateEntitlement;
 use App\Services\Rebate\RebateLadderService;
+use App\Services\Reseller\ResellerAccountStatus;
+use App\Services\Reseller\ResellerDeactivationReason;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
@@ -191,7 +193,8 @@ class RebateClaimTest extends TestCase
 
         $this->reseller->update(['rebate_eligible' => false]);
         $this->assertRefused(fn () => $this->claim(1));
-        $this->reseller->update(['rebate_eligible' => true, 'is_active' => false]);
+        $this->reseller->update(['rebate_eligible' => true]);
+        app(ResellerAccountStatus::class)->deactivate($this->reseller, ResellerDeactivationReason::Manual, null);
         $this->assertRefused(fn () => $this->claim(1));
         $this->reseller->update(['is_active' => true]);
 

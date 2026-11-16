@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\AffiliateUser;
 use App\Services\Auth\AccountOwnerType;
+use App\Services\Reseller\ResellerAccountStatus;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -53,8 +54,14 @@ class EnsureAccountType
         // ADR-058 RES-5 decision keeps a deactivated Affiliate's portal
         // read-only (earnings stay withdrawable), which existing tests
         // (BrandingControllerTest) already cover.
-        if ($expected === AccountOwnerType::Reseller && ! $user->resellerOwner()?->is_active) {
-            throw new HttpException(403, 'Forbidden: account deactivated.');
+        // ADR-142: an open token rarely gets here (deactivation deletes the
+        // reseller's portal tokens); when one does, it gets the same denial.
+        if ($expected === AccountOwnerType::Reseller) {
+            $reseller = $user->resellerOwner();
+            $denial = $reseller === null ? null : app(ResellerAccountStatus::class)->denial($reseller);
+            if ($reseller === null || $denial !== null) {
+                throw new HttpException(403, $denial->message ?? 'Forbidden: account deactivated.');
+            }
         }
 
         return $next($request);

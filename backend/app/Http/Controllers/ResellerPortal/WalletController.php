@@ -8,6 +8,7 @@ use App\Services\Payment\Chip\FpxBankRedirect;
 use App\Services\Reseller\InvalidWalletTopupAmountException;
 use App\Services\Reseller\NoResellerTierAssignedException;
 use App\Services\Reseller\PendingWalletTopupAlreadyExistsException;
+use App\Services\Reseller\ResellerInactiveException;
 use App\Services\Reseller\ResellerWalletService;
 use App\Services\Reseller\ResellerWalletTopupService;
 use App\Services\Reseller\WalletTopupAttemptStatus;
@@ -100,6 +101,8 @@ class WalletController extends Controller
             );
         } catch (InvalidWalletTopupAmountException|PendingWalletTopupAlreadyExistsException|NoResellerTierAssignedException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
+        } catch (ResellerInactiveException $e) {
+            return response()->json(['message' => $e->getMessage()], 403);
         } catch (WalletTopupCheckoutFailedException $e) {
             return response()->json(['message' => $e->getMessage()], 502);
         }

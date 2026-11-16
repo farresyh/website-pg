@@ -859,6 +859,8 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::put('/customer-login-policy', [SettingsController::class, 'updateCustomerLoginPolicy'])->middleware('mfa.stepup');
         // ADR-131 decision 4 — the Purchase Balance limits.
         Route::put('/purchase-balance-policy', [SettingsController::class, 'updatePurchaseBalancePolicy'])->middleware('mfa.stepup');
+        // ADR-142 decision 25: the reseller dormancy switch and its numbers.
+        Route::put('/reseller-dormancy-policy', [SettingsController::class, 'updateResellerDormancyPolicy'])->middleware('mfa.stepup');
         Route::post('/platform/bulk-markup', [SettingsController::class, 'bulkMarkup']);
     });
 
