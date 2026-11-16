@@ -212,7 +212,7 @@ class BrandingControllerTest extends TestCase
 
     public function test_a_deactivated_affiliate_is_read_only(): void
     {
-        $affiliate = $this->affiliate(['status' => 'deactivated']);
+        $affiliate = $this->affiliate(['status' => 'inactive']);
         $token = $this->tokenFor($affiliate);
 
         $this->withToken($token)->getJson('/api/affiliate/storefront/branding')

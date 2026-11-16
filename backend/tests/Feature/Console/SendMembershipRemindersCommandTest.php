@@ -144,7 +144,7 @@ class SendMembershipRemindersCommandTest extends TestCase
     public function test_members_of_a_brand_that_cannot_take_a_renewal_are_not_reminded(): void
     {
         $off = Affiliate::query()->create(['business_name' => 'Off', 'markup_pct' => 0, 'status' => 'active', 'is_owned' => true, 'membership_enabled' => false]);
-        $suspended = Affiliate::query()->create(['business_name' => 'Suspended', 'markup_pct' => 0, 'status' => 'suspended', 'is_owned' => true, 'membership_enabled' => true]);
+        $suspended = Affiliate::query()->create(['business_name' => 'Suspended', 'markup_pct' => 0, 'status' => 'inactive', 'is_owned' => true, 'membership_enabled' => true]);
         $deleted = Affiliate::query()->create(['business_name' => 'Gone', 'markup_pct' => 0, 'status' => 'active', 'is_owned' => true, 'membership_enabled' => true]);
         $this->member('2026-10-23 17:00:00', $off);
         $this->member('2026-10-23 17:00:00', $suspended);

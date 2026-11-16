@@ -32,7 +32,7 @@ class AffiliateWithdrawalTest extends TestCase
 
     private function affiliate(string $name = 'Acme'): Affiliate
     {
-        return Affiliate::query()->create([
+        return Affiliate::query()->forceCreate([
             'business_name' => $name,
             'markup_pct' => 10,
             'max_markup_pct' => 30,
@@ -96,7 +96,7 @@ class AffiliateWithdrawalTest extends TestCase
             ->assertJsonPath('payout.fee_due_at', null)
             ->assertJsonPath('payout.has_bank_details', true);
 
-        $affiliate->update(['bank_name' => null]);
+        $affiliate->forceFill(['bank_name' => null])->save();
         $this->withToken($token)->getJson('/api/affiliate/withdrawals')
             ->assertJsonPath('payout.has_bank_details', false);
     }

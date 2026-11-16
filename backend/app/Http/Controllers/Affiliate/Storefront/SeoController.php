@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Affiliate\Storefront;
 
-use App\Http\Controllers\Affiliate\Concerns\AssertsAffiliateWritable;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\SeoController as PublicSeoController;
 use App\Http\Requests\Affiliate\Storefront\UpdateSeoRequest;
@@ -21,12 +20,9 @@ use Illuminate\Http\Request;
  */
 class SeoController extends Controller
 {
-    use AssertsAffiliateWritable;
-
     public function update(UpdateSeoRequest $request): JsonResponse
     {
         $affiliate = $request->user()->affiliateOwner();
-        $this->assertWritable($affiliate);
 
         $settings = AffiliateSeoSettings::withoutAffiliateScope()->firstOrNew(['affiliate_id' => $affiliate->id]);
         // Empty string → NULL, so a cleared field is genuinely unset

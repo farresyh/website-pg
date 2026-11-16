@@ -408,7 +408,10 @@ Route::prefix('affiliate')->group(function () {
         Route::post('/logout', [AffiliateAuthController::class, 'logout']);
         Route::get('/me', [AffiliateAuthController::class, 'me']);
 
-        Route::middleware(['account.type:affiliate', 'affiliate.context'])->group(function () {
+        // RES-5: `affiliate.writable` makes every write below refuse a deactivated affiliate
+        // (read-only portal, ADR-058 2026-11-16 addendum); the two opt-outs are pinned by
+        // RouteAccessTest.
+        Route::middleware(['account.type:affiliate', 'affiliate.context', 'affiliate.writable'])->group(function () {
             // ADR-059 (59a) — affiliate portal read layer. Every route here
             // is scoped to the authenticated affiliate_user's own tenant by
             // `affiliate.context`; money reads go through
@@ -426,7 +429,7 @@ Route::prefix('affiliate')->group(function () {
             Route::get('/profile', [AffiliateProfileController::class, 'show']);
             Route::put('/profile', [AffiliateProfileController::class, 'update']);
             Route::get('/withdrawals', [AffiliateWithdrawalController::class, 'index']);
-            Route::post('/impersonation/end', [AffiliateImpersonationEndController::class, 'end']);
+            Route::post('/impersonation/end', [AffiliateImpersonationEndController::class, 'end'])->withoutMiddleware('affiliate.writable');
 
             // ADR-060 PR-5 — self-serve custom-domain management (branded
             // storefront). Provider-opaque (addendum section C).
@@ -440,7 +443,7 @@ Route::prefix('affiliate')->group(function () {
             // ADR-060 PR-6 — the portal "Storefront" screen's four tabs:
             // branding text + logo + pixels, hero slides, catalog
             // visibility, retail markup + live preview. Every write
-            // is `assertWritable`-gated (deactivated = read-only).
+            // is `affiliate.writable`-gated (deactivated = read-only).
             Route::prefix('storefront')->group(function () {
                 Route::get('/branding', [AffiliateStorefrontBrandingController::class, 'show']);
                 Route::put('/branding', [AffiliateStorefrontBrandingController::class, 'update']);
@@ -462,7 +465,7 @@ Route::prefix('affiliate')->group(function () {
 
                 Route::get('/pricing', [AffiliateStorefrontPricingController::class, 'show']);
                 Route::put('/pricing', [AffiliateStorefrontPricingController::class, 'update']);
-                Route::post('/pricing/preview', [AffiliateStorefrontPricingController::class, 'preview']);
+                Route::post('/pricing/preview', [AffiliateStorefrontPricingController::class, 'preview'])->withoutMiddleware('affiliate.writable');
             });
         });
     });
