@@ -2939,3 +2939,15 @@ Also seen in the same check, not yet acted on: three storefront `TrackedOrder` s
 **Verified.** Backend suite green after merging `staging` (count below in the PR); reseller concurrency tests green on MySQL (placement, closure, top-up, refund). The two key tests fail without their fix (order from a stale active copy; `.topupbaki` while deactivated). Admin `tsc` and lint. Live on local: a dormant reseller's portal login answers 422 with the reason and the WhatsApp number; Playwright screenshots of Settings → Reseller Inactivity, the Resellers page (warn tag "inactive", "for inactivity, 16 Nov 2026") and the history dialog ("Deactivated for inactivity · automatic"). Throwaway rows deleted afterwards.
 
 **After release (founder):** turn the switch on and set the WhatsApp number. Resellers #1 and #2 would then be warned 4 days later and deactivated 3 days after that unless they transact.
+
+## 2026-11-17 — Release #806: affiliate deactivation hardening, reseller dormancy (switch off)
+
+The founder asked for it. `staging` → `main`, merge `9a3b9674`, carrying #803 (docs: #802 record, Gamevion timeouts), #804 (ADR-058 2026-11-16 addendum) and #805 (ADR-142). Two additive migrations. CI run `43911091142` green in every job, `deploy` included.
+
+**Checked before release (production, read-only):** no pending or processing order, no pending top-up, no pending migration. The 33 failed jobs of the previous 24 hours were all `SyncSupplierCatalogJob` timeouts, the last at 10:05 UTC on 2026-11-16, before Gamevion was switched off.
+
+**Checked after release (production, read-only):**
+- The box runs `9a3b967` (release `83143684`); both migrations ran (batch 74); Horizon running; `/api/health` ok on every check; Vercel production green for all four apps.
+- `app:deactivate-dormant-resellers` is scheduled at 02:00 UTC (10:00 MYT); dormancy is off (7 days, 3-day lead); the 3 resellers are active with no deactivation reason; the three new tables exist; no failed job since the deploy.
+
+**Open (founder):** turn on Admin → Settings → Reseller Inactivity and set the support WhatsApp number (PRD §16 item 193); item 191 (Drift Threshold 1,000 IDR).
