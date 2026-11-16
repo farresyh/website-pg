@@ -14,7 +14,7 @@ class OpenAffiliatePayoutsCommandTest extends TestCase
 
     public function test_it_opens_tickets_and_a_rerun_opens_none(): void
     {
-        $a = Affiliate::query()->create([
+        $a = Affiliate::query()->forceCreate([
             'business_name' => 'Acme', 'markup_pct' => 10, 'max_markup_pct' => 30, 'status' => 'active',
             'bank_name' => 'Maybank', 'bank_account_no' => '1', 'bank_account_holder' => 'Acme',
         ]);

@@ -2,13 +2,16 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Services\Affiliate\AffiliateStatus;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * ADR-058 58b (RES-5): activate / deactivate an affiliate. Deactivation
- * is a business kill switch — the ADR-060 branded storefront returns 503
- * and the Cloudflare custom hostname is suspended (that side is ADR-060,
- * not wired here). Existing earnings stay withdrawable; no new orders.
+ * is a business kill switch: every custom domain is suspended, so the
+ * branded storefront shows "store unavailable" (`AffiliateController::
+ * updateStatus()`), and the portal turns read-only. Existing earnings stay
+ * withdrawable; no new orders.
  */
 class UpdateAffiliateStatusRequest extends FormRequest
 {
@@ -23,7 +26,7 @@ class UpdateAffiliateStatusRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status' => ['required', 'in:active,inactive'],
+            'status' => ['required', Rule::enum(AffiliateStatus::class)],
         ];
     }
 }

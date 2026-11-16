@@ -17,6 +17,7 @@ use App\Models\AffiliateMarkupChange;
 use App\Models\AffiliateMembershipTier;
 use App\Models\AffiliateUser;
 use App\Services\Affiliate\AffiliateInviteService;
+use App\Services\Affiliate\AffiliateStatus;
 use App\Services\Affiliate\AffiliateSubscriptionService;
 use App\Services\Affiliate\AffiliateTierFeeService;
 use App\Services\Affiliate\Domain\AffiliateDomainService;
@@ -130,7 +131,7 @@ class AffiliateController extends Controller
                 'phone' => $data['phone'] ?? null,
                 'markup_pct' => $data['markup_pct'],
                 'max_markup_pct' => $data['max_markup_pct'] ?? null,
-                'status' => 'active',
+                'status' => AffiliateStatus::Active,
                 'is_owned' => $isOwned,
                 ...$ownedOnly,
                 'notes' => $data['notes'] ?? null,
@@ -419,27 +420,41 @@ class AffiliateController extends Controller
         return response()->json($this->detailShape($affiliate->fresh()));
     }
 
-    /** RES-5: activate / deactivate. Deactivating ends any live impersonation. */
+    /**
+     * RES-5: activate / deactivate. Deactivating ends any live impersonation
+     * and suspends every custom domain (ADR-060 addendum section G), in one
+     * transaction. Reactivating re-checks the suspended domains with the
+     * hosting provider, a network call, so it runs after the commit.
+     *
+     * ADR-058 2026-11-16 addendum: the primary affiliate is the storefront's
+     * own brand and the fallback tenant, so it cannot be switched off.
+     */
     public function updateStatus(UpdateAffiliateStatusRequest $request, Affiliate $affiliate): JsonResponse
     {
-        $status = $request->validated('status');
-        $affiliate->update(['status' => $status]);
+        $status = AffiliateStatus::from($request->validated('status'));
 
-        if ($status === 'inactive') {
-            $this->endImpersonationSessions($affiliate, 'affiliate_deactivated');
-            // ADR-060 addendum section G: deactivate ⇒ every custom
-            // domain → `suspended`, the storefront then 503s that host.
-            // The provider domain stays attached for a fast reactivate.
-            $this->domains->suspendAll($affiliate);
-        } else {
-            // Reactivate ⇒ suspended domains return to pending and are
-            // re-checked (DNS is usually still valid).
+        if ($status === AffiliateStatus::Inactive && $affiliate->is_primary) {
+            throw ValidationException::withMessages([
+                'status' => ['The primary affiliate cannot be deactivated.'],
+            ]);
+        }
+
+        DB::transaction(function () use ($affiliate, $status) {
+            $affiliate->update(['status' => $status]);
+
+            if ($status === AffiliateStatus::Inactive) {
+                $this->endImpersonationSessions($affiliate, 'affiliate_deactivated');
+                $this->domains->suspendAll($affiliate);
+            }
+        });
+
+        if ($status === AffiliateStatus::Active) {
             $this->domains->resumeAll($affiliate);
         }
 
         Log::info('Affiliate status changed', [
             'affiliate_id' => $affiliate->id,
-            'status' => $status,
+            'status' => $status->value,
             'admin_user_id' => $request->user()->id,
         ]);
 
@@ -495,7 +510,7 @@ class AffiliateController extends Controller
 
         $this->endImpersonationSessions($affiliate, 'affiliate_deleted');
 
-        $affiliate->update(['status' => 'inactive']);
+        $affiliate->update(['status' => AffiliateStatus::Inactive]);
         $affiliate->delete();
 
         Log::info('Affiliate soft-deleted', ['affiliate_id' => $affiliate->id]);
@@ -587,7 +602,7 @@ class AffiliateController extends Controller
             'phone' => $affiliate->phone,
             'markup_pct' => $affiliate->markup_pct,
             'max_markup_pct' => $affiliate->max_markup_pct,
-            'status' => $affiliate->status,
+            'status' => $affiliate->status->value,
             'notes' => $affiliate->notes,
             'is_owned' => (bool) $affiliate->is_owned,
             'is_primary' => (bool) $affiliate->is_primary,

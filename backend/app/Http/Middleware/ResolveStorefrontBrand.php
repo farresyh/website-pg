@@ -87,7 +87,7 @@ class ResolveStorefrontBrand
 
         // A soft-deleted affiliate makes `->affiliate` null (SoftDeletes);
         // a deactivated one (RES-5) is filtered by status here.
-        if ($domain?->affiliate === null || $domain->affiliate->status !== 'active') {
+        if ($domain?->affiliate === null || ! $domain->affiliate->isActive()) {
             // A coded body so the storefront `proxy.ts` (ADR-060 PR-5)
             // can tell "unknown storefront host" apart from any other
             // 404 and show its hard "store unavailable" page.

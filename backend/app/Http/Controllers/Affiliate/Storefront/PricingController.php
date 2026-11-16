@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Affiliate\Storefront;
 
-use App\Http\Controllers\Affiliate\Concerns\AssertsAffiliateWritable;
 use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Affiliate\Storefront\PreviewMarkupRequest;
@@ -28,8 +27,6 @@ use Illuminate\Support\Collection;
  */
 class PricingController extends Controller
 {
-    use AssertsAffiliateWritable;
-
     public function __construct(private readonly PricingService $pricing) {}
 
     public function show(Request $request): JsonResponse
@@ -42,7 +39,6 @@ class PricingController extends Controller
     public function update(UpdateMarkupRequest $request): JsonResponse
     {
         $affiliate = $request->user()->affiliateOwner();
-        $this->assertWritable($affiliate);
 
         if ($refused = $this->refuseOwned($affiliate)) {
             return $refused;

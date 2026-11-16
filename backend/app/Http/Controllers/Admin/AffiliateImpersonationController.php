@@ -58,7 +58,7 @@ class AffiliateImpersonationController extends Controller
 
     public function store(ImpersonateAffiliateRequest $request, Affiliate $affiliate): JsonResponse
     {
-        if ($affiliate->status !== 'active') {
+        if (! $affiliate->isActive()) {
             throw ValidationException::withMessages([
                 'affiliate' => ['This affiliate is not active — reactivate it before impersonating.'],
             ]);
