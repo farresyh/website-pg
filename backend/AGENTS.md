@@ -210,6 +210,15 @@ a session before.
    nothing boots. Some cloud sessions ship PHP 8.3 and block the Debian
    mirror, so a PHP 8.4 Docker image can't be built there either; let CI
    (PHP 8.4) run the backend suite (`docs/build-log.md`, 2026-10-19).
+10. **`error in view llm_report_orders: no such table: main.<table>` on `migrate`
+   (sqlite dev DB).** Adding a foreign key (or anything else sqlite cannot
+   `ALTER`) to a table the `llm_report_*` views read makes Laravel rebuild it:
+   copy to `__temp__<table>`, drop, rename. The views block the rename, and
+   the dev DB is left with only `__temp__<table>`, the data still in it. Use
+   plain nullable columns on those tables (`resellers`, `orders`, …). To
+   recover: copy the DB file first, then in one transaction drop the views,
+   recreate the table from a fresh schema's DDL, copy the rows across, drop
+   `__temp__…` and recreate the views (`docs/build-log.md`, 2026-11-16).
 
 ## Migrations
 

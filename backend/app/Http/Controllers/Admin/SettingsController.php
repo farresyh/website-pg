@@ -13,6 +13,7 @@ use App\Http\Requests\Settings\UpdateCustomerLoginPolicyRequest;
 use App\Http\Requests\Settings\UpdateFooterSettingsRequest;
 use App\Http\Requests\Settings\UpdatePlatformSettingsRequest;
 use App\Http\Requests\Settings\UpdatePurchaseBalancePolicyRequest;
+use App\Http\Requests\Settings\UpdateResellerDormancyPolicyRequest;
 use App\Models\Affiliate;
 use App\Models\AffiliateBranding;
 use App\Models\AffiliateFooterSettings;
@@ -26,6 +27,7 @@ use App\Services\Pricing\ComboPricingService;
 use App\Services\Pricing\PackageMarkupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Mews\Purifier\Facades\Purifier;
 
 /**
@@ -165,6 +167,30 @@ class SettingsController extends Controller
     {
         $settings = PlatformSettings::current();
         $settings->update($request->validated());
+
+        return response()->json($settings);
+    }
+
+    /**
+     * ADR-142 decision 25, behind step-up. Turning the switch on stores the
+     * moment, which starts every reseller's idle spell (decision 7), so no one
+     * is deactivated for days before it was on; turning it off clears it.
+     */
+    public function updateResellerDormancyPolicy(UpdateResellerDormancyPolicyRequest $request): JsonResponse
+    {
+        $settings = PlatformSettings::current();
+        $data = $request->validated();
+        $on = (bool) $data['reseller_dormancy_enabled'];
+
+        $settings->update($data + [
+            'reseller_dormancy_enabled_at' => match (true) {
+                ! $on => null,
+                $settings->reseller_dormancy_enabled => $settings->reseller_dormancy_enabled_at,
+                default => now(),
+            },
+        ]);
+
+        Log::info('Reseller dormancy policy changed', ['enabled' => $on, 'days' => $data['reseller_dormancy_days'], 'admin_user_id' => $request->user()->id]);
 
         return response()->json($settings);
     }

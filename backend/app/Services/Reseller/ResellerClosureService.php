@@ -40,6 +40,7 @@ final class ResellerClosureService
     public function __construct(
         private readonly LedgerService $ledger,
         private readonly UnspentRebate $unspentRebate,
+        private readonly ResellerAccountStatus $accountStatus,
     ) {}
 
     /**
@@ -147,7 +148,7 @@ final class ResellerClosureService
             WhatsAppGroup::query()->where('owner_type', WhatsAppGroup::OWNER_RESELLER)->where('owner_id', $locked->id)->update(['is_active' => false]);
             ResellerWebhook::query()->where('reseller_id', $locked->id)->update(['is_active' => false]);
 
-            $locked->update(['is_active' => false]);
+            $this->accountStatus->deactivate($locked, ResellerDeactivationReason::Closed, $adminUserId);
             $locked->delete();
 
             return $refund;

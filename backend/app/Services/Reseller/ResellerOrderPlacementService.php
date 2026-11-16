@@ -31,10 +31,12 @@ final class ResellerOrderPlacementService
         private readonly LedgerService $ledger,
         private readonly OrderPricingResolver $pricingResolver,
         private readonly OrderFactory $orderFactory,
+        private readonly ResellerAccountStatus $accountStatus,
     ) {}
 
     /**
-     * Contract order, per decision 4: is_active gate → idempotency
+     * Contract order, per decision 4: is_active gate (ADR-142: also re-read
+     * under the wallet lock) → idempotency
      * check (no-op replay, never a second debit) → resolve tier price →
      * one `DB::transaction()` (lock the wallet ledger account, check
      * balance, debit, create the Order) → dispatch `FulfillOrderJob`
@@ -57,9 +59,8 @@ final class ResellerOrderPlacementService
      */
     public function placeOrder(Reseller $reseller, ResellerOrderPlacementRequest $request): ResellerOrderPlacementResult
     {
-        if (! $reseller->is_active) {
-            throw new ResellerInactiveException("Reseller #{$reseller->id} is deactivated.");
-        }
+        // ADR-142 decision 18: a fast refusal here; the real check is under the wallet lock below.
+        $this->accountStatus->assertActive($reseller);
 
         $existing = $this->findByIdempotencyKey($reseller, $request->idempotencyKey);
         if ($existing !== null) {
@@ -90,6 +91,10 @@ final class ResellerOrderPlacementService
 
         try {
             $order = DB::transaction(function () use ($reseller, $request, $pricing, $primaryAffiliateId) {
+                // The wallet lock first, then the flag re-read under it, so an order and a
+                // deactivation that cross never let the order through after the switch-off.
+                $this->accountStatus->lockActive($reseller);
+
                 $order = $this->orderFactory->create(new OrderDraft(
                     pricing: $pricing,
                     idempotencyKey: $request->idempotencyKey,

@@ -48,6 +48,7 @@ final class ResellerWalletTopupService
         private readonly PaymentMethodFeeResolver $fees,
         private readonly CheckoutTotalService $totals,
         private readonly ResellerWalletService $wallets,
+        private readonly ResellerAccountStatus $accountStatus,
     ) {}
 
     /**
@@ -59,6 +60,10 @@ final class ResellerWalletTopupService
         string $channelCode,
         array $channelProperties,
     ): WalletTopupAttempt {
+        // ADR-142 decision 17: a deactivated account takes no new money, from the portal or the bot.
+        // A top-up already paid still credits (completeTopup() never refuses, ADR-131 decision 6).
+        $this->accountStatus->assertActive($reseller);
+
         // ADR-133 decision 20: an account that cannot order is not funded. Checked on
         // the start only, never in completeTopup(): a top-up already paid still credits.
         // An assigned tier can only be swapped, never cleared, so no lock is needed.

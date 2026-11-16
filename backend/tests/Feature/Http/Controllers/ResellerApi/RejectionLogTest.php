@@ -5,7 +5,9 @@ namespace Tests\Feature\Http\Controllers\ResellerApi;
 use App\Models\Reseller;
 use App\Models\ResellerApiKey;
 use App\Models\ResellerTier;
+use App\Services\Reseller\ResellerAccountStatus;
 use App\Services\Reseller\ResellerApiKeyService;
+use App\Services\Reseller\ResellerDeactivationReason;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
@@ -58,7 +60,7 @@ class RejectionLogTest extends TestCase
     {
         Log::spy();
         [$reseller, $key] = $this->reseller();
-        $reseller->update(['is_active' => false]);
+        app(ResellerAccountStatus::class)->deactivate($reseller, ResellerDeactivationReason::Manual, null);
 
         $this->getJson('/api/reseller/v1/catalog', ['Authorization' => "Bearer {$key}"])->assertForbidden();
 

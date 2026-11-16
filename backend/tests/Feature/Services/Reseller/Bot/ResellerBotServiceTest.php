@@ -14,6 +14,8 @@ use App\Models\WhatsAppPendingLink;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Reseller\Bot\ResellerBotService;
+use App\Services\Reseller\ResellerAccountStatus;
+use App\Services\Reseller\ResellerDeactivationReason;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Tests\Support\ResellerBotFixtures;
@@ -245,7 +247,7 @@ class ResellerBotServiceTest extends TestCase
     public function test_baki_is_rejected_for_a_deactivated_reseller(): void
     {
         $reseller = $this->makeLinkedReseller();
-        $reseller->update(['is_active' => false]);
+        app(ResellerAccountStatus::class)->deactivate($reseller, ResellerDeactivationReason::Manual, null);
 
         app(ResellerBotService::class)->handle(self::GROUP_ID, '.baki', 'msg-1', now()->getTimestamp());
 
@@ -258,7 +260,7 @@ class ResellerBotServiceTest extends TestCase
     public function test_trackorder_is_rejected_for_a_deactivated_reseller(): void
     {
         $reseller = $this->makeLinkedReseller();
-        $reseller->update(['is_active' => false]);
+        app(ResellerAccountStatus::class)->deactivate($reseller, ResellerDeactivationReason::Manual, null);
 
         app(ResellerBotService::class)->handle(self::GROUP_ID, '.trackorder PG-TEST', 'msg-1', now()->getTimestamp());
 
@@ -271,7 +273,7 @@ class ResellerBotServiceTest extends TestCase
     public function test_listharga_is_rejected_for_a_deactivated_reseller(): void
     {
         $reseller = $this->makeLinkedReseller();
-        $reseller->update(['is_active' => false]);
+        app(ResellerAccountStatus::class)->deactivate($reseller, ResellerDeactivationReason::Manual, null);
 
         app(ResellerBotService::class)->handle(self::GROUP_ID, '.listharga', 'msg-1', now()->getTimestamp());
 

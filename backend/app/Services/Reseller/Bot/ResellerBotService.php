@@ -24,6 +24,7 @@ use App\Services\Pricing\OrderPricingResolver;
 use App\Services\Reseller\InvalidWalletTopupAmountException;
 use App\Services\Reseller\NoResellerTierAssignedException;
 use App\Services\Reseller\PendingWalletTopupAlreadyExistsException;
+use App\Services\Reseller\ResellerAccountStatus;
 use App\Services\Reseller\ResellerCatalogService;
 use App\Services\Reseller\ResellerInactiveException;
 use App\Services\Reseller\ResellerOrderPlacementRequest;
@@ -70,6 +71,7 @@ final class ResellerBotService
         private readonly PlayerValidatorRegistry $validators,
         private readonly WhatsAppOutbox $outbox,
         private readonly CheckoutInputValidator $checkoutInputValidator,
+        private readonly ResellerAccountStatus $accountStatus,
     ) {}
 
     /** ADR-075 2026-11-14 addendum, decision 2: commands that move money or a payment. */
@@ -114,6 +116,16 @@ final class ResellerBotService
         $isMoney = in_array($command->type, self::MONEY_COMMANDS, true);
         $reply = fn (string|array $text, ?int $orderId = null) => $this->reply($whatsappGroupId, $whatsappMessageId, $text, $isMoney, $orderId);
 
+        // ADR-142 decision 17: a deactivated reseller gets one reply, the same for every
+        // command (it replaced a list of three, which let `.topupbaki` through), except
+        // `.batalbaki`: cancelling a top-up only reduces exposure (ADR-135 decision 8).
+        if ($command->type !== ResellerBotCommandType::BatalBaki && ($denial = $this->accountStatus->denial($reseller)) !== null) {
+            $this->logFailure($reseller, $whatsappGroupId, $command->raw, 'reseller_inactive');
+            $reply($denial->messageMs);
+
+            return;
+        }
+
         // ADR-075 2026-11-14 addendum, decision 2: before the limiters and any
         // checker call, so a reconnect backlog costs nothing.
         if ($this->isStale($sentAt, $isMoney)) {
@@ -124,22 +136,6 @@ final class ResellerBotService
 
         if (! RateLimiter::attempt("reseller-bot:{$reseller->id}", 60, fn () => true, 60)) {
             $reply('Terlalu banyak permintaan. Sila cuba sebentar lagi.');
-
-            return;
-        }
-
-        // E10 hardening (2026-09-10 reseller-family audit, `docs/build-log.md`):
-        // `.order`/`.topupbaki` already reject a deactivated Reseller via
-        // their own services (`ResellerInactiveException`) — these three
-        // read-only commands didn't, so a deactivated reseller could still
-        // read their own balance/order-history/catalog through the bot.
-        if (! $reseller->is_active && in_array($command->type, [
-            ResellerBotCommandType::Balance,
-            ResellerBotCommandType::TrackOrder,
-            ResellerBotCommandType::ListGames,
-        ], true)) {
-            $this->logFailure($reseller, $whatsappGroupId, $command->raw, 'reseller_inactive');
-            $reply(ResellerBotReplyFormatter::resellerInactive());
 
             return;
         }
@@ -396,7 +392,11 @@ final class ResellerBotService
                 packageId: $package->id,
                 supplierId: $package->supplier_id,
             ))->order;
-        } catch (ResellerInactiveException|NoResellerTierAssignedException $e) {
+        } catch (ResellerInactiveException $e) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'reseller_inactive');
+
+            return [$e->denial->messageMs, null];
+        } catch (NoResellerTierAssignedException $e) {
             $this->logFailure($reseller, $groupId, $command->raw, 'order_rejected: '.$e->getMessage());
 
             return ['Order tidak dapat diproses: '.$e->getMessage(), null];
@@ -699,6 +699,10 @@ final class ResellerBotService
 
         try {
             $attempt = $this->topups->initiate($reseller, $amountSen, $method->channel_code, []);
+        } catch (ResellerInactiveException $e) {
+            $this->logFailure($reseller, $groupId, $command->raw, 'reseller_inactive');
+
+            return $e->denial->messageMs;
         } catch (NoResellerTierAssignedException) {
             $this->logFailure($reseller, $groupId, $command->raw, 'topup_no_tier_assigned');
 

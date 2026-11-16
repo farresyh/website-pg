@@ -74,6 +74,8 @@ import ReadinessCell from "@/components/partners/ReadinessCell";
 import ResellerWebhookModal from "@/components/resellers/ResellerWebhookModal";
 import ResellerWhatsAppGroupsModal from "@/components/resellers/ResellerWhatsAppGroupsModal";
 import ResellerPortalUsersModal from "@/components/resellers/ResellerPortalUsersModal";
+import ResellerStatusCell from "@/components/resellers/ResellerStatusCell";
+import Link from "next/link";
 import InviteApplicantModal from "@/components/partner-applications/InviteApplicantModal";
 
 function formatRm(sen: number): string {
@@ -82,6 +84,19 @@ function formatRm(sen: number): string {
 
 const TH = "px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400";
 const TD = "px-5 py-4 text-theme-sm text-gray-500 dark:text-gray-400";
+
+type StatusFilter = "all" | "active" | "dormant" | "manual";
+
+const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: "all", label: "All statuses" },
+  { value: "active", label: "Active" },
+  { value: "dormant", label: "Deactivated for inactivity" },
+  { value: "manual", label: "Deactivated by an admin" },
+];
+
+function matchesStatus(r: ResellerRow, f: StatusFilter): boolean {
+  return f === "all" || (f === "active" ? r.is_active : !r.is_active && r.deactivation_reason === f);
+}
 
 export default function ResellersPage() {
   const router = useRouter();
@@ -108,11 +123,15 @@ export default function ResellersPage() {
   const [webhookTarget, setWebhookTarget] = useState<ResellerRow | null>(null);
   const [whatsAppGroupsTarget, setWhatsAppGroupsTarget] = useState<ResellerRow | null>(null);
   const [portalUsersTarget, setPortalUsersTarget] = useState<ResellerRow | null>(null);
+  // ADR-142 decisions 25–26: is auto-deactivation on, and the status filter.
+  const [dormancy, setDormancy] = useState<{ enabled: boolean; days: number } | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   function refresh() {
     return Promise.all([listResellers(), listResellerTiers()])
       .then(([r, ti]) => {
         setResellers(r.resellers);
+        setDormancy(r.dormancy);
         setTiers(ti.tiers);
       })
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load resellers."));
@@ -182,6 +201,8 @@ export default function ResellersPage() {
     return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
   }
 
+  const shown = resellers.filter((r) => matchesStatus(r, statusFilter));
+
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -207,9 +228,23 @@ export default function ResellersPage() {
         <p className="mb-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/15 dark:text-error-400">{error}</p>
       )}
 
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <SimpleSelect
+          value={statusFilter}
+          onChange={(v) => setStatusFilter(v as StatusFilter)}
+          options={STATUS_FILTERS}
+          className="w-60"
+        />
+        {dormancy && (
+          <Link href="/admin/settings" className="text-theme-xs text-ink-subtle hover:underline">
+            Auto-deactivate: {dormancy.enabled ? `On · ${dormancy.days} days with no transaction` : "Off"}
+          </Link>
+        )}
+      </div>
+
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="max-w-full overflow-x-auto">
-          <DataTable data={resellers} dataKey="id">
+          <DataTable data={shown} dataKey="id">
             <DataTableTableContainer>
               <DataTableTable>
                 <DataTableTHead className="border-b border-gray-100 dark:border-gray-800">
@@ -259,7 +294,7 @@ export default function ResellersPage() {
                           <ReadinessCell readiness={r.readiness} />
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4">
-                          <Tag severity={r.is_active ? "success" : "secondary"}>{r.is_active ? "active" : "inactive"}</Tag>
+                          <ResellerStatusCell reseller={r} />
                           {!r.rebate_eligible && <p className="mt-1 text-theme-xs text-ink-subtle">rebate off</p>}
                         </DataTableCell>
                         <DataTableCell className="px-5 py-4">

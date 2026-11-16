@@ -59,6 +59,7 @@ class AdminMfaStepUpTest extends TestCase
             'PUT api/resellers/{reseller}/balance-cap mfa.stepup',
             'PUT api/settings/customer-login-policy mfa.stepup',
             'PUT api/settings/purchase-balance-policy mfa.stepup',
+            'PUT api/settings/reseller-dormancy-policy mfa.stepup',
         ], $guarded);
     }
 

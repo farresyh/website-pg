@@ -19,7 +19,9 @@ use App\Services\Ledger\LedgerService;
 use App\Services\Order\PaymentStatus;
 use App\Services\Partner\PartnerReadinessService;
 use App\Services\Partner\StepState;
+use App\Services\Reseller\ResellerAccountStatus;
 use App\Services\Reseller\ResellerApiKeyService;
+use App\Services\Reseller\ResellerDeactivationReason;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -309,7 +311,7 @@ class PartnerReadinessServiceTest extends TestCase
 
         $this->assertTrue($this->readiness->forReseller($reseller)->ready);
 
-        $reseller->update(['is_active' => false]);
+        app(ResellerAccountStatus::class)->deactivate($reseller, ResellerDeactivationReason::Manual, null);
         $this->assertFalse($this->readiness->forReseller($reseller->fresh())->ready);
     }
 

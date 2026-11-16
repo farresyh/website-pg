@@ -13,12 +13,15 @@ use App\Http\Requests\Admin\UpdateResellerStatusRequest;
 use App\Models\AffiliateUser;
 use App\Models\PlatformSettings;
 use App\Models\Reseller;
+use App\Models\ResellerStatusChange;
 use App\Services\Affiliate\AffiliateInviteService;
 use App\Services\Auth\AccountOwnerType;
 use App\Services\Ledger\LedgerOwnerType;
 use App\Services\Ledger\LedgerService;
 use App\Services\Partner\PartnerReadinessService;
+use App\Services\Reseller\ResellerAccountStatus;
 use App\Services\Reseller\ResellerClosureService;
+use App\Services\Reseller\ResellerDeactivationReason;
 use App\Services\Reseller\ResellerProvisioningService;
 use App\Services\Reseller\ResellerTierChangeService;
 use Illuminate\Http\JsonResponse;
@@ -45,6 +48,7 @@ class ResellerController extends Controller
         private readonly ResellerClosureService $closures,
         private readonly PartnerReadinessService $readiness,
         private readonly ResellerTierChangeService $tierChanges,
+        private readonly ResellerAccountStatus $accountStatus,
     ) {}
 
     /** ADR-131 decision 4: the platform default cap, read once per request, not once per row. */
@@ -62,17 +66,29 @@ class ResellerController extends Controller
 
         $readiness = $this->readiness->forResellers($resellers);
 
+        $settings = PlatformSettings::current();
+
         return response()->json([
             'resellers' => $resellers->map(fn (Reseller $r) => $this->rowShape($r, $balances[$r->id] ?? 0)
                 + ['readiness' => $readiness[$r->id]->toSummary()])->all(),
+            // ADR-142 decision 25: the page shows whether auto-deactivation is on.
+            'dormancy' => ['enabled' => $settings->reseller_dormancy_enabled, 'days' => $settings->reseller_dormancy_days],
         ]);
     }
 
     public function show(Reseller $reseller): JsonResponse
     {
-        $reseller->load(['tier' => fn ($q) => $q->withTrashed(), 'users'])->loadExists('partnerApplication');
+        $reseller->load(['tier' => fn ($q) => $q->withTrashed(), 'users', 'statusChanges.admin:id,name'])->loadExists('partnerApplication');
 
-        return response()->json($this->rowShape($reseller, $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id)));
+        return response()->json($this->rowShape($reseller, $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id)) + [
+            // ADR-142 decision 26: every status change, newest first; a null admin is the dormancy job.
+            'status_history' => $reseller->statusChanges->map(fn (ResellerStatusChange $c) => [
+                'is_active' => $c->is_active,
+                'reason' => $c->reason?->value,
+                'admin_name' => $c->admin?->name,
+                'at' => $c->created_at->toIso8601String(),
+            ])->all(),
+        ]);
     }
 
     /** ADR-133 decision 12(c): a test or internal account, no KYC on file. Behind step-up. */
@@ -118,20 +134,17 @@ class ResellerController extends Controller
     }
 
     /**
-     * ADR-072 decision 9: activate / deactivate. Does not freeze or zero
-     * the wallet balance — a deactivated reseller simply can't place new
-     * orders on either channel once PR-D/E/F ship.
+     * ADR-072 decision 9, ADR-142 decision 15: activate / deactivate through
+     * the one status seam, which records the reason (`manual`) and who. Does
+     * not freeze or zero the Purchase Balance.
      */
     public function updateStatus(UpdateResellerStatusRequest $request, Reseller $reseller): JsonResponse
     {
-        $isActive = $request->validated('is_active');
-        $reseller->update(['is_active' => $isActive]);
+        $adminId = $request->user()->id;
 
-        Log::info('Reseller status changed', [
-            'reseller_id' => $reseller->id,
-            'is_active' => $isActive,
-            'admin_user_id' => $request->user()->id,
-        ]);
+        $request->validated('is_active')
+            ? $this->accountStatus->reactivate($reseller, $adminId)
+            : $this->accountStatus->deactivate($reseller, ResellerDeactivationReason::Manual, $adminId);
 
         return response()->json($this->rowShape($reseller->fresh(), $this->ledger->balance(LedgerOwnerType::ResellerWallet, $reseller->id)));
     }
@@ -227,6 +240,9 @@ class ResellerController extends Controller
                 'effective_on' => $pending->effective_on->toDateString(),
             ],
             'is_active' => (bool) $reseller->is_active,
+            // ADR-142 decision 26: why and since when it is off (null while active).
+            'deactivation_reason' => $reseller->deactivation_reason?->value,
+            'deactivated_at' => $reseller->deactivated_at?->toIso8601String(),
             'notes' => $reseller->notes,
             // ADR-133 decision 12: "on file" when approved from an application whose data is still
             // held; an internal account has none; any other was collected outside the system.

@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Exceptions\ResellerApi\ResellerApiException;
 use App\Models\ResellerApiKey;
+use App\Services\Reseller\ResellerAccountStatus;
 use App\Services\Reseller\ResellerApiKeyService;
 use Closure;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
@@ -70,8 +71,11 @@ class EnsureResellerApiKey
         $request->attributes->set('reseller_api_key', $key);
 
         $reseller = $key->reseller;
-        if ($reseller === null || ! $reseller->is_active) {
+        if ($reseller === null) {
             throw ResellerApiException::resellerInactive();
+        }
+        if (($denial = app(ResellerAccountStatus::class)->denial($reseller)) !== null) {
+            throw ResellerApiException::resellerInactive($denial->message);
         }
 
         if (! self::ipAllowed($key, $request->ip())) {
