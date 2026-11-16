@@ -2865,3 +2865,13 @@ The founder asked for it. `staging` → `main`, merge `3b815832` at 15:07 UTC (2
 - Tests: leg Sukses-on-Failed recorded once and alerted once across a redelivered webhook; leg Gagal-on-Delivered recorded, alerted, not blocking; evidence survives a later `supplier_response` write; the Order Detail payload; drift email, in-flight skip, Needs Review count; existing tests moved off the JSON key (one cleared evidence by nulling `supplier_response`, the hole this closes). Backend suite 4,004 green; admin `tsc`, lint, 22 tests green; dev DB migrated.
 
 **Founder action:** set Digiflazz's Drift Threshold to 1,000 IDR in Middleware → Suppliers (PRD §16 item 191).
+
+## 2026-11-16 — MLBB player check: isan first, then UniPlay; RedxGame out of the MLBB chain (ADR-005 and ADR-123 2026-11-16 addenda)
+
+**Found (read-only prod).** UniPlay's checker page answers 503 to our server (2 fallbacks in the log on 2026-11-15, 12 on 2026-11-16; `curl` from the box: 503), and RedxGame has 403'd us since about 2026-11-06 (PRD §16 item 186). RedxGame offers official access only to its resellers. So every MLBB check ended `region_unknown`. Bypassing Redx's block was ruled out again. Two GitHub projects the founder found were read: `web-mlbb-checker` calls another store's endpoint through a public CORS proxy (not used); `mlbbchatidbot` uses isan's API (`ihsangan/valid`), which led here.
+
+**Checked from the prod box.** `mlbb-api.isan.eu.org/find`: a known ID → 200 with `countryCode`, 0.13 s; a made-up ID → 404 `success:false`. The `api.isan.eu.org/nickname/ml` wrapper crashes on an unknown ID (500, Cloudflare 1101), so it is not used. No first-top-up bonus field.
+
+**Built** on `fix/mlbb-isan-validator`: `IsanMlbbValidator` (only 404 + `success:false` is invalid; WAF, 429, 5xx, timeout or an odd body is unavailable), MLBB chain isan → UniPlay for checkout, the reseller bot and the public checker; Redx bound only for Free Fire, Genshin, HSR and ZZZ (standalone), its MLBB `timeout` config removed. The founder first said drop UniPlay, then corrected it mid-build: keep UniPlay, drop Redx from MLBB.
+
+**After release, check:** the first real MLBB checks have `player_validations.provider = isan` and a Malaysian ID returns `country_code = MY` (only the README's Indonesian sample was tried live).
