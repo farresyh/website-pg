@@ -859,7 +859,7 @@ before building.
 - **189** Second payment gateway prerequisites ([ADR-022](./adr/ADR-022-multi-gateway-payment-strategy.md) 2026-11-14 addendum), when the founder picks a second gateway (e.g. HitPay or Fiuu for e-wallets and cards): `method_key` as the real method, `channel_code` unique per gateway, a gateway-neutral `payment_ref` on wallet top-ups, and the settlement import and re-check for that gateway.
 - **185** Ask OpenWA upstream for a per-message "skip typing" option, so bot replies skip the pause and customer messages keep it. A public issue: only with the founder's go-ahead.
 - **162** Gamevion v2 API, when the founder decides to use Gamevion (ADR-137). The ordered steps and the "don't press Reactivate" warning are in Details.
-- **177** Price-sync ceiling warning, when chosen Gamevion games approach 140 (ADR-137).
+- **177** Gamevion's price sync no longer fits its 300 s job (slow pricelists since 2026-11-12; Gamevion switched off 2026-11-16). Fix before Gamevion is switched back on (ADR-137).
 - **160** An admin editor for an affiliate storefront's default OG image (ADR-060 2026-11-03 addendum): today only the primary's row is editable, so an affiliate's homepage has no share image. When an affiliate asks for one.
 - **139** FPX bank-down status on the bank grid (ADR-130 decision 9), only if real payments show customers failing at a down bank. Advisory and fail-open from `fpxstatus.chip-in.asia`'s JSON feed; never a hard dependency of checkout.
 - **128** Shared admin loading skeleton, if "Loading…" still bothers the founder.
@@ -1151,6 +1151,7 @@ before building.
      **Proven without money, 2026-11-07:** one order sent through the real adapter at RM0 balance answered 402 `insufficient_balance` ("RM 0.00 < RM 0.71"), mapped to a confirmed failure, so the key, the IP allowlist, the order endpoint and our error mapping all work. The player ID was made up, so the balance check appears to come before the player check. **Not proven:** a delivery, its webhook, drawdown and real cost.
 
      **When the trigger comes, in order:**
+     0. the Gamevion supplier is switched off since 2026-11-16 because its sync times out: fix item 177 first, then switch it on (switching on restores no package);
      1. in Product Manager, link the new groups that have no old items, such as `Mobile Legends (Malaysia)` (item 172 linked the items in old groups, so Valorant, Free Fire and Honor of Kings are ready);
      2. repoint the other 65 packages with "Link to existing" (Claude's match list, 2026-11-05: all 71 have a match; First Topup 50+50 and 250+250 only to a smaller-bonus item, so check them on Gamevion or delete them);
      3. a small deposit, recorded in `/admin/accounting`, then one funded storefront test order on one cheap package (HOK 16 Tokens) before any other package is switched on.
@@ -1167,8 +1168,14 @@ before building.
      2026-11-10 addendum). Gamevion allows 40 pricelist calls a minute, so each
      chosen game costs about 2 s (the forced 1.6 s pause plus the call): 74 games
      took ~152 s on 2026-11-10, and the 300 s job fits about 140. No bulk upsert: it would save seconds.
-     Trigger: the chosen Gamevion games approach 140; then add a warning on the
-     Gamevion game picker.
+     **2026-11-16: the ceiling is already crossed at 74 games.** Since 2026-11-12
+     about 19 of Gamevion's pricelists answer in 4–10 s instead of ~0.3 s (all 200),
+     so one sync needs ~310 s plus our 10 s timeout's retries; Gamevion synced in 0
+     of 49 runs on 2026-11-15 (build-log, 2026-11-16). The founder switched the
+     Gamevion supplier off the same day. **Trigger: before Gamevion is switched back
+     on (item 162).** Then decide (ADR-137 addendum): a longer pricelist timeout
+     without retries on timeout, a longer job limit kept in step with Horizon's
+     `timeout` and the queue's `retry_after`, and Digiflazz syncing before Gamevion.
 
 178. **SEO meta strategy and per-game "About this game" content** (founder,
      2026-11-11; [ADR-140](./adr/ADR-140-seo-meta-strategy-and-game-content.md)).
