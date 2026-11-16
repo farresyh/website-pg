@@ -2876,6 +2876,33 @@ The founder asked for it. `staging` → `main`, merge `3b815832` at 15:07 UTC (2
 
 **After release, check:** the first real MLBB checks have `player_validations.provider = isan` and a Malaysian ID returns `country_code = MY` (only the README's Indonesian sample was tried live).
 
+## 2026-11-16 — Release #802: MLBB player check restored (isan → UniPlay), loss email, late supplier results
+
+The founder asked for it, to restore MLBB checks. `staging` → `main`, merge `5f1bc5cf`, carrying #798–#801. One migration. CI run `43805670052` green in every job, `deploy` included.
+
+**Checked after release (production, read-only):**
+- The box runs `5f1bc5c` (release `83074420`); `2026_11_21_100000_create_late_supplier_results_table` ran (batch 73); Horizon running; `/api/health` ok; Vercel production green for all four apps.
+- The bound MLBB chain via tinker on the box: README sample ID → valid, `provider = isan`, "Outrageous Dominance", `ID`; a made-up ID → invalid, `isan`.
+- One paid order was in flight at merge (`PG-MDOEVYENJSYA`, `pending` at the supplier); it was `delivered` at 04:46 UTC, after the restart.
+
+**isan beyond MLBB (from the box, 2026-11-16):** Free Fire returns a nickname for a real ID and `success: true` with no name for a made-up one, never a region. Genshin and HSR answered 404 "Not found" for the founder's own real UIDs, as did every README sample for Genshin, HSR and ZZZ; isan's last commits say its author stopped maintaining the Codashop-based lookups ("use gopay games, I'm tired with coda", 2026-02-10). So isan is not a source for those three. PRD §16 item 186 holds the founder's open decision.
+
+**Open:** a real Malaysian MLBB check (`player_validations.provider = isan`, `country_code = MY`); item 191 (Drift Threshold 1,000 IDR) can now be set.
+
+## 2026-11-16 — Gamevion's price sync timed out on every run; the founder switched Gamevion off (PRD §16 items 177, 162)
+
+**Found (read-only prod, in a backlog check).** 183 `SyncSupplierCatalogJob` failures in 7 days, from 2026-11-12, all Gamevion, all `TimeoutExceededException` (300 s). Gamevion synced in 20 of 48 runs on 12 Nov, 4 on 13 Nov, 1 on 14 Nov and 0 of 49 on 15 Nov; runs averaged ~165 s on 7–11 Nov and ~320 s after. The stale/recovered CRITICAL emails alternated, and Digiflazz, on the same single `price-sync` worker, synced ~5 minutes late each run behind it.
+
+**Cause: Gamevion, not our code** (no sync or Gamevion commit between 10 and 13 Nov). Timed from the box, every one of the 74 chosen pricelists answered 200, but about 19 now take 4–10 s instead of ~0.3 s (`freefire_latam`, `valorant_sg/ph/th`, `mlbb_id`, `wwm`, `arena_breakout`, `bloodstrike_*` and others). Pricelists ~184 s + the forced 1.6 s pauses ~117 s + field calls ~7 s ≈ 310 s, and a call over our 10 s timeout is retried up to three times. `supplier_request_logs` agrees: 10 s `exception` rows only from 12 Nov (26–62 a day). Item 177's "about 140 games per 300 s" (2026-11-10) assumed Gamevion answers fast.
+
+**Impact:** none on money (Gamevion unfunded, 0 active packages); false CRITICAL alerts and a late Digiflazz sync.
+
+**Done (founder, 10:04 UTC):** Gamevion (API) switched off in Middleware → Suppliers; 0 packages and 0 combos taken off sale. **Checked after:** `is_active = 0`; the 10:30 run took 31 s, Digiflazz only, synced at 10:30:36; no failed job since 10:06.
+
+**Open:** item 177 now holds the fix to make before Gamevion is switched back on (item 162 step 0).
+
+Also seen in the same check, not yet acted on: three storefront `TrackedOrder` schema-drift warnings (2026-11-14 to 16, delivered orders, a 2xx body that was not JSON, cause unknown); real Malaysian MLBB checks after release #802 (5 `isan/valid/MY`, 1 `uniplay/valid/MY`), which closes release #802's open check.
+
 ## 2026-11-16 — Affiliate deactivation hardened: read-only by route, bank-detail changes recorded (ADR-058 2026-11-16 addendum)
 
 **Why.** The founder asked for an audit of affiliate and reseller deactivation before redesigning reseller deactivation (ADR-142, next). The affiliate findings are fixed here first, because they do not touch reseller code and one is money: `Affiliate\ProfileController::update()` had no `assertWritable()`, so a deactivated affiliate could change its payout bank details, and the monthly payout copies them when a ticket opens.
