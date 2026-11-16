@@ -19,7 +19,7 @@ class AffiliateHasBankDetailsTest extends TestCase
 
     private function affiliate(array $bank = []): Affiliate
     {
-        return Affiliate::query()->create(array_merge([
+        return Affiliate::query()->forceCreate(array_merge([
             'business_name' => 'Acme', 'markup_pct' => 10, 'status' => 'active',
         ], $bank));
     }

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Affiliate\Storefront;
 
-use App\Http\Controllers\Affiliate\Concerns\AssertsAffiliateWritable;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\HeroSlideController as PublicHeroSlideController;
 use App\Http\Requests\Affiliate\Storefront\SaveHeroSlideRequest;
@@ -29,8 +28,6 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class HeroSlideController extends Controller
 {
-    use AssertsAffiliateWritable;
-
     /** ADR-060 PR-6 planning addendum Q7: per-affiliate slide cap. */
     private const MAX_SLIDES = 6;
 
@@ -52,14 +49,13 @@ class HeroSlideController extends Controller
         return response()->json([
             'slides' => $slides,
             'max_slides' => self::MAX_SLIDES,
-            'writable' => $affiliate->status === 'active',
+            'writable' => $affiliate->isActive(),
         ]);
     }
 
     public function store(SaveHeroSlideRequest $request): JsonResponse
     {
         $affiliate = $request->user()->affiliateOwner();
-        $this->assertWritable($affiliate);
 
         if ($this->ownSlides($affiliate->id)->count() >= self::MAX_SLIDES) {
             return response()->json([
@@ -88,7 +84,6 @@ class HeroSlideController extends Controller
     {
         $affiliate = $request->user()->affiliateOwner();
         $this->assertOwned($heroSlide, $affiliate);
-        $this->assertWritable($affiliate);
 
         $slide = $heroSlide->fill($this->textFields($request));
 
@@ -115,7 +110,6 @@ class HeroSlideController extends Controller
     {
         $affiliate = $request->user()->affiliateOwner();
         $this->assertOwned($heroSlide, $affiliate);
-        $this->assertWritable($affiliate);
 
         $heroSlide->update(['is_active' => $request->boolean('is_active')]);
         PublicHeroSlideController::forgetCache($heroSlide->affiliate_id);
@@ -127,7 +121,6 @@ class HeroSlideController extends Controller
     {
         $affiliate = $request->user()->affiliateOwner();
         $this->assertOwned($heroSlide, $affiliate);
-        $this->assertWritable($affiliate);
 
         $affiliateId = $heroSlide->affiliate_id;
         $this->images->delete($heroSlide->image_path);

@@ -34,7 +34,7 @@ class PartnerOnboardingEndpointsTest extends TestCase
 
     private function affiliate(array $attributes = []): Affiliate
     {
-        return Affiliate::query()->create(array_merge([
+        return Affiliate::query()->forceCreate(array_merge([
             'business_name' => 'Brand '.uniqid(), 'markup_pct' => 10, 'max_markup_pct' => 30, 'status' => 'active',
         ], $attributes));
     }

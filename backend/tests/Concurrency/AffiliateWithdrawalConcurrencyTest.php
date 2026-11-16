@@ -32,7 +32,7 @@ class AffiliateWithdrawalConcurrencyTest extends TestCase
 
     public function test_only_one_of_two_simultaneous_payout_runs_opens_a_ticket(): void
     {
-        $affiliate = Affiliate::query()->create([
+        $affiliate = Affiliate::query()->forceCreate([
             'business_name' => 'Race Test Affiliate',
             'markup_pct' => 10,
             'max_markup_pct' => 30,

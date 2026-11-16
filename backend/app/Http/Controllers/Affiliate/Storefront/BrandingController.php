@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Affiliate\Storefront;
 
-use App\Http\Controllers\Affiliate\Concerns\AssertsAffiliateWritable;
 use App\Http\Controllers\BrandingController as PublicBrandingController;
 use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\Controller;
@@ -34,8 +33,6 @@ use Illuminate\Http\Request;
  */
 class BrandingController extends Controller
 {
-    use AssertsAffiliateWritable;
-
     /** ADR-060 PR-6 planning addendum decision 4: logo longest edge. */
     private const LOGO_MAX_EDGE = 512;
 
@@ -68,14 +65,13 @@ class BrandingController extends Controller
                 'fb_pixel_id' => $seo?->fb_pixel_id,
                 'tiktok_pixel_id' => $seo?->tiktok_pixel_id,
             ],
-            'writable' => $affiliate->status === 'active',
+            'writable' => $affiliate->isActive(),
         ]);
     }
 
     public function update(UpdateBrandingRequest $request): JsonResponse
     {
         $affiliate = $request->user()->affiliateOwner();
-        $this->assertWritable($affiliate);
 
         $data = $request->validated();
         // Drop blank social entries so the storefront renders only the
@@ -98,7 +94,6 @@ class BrandingController extends Controller
     public function uploadLogo(UploadImageRequest $request): JsonResponse
     {
         $affiliate = $request->user()->affiliateOwner();
-        $this->assertWritable($affiliate);
 
         // Fixed path — a re-upload overwrites in place, no orphan.
         $path = $this->images->ingest(
@@ -121,7 +116,6 @@ class BrandingController extends Controller
     public function destroyLogo(Request $request): JsonResponse
     {
         $affiliate = $request->user()->affiliateOwner();
-        $this->assertWritable($affiliate);
 
         $branding = AffiliateBranding::withoutAffiliateScope()->where('affiliate_id', $affiliate->id)->first();
 
@@ -142,7 +136,6 @@ class BrandingController extends Controller
     public function uploadFavicon(UploadFaviconRequest $request): JsonResponse
     {
         $affiliate = $request->user()->affiliateOwner();
-        $this->assertWritable($affiliate);
 
         $path = $this->images->ingest(
             $request->file('image'),
@@ -162,7 +155,6 @@ class BrandingController extends Controller
     public function destroyFavicon(Request $request): JsonResponse
     {
         $affiliate = $request->user()->affiliateOwner();
-        $this->assertWritable($affiliate);
 
         $branding = AffiliateBranding::withoutAffiliateScope()->where('affiliate_id', $affiliate->id)->first();
 

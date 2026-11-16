@@ -154,7 +154,7 @@ class ResolveStorefrontBrandTest extends TestCase
 
     public function test_an_active_domain_of_a_deactivated_affiliate_404s(): void
     {
-        $this->brandWithDomain('shop.acme.com', affiliateOverrides: ['status' => 'deactivated']);
+        $this->brandWithDomain('shop.acme.com', affiliateOverrides: ['status' => 'inactive']);
 
         $this->getJson('/api/catalog/branding', ['X-Storefront-Host' => 'shop.acme.com'])
             ->assertNotFound();
