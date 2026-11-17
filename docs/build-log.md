@@ -2951,3 +2951,10 @@ The founder asked for it. `staging` → `main`, merge `9a3b9674`, carrying #803 
 - `app:deactivate-dormant-resellers` is scheduled at 02:00 UTC (10:00 MYT); dormancy is off (7 days, 3-day lead); the 3 resellers are active with no deactivation reason; the three new tables exist; no failed job since the deploy.
 
 **Open (founder):** turn on Admin → Settings → Reseller Inactivity and set the support WhatsApp number (PRD §16 item 193); item 191 (Drift Threshold 1,000 IDR).
+
+## 2026-11-17 — Founder switches after release #806: dormancy on, drift threshold 1,000 IDR, player checks off for FF/GI/HSR/ZZZ
+
+All three set by the founder in the admin; checked read-only on production.
+- **Reseller dormancy (ADR-142, PRD §16 item 193):** on since 09:14 UTC, 7 days, 3-day lead, support WhatsApp set. Every reseller's clock starts 2026-11-17 (last transactions: FixFast 2026-10-05, Naeem Industries 2026-10-22, AyrisShop 2026-11-17), so the first warnings are due 2026-11-21 and deactivations 2026-11-24 unless they transact. FixFast's login was given to CHIP for its review; the founder leaves it to deactivate and an admin reactivates it if CHIP asks. (An existing account can't be marked internal: `internal_reason` is set only at creation.)
+- **Digiflazz Drift Threshold (item 191, closed):** `api_config.drift_threshold` = 1000.
+- **Player checks (item 186):** `player_validator_enabled` = 0 on the six Free Fire games, Genshin, HSR and ZZZ; the nine MLBB games stay on. The founder leaves the check off until RedxGame gives official access or another official checker appears; the item moves to group D.
