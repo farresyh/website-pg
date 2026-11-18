@@ -1,6 +1,6 @@
 # ADR-114: Production infra split off DigitalOcean's shared team — droplet + managed MySQL rebuilt into a new DO team (`LWF Group Sdn Bhd`)
 
-> **Standing (2026-11-02):** In force; OpenWA runs from `~/openwa-deploy/releases/<tag>` with shared data (2026-11-02 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-18):** In force; cluster size recorded (2026-11-18 addendum, ADR-144); OpenWA runs from `~/openwa-deploy/releases/<tag>` with shared data (2026-11-02 addendum). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted & built — core cutover live and real-checkout-verified 2026-09-25. OpenWA bot channel migration completed the same day (see 2026-09-25 addendum below) — both pieces of this ADR are now fully live.
 
@@ -164,3 +164,7 @@ remove it with them under PRD §16 item 96.
 - **Upgrade:** build the new release; founder stops the daemon; tar `shared/data` + `shared/.env` to `~/openwa-backups/`; repoint `~/OpenWA`; founder starts the daemon. **Rollback:** repoint the symlink, unless the new release migrated OpenWA's database, in which case restore that tarball too. Keep two releases.
 
 **Checked.** OpenWA's `scripts/backup.sh` follows symlinks (`cp -pRH`, `find -H`, SQLite paths opened through the link) and fails when the archive misses a required member, so the nightly backup (ADR-039) keeps working; the first nightly run after the change is the proof.
+
+### 2026-11-18 addendum — the rebuilt database cluster is 1 GiB ([ADR-144](./ADR-144-prod-db-capacity-and-telemetry-hygiene.md))
+
+The new `topup-prod-mysql` was provisioned at 1 GiB RAM / 1 vCPU / 10 GiB disk, not ADR-020's 2 GiB, and this ADR did not record it. ADR-144 keeps 1 GiB on purpose, with upgrade triggers. A future rebuild records the cluster size it provisions.

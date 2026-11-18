@@ -1,6 +1,6 @@
 # ADR-077: Storefront read-path — Redis cache cutover, eviction policy, invalidation fan-out, propagation freshness
 
-> **Standing (2026-11-03):** In force; the storefront backstop TTL is 300s (60s for hero slides) since the 2026-11-03 addendum. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-18):** In force; the storefront backstop TTL is 300s (60s for hero slides) since the 2026-11-03 addendum; Pulse's cache recorder off by default (2026-11-18 addendum, ADR-144). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design) — 2026-09-07, grilled with the founder over three rounds via `/mattpocock-skills:grilling` before any code was written; this entry is that shared understanding. No code in this ADR — the "Build addendum" sections land as each PR ships. Paired with ADR-078 (custom-domain gaps), split from the same session's diagnosis by natural boundary.
 
@@ -94,3 +94,7 @@ The "Horizon supervisor-*timeout*" concern parked in PR-3 above (price sync 46s 
 3. The backend's own 60 s TTLs are unchanged, so no backend read gets staler.
 
 **Consequence to track.** Pulse's `slow_request` count for `/api/catalog/*` should fall several-fold within a day of release; if a page ever shows an edit late, check `PurgeNextCatalogCache` in Horizon first.
+
+### 2026-11-18 addendum — Pulse's cache recorder is off by default ([ADR-144](./ADR-144-prod-db-capacity-and-telemetry-hygiene.md))
+
+Decision 13 left every Pulse recorder on. `CacheInteractions` wrote 87% of Pulse's rows (one per cache hit or miss), most of the 1 GiB production database's writes. ADR-144 decision 3 turns it off by default; for a diagnosis like this ADR's per-brand key finding, set `PULSE_CACHE_INTERACTIONS_ENABLED=true`, then remove it. The dashboard shows the Cache card only while it is on.
