@@ -9,8 +9,9 @@ use RuntimeException;
  * ADR-039 decision 8: every backup run is restore-tested automatically —
  * restore into a throwaway empty database through the same BackupRestorer
  * the `app:restore-backup` command uses (2026-10-14 addendum), then verify:
- * tables exist, `migrate:status` is clean, and every live table (minus the
- * dump's own exclusions) came back.
+ * tables exist, `migrate:status` is clean, and every live table came back —
+ * the excluded ones too, empty, once the archive carries their structure
+ * (ADR-144); before that, every live table minus the exclusions.
  *
  * On MySQL the throwaway database is always `<db>_restore_test` on the
  * same server, and the app user holds a grant on that exact name
@@ -23,12 +24,17 @@ class BackupRestoreTester
 {
     public function __construct(private readonly BackupRestorer $restorer) {}
 
-    /** @return array{passed: bool, details: array<string, mixed>} */
-    public function test(string $dumpPath): array
+    /**
+     * @param  non-empty-list<string>  $dumpPaths  every dump in the archive
+     * @return array{passed: bool, details: array<string, mixed>}
+     */
+    public function test(array $dumpPaths): array
     {
         $default = config('database.default');
         $base = config("database.connections.{$default}");
-        $expected = array_values(array_diff($this->restorer->tables(), $base['dump']['exclude_tables'] ?? []));
+        $expected = $this->restorer->carriesExcludedSchema()
+            ? $this->restorer->tables()
+            : array_values(array_diff($this->restorer->tables(), $this->restorer->excludedTables()));
         $isSqlite = $base['driver'] === 'sqlite';
 
         $target = $isSqlite
@@ -47,7 +53,7 @@ class BackupRestoreTester
         }
 
         try {
-            $this->restorer->restore($dumpPath, $target);
+            $this->restorer->restore($dumpPaths, $target);
 
             return $this->restorer->verify($target, $expected);
         } catch (RuntimeException $e) {

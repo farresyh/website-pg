@@ -1,9 +1,18 @@
 <?php
 
+use App\Services\Backup\BackupRestorer;
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
-return [
+// ADR-039 decision 1: excluded by name from every backup dump to preserve
+// ADR-021's 7-day PII-retention guarantee — a raw dump that retained these
+// rows for the backup's own retention window would silently undo that
+// policy. ADR-124 decision 3: order_credentials (customer game logins) too;
+// a restore loses in-flight logins, re-sent through CS. One list: the sqlite
+// and mysql dumps and the ADR-144 structure-only companion all read it.
+$dumpExcludedTables = ['player_validations', 'order_credentials'];
+
+$config = [
 
     /*
     |--------------------------------------------------------------------------
@@ -47,14 +56,9 @@ return [
             // writes after another connection committed, gets SQLITE_BUSY at
             // once in WAL mode — busy_timeout is never consulted for it.
             'transaction_mode' => env('DB_TRANSACTION_MODE', 'DEFERRED'),
-            // ADR-039 decision 1: excluded by name from every backup dump
-            // to preserve ADR-021's 7-day PII-retention guarantee — a raw
-            // dump that retained these rows for the backup's own
-            // retention window would silently undo that policy.
-            // ADR-124 decision 3: order_credentials (customer game logins)
-            // too; a restore loses in-flight logins, re-sent through CS.
+            // ADR-039 decision 1 — see $dumpExcludedTables at the top.
             'dump' => [
-                'exclude_tables' => ['player_validations', 'order_credentials'],
+                'exclude_tables' => $dumpExcludedTables,
             ],
         ],
 
@@ -76,9 +80,7 @@ return [
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
-            // ADR-039 decision 1 — see the sqlite connection above for
-            // the full rationale (this project's `dump.default` here is
-            // the same value regardless of which connection is active).
+            // ADR-039 decision 1 — see $dumpExcludedTables at the top.
             //
             // `mysql_gtid_purged` forces `--set-gtid-purged=OFF` on the
             // mysqldump invocation. Found 2026-09-14: every production
@@ -92,7 +94,7 @@ return [
             // user. 'OFF' drops both lines from future dumps entirely —
             // the dump's actual table data is unaffected either way.
             'dump' => [
-                'exclude_tables' => ['player_validations', 'order_credentials'],
+                'exclude_tables' => $dumpExcludedTables,
                 'mysql_gtid_purged' => 'OFF',
                 // `useSingleTransaction` — found 2026-09-16 via Pulse's
                 // own slow-query log (UPDATE `supplier_products` 6.4s,
@@ -294,3 +296,17 @@ return [
     ],
 
 ];
+
+// ADR-144: `--ignore-table` drops a table's structure as well as its rows,
+// and mysqldump 8.4 has no `--ignore-table-data`. So a second, structure-only
+// dump of the excluded tables rides in the same archive, and a restore brings
+// them back empty. It is the mysql connection with the same safety flags
+// (GTID, single transaction); only the table selection differs. MySQL only:
+// spatie's sqlite dumper ignores `do_not_dump_data` (config/backup.php).
+$schemaDump = $config['connections']['mysql']['dump'];
+unset($schemaDump['exclude_tables']);
+$config['connections'][BackupRestorer::SCHEMA_CONNECTION] = array_replace($config['connections']['mysql'], [
+    'dump' => [...$schemaDump, 'include_tables' => $dumpExcludedTables, 'do_not_dump_data'],
+]);
+
+return $config;

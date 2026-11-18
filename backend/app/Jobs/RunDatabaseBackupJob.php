@@ -141,9 +141,9 @@ final class RunDatabaseBackupJob implements ShouldQueue
         $workDir = $restorer->makeWorkDir('restore-extract-');
 
         try {
-            $dumpPath = $restorer->extractDump($restorer->download($disk, $backupPath, $workDir), $workDir);
+            $dumpPaths = $restorer->extractDumps($restorer->download($disk, $backupPath, $workDir), $workDir);
 
-            return $tester->test($dumpPath);
+            return $tester->test($dumpPaths);
         } catch (RuntimeException $e) {
             return ['passed' => false, 'details' => ['error' => $e->getMessage()]];
         } finally {

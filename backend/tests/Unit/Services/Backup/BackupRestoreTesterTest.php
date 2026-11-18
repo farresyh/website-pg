@@ -59,7 +59,7 @@ class BackupRestoreTesterTest extends TestCase
         $sql .= "CREATE TABLE sample_table (id INTEGER PRIMARY KEY, value TEXT);\n";
         $sql .= "INSERT INTO sample_table (value) VALUES ('x');\n";
 
-        $result = app(BackupRestoreTester::class)->test($this->writeDump($sql));
+        $result = app(BackupRestoreTester::class)->test([$this->writeDump($sql)]);
 
         $this->assertTrue($result['passed'], json_encode($result['details']));
         $this->assertGreaterThanOrEqual(2, $result['details']['table_count']);
@@ -75,7 +75,7 @@ class BackupRestoreTesterTest extends TestCase
         $sql = "CREATE TABLE sample_table (id INTEGER PRIMARY KEY, value TEXT);\n".
             "INSERT INTO sample_table (value) VALUES ('x');\n";
 
-        $result = app(BackupRestoreTester::class)->test($this->writeDump($sql));
+        $result = app(BackupRestoreTester::class)->test([$this->writeDump($sql)]);
 
         $this->assertFalse($result['passed']);
     }
@@ -96,7 +96,7 @@ class BackupRestoreTesterTest extends TestCase
             $sql .= "INSERT INTO migrations (migration, batch) VALUES ('{$name}', 1);\n";
         }
 
-        $result = app(BackupRestoreTester::class)->test($this->writeDump($sql));
+        $result = app(BackupRestoreTester::class)->test([$this->writeDump($sql)]);
 
         $this->assertFalse($result['passed']);
         $this->assertCount(1, $result['details']['pending_migrations']);
@@ -122,7 +122,7 @@ class BackupRestoreTesterTest extends TestCase
         DB::statement('CREATE TABLE migrations (id INTEGER PRIMARY KEY, migration TEXT, batch INTEGER)');
         DB::statement('CREATE TABLE orders (id INTEGER PRIMARY KEY)');
 
-        $result = app(BackupRestoreTester::class)->test($this->validDump());
+        $result = app(BackupRestoreTester::class)->test([$this->validDump()]);
 
         $this->assertFalse($result['passed']);
         $this->assertSame(['orders'], $result['details']['missing_tables']);
@@ -133,9 +133,54 @@ class BackupRestoreTesterTest extends TestCase
         DB::statement('CREATE TABLE migrations (id INTEGER PRIMARY KEY, migration TEXT, batch INTEGER)');
         DB::statement('CREATE TABLE player_validations (id INTEGER PRIMARY KEY)');
 
-        $result = app(BackupRestoreTester::class)->test($this->validDump());
+        $result = app(BackupRestoreTester::class)->test([$this->validDump()]);
 
         $this->assertTrue($result['passed'], json_encode($result['details']));
+    }
+
+    /**
+     * ADR-144: the archive carries a structure-only dump of the excluded
+     * tables, so a restore brings them back (empty) and the test demands it.
+     */
+    public function test_restores_every_dump_and_demands_the_excluded_tables_when_their_schema_is_carried(): void
+    {
+        config(['backup.backup.source.databases' => ['sqlite', BackupRestorer::SCHEMA_CONNECTION]]);
+        DB::statement('CREATE TABLE migrations (id INTEGER PRIMARY KEY, migration TEXT, batch INTEGER)');
+        DB::statement('CREATE TABLE player_validations (id INTEGER PRIMARY KEY)');
+
+        $schema = $this->writeDump("CREATE TABLE player_validations (id INTEGER PRIMARY KEY);\n");
+        $result = app(BackupRestoreTester::class)->test([$this->validDump(), $schema]);
+
+        $this->assertTrue($result['passed'], json_encode($result['details']));
+        $this->assertSame([], $result['details']['missing_tables']);
+    }
+
+    public function test_fails_when_the_carried_schema_of_an_excluded_table_did_not_come_back(): void
+    {
+        config(['backup.backup.source.databases' => ['sqlite', BackupRestorer::SCHEMA_CONNECTION]]);
+        DB::statement('CREATE TABLE migrations (id INTEGER PRIMARY KEY, migration TEXT, batch INTEGER)');
+        DB::statement('CREATE TABLE player_validations (id INTEGER PRIMARY KEY)');
+
+        $result = app(BackupRestoreTester::class)->test([$this->validDump()]);
+
+        $this->assertFalse($result['passed']);
+        $this->assertSame(['player_validations'], $result['details']['missing_tables']);
+    }
+
+    /**
+     * ADR-144 / ADR-021: an excluded table is excluded for privacy, so a
+     * backup that brings back any of its rows fails, whatever let them in
+     * (a misspelt dump option is silently ignored by spatie).
+     */
+    public function test_fails_when_an_excluded_table_comes_back_with_rows(): void
+    {
+        DB::statement('CREATE TABLE migrations (id INTEGER PRIMARY KEY, migration TEXT, batch INTEGER)');
+
+        $leak = $this->writeDump("CREATE TABLE player_validations (id INTEGER PRIMARY KEY, player_id TEXT);\nINSERT INTO player_validations (player_id) VALUES ('123');\n");
+        $result = app(BackupRestoreTester::class)->test([$this->validDump(), $leak]);
+
+        $this->assertFalse($result['passed']);
+        $this->assertSame(['player_validations'], $result['details']['excluded_tables_with_rows']);
     }
 
     public function test_the_restorer_refuses_a_target_that_is_not_empty(): void
@@ -146,7 +191,7 @@ class BackupRestoreTesterTest extends TestCase
 
         try {
             $this->expectExceptionMessage('is not empty');
-            app(BackupRestorer::class)->restore($this->validDump(), $target);
+            app(BackupRestorer::class)->restore([$this->validDump()], $target);
         } finally {
             @unlink($target);
         }
@@ -154,7 +199,7 @@ class BackupRestoreTesterTest extends TestCase
 
     public function test_fails_gracefully_for_a_corrupt_dump_file(): void
     {
-        $result = app(BackupRestoreTester::class)->test($this->writeDump('this is not valid SQL at all ;;; ((('));
+        $result = app(BackupRestoreTester::class)->test([$this->writeDump('this is not valid SQL at all ;;; (((')]);
 
         $this->assertFalse($result['passed']);
         $this->assertArrayHasKey('error', $result['details']);

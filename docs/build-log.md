@@ -2958,3 +2958,31 @@ All three set by the founder in the admin; checked read-only on production.
 - **Reseller dormancy (ADR-142, PRD §16 item 193):** on since 09:14 UTC, 7 days, 3-day lead, support WhatsApp set. Every reseller's clock starts 2026-11-17 (last transactions: FixFast 2026-10-05, Naeem Industries 2026-10-22, AyrisShop 2026-11-17), so the first warnings are due 2026-11-21 and deactivations 2026-11-24 unless they transact. FixFast's login was given to CHIP for its review; the founder leaves it to deactivate and an admin reactivates it if CHIP asks. (An existing account can't be marked internal: `internal_reason` is set only at creation.)
 - **Digiflazz Drift Threshold (item 191, closed):** `api_config.drift_threshold` = 1000.
 - **Player checks (item 186):** `player_validator_enabled` = 0 on the six Free Fire games, Genshin, HSR and ZZZ; the nine MLBB games stay on. The founder leaves the check off until RedxGame gives official access or another official checker appears; the item moves to group D.
+
+## 2026-11-18 — Database memory alert: root cause, ADR-144, backups that restore every table
+
+**Trigger.** DigitalOcean emailed "Memory Utilization is running high" (critical, above 90% for 5 minutes) for `topup-prod-mysql`, four times on 18 Nov (90.2% to 91.3%). The founder asked for the cause and for a decision, not a patch.
+
+**Found (read-only: SSH, `SELECT`, DO Insights).** The cluster is 1 GiB / 1 vCPU, not ADR-020's 2 GiB, and nothing recorded the change (ADR-114 rebuild). Memory sat flat for 14 days (about 83% → 86%, spikes to about 91%), no restart, 9–10 connections; November orders went from 39 (October) to 613 with no change in memory. Pulse was the database's main workload: 217k entries a week against about 22k business rows, 87% of them `cache_hit`/`cache_miss`, and `pulse_*` was 72 MB of the 101 MB database. Small tables (4–5 rows) answered in 0.3–2 s now and then; 2.4 million table-cache overflows. Full numbers: ADR-144 Context.
+
+**Found while tracing the backup path (a latent bug, since ADR-039).** `exclude_tables` is `mysqldump --ignore-table`, which drops structure as well as rows, so no backup ever held `player_validations` or `order_credentials`. A disaster restore would have lacked both (Game ID check and Login Top-up down) while `migrations` said they existed. The restore test passed because it skipped them. mysqldump 8.4 on the box has no `--ignore-table-data`.
+
+**Decided (ADR-144, grilled in three rounds, then stress-tested).** Keep 1 GiB on purpose; upgrade at the 95% alert, a database restart, or the 2026-12-03 small-table check (PRD §16 item 195). Pulse's `CacheInteractions` off by default. A structure-only companion dump for the excluded tables. Audit tables kept in full, revisit at 1 million rows or 500 MB. The stress test changed two answers (Redis `INFO` cannot stand in for Pulse's per-key hit rate; an order-count trigger had already been passed 15x without memory moving) and found four details that would have broken the build, below.
+
+**Built (`fix/db-telemetry-hygiene`).**
+- `config/database.php`: one `$dumpExcludedTables` list; a `mysql_dump_schema` connection, the mysql connection with the same dump flags plus `include_tables` and `do_not_dump_data`.
+- `config/backup.php`: the companion is dumped only on MySQL; `database_dump_filename_base` = `connection`.
+- `BackupRestorer`: `extractDumps()` returns every dump; `restore()` restores all of them under one empty-target check; `verify()` adds `excluded_tables_with_rows` (fails) and `excluded_tables_absent` (reported). `BackupRestoreTester` demands every live table once backups carry the companion. `app:restore-backup` warns when an older archive lacks the excluded tables.
+- `config/pulse.php`: `CacheInteractions` defaults to off; the dashboard shows the Cache card only while it is on.
+
+**Gotchas the stress test caught before they shipped.**
+1. Spatie names a dump `{type}-{database}.sql`: the companion, being the same database, would have **overwritten the full dump** in the archive. Fixed by naming dumps by connection.
+2. `extractDump()` returned only `$dumps[0]`, so the companion would never have been restored.
+3. A companion without `--set-gtid-purged=OFF` and `--single-transaction` would fail to restore on DigitalOcean (the 2026-09-14 GTID incident) or lock live tables (ADR-099). Both dumps now share one flag set, and a test asserts both commands carry the flags.
+4. Spatie silently skips a dump option it does not know, so a typo in `do_not_dump_data` would copy customer PII into every backup with no error. The new invariant (an excluded table must come back empty) fails the restore test in that case.
+
+**Verified.** Backend suite 4047/4047 green locally; new tests: the real mysqldump commands for both dumps (`BackupDumpConfigTest`), restore of every dump, the excluded-table checks, and the operator command's warning. The real-MySQL proof (`BackupRestoreMysqlTest::test_the_excluded_tables_come_back_empty_with_their_structure`, a seeded `player_validations` row must not come back) runs in CI's concurrency job; this machine has no MySQL client. `config:cache` with `DB_CONNECTION=mysql` resolves both dump sources and the Pulse default.
+
+**Done the same day (founder's request, through the founder's browser):** the DigitalOcean policy "Memory Utilization is running high" on `topup-prod-mysql` changed from 90% to 95% for 5 minutes, same email recipient; re-opened afterwards and confirmed at 95 (PRD §16 item 11).
+
+**Open.** After release: Pulse's weekly entries down about 87%, the next nightly archive holds two dumps and its restore test passes with `excluded_tables_absent` empty, then the 2026-12-03 check (item 195).

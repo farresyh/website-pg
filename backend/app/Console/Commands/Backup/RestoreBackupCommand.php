@@ -43,10 +43,10 @@ class RestoreBackupCommand extends Command
         try {
             $zipPath = $this->option('file') ?: $this->downloadArchive($restorer, $workDir);
             $this->info('Extracting archive…');
-            $dumpPath = $restorer->extractDump($zipPath, $workDir);
+            $dumpPaths = $restorer->extractDumps($zipPath, $workDir);
 
             $this->info("Restoring into [{$database}]…");
-            $restorer->restore($dumpPath, $database);
+            $restorer->restore($dumpPaths, $database);
 
             $result = $restorer->verify($database);
             $this->table(['check', 'value'], collect($result['details'])->map(fn ($v, $k) => [$k, json_encode($v)])->values()->all());
@@ -55,6 +55,13 @@ class RestoreBackupCommand extends Command
                 $this->error('Restore finished but verification failed — do not point the app at this database.');
 
                 return self::FAILURE;
+            }
+
+            // ADR-144: an archive made before the companion dump has no
+            // structure for the excluded tables, and the migrations table
+            // says they exist, so `migrate` will not create them.
+            if ($absent = $result['details']['excluded_tables_absent']) {
+                $this->warn('Tables not in this archive: '.implode(', ', $absent).'. Create them empty (copy their CREATE TABLE from a newer backup\'s mysql_dump_schema dump) before pointing the app here.');
             }
 
             $this->info('Restore verified.');
