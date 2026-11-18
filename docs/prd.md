@@ -957,8 +957,9 @@ before building.
     `/api/health/whatsapp` monitor covers OpenWA down as well.
     **2026-11-18:** the managed MySQL cluster also has a DigitalOcean alert,
     "Memory Utilization is running high" (critical), found at 90% for 5
-    minutes and firing on normal load. ADR-144 decision 2 sets it to 95%
-    (founder, in DigitalOcean); when it fires, item 195 upgrades the cluster.
+    minutes and firing on normal load. Set to 95% for 5 minutes on
+    2026-11-18 (ADR-144 decision 2; saved and re-read in the DO console,
+    emailing the founder); when it fires, item 195 upgrades the cluster.
 
 59. **`ENGINE_TYPE=baileys` runs both OpenWA sessions — decided 2026-10-10: Baileys
     stays until the droplet is upgraded** ([ADR-075](./adr/ADR-075-reseller-bot-channel.md)'s

@@ -2983,4 +2983,6 @@ All three set by the founder in the admin; checked read-only on production.
 
 **Verified.** Backend suite 4047/4047 green locally; new tests: the real mysqldump commands for both dumps (`BackupDumpConfigTest`), restore of every dump, the excluded-table checks, and the operator command's warning. The real-MySQL proof (`BackupRestoreMysqlTest::test_the_excluded_tables_come_back_empty_with_their_structure`, a seeded `player_validations` row must not come back) runs in CI's concurrency job; this machine has no MySQL client. `config:cache` with `DB_CONNECTION=mysql` resolves both dump sources and the Pulse default.
 
-**Open.** Founder: set the DigitalOcean memory alert to 95% (PRD §16 item 11). After release: Pulse's weekly entries down about 87%, the next nightly archive holds two dumps and its restore test passes with `excluded_tables_absent` empty, then the 2026-12-03 check (item 195).
+**Done the same day (founder's request, through the founder's browser):** the DigitalOcean policy "Memory Utilization is running high" on `topup-prod-mysql` changed from 90% to 95% for 5 minutes, same email recipient; re-opened afterwards and confirmed at 95 (PRD §16 item 11).
+
+**Open.** After release: Pulse's weekly entries down about 87%, the next nightly archive holds two dumps and its restore test passes with `excluded_tables_absent` empty, then the 2026-12-03 check (item 195).
