@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\Backup\BackupRestorer;
 use Spatie\Backup\Notifications\Notifiable;
 use Spatie\Backup\Notifications\Notifications\BackupHasFailedNotification;
 use Spatie\Backup\Notifications\Notifications\BackupWasSuccessfulNotification;
@@ -89,9 +90,14 @@ return [
              *
              * For a complete list of available customization options, see https://github.com/spatie/db-dumper
              */
-            'databases' => [
+            // ADR-144: on MySQL a structure-only companion dump of the
+            // excluded tables (config/database.php) rides in the same
+            // archive, so a restore brings them back empty. Not on sqlite
+            // (local and tests): spatie's sqlite dumper would copy rows.
+            'databases' => array_values(array_filter([
                 env('DB_CONNECTION', 'mysql'),
-            ],
+                env('DB_CONNECTION', 'mysql') === 'mysql' ? BackupRestorer::SCHEMA_CONNECTION : null,
+            ])),
         ],
 
         /*
@@ -118,7 +124,10 @@ return [
          * If 'database' (default), the dumped filename will contain the database name.
          * If 'connection', the dumped filename will contain the connection name.
          */
-        'database_dump_filename_base' => 'database',
+        // ADR-144: 'connection', because the main and companion dumps are
+        // of one database and would otherwise share a file name, the
+        // second overwriting the first.
+        'database_dump_filename_base' => 'connection',
 
         /*
          * The file extension used for the database dump files.

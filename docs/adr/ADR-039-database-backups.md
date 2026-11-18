@@ -1,6 +1,6 @@
 # ADR-039: Database backups — app-level, host-agnostic backup/restore mechanism (BAK-1..5) (design 2026-08-26; built 2026-08-26)
 
-> **Standing (2026-10-09):** In force. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-18):** In force; decisions 1 and 8 revised by ADR-144 (excluded tables keep their structure; the restore test demands every table, excluded ones empty). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted — grilled 2026-08-26, built same day (next session, same branch `feature/backups-adr`). All 11 decisions implemented and live-verified (browser, not just `php artisan test`) against the real local dev DB (sqlite).
 
@@ -136,3 +136,7 @@ Grilled with the founder on 2026-10-22 (questions Q1–Q9, every recommendation 
 - `backup.sh`/`restore.sh` are an upstream contract. Each OpenWA upgrade: take "Backup Now → OpenWA" first, then confirm the next nightly run still passes.
 - The OpenWA run shares the `backups` lane's 300 s timeout. Each script is capped at 120 s (`backup.openwa.script_timeout_seconds`). Today's 49 MB takes seconds.
 - Rollout order: the founder sets `BACKUP_ARCHIVE_PASSWORD` (kept in the password manager first) and `OPENWA_INSTALL_DIR` on Forge **before** this code reaches `main`. Otherwise the fail-closed guard fails that night's database backup.
+
+### 2026-11-18 addendum — a backup restores every table ([ADR-144](./ADR-144-prod-db-capacity-and-telemetry-hygiene.md))
+
+Decision 1's `exclude_tables` becomes `mysqldump --ignore-table`, which drops the table's structure too, so no backup held `player_validations` or `order_credentials`, and a real restore would have lacked both. Decision 8's test passed because it skipped them. ADR-144 decision 4: on MySQL a structure-only companion dump of the excluded tables rides in the same archive; `BackupRestorer` restores every dump in it; the restore test demands every live table and that each excluded table comes back empty. Older archives still restore, with a warning naming the tables they lack.

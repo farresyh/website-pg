@@ -19,9 +19,17 @@ use ZipArchive;
  * Restores only into an existing, empty database (a MySQL database name on
  * the default connection's server, or a sqlite file path) — never over
  * live data (ADR-039 decision 5's deliberate friction).
+ *
+ * ADR-144: an archive holds every dump it was made with — the main dump and,
+ * on MySQL, a structure-only dump of the tables the main dump excludes — and
+ * all of them are restored. An excluded table is excluded for privacy, so it
+ * must come back empty whatever the archive holds.
  */
 final class BackupRestorer
 {
+    /** The structure-only companion connection (config/database.php, ADR-144). */
+    public const SCHEMA_CONNECTION = 'mysql_dump_schema';
+
     private const CONNECTION = 'backup_restore_target';
 
     public function makeWorkDir(string $prefix): string
@@ -49,8 +57,12 @@ final class BackupRestorer
         return $local;
     }
 
-    /** Decrypts and extracts the archive; returns the SQL dump's path. */
-    public function extractDump(string $zipPath, string $workDir): string
+    /**
+     * Decrypts and extracts the archive; returns every SQL dump in it.
+     *
+     * @return non-empty-list<string>
+     */
+    public function extractDumps(string $zipPath, string $workDir): array
     {
         $zip = new ZipArchive;
 
@@ -71,7 +83,7 @@ final class BackupRestorer
             throw new RuntimeException('no db dump found inside backup archive (wrong BACKUP_ARCHIVE_PASSWORD?)');
         }
 
-        return $dumps[0];
+        return $dumps;
     }
 
     /**
@@ -121,7 +133,13 @@ final class BackupRestorer
         }
     }
 
-    public function restore(string $dumpPath, string $database): void
+    /**
+     * Each dump sets its own foreign-key checks off (mysqldump's header), and
+     * the dumps cover disjoint tables, so their order does not matter.
+     *
+     * @param  non-empty-list<string>  $dumpPaths
+     */
+    public function restore(array $dumpPaths, string $database): void
     {
         $tables = $this->tables($database);
 
@@ -129,7 +147,25 @@ final class BackupRestorer
             throw new RuntimeException("target [{$database}] is not empty (".count($tables).' tables) — restore only into an empty database');
         }
 
-        $this->isSqlite() ? $this->restoreSqlite($dumpPath, $database) : $this->restoreMysql($dumpPath, $database);
+        foreach ($dumpPaths as $dumpPath) {
+            $this->isSqlite() ? $this->restoreSqlite($dumpPath, $database) : $this->restoreMysql($dumpPath, $database);
+        }
+    }
+
+    /**
+     * Tables every backup dump leaves out, for privacy (ADR-039 decision 1).
+     *
+     * @return list<string>
+     */
+    public function excludedTables(): array
+    {
+        return $this->baseConfig()['dump']['exclude_tables'] ?? [];
+    }
+
+    /** Whether new backups carry the excluded tables' structure (ADR-144). */
+    public function carriesExcludedSchema(): bool
+    {
+        return in_array(self::SCHEMA_CONNECTION, config('backup.backup.source.databases', []), true);
     }
 
     /**
@@ -164,7 +200,9 @@ final class BackupRestorer
      * codebase knows is recorded as run (what `migrate:status` reports,
      * read directly rather than scraped from its output), and — when the
      * caller knows the source's table list — no table is missing. A dump cut
-     * short after the `migrations` table would otherwise pass.
+     * short after the `migrations` table would otherwise pass. An excluded
+     * table that came back must be empty (ADR-144); one that did not is
+     * reported, for an archive made before the companion dump.
      *
      * @param  list<string>|null  $expectedTables
      * @return array{passed: bool, details: array<string, mixed>}
@@ -181,14 +219,21 @@ final class BackupRestorer
                 ? $this->target($database)->table('migrations')->pluck('migration')->all()
                 : [];
             $pending = array_values(array_diff($known, $ran));
+            $excluded = $this->excludedTables();
+            $withRows = array_values(array_filter(
+                array_intersect($excluded, $restored),
+                fn (string $table) => $this->target($database)->table($table)->exists(),
+            ));
 
             return [
-                'passed' => $missing === [] && $ran !== [] && $pending === [],
+                'passed' => $missing === [] && $ran !== [] && $pending === [] && $withRows === [],
                 'details' => [
                     'table_count' => count($restored),
                     'missing_tables' => $missing,
                     'migrations_ran' => count($ran),
                     'pending_migrations' => $pending,
+                    'excluded_tables_with_rows' => $withRows,
+                    'excluded_tables_absent' => array_values(array_diff($excluded, $restored)),
                 ],
             ];
         } catch (Throwable $e) {
