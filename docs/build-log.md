@@ -2986,3 +2986,16 @@ All three set by the founder in the admin; checked read-only on production.
 **Done the same day (founder's request, through the founder's browser):** the DigitalOcean policy "Memory Utilization is running high" on `topup-prod-mysql` changed from 90% to 95% for 5 minutes, same email recipient; re-opened afterwards and confirmed at 95 (PRD §16 item 11).
 
 **Open.** After release: Pulse's weekly entries down about 87%, the next nightly archive holds two dumps and its restore test passes with `excluded_tables_absent` empty, then the 2026-12-03 check (item 195).
+
+## 2026-11-18 — Release #811: ADR-144 (backups restore every table, Pulse cache recorder off)
+
+The founder asked for it and merged it. `staging` → `main`, merge `77762e37`, carrying #810 (ADR-144) and the docs PRs #807 and #808. No migration, no env change. CI green, `deploy` job succeeded.
+
+**Checked before release (production, read-only):** no pending or processing order, 0 failed jobs in the previous 24 hours, backup run #109 (02:07 UTC) success with restore test passed, no pending migration.
+
+**Checked after release (production, read-only):**
+- The box runs `77762e3` (release `83310044`). Horizon was inactive and `/api/health` 503 for about 40 s while the deploy restarted it (release created 07:44:42 UTC, health 200 from 07:45:26); then `running`, 13 workers.
+- Config: backup sources `["mysql","mysql_dump_schema"]`, dump names by connection; `CacheInteractions` off. Pulse entries after 07:45:30 UTC: `user_request` only, no `cache_hit`/`cache_miss`.
+- **Backup run #110** (manual, the founder's "Backup Now", 07:48 UTC): success. The archive holds `db-dumps/mysql-mysql.sql` (44 MB) and `db-dumps/mysql-mysql_dump_schema.sql` (3.4 KB, structure only), both AES-256. Restore test passed with 140 tables (#109: 138; the two are `player_validations` and `order_credentials`), `excluded_tables_absent` and `excluded_tables_with_rows` both empty. Nothing left in `storage/app/backup-temp`.
+
+**Open:** PRD §16 item 195's check on 2026-12-03 (small-table slow queries, Pulse volume).
