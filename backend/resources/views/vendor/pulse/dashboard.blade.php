@@ -5,7 +5,9 @@
 
     <livewire:pulse.queues cols="4" />
 
-    <livewire:pulse.cache cols="4" />
+    @if (config('pulse.recorders.'.\Laravel\Pulse\Recorders\CacheInteractions::class.'.enabled'))
+        <livewire:pulse.cache cols="4" />
+    @endif
 
     <livewire:pulse.slow-queries cols="8" />
 

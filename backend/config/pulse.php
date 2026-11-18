@@ -160,8 +160,14 @@ return [
     */
 
     'recorders' => [
+        // ADR-144: off by default. On, it wrote 87% of every Pulse row
+        // (one per cache hit or miss) into the 1 GiB prod database. Its
+        // per-key hit rate is a diagnosis tool (ADR-077 found the per-brand
+        // key problem with it): set PULSE_CACHE_INTERACTIONS_ENABLED=true
+        // for the diagnosis, then remove it. The dashboard shows the Cache
+        // card only while it is on.
         Recorders\CacheInteractions::class => [
-            'enabled' => env('PULSE_CACHE_INTERACTIONS_ENABLED', true),
+            'enabled' => env('PULSE_CACHE_INTERACTIONS_ENABLED', false),
             'sample_rate' => env('PULSE_CACHE_INTERACTIONS_SAMPLE_RATE', 1),
             'ignore' => [
                 ...Pulse::defaultVendorCacheKeys(),
