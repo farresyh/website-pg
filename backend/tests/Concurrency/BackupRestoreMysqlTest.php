@@ -89,7 +89,7 @@ class BackupRestoreMysqlTest extends TestCase
     {
         $this->assertContains(BackupRestorer::SCHEMA_CONNECTION, config('backup.backup.source.databases'));
         DB::table('player_validations')->insert([
-            'game_id' => Game::factory()->create()->id, 'player_id' => '123', 'status' => 'valid',
+            'game_id' => Game::query()->create(['name' => 'Backup Probe', 'slug' => 'backup-probe'])->id, 'player_id' => '123', 'status' => 'valid',
             'validated_at' => now(), 'created_at' => now(), 'updated_at' => now(),
         ]);
 
