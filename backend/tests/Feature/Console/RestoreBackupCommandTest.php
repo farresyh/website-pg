@@ -26,7 +26,8 @@ class RestoreBackupCommandTest extends TestCase
         parent::tearDown();
     }
 
-    private function archive(): string
+    /** @param array<string, string> $extraDumps */
+    private function archive(array $extraDumps = []): string
     {
         $sql = "CREATE TABLE migrations (id INTEGER PRIMARY KEY, migration TEXT, batch INTEGER);\n";
 
@@ -38,7 +39,12 @@ class RestoreBackupCommandTest extends TestCase
         @mkdir(dirname($zipPath), 0755, true);
         $zip = new ZipArchive;
         $zip->open($zipPath, ZipArchive::CREATE);
-        $zip->addFromString('db-dumps/sqlite-database.sql', $sql);
+        $zip->addFromString('db-dumps/sqlite-sqlite.sql', $sql);
+
+        foreach ($extraDumps as $name => $dump) {
+            $zip->addFromString("db-dumps/{$name}", $dump);
+        }
+
         $zip->close();
 
         return $this->cleanup[] = $zipPath;
@@ -70,6 +76,27 @@ class RestoreBackupCommandTest extends TestCase
         $run = BackupRun::query()->create(['status' => 'success', 'triggered_by' => 'system', 'disk' => 'local', 'path' => 'PekanGame/a.zip', 'restore_test_passed' => true]);
 
         $this->artisan('app:restore-backup', ['--run' => $run->id, '--database' => $this->emptyTarget()])
+            ->assertSuccessful();
+    }
+
+    /** ADR-144: every dump in the archive is restored, the companion schema dump included. */
+    public function test_restores_every_dump_in_the_archive(): void
+    {
+        $target = $this->emptyTarget();
+        $schema = "CREATE TABLE player_validations (id INTEGER PRIMARY KEY);\nCREATE TABLE order_credentials (id INTEGER PRIMARY KEY);\n";
+
+        $this->artisan('app:restore-backup', ['--file' => $this->archive(['sqlite-mysql_dump_schema.sql' => $schema]), '--database' => $target])
+            ->doesntExpectOutputToContain('not in this archive')
+            ->assertSuccessful();
+
+        $this->assertSame(0, (int) (new \PDO('sqlite:'.$target))->query('SELECT COUNT(*) FROM player_validations')->fetchColumn());
+    }
+
+    /** An archive made before ADR-144 has no structure for the excluded tables: say so. */
+    public function test_warns_when_the_archive_does_not_carry_the_excluded_tables(): void
+    {
+        $this->artisan('app:restore-backup', ['--file' => $this->archive(), '--database' => $this->emptyTarget()])
+            ->expectsOutputToContain('not in this archive: player_validations, order_credentials')
             ->assertSuccessful();
     }
 
