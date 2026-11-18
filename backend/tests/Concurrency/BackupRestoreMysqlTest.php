@@ -2,6 +2,8 @@
 
 namespace Tests\Concurrency;
 
+use App\Models\Game;
+use App\Services\Backup\BackupRestorer;
 use App\Services\Backup\BackupRestoreTester;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\DB;
@@ -59,14 +61,49 @@ class BackupRestoreMysqlTest extends TestCase
         parent::tearDown();
     }
 
-    private function dump(): string
+    /**
+     * Every dump the nightly backup makes (config backup.backup.source.databases):
+     * the main dump plus, on MySQL, the ADR-144 structure-only companion.
+     *
+     * @return list<string>
+     */
+    private function dump(): array
     {
-        $path = storage_path('app/backup-temp/mysql-test-dump-'.uniqid('', true).'.sql');
-        @mkdir(dirname($path), 0755, true);
-        DbDumperFactory::createFromConnection('mysql')->dumpToFile($path);
-        $this->dumps[] = $path;
+        $paths = [];
 
-        return $path;
+        foreach (config('backup.backup.source.databases') as $connection) {
+            $path = storage_path("app/backup-temp/mysql-test-dump-{$connection}-".uniqid('', true).'.sql');
+            @mkdir(dirname($path), 0755, true);
+            DbDumperFactory::createFromConnection($connection)->dumpToFile($path);
+            $this->dumps[] = $paths[] = $path;
+        }
+
+        return $paths;
+    }
+
+    /**
+     * ADR-144: the excluded tables come back with their structure and no
+     * rows, so a real disaster restore has every table the app needs.
+     */
+    public function test_the_excluded_tables_come_back_empty_with_their_structure(): void
+    {
+        $this->assertContains(BackupRestorer::SCHEMA_CONNECTION, config('backup.backup.source.databases'));
+        DB::table('player_validations')->insert([
+            'game_id' => Game::query()->create(['name' => 'Backup Probe', 'slug' => 'backup-probe'])->id, 'player_id' => '123', 'status' => 'valid',
+            'validated_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        [$main, $schema] = $this->dump();
+        $this->assertStringNotContainsString('INSERT INTO `player_validations`', file_get_contents($schema));
+        $this->assertStringContainsString('CREATE TABLE `player_validations`', file_get_contents($schema));
+        $this->assertStringNotContainsString('CREATE TABLE `player_validations`', file_get_contents($main));
+
+        $result = app(BackupRestoreTester::class)->test([$main, $schema]);
+
+        $this->assertTrue($result['passed'], json_encode($result['details']));
+        $this->assertSame([], $result['details']['missing_tables']);
+        $this->assertSame([], $result['details']['excluded_tables_with_rows']);
+        $this->assertSame([], $result['details']['excluded_tables_absent']);
     }
 
     public function test_a_real_dump_with_a_foreign_definer_view_restores_as_the_app_user(): void
