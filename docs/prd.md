@@ -885,6 +885,7 @@ before building.
 - **104** Reseller wallet top-up KPIs (how often, how much). Its trigger (item 28) has fallen.
 - **151** A partner sandbox (test-type reseller API key), its own money-critical ADR. Its trigger (item 146) has fallen.
 - **152** Refresh the admin sandbox (`/middleware/sandbox`) for wallet and combo orders; do it with item 151, which shares `FakeSupplierAdapter` (its 21 tests pass as of 2026-10-31).
+- **194** Leader and agents on a Telegram bot ([ADR-143](./adr/ADR-143-leader-agent-telegram-bot.md), Proposed, founder, 2026-11-18): a reseller becomes a leader with their own agents (agent balances, leader markup, top-ups paid to the leader). Gated on the founder confirming demand with resellers. Details below.
 
 ## Details
 
@@ -1206,6 +1207,18 @@ before building.
      6 Jan 2027: a game's "Last crawled" no longer N/A, Discovered falling,
      Discovery % rising, external links above 0. Closes after the +8-week check
      is in `docs/build-log.md`.
+
+194. **Leader and agents on a Telegram bot** ([ADR-143](./adr/ADR-143-leader-agent-telegram-bot.md), Proposed,
+     founder, 2026-11-18). A reseller with the Leader feature recruits agents
+     who top up by paying the leader directly (the leader approves in the bot),
+     order through a leader-branded Telegram bot at the leader's markup, and
+     are debited from their own balance while the leader's Purchase Balance
+     pays us at the leader's price. Our books record only the sale to the
+     leader. A throwaway prototype (outside the repo, fake money) was tested
+     by the founder on 2026-11-18; its findings are in the ADR. **Gate:** the
+     founder confirms with resellers that they want it and that agents will
+     use Telegram. Then: grill decisions 10–18 and the open questions, run the
+     money code trace, mark Accepted.
 
 195. **Managed MySQL 1 GiB → 2 GiB, on a trigger** ([ADR-144](./adr/ADR-144-prod-db-capacity-and-telemetry-hygiene.md), founder,
      2026-11-18). The cluster is 1 GiB on purpose; memory sits flat at about
