@@ -3041,3 +3041,30 @@ The founder asked for it and merged it. `staging` → `main`, merge `77762e37`, 
 **Gotcha.** CI's MySQL job failed on the first push: Laravel's default name for the statement table's unique index is 72 characters, over MySQL's 64 (sqlite accepts it). Named explicitly; the KOL, fee and month-close tests then passed on local MySQL (26/26).
 
 **Not done.** No production data changes; the four live campaigns are fixed-fee rows (`revenue_share_bp` 0) and read exactly as before. Months closed before this release (September, October) have no statements; their fee is the fixed fee, which no row can change.
+
+## 2026-11-20 — Server patching: a daily alert, a patch-window runbook, a smaller attack surface (ADR-145, PRD §16 item 198)
+
+**Trigger.** The founder forwarded another company's internal notice about the 2026-11-19 PHP security release (8.5.13, 8.4.28, 8.3.37, 8.2.36; seven critical issues) and handed Claude the decision.
+
+**Audit (read-only).**
+- The box runs PHP 8.4.27. Ondrej's PPA, through both the `ppa.setup-php.com` mirror and Launchpad, still had 8.4.27 on 2026-11-20.
+- unattended-upgrades covers Ubuntu's security pocket only, so PHP, nginx, Redis, Node and the MySQL client are never patched by it.
+- `/var/run/reboot-required` is present: the running kernel is 6.8.0-124, with 142 to 149 and `libc6` installed but waiting. 40 packages are upgradable.
+- CVE exposure: FPM smuggling needs `fastcgi_keep_conn` (not set). Upload progress needs a runtime switch of a non-default `serialize_handler` (ours is `php`; Laravel uses its own sessions). The timezone use-after-free has no published preconditions yet.
+- The origin rejects non-Cloudflare requests (Authenticated Origin Pulls: 400 when hit directly).
+- Redis and Memcached listen on `0.0.0.0` but are closed from outside. All Redis clients are local; Memcached has none.
+- FPM loads six extensions the app doesn't require (`composer check-platform-reqs`).
+- The quietest hours over the last 30 days are 03:00 and 06:00 MYT.
+
+**Decided (ADR-145).**
+- No maintenance mode.
+- Third-party repositories are patched in planned windows (full upgrade, then reboot), not automatically.
+- A daily alert closes the "no signal" gap.
+- The first window also binds Redis to localhost and purges Memcached and the unused extensions.
+
+**Built (`feature/server-patch-alert`).**
+- `App\Services\Ops\ServerPatchCheck` checks the running PHP against `php.net/releases/?json=&version=<branch>`, plus `reboot-required` and its package list, de-duplicated.
+- `app:check-server-patches` runs as task `server-patch-check`, daily at 01:00 UTC (09:00 MYT), routine tier. It emails through `BackupFailureAlerter` (area "Server") once per problem, then every 7 days while open. When php.net fails, it logs a warning and sends nothing.
+- Checked on the box (read-only tinker): php.net answers 200 with 8.4.28, and the reboot file and its package list are readable as `forge`.
+
+**Verified.** `CheckServerPatchesCommandTest` (5 tests, red first) and `TaskScheduleTest` pass. Backend 4062/4062.
