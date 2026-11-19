@@ -40,7 +40,7 @@ return new class extends Migration
             $table->timestamp('voided_at')->nullable();
             $table->timestamps();
 
-            $table->unique(['campaign_id', 'accounting_period_close_id']);
+            $table->unique(['campaign_id', 'accounting_period_close_id'], 'campaign_month_statements_campaign_close_unique');
             $table->index(['period_month', 'voided_at']);
         });
     }
