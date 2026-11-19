@@ -1,4 +1,4 @@
-import { apiFetch } from "@/lib/api-client";
+import { apiDownload, apiFetch } from "@/lib/api-client";
 import { formatRm } from "@/components/reports/format";
 
 /**
@@ -48,13 +48,21 @@ export type Verdict =
   | { status: "above_target" }
   | null;
 
+/** ADR-118 V26/V31: the deal for a month — a fixed fee, a share of recognised sales, or both. Not an amount. */
+export interface FeeTerms {
+  monthly_fee_sen: number;
+  /** Basis points: 200 = 2%. */
+  revenue_share_bp: number;
+  revenue_share_cap_sen: number | null;
+}
+
 export interface CampaignSummary {
   id: number;
   name: string;
   ended_at: string | null;
   started_month: string | null;
-  /** This month's fee from the schedule. */
-  monthly_fee_sen: number;
+  /** This month's terms; null when no fee row covers it. */
+  terms: FeeTerms | null;
   codes: string[];
   range: Scorecard;
   cumulative: Scorecard;
@@ -68,9 +76,8 @@ export interface CampaignSettings {
   campaign_trial_months: number | null;
 }
 
-export interface CampaignFee {
+export interface CampaignFee extends FeeTerms {
   id: number;
-  monthly_fee_sen: number;
   from_month: string;
   to_month: string | null;
 }
@@ -108,8 +115,39 @@ export interface CampaignDetail extends Omit<CampaignSummary, "codes"> {
   fees: CampaignFee[];
   customers: CampaignCustomer[];
   /** Positive balance = prepaid to the KOL; negative = owed. */
-  balance: { month: string; accrued_sen: number; paid_sen: number; balance_sen: number };
+  balance: {
+    month: string;
+    accrued_sen: number;
+    paid_sen: number;
+    balance_sen: number;
+    /** V28: this month so far, live until the close freezes it. */
+    this_month: { sales_sen: number; share_sen: number; limited_by: Limit; payable_sen: number };
+  };
   codes: PromoCodeRow[];
+  statements: CampaignStatement[];
+}
+
+/** V28: which limit cut the share, if any. */
+export type Limit = "profit" | "cap" | null;
+
+/** V30: one per closed month; a voided one was replaced by a re-close. */
+export interface CampaignStatement {
+  id: number;
+  month: string;
+  sales_sen: number;
+  share_sen: number;
+  payable_sen: number;
+  limited_by: Limit;
+  orders: number;
+  voided: boolean;
+}
+
+export interface FeeValues {
+  monthly_fee_sen: number;
+  revenue_share_bp: number;
+  revenue_share_cap_sen: number | null;
+  from_month: string;
+  to_month: string | null;
 }
 
 export interface RangeQuery {
@@ -130,14 +168,28 @@ export const listCampaigns = (range: RangeQuery) =>
 
 export const getCampaign = (id: number, range: RangeQuery) => apiFetch<CampaignDetail>(`/api/campaigns/${id}${query(range)}`);
 
-export const createCampaign = (body: { name: string; monthly_fee_sen: number; from_month: string; to_month: string | null }) =>
+export const createCampaign = (body: FeeValues & { name: string }) =>
   apiFetch<{ id: number }>("/api/campaigns", { method: "POST", body });
 
 export const updateCampaign = (id: number, body: { name?: string; ended?: boolean; last_fee_month?: string }) =>
   apiFetch<unknown>(`/api/campaigns/${id}`, { method: "PATCH", body });
 
-export const addFee = (campaignId: number, body: { monthly_fee_sen: number; from_month: string; to_month: string | null }) =>
+export const addFee = (campaignId: number, body: FeeValues) =>
   apiFetch<{ id: number }>(`/api/campaigns/${campaignId}/fees`, { method: "POST", body });
+
+/** V30: the Sales Statement PDF of a closed month, for the KOL. */
+export const downloadStatement = (s: CampaignStatement, campaignName: string) =>
+  apiDownload(`/api/campaign-statements/${s.id}/pdf`, `statement-${campaignName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}-${s.month}.pdf`);
+
+const percent = (bp: number) => `${(bp / 100).toFixed(2).replace(/\.?0+$/, "")}%`;
+
+/** "RM500 + 2% of sales (cap RM100)", "2% of sales", "RM500" — the deal, never an amount. */
+export const termsLabel = (t: FeeTerms | null) => {
+  if (!t) return "—";
+  const share = t.revenue_share_bp > 0 ? `${percent(t.revenue_share_bp)} of sales${t.revenue_share_cap_sen !== null ? ` (cap ${rm(t.revenue_share_cap_sen)})` : ""}` : null;
+  if (share && t.monthly_fee_sen > 0) return `${rm(t.monthly_fee_sen)} + ${share}`;
+  return share ?? rm(t.monthly_fee_sen);
+};
 
 export const setFeeEndMonth = (feeId: number, toMonth: string | null) =>
   apiFetch<unknown>(`/api/campaign-fees/${feeId}`, { method: "PATCH", body: { to_month: toMonth } });
