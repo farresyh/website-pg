@@ -3011,3 +3011,15 @@ The founder asked for it and merged it. `staging` → `main`, merge `77762e37`, 
 **Checked for delivery-state effects.** `error_code` drives two pieces of logic: the reconcile reclassification (needs_review → failed, Digiflazz codes) and the Resend disable (NeedsReview only). A Gagal callback always passes `outcomeConfirmedFailed`, so it lands on Failed, never NeedsReview; neither path changes for these orders, and the code written is the one the poll already writes.
 
 **Verified.** The existing Gagal webhook tests now assert the evidence keys (plain) and `failure_reason` (both combo tests); red before the fix, green after. Backend suite 4047/4047; concurrency `FinalizePendingDelivery|OrderDeliveryLeg` 3/3 on MySQL. The 41 old rows stay as they are (history; the raw payload still holds the reason).
+
+## 2026-11-19 — CHIP fee counted twice on overlapping settlement files (PRD §16 item 197, ADR-110 addendum)
+
+**Found (read-only money audit, three forks: money in, cost and ledger, reports).** Every money-in, cost and ledger invariant held on production (details in the ADR-110 2026-11-19 addendum and below). One reporting bug: November's "Payment processing net gain/(loss)" read −RM14.81; the real figure is −RM0.03. Consecutive CHIP exports share their boundary day; the shared transaction is reconciled once (by the first upload), but the line subtracted the later file's whole fee total, shared day included.
+
+**Built (`fix/settlement-fee-overlap-double-count`).** `MonthlyAccountingSummaryService::paymentProcessingGainLoss()` sums `local_fee_sen − fee_sen` over the `chip_settled_transactions` of the settlements whose `date_to` is in the month. One seam, every reader (Monthly Summary, operating profit, the Reports profit bridge, the month close) follows. No migration, no frontend change (the line's definitions still read true).
+
+**Stress-tested before the code.** Unmatched rows (CHIP's fee still a loss, as before), the Settlement re-check (writes no settlement row), concurrent uploads (a losing row is never inserted), the period key (kept on `date_to`: per-row `settled_on` would move #7's 31 October rows into closed October). On prod, the new formula equals the old for settlements #1–#7 and differs on #8/#9 by exactly the shared day; September 0 and October 0 as closed, November −3 sen.
+
+**Verified.** New end-to-end test (two overlapping files through the real ingest; −100 sen before the fix, 0 after) and the three existing period tests rewritten onto reconciled rows, with file totals set to a decoy so a regression to file totals fails. Backend 4048/4048.
+
+**Audit notes for the November close (founder).** CHIP settlement files for 11–19 Nov not uploaded yet (380 orders, RM14,504.75); no KOL fee payment recorded for November (RM1,600 accrued). Accepted by ADR: about RM35 order-level cost above funded cost in November, from deposits recorded hours into the transfer day (ADR-134 decision 14). Voucher liability rolls forward to the sen (RM39.20); Digiflazz ledger equals its balance; every wallet and ledger invariant holds.
