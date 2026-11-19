@@ -169,6 +169,12 @@ class DigiflazzWebhookControllerTest extends TestCase
             ->assertOk();
 
         $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
+        // The evidence carries the standard keys every reader shows (admin
+        // "Latest supplier result", Order::deliveryRetryUnsafeWithSameReference),
+        // and keeps the raw payload too.
+        $this->assertSame('44', $order->fresh()->supplier_response['error_code']);
+        $this->assertSame('Saldo tidak cukup', $order->fresh()->supplier_response['error_message']);
+        $this->assertSame('44', $order->fresh()->supplier_response['rc']);
         $this->assertDatabaseMissing('ledger_entries', [
             'reference_id' => $order->id,
             'type' => 'order_profit',
@@ -473,6 +479,7 @@ class DigiflazzWebhookControllerTest extends TestCase
         ])->assertOk();
 
         $this->assertSame(DeliveryStatus::Failed, $leg->fresh()->status);
+        $this->assertSame('Saldo tidak cukup', $leg->fresh()->failure_reason);
         // Sole leg, all-Failed — clean retryable Failed, not needs_review.
         $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
     }
@@ -500,6 +507,7 @@ class DigiflazzWebhookControllerTest extends TestCase
         ])->assertOk();
 
         $this->assertSame(DeliveryStatus::Failed, $leg->fresh()->status);
+        $this->assertSame('Transaksi Gagal', $leg->fresh()->failure_reason);
         $this->assertSame(DeliveryStatus::Failed, $order->fresh()->delivery_status);
     }
 

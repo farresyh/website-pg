@@ -2999,3 +2999,15 @@ The founder asked for it and merged it. `staging` → `main`, merge `77762e37`, 
 - **Backup run #110** (manual, the founder's "Backup Now", 07:48 UTC): success. The archive holds `db-dumps/mysql-mysql.sql` (44 MB) and `db-dumps/mysql-mysql_dump_schema.sql` (3.4 KB, structure only), both AES-256. Restore test passed with 140 tables (#109: 138; the two are `player_validations` and `order_credentials`), `excluded_tables_absent` and `excluded_tables_with_rows` both empty. Nothing left in `storage/app/backup-temp`.
 
 **Open:** PRD §16 item 195's check on 2026-12-03 (small-table slow queries, Pulse volume).
+
+## 2026-11-19 — Digiflazz Gagal callbacks lost the failure reason (PRD §16 item 196)
+
+**Found (read-only prod audit, founder's request).** Every failed combo leg on production (20 of 20) had `order_delivery_legs.failure_reason` = NULL, so the admin's combo leg breakdown showed "—"; the reason ("Nomor Tujuan Salah", "Transaksi Gagal") was only in `laravel.log`. Tracing every writer and reader showed it was wider: 21 failed plain orders stored the raw callback with no `error_code`/`error_message`, so Order Detail's "Latest supplier result" showed no code or message either (the raw JSON sat behind the disclosure).
+
+**Cause.** Five producers hand the finalize seam its evidence: the first attempt, the poll for an order and for a leg, the Gamevion webhook, and the Digiflazz webhook. Only the Digiflazz webhook passed Digiflazz's raw payload (`rc`, `message`); the others write `error_code`/`error_message`, which is what every reader uses (leg `failure_reason`, Order Detail, NeedsReview banner, Resend modal, `Order::deliveryRetryUnsafeWithSameReference()`, the reconcile reclassification).
+
+**Built (`fix/digiflazz-webhook-failure-evidence`).** `DigiflazzWebhookController::evidenceFrom()`, used by the plain and combo branches: on Gagal it adds `error_code` = `rc` and `error_message` = `message` (the same mapping `DigiflazzAdapter` uses for `SupplierResponse::failure()`) and keeps the raw payload. Fixed at the one producer that drifted, not at the leg reader, so plain orders are fixed too and there is one evidence shape.
+
+**Checked for delivery-state effects.** `error_code` drives two pieces of logic: the reconcile reclassification (needs_review → failed, Digiflazz codes) and the Resend disable (NeedsReview only). A Gagal callback always passes `outcomeConfirmedFailed`, so it lands on Failed, never NeedsReview; neither path changes for these orders, and the code written is the one the poll already writes.
+
+**Verified.** The existing Gagal webhook tests now assert the evidence keys (plain) and `failure_reason` (both combo tests); red before the fix, green after. Backend suite 4047/4047; concurrency `FinalizePendingDelivery|OrderDeliveryLeg` 3/3 on MySQL. The 41 old rows stay as they are (history; the raw payload still holds the reason).

@@ -201,7 +201,7 @@ class DigiflazzWebhookController extends Controller
                 $order,
                 $outcome,
                 $outcome === SupplierOutcome::Success ? ($data['sn'] ?? null) : null,
-                $data,
+                self::evidenceFrom($outcome, $data),
                 // ADR-098 / ADR-102 decision 5/6 — the webhook payload is
                 // raw Digiflazz data, not a SupplierResponse, so it
                 // classifies rc itself via the adapter's own table
@@ -274,7 +274,7 @@ class DigiflazzWebhookController extends Controller
                 $leg,
                 $outcome,
                 $outcome === SupplierOutcome::Success ? ($data['sn'] ?? null) : null,
-                $data,
+                self::evidenceFrom($outcome, $data),
                 // ADR-102 decision 5/6 — same reasoning as the plain-order branch above.
                 resendUnsafeWithSameReference: $outcome === SupplierOutcome::Failure
                     && isset($data['rc'])
@@ -288,6 +288,28 @@ class DigiflazzWebhookController extends Controller
         }
 
         return response()->json(['message' => 'ok']);
+    }
+
+    /**
+     * The evidence the finalize seam stores (order `supplier_response`,
+     * combo leg `failure_reason`). Every other producer (first attempt,
+     * poll, Gamevion webhook) writes a failure as `error_code` /
+     * `error_message`, and every reader looks there: the admin's "Latest
+     * supplier result" and leg breakdown, `Order::deliveryRetryUnsafeWithSameReference()`,
+     * the reconcile reclassification. A Gagal callback adds those two
+     * keys (the same `rc` / `message` DigiflazzAdapter maps to its
+     * SupplierResponse::failure()) and keeps the raw payload beside them.
+     */
+    private static function evidenceFrom(SupplierOutcome $outcome, mixed $data): mixed
+    {
+        if ($outcome !== SupplierOutcome::Failure || ! is_array($data)) {
+            return $data;
+        }
+
+        return $data + [
+            'error_code' => isset($data['rc']) ? (string) $data['rc'] : null,
+            'error_message' => $data['message'] ?? null,
+        ];
     }
 
     private function outcomeFrom(mixed $data): ?SupplierOutcome
