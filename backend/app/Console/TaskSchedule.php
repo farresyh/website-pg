@@ -73,6 +73,7 @@ class TaskSchedule
         'price-sync-staleness-check',
         'order-loss-digest',
         'reseller-dormancy',
+        'server-patch-check',
     ];
 
     public static function isCritical(string $name): bool
@@ -166,6 +167,12 @@ class TaskSchedule
         $schedule->command('app:alert-order-losses')
             ->daily()
             ->name('order-loss-digest')
+            ->withoutOverlapping($overlap);
+
+        // ADR-145 decision 3: 09:00 MYT, a working-hours email.
+        $schedule->command('app:check-server-patches')
+            ->dailyAt('01:00')
+            ->name('server-patch-check')
             ->withoutOverlapping($overlap);
 
         // ADR-142 decision 23: 10:00 MYT, so the warning and notice arrive in the day.
