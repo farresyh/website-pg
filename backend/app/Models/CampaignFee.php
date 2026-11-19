@@ -11,11 +11,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class CampaignFee extends Model
 {
-    protected $fillable = ['campaign_id', 'monthly_fee_sen', 'from_month', 'to_month', 'created_by'];
+    protected $fillable = ['campaign_id', 'monthly_fee_sen', 'revenue_share_bp', 'revenue_share_cap_sen', 'from_month', 'to_month', 'created_by'];
 
     protected $casts = [
         'campaign_id' => 'integer',
         'monthly_fee_sen' => 'integer',
+        'revenue_share_bp' => 'integer',
+        'revenue_share_cap_sen' => 'integer',
         'from_month' => 'date',
         'to_month' => 'date',
     ];

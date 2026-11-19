@@ -14,6 +14,7 @@ use App\Http\Requests\Campaign\UpdatePromoCodeRequest;
 use App\Models\Affiliate;
 use App\Models\Campaign;
 use App\Models\CampaignFee;
+use App\Models\CampaignMonthStatement;
 use App\Models\Package;
 use App\Models\PlatformSettings;
 use App\Models\PromoCode;
@@ -22,11 +23,14 @@ use App\Services\Campaign\CampaignService;
 use App\Services\Pricing\OrderPricingResolver;
 use App\Services\Report\ReportService;
 use App\Support\MalaysiaTime;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * ADR-118 V15/V17/V19, PR 4: the admin Campaigns page. Money rules live in
@@ -62,7 +66,7 @@ class CampaignController extends Controller
     public function store(StoreCampaignRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $campaign = $this->fees->createCampaign($data['name'], $data['monthly_fee_sen'], $data['from_month'], $data['to_month'] ?? null, $request->user()->id);
+        $campaign = $this->fees->createCampaign($data['name'], $data['monthly_fee_sen'], $data['from_month'], $data['to_month'] ?? null, $request->user()->id, (int) ($data['revenue_share_bp'] ?? 0), $data['revenue_share_cap_sen'] ?? null);
 
         return response()->json(['id' => $campaign->id], 201);
     }
@@ -95,6 +99,8 @@ class CampaignController extends Controller
             'fees' => $campaign->fees->map(fn (CampaignFee $f) => [
                 'id' => $f->id,
                 'monthly_fee_sen' => $f->monthly_fee_sen,
+                'revenue_share_bp' => $f->revenue_share_bp,
+                'revenue_share_cap_sen' => $f->revenue_share_cap_sen,
                 'from_month' => $f->from_month->format('Y-m'),
                 'to_month' => $f->to_month?->format('Y-m'),
             ]),
@@ -103,7 +109,21 @@ class CampaignController extends Controller
                 'accrued_sen' => $this->fees->accruedThroughSen($campaign, $month),
                 'paid_sen' => $this->fees->paidThroughSen($campaign, Carbon::now(MalaysiaTime::TIMEZONE)->endOfMonth()),
                 'balance_sen' => $this->fees->balanceSen($campaign, $month),
+                // V28: this month's share so far, live until the close freezes it.
+                'this_month' => collect($this->fees->monthFigures($campaign, $month))->only(['sales_sen', 'share_sen', 'limited_by', 'payable_sen']),
             ],
+            // V30: one per closed month; a voided one was replaced by a re-close and stays for audit.
+            'statements' => CampaignMonthStatement::query()->where('campaign_id', $campaign->id)->orderByDesc('period_month')->orderByDesc('id')->get()
+                ->map(fn (CampaignMonthStatement $s) => [
+                    'id' => $s->id,
+                    'month' => $s->period_month->format('Y-m'),
+                    'sales_sen' => $s->sales_sen,
+                    'share_sen' => $s->share_sen,
+                    'payable_sen' => $s->payable_sen,
+                    'limited_by' => $s->limited_by,
+                    'orders' => count($s->lines),
+                    'voided' => $s->voided_at !== null,
+                ]),
             'codes' => $campaign->promoCodes->map(fn (PromoCode $p) => [
                 'id' => $p->id,
                 'code' => $p->code,
@@ -150,10 +170,31 @@ class CampaignController extends Controller
         return response()->json($this->summary($campaign->load('fees', 'promoCodes:id,campaign_id,code,is_active')));
     }
 
+    /** ADR-118 V30 (Q13–Q15): the Sales Statement PDF of a closed month, rendered from the frozen row. */
+    public function statementPdf(CampaignMonthStatement $statement): Response
+    {
+        $statement->load('campaign');
+        $settings = PlatformSettings::current();
+        $replaced = CampaignMonthStatement::query()
+            ->where('campaign_id', $statement->campaign_id)->whereDate('period_month', $statement->period_month)
+            ->where('id', '<', $statement->id)->latest('id')->first();
+
+        return Pdf::loadView('statements.campaign-month', [
+            's' => $statement,
+            'campaign' => $statement->campaign->name,
+            'month' => $statement->period_month,
+            'lines' => $statement->lines,
+            'closed_at' => $statement->created_at->setTimezone(MalaysiaTime::TIMEZONE),
+            'replaces' => $replaced?->created_at->setTimezone(MalaysiaTime::TIMEZONE),
+            'voided' => $statement->voided_at !== null,
+            'seller' => ['name' => $settings->company_legal_name, 'reg_no' => $settings->company_reg_no],
+        ])->download(sprintf('statement-%s-%s.pdf', Str::slug($statement->campaign->name), $statement->period_month->format('Y-m')));
+    }
+
     public function storeFee(StoreCampaignFeeRequest $request, Campaign $campaign): JsonResponse
     {
         $data = $request->validated();
-        $fee = $this->fees->addFee($campaign, $data['monthly_fee_sen'], $data['from_month'], $data['to_month'] ?? null, $request->user()->id);
+        $fee = $this->fees->addFee($campaign, $data['monthly_fee_sen'], $data['from_month'], $data['to_month'] ?? null, $request->user()->id, (int) ($data['revenue_share_bp'] ?? 0), $data['revenue_share_cap_sen'] ?? null);
 
         return response()->json(['id' => $fee->id], 201);
     }
@@ -221,6 +262,10 @@ class CampaignController extends Controller
 
     public function updateSettings(UpdateCampaignSettingsRequest $request): JsonResponse
     {
+        if ($request->has('campaign_min_margin_percent')) {
+            $this->fees->assertFloorAllows((float) $request->validated('campaign_min_margin_percent'));
+        }
+
         $settings = PlatformSettings::current();
         $settings->update($request->validated());
 
@@ -244,7 +289,8 @@ class CampaignController extends Controller
             'name' => $campaign->name,
             'ended_at' => $campaign->ended_at?->toIso8601String(),
             'started_month' => $campaign->fees->first()?->from_month->format('Y-m'),
-            'monthly_fee_sen' => $this->fees->feeForMonth($campaign, Carbon::now(MalaysiaTime::TIMEZONE)->format('Y-m')),
+            // V31: the deal, not an amount (a share isn't known until the month ends).
+            'terms' => $this->fees->termsFor($campaign, Carbon::now(MalaysiaTime::TIMEZONE)->format('Y-m')),
             'codes' => $campaign->promoCodes->pluck('code'),
         ];
     }

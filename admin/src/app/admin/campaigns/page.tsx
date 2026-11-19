@@ -21,7 +21,7 @@ import { FeeForm, FormDialog } from "@/components/campaigns/CampaignForms";
 import { useRange } from "@/components/campaigns/RangeFilter";
 import { getClientSession } from "@/lib/session";
 import { ApiError } from "@/lib/api-client";
-import { createCampaign, listCampaigns, rm, verdictLabel, type CampaignSettings, type CampaignSummary } from "@/lib/campaigns";
+import { createCampaign, listCampaigns, rm, termsLabel, verdictLabel, type CampaignSettings, type CampaignSummary } from "@/lib/campaigns";
 
 const profitOf = (s: CampaignSummary["range"]) => s.redeemed.profit_sen + s.attributed_only.profit_sen;
 
@@ -71,7 +71,7 @@ export default function CampaignsPage() {
         </div>
       ),
     },
-    { key: "fee", header: "Fee / month", align: "right", render: (c) => rm(c.monthly_fee_sen) },
+    { key: "fee", header: "Fee terms", align: "right", render: (c) => termsLabel(c.terms) },
     { key: "clicks", header: "Clicks", align: "right", render: (c) => c.range.clicks.toLocaleString() },
     {
       key: "customers",
