@@ -4,6 +4,7 @@ namespace Tests\Feature\Services\Accounting;
 
 use App\Models\AdminUser;
 use App\Models\BudgetEnvelope;
+use App\Models\ChipSettledTransaction;
 use App\Models\LedgerEntry;
 use App\Models\MembershipFeeRecord;
 use App\Models\MembershipPlan;
@@ -43,6 +44,31 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
     private function service(): MonthlyAccountingSummaryService
     {
         return new MonthlyAccountingSummaryService;
+    }
+
+    /**
+     * One settlement holding one reconciled transaction: the fee our record
+     * charged and the fee CHIP took. The settlement's own file totals are
+     * deliberately different, so a test fails if the line reads them.
+     */
+    private function settlementWithFees(string $from, string $to, int $ourFee, int $chipFee): PaymentSettlement
+    {
+        $settlement = PaymentSettlement::query()->create([
+            'date_from' => $from, 'date_to' => $to,
+            'matched_gross_sen' => 0, 'matched_fee_sen' => 0, 'matched_net_sen' => 0,
+            'file_gross_sen' => 0, 'file_fee_sen' => 999_999, 'file_net_sen' => 0,
+            'status' => 'matched', 'original_filename' => "{$from}.xlsx",
+        ]);
+
+        ChipSettledTransaction::query()->create([
+            'transaction_id' => "tx-{$from}-{$to}",
+            'local_fee_sen' => $ourFee,
+            'amount_sen' => 1000, 'fee_sen' => $chipFee, 'net_amount_sen' => 1000 - $chipFee,
+            'acquirer' => 'fpx', 'settled_on' => $to,
+            'payment_settlement_id' => $settlement->id,
+        ]);
+
+        return $settlement;
     }
 
     public function test_sales_revenue_and_cogs_only_count_delivered_paid_test_excluded_orders(): void
@@ -86,12 +112,7 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
 
     public function test_settlement_batch_ending_on_the_last_day_of_the_month_counts_in_that_month(): void
     {
-        PaymentSettlement::query()->create([
-            'date_from' => '2026-10-25', 'date_to' => '2026-10-31',
-            'matched_gross_sen' => 0, 'matched_fee_sen' => 100, 'matched_net_sen' => 0,
-            'file_gross_sen' => 0, 'file_fee_sen' => 80, 'file_net_sen' => 0,
-            'status' => 'pending', 'original_filename' => 'oct.xlsx',
-        ]);
+        $this->settlementWithFees('2026-10-25', '2026-10-31', ourFee: 100, chipFee: 80);
 
         $this->assertSame(20, $this->service()->forPeriod(2026, 10)['payment_processing_gain_loss_sen']);
         $this->assertSame(0, $this->service()->forPeriod(2026, 11)['payment_processing_gain_loss_sen']);
@@ -104,12 +125,7 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
      */
     public function test_settlement_batch_spanning_a_month_end_counts_once_in_the_month_it_ends(): void
     {
-        PaymentSettlement::query()->create([
-            'date_from' => '2026-09-28', 'date_to' => '2026-10-04',
-            'matched_gross_sen' => 0, 'matched_fee_sen' => 300, 'matched_net_sen' => 0,
-            'file_gross_sen' => 0, 'file_fee_sen' => 250, 'file_net_sen' => 0,
-            'status' => 'pending', 'original_filename' => 'span.xlsx',
-        ]);
+        $this->settlementWithFees('2026-09-28', '2026-10-04', ourFee: 300, chipFee: 250);
 
         $this->assertSame(0, $this->service()->forPeriod(2026, 9)['payment_processing_gain_loss_sen']);
         $this->assertSame(50, $this->service()->forPeriod(2026, 10)['payment_processing_gain_loss_sen']);
@@ -146,27 +162,12 @@ class MonthlyAccountingSummaryServiceTest extends TestCase
         $this->assertSame(2500, (int) MembershipFeeRecord::query()->whereBetween('created_at', ['2026-08-31 16:00:00', '2026-09-30 15:59:59'])->sum('amount_sen'));
     }
 
-    public function test_payment_processing_gain_loss_is_matched_fee_minus_file_fee_across_settlements_in_month(): void
+    public function test_payment_processing_gain_loss_is_our_fee_minus_chip_fee_across_settlements_in_month(): void
     {
-        PaymentSettlement::query()->create([
-            'date_from' => '2026-09-01', 'date_to' => '2026-09-07',
-            'matched_gross_sen' => 0, 'matched_fee_sen' => 100, 'matched_net_sen' => 0,
-            'file_gross_sen' => 0, 'file_fee_sen' => 90, 'file_net_sen' => 0,
-            'status' => 'pending', 'original_filename' => 'a.xlsx',
-        ]);
-        PaymentSettlement::query()->create([
-            'date_from' => '2026-09-08', 'date_to' => '2026-09-14',
-            'matched_gross_sen' => 0, 'matched_fee_sen' => 50, 'matched_net_sen' => 0,
-            'file_gross_sen' => 0, 'file_fee_sen' => 55, 'file_net_sen' => 0,
-            'status' => 'pending', 'original_filename' => 'b.xlsx',
-        ]);
+        $this->settlementWithFees('2026-09-01', '2026-09-07', ourFee: 100, chipFee: 90);
+        $this->settlementWithFees('2026-09-08', '2026-09-14', ourFee: 50, chipFee: 55);
         // Outside the month.
-        PaymentSettlement::query()->create([
-            'date_from' => '2026-10-01', 'date_to' => '2026-10-07',
-            'matched_gross_sen' => 0, 'matched_fee_sen' => 1000, 'matched_net_sen' => 0,
-            'file_gross_sen' => 0, 'file_fee_sen' => 1, 'file_net_sen' => 0,
-            'status' => 'pending', 'original_filename' => 'c.xlsx',
-        ]);
+        $this->settlementWithFees('2026-10-01', '2026-10-07', ourFee: 1000, chipFee: 1);
 
         $summary = $this->service()->forPeriod(2026, 9);
 
