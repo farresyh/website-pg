@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * ADR-145 decision 3: what the box is waiting for. unattended-upgrades
- * covers Ubuntu's own security pocket only; PHP (Ondrej's PPA), nginx,
+ * covers Ubuntu's own security pocket only; PHP (Ondřej Surý's repository), nginx,
  * Redis and Node come from repositories it never touches, and a kernel
  * fix waits for a reboot. Nothing told us either (the 2026-11-19 PHP
  * security release reached us through another company).
@@ -40,8 +40,8 @@ final class ServerPatchCheck
                 'key' => "php:{$latest['version']}",
                 'subject' => "PHP {$this->phpVersion} is behind {$latest['version']}",
                 'message' => sprintf(
-                    'Production runs PHP %s. php.net released %s on %s%s. Once `apt-cache policy php8.4-fpm` on the box shows it (Ondrej\'s PPA follows php.net by a day or a few), run the patch window in ADR-145: a full upgrade, then a reboot, then the health checks.',
-                    $this->phpVersion, $latest['version'], $latest['date'], $latest['tags'] === [] ? '' : ' ('.implode(', ', $latest['tags']).')',
+                    'Production runs PHP %s. php.net released %s on %s%s. Once `apt-cache policy php%s-fpm` on the box shows it (the package repository follows php.net by a day or a few), run the patch window in ADR-145: a full upgrade, then a reboot, then the health checks.',
+                    $this->phpVersion, $latest['version'], $latest['date'], $latest['tags'] === [] ? '' : ' ('.implode(', ', $latest['tags']).')', self::branch($this->phpVersion),
                 ),
             ];
         }
@@ -60,10 +60,16 @@ final class ServerPatchCheck
         return $problems;
     }
 
+    /** "8.4.27" → "8.4" */
+    private static function branch(string $version): string
+    {
+        return implode('.', array_slice(explode('.', $version), 0, 2));
+    }
+
     /** @return array{version: string, date: string, tags: list<string>}|null null when php.net can't say */
     private function latestPhp(): ?array
     {
-        $branch = implode('.', array_slice(explode('.', $this->phpVersion), 0, 2));
+        $branch = self::branch($this->phpVersion);
 
         try {
             $response = Http::timeout(15)->acceptJson()->get('https://www.php.net/releases/', ['json' => '', 'version' => $branch]);

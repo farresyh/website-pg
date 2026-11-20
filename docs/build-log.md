@@ -1996,3 +1996,20 @@ The founder asked for it and merged it. `staging` → `main`, merge `77762e37`, 
 - A plain `apt full-upgrade -y` would have stopped at dpkg's conffile question for the edited `redis.conf`. The runbook now uses `--force-confold` (ADR-145 addendum).
 - Harmless noise: apparmor's postinst `Illegal number: yes`, `my.cnf` alternative "broken" (the stopped local `mysql-server`), and the motd showing 100% swap before the reboot (12 MB after).
 - Not caused by the window: order #853's leg 1 failed at Digiflazz with "Cut Off (Perbaikan Sistem Seller)", a supplier maintenance cut-off. Its first attempt was at 20:41 UTC, before the window. Leg 2 delivered, so the order shows `partially_delivered` for an admin to resend or settle.
+
+## 2026-11-21 — Pre-release review of #820: KOL share input fix, patch-alert wording
+
+The founder asked for a review of everything in release #820 (#813–#819) before it merges to `main`: maintainable, reliable, no patching over.
+
+**Checked and kept.**
+- `CampaignFeeSchedule`: the share, limit and freeze maths.
+- Settled partials: `platform_profit` is already the kept profit (`OrderSettlementService`), the same base the ADR-139 rebate reads.
+- Every `feeForMonth` reader: the Monthly Summary and the ReportService scorecard.
+- The frontend move from `monthly_fee_sen` to `terms`.
+- #814's other readers of `file_fee_sen` / `matched_fee_sen`: none feed the P&L.
+- #813's `evidenceFrom()`.
+- The append-only guard on `CampaignMonthStatement`'s model events. It mirrors `LedgerEntry` and `BudgetEnvelopePosting`, and the one write path (`freezeMonth` / `voidMonth`) is the real seam.
+
+**Fixed: a typed "2%" saved a 0% KOL share.** The admin fee form turned the share with `Math.round(Number(share) * 100)`. `"2%"` and `"1,5"` gave `NaN`, which JSON sends as `null`, and the backend saved `revenue_share_bp` = 0 with no error. A fee row can't be edited once saved, and a new row must start after the latest one, so that month could not be corrected. `admin/src/lib/campaign-input.ts` `toBasisPoints()` accepts `2`, `2%` and `1.5`, and turns anything unreadable into -1, which the server rejects (`campaign-input.test.ts`, 3 tests). It is a separate module because `campaigns.ts` imports `@/` aliases, which the admin's `node --test` runner can't resolve.
+
+**Wording: the patch alert no longer hardcodes `php8.4-fpm` or names Ondrej's PPA.** The branch comes from the running PHP, and the source is about to move (PRD §16 item 199).
