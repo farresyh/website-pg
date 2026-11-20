@@ -1988,6 +1988,8 @@ The founder asked for it and merged it. `staging` → `main`, merge `77762e37`, 
 - `SchedulerLiveness::criticalTasksHealthy()` true, with tasks recorded at 21:13 UTC.
 - OpenWA auto-started, both sessions `Session ready` at 21:11:56 and 21:11:59 UTC, local health 200.
 
+**nginx CVEs closed by this window.** DigitalOcean emailed the founder at 03:46 MYT the same morning about CVE-2026-123633 and CVE-2026-123007: critical, CVSS 9.2, unauthenticated code execution through HTTP/2, fixed in 1.30.7 stable and 1.31.9 mainline. The box serves HTTP/2 (`http2 on;` in 5 server blocks), from nginx.org's mainline repository, so the upstream version is the proof. After the window it runs 1.31.9, with a master process started at 21:11:33 UTC, after the reboot. Exposure ran from disclosure on 2026-11-18 to this window, with the origin reachable only through Cloudflare.
+
 **Not yet seen.** A paid order created after the reboot that delivers. The daily `server-patch-check` sending nothing can't be checked until #816 is released: it is on `staging` only.
 
 **Gotchas.**
