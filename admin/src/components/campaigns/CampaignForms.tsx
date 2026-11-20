@@ -27,6 +27,7 @@ import { Switch } from "@/components/ui/switch";
 import { ApiError } from "@/lib/api-client";
 import { klInputToIso, isoToKlInput } from "@/lib/date-range";
 import { marginCheck, rm, toSen, type CodeValues, type FeeValues, type PromoCodeRow, type RejectedPackage } from "@/lib/campaigns";
+import { toBasisPoints } from "@/lib/campaign-input";
 
 export function FormDialog({ open, title, onClose, children }: { open: boolean; title: string; onClose: () => void; children: React.ReactNode }) {
   return (
@@ -124,8 +125,7 @@ export function FeeForm({
           onSubmit({
             name: name.trim(),
             monthly_fee_sen: toSen(fee) ?? -1,
-            // "2" or "1.5" (%) → basis points, the server's unit.
-            revenue_share_bp: share.trim() === "" ? 0 : Math.round(Number(share) * 100),
+            revenue_share_bp: toBasisPoints(share),
             revenue_share_cap_sen: toSen(cap),
             from_month: from,
             to_month: to || null,
