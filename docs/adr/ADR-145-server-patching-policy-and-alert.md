@@ -1,6 +1,6 @@
 # ADR-145: Server patching — planned patch windows (full upgrade, then reboot), a daily alert when PHP falls behind or a reboot waits, and a smaller attack surface
 
-> **Standing (2026-11-20):** In force. Extends [ADR-114](./ADR-114-production-infra-split-off-digitalocean-s-shared.md) (the box) and reuses the admin email path of [ADR-039](./ADR-039-database-backups.md) decision 7. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-21):** In force; 2026-11-21 addendum (first window run, runbook made non-interactive, PHP source moves to packages.sury.org). Extends [ADR-114](./ADR-114-production-infra-split-off-digitalocean-s-shared.md) (the box) and reuses the admin email path of [ADR-039](./ADR-039-database-backups.md) decision 7. Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted, 2026-11-20. The founder handed Claude the decision ("saya serahkan keputusan kepada awak"), asking for a fix that is maintainable, reliable and not a patch. It rests on a read-only audit of the box (packages, apt sources, unattended-upgrades, listeners, firewall from outside, nginx, PHP-FPM settings) and of php.net and the PPA.
 
@@ -74,3 +74,13 @@ Then Claude checks, read-only:
 - A PHP branch reaching end of life is not alerted (php.net's JSON for a dead branch keeps its last version). PHP 8.4's security support ends on 2028-12-31: revisit then, or at the first move to 8.5.
 - If Forge's provisioning ever re-adds Memcached or rebinds Redis, the next window's `ss -ltn` check shows it.
 - Each window, and its before and after versions, is recorded in `docs/build-log.md`; the first one is PRD §16 item 198.
+
+### 2026-11-21 addendum — first window run; runbook made non-interactive; Ondrej's PPA is moving to packages.sury.org
+
+**The first window ran on 2026-11-21, 05:00–05:11 MYT** (founder at the keyboard, Claude verifying read-only). Before and after are in `docs/build-log.md` 2026-11-21. Three things it taught change the runbook:
+
+1. **The upgrade runs non-interactively and keeps local config files.** Step 1 edits `/etc/redis/redis.conf`, and Forge owns the nginx config. A plain `apt full-upgrade -y` still stops at dpkg's "keep your version?" question for a changed config file, halfway through a window. The upgrade line is now `sudo DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef full-upgrade -y`. On 2026-11-21 dpkg logged "Keeping old config file as default" for `redis.conf`, and the localhost bind survived the Redis 8.10.3 upgrade.
+2. **Redis is restarted and checked right after the bind change, before the upgrade.** `sudo systemctl restart redis-server`, then `ss -ltn | grep 6379` (only `127.0.0.1` and `[::1]`) and `redis-cli ping` (`PONG`). A bad bind then shows while the window is still open, not after the reboot. The `grep -q '^bind ' || tee -a` fallback only applies when no `bind` line exists. The box has one, at line 93.
+3. **Ondrej's PPA now carries the label "PPA for PHP (deprecated)", on Launchpad and on the `ppa.setup-php.com` mirror.** `apt update` stops until the change is accepted with `y`, which the founder did on 2026-11-21. The maintainer is moving the packages to `packages.sury.org/php`. Ubuntu 26.04 is served only from there, and 22.04 and 24.04 are still served from both for now, by third-party reports ([ma.ttias.be](https://ma.ttias.be/php-security-release-2026-11-19/), [Nextcloud forum](https://help.nextcloud.com/t/ubuntu-apt-error-repository-ondrej-php-changed-its-label-value-the-ppa-is-moving-to-packages-sury-org/246810)). **Decision:** the box's PHP source moves from `/etc/apt/sources.list.d/ondrej-php.list` (the mirror) to `packages.sury.org/php` with its keyring, run by the founder (PRD §16 item 199). Until then, the PPA still ships 8.4 for noble, and the daily alert still compares against php.net, so a stalled PPA shows as "behind" and is not missed.
+
+The runbook in **Decision** above stays the reference, with these three changes applied.
