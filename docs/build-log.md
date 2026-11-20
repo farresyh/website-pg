@@ -1942,3 +1942,21 @@ The founder asked for it and merged it. `staging` → `main`, merge `77762e37`, 
 - Checked on the box (read-only tinker): php.net answers 200 with 8.4.28, and the reboot file and its package list are readable as `forge`.
 
 **Verified.** `CheckServerPatchesCommandTest` (5 tests, red first) and `TaskScheduleTest` pass. Backend 4062/4062.
+
+## 2026-11-20 — OpenWA v0.29.1 → v0.30.3, `TRUSTED_PROXIES`, retired reply job deleted (PRD §16 item 183)
+
+**Why v0.30.3, not v0.30.0.** Item 183 named v0.30.0 for the inbound-media crash fix (`TypeError: terminated`) and the `passkey_required` restriction. v0.30.1–v0.30.3 add, among others, an ack for the top-level `<status>` stanza that made WhatsApp end a Baileys stream about 50 minutes later (`Stream Errored (ack)`). Read before upgrading: the release notes and `docs/14-migration-guide.md` for v0.30.0–v0.30.3 (every upgrade hazard is MCP-only, and we don't use MCP), no OpenWA DB migration between the two tags, `.env.example` changed only an MCP comment, engines `node >=22.19` (box: 22.23.4). Nothing in the repo filters on `baileys_connection_dropped`, which v0.30.0 renamed for the post-link 515 close.
+
+**`TRUSTED_PROXIES`.** The path is Cloudflare → nginx on the box → `127.0.0.1:2785`. nginx already rewrites `$remote_addr` to the real client from the Cloudflare ranges (`/etc/nginx/conf.d/cloudflare.conf`, `real_ip_header X-Forwarded-For`) and appends it to `X-Forwarded-For`; OpenWA walks that header right to left past trusted hops (`src/common/utils/ip.ts`). So `127.0.0.1,::1` is enough, without the Cloudflare ranges.
+
+**What ran (founder, 2026-11-20).**
+- `scripts/openwa-upgrade.sh build v0.30.3`: built in the background past the 120 s tool limit, as expected. Both new install-time patches applied (`patch-baileys-media-stream`, `patch-baileys-status-ack`).
+- `TRUSTED_PROXIES=127.0.0.1,::1` appended to `~/openwa-deploy/shared/.env` (idempotent guard).
+- Daemon stopped in Forge, `switch v0.30.3` (backup `~/openwa-backups/openwa-v0.29.1-20261120-0825.tar.gz`, 232M), daemon started. Down about 08:25–08:26:43 UTC.
+
+**Before / after (read-only).**
+- Before: `/api/health/whatsapp` `ok`, both sessions `ready`; OpenWA 0.29.1; 20 "TRUSTED_PROXIES is empty" warnings in the daemon log.
+- After: the process runs from `releases/v0.30.3`; both sessions auto-started and `ready` within 6 s; `/api/health/whatsapp` `ok`; five `session.status` and one `message.sent` webhook events `dispatched`, 0 delivery failures since the restart; a real CS message sent at 08:27:07 UTC; 0 `TRUSTED_PROXIES` warnings since boot.
+- The boot warnings `API_KEY_PEPPER is not set` and `No explicit CORS_ORIGINS` are not new: 26 of each since 2026-09-25.
+
+**Code.** `SendResellerBotReplyJob` and its test deleted (no dispatcher since the ADR-116 2026-11-14 addendum; 0 queued on prod). Its 7 old `failed_jobs` rows can no longer be retried, which is fine: they are lost bot replies from before the outbox. `HorizonQueueCoverageTest` loses its queue-pin test; `WhatsAppHardeningEdgesTest` now asserts `SendCustomerWhatsAppJob` is the only `sendNow()` caller.
