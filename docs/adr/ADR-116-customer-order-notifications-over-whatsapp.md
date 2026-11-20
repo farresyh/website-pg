@@ -291,5 +291,5 @@ a risk at this volume. Removing it also closes the retry hole.
 
 **Consequence to track.**
 - OpenWA ops, done by the founder: add `message.failed` to the `customer-support` webhook's events; `SIMULATE_TYPING_MAX_MS=1500` in OpenWA's `.env` (typing simulation is global, so this shortens it for both sessions; customer messages keep the 10-30 s gap).
-- Remove `SendResellerBotReplyJob` with the OpenWA v0.30.0 upgrade PR.
+- Remove `SendResellerBotReplyJob` with the OpenWA v0.30.0 upgrade PR. Done 2026-11-20 with the v0.30.3 upgrade (PRD §16 item 183).
 - Sending every Delivered receipt without opt-in revisits decision 5 and the cold-reachout rationale; it needs its own addendum with opt-in and volume data, not this change.

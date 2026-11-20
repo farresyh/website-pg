@@ -4,6 +4,7 @@ namespace App\Services\Accounting;
 
 use App\Models\BudgetEnvelopePosting;
 use App\Models\Campaign;
+use App\Models\ChipSettledTransaction;
 use App\Models\LedgerEntry;
 use App\Models\Order;
 use App\Models\PaymentSettlement;
@@ -343,22 +344,30 @@ final class MonthlyAccountingSummaryService
      * cadence — several may fall inside one month). Keyed on `date_to`
      * alone: requiring the whole window inside the month made a batch
      * that crosses a month end count in neither month.
-     * `matched_fee_sen` (not the old `expected_fee_sen`, dropped by this
-     * ADR's own same-day addendum) sums our own fee assumption ONLY for
-     * the transactions each settlement actually matched — the same fix
-     * that made `status` reliable also makes this line correct.
+     * Both sides come from the transactions each settlement itself
+     * reconciled (`chip_settled_transactions`, one row per CHIP transaction
+     * by its unique `transaction_id`), never from the file's own totals:
+     * consecutive exports share their boundary day, the shared transaction
+     * belongs to the first upload only, and the later file's
+     * `file_fee_sen` still includes it (ADR-110 2026-11-19 addendum; it
+     * showed November 2026 at -RM14.81 for a real -RM0.03). An unmatched
+     * transaction has no fee of ours, so CHIP's fee on it counts as a loss.
      */
     private function paymentProcessingGainLoss(Carbon $from, Carbon $toExclusive): int
     {
-        $totals = PaymentSettlement::query()
+        $settlementIds = PaymentSettlement::query()
             // Settlement windows are KL calendar dates, so compare against
             // the KL dates, not the UTC instants' dates.
             ->where('date_to', '>=', $from->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
             ->where('date_to', '<', $toExclusive->copy()->setTimezone(MalaysiaTime::TIMEZONE)->toDateString())
-            ->selectRaw('COALESCE(SUM(matched_fee_sen), 0) as matched_fee, COALESCE(SUM(file_fee_sen), 0) as file_fee')
+            ->select('id');
+
+        $totals = ChipSettledTransaction::query()
+            ->whereIn('payment_settlement_id', $settlementIds)
+            ->selectRaw('COALESCE(SUM(local_fee_sen), 0) as our_fee, COALESCE(SUM(fee_sen), 0) as chip_fee')
             ->first();
 
-        return (int) $totals->matched_fee - (int) $totals->file_fee;
+        return (int) $totals->our_fee - (int) $totals->chip_fee;
     }
 
     /**

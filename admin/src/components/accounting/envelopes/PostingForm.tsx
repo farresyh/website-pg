@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { todayInKL } from "@/lib/date-range";
 import { ApiError } from "@/lib/api-client";
+import { termsLabel } from "@/lib/campaigns";
 import { notify } from "@/components/ui/toast";
 import {
   formatRm,
@@ -234,14 +235,14 @@ export function PostingForm({ index, defaultEnvelopeId, onRecorded }: Props) {
               <option value={0}>Not a KOL fee</option>
               {index.campaigns.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} ({formatRm(c.monthly_fee_sen)}/month)
+                  {c.name} ({termsLabel(c.terms)})
                 </option>
               ))}
             </select>
             {taggedCampaign && (
               <span className="mt-1 block text-theme-xs text-ink-subtle">
                 {campaignPreview
-                  ? `${balanceText(campaignPreview.balance_before_sen)} now → ${balanceText(campaignPreview.balance_after_sen)} after${campaignPreview.covers_until ? `, covers to ${monthLabel(campaignPreview.covers_until)}` : ""}.`
+                  ? `${balanceText(campaignPreview.balance_before_sen)} now → ${balanceText(campaignPreview.balance_after_sen)} after${campaignPreview.covers_until ? `, covers to ${monthLabel(campaignPreview.covers_until)}${(taggedCampaign.terms?.revenue_share_bp ?? 0) > 0 ? " by the fixed fee (a share is known only when the month closes)" : ""}` : ""}.`
                   : `${balanceText(taggedCampaign.balance_sen)} now. Expensed by its fee schedule, not by this date.`}
               </span>
             )}

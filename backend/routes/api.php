@@ -911,6 +911,7 @@ Route::middleware(['auth:sanctum', 'admin.session'])->group(function () {
         Route::patch('/campaigns/{campaign}', [CampaignController::class, 'update']);
         Route::post('/campaigns/{campaign}/fees', [CampaignController::class, 'storeFee']);
         Route::patch('/campaign-fees/{campaignFee}', [CampaignController::class, 'updateFee']);
+        Route::get('/campaign-statements/{statement}/pdf', [CampaignController::class, 'statementPdf']);
         Route::post('/campaigns/{campaign}/codes', [CampaignController::class, 'storeCode']);
         Route::patch('/promo-codes/{promoCode}', [CampaignController::class, 'updateCode']);
     });

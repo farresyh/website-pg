@@ -3,6 +3,7 @@
 namespace App\Services\Accounting;
 
 use App\Models\Order;
+use App\Models\PromoCode;
 use App\Services\Order\DeliveryStatus;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
@@ -133,6 +134,42 @@ final class RecognisedRevenue
             'sales_sen' => (int) $delivered->sales + (int) $partial->sum(fn (Order $o) => $this->keptSen($o)),
             'profit_sen' => (int) $delivered->profit + (int) $partial->sum('platform_profit'),
         ];
+    }
+
+    /**
+     * ADR-118 V27: every order attributed to a KOL code whose revenue is
+     * recognised in the range, with the sales it is recognised at (a
+     * settled partial's kept amount) and its platform profit — the base of
+     * a campaign's revenue share, its profit limit and its statement lines.
+     * One definition for all three; the scorecard's paid-date sales are not it.
+     *
+     * @return Collection<int, array{campaign_id: int, order: Order, sales_sen: int, profit_sen: int}>
+     */
+    public function attributedSales(?CarbonInterface $from, ?CarbonInterface $toExclusive): Collection
+    {
+        $orders = $this->inRange(Order::query(), $from, $toExclusive)
+            ->where('delivery_status', DeliveryStatus::Delivered->value)
+            ->whereNotNull('attributed_promo_code_id')
+            ->with(['game:id,name', 'package:id,name'])
+            ->get(['id', 'order_number', 'recognised_at', 'game_id', 'package_id', 'player_id', 'selling_price', 'platform_profit', 'attributed_promo_code_id'])
+            ->map(fn (Order $o) => ['order' => $o, 'sales_sen' => (int) $o->selling_price])
+            ->concat($this->settledPartialOrders($from, $toExclusive)
+                ->whereNotNull('attributed_promo_code_id')
+                ->load(['game:id,name', 'package:id,name'])
+                ->map(fn (Order $o) => ['order' => $o, 'sales_sen' => $this->keptSen($o)]));
+
+        if ($orders->isEmpty()) {
+            return collect();
+        }
+
+        $campaignOf = PromoCode::query()->whereIn('id', $orders->pluck('order.attributed_promo_code_id')->unique())->pluck('campaign_id', 'id');
+
+        return $orders->map(fn (array $row) => [
+            'campaign_id' => (int) $campaignOf[$row['order']->attributed_promo_code_id],
+            'order' => $row['order'],
+            'sales_sen' => $row['sales_sen'],
+            'profit_sen' => (int) $row['order']->platform_profit,
+        ])->values();
     }
 
     private function inRange(Builder $query, ?CarbonInterface $from, ?CarbonInterface $toExclusive): Builder

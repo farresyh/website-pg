@@ -5,6 +5,7 @@ namespace App\Services\Accounting;
 use App\Models\AccountingPeriodClose;
 use App\Models\BudgetEnvelope;
 use App\Models\CashAccount;
+use App\Services\Campaign\CampaignFeeSchedule;
 use App\Services\Rebate\RebateMonthService;
 use App\Support\MalaysiaTime;
 use Illuminate\Support\Carbon;
@@ -35,6 +36,7 @@ final class MonthCloseService
         private readonly CashPositionService $position,
         private readonly BudgetEnvelopeService $envelopes,
         private readonly RebateMonthService $rebates,
+        private readonly CampaignFeeSchedule $campaignFees,
     ) {}
 
     /** @return array<string, mixed> */
@@ -116,7 +118,7 @@ final class MonthCloseService
                 $adminUserId,
             );
 
-            return AccountingPeriodClose::query()->create([
+            $close = AccountingPeriodClose::query()->create([
                 'period_month' => Carbon::create($year, $month, 1)->toDateString(),
                 'operating_profit_sen' => $lines['operating_profit_sen'],
                 'prior_adjustment_sen' => $prior,
@@ -129,6 +131,11 @@ final class MonthCloseService
                 'gap_note' => $gapNote,
                 'closed_by' => $adminUserId,
             ]);
+
+            // ADR-118 V30: the KOL statements are frozen with the close, from the same figures `profit_lines` just read.
+            $this->campaignFees->freezeMonth($close);
+
+            return $close;
         });
     }
 
@@ -150,6 +157,8 @@ final class MonthCloseService
                 $this->envelopes->void($locked->posting, "Month close reopened: {$reason}", $adminUserId, reopeningClose: true);
             }
 
+            // ADR-118 V30 (Q17): its KOL statements go with it; the re-close freezes new ones.
+            $this->campaignFees->voidMonth($locked);
             $locked->update(['voided_at' => now(), 'voided_by' => $adminUserId, 'void_reason' => $reason]);
 
             return $locked;

@@ -26,7 +26,8 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { ApiError } from "@/lib/api-client";
 import { klInputToIso, isoToKlInput } from "@/lib/date-range";
-import { marginCheck, rm, toSen, type CodeValues, type PromoCodeRow, type RejectedPackage } from "@/lib/campaigns";
+import { marginCheck, rm, toSen, type CodeValues, type FeeValues, type PromoCodeRow, type RejectedPackage } from "@/lib/campaigns";
+import { toBasisPoints } from "@/lib/campaign-input";
 
 export function FormDialog({ open, title, onClose, children }: { open: boolean; title: string; onClose: () => void; children: React.ReactNode }) {
   return (
@@ -91,7 +92,11 @@ function ErrorLine({ error }: { error: string | null }) {
 
 const thisMonth = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" }).slice(0, 7);
 
-/** V12: a fee row (and, for a new campaign, its name). A package deal is its monthly fee with an end month. */
+/**
+ * V12 + V26: a fee row (and, for a new campaign, its name): a fixed monthly
+ * fee, a share of recognised sales, or both. A package deal is its monthly
+ * fee with an end month. The share's limit (V29) is checked by the server.
+ */
 export function FeeForm({
   withName,
   submitLabel,
@@ -101,10 +106,12 @@ export function FeeForm({
   withName: boolean;
   submitLabel: string;
   onClose: () => void;
-  onSubmit: (v: { name: string; monthly_fee_sen: number; from_month: string; to_month: string | null }) => Promise<unknown>;
+  onSubmit: (v: FeeValues & { name: string }) => Promise<unknown>;
 }) {
   const [name, setName] = useState("");
   const [fee, setFee] = useState("");
+  const [share, setShare] = useState("");
+  const [cap, setCap] = useState("");
   const [from, setFrom] = useState(thisMonth());
   const [to, setTo] = useState("");
   const { error, busy, run } = useSubmit(onClose);
@@ -114,7 +121,16 @@ export function FeeForm({
       className="space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
-        void run(() => onSubmit({ name: name.trim(), monthly_fee_sen: toSen(fee) ?? -1, from_month: from, to_month: to || null }));
+        void run(() =>
+          onSubmit({
+            name: name.trim(),
+            monthly_fee_sen: toSen(fee) ?? -1,
+            revenue_share_bp: toBasisPoints(share),
+            revenue_share_cap_sen: toSen(cap),
+            from_month: from,
+            to_month: to || null,
+          }),
+        );
       }}
     >
       <ErrorLine error={error} />
@@ -129,6 +145,22 @@ export function FeeForm({
         <Input id="campaign-fee" inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} placeholder="500.00" required />
         <p className="mt-1 text-theme-xs text-ink-muted">Include SST if the KOL charges it. RM0 is allowed. A package (&quot;RM1,500 for 3 months&quot;) is its monthly fee with an end month.</p>
       </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <Label htmlFor="campaign-share">Share of sales (%, optional)</Label>
+          <Input id="campaign-share" inputMode="decimal" value={share} onChange={(e) => setShare(e.target.value)} placeholder="2" />
+        </div>
+        <div>
+          <Label htmlFor="campaign-cap">Share cap per month (RM, optional)</Label>
+          <Input id="campaign-cap" inputMode="decimal" value={cap} onChange={(e) => setCap(e.target.value)} placeholder="No cap" disabled={share.trim() === ""} />
+        </div>
+      </div>
+      {share.trim() !== "" && (
+        <p className="text-theme-xs text-ink-muted">
+          Of the sales of every order with this KOL&apos;s code, counted in the month it was delivered. At most the promo margin floor (Campaign settings), and never more than
+          the campaign earned that month. The share counts the whole first month: if the deal starts late in a month, start it next month.
+        </p>
+      )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <Label htmlFor="campaign-from">First month</Label>

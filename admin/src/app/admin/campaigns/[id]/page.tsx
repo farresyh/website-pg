@@ -28,16 +28,22 @@ import {
   monthLabel,
   rm,
   setFeeEndMonth,
+  downloadStatement,
+  termsLabel,
   updateCampaign,
   updateCode,
   verdictLabel,
   type CampaignCustomer,
   type CampaignDetail,
   type CampaignFee,
+  type CampaignStatement,
   type CodeScore,
   type PromoCodeRow,
   type Scorecard,
 } from "@/lib/campaigns";
+
+/** V28: why the share is lower than its percentage. */
+const limitNote = (l: CampaignStatement["limited_by"]) => (l === "cap" ? " (capped)" : l === "profit" ? " (limited by profit)" : "");
 
 type Editing = { kind: "end" } | { kind: "fee" } | { kind: "feeEnd"; fee: CampaignFee } | { kind: "code"; code: PromoCodeRow | null } | null;
 
@@ -104,7 +110,7 @@ export default function CampaignDetailPage() {
   const lastFee = campaign.fees[campaign.fees.length - 1];
 
   const feeColumns: ReportColumn<CampaignFee>[] = [
-    { key: "fee", header: "Monthly fee", render: (f) => rm(f.monthly_fee_sen) },
+    { key: "fee", header: "Terms", render: (f) => termsLabel(f) },
     { key: "from", header: "From", render: (f) => monthLabel(f.from_month) },
     { key: "to", header: "To", render: (f) => (f.to_month ? monthLabel(f.to_month) : "Open") },
     {
@@ -117,6 +123,33 @@ export default function CampaignDetailPage() {
             Set last month
           </Button>
         ) : null,
+    },
+  ];
+
+  const statementColumns: ReportColumn<CampaignStatement>[] = [
+    {
+      key: "month",
+      header: "Month",
+      render: (s) => (
+        <span className="inline-flex items-center gap-2">
+          {monthLabel(s.month)}
+          {s.voided && <Tag severity="secondary">Replaced</Tag>}
+        </span>
+      ),
+    },
+    { key: "orders", header: "Orders", align: "right", render: (s) => s.orders },
+    { key: "sales", header: "Sales", align: "right", render: (s) => rm(s.sales_sen) },
+    { key: "share", header: "Share", align: "right", render: (s) => <span>{rm(s.share_sen)}{limitNote(s.limited_by)}</span> },
+    { key: "payable", header: "Amount", align: "right", render: (s) => rm(s.payable_sen) },
+    {
+      key: "pdf",
+      header: "",
+      align: "right",
+      render: (s) => (
+        <Button size="small" variant="text" onClick={() => void act(() => downloadStatement(s, campaign.name), "Statement downloaded")}>
+          PDF
+        </Button>
+      ),
     },
   ];
 
@@ -211,7 +244,7 @@ export default function CampaignDetailPage() {
             {verdict && <Tag severity={verdict.tone}>{verdict.text}</Tag>}
           </div>
           <p className="mt-1 text-theme-sm text-ink-muted">
-            Since {monthLabel(campaign.started_month)} · {rm(campaign.monthly_fee_sen)} this month
+            Since {monthLabel(campaign.started_month)} · {termsLabel(campaign.terms)}
           </p>
         </div>
         <Button
@@ -278,11 +311,25 @@ export default function CampaignDetailPage() {
               <div className="flex justify-between"><dt className="text-ink-muted">Fees accrued</dt><dd className="tabular-nums">{rm(campaign.balance.accrued_sen)}</dd></div>
               <div className="flex justify-between"><dt className="text-ink-muted">Paid</dt><dd className="tabular-nums">{rm(campaign.balance.paid_sen)}</dd></div>
             </dl>
+            {(campaign.terms?.revenue_share_bp ?? 0) > 0 && (
+              <p className="mt-3 text-theme-xs text-ink-muted">
+                {monthLabel(campaign.balance.month)} so far: {rm(campaign.balance.this_month.share_sen)} share on {rm(campaign.balance.this_month.sales_sen)} sales
+                {limitNote(campaign.balance.this_month.limited_by)}. An estimate until the month is closed.
+              </p>
+            )}
             <p className="mt-3 text-theme-xs text-ink-muted">
               Record each payment in <Link href="/admin/accounting" className="underline">Accounting</Link> → Envelope Ledger as an Advertising expense tagged with this campaign.
             </p>
           </ReportCard>
         </div>
+
+        <ReportCard
+          title="Statements"
+          subtitle="Frozen when a month is closed in Monthly Summary. Send the PDF to the KOL: it lists every order's sales, never cost or profit."
+          flush
+        >
+          <ReportTable columns={statementColumns} rows={campaign.statements} rowKey={(s) => s.id} empty="No closed month yet." />
+        </ReportCard>
 
         <ReportCard title="Customers" subtitle="All time, from their first KOL order. Sales match the scorecard." flush>
           <ReportTable columns={customerColumns} rows={campaign.customers} rowKey={(c) => c.first_order_number} />
@@ -306,7 +353,7 @@ export default function CampaignDetailPage() {
           submitLabel="Add fee"
           onClose={() => setEditing(null)}
           onSubmit={async (v) => {
-            await addFee(campaign.id, { monthly_fee_sen: v.monthly_fee_sen, from_month: v.from_month, to_month: v.to_month });
+            await addFee(campaign.id, { monthly_fee_sen: v.monthly_fee_sen, revenue_share_bp: v.revenue_share_bp, revenue_share_cap_sen: v.revenue_share_cap_sen, from_month: v.from_month, to_month: v.to_month });
             notify.success("Fee added");
             load();
           }}

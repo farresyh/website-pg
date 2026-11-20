@@ -51,7 +51,7 @@ final class ResellerBotReplyFormatter
      * ever reaches WhatsApp, and with no response body our client logs.
      * Found 2026-09-13: `.list MLID` (79 active denominations, the
      * largest single-game catalogue) built a 7,605-char reply and every
-     * send silently failed after exhausting `SendResellerBotReplyJob`'s
+     * send silently failed after exhausting the then reply job's
      * 3 retries — the reseller saw nothing at all. Re-running the same
      * length check across every reseller-coded game found two more over
      * the cap: `MLMY` (5,707 chars, 59 packages) and `MLGB` (4,164 chars,

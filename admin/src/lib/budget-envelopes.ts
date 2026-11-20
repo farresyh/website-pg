@@ -1,4 +1,5 @@
 import { apiFetch, apiUpload, apiDownload } from "@/lib/api-client";
+import type { FeeTerms } from "@/lib/campaigns";
 
 
 /**
@@ -43,8 +44,8 @@ export interface BudgetEnvelopeIndex {
 export interface CampaignOption {
   id: number;
   name: string;
-  /** This month's fee from the campaign's schedule. */
-  monthly_fee_sen: number;
+  /** ADR-118 V31: this month's terms (not an amount); null when no fee row covers it. */
+  terms: FeeTerms | null;
   /** Positive: paid ahead (prepaid). Negative: owed to the KOL (accrued). */
   balance_sen: number;
 }

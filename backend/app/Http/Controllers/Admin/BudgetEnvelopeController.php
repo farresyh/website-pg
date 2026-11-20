@@ -55,7 +55,8 @@ class BudgetEnvelopeController extends Controller
             'campaigns' => Campaign::query()->with('fees')->orderByDesc('id')->get()->map(fn (Campaign $c) => [
                 'id' => $c->id,
                 'name' => $c->name,
-                'monthly_fee_sen' => $this->campaignFees->feeForMonth($c, now(MalaysiaTime::TIMEZONE)->format('Y-m')),
+                // V31: the deal for the label; a share's amount isn't known until the month closes.
+                'terms' => $this->campaignFees->termsFor($c, now(MalaysiaTime::TIMEZONE)->format('Y-m')),
                 'balance_sen' => $this->campaignFees->balanceSen($c, now(MalaysiaTime::TIMEZONE)->format('Y-m')),
             ])->values(),
         ]);

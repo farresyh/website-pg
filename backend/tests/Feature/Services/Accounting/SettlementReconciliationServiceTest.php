@@ -10,6 +10,7 @@ use App\Models\PaymentSettlement;
 use App\Models\Reseller;
 use App\Models\WalletTopupAttempt;
 use App\Services\Accounting\ChipTransactionMatchType;
+use App\Services\Accounting\MonthlyAccountingSummaryService;
 use App\Services\Accounting\SettlementFileParser;
 use App\Services\Accounting\SettlementIngestResult;
 use App\Services\Accounting\SettlementReconciliationService;
@@ -302,6 +303,36 @@ class SettlementReconciliationServiceTest extends TestCase
 
         $this->assertSame(1, $overlap->newlyMatchedCount); // only tx-week2-day8 is genuinely new
         $this->assertSame(1, $overlap->alreadyReconciledSkippedCount); // tx-week1-day7 already reconciled by week1's upload
+
+        unlink($week1);
+        unlink($week2);
+    }
+
+    /**
+     * PRD §16 item 197: consecutive CHIP exports share their boundary day,
+     * and the shared transaction is reconciled by the first upload only.
+     * Its fee must reach the month's payment processing line once, not a
+     * second time through the later file's own fee total. Found on prod:
+     * November 2026 showed -RM14.81 for a real -RM0.03.
+     */
+    public function test_an_overlapping_files_shared_transaction_fee_counts_once_in_payment_processing(): void
+    {
+        Order::factory()->create(['payment_gateway' => 'chip', 'payment_ref' => 'tx-day7', 'payment_status' => PaymentStatus::Paid, 'paid_at' => '2026-09-07 12:00:00', 'final_amount' => 1100, 'transaction_fee' => 100]);
+        Order::factory()->create(['payment_gateway' => 'chip', 'payment_ref' => 'tx-day8', 'payment_status' => PaymentStatus::Paid, 'paid_at' => '2026-09-08 12:00:00', 'final_amount' => 1100, 'transaction_fee' => 100]);
+
+        $week1 = SettlementFixture::build('2026-09-01 to 2026-09-07', '11.00', '1.00', '10.00', [
+            ['transaction_id' => 'tx-day7', 'reference' => 'PG-A', 'amount' => '11.00', 'fee' => '1.00', 'net' => '10.00', 'settled_on' => '2026-09-07 12:32'],
+        ]);
+        $week2 = SettlementFixture::build('2026-09-07 to 2026-09-08', '22.00', '2.00', '20.00', [
+            ['transaction_id' => 'tx-day7', 'reference' => 'PG-A', 'amount' => '11.00', 'fee' => '1.00', 'net' => '10.00', 'settled_on' => '2026-09-07 12:32'],
+            ['transaction_id' => 'tx-day8', 'reference' => 'PG-B', 'amount' => '11.00', 'fee' => '1.00', 'net' => '10.00', 'settled_on' => '2026-09-08 09:00'],
+        ]);
+
+        $this->ingest($week1, 'week1.xlsx');
+        $this->ingest($week2, 'week2.xlsx');
+
+        // Customers paid RM1.00 per transaction and CHIP took RM1.00: no gain, no loss.
+        $this->assertSame(0, (new MonthlyAccountingSummaryService)->forPeriod(2026, 9)['payment_processing_gain_loss_sen']);
 
         unlink($week1);
         unlink($week2);
