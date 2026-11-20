@@ -1960,3 +1960,37 @@ The founder asked for it and merged it. `staging` → `main`, merge `77762e37`, 
 - The boot warnings `API_KEY_PEPPER is not set` and `No explicit CORS_ORIGINS` are not new: 26 of each since 2026-09-25.
 
 **Code.** `SendResellerBotReplyJob` and its test deleted (no dispatcher since the ADR-116 2026-11-14 addendum; 0 queued on prod). Its 7 old `failed_jobs` rows can no longer be retried, which is fine: they are lost bot replies from before the outbox. `HorizonQueueCoverageTest` loses its queue-pin test; `WhatsAppHardeningEdgesTest` now asserts `SendCustomerWhatsAppJob` is the only `sendNow()` caller.
+
+## 2026-11-21 — First server patch window: PHP 8.4.28, kernel 6.8.0-151, Redis on localhost (PRD §16 item 198, ADR-145)
+
+**What ran (founder, over SSH as `forge`, 20:59–21:12 UTC = 04:59–05:12 MYT).** The `forge` sudo password had been lost. Forge doesn't store it and has no reset button, and our SSH key is refused for `root`. The founder set a new one with `passwd forge` from DigitalOcean's Droplet Console, which needs no reboot. Then the ADR-145 runbook:
+- The PPA had `php8.4-fpm` 8.4.28-2 as candidate.
+- `redis.conf` line 93 `bind 0.0.0.0 -::1` → `bind 127.0.0.1 -::1`, then Redis was restarted. `ss` showed only `127.0.0.1:6379` and `[::1]:6379`, and `redis-cli ping` answered `PONG`. Claude checked right after: Horizon running, `/api/health` 200.
+- Purged `memcached`, `php8.4-{memcached,imap,swoole,pgsql,soap,imagick}`.
+- `apt update`: the Ondrej PPA's label changed to "PPA for PHP (deprecated)", and the founder accepted it with `y` (ADR-145 2026-11-21 addendum).
+- Non-interactive `full-upgrade` with `--force-confold`: 61 upgraded, 14 new, 11 systemd packages deferred by Ubuntu's phasing. `redis.conf` was kept ("Keeping old config file as default"). `autoremove` removed kernel 149 and the Memcached/IMAP/pgsql libraries.
+- `sudo reboot` at 21:10:49 UTC. SSH answered again within a minute.
+
+**Before → after.**
+
+| | Before | After |
+| --- | --- | --- |
+| PHP CLI / FPM | 8.4.27 / 8.4.27 | 8.4.28 / 8.4.28 |
+| Running kernel | 6.8.0-124 (up 57 days) | 6.8.0-151 (124 kept as the GRUB fallback) |
+| `/var/run/reboot-required` | present (`libc6`, kernels 142–149) | gone |
+| nginx / Redis / MySQL client / Node | 1.31.6 / 8.8.1 / 8.4.11 / 22.23.4 | 1.31.9 / 8.10.3 / 8.4.13 / 22.23.5 |
+| Listeners | Redis `0.0.0.0:6379`, Memcached `0.0.0.0:11211` | Redis `127.0.0.1` and `[::1]` only, 11211 closed |
+| Pending upgrades | 74 | 11 (phased systemd) |
+
+**Verified after the reboot (read-only).**
+- `php8.4-fpm`, nginx, redis-server, supervisor active, `systemctl --failed` empty.
+- `/api/health` 200, Horizon running.
+- `SchedulerLiveness::criticalTasksHealthy()` true, with tasks recorded at 21:13 UTC.
+- OpenWA auto-started, both sessions `Session ready` at 21:11:56 and 21:11:59 UTC, local health 200.
+
+**Not yet seen.** A paid order created after the reboot that delivers. The daily `server-patch-check` sending nothing can't be checked until #816 is released: it is on `staging` only.
+
+**Gotchas.**
+- A plain `apt full-upgrade -y` would have stopped at dpkg's conffile question for the edited `redis.conf`. The runbook now uses `--force-confold` (ADR-145 addendum).
+- Harmless noise: apparmor's postinst `Illegal number: yes`, `my.cnf` alternative "broken" (the stopped local `mysql-server`), and the motd showing 100% swap before the reboot (12 MB after).
+- Not caused by the window: order #853's leg 1 failed at Digiflazz with "Cut Off (Perbaikan Sistem Seller)", a supplier maintenance cut-off. Its first attempt was at 20:41 UTC, before the window. Leg 2 delivered, so the order shows `partially_delivered` for an admin to resend or settle.
