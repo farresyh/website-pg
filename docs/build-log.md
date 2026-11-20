@@ -2013,3 +2013,13 @@ The founder asked for a review of everything in release #820 (#813–#819) befor
 **Fixed: a typed "2%" saved a 0% KOL share.** The admin fee form turned the share with `Math.round(Number(share) * 100)`. `"2%"` and `"1,5"` gave `NaN`, which JSON sends as `null`, and the backend saved `revenue_share_bp` = 0 with no error. A fee row can't be edited once saved, and a new row must start after the latest one, so that month could not be corrected. `admin/src/lib/campaign-input.ts` `toBasisPoints()` accepts `2`, `2%` and `1.5`, and turns anything unreadable into -1, which the server rejects (`campaign-input.test.ts`, 3 tests). It is a separate module because `campaigns.ts` imports `@/` aliases, which the admin's `node --test` runner can't resolve.
 
 **Wording: the patch alert no longer hardcodes `php8.4-fpm` or names Ondrej's PPA.** The branch comes from the running PHP, and the source is about to move (PRD §16 item 199).
+
+## 2026-11-21 — Release #820 (`staging`→`main`)
+
+**What shipped.** #813, #814, #815, #816, #818, #821, and docs #809, #812, #817, #819 (PRD §14). The founder merged #820 after the first patch window and the pre-release review (#821). Main CI was green on every job, including `deploy` and `playwright`. Merge `74385e7d`, box release `83604218`.
+
+**Checked on prod after the deploy (read-only).**
+- Migration `2026_11_24_100000_add_revenue_share_to_campaign_fees` ran in batch 75.
+- `/api/health` 200, Horizon running, `criticalTasksHealthy()` true, 0 failed jobs since the deploy.
+- All 7 `campaign_fees` rows read `revenue_share_bp` = 0, so every KOL fee is unchanged until a share is set. `campaign_month_statements` is empty. November's close (in December) freezes the first ones.
+- `server-patch-check` is scheduled (`0 1 * * *`, 09:00 MYT). `ServerPatchCheck::problems()` run by hand returns `[]`: PHP 8.4.28 is current, and no reboot is waiting. The first scheduled run should send nothing.
