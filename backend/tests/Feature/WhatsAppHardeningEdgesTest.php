@@ -172,7 +172,6 @@ class WhatsAppHardeningEdgesTest extends TestCase
         }
         sort($callers);
 
-        // The retired reply job only drains for one release (ADR-116 2026-11-14 addendum).
-        $this->assertSame(['Jobs/Reseller/SendResellerBotReplyJob.php', 'Jobs/SendCustomerWhatsAppJob.php'], $callers);
+        $this->assertSame(['Jobs/SendCustomerWhatsAppJob.php'], $callers);
     }
 }

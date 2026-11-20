@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Events\BackupRunUpdated;
 use App\Events\OrderStatusUpdated;
 use App\Events\PriceSyncRunUpdated;
-use App\Jobs\Reseller\SendResellerBotReplyJob;
 use App\Jobs\SendMembershipReceiptJob;
 use App\Jobs\SendMembershipReminderJob;
 use App\Listeners\Reseller\SendResellerBotOrderNotification;
@@ -138,15 +137,6 @@ class HorizonQueueCoverageTest extends TestCase
 
         $this->assertSame('default', $listener->queue);
         $this->assertContains($listener->queue, $this->supervisedQueues());
-    }
-
-    /** The retired reply job still drains on `default` for one release (ADR-116 2026-11-14 addendum). */
-    public function test_send_reseller_bot_reply_job_is_pinned_to_the_default_queue(): void
-    {
-        $job = new SendResellerBotReplyJob('chat-1', 'hello');
-
-        $this->assertSame('default', $job->queue);
-        $this->assertContains($job->queue, $this->supervisedQueues());
     }
 
     /** ADR-116 2026-11-14 addendum, decision 6: both outbox lanes have a worker. */
