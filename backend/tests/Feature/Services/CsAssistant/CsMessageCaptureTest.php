@@ -4,6 +4,7 @@ namespace Tests\Feature\Services\CsAssistant;
 
 use App\Jobs\ClassifyCsOutgoingMessageJob;
 use App\Jobs\SendCustomerWhatsAppJob;
+use App\Models\CsBotDraft;
 use App\Models\CsMessage;
 use App\Models\CustomerNotification;
 use App\Services\CsAssistant\CsMessageRecorder;
@@ -25,6 +26,8 @@ class CsMessageCaptureTest extends TestCase
     use RefreshDatabase;
 
     private const PHONE = '60123456789';
+
+    private const LID = '204816357924810@lid';
 
     protected function setUp(): void
     {
@@ -183,9 +186,72 @@ class CsMessageCaptureTest extends TestCase
     {
         $this->notification(['status' => CustomerNotification::STATUS_QUEUED, 'attempts' => 1, 'sent_at' => null]);
 
-        $verdict = app(CsSenderClassifier::class)->classify(self::PHONE.'@c.us', '9F00CCC333', 'some text', now());
+        $verdict = app(CsSenderClassifier::class)->classify('9F00CCC333', 'some text', now());
 
         $this->assertSame(CsSenderClassifier::WAIT, $verdict['sender']);
+    }
+
+    /**
+     * We send a receipt to the buyer's phone, but WhatsApp may echo it in the
+     * chat's privacy id (`@lid`), which no notification row stores. On prod
+     * every receipt in such a chat was kept as staff (2026-11-21).
+     */
+    public function test_our_send_echoed_in_a_privacy_id_chat_is_system_by_its_message_id(): void
+    {
+        $notification = $this->notification(['wa_message_id' => '3EB0EEE555', 'message' => 'Your order is complete']);
+
+        $this->event('message.sent', $this->message('Your order is complete', ['id' => '3EB0EEE555', 'fromMe' => true, 'chatId' => self::LID, 'to' => self::LID]));
+        $this->runClassifyJobs();
+
+        $row = CsMessage::query()->sole();
+        $this->assertSame(CsMessage::SENDER_SYSTEM, $row->sender);
+        $this->assertSame($notification->id, $row->customer_notification_id);
+    }
+
+    public function test_our_send_without_a_stored_id_matches_its_exact_text_in_a_privacy_id_chat(): void
+    {
+        $this->notification(['message' => 'Done. You won\'t receive order receipts here anymore.', 'sent_at' => now()->subSeconds(20)]);
+
+        $this->event('message.sent', $this->message('Done. You won\'t receive order receipts here anymore.', ['fromMe' => true, 'chatId' => self::LID, 'to' => self::LID]));
+        $this->runClassifyJobs();
+
+        $this->assertSame(CsMessage::SENDER_SYSTEM, CsMessage::query()->sole()->sender);
+    }
+
+    public function test_a_send_still_in_flight_means_wait_in_a_privacy_id_chat_too(): void
+    {
+        $this->notification(['status' => CustomerNotification::STATUS_QUEUED, 'attempts' => 1, 'sent_at' => null]);
+
+        $verdict = app(CsSenderClassifier::class)->classify('9F00FFF666', 'some text', now());
+
+        $this->assertSame(CsSenderClassifier::WAIT, $verdict['sender']);
+    }
+
+    public function test_the_repair_command_turns_our_sends_kept_as_staff_into_system_and_regrades_once(): void
+    {
+        $chat = CsMessageRecorder::chatHash(self::LID);
+        $sentAt = now()->subDays(3)->startOfMinute();
+        $notification = $this->notification(['wa_message_id' => '3EB0ABC777', 'sent_at' => $sentAt]);
+        $ask = CsMessage::query()->create(['wa_message_id' => 'IN7', 'chat_hash' => $chat, 'direction' => 'in', 'sender' => CsMessage::SENDER_CUSTOMER, 'type' => 'text', 'body' => 'dah masuk?', 'source' => CsMessage::SOURCE_WEBHOOK, 'sent_at' => $sentAt->copy()->subMinutes(5)]);
+        $card = CsMessage::query()->create(['wa_message_id' => '3EB0ABC777', 'chat_hash' => $chat, 'direction' => 'out', 'sender' => CsMessage::SENDER_STAFF, 'type' => 'text', 'body' => 'Status card text', 'source' => CsMessage::SOURCE_WEBHOOK, 'sent_at' => $sentAt]);
+        $staff = CsMessage::query()->create(['wa_message_id' => 'STAFF7', 'chat_hash' => $chat, 'direction' => 'out', 'sender' => CsMessage::SENDER_STAFF, 'type' => 'text', 'body' => 'dah masuk boss', 'source' => CsMessage::SOURCE_WEBHOOK, 'sent_at' => $sentAt->copy()->addMinutes(2)]);
+        $draft = CsBotDraft::query()->create([
+            'chat_hash' => $chat, 'last_message_id' => $ask->id, 'first_message_id' => $ask->id, 'question' => 'dah masuk?',
+            'asked_at' => $ask->sent_at, 'model' => 'm', 'action' => 'reply', 'reply' => 'Boleh semak dalam game boss',
+            'staff_answer' => 'Status card text', 'grade' => 'different', 'judged_at' => $sentAt->copy()->addHours(3), 'judge_cost_usd_micros' => 10,
+        ]);
+
+        $this->artisan('cs:reclassify-outgoing', ['--dry-run' => true])->expectsOutputToContain('[dry run] 1 outgoing message(s)')->assertSuccessful();
+        $this->assertSame(CsMessage::SENDER_STAFF, $card->fresh()->sender);
+
+        $this->artisan('cs:reclassify-outgoing')->expectsOutputToContain('1 outgoing message(s) are our own sends; 1 Shadow draft(s)')->assertSuccessful();
+        $this->assertSame(CsMessage::SENDER_SYSTEM, $card->fresh()->sender);
+        $this->assertSame($notification->id, $card->fresh()->customer_notification_id);
+        $this->assertSame(CsMessage::SENDER_STAFF, $staff->fresh()->sender);
+        $this->assertNull($draft->fresh()->judged_at);
+        $this->assertNull($draft->fresh()->grade);
+
+        $this->artisan('cs:reclassify-outgoing')->expectsOutputToContain('0 outgoing message(s) are our own sends; 0 Shadow draft(s)')->assertSuccessful();
     }
 
     public function test_the_send_job_stores_openwas_message_id(): void

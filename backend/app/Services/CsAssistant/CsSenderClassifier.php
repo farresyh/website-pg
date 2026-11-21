@@ -15,10 +15,16 @@ use Illuminate\Database\Eloquent\Builder;
  *
  * 1. the OpenWA message id we stored at send time (engines differ in prefix,
  *    so the last `_` segment is compared);
- * 2. else the same chat and exact text within 2 minutes of our send;
- * 3. else, if one of our sends to that chat is still in flight, WAIT (the
- *    webhook can beat the send's own response);
+ * 2. else the exact text of one of our sends within 2 minutes;
+ * 3. else, if one of our sends is still in flight, WAIT (the webhook can
+ *    beat the send's own response);
  * 4. else staff.
+ *
+ * None of these is narrowed to the chat. We send to the buyer's phone, but
+ * WhatsApp may echo the message in the chat's privacy id (`@lid`), which no
+ * notification row stores; narrowing by chat read every such receipt as
+ * staff (2026-11-21). A WhatsApp message id is unique on its own, our texts
+ * carry their order number, and the `whatsapp` lane sends one at a time.
  */
 final class CsSenderClassifier
 {
@@ -27,31 +33,32 @@ final class CsSenderClassifier
     private const WINDOW_SECONDS = 120;
 
     /** @return array{sender: string, notification_id: ?int} */
-    public function classify(string $chatId, string $waMessageId, ?string $body, CarbonInterface $at): array
+    public function classify(string $waMessageId, ?string $body, CarbonInterface $at): array
     {
         $id = self::normalizeId($waMessageId);
-
-        $byId = $this->forChat($chatId)
+        $byId = $this->ours()
             ->whereNotNull('wa_message_id')
             ->where(fn (Builder $q) => $q->where('wa_message_id', $id)->orWhere('wa_message_id', 'like', '%_'.$id))
             ->value('id');
+
         if ($byId !== null) {
             return ['sender' => CsMessage::SENDER_SYSTEM, 'notification_id' => (int) $byId];
         }
 
         if ($body !== null && $body !== '') {
-            $byText = $this->forChat($chatId)
+            $byText = $this->ours()
                 ->where('status', CustomerNotification::STATUS_SENT)
                 ->whereBetween('sent_at', [$at->copy()->subSeconds(self::WINDOW_SECONDS), $at->copy()->addSeconds(self::WINDOW_SECONDS)])
                 ->where('message', $body)
                 ->value('id');
+
             if ($byText !== null) {
                 return ['sender' => CsMessage::SENDER_SYSTEM, 'notification_id' => (int) $byText];
             }
         }
 
         $inFlight = $at->diffInSeconds(now(), true) <= self::WINDOW_SECONDS
-            && $this->forChat($chatId)
+            && $this->ours()
                 ->where('status', CustomerNotification::STATUS_QUEUED)
                 ->where('attempts', '>', 0)
                 ->exists();
@@ -68,14 +75,8 @@ final class CsSenderClassifier
     }
 
     /** @return Builder<CustomerNotification> */
-    private function forChat(string $chatId): Builder
+    private function ours(): Builder
     {
-        $phone = str_ends_with($chatId, '@c.us') ? substr($chatId, 0, -5) : null;
-
-        return CustomerNotification::query()
-            ->where('session', CustomerNotification::SESSION_CUSTOMER_SUPPORT)
-            ->where(fn (Builder $q) => $phone !== null
-                ? $q->where('chat_id', $chatId)->orWhere('phone', $phone)
-                : $q->where('chat_id', $chatId));
+        return CustomerNotification::query()->where('session', CustomerNotification::SESSION_CUSTOMER_SUPPORT);
     }
 }

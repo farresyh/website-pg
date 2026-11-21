@@ -73,7 +73,7 @@ final class CsMessageRecorder
             return $this->store($chatId, $id, 'in', CsMessage::SENDER_CUSTOMER, $this->type($data), $body, $at, null, CsMessage::SOURCE_IMPORT) !== null;
         }
 
-        $verdict = $classifier->classify($chatId, $id, $body, $at);
+        $verdict = $classifier->classify($id, $body, $at);
         $sender = $verdict['sender'] === CsSenderClassifier::WAIT ? CsMessage::SENDER_STAFF : $verdict['sender'];
 
         return $this->store($chatId, $id, 'out', $sender, $this->type($data), $body, $at, $verdict['notification_id'], CsMessage::SOURCE_IMPORT) !== null;

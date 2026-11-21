@@ -128,6 +128,18 @@ class CsShadowTest extends TestCase
         $this->assertSame(0, CsBotDraft::query()->count());
     }
 
+    public function test_no_draft_for_what_the_inbound_service_answers_itself_but_a_real_question_still_drafts(): void
+    {
+        foreach (['STOP', 'start', 'Salam, saya nak terima update order [ORDER] di WhatsApp.', 'Salam, saya nak resit order [ORDER] di WhatsApp.'] as $i => $text) {
+            $m = $this->msg(CsMessage::SENDER_CUSTOMER, $text, '2026-11-05 03:59:00', [], "auto-{$i}");
+            $this->assertNull(app(CsShadowDrafter::class)->draft($m->id), $text);
+        }
+        $this->assertSame(0, CsBotDraft::query()->count());
+
+        $asked = $this->msg(CsMessage::SENDER_CUSTOMER, 'Salam, saya nak terima update order [ORDER] di WhatsApp. lama lagi ke?', '2026-11-05 03:59:00', [], 'auto-q');
+        $this->assertNotNull(app(CsShadowDrafter::class)->draft($asked->id));
+    }
+
     public function test_a_failed_order_is_looked_up_and_forced_to_a_handover_under_its_own_brand(): void
     {
         $brand = Affiliate::query()->create(['business_name' => 'OhahaStore', 'markup_pct' => 0, 'status' => 'active']);

@@ -2023,3 +2023,26 @@ The founder asked for a review of everything in release #820 (#813–#819) befor
 - `/api/health` 200, Horizon running, `criticalTasksHealthy()` true, 0 failed jobs since the deploy.
 - All 7 `campaign_fees` rows read `revenue_share_bp` = 0, so every KOL fee is unchanged until a share is set. `campaign_month_statements` is empty. November's close (in December) freezes the first ones.
 - `server-patch-check` is scheduled (`0 1 * * *`, 09:00 MYT). `ServerPatchCheck::problems()` run by hand returns `[]`: PHP 8.4.28 is current, and no reboot is waiting. The first scheduled run should send nothing.
+
+## 2026-11-21 — CS assistant: our own sends were kept as staff in `@lid` chats (ADR-136 2026-11-21 addendum)
+
+**Found** while reviewing CS knowledge with the founder, from `cs_bot_drafts` graded "different" against what were plainly our status cards.
+- On prod, 110 of 801 outgoing messages labelled staff are our own customer notifications: 84 status cards and receipts. Zero notifications had ever been classified as system.
+- `CsSenderClassifier` narrowed every rule to the chat (`chat_id`, or `phone` + `@c.us`). WhatsApp echoes a send to a phone in the chat's `@lid` privacy id, so even an exact message-id match was missed. CS message 1851 and notification 321 share `3EB0AABC70C7356E13DBEF`.
+- `CsMessageCaptureTest` only ever used `@c.us`.
+
+**Every reader of the label, checked.**
+- `CsShadowJudge::staffAnswer()`: 46 drafts were graded against a card.
+- `CsShadowDrafter::burst()`: stopped at a card, cutting the question short.
+- Live's staff pause: would have paused after every receipt.
+- `CsKnowledgeSuggester`: skips system, so cards read as staff leaked into suggestions.
+
+The fix is at the one seam they share, the classifier.
+
+**Fixed (`fix/cs-classifier-lid`).**
+- The classifier looks across the whole `customer-support` session for the message id, the exact text within 2 minutes, and a send in flight. `forChat()` is deleted and `classify()` loses its chat argument (two callers).
+- Three red-first tests cover an `@lid` chat: id, text and wait.
+- `cs:reclassify-outgoing` (`--dry-run`, idempotent, tested twice) repairs stored rows through the classifier, and ungrades the Shadow drafts whose 120-minute answer window held one. The nightly judge grades them again. Their old judge cost is overwritten, a few cents in all.
+- The founder runs it after release (PRD §16 item 201).
+
+**Also fixed: no Shadow draft for what the inbound service answers itself.** Prod had 32 such drafts: 24 were only the storefront's prefilled "Notify Me" text ("Salam, saya nak terima update order … di WhatsApp.") and 8 were `STOP`/`START`. `CsShadowDrafter::hasQuestion()` already skipped a burst that was only an order number. It now also skips these, with their exact masked text in one constant that names `OrderStatusTracker.tsx`. The same text followed by a real question still drafts (`CsShadowTest`). Backend 4060/4060 before this last change, CS tests 29/29 after.
