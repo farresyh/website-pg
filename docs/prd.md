@@ -886,7 +886,7 @@ before building.
 - **171** Campaign promos beyond new PekanGame customers (needs an [ADR-118](./adr/ADR-118-marketing-campaigns.md) addendum, not yet written; money-critical). A Campaign today is percent only, new customers only, primary brand only, so a promo on OhahaStore or a sale for existing customers isn't possible. When the founder wants one.
 
 **E. New features: after the backlog** (each needs its own ADR + grill; the founder decides when)
-- **200** Digiflazz seller optimizer ([ADR-146](./adr/ADR-146-digiflazz-seller-optimizer.md), Proposed, founder, 2026-11-21): the backend picks each SKU's seller in the Digiflazz buyer panel (cheapest available, per-game Auto / Trusted list / Manual, 06:00, 19:00 and 23:00 MYT), replacing the founder's PC script. Founder asked to build it next. Grill and money code trace, then Accepted.
+- **200** Digiflazz seller optimizer ([ADR-146](./adr/ADR-146-digiflazz-seller-optimizer.md), Accepted, founder, 2026-11-21): the backend picks each SKU's seller in the Digiflazz buyer panel (cheapest available, per-game Auto / Trusted list / Manual, 06:00, 19:00 and 23:00 MYT), replacing the founder's PC script. Grilled and code-traced 2026-11-21; founder asked to build it next, starting with Dry run.
 - **187** Night Market (ADR-141, Proposed, founder, 2026-11-14): a weekly, per-customer set of discounted package cards to bring customers back. Recorded now; build after groups A and B. Details below.
 - **184** Send every Delivered receipt without opt-in (founder, 2026-11-14). Reopens ADR-116 decision 5 and its cold-reachout rationale; needs an addendum with opt-in and volume data first. Details below.
 - **104** Reseller wallet top-up KPIs (how often, how much). Its trigger (item 28) has fallen.

@@ -1,8 +1,8 @@
 # ADR-146: Digiflazz seller optimizer — the backend picks each SKU's seller in the Digiflazz buyer panel, cheapest first, on a schedule
 
-> **Standing (2026-11-21):** In force as a proposal only (Status: Proposed). Not decided for build until the grill and the money code trace below pass. Would extend [ADR-030](./ADR-030-digiflazz-supplier-integration.md) and [ADR-067](./ADR-067-digiflazz-adapter-completion.md) (the Digiflazz integration) and [ADR-138](./ADR-138-package-sale-lifecycle.md) (price swing holds).
+> **Standing (2026-11-21):** In force (Accepted after a grill and a money code trace, both 2026-11-21). Extends [ADR-030](./ADR-030-digiflazz-supplier-integration.md) and [ADR-067](./ADR-067-digiflazz-adapter-completion.md) (the Digiflazz integration) and [ADR-138](./ADR-138-package-sale-lifecycle.md) (price swing holds).
 
-**Status:** Proposed, 2026-11-21. PRD §16 item 200. Discussed with the founder in Malay on 2026-11-21. Decisions 1–5 and 7 are the founder's. Decisions 6 and 8–14 are Claude's draft and are open for the grill.
+**Status:** Accepted, 2026-11-21. PRD §16 item 200. Discussed with the founder in Malay and grilled the same day (three rounds, questions S1–S11). The founder agreed every decision below. Decisions 15–24 come from the grill, and the money code trace is recorded under its own heading.
 
 ## Context
 
@@ -57,28 +57,36 @@ An optimizer run that moves many SKUs at once would trip the mass limit. A rise 
 13. **Runs on the `price-sync` queue lane,** never the order lanes. It is long and paced, and must never delay a money-touching order job (ADR-020 decision 5).
 14. **Summary email after each run that changed something, or would have in Dry run.** It lists counts, every rise with its old and new price, every SKU skipped and why, and any stop. Sent through `BackupFailureAlerter`'s admin email path.
 
+15. **SKU pins (S1).** In `/middleware`, a list of SKUs the optimizer never touches, each with a note, alongside the per-game policy. A pin is how the founder keeps a hand-picked seller on an Auto game.
+16. **Seller snapshots are stored on change only, kept 180 days (S2).** A new `digiflazz_seller_offers` row is written for a SKU and seller only when its price, stock, rating, rating count, cut-off or status differs from that pair's last row. A daily prune drops rows older than 180 days. This revises decision 9's "one row per run × SKU × seller": the production database is 1 GiB on purpose (ADR-144), and a full copy each run would be about 29,000 rows a day.
+17. **Live goes game by game (S3).** At first switch-on every game is Manual. The founder turns two or three small games to Auto, watches them, then the rest. This needs nothing beyond decision 2.
+18. **Terms are asked in parallel (S4).** The founder asks Digiflazz whether automated use of the buyer panel is allowed while this is built. Dry run only reads, as a person would. If Digiflazz says no, Live is never turned on.
+19. **The price match for decision 7 is within ±2% of the recorded price, within 24 hours of the switch (S5).** A larger move after a switch is not ours, and ADR-138 applies to it unchanged.
+20. **Trusted list with no trusted seller available: leave the current seller, report it (S6).** The optimizer never falls back to an untrusted seller on a Trusted-list game.
+21. **A pinned SKU whose seller can't serve is left alone and reported (S7).**
+22. **Rise cap (S8).** Under decision 4, a replacement costing more than 30% above the current price (a `/middleware` setting, the same figure as ADR-138's swing limit) is not switched to. The current seller stays, and the SKU is reported. Price sync deactivates a package only when Digiflazz reports the product inactive (`seller_product_status` false, ADR-067 decision 3). Out-of-stock and cut-off are not deactivated, so a capped SKU can keep selling into a seller that fails. The report is how the founder learns of it.
+23. **The PC script and hand changes stop per game at Live (S9).** During Dry run the founder keeps using the PC script or the panel, and the dry-run report is compared with them. Once a game is Auto, the founder no longer changes its sellers by script or by hand, and pins a SKU instead. The PC script is retired when every game is Auto.
+24. **No email during Dry run (S10); the report is on the `/middleware` page (S11).** Decision 14's emails start with Live. The page shows:
+    - **Status:** mode, schedule, session state, and the field to paste a new cookie.
+    - **Per-game policy:** each game with its trusted sellers.
+    - **SKU pins.**
+    - **Recent runs:** each with a per-SKU drill-down (from and to seller, from and to price, reason).
+
+    It is built with the `components/ui` PrimeReact kit, in the style of admin `/orders` (ADR-038, ADR-104).
+
+## Money code trace (2026-11-21)
+
+- **The optimizer writes no money column.** It changes sellers at Digiflazz and writes its own two tables. `packages.cost_price` and `standard_selling_price` keep one writer, `PackageCostService::apply()`, reached through `PackagePriceSyncService` (or an admin's approve of a held change). Decision 7 is the only change to money code: in `PackagePriceSyncService`, an explained swing is excluded from the mass count and takes the existing "applied" branch of `evaluatePriceChange()`. That branch already runs `ComboPricingService::recomputeForComponentChange()`, so a combo over a switched component is repriced in the same sync.
+- **Every pricing basis follows.** Standard, Member, Affiliate tier and Reseller wallet prices are computed at order time from the package's stored cost and standard price (`PricingService`, ORD-9). Once `apply()` runs, every basis sells at the new cost. Decision 7's immediate price sync bounds the stale window to the sync's own run time.
+- **An order in flight across a switch reconciles.** We never send a price to Digiflazz. The transaction response's `price` is stored as `real_cost_price_sen`, and profit is recomputed from it (ADR-111), for plain orders and combo legs alike. The only exposure is the margin between the old cost and the new seller's price on orders placed before the sync lands, which decisions 4, 7 and 22 bound.
+- **Decision 6's conflict order is verified on the first Live game, not assumed.** The panel's "Produk dan Seller sudah ada sebelumnya" rule can't be checked without a real save. The first Auto game's run shows whether one batch per pair works or the holder must be saved first. The PC script's two-pass retry is the fallback.
+
 ## Rationale
 
 - **In the backend rather than a cloud box running Chrome.** The panel is a JSON API behind a Laravel session. Calling it directly needs no browser, no VNC and no second server, and the PC script's 1.5 s per row becomes one batch per game. It sits next to the data that makes it safer: the packages it maps to, the price sync it must coordinate with (decision 7), and our own order outcomes for the later reliability score.
 - **Not storing the TOTP secret.** Storing it would turn the 2FA into a password. The sliding session plus three runs a day means a login is needed only after an outage longer than 48 hours.
 - **The risk of the session is the risk we already carry.** The Digiflazz API key in the same encrypted `api_config` can already spend the deposit, about Rp 39.9 million on 2026-11-21.
 - **Unofficial API.** Digiflazz can change the panel without notice. Decision 11 makes a change fail closed, with nothing saved. Decision 10 lets the founder see the decisions before any is saved.
-
-## Open for the grill
-
-- Decision 6 against the panel's real rules: does a save of a whole pair in one batch avoid the "sudah ada sebelumnya" conflict, or must the holder be saved first in a separate call?
-- Decision 7: is "equal to the recorded price" too strict? Digiflazz may round, or the seller may move its price between the switch and the sync. What tolerance applies, and what about a price that moves again after the switch?
-- Decision 1: is "inside the cut-off window" computed in WIB (Digiflazz's timezone)? What happens when the window crosses midnight?
-- Combos: a combo's legs point at component packages. Does a seller change on a component need anything beyond the price sync? Check ADR-107 (combo residual) and ADR-111 (real cost).
-- Does the optimizer need a lock against a manual change in the panel during a run, or against two runs overlapping? `withoutOverlapping` covers the second.
-- What retention applies to `digiflazz_seller_offers`? It grows by about 1,200 SKUs × sellers × 3 runs a day.
-- Terms: does Digiflazz allow automated use of the buyer panel? The PC script already does it, so the exposure is not new, but ask.
-
-## Money code trace (to run before Accepted)
-
-- List every writer and reader of `packages.cost_price` and `standard_selling_price` around a seller change: `PackagePriceSyncService`, `PackageCostService`, the ADR-138 hold, `PendingReactivationAutoApprover`, the combo price (`ComboPricingService`), the resend cost (ADR-105) and real cost (ADR-111).
-- Check decision 4 per pricing basis (Standard, Member, Affiliate tier, Reseller wallet): a rise must reach every basis's selling price before an order is priced at the old cost.
-- Check that an order in flight when a seller changes is priced and costed consistently: we never send a price to Digiflazz, and `real_cost_price_sen` records what was charged.
 
 ## Consequence to track
 
