@@ -853,6 +853,7 @@ before building.
 
 **C. Founder actions (no code)**
 - **158** Grade the CS assistant's drafts; PR 4 (Live) is built once a category meets the Live gate (ADR-136). Details below.
+- **201** After the release carrying the CS classifier fix (ADR-136 2026-11-21 addendum): run `php artisan cs:reclassify-outgoing --dry-run`, then without `--dry-run`, then once more (expect 0). About 110 of our own sends kept as staff become system, and the Shadow drafts they skewed are graded again. Read item 158's Live gate only after that.
 - **199** Move the box's PHP source from Ondrej's PPA mirror to `packages.sury.org/php` (ADR-145 2026-11-21 addendum): the PPA is labelled deprecated. Founder runs it, at the latest in the next patch window. Details below.
 - **11** Sentry (error tracking) is still not set up. Details below.
 

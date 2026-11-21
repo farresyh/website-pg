@@ -37,7 +37,7 @@ final class ClassifyCsOutgoingMessageJob implements ShouldQueue
     public function handle(CsSenderClassifier $classifier, CsMessageRecorder $recorder): void
     {
         $at = CarbonImmutable::createFromTimestamp($this->sentAt);
-        $verdict = $classifier->classify($this->chatId, $this->waMessageId, $this->body, $at);
+        $verdict = $classifier->classify($this->waMessageId, $this->body, $at);
 
         if ($verdict['sender'] === CsSenderClassifier::WAIT && $this->attempts() < $this->tries) {
             $this->release(CsMessageRecorder::CLASSIFY_DELAY_SECONDS);

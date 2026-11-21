@@ -1,6 +1,6 @@
 # ADR-136: Customer-support assistant on the CS WhatsApp number — answers from approved knowledge, learns only through admin approval, hands order problems to a human
 
-> **Standing (2026-11-11):** In force; decision 27's Live gate kept as decided (2026-11-10 addendum). Extends [ADR-116](./ADR-116-customer-order-notifications-over-whatsapp.md) (the CS session, opt-in, status card, STOP/START) and [ADR-075](./ADR-075-reseller-bot-channel.md) (OpenWA). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
+> **Standing (2026-11-21):** In force; decision 27's Live gate kept as decided (2026-11-10 addendum); decision 33 matches our sends across the session, not the chat (2026-11-21 addendum). Extends [ADR-116](./ADR-116-customer-order-notifications-over-whatsapp.md) (the CS session, opt-in, status card, STOP/START) and [ADR-075](./ADR-075-reseller-bot-channel.md) (OpenWA). Build and live status: [`prd.md` §15](../prd.md). The text below is a dated record; a later addendum in this file overrides earlier text, including the **Status** line.
 
 **Status:** Accepted (design), 2026-11-03, by the founder after four grill rounds (Q1–Q18) and a stress test against the real code (Q19–Q21 and the fixes in decision 33). Decisions 1–34 were made with the founder in Malay. The model itself is chosen at build time by decision 28's test. Not money-critical: the assistant reads order status and never writes money, orders or vouchers. PRD §16 item 158.
 
@@ -253,3 +253,22 @@ Google's deprecation page (read 2026-11-03): `gemini-3.1-flash-lite` (version `3
 
 **Consequence to track.** The founder grades drafts (PRD §16 item 158). This confirms decision 27; nothing else changes.
 
+
+### 2026-11-21 addendum — decision 33: our sends are matched across the session, not within the chat
+
+**Found (read-only prod audit, 2026-11-21).** Every one of our own outgoing messages on the CS number was being kept as staff. Of 801 outgoing messages labelled staff, 110 are customer notifications we sent: 84 status cards and receipts, the rest other notices. Not one notification had ever been classified as system. `CsSenderClassifier` looked for the notification only in the same chat, through `chat_id` or `phone` + `@c.us`. We send to the buyer's phone, but WhatsApp echoes the message in the chat's privacy id (`@lid`), which no notification row stores. So even an exact message-id match (prod: CS message 1851 and notification 321 share `3EB0AABC70C7356E13DBEF`) was never found. The tests used only `@c.us` chats.
+
+**What it skewed.**
+- The Shadow judge graded 46 drafts against a status card as if staff had written it, so the Live gate's figures (decision 27) were unreliable.
+- The drafter's burst stopped at each card, so the questions after a card were cut short.
+- Live would have paused after every receipt. This decision's own warning.
+- Cards read as staff answers could reach `cs_knowledge_suggestions`.
+
+**Decision.** The three rules (message id, exact text within 2 minutes, a send still in flight) look across every notification of the `customer-support` session. They are no longer narrowed to the chat.
+- A WhatsApp message id is unique on its own.
+- Our texts carry their order number.
+- The `whatsapp` lane sends one message at a time, so "in flight" has at most one candidate.
+
+`classify()` loses its chat argument. `cs:reclassify-outgoing` repairs the stored rows, using the classifier itself: by message id, with `--dry-run`, idempotent. It also ungrades the Shadow drafts whose answer window held a reclassified message, so the nightly judge grades them again. Re-grading overwrites those drafts' old judge cost, a few cents in all.
+
+**Consequence to track.** After release, the founder runs `cs:reclassify-outgoing --dry-run`, then without the flag, then once more to show nothing is left. The Live gate is read only after the re-grade.

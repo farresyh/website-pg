@@ -135,14 +135,24 @@ final class CsShadowDrafter
     }
 
     /**
-     * Decision 21: a burst that is only an order number is answered by the
-     * status card alone; an image-only burst waits for PR 4's OCR.
+     * Messages CustomerWhatsAppInboundService already answers by itself (ADR-116):
+     * STOP / START, and the storefront's prefilled "Notify Me" and "Send
+     * Receipt" texts (`OrderStatusTracker.tsx`), seen here with the order
+     * number masked. Prod drafted 32 of these by 2026-11-21.
+     */
+    private const AUTO_ANSWERED = '/^(stop|start|salam, saya nak (terima update|resit) order \[ORDER\] di whatsapp\.)$/iu';
+
+    /**
+     * Decision 21: a burst that is only an order number, or only a message
+     * the inbound service answers itself, is answered without staff; an
+     * image-only burst waits for PR 4's OCR.
      *
      * @param  Collection<int, CsMessage>  $burst
      */
     private function hasQuestion(Collection $burst): bool
     {
         return $burst->contains(fn (CsMessage $m) => filled($m->body)
+            && preg_match(self::AUTO_ANSWERED, trim($m->body)) !== 1
             && trim((string) preg_replace('/\[ORDER\]|[\s\p{P}]+/u', '', $m->body)) !== '');
     }
 
