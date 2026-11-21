@@ -2046,3 +2046,28 @@ The fix is at the one seam they share, the classifier.
 - The founder runs it after release (PRD §16 item 201).
 
 **Also fixed: no Shadow draft for what the inbound service answers itself.** Prod had 32 such drafts: 24 were only the storefront's prefilled "Notify Me" text ("Salam, saya nak terima update order … di WhatsApp.") and 8 were `STOP`/`START`. `CsShadowDrafter::hasQuestion()` already skipped a burst that was only an order number. It now also skips these, with their exact masked text in one constant that names `OrderStatusTracker.tsx`. The same text followed by a real question still drafts (`CsShadowTest`). Backend 4060/4060 before this last change, CS tests 29/29 after.
+
+## 2026-11-21 — CS knowledge review: 11 new entries, the 237-suggestion backlog cleared (data only, ADR-136)
+
+The founder approved, in Malay, 11 new entries drafted from the 54 "no knowledge" handovers and staff's real answers, and a plan for the backlog. Claude ran it in the founder's logged-in admin tab through the same endpoints the buttons call (`/api/cs-knowledge/...`, recorded as the founder's review). No deploy: entries are data.
+
+**New entries (ids 10–20), all brands unless noted:**
+- 10 admin hours, 11am–12am; website orders run 24 hours.
+- 11 PUBG Mobile takes 5–30 minutes.
+- 12 a refund is a voucher, not cash.
+- 13 vouchers have no expiry (prod: 0 of 36 have one), and the balance is paid as usual.
+- 14 a cancelled unpaid order frees its voucher after about 30 minutes (CHIP's `due`).
+- 15 open TikTok links in Chrome or Safari.
+- 16 payment trouble: try the other method, then send a screenshot and the bank.
+- 17 we don't sell game accounts.
+- 18 PUBG Mobile Global is the normal PUBG.
+- 19 becoming a reseller: the onboarding form, tiers by monthly sales, docs (PekanGame only; no tier markup, per AGENTS.md).
+- 20 reseller application follow-up (PekanGame only).
+
+**Backlog, 237 pending → 0.**
+- 48 merged as distinct phrasings: 24 into existing entries, 24 into the new ones. Only 8 of the 86 near-identical "check my order" phrasings went into entry 8, to keep it readable.
+- 189 rejected. Their answers depended on one order ("kejap ya kita check"), were our status cards mis-kept as staff (the classifier bug above), described a passing incident (PUBG checker, Midas lock, UC closed for the day), were small talk, or were brand-specific or stale.
+- Duplicate questions were removed from 8 entries afterwards. Every entry is at 19 questions or fewer, under the 20 the edit form allows.
+- Knowledge now holds 20 approved entries.
+
+**Deliberately not knowledge:** incidents. Use an entry with `valid_until` while one is live, or let `order_failed` hand over as it does.
