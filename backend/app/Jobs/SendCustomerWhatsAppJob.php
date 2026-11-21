@@ -10,7 +10,6 @@ use App\Services\OpenWa\OpenWaOutcomeUnknownException;
 use App\Services\OpenWa\OpenWaPacingLimitedException;
 use App\Services\OpenWa\OpenWaRecipientNotOnWhatsAppException;
 use App\Services\OpenWa\OpenWaUnavailableException;
-use App\Services\Rebate\RebateNotifier;
 use App\Services\Supplier\Manual\SupplierGroupNotifier;
 use App\Services\Supplier\Manual\SupplierLoginLinkService;
 use Illuminate\Bus\Queueable;
@@ -196,12 +195,12 @@ final class SendCustomerWhatsAppJob implements ShouldQueue
             return $this->withLateNote($notification, $notification->message);
         }
 
+        // Only a supplier order post is re-checked against its order at send time;
+        // every other bot row (reply, rebate, dormancy, ...) is final when queued.
         $text = match (true) {
             $notification->session !== CustomerNotification::SESSION_BOT => app(CustomerNotificationService::class)->prepare($notification),
-            // ADR-139: a rebate message to a reseller's group is final when queued.
-            RebateNotifier::isRebateEvent($notification->event) => $notification->message,
-            WhatsAppOutbox::laneFor($notification->event) === WhatsAppOutbox::LANE_REPLY => $notification->message,
-            default => app(SupplierGroupNotifier::class)->prepare($notification),
+            SupplierGroupNotifier::isOrderEvent($notification->event) => app(SupplierGroupNotifier::class)->prepare($notification),
+            default => $notification->message,
         };
 
         if ($text !== null && ! $holdsSecret && $text !== $notification->message) {

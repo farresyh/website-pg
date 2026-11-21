@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Reseller;
 
+use App\Jobs\SendCustomerWhatsAppJob;
 use App\Models\AdminUser;
 use App\Models\CustomerNotification;
 use App\Models\PlatformSettings;
@@ -113,6 +114,29 @@ class ResellerDormancyTest extends TestCase
         $this->assertSame(1, $this->notices($reseller, ResellerDormancyNotice::DEACTIVATED));
         $this->assertStringContainsString('+60123456789', CustomerNotification::query()->where('event', 'reseller_dormancy_deactivated')->sole()->message);
         $this->assertContains('founder@example.com', $this->emailedTo());
+    }
+
+    /**
+     * 2026-11-21 prod: both warnings were queued, then skipped by the sender as
+     * if they were supplier order posts ("The order is no longer waiting for
+     * this supplier"). Queued is not enough: each row must reach OpenWA.
+     */
+    public function test_the_warning_and_the_notice_are_actually_sent_to_the_group(): void
+    {
+        config(['services.openwa.base_url' => 'http://openwa.test']);
+        Http::fake([
+            '*useplunk.com/*' => Http::response(['success' => true]),
+            'openwa.test/*' => Http::response(['messageId' => 'wa-1'], 201),
+        ]);
+        $this->enable();
+        $this->makeLinkedReseller();
+
+        foreach ([4 => 'reseller_dormancy_warning', 7 => 'reseller_dormancy_deactivated'] as $day => $event) {
+            $this->runOn($day);
+            $row = CustomerNotification::query()->where('event', $event)->sole();
+            (new SendCustomerWhatsAppJob($row->id))->withFakeQueueInteractions()->handle();
+            $this->assertSame(CustomerNotification::STATUS_SENT, $row->fresh()->status, $event.': '.$row->fresh()->error);
+        }
     }
 
     /** Decision 21: a missed warning day never means a deactivation without a warning. */
