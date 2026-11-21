@@ -2071,3 +2071,17 @@ The founder approved, in Malay, 11 new entries drafted from the 54 "no knowledge
 - Knowledge now holds 20 approved entries.
 
 **Deliberately not knowledge:** incidents. Use an entry with `valid_until` while one is live, or let `order_failed` hand over as it does.
+
+## 2026-11-21 — Reseller dormancy WhatsApp never sent: the bot sender treated it as a supplier post (ADR-142, ADR-116)
+
+The first dormancy run (21 Nov, 10:00 MYT) warned the right two resellers (#1 FixFast, #2 Naeem Industries, both idle since the 17 Nov switch-on). Email went out (no Plunk failure logged), but both group messages (outbox #322, #323) ended `skipped` with "The order is no longer waiting for this supplier".
+
+**Cause.** `SendCustomerWhatsAppJob::text()` sent every bot-session row that was not a reply or a rebate event to `SupplierGroupNotifier::prepare()`. That method re-checks the row's order and returns null when there is none, so a dormancy row, which has no order, was always skipped. Rebate (ADR-139) had been special-cased; dormancy (ADR-142) was not. The dormancy tests ran with `Queue::fake()` and checked only that the row was queued.
+
+**Fix.** The routing is inverted, so no new bot event needs a special case:
+- `SupplierGroupNotifier::isOrderEvent()` names the only rows finished at send time (`supplier_order_post`, `supplier_sla_reminder`).
+- Every other bot row (replies, rebate, dormancy, anything later) sends its queued text.
+- `RebateNotifier::isRebateEvent()` lost its only caller and was removed.
+- A red-first test runs the sender on both dormancy rows and asserts `sent`. It reproduces the prod error without the fix.
+
+**Still open after release.** The 21 Nov group warnings stay skipped. Re-sending them is a prod write that needs the founder's go-ahead. Without a transaction, Naeem Industries is deactivated on 24 Nov, so this fix must reach `main` before then for that group notice to arrive. FixFast transacted later on 21 Nov, so its idle spell restarted.

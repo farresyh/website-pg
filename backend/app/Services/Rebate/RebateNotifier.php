@@ -39,11 +39,6 @@ final class RebateNotifier
         private readonly WhatsAppOutbox $outbox,
     ) {}
 
-    public static function isRebateEvent(string $event): bool
-    {
-        return in_array($event, [self::EVENT_STEP, self::EVENT_REMINDER, self::EVENT_LADDER], true);
-    }
-
     /** The every-10-minutes task: newly reached steps, then rewards about to lapse. */
     public function notifyProgress(): void
     {

@@ -29,6 +29,15 @@ final class SupplierGroupNotifier
 
     public const EVENT_SLA_REMINDER = 'supplier_sla_reminder';
 
+    /**
+     * The only bot-session rows finished at send time by `prepare()`. Every
+     * other bot row (replies, rebate, dormancy) is final when queued.
+     */
+    public static function isOrderEvent(string $event): bool
+    {
+        return in_array($event, [self::EVENT_ORDER_POST, self::EVENT_SLA_REMINDER], true);
+    }
+
     public function __construct(
         private readonly WhatsAppOutbox $outbox,
         private readonly WhatsAppGroupService $groups,
